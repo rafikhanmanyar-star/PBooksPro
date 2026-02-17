@@ -174,7 +174,7 @@ export async function migrateLicenseSettings(): Promise<void> {
             // Only insert if it doesn't exist - never overwrite existing install date
             if (!existing || existing.length === 0 || !existing[0]?.value) {
                 dbService.execute(
-                    'INSERT INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                    'INSERT INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                     ['app_install_date', installDate]
                 );
             }
@@ -182,14 +182,14 @@ export async function migrateLicenseSettings(): Promise<void> {
 
         if (licenseKey) {
             dbService.execute(
-                'INSERT OR REPLACE INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                'INSERT OR REPLACE INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                 ['app_license_key', licenseKey]
             );
         }
 
         if (deviceId) {
             dbService.execute(
-                'INSERT OR REPLACE INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                'INSERT OR REPLACE INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                 ['app_device_id', deviceId]
             );
         }

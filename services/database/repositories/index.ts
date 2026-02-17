@@ -481,7 +481,7 @@ export class ChatMessagesRepository extends BaseRepository<any> {
     markAsRead(senderId: string, recipientId: string): void {
         const sql = `
             UPDATE chat_messages 
-            SET read_at = datetime('now')
+            SET read_at = datetime(\'now\')
             WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL
         `;
         this.db.execute(sql, [senderId, recipientId]);
@@ -524,7 +524,7 @@ export class AppSettingsRepository {
     setSetting(key: string, value: any): void {
         const jsonValue = typeof value === 'string' ? value : JSON.stringify(value);
         this.db.execute(
-            'INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+            'INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
             [key, jsonValue]
         );
         // Don't call save() here if we're in a transaction - it will be saved after transaction commits

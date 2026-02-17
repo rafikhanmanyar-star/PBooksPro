@@ -141,7 +141,7 @@ export class ElectronDatabaseService {
         if (currentVersion < 8) await this.runV8Migrations();
         if (currentVersion < 9) await this.runV9Migrations();
         this.rawExecute(
-          'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+          'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
           ['schema_version', SCHEMA_VERSION.toString()]
         );
         this.isInitialized = false;
@@ -480,7 +480,7 @@ export class ElectronDatabaseService {
 
   setMetadata(key: string, value: string): void {
     if (!this.isReady()) return;
-    this.execute('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))', [key, value]);
+    this.execute('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))', [key, value]);
   }
 
   stopAutoSave(): void {}

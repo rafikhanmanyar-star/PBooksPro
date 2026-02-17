@@ -29,11 +29,20 @@ Render deploys automatically when you push to GitHub. No manual deploy step requ
 
 ### Staging (staging branch)
 
-| Service              | URL                                      |
-|----------------------|------------------------------------------|
-| API Server           | https://pbookspro-api-staging.onrender.com |
-| Admin dashboard      | https://pbookspro-admin-staging.onrender.com |
-| Marketing website    | https://pbookspro-website-staging.onrender.com |
+| Service              | URL                                                                 |
+|----------------------|---------------------------------------------------------------------|
+| API Server           | https://pbookspro-api-staging.onrender.com (API base: …/api)        |
+| Admin dashboard      | https://pbookspro-admin-staging.onrender.com                        |
+| Marketing website    | https://pbookspro-website-staging.onrender.com                      |
+
+Staging API base URL for app config: `https://pbookspro-api-staging.onrender.com/api`
+
+**Quick check (staging API):**
+```bash
+curl https://pbookspro-api-staging.onrender.com/health
+# or
+curl https://pbookspro-api-staging.onrender.com
+```
 
 ### Setup
 
@@ -118,7 +127,7 @@ Developer                    User's PC
 | `CLIENT_URL`     | Render     | Website URL for payment return redirects (e.g. www.pbookspro.com) |
 | `VITE_ADMIN_API_URL` | Render build | API base URL for admin dashboard                   |
 | `CORS_ORIGIN`    | Render     | Allowed origins (admin, website, Electron main app uses `null`) |
-| `VITE_API_URL`   | Local build | API base URL for main app (production or staging)  |
+| `VITE_API_URL`   | Local build | API base URL for main app. Staging: `https://pbookspro-api-staging.onrender.com/api`; production: `https://api.pbookspro.com/api`. See `.env.example`. |
 
 ---
 

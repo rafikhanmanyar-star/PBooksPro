@@ -2679,7 +2679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return Array.from(merged.values());
         };
 
-        const applyApiState = (apiState: Partial<AppState>) => {
+        const applyApiState = (apiState: Partial<AppState>): AppState | null => {
             const updates: Partial<AppState> = {};
             const currentState = stateRef.current;
             if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
@@ -2711,10 +2711,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
             if (apiState.vendors) updates.vendors = mergeById(currentState.vendors || [], apiState.vendors);
             if (apiState.recurringInvoiceTemplates) updates.recurringInvoiceTemplates = mergeById(currentState.recurringInvoiceTemplates || [], apiState.recurringInvoiceTemplates);
-            if (Object.keys(updates).length === 0) return;
+            if (Object.keys(updates).length === 0) return null;
             const mergedState = { ...stateRef.current, ...updates };
             dispatch({ type: 'SET_STATE', payload: mergedState, _isRemote: true } as any);
             setStoredState(prev => ({ ...prev, ...updates }));
+            return mergedState as AppState;
+        };
+
+        const persistLoadedStateToDb = async (mergedState: AppState | null) => {
+            if (!mergedState || !saveNow) return;
+            try {
+                const dbService = getDatabaseService();
+                if (dbService.isReady()) {
+                    await saveNow(mergedState, { disableSyncQueueing: true });
+                    logger.logCategory('sync', '✅ Saved cloud data to local database');
+                }
+            } catch (saveErr) {
+                console.warn('[CloudSync] Failed to save loaded data to local DB:', saveErr);
+            }
         };
 
         try {
@@ -2724,7 +2738,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             try {
                 const critical = await apiService.loadStateBulk('accounts,contacts,categories,projects,buildings,properties,units,vendors');
                 if (critical && Object.keys(critical).length > 0) {
-                    applyApiState(critical);
+                    const mergedCritical = applyApiState(critical);
+                    if (mergedCritical) persistLoadedStateToDb(mergedCritical);
                     onCriticalLoaded?.(); // UI becomes interactive here
 
                     // STEP 2: Load remaining data in background (chunked, non-blocking)
@@ -2737,7 +2752,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         }
                     }, 200) // 200 records per chunk
                         .then(full => {
-                            applyApiState(full);
+                            const mergedFull = applyApiState(full);
+                            if (mergedFull) persistLoadedStateToDb(mergedFull);
                             setLoadProgress(null);
                             setInitMessage('Data loaded');
                             setInitProgress(100);
@@ -2749,7 +2765,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             // Fallback to regular bulk load if chunked fails
                             logger.logCategory('sync', '⚠️ Chunked load failed, falling back to bulk');
                             apiService.loadStateBulk()
-                                .then(full => applyApiState(full))
+                                .then(full => {
+                                    const merged = applyApiState(full);
+                                    if (merged) persistLoadedStateToDb(merged);
+                                })
                                 .catch(bulkErr => console.error('⚠️ Bulk fallback also failed:', bulkErr));
                         });
                     return;
@@ -2769,13 +2788,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     throw bulkErr;
                 }
             }
-            applyApiState(apiState);
+            const mergedFallback = applyApiState(apiState);
+            if (mergedFallback) persistLoadedStateToDb(mergedFallback);
             onCriticalLoaded?.();
         } catch (err) {
             console.error('⚠️ Failed to refresh data from API:', err);
             onCriticalLoaded?.();
         }
-    }, [dispatch, isAuthenticated, setStoredState, setInitMessage, setInitProgress, setLoadProgress]);
+    }, [dispatch, isAuthenticated, setStoredState, setInitMessage, setInitProgress, setLoadProgress, saveNow]);
 
     // Store refreshFromApi in a ref so WebSocket handlers always use the latest version
     const refreshFromApiRef = useRef(refreshFromApi);
@@ -2786,7 +2806,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Run refreshFromApi only after user logs in (not on initial load with existing session — init background sync handles that)
     useEffect(() => {
         const handleLoginSuccess = () => {
-            refreshFromApiRef.current(undefined);
+            logger.logCategory('sync', '📡 Login success: loading data from cloud...');
+            // Brief delay so localStorage/auth state and API client are fully updated before first request
+            setTimeout(() => {
+                refreshFromApiRef.current(undefined);
+            }, 100);
         };
         window.addEventListener('auth:login-success', handleLoginSuccess);
         return () => window.removeEventListener('auth:login-success', handleLoginSuccess);

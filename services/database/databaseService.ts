@@ -374,7 +374,7 @@ class DatabaseService {
                 try {
                     this.db.exec(CREATE_SCHEMA_SQL);
                     // Set schema version directly (bypass isReady check during init)
-                    this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                    this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                         ['schema_version', SCHEMA_VERSION.toString()]);
                     logger.logCategory('database', '✅ Database schema created');
                 } catch (schemaError) {
@@ -430,7 +430,7 @@ class DatabaseService {
                     try {
                         this.db.exec(CREATE_SCHEMA_SQL);
                         // Set schema version directly (bypass isReady check during init)
-                        this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                        this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                             ['schema_version', SCHEMA_VERSION.toString()]);
                         logger.logCategory('database', '✅ Database recreated with new schema');
                     } catch (recreateError) {
@@ -1097,7 +1097,7 @@ class DatabaseService {
         if (!this.isReady()) return;
         try {
             this.execute(
-                'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                 [key, value]
             );
             this.save();
@@ -1333,7 +1333,7 @@ class DatabaseService {
 
                     // Update schema version directly (setMetadata relies on isReady)
                     this.rawExecute(
-                        'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                        'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                         ['schema_version', latestVersion.toString()]
                     );
 

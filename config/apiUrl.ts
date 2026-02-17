@@ -5,8 +5,8 @@
  * the API is derived from the same host on port 3000 (e.g. http://192.168.1.105:3000/api),
  * so no IP needs to be hardcoded.
  *
- * Set VITE_API_URL to a full URL (e.g. https://pbookspro-api.onrender.com/api) to use
- * a remote API instead (production/staging).
+ * Set VITE_API_URL to a full URL (e.g. https://pbookspro-api-staging.onrender.com/api for staging)
+ * to use a remote API instead (production/staging).
  */
 
 const API_PORT = 3000;

@@ -25,6 +25,28 @@ import { getSyncOutboxService } from '../../sync/syncOutboxService';
 import { getCurrentTenantId } from '../tenantUtils';
 import { getCurrentUserId } from '../userUtils';
 
+/** Sort items so parents appear before children (for FK parent_id → id). Handles missing parents and cycles. */
+function sortByParentOrder<T>(
+    items: T[],
+    getId: (t: T) => string,
+    getParentId: (t: T) => string | null | undefined
+): T[] {
+    if (items.length === 0) return [];
+    const byId = new Map(items.map(i => [getId(i), i]));
+    const depthCache = new Map<string, number>();
+    const depth = (id: string, visited = new Set<string>()): number => {
+        if (depthCache.has(id)) return depthCache.get(id)!;
+        if (visited.has(id)) return 0;
+        visited.add(id);
+        const item = byId.get(id);
+        const parentId = getParentId(item!);
+        const d = parentId && byId.has(parentId) ? 1 + depth(parentId, visited) : 0;
+        depthCache.set(id, d);
+        return d;
+    };
+    return [...items].sort((a, b) => depth(getId(a)) - depth(getId(b)));
+}
+
 export class AppStateRepository {
     private db = getDatabaseService();
     private static saveQueue: Promise<void> = Promise.resolve();
@@ -686,7 +708,12 @@ export class AppStateRepository {
                             }
 
                             try {
-                                this.accountsRepo.saveAll(state.accounts);
+                                const accountsOrdered = sortByParentOrder(
+                                    state.accounts,
+                                    a => a.id,
+                                    a => (a as { parentAccountId?: string; parent_account_id?: string }).parentAccountId ?? (a as { parent_account_id?: string }).parent_account_id ?? null
+                                );
+                                this.accountsRepo.saveAll(accountsOrdered);
                             } catch (e) {
                                 console.error('❌ Failed to save accounts:', e);
                                 throw e;
@@ -704,7 +731,12 @@ export class AppStateRepository {
                             }
 
                             try {
-                                this.categoriesRepo.saveAll(state.categories);
+                                const categoriesOrdered = sortByParentOrder(
+                                    state.categories,
+                                    c => c.id,
+                                    c => (c as { parentCategoryId?: string; parent_category_id?: string }).parentCategoryId ?? (c as { parent_category_id?: string }).parent_category_id ?? null
+                                );
+                                this.categoriesRepo.saveAll(categoriesOrdered);
                             } catch (e) {
                                 console.error('❌ Failed to save categories:', e);
                                 throw e;
@@ -729,10 +761,8 @@ export class AppStateRepository {
                                     vendorId: c.vendorId || '',
                                     expenseCategoryItems: c.expenseCategoryItems ? JSON.stringify(c.expenseCategoryItems) : undefined
                                 })));
-                                this.transactionsRepo.saveAll(state.transactions);
+                                // Save invoices and bills BEFORE transactions (transactions may reference invoice_id/bill_id; FKs vary by env)
                                 this.invoicesRepo.saveAll(state.invoices);
-                                // Save bills with expenseCategoryItems serialized as JSON
-                                // Ensure all fields are explicitly included to prevent data loss
                                 this.billsRepo.saveAll(state.bills.map(b => {
                                     const billToSave: any = {
                                         id: b.id,
@@ -742,7 +772,6 @@ export class AppStateRepository {
                                         status: b.status || 'Unpaid',
                                         issueDate: b.issueDate || new Date().toISOString().split('T')[0],
                                     };
-                                    // Only include optional fields if they have values (to avoid skipping in objectToDbFormat)
                                     if (b.contactId) billToSave.contactId = b.contactId;
                                     if (b.vendorId) billToSave.vendorId = b.vendorId;
                                     if (b.dueDate) billToSave.dueDate = b.dueDate;
@@ -763,8 +792,9 @@ export class AppStateRepository {
                                     }
                                     return billToSave;
                                 }));
+                                this.transactionsRepo.saveAll(state.transactions);
                             } catch (e) {
-                                console.error('❌ Failed to save projects/buildings/properties/units/transactions/invoices/bills:', e);
+                                console.error('❌ Failed to save projects/buildings/properties/units/contracts/invoices/bills/transactions:', e);
                                 throw e;
                             }
 

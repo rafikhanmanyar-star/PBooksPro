@@ -29,6 +29,20 @@ const router = Router();
 // EMPLOYEE ROUTES
 // =====================================================
 
+// Helper: run employees list query; if deleted_at column is missing (e.g. migration not run), retry without it
+async function queryEmployeesWithDepartments(tenantId: string, includeDeletedFilter: boolean) {
+  return getDb().query(
+    `SELECT e.*, 
+            d.name as department_name,
+            d.code as department_code
+     FROM payroll_employees e
+     LEFT JOIN payroll_departments d ON e.department_id = d.id
+     WHERE e.tenant_id = $1${includeDeletedFilter ? ' AND e.deleted_at IS NULL' : ''}
+     ORDER BY e.name ASC`,
+    [tenantId]
+  );
+}
+
 // GET /payroll/employees - List all employees with department info
 router.get('/employees', async (req: TenantRequest, res) => {
   try {
@@ -37,23 +51,44 @@ router.get('/employees', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const employees = await getDb().query(
-      `SELECT e.*, 
-              d.name as department_name,
-              d.code as department_code
-       FROM payroll_employees e
-       LEFT JOIN payroll_departments d ON e.department_id = d.id
-       WHERE e.tenant_id = $1 AND e.deleted_at IS NULL
-       ORDER BY e.name ASC`,
-      [tenantId]
-    );
+    let employees: any[];
+    try {
+      employees = await queryEmployeesWithDepartments(tenantId, true);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes('deleted_at') || msg.includes('does not exist')) {
+        console.warn('Payroll employees: deleted_at column missing, using fallback query. Run migration 20260216_add_missing_sync_metadata.sql.');
+        employees = await queryEmployeesWithDepartments(tenantId, false);
+      } else {
+        throw err;
+      }
+    }
 
     res.json(employees);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching payroll employees:', error);
-    res.status(500).json({ error: 'Failed to fetch employees' });
+    const message = error?.message || 'Failed to fetch employees';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to fetch employees',
+      ...(isStagingOrDev && { details: message }),
+    });
   }
 });
+
+// Helper: single employee by id (optional deleted_at filter for compatibility)
+async function queryEmployeeById(id: string, tenantId: string, includeDeletedFilter: boolean) {
+  return getDb().query(
+    `SELECT e.*, 
+            d.name as department_name,
+            d.code as department_code,
+            d.description as department_description
+     FROM payroll_employees e
+     LEFT JOIN payroll_departments d ON e.department_id = d.id
+     WHERE e.id = $1 AND e.tenant_id = $2${includeDeletedFilter ? ' AND e.deleted_at IS NULL' : ''}`,
+    [id, tenantId]
+  );
+}
 
 // GET /payroll/employees/:id - Get single employee with department info
 router.get('/employees/:id', async (req: TenantRequest, res) => {
@@ -65,25 +100,31 @@ router.get('/employees/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const employees = await getDb().query(
-      `SELECT e.*, 
-              d.name as department_name,
-              d.code as department_code,
-              d.description as department_description
-       FROM payroll_employees e
-       LEFT JOIN payroll_departments d ON e.department_id = d.id
-       WHERE e.id = $1 AND e.tenant_id = $2 AND e.deleted_at IS NULL`,
-      [id, tenantId]
-    );
+    let employees: any[];
+    try {
+      employees = await queryEmployeeById(id, tenantId, true);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes('deleted_at') || msg.includes('does not exist')) {
+        employees = await queryEmployeeById(id, tenantId, false);
+      } else {
+        throw err;
+      }
+    }
 
     if (employees.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
     res.json(employees[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching employee:', error);
-    res.status(500).json({ error: 'Failed to fetch employee' });
+    const message = error?.message || 'Failed to fetch employee';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to fetch employee',
+      ...(isStagingOrDev && { details: message }),
+    });
   }
 });
 

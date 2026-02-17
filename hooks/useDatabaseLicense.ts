@@ -96,7 +96,7 @@ export function useDatabaseLicense() {
             // This ensures license timer never resets during version upgrades
             if (!existing || existing.length === 0 || !existing[0]?.value) {
                 dbService.execute(
-                    'INSERT INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                    'INSERT INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                     ['app_install_date', value]
                 );
                 dbService.save();
@@ -115,7 +115,7 @@ export function useDatabaseLicense() {
             await ensureDatabaseInitialized();
             const dbService = getDatabaseService();
             dbService.execute(
-                'INSERT OR REPLACE INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                'INSERT OR REPLACE INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                 ['app_license_key', value]
             );
             dbService.save();
@@ -130,7 +130,7 @@ export function useDatabaseLicense() {
             await ensureDatabaseInitialized();
             const dbService = getDatabaseService();
             dbService.execute(
-                'INSERT OR REPLACE INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                'INSERT OR REPLACE INTO license_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                 ['app_device_id', value]
             );
             dbService.save();

@@ -9,6 +9,8 @@ This document compares the local SQLite schema (desktop/Electron) with the Postg
 | **SQLite** | `services/database/schema.ts` → `electron/schema.sql` | Local Electron desktop app, sql.js, sync_outbox |
 | **PostgreSQL** | `server/migrations/postgresql-schema.sql` + migration files | Cloud API (Render), multi-tenant |
 
+Staging PostgreSQL API: **https://pbookspro-api-staging.onrender.com** (API base for app: `https://pbookspro-api-staging.onrender.com/api`).
+
 ---
 
 ## 1. Tables Only in SQLite (Client-Only)
