@@ -15,6 +15,7 @@ import { CURRENCY } from '../constants';
 import { BarcodeScanner, createBarcodeScanner } from '../services/barcode/barcodeScanner';
 import { ThermalPrinter, createThermalPrinter, ReceiptData } from '../services/printer/thermalPrinter';
 import { useAppContext } from './AppContext';
+import { useAuth } from './AuthContext';
 
 
 
@@ -273,12 +274,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             customerId: customer?.id,
             total: totals.grandTotal,
             heldAt: new Date().toISOString(),
-            cashierId: 'default-user' // TODO: Get from Auth
+            cashierId: currentUserId ?? 'Cashier'
         };
 
         setHeldSales(prev => [...prev, newHeldSale]);
         clearCart();
-    }, [cart, customer, totals.grandTotal, clearCart]);
+    }, [cart, customer, totals.grandTotal, clearCart, currentUserId]);
+
+    const { user: authUser } = useAuth();
+    const currentUserId = authUser?.id ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('user_id') : null) ?? null;
 
     const recallSale = useCallback(async (heldSaleId: string) => {
         const heldSale = heldSales.find(s => s.id === heldSaleId);
@@ -317,7 +321,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const saleData = {
                 branchId: null, // TODO: Set up branch configuration
                 terminalId: null, // TODO: Set up terminal configuration
-                userId: 'default-user',
+                userId: currentUserId ?? undefined,
                 customerId: customer?.id,
                 loyaltyMemberId: null, // TODO: Link loyalty member
                 saleNumber,
@@ -360,7 +364,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.error('Failed to complete sale:', error);
             alert('Error completing sale: ' + (error.message || 'Unknown error'));
         }
-    }, [cart, customer, payments, totals, clearCart]);
+    }, [cart, customer, payments, totals, clearCart, currentUserId]);
 
     const applyGlobalDiscount = useCallback((percentage: number) => {
         setCart(prev => prev.map(item => {

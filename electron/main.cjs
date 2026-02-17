@@ -5,6 +5,7 @@
 
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const sqliteBridge = require('./sqliteBridge.cjs');
 
 const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--enable-logging');
@@ -22,12 +23,18 @@ app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData')
 sqliteBridge.setupHandlers();
 
 function createWindow() {
+  // Use custom app icon if present (electron/assets/icon.ico on Windows, icon.icns on macOS)
+  const iconName = process.platform === 'darwin' ? 'icon.icns' : 'icon.ico';
+  const iconPath = path.join(__dirname, 'assets', iconName);
+  const iconOption = fs.existsSync(iconPath) ? { icon: iconPath } : {};
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     title: 'PBooks Pro',
+    ...iconOption,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,

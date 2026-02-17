@@ -588,6 +588,47 @@ export class ShopService {
         ]);
         return res[0];
     }
+
+    // --- Shop product categories (uses categories table with type = 'product') ---
+    async getShopCategories(tenantId: string) {
+        const rows = await this.db.query(
+            `SELECT id, name, type, created_at FROM categories 
+             WHERE tenant_id = $1 AND type = 'product' AND deleted_at IS NULL
+             ORDER BY name`,
+            [tenantId]
+        );
+        return rows;
+    }
+
+    async createShopCategory(tenantId: string, data: { name: string }) {
+        const id = `shop_cat_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+        await this.db.query(
+            `INSERT INTO categories (id, tenant_id, name, type, is_permanent, is_rental, created_at, updated_at)
+             VALUES ($1, $2, $3, 'product', false, false, NOW(), NOW())`,
+            [id, tenantId, data.name]
+        );
+        return id;
+    }
+
+    async updateShopCategory(tenantId: string, categoryId: string, data: { name: string }) {
+        await this.db.query(
+            `UPDATE categories SET name = $1, updated_at = NOW() 
+             WHERE id = $2 AND tenant_id = $3 AND type = 'product'`,
+            [data.name, categoryId, tenantId]
+        );
+    }
+
+    async deleteShopCategory(tenantId: string, categoryId: string) {
+        await this.db.query(
+            `UPDATE shop_products SET category_id = NULL WHERE tenant_id = $1 AND category_id = $2`,
+            [tenantId, categoryId]
+        );
+        await this.db.query(
+            `UPDATE categories SET deleted_at = NOW(), updated_at = NOW() 
+             WHERE id = $1 AND tenant_id = $2 AND type = 'product'`,
+            [categoryId, tenantId]
+        );
+    }
 }
 
 let shopServiceInstance: ShopService | null = null;

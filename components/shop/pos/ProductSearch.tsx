@@ -1,64 +1,88 @@
-
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { usePOS } from '../../../context/POSContext';
+import { useInventory } from '../../../context/InventoryContext';
 import { ICONS, CURRENCY } from '../../../constants';
 import { POSProduct } from '../../../types/pos';
+import { InventoryItem } from '../../../types/inventory';
 import Card from '../../ui/Card';
-
 import { shopApi } from '../../../services/api/shopApi';
 
 const CATEGORIES = [
     { id: 'all', name: 'All Items' },
 ];
 
+function mapApiProductToPOS(p: any): POSProduct {
+    return {
+        id: p.id,
+        sku: p.sku || 'N/A',
+        barcode: p.barcode || '',
+        name: p.name,
+        price: Number(p.retail_price) || Number(p.price) || 0,
+        cost: Number(p.cost_price) || 0,
+        categoryId: p.category_id || 'others',
+        taxRate: Number(p.tax_rate) || 0,
+        isTaxInclusive: true,
+        unit: p.unit || 'pcs',
+        stockLevel: Number(p.stock_quantity) || 0,
+        imageUrl: p.image_url
+    };
+}
+
+function mapInventoryItemToPOS(item: InventoryItem): POSProduct {
+    return {
+        id: item.id,
+        sku: item.sku,
+        barcode: item.barcode || '',
+        name: item.name,
+        price: Number(item.retailPrice) || 0,
+        cost: Number(item.costPrice) || 0,
+        categoryId: item.category || 'others',
+        taxRate: 0,
+        isTaxInclusive: true,
+        unit: item.unit || 'pcs',
+        stockLevel: Number(item.onHand) || 0
+    };
+}
+
 const ProductSearch: React.FC = () => {
     const { addToCart, searchQuery, setSearchQuery } = usePOS();
+    const { items: inventoryItems } = useInventory();
+    const inventoryItemsRef = useRef(inventoryItems);
+    inventoryItemsRef.current = inventoryItems;
+
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [products, setProducts] = useState<POSProduct[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Load products from API
-    useEffect(() => {
-        const loadProducts = async () => {
-            try {
+    const loadProducts = useCallback(async () => {
+        try {
+            setLoadError(null);
+            setIsLoading(true);
+            const response = await shopApi.getProducts();
+            if (response && Array.isArray(response)) {
+                setProducts(response.map(mapApiProductToPOS));
+            } else {
+                setProducts([]);
+            }
+        } catch (error) {
+            const fallback = inventoryItemsRef.current;
+            if (fallback?.length) {
+                setProducts(fallback.map(mapInventoryItemToPOS));
                 setLoadError(null);
-                // In a real scenario, we might check if products allow public access or generic access
-                // For now, assuming auth header is handled by client or unnecessary for read if generic
-                const response = await shopApi.getProducts();
-                if (response && Array.isArray(response)) {
-                    const mapped: POSProduct[] = response.map((p: any) => ({
-                        id: p.id,
-                        sku: p.sku || 'N/A',
-                        barcode: p.barcode || '',
-                        name: p.name,
-                        price: Number(p.retail_price) || Number(p.price) || 0,
-                        cost: Number(p.cost_price) || 0, // Fallback if not available
-                        categoryId: p.category_id || 'others',
-                        taxRate: Number(p.tax_rate) || 0,
-                        isTaxInclusive: true, // Default assumption
-                        unit: p.unit || 'pcs',
-                        stockLevel: Number(p.stock_quantity) || 0,
-                        imageUrl: p.image_url
-                    }));
-                    setProducts(mapped);
-                } else {
-                    // Fallback or empty if response is valid but not array (shouldn't happen with correct types)
-                    console.warn("API returned non-array:", response);
-                    setProducts([]);
-                }
-            } catch (error) {
-                console.warn("Failed to fetch products from API:", error);
+            } else {
                 setLoadError('Unable to load products. Please check connection and try again.');
                 setProducts([]);
-            } finally {
-                setIsLoading(false);
             }
-        };
-
-        loadProducts();
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
+
+    useEffect(() => {
+        loadProducts();
+    }, [loadProducts]);
 
     // Keep focus on search input for barcode scanner
     useEffect(() => {
@@ -168,6 +192,13 @@ const ProductSearch: React.FC = () => {
                         <div className="col-span-2 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">
                             <div className="text-xs font-black uppercase tracking-widest">Products not loaded</div>
                             <div className="text-xs mt-1 font-medium">{loadError}</div>
+                            <button
+                                type="button"
+                                onClick={() => loadProducts()}
+                                className="mt-3 px-3 py-2 text-xs font-semibold rounded-lg bg-rose-600 text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-1"
+                            >
+                                Retry
+                            </button>
                         </div>
                     )}
                     {filteredProducts.map(product => (

@@ -62,28 +62,13 @@ export class TransactionsRepository extends BaseRepository<any> {
         try {
             this.nativeService = getNativeDatabaseService();
             const isAvailable = this.nativeService.isNativeAvailable();
-            console.log('🔍 TransactionsRepository: Native service available?', isAvailable);
-
-            // Enable native backend by default if available (can be disabled via feature flag)
-            // Check localStorage for feature flag
             if (typeof window !== 'undefined') {
                 const flag = localStorage.getItem('useNativeDatabase');
-                console.log('🔍 TransactionsRepository: Feature flag value:', flag);
-                if (flag !== null) {
-                    this.useNativeBackend = flag === 'true' && isAvailable;
-                    console.log('🔍 TransactionsRepository: Using feature flag, useNativeBackend =', this.useNativeBackend);
-                } else {
-                    // No flag set, use default (enabled if available)
-                    this.useNativeBackend = isAvailable;
-                    console.log('🔍 TransactionsRepository: No feature flag, using default, useNativeBackend =', this.useNativeBackend);
-                }
+                this.useNativeBackend = flag !== null ? flag === 'true' && isAvailable : isAvailable;
             } else {
                 this.useNativeBackend = isAvailable;
-                console.log('🔍 TransactionsRepository: Not in browser, useNativeBackend =', this.useNativeBackend);
             }
         } catch (e) {
-            // Native service not available, use sql.js
-            console.error('❌ TransactionsRepository: Failed to load native service:', e);
             this.useNativeBackend = false;
         }
     }

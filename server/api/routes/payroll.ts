@@ -23,6 +23,126 @@ const calculateAmount = (basic: number, amount: number, isPercentage: boolean): 
   return roundToTwo(calculated);
 };
 
+/** Internal: generate payslips for a payroll run. Does not update run status. */
+async function generatePayslipsForRun(
+  tenantId: string,
+  runId: string,
+  run: { month: string; year: number }
+): Promise<{
+  newPayslipsCount: number;
+  newTotalAmount: number;
+  existingTotalAmount: number;
+  existingEmployeeIds: Set<string>;
+  totalEmployeeCount: number;
+  combinedTotalAmount: number;
+}> {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthIndex = monthNames.indexOf(run.month);
+  if (monthIndex === -1) throw new Error(`Invalid month: ${run.month}`);
+
+  const periodStart = new Date(run.year, monthIndex, 1);
+  const periodEnd = new Date(run.year, monthIndex + 1, 0);
+  const daysInMonth = periodEnd.getDate();
+
+  const existingPayslips = await getDb().query(
+    `SELECT employee_id, net_pay FROM payslips 
+     WHERE payroll_run_id = $1 AND tenant_id = $2`,
+    [runId, tenantId]
+  );
+  const existingEmployeeIds = new Set(existingPayslips.map((p: any) => p.employee_id));
+  const existingTotalAmount = existingPayslips.reduce((sum: number, p: any) => sum + parseFloat(p.net_pay || 0), 0);
+
+  const employees = await getDb().query(
+    `SELECT * FROM payroll_employees 
+     WHERE tenant_id = $1 AND status = 'ACTIVE'
+     AND joining_date <= $2
+     AND (termination_date IS NULL OR termination_date >= $3)
+     AND id NOT IN (
+       SELECT employee_id FROM payslips 
+       WHERE payroll_run_id = $4 AND tenant_id = $1
+     )`,
+    [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0], runId]
+  );
+
+  let newTotalAmount = 0;
+  let newPayslipsCount = 0;
+
+  for (const emp of employees) {
+    const salary = emp.salary || {};
+    const joiningDate = new Date(emp.joining_date);
+    let proRataFactor = 1.0;
+    let workedDays = daysInMonth;
+
+    if (joiningDate >= periodStart && joiningDate <= periodEnd) {
+      workedDays = periodEnd.getDate() - joiningDate.getDate() + 1;
+      proRataFactor = workedDays / daysInMonth;
+    }
+    if (emp.termination_date) {
+      const terminationDate = new Date(emp.termination_date);
+      if (terminationDate >= periodStart && terminationDate <= periodEnd) {
+        workedDays = terminationDate.getDate();
+        proRataFactor = workedDays / daysInMonth;
+      }
+    }
+
+    const basic = roundToTwo((salary.basic || 0) * proRataFactor);
+    let totalAllowances = 0;
+    (salary.allowances || [])
+      .filter((a: any) => {
+        const name = (a.name || '').toLowerCase();
+        return name !== 'basic pay' && name !== 'basic salary';
+      })
+      .forEach((a: any) => {
+        const allowanceAmount = calculateAmount(salary.basic || 0, a.amount, a.is_percentage);
+        totalAllowances += roundToTwo(allowanceAmount * proRataFactor);
+      });
+    totalAllowances = roundToTwo(totalAllowances);
+
+    const grossForDeductions = roundToTwo(basic + totalAllowances);
+    let totalDeductions = 0;
+    (salary.deductions || []).forEach((d: any) => {
+      totalDeductions += calculateAmount(grossForDeductions, d.amount, d.is_percentage);
+    });
+    totalDeductions = roundToTwo(totalDeductions);
+
+    const adjustments = emp.adjustments || [];
+    const earningAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'EARNING').reduce((sum: number, a: any) => sum + a.amount, 0));
+    const deductionAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'DEDUCTION').reduce((sum: number, a: any) => sum + a.amount, 0));
+
+    const grossPay = roundToTwo(basic + totalAllowances + earningAdj);
+    const netPay = roundToTwo(grossPay - totalDeductions - deductionAdj);
+
+    newTotalAmount += netPay;
+    newPayslipsCount++;
+
+    await getDb().query(
+      `INSERT INTO payslips 
+       (tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
+        total_deductions, total_adjustments, gross_pay, net_pay,
+        allowance_details, deduction_details, adjustment_details)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [tenantId, runId, emp.id, basic, totalAllowances, totalDeductions,
+        earningAdj - deductionAdj, grossPay, netPay,
+        JSON.stringify(salary.allowances || []),
+        JSON.stringify(salary.deductions || []),
+        JSON.stringify(adjustments)]
+    );
+  }
+
+  const combinedTotalAmount = existingTotalAmount + newTotalAmount;
+  const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
+
+  return {
+    newPayslipsCount,
+    newTotalAmount,
+    existingTotalAmount,
+    existingEmployeeIds,
+    totalEmployeeCount,
+    combinedTotalAmount
+  };
+}
+
 const router = Router();
 
 // =====================================================
@@ -483,9 +603,45 @@ router.post('/runs', async (req: TenantRequest, res) => {
         periodEnd.toISOString().split('T')[0], empCount[0]?.count || 0, userId, serverVersion]
     );
 
-    emitToTenant(tenantId, 'payroll_run_created', { id: result[0].id });
+    const createdRun = result[0];
 
-    res.status(201).json(result[0]);
+    // Generate payslips immediately (no separate approval step)
+    let processing_summary = {
+      new_payslips_generated: 0,
+      existing_payslips_skipped: 0,
+      total_payslips: createdRun.employee_count || 0,
+      new_amount_added: 0,
+      previous_amount: 0,
+      total_amount: parseFloat(createdRun.total_amount || 0)
+    };
+    try {
+      const summary = await generatePayslipsForRun(tenantId, createdRun.id, { month: createdRun.month, year: createdRun.year });
+      const updateResult = await getDb().query(
+        `UPDATE payroll_runs SET
+          status = 'APPROVED',
+          total_amount = $1,
+          employee_count = $2,
+          updated_by = $3
+         WHERE id = $4 AND tenant_id = $5
+         RETURNING *`,
+        [summary.combinedTotalAmount, summary.totalEmployeeCount, userId, createdRun.id, tenantId]
+      );
+      const updatedRun = updateResult[0];
+      processing_summary = {
+        new_payslips_generated: summary.newPayslipsCount,
+        existing_payslips_skipped: summary.existingEmployeeIds.size,
+        total_payslips: summary.totalEmployeeCount,
+        new_amount_added: summary.newTotalAmount,
+        previous_amount: summary.existingTotalAmount,
+        total_amount: summary.combinedTotalAmount
+      };
+      emitToTenant(tenantId, 'payroll_run_created', { id: createdRun.id });
+      return res.status(201).json({ ...updatedRun, processing_summary });
+    } catch (processErr) {
+      console.error('Error generating payslips on create:', processErr);
+      emitToTenant(tenantId, 'payroll_run_created', { id: createdRun.id });
+      return res.status(201).json({ ...createdRun, processing_summary });
+    }
   } catch (error: any) {
     console.error('Error creating payroll run:', error);
     console.error('Error details:', { code: error.code, detail: error.detail, constraint: error.constraint, message: error.message });
@@ -531,9 +687,9 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 
     // Define valid status transitions
     const validTransitions: { [key: string]: string[] } = {
-      'DRAFT': ['APPROVED', 'CANCELLED', 'PROCESSING'],
+      'DRAFT': ['APPROVED', 'PAID', 'CANCELLED', 'PROCESSING'],
       'PROCESSING': ['DRAFT', 'CANCELLED'],
-      'APPROVED': ['PAID', 'DRAFT'], // Allow going back to DRAFT if needed (with proper authorization)
+      'APPROVED': ['PAID', 'DRAFT'],
       'PAID': [], // Final state - no transitions allowed
       'CANCELLED': [] // Final state - no transitions allowed
     };
@@ -608,12 +764,11 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       }
     }
 
-    // Validation before marking as PAID
+    // Validation before marking as PAID (allow DRAFT or APPROVED once all payslips are paid)
     if (status === 'PAID') {
-      // Require APPROVED status first
-      if (currentStatus !== 'APPROVED') {
+      if (currentStatus !== 'APPROVED' && currentStatus !== 'DRAFT') {
         return res.status(400).json({
-          error: 'Payroll run must be APPROVED before it can be marked as PAID',
+          error: 'Payroll run must be DRAFT or APPROVED before it can be marked as PAID',
           currentStatus
         });
       }
@@ -766,7 +921,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     }
 
     if (currentStatus === 'APPROVED') {
-      console.log(`📋 Re-processing APPROVED payroll run ${id} to add new employees. Will revert to DRAFT for re-approval.`);
+      console.log(`📋 Re-processing APPROVED payroll run ${id} to add new employees. Will auto-approve after.`);
     }
 
     // Set status to PROCESSING while processing
@@ -778,141 +933,11 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     }
 
     try {
-      // Get the payroll run to determine the period
       const run = runCheck[0];
+      const summary = await generatePayslipsForRun(tenantId, id, { month: run.month, year: run.year });
 
-      // Calculate period start and end dates
-      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'];
-      const monthIndex = monthNames.indexOf(run.month);
-      if (monthIndex === -1) {
-        throw new Error(`Invalid month: ${run.month}`);
-      }
-
-      const periodStart = new Date(run.year, monthIndex, 1);
-      const periodEnd = new Date(run.year, monthIndex + 1, 0); // Last day of month
-      const daysInMonth = periodEnd.getDate();
-
-      // Get employees who already have payslips for this run
-      const existingPayslips = await getDb().query(
-        `SELECT employee_id, net_pay FROM payslips 
-       WHERE payroll_run_id = $1 AND tenant_id = $2`,
-        [id, tenantId]
-      );
-
-      const existingEmployeeIds = new Set(existingPayslips.map((p: any) => p.employee_id));
-      const existingTotalAmount = existingPayslips.reduce((sum: number, p: any) => sum + parseFloat(p.net_pay || 0), 0);
-
-      // Get active employees who DON'T already have a payslip for this run
-      // AND whose joining_date is on or before the last day of the payroll period
-      const employees = await getDb().query(
-        `SELECT * FROM payroll_employees 
-       WHERE tenant_id = $1 AND status = 'ACTIVE'
-       AND joining_date <= $2
-       AND (termination_date IS NULL OR termination_date >= $3)
-       AND id NOT IN (
-         SELECT employee_id FROM payslips 
-         WHERE payroll_run_id = $4 AND tenant_id = $1
-       )`,
-        [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0], id]
-      );
-
-      let newTotalAmount = 0;
-      let newPayslipsCount = 0;
-
-      // Generate payslips only for new employees (those without existing payslips)
-      for (const emp of employees) {
-        const salary = emp.salary;
-
-        // Calculate pro-rata factor if employee joined mid-month
-        const joiningDate = new Date(emp.joining_date);
-        let proRataFactor = 1.0;
-        let workedDays = daysInMonth;
-
-        // Check if employee joined within this payroll month
-        if (joiningDate >= periodStart && joiningDate <= periodEnd) {
-          // Calculate days worked from joining date to end of month
-          workedDays = periodEnd.getDate() - joiningDate.getDate() + 1;
-          proRataFactor = workedDays / daysInMonth;
-          console.log(`📅 Pro-rata calculation for ${emp.name}: Joined ${emp.joining_date}, worked ${workedDays}/${daysInMonth} days, factor: ${proRataFactor.toFixed(4)}`);
-        }
-
-        // Check if employee terminated mid-month
-        if (emp.termination_date) {
-          const terminationDate = new Date(emp.termination_date);
-          if (terminationDate >= periodStart && terminationDate <= periodEnd) {
-            // Calculate days worked from start of month to termination date
-            workedDays = terminationDate.getDate();
-            proRataFactor = workedDays / daysInMonth;
-            console.log(`📅 Pro-rata calculation for ${emp.name}: Terminated ${emp.termination_date}, worked ${workedDays}/${daysInMonth} days, factor: ${proRataFactor.toFixed(4)}`);
-          }
-        }
-
-        // Apply pro-rata to basic salary
-        const basic = roundToTwo((salary.basic || 0) * proRataFactor);
-
-        // Calculate allowances (filter out "Basic Pay" if it exists in legacy data)
-        // All amounts rounded to 2 decimal places
-        let totalAllowances = 0;
-        (salary.allowances || [])
-          .filter((a: any) => {
-            const name = (a.name || '').toLowerCase();
-            return name !== 'basic pay' && name !== 'basic salary';
-          })
-          .forEach((a: any) => {
-            // Apply pro-rata to allowances as well
-            const allowanceAmount = calculateAmount(salary.basic || 0, a.amount, a.is_percentage);
-            totalAllowances += roundToTwo(allowanceAmount * proRataFactor);
-          });
-        totalAllowances = roundToTwo(totalAllowances);
-
-        // Calculate deductions (rounded to 2 decimal places)
-        const grossForDeductions = roundToTwo(basic + totalAllowances);
-        let totalDeductions = 0;
-        (salary.deductions || []).forEach((d: any) => {
-          totalDeductions += calculateAmount(grossForDeductions, d.amount, d.is_percentage);
-        });
-        totalDeductions = roundToTwo(totalDeductions);
-
-        // Calculate adjustments (rounded to 2 decimal places)
-        const adjustments = emp.adjustments || [];
-        const earningAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'EARNING')
-          .reduce((sum: number, a: any) => sum + a.amount, 0));
-        const deductionAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'DEDUCTION')
-          .reduce((sum: number, a: any) => sum + a.amount, 0));
-
-        const grossPay = roundToTwo(basic + totalAllowances + earningAdj);
-        const netPay = roundToTwo(grossPay - totalDeductions - deductionAdj);
-
-        newTotalAmount += netPay;
-        newPayslipsCount++;
-
-        // Insert payslip (no ON CONFLICT update - we only insert new ones)
-        await getDb().query(
-          `INSERT INTO payslips 
-         (tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
-          total_deductions, total_adjustments, gross_pay, net_pay,
-          allowance_details, deduction_details, adjustment_details)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-          [tenantId, id, emp.id, basic, totalAllowances, totalDeductions,
-            earningAdj - deductionAdj, grossPay, netPay,
-            JSON.stringify(salary.allowances || []),
-            JSON.stringify(salary.deductions || []),
-            JSON.stringify(adjustments)]
-        );
-      }
-
-      // Calculate combined totals (existing + new)
-      const combinedTotalAmount = existingTotalAmount + newTotalAmount;
-      const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
-
-      // Update payroll run with combined totals
-      // If new payslips were generated, revert to DRAFT for re-approval
-      // Otherwise keep current status (no changes needed)
-      const newStatus = newPayslipsCount > 0 ? 'DRAFT' : currentStatus;
-      if (newPayslipsCount > 0 && currentStatus === 'APPROVED') {
-        console.log(`📋 Payroll run ${id} reverted from APPROVED to DRAFT: ${newPayslipsCount} new payslips added for backdated employees.`);
-      }
+      // After generating payslips: set status to APPROVED (no separate approval step)
+      const newStatus = summary.newPayslipsCount > 0 ? 'APPROVED' : currentStatus;
 
       const result = await getDb().query(
         `UPDATE payroll_runs SET
@@ -922,25 +947,23 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
           updated_by = $4
          WHERE id = $5 AND tenant_id = $6
          RETURNING *`,
-        [newStatus, combinedTotalAmount, totalEmployeeCount, userId, id, tenantId]
+        [newStatus, summary.combinedTotalAmount, summary.totalEmployeeCount, userId, id, tenantId]
       );
 
       emitToTenant(tenantId, 'payroll_run_updated', { id });
 
-      // Return detailed response with info about new vs existing payslips
       res.json({
         ...result[0],
         processing_summary: {
-          new_payslips_generated: newPayslipsCount,
-          existing_payslips_skipped: existingEmployeeIds.size,
-          total_payslips: totalEmployeeCount,
-          new_amount_added: newTotalAmount,
-          previous_amount: existingTotalAmount,
-          total_amount: combinedTotalAmount
+          new_payslips_generated: summary.newPayslipsCount,
+          existing_payslips_skipped: summary.existingEmployeeIds.size,
+          total_payslips: summary.totalEmployeeCount,
+          new_amount_added: summary.newTotalAmount,
+          previous_amount: summary.existingTotalAmount,
+          total_amount: summary.combinedTotalAmount
         }
       });
     } catch (processingError) {
-      // On error, revert status back to previous state (or DRAFT)
       await getDb().query(
         `UPDATE payroll_runs SET status = $1, updated_by = $2 WHERE id = $3 AND tenant_id = $4`,
         [currentStatus === 'PROCESSING' ? 'DRAFT' : currentStatus, userId, id, tenantId]

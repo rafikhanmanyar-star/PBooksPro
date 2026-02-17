@@ -10,24 +10,10 @@ import { Transaction } from '../../types';
 
 // Check if we're in Electron and native APIs are available
 function isNativeAvailable(): boolean {
-  if (typeof window === 'undefined') {
-    console.log('🔍 Native DB Check: Not in browser environment');
-    return false;
-  }
-
+  if (typeof window === 'undefined') return false;
   const electronAPI = (window as any).electronAPI;
-  if (!electronAPI) {
-    console.log('🔍 Native DB Check: electronAPI not found on window');
-    return false;
-  }
-
-  if (typeof electronAPI.listNativeTransactions !== 'function') {
-    console.log('🔍 Native DB Check: listNativeTransactions function not found');
-    console.log('🔍 Available methods:', Object.keys(electronAPI));
-    return false;
-  }
-
-  console.log('✅ Native DB Check: All checks passed');
+  if (!electronAPI) return false;
+  if (typeof electronAPI.listNativeTransactions !== 'function') return false;
   return true;
 }
 
@@ -119,9 +105,6 @@ export class NativeDatabaseService {
 
     if (this.isAvailable) {
       console.log('✅ Native database service available and ready');
-    } else {
-      console.warn('⚠️ Native database service not available (falling back to sql.js)');
-      console.warn('   This is normal if running in browser or if native backend failed to initialize');
     }
   }
 

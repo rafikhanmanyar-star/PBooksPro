@@ -258,13 +258,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       // 1. You are the approver and someone requested your approval
       const isApprover = isPendingApproval && (plan.approvalRequestedToId === currentUserId || isMatchingCurrentUser(plan.approvalRequestedToId));
       if (isApprover) {
-        console.log('[NOTIFICATION DEBUG] Found approval notification:', {
-          planId: plan.id,
-          approvalRequestedToId: plan.approvalRequestedToId,
-          currentUserId,
-          directMatch: plan.approvalRequestedToId === currentUserId,
-          fuzzyMatch: isMatchingCurrentUser(plan.approvalRequestedToId)
-        });
         const requester = userName(plan.approvalRequestedById || plan.userId);
         results.push({
           ...base,
@@ -321,22 +314,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
     // Filter out dismissed notifications - ensure they never reappear
     // Note: WhatsApp notifications are excluded from bell icon - they use the dedicated WhatsApp icon
-    const activeNotifications = [...items, ...bizPlanetItems].filter(item => {
-      const isDismissed = dismissedNotifications.has(item.id);
-      if (isDismissed) {
-        console.log('[NOTIFICATIONS] Filtering out dismissed notification:', item.id);
-      }
-      return !isDismissed;
-    });
-
-    console.log('[NOTIFICATION DEBUG] Notifications:', {
-      total: items.length + bizPlanetItems.length,
-      dismissed: dismissedNotifications.size,
-      active: activeNotifications.length,
-      currentUserId,
-      currentUsername: state.currentUser.username,
-      currentName: state.currentUser.name
-    });
+    const activeNotifications = [...items, ...bizPlanetItems].filter(item => !dismissedNotifications.has(item.id));
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
   }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, bizPlanetNotifications]);

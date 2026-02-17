@@ -4,6 +4,7 @@
   "directories": { "output": "release-staging" },
   "forceCodeSigning": false,
   "win": {
+    "icon": "electron/assets/icon.ico",
     "signAndEditExecutable": false
   }
 }

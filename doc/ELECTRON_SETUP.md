@@ -64,16 +64,11 @@ The staging client will **never** connect to production API or database. The pro
 
 ## App Icon (Optional)
 
-To use a custom icon for the Windows app:
+To use a custom icon for the Windows app (window, taskbar, and built `.exe`):
 
-1. Add a 256×256 PNG or an `.ico` file at `build/icon.ico`.
-2. Update `package.json` under `build.win`:
-   ```json
-   "win": {
-     "target": ["nsis", "portable"],
-     "icon": "build/icon.ico"
-   }
-   ```
+1. Add an `.ico` file at **`electron/assets/icon.ico`** (multi-size ICO recommended: 16×16, 32×32, 48×48, 256×256).
+2. The main process and `package.json` are already configured to use it. Rebuild the app (`npm run electron` or `npm run electron:staging`).
+3. See **`electron/assets/README.md`** for how to generate the ICO from `public/icon.svg` or a PNG.
 
 ## Architecture
 

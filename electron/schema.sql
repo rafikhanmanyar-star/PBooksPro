@@ -1067,6 +1067,186 @@ CREATE TABLE IF NOT EXISTS whatsapp_menu_sessions (
 CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_tenant_phone ON whatsapp_menu_sessions(tenant_id, phone_number);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_last_interaction ON whatsapp_menu_sessions(tenant_id, last_interaction_at);
 
+-- My Shop / POS tables (aligned with cloud PostgreSQL for sync and local use)
+CREATE TABLE IF NOT EXISTS shop_policies (
+    tenant_id TEXT PRIMARY KEY,
+    allow_negative_stock INTEGER DEFAULT 0,
+    universal_pricing INTEGER DEFAULT 1,
+    tax_inclusive INTEGER DEFAULT 0,
+    default_tax_rate REAL DEFAULT 0,
+    require_manager_approval INTEGER DEFAULT 0,
+    loyalty_redemption_ratio REAL DEFAULT 0.01,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+CREATE TABLE IF NOT EXISTS shop_branches (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'Flagship',
+    status TEXT NOT NULL DEFAULT 'Active',
+    location TEXT,
+    region TEXT,
+    manager_name TEXT,
+    contact_no TEXT,
+    timezone TEXT DEFAULT 'GMT+5',
+    open_time TEXT,
+    close_time TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, code),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+CREATE TABLE IF NOT EXISTS shop_terminals (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    branch_id TEXT,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Online',
+    version TEXT,
+    last_sync TEXT,
+    ip_address TEXT,
+    health_score INTEGER DEFAULT 100,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, code),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (branch_id) REFERENCES shop_branches(id)
+);
+CREATE TABLE IF NOT EXISTS shop_warehouses (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL,
+    location TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, code),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+CREATE TABLE IF NOT EXISTS shop_products (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    sku TEXT NOT NULL,
+    barcode TEXT,
+    category_id TEXT,
+    unit TEXT DEFAULT 'pcs',
+    cost_price REAL DEFAULT 0,
+    retail_price REAL DEFAULT 0,
+    tax_rate REAL DEFAULT 0,
+    reorder_point INTEGER DEFAULT 10,
+    image_url TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, sku),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (category_id) REFERENCES categories(id)
+);
+CREATE TABLE IF NOT EXISTS shop_inventory (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    warehouse_id TEXT NOT NULL,
+    quantity_on_hand REAL DEFAULT 0,
+    quantity_reserved REAL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, product_id, warehouse_id),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (product_id) REFERENCES shop_products(id),
+    FOREIGN KEY (warehouse_id) REFERENCES shop_warehouses(id)
+);
+CREATE TABLE IF NOT EXISTS shop_loyalty_members (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL,
+    card_number TEXT NOT NULL,
+    tier TEXT NOT NULL DEFAULT 'Silver',
+    points_balance INTEGER DEFAULT 0,
+    lifetime_points INTEGER DEFAULT 0,
+    total_spend REAL DEFAULT 0,
+    visit_count INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'Active',
+    joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, card_number),
+    UNIQUE(tenant_id, customer_id),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (customer_id) REFERENCES contacts(id)
+);
+CREATE TABLE IF NOT EXISTS shop_sales (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    branch_id TEXT,
+    terminal_id TEXT,
+    user_id TEXT,
+    customer_id TEXT,
+    loyalty_member_id TEXT,
+    sale_number TEXT NOT NULL,
+    subtotal REAL NOT NULL,
+    tax_total REAL NOT NULL,
+    discount_total REAL DEFAULT 0,
+    grand_total REAL NOT NULL,
+    total_paid REAL DEFAULT 0,
+    change_due REAL DEFAULT 0,
+    payment_method TEXT NOT NULL,
+    payment_details TEXT,
+    status TEXT NOT NULL DEFAULT 'Completed',
+    points_earned INTEGER DEFAULT 0,
+    points_redeemed INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, sale_number),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (branch_id) REFERENCES shop_branches(id),
+    FOREIGN KEY (terminal_id) REFERENCES shop_terminals(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (customer_id) REFERENCES contacts(id),
+    FOREIGN KEY (loyalty_member_id) REFERENCES shop_loyalty_members(id)
+);
+CREATE TABLE IF NOT EXISTS shop_sale_items (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    sale_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    unit_price REAL NOT NULL,
+    tax_amount REAL DEFAULT 0,
+    discount_amount REAL DEFAULT 0,
+    subtotal REAL NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (sale_id) REFERENCES shop_sales(id),
+    FOREIGN KEY (product_id) REFERENCES shop_products(id)
+);
+CREATE TABLE IF NOT EXISTS shop_inventory_movements (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    warehouse_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    reference_id TEXT,
+    reason TEXT,
+    user_id TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (product_id) REFERENCES shop_products(id),
+    FOREIGN KEY (warehouse_id) REFERENCES shop_warehouses(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_shop_sales_tenant ON shop_sales(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_shop_inventory_product ON shop_inventory(product_id);
+CREATE INDEX IF NOT EXISTS idx_shop_products_sku ON shop_products(tenant_id, sku);
+CREATE INDEX IF NOT EXISTS idx_shop_loyalty_customer ON shop_loyalty_members(customer_id);
+
 -- Composite indexes for efficient tenant-scoped lookups (tenant_id, id)
 CREATE INDEX IF NOT EXISTS idx_accounts_tenant_pk ON accounts(tenant_id, id);
 CREATE INDEX IF NOT EXISTS idx_contacts_tenant_pk ON contacts(tenant_id, id);

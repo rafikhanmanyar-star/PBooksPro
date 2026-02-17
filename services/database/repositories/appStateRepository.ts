@@ -792,7 +792,40 @@ export class AppStateRepository {
                                     }
                                     return billToSave;
                                 }));
-                                this.transactionsRepo.saveAll(state.transactions);
+                                // Sanitize transactions so FKs only reference entities in this batch (avoids FK constraint failed)
+                                const accountIds = new Set(state.accounts.map(a => a.id));
+                                const categoryIds = new Set(state.categories.map(c => c.id));
+                                const contactIds = new Set(state.contacts.map(c => c.id));
+                                const projectIds = new Set(state.projects.map(p => p.id));
+                                const billIds = new Set(state.bills.map(b => b.id));
+                                const invoiceIds = new Set(state.invoices.map(i => i.id));
+                                const sanitizedTransactions = state.transactions
+                                    .filter(t => accountIds.has(t.accountId ?? (t as any).account_id ?? ''))
+                                    .map(t => {
+                                        const out = { ...t };
+                                        if ((t.billId ?? (t as any).bill_id) && !billIds.has(t.billId ?? (t as any).bill_id)) {
+                                            (out as any).billId = undefined;
+                                            (out as any).bill_id = undefined;
+                                        }
+                                        if ((t.invoiceId ?? (t as any).invoice_id) && !invoiceIds.has(t.invoiceId ?? (t as any).invoice_id)) {
+                                            (out as any).invoiceId = undefined;
+                                            (out as any).invoice_id = undefined;
+                                        }
+                                        if ((t.categoryId ?? (t as any).category_id) && !categoryIds.has(t.categoryId ?? (t as any).category_id)) {
+                                            (out as any).categoryId = undefined;
+                                            (out as any).category_id = undefined;
+                                        }
+                                        if ((t.contactId ?? (t as any).contact_id) && !contactIds.has(t.contactId ?? (t as any).contact_id)) {
+                                            (out as any).contactId = undefined;
+                                            (out as any).contact_id = undefined;
+                                        }
+                                        if ((t.projectId ?? (t as any).project_id) && !projectIds.has(t.projectId ?? (t as any).project_id)) {
+                                            (out as any).projectId = undefined;
+                                            (out as any).project_id = undefined;
+                                        }
+                                        return out;
+                                    });
+                                this.transactionsRepo.saveAll(sanitizedTransactions);
                             } catch (e) {
                                 console.error('❌ Failed to save projects/buildings/properties/units/contracts/invoices/bills/transactions:', e);
                                 throw e;

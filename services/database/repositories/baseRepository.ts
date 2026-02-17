@@ -61,7 +61,7 @@ export abstract class BaseRepository<T> {
      */
     static disableSyncQueueing(): void {
         BaseRepository.syncQueueingDisabled = true;
-        console.log('[BaseRepository] Sync queueing disabled (syncing from cloud)');
+        // Sync queueing disabled when syncing from cloud
     }
 
     /**
@@ -69,7 +69,7 @@ export abstract class BaseRepository<T> {
      */
     static enableSyncQueueing(): void {
         BaseRepository.syncQueueingDisabled = false;
-        console.log('[BaseRepository] Sync queueing enabled (normal operation)');
+        // Sync queueing enabled (normal operation)
     }
 
     /**
@@ -304,7 +304,6 @@ export abstract class BaseRepository<T> {
         }
 
         this.tableColumns = new Set(rows.map(r => r.name));
-        console.log(`✅ Loaded ${this.tableColumns.size} columns for ${this.tableName}:`, Array.from(this.tableColumns).join(', '));
         return this.tableColumns;
     }
 
@@ -658,8 +657,6 @@ export abstract class BaseRepository<T> {
      */
     saveAll(records: T[]): void {
         try {
-            console.log(`🔄 saveAll called for ${this.tableName} with ${records.length} records`);
-
             // For certain tables, use INSERT OR REPLACE
             // This prevents UNIQUE constraint violations when saving the same records multiple times
             // and avoids cross-tenant collisions for system IDs (e.g., sys-acc-*, sys-cat-*)
@@ -691,12 +688,9 @@ export abstract class BaseRepository<T> {
                 // For users, use INSERT OR REPLACE instead of DELETE + INSERT
                 // This handles UNIQUE constraint on (tenant_id, username) gracefully
                 if (records.length > 0) {
-                    console.log(`📥 Starting to insert/replace ${records.length} records into ${this.tableName}`);
                     records.forEach((record, index) => {
                         try {
-                            console.log(`  → Inserting/replacing record ${index + 1}/${records.length} into ${this.tableName}`);
                             this.insertOrReplace(record);
-                            console.log(`  ✅ Successfully inserted/replaced record ${index + 1} into ${this.tableName}`);
                         } catch (insertError) {
                             console.error(`❌ Error inserting/replacing record ${index} into ${this.tableName}:`, insertError);
                             console.error('Failed record:', record);
@@ -710,67 +704,43 @@ export abstract class BaseRepository<T> {
                     // deleting buildings would fail because properties still reference them.
                     const skipDeleteToAvoidFk = BaseRepository.TABLES_WITH_DEPENDENTS_IN_SAVE_BATCH.has(this.tableName);
                     if (skipDeleteToAvoidFk) {
-                        console.log(`📦 Skipping DELETE for ${this.tableName} (0 records; table has dependents in save batch)`);
+                        // Skip DELETE to avoid FK violation (properties reference buildings, etc.)
                     } else {
                         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                             const tenantId = getCurrentTenantId();
                             if (tenantId) {
                                 const tenantColumn = this.tenantColumn;
                                 this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                                console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
                             }
                         } else {
                             this.db.execute(`DELETE FROM ${this.tableName}`);
-                            console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
                         }
                     }
                 }
             } else {
                 // For other tables, use the original DELETE + INSERT approach
-                // Delete all existing records for current tenant only
                 if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                     const tenantId = getCurrentTenantId();
                     if (tenantId) {
                         const tenantColumn = this.tenantColumn;
                         this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                        console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
                     } else {
-                        // No tenant ID, delete all (shouldn't happen in normal flow)
                         this.db.execute(`DELETE FROM ${this.tableName}`);
-                        console.log(`🗑️ Deleted all existing records from ${this.tableName} (no tenant filter)`);
                     }
                 } else {
-                    // Global table, delete all
                     this.db.execute(`DELETE FROM ${this.tableName}`);
-                    console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
                 }
 
-                // Insert all new records
                 if (records.length > 0) {
-                    console.log(`📥 Starting to insert ${records.length} records into ${this.tableName}`);
                     records.forEach((record, index) => {
                         try {
-                            console.log(`  → Inserting record ${index + 1}/${records.length} into ${this.tableName}`);
                             this.insert(record);
-                            console.log(`  ✅ Successfully inserted record ${index + 1} into ${this.tableName}`);
                         } catch (insertError) {
                             console.error(`❌ Error inserting record ${index} into ${this.tableName}:`, insertError);
                             console.error('Failed record:', record);
                             throw insertError; // Re-throw to stop the process and rollback transaction
                         }
                     });
-
-                    // Log successful save (for debugging)
-                    console.log(`✅ Completed inserting ${records.length} records to ${this.tableName}`);
-
-                    // Verify the save for contacts (after transaction commits)
-                    if (this.tableName === 'contacts' && records.length > 0) {
-                        // Note: Verification happens after transaction commits in appStateRepository
-                        // This is just a log to track the save operation
-                        console.log(`📝 Contact save completed: ${records.length} contacts processed`);
-                    }
-                } else {
-                    console.log(`📦 ${this.tableName} table cleared (no records to save)`);
                 }
             }
         } catch (error) {

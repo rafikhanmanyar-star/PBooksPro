@@ -142,15 +142,10 @@ const PayrollRunScreen: React.FC = () => {
       });
 
       if (newRun) {
-        // Process payroll to generate payslips (only for new employees)
-        const processedRun = await payrollApi.processPayrollRun(newRun.id);
-
-        // Store the processing summary to show feedback
-        if (processedRun?.processing_summary) {
-          setProcessingSummary(processedRun.processing_summary);
+        // Server generates payslips and auto-approves in one step
+        if (newRun.processing_summary) {
+          setProcessingSummary(newRun.processing_summary);
         }
-
-        // Also cache in localStorage
         storageService.addPayrollRun(tenantId, newRun, userId);
       } else {
         // Fallback to localStorage only
