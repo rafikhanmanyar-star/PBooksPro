@@ -137,6 +137,7 @@ export class ElectronDatabaseService {
         this.ensureContractColumnsExist();
         this.ensureVendorIdColumnsExist();
         this.ensureRecurringTemplateColumnsExist();
+        this.ensureTransactionExtraColumnsExist();
         if (currentVersion < 7) await this.runV7Migrations();
         if (currentVersion < 8) await this.runV8Migrations();
         if (currentVersion < 9) await this.runV9Migrations();
@@ -150,6 +151,7 @@ export class ElectronDatabaseService {
       this.isInitialized = true;
       this.initializationError = null;
       this.ensureAllTablesExist();
+      this.ensureTransactionExtraColumnsExist();
       logger.logCategory('database', '✅ Native SQLite initialized');
     } catch (error) {
       this.initializationError = error instanceof Error ? error : new Error(String(error));
@@ -297,6 +299,18 @@ export class ElectronDatabaseService {
         this.rawExecute("ALTER TABLE recurring_invoice_templates ADD COLUMN invoice_type TEXT DEFAULT 'Rental'");
         this.rawExecute("UPDATE recurring_invoice_templates SET invoice_type = 'Rental' WHERE invoice_type IS NULL");
       }
+    } catch (_) {}
+  }
+
+  /** Add building_id, is_system, updated_at to transactions if missing (no FK on building_id for sync order). */
+  private ensureTransactionExtraColumnsExist(): void {
+    try {
+      const hasTable = this.rawQuery<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name='transactions'").length > 0;
+      if (!hasTable) return;
+      const cols = new Set(this.rawQuery<{ name: string }>('PRAGMA table_info(transactions)').map(c => c.name));
+      if (!cols.has('building_id')) this.rawExecute('ALTER TABLE transactions ADD COLUMN building_id TEXT');
+      if (!cols.has('is_system')) this.rawExecute('ALTER TABLE transactions ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
+      if (!cols.has('updated_at')) this.rawExecute("ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
     } catch (_) {}
   }
 

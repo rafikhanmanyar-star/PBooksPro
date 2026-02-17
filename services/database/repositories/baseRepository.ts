@@ -642,6 +642,17 @@ export abstract class BaseRepository<T> {
     }
 
     /**
+     * Tables that are referenced by other tables in the same save batch (appStateRepository).
+     * When saving 0 records we must not DELETE these, or FK constraint fails (dependents still exist).
+     */
+    private static readonly TABLES_WITH_DEPENDENTS_IN_SAVE_BATCH = new Set([
+        'projects',   // units, contracts, etc. reference project_id
+        'buildings',  // properties reference building_id
+        'properties', // rental_agreements reference property_id
+        'units',      // rental_agreements, project_agreements reference unit_id
+    ]);
+
+    /**
      * Save all records (delete existing and insert new)
      * For tables with UNIQUE constraints (like users), use INSERT OR REPLACE
      */
@@ -694,17 +705,24 @@ export abstract class BaseRepository<T> {
                     });
                     console.log(`✅ Completed inserting/replacing ${records.length} records to ${this.tableName}`);
                 } else {
-                    // If no records, delete all for current tenant
-                    if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                        const tenantId = getCurrentTenantId();
-                        if (tenantId) {
-                            const tenantColumn = this.tenantColumn;
-                            this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                            console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
-                        }
+                    // When saving 0 records, avoid DELETE on tables that are referenced by others
+                    // in the same transaction (we save projects → buildings → properties → units);
+                    // deleting buildings would fail because properties still reference them.
+                    const skipDeleteToAvoidFk = BaseRepository.TABLES_WITH_DEPENDENTS_IN_SAVE_BATCH.has(this.tableName);
+                    if (skipDeleteToAvoidFk) {
+                        console.log(`📦 Skipping DELETE for ${this.tableName} (0 records; table has dependents in save batch)`);
                     } else {
-                        this.db.execute(`DELETE FROM ${this.tableName}`);
-                        console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
+                        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                            const tenantId = getCurrentTenantId();
+                            if (tenantId) {
+                                const tenantColumn = this.tenantColumn;
+                                this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
+                                console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
+                            }
+                        } else {
+                            this.db.execute(`DELETE FROM ${this.tableName}`);
+                            console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
+                        }
                     }
                 }
             } else {

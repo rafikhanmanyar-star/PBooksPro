@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS units (
 );
 
 -- Transactions table (aligned with PostgreSQL)
+-- building_id without FK so sync can insert transactions before buildings are synced
 CREATE TABLE IF NOT EXISTS transactions (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL DEFAULT '',
@@ -160,9 +161,12 @@ CREATE TABLE IF NOT EXISTS transactions (
     contact_id TEXT,
     vendor_id TEXT,
     project_id TEXT,
+    building_id TEXT,
     invoice_id TEXT,
     bill_id TEXT,
+    is_system INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     version INTEGER NOT NULL DEFAULT 1,
     deleted_at TEXT,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,

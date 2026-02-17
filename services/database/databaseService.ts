@@ -1212,6 +1212,8 @@ class DatabaseService {
                     this.ensureVendorIdColumnsExist();
                     // Ensure recurring template has invoice_type column
                     this.ensureRecurringTemplateColumnsExist();
+                    // Ensure transactions has building_id, is_system, updated_at (no FK on building_id for sync)
+                    this.ensureTransactionExtraColumnsExist();
 
                     // Run version-specific migrations
                     if (currentVersion < 3) {
@@ -1533,6 +1535,25 @@ class DatabaseService {
     }
 
     /**
+     * Add building_id, is_system, updated_at to transactions if missing (no FK on building_id for sync order).
+     */
+    private ensureTransactionExtraColumnsExist(): void {
+        if (!this.db || !this.isInitialized) return;
+        try {
+            const tableExists = this.query<{ name: string }>(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='transactions'"
+            ).length > 0;
+            if (!tableExists) return;
+            const columnNames = new Set(this.query<{ name: string }>('PRAGMA table_info(transactions)').map(c => c.name));
+            if (!columnNames.has('building_id')) this.execute('ALTER TABLE transactions ADD COLUMN building_id TEXT');
+            if (!columnNames.has('is_system')) this.execute('ALTER TABLE transactions ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
+            if (!columnNames.has('updated_at')) this.execute("ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
+        } catch (error) {
+            console.error('❌ Error ensuring transaction extra columns exist:', error);
+        }
+    }
+
+    /**
      * Ensure sync_outbox and sync_metadata exist (run first so no "no such table" during schema split)
      */
     private ensureSyncTablesExist(): void {
@@ -1590,6 +1611,9 @@ class DatabaseService {
             // Always run full schema – ensures any new table in schema.ts gets created for existing DBs.
             // CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS are idempotent.
             this.executeSchemaStatements(CREATE_SCHEMA_SQL);
+
+            // Ensure transactions has building_id, is_system, updated_at (for sync; no FK on building_id)
+            this.ensureTransactionExtraColumnsExist();
 
             const afterTables = this.rawQuery<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").map(r => r.name);
             const added = afterTables.filter(t => !beforeTables.includes(t));
