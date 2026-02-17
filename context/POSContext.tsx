@@ -65,6 +65,14 @@ interface POSContextType {
     printReceipt: (saleData?: any) => Promise<void>;
     lastCompletedSale: any | null;
     setLastCompletedSale: (sale: any | null) => void;
+
+    // Branch & Terminal Configuration
+    branches: any[];
+    terminals: any[];
+    selectedBranchId: string | null;
+    selectedTerminalId: string | null;
+    setSelectedBranchId: (id: string | null) => void;
+    setSelectedTerminalId: (id: string | null) => void;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
@@ -82,10 +90,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [searchQuery, setSearchQuery] = useState('');
     const [lastCompletedSale, setLastCompletedSale] = useState<any | null>(null);
 
+    // Branch & Terminal State
+    const [branches, setBranches] = useState<any[]>([]);
+    const [terminals, setTerminals] = useState<any[]>([]);
+    const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+    const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null);
+
     // Barcode scanner and printer instances
     const barcodeScannerRef = useRef<BarcodeScanner | null>(null);
     const thermalPrinterRef = useRef<ThermalPrinter | null>(null);
 
+    const { user: authUser } = useAuth();
+    const currentUserId = authUser?.id ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('user_id') : null) ?? null;
 
     // Totals Calculation
     const totals = useMemo(() => {
@@ -131,6 +147,36 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
         };
     }, [state.printSettings]); // Re-initialize when print settings change
+
+    // Fetch Branches and Terminals
+    useEffect(() => {
+        const fetchConfig = async () => {
+            try {
+                console.log('🔄 [POSContext] Fetching branches and terminals...');
+                const [branchesList, terminalsList] = await Promise.all([
+                    shopApi.getBranches(),
+                    shopApi.getTerminals()
+                ]);
+
+                setBranches(branchesList);
+                setTerminals(terminalsList);
+
+                // Auto-select first branch/terminal if none selected
+                if (branchesList.length > 0 && !selectedBranchId) {
+                    setSelectedBranchId(branchesList[0].id);
+                }
+                if (terminalsList.length > 0 && !selectedTerminalId) {
+                    setSelectedTerminalId(terminalsList[0].id);
+                }
+            } catch (error) {
+                console.error('Failed to fetch POS configuration:', error);
+            }
+        };
+
+        if (authUser) {
+            fetchConfig();
+        }
+    }, [authUser, selectedBranchId, selectedTerminalId]);
 
     // Print receipt function
     const printReceipt = useCallback(async (saleData?: any) => {
@@ -281,9 +327,6 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearCart();
     }, [cart, customer, totals.grandTotal, clearCart, currentUserId]);
 
-    const { user: authUser } = useAuth();
-    const currentUserId = authUser?.id ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('user_id') : null) ?? null;
-
     const recallSale = useCallback(async (heldSaleId: string) => {
         const heldSale = heldSales.find(s => s.id === heldSaleId);
         if (heldSale) {
@@ -319,8 +362,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
             const saleNumber = `SALE-${Date.now()}`;
             const saleData = {
-                branchId: null, // TODO: Set up branch configuration
-                terminalId: null, // TODO: Set up terminal configuration
+                branchId: selectedBranchId,
+                terminalId: selectedTerminalId,
                 userId: currentUserId ?? undefined,
                 customerId: customer?.id,
                 loyaltyMemberId: null, // TODO: Link loyalty member
@@ -412,7 +455,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         completeSale,
         printReceipt,
         lastCompletedSale,
-        setLastCompletedSale
+        setLastCompletedSale,
+        branches,
+        terminals,
+        selectedBranchId,
+        selectedTerminalId,
+        setSelectedBranchId,
+        setSelectedTerminalId
     };
 
     return <POSContext.Provider value={value}>{children}</POSContext.Provider>;

@@ -176,7 +176,7 @@ class IndexedDBStorage {
         if (!(await this.isSupported())) return;
         const db = await this.getDb();
         // Use Blob instead of ArrayBuffer - better large-data support in Safari/private mode
-        const blob = new Blob([data]);
+        const blob = new Blob([data as any]);
         await new Promise<void>((resolve, reject) => {
             const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
             const req = tx.objectStore(IDB_STORE_NAME).put(blob, IDB_KEY);
@@ -659,6 +659,14 @@ class DatabaseService {
             db.run('BEGIN TRANSACTION');
             begun = true;
             this.inTransaction = true;
+
+            // Temporarily disable foreign keys to allow batch updates with temporary inconsistencies
+            // (e.g., deleting a parent before replacing it, or inserting children before parents in some batches)
+            try {
+                db.run('PRAGMA foreign_keys = OFF');
+            } catch (fkOffError) {
+                console.warn('[DatabaseService] Failed to disable foreign keys for transaction:', fkOffError);
+            }
         } catch (beginError) {
             // If we cannot start a transaction, surface the error immediately
             this.inTransaction = false;
@@ -693,6 +701,12 @@ class DatabaseService {
                 } catch (e) {
                     // Ignore if BaseRepository not available (may cause circular dependency warning)
                 }
+
+                // Re-enable foreign keys before rollback to leave DB in a clean state
+                try {
+                    db.run('PRAGMA foreign_keys = ON');
+                } catch (_) { }
+
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
@@ -733,6 +747,13 @@ class DatabaseService {
             }
 
             try {
+                // Re-enable foreign keys before commit to verify constraints are now met
+                try {
+                    db.run('PRAGMA foreign_keys = ON');
+                } catch (fkOnError) {
+                    console.warn('[DatabaseService] Failed to re-enable foreign keys before commit:', fkOnError);
+                }
+
                 db.run('COMMIT');
                 committed = true;
 
@@ -756,6 +777,7 @@ class DatabaseService {
                     // If commit fails, attempt rollback
                     if (begun) {
                         try {
+                            db.run('PRAGMA foreign_keys = ON'); // Try to re-enable before rollback
                             db.run('ROLLBACK');
                         } catch {
                             // Ignore
@@ -774,6 +796,11 @@ class DatabaseService {
                 } catch (e) {
                     // Ignore if BaseRepository not available (may cause circular dependency warning)
                 }
+
+                try {
+                    db.run('PRAGMA foreign_keys = ON'); // Try to re-enable before rollback
+                } catch (_) { }
+
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
@@ -1158,7 +1185,7 @@ class DatabaseService {
     /**
      * Get current storage mode
      */
-    getStorageMode(): 'opfs' | 'localStorage' {
+    getStorageMode(): 'opfs' | 'localStorage' | 'electron' | 'indexedDB' {
         return this.storageMode;
     }
 
@@ -1300,7 +1327,7 @@ class DatabaseService {
                             try {
                                 this.rawExecute('CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_tenant_phone ON whatsapp_menu_sessions(tenant_id, phone_number)');
                                 this.rawExecute('CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_last_interaction ON whatsapp_menu_sessions(tenant_id, last_interaction_at)');
-                            } catch (_) {}
+                            } catch (_) { }
 
                             const userCols = this.rawQuery<{ name: string }>('PRAGMA table_info(users)');
                             const userNames = new Set(userCols.map(c => c.name));
@@ -1325,7 +1352,7 @@ class DatabaseService {
                                 if (!ipNames.has(colName)) {
                                     try {
                                         this.rawExecute(`ALTER TABLE installment_plans ADD COLUMN ${colDef}`);
-                                    } catch (_) {}
+                                    } catch (_) { }
                                 }
                             }
                         } catch (v9Error) {

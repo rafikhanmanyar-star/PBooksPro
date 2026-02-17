@@ -286,7 +286,11 @@ router.post('/employees', async (req: TenantRequest, res) => {
       );
 
       if (lastEmployee.length > 0 && lastEmployee[0].employee_code) {
-        // ...
+        const match = (lastEmployee[0].employee_code as string).match(/^EID-(\d+)$/);
+        if (match) {
+          const nextNum = parseInt(match[1], 10) + 1;
+          employeeCode = `EID-${String(nextNum).padStart(4, '0')}`;
+        }
       }
     } catch (error) {
       console.warn('Error generating employee code, using default:', error);
@@ -345,9 +349,17 @@ router.post('/employees', async (req: TenantRequest, res) => {
     emitToTenant(tenantId, 'payroll_employee_created', { id: result[0].id });
 
     res.status(201).json(result[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating employee:', error);
-    res.status(500).json({ error: 'Failed to create employee' });
+    const message = error?.message || 'Failed to create employee';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    const migrationHint = (message.includes('does not exist') || message.includes('relation')) && isStagingOrDev
+      ? ' Run migrations: postgresql-schema.sql and 20260216_add_sync_audit_metadata.sql (or 20260216_add_missing_sync_metadata.sql).'
+      : '';
+    res.status(500).json({
+      error: 'Failed to create employee',
+      ...(isStagingOrDev && { details: message + migrationHint }),
+    });
   }
 });
 
@@ -465,6 +477,22 @@ router.delete('/employees/:id', async (req: TenantRequest, res) => {
 // PAYROLL RUNS ROUTES
 // =====================================================
 
+// Helper: query payroll runs (with optional deleted_at filter for schema compatibility)
+async function queryPayrollRuns(tenantId: string, includeDeletedFilter: boolean): Promise<any[]> {
+  if (includeDeletedFilter) {
+    return getDb().query(
+      `SELECT * FROM payroll_runs 
+       WHERE tenant_id = $1 AND deleted_at IS NULL
+       ORDER BY year DESC, created_at DESC`,
+      [tenantId]
+    );
+  }
+  return getDb().query(
+    `SELECT * FROM payroll_runs WHERE tenant_id = $1 ORDER BY year DESC, created_at DESC`,
+    [tenantId]
+  );
+}
+
 // GET /payroll/runs - List all payroll runs
 router.get('/runs', async (req: TenantRequest, res) => {
   try {
@@ -473,17 +501,31 @@ router.get('/runs', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const runs = await getDb().query(
-      `SELECT * FROM payroll_runs 
-       WHERE tenant_id = $1 AND deleted_at IS NULL
-       ORDER BY year DESC, created_at DESC`,
-      [tenantId]
-    );
+    let runs: any[];
+    try {
+      runs = await queryPayrollRuns(tenantId, true);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes('deleted_at') || msg.includes('does not exist')) {
+        console.warn('Payroll runs: deleted_at column missing, using fallback query. Run migration 20260216_add_sync_audit_metadata.sql or 20260216_add_missing_sync_metadata.sql.');
+        runs = await queryPayrollRuns(tenantId, false);
+      } else {
+        throw err;
+      }
+    }
 
     res.json(runs);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching payroll runs:', error);
-    res.status(500).json({ error: 'Failed to fetch payroll runs' });
+    const message = error?.message || 'Failed to fetch payroll runs';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    const migrationHint = (message.includes('does not exist') || message.includes('relation')) && isStagingOrDev
+      ? ' Ensure payroll migrations have been run on this database (e.g. postgresql-schema.sql and 20260216_add_sync_audit_metadata.sql).'
+      : '';
+    res.status(500).json({
+      error: 'Failed to fetch payroll runs',
+      ...(isStagingOrDev && { details: message + migrationHint }),
+    });
   }
 });
 
@@ -497,19 +539,37 @@ router.get('/runs/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const runs = await getDb().query(
-      `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-      [id, tenantId]
-    );
+    let runs: any[];
+    try {
+      runs = await getDb().query(
+        `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+        [id, tenantId]
+      );
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes('deleted_at') || msg.includes('does not exist')) {
+        runs = await getDb().query(
+          `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
+          [id, tenantId]
+        );
+      } else {
+        throw err;
+      }
+    }
 
     if (runs.length === 0) {
       return res.status(404).json({ error: 'Payroll run not found' });
     }
 
     res.json(runs[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching payroll run:', error);
-    res.status(500).json({ error: 'Failed to fetch payroll run' });
+    const message = error?.message || 'Failed to fetch payroll run';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to fetch payroll run',
+      ...(isStagingOrDev && { details: message }),
+    });
   }
 });
 
@@ -656,7 +716,15 @@ router.post('/runs', async (req: TenantRequest, res) => {
       return res.status(403).json({ error: 'Permission denied - tenant context issue' });
     }
 
-    res.status(500).json({ error: 'Failed to create payroll run', details: error.message });
+    const message = error?.message || 'Failed to create payroll run';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    const migrationHint = (message.includes('does not exist') || message.includes('relation')) && isStagingOrDev
+      ? ' Run migrations: postgresql-schema.sql and 20260216_add_sync_audit_metadata.sql (or 20260216_add_missing_sync_metadata.sql).'
+      : '';
+    return res.status(500).json({
+      error: 'Failed to create payroll run',
+      ...(isStagingOrDev && { details: message + migrationHint }),
+    });
   }
 });
 

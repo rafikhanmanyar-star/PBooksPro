@@ -58,7 +58,7 @@ function createDbProxy() {
         getAsObject() {
           return rows[rowIndex - 1] || {};
         },
-        free() {},
+        free() { },
       };
     },
     export: () => {
@@ -125,14 +125,14 @@ export class ElectronDatabaseService {
       try {
         const rows = this.rawQuery<{ value: string }>('SELECT value FROM metadata WHERE key = ?', ['schema_version']);
         if (rows.length > 0) currentVersion = parseInt(rows[0].value || '0', 10);
-      } catch (_) {}
+      } catch (_) { }
 
       if (currentVersion < SCHEMA_VERSION) {
         this.isInitialized = true;
         try {
           const { migrateTenantColumns } = await import('./tenantMigration');
           migrateTenantColumns();
-        } catch (_) {}
+        } catch (_) { }
         this.ensureAllTablesExist();
         this.ensureContractColumnsExist();
         this.ensureVendorIdColumnsExist();
@@ -175,7 +175,7 @@ export class ElectronDatabaseService {
         const names = new Set(cols.map(c => c.name));
         if (!names.has('version')) this.rawExecute(`ALTER TABLE ${table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`);
         if (!names.has('deleted_at')) this.rawExecute(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 
@@ -188,7 +188,7 @@ export class ElectronDatabaseService {
         this.rawExecute('ALTER TABLE rental_agreements ADD COLUMN org_id TEXT NOT NULL DEFAULT ""');
         this.rawExecute('UPDATE rental_agreements SET org_id = tenant_id WHERE tenant_id IS NOT NULL AND tenant_id != ""');
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   private async runV9Migrations(): Promise<void> {
@@ -216,7 +216,7 @@ export class ElectronDatabaseService {
       try {
         this.rawExecute('CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_tenant_phone ON whatsapp_menu_sessions(tenant_id, phone_number)');
         this.rawExecute('CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_last_interaction ON whatsapp_menu_sessions(tenant_id, last_interaction_at)');
-      } catch (_) {}
+      } catch (_) { }
 
       const userCols = this.rawQuery<{ name: string }>('PRAGMA table_info(users)');
       const userNames = new Set(userCols.map(c => c.name));
@@ -241,10 +241,10 @@ export class ElectronDatabaseService {
         if (!ipNames.has(colName)) {
           try {
             this.rawExecute(`ALTER TABLE installment_plans ADD COLUMN ${colDef}`);
-          } catch (_) {}
+          } catch (_) { }
         }
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   ensureAllTablesExist(): void {
@@ -277,7 +277,7 @@ export class ElectronDatabaseService {
           this.execute(`UPDATE bills SET status = CASE WHEN paid_amount = 0 THEN 'Unpaid' WHEN paid_amount >= amount THEN 'Paid' WHEN paid_amount > 0 THEN 'Partially Paid' ELSE 'Unpaid' END WHERE status IS NULL`);
         }
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   private ensureVendorIdColumnsExist(): void {
@@ -289,7 +289,7 @@ export class ElectronDatabaseService {
           this.rawExecute(`ALTER TABLE ${table} ADD COLUMN vendor_id TEXT REFERENCES vendors(id)`);
         }
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   private ensureRecurringTemplateColumnsExist(): void {
@@ -299,7 +299,7 @@ export class ElectronDatabaseService {
         this.rawExecute("ALTER TABLE recurring_invoice_templates ADD COLUMN invoice_type TEXT DEFAULT 'Rental'");
         this.rawExecute("UPDATE recurring_invoice_templates SET invoice_type = 'Rental' WHERE invoice_type IS NULL");
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   /** Add building_id, is_system, updated_at to transactions if missing (no FK on building_id for sync order). */
@@ -311,7 +311,7 @@ export class ElectronDatabaseService {
       if (!cols.has('building_id')) this.rawExecute('ALTER TABLE transactions ADD COLUMN building_id TEXT');
       if (!cols.has('is_system')) this.rawExecute('ALTER TABLE transactions ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
       if (!cols.has('updated_at')) this.rawExecute("ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
-    } catch (_) {}
+    } catch (_) { }
   }
 
   getDatabase(): ReturnType<typeof createDbProxy> {
@@ -355,15 +355,33 @@ export class ElectronDatabaseService {
     try {
       db.run('BEGIN TRANSACTION');
       this.inTransaction = true;
+
+      // Temporarily disable foreign keys to allow batch updates with temporary inconsistencies
+      // (e.g., deleting a parent before replacing it, or inserting children before parents in some batches)
+      try {
+        db.run('PRAGMA foreign_keys = OFF');
+      } catch (e) {
+        console.warn('[ElectronDatabaseService] Failed to disable foreign keys for transaction:', e);
+      }
+
       for (let i = 0; i < operations.length; i++) {
         try {
           operations[i]();
         } catch (opError) {
-          import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => {});
-          try { db.run('ROLLBACK'); } catch (_) {}
+          import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => { });
+          try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
+          try { db.run('ROLLBACK'); } catch (_) { }
           throw opError;
         }
       }
+
+      // Re-enable foreign keys before commit
+      try {
+        db.run('PRAGMA foreign_keys = ON');
+      } catch (e) {
+        console.warn('[ElectronDatabaseService] Failed to re-enable foreign keys before commit:', e);
+      }
+
       db.run('COMMIT');
       committed = true;
       if (onCommit) {
@@ -371,8 +389,9 @@ export class ElectronDatabaseService {
       }
     } catch (error) {
       if (!committed) {
-        import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => {});
-        try { db.run('ROLLBACK'); } catch (_) {}
+        import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => { });
+        try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
+        try { db.run('ROLLBACK'); } catch (_) { }
       }
       throw error;
     } finally {
@@ -425,11 +444,11 @@ export class ElectronDatabaseService {
         try {
           if (tenantId) db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
           else db.run(`DELETE FROM ${table}`);
-        } catch (_) {}
+        } catch (_) { }
       }
       if (!tenantId) {
         for (const table of tables) {
-          try { db.run('DELETE FROM sqlite_sequence WHERE name = ?', [table]); } catch (_) {}
+          try { db.run('DELETE FROM sqlite_sequence WHERE name = ?', [table]); } catch (_) { }
         }
       }
       db.run('PRAGMA foreign_keys = ON');
@@ -450,11 +469,11 @@ export class ElectronDatabaseService {
         try {
           if (tenantId) db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
           else db.run(`DELETE FROM ${table}`);
-        } catch (_) {}
+        } catch (_) { }
       }
       if (!tenantId) {
         for (const table of tables) {
-          try { db.run('DELETE FROM sqlite_sequence WHERE name = ?', [table]); } catch (_) {}
+          try { db.run('DELETE FROM sqlite_sequence WHERE name = ?', [table]); } catch (_) { }
         }
       }
       db.run('PRAGMA foreign_keys = ON');
@@ -475,7 +494,7 @@ export class ElectronDatabaseService {
         try {
           if (tenantId) db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
           else db.run(`DELETE FROM ${table}`);
-        } catch (_) {}
+        } catch (_) { }
       }
       if (!tenantId) db.run('DELETE FROM sqlite_sequence');
       db.run('PRAGMA foreign_keys = ON');
@@ -497,7 +516,7 @@ export class ElectronDatabaseService {
     this.execute('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))', [key, value]);
   }
 
-  stopAutoSave(): void {}
+  stopAutoSave(): void { }
 
   close(): void {
     this.dbProxy = null;

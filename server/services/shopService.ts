@@ -35,7 +35,19 @@ export class ShopService {
 
     // --- Branch Methods ---
     async getBranches(tenantId: string) {
-        return this.db.query('SELECT * FROM shop_branches WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+        const branches = await this.db.query('SELECT * FROM shop_branches WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+        if (branches.length === 0) {
+            console.log(`[ShopService] 🏪 No branches found for tenant ${tenantId}. Creating default 'Main Store'...`);
+            const branchId = await this.createBranch(tenantId, {
+                name: 'Main Store',
+                code: 'MAIN',
+                type: 'Flagship',
+                location: 'Head Office',
+                timezone: 'GMT+5'
+            });
+            return this.db.query('SELECT * FROM shop_branches WHERE id = $1', [branchId]);
+        }
+        return branches;
     }
 
     // --- Warehouse Methods ---
@@ -107,6 +119,23 @@ export class ShopService {
     async getTerminals(tenantId: string) {
         console.log(`[ShopService] Fetching terminals for tenant: ${tenantId}`);
         const res = await this.db.query('SELECT * FROM shop_terminals WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+
+        if (res.length === 0) {
+            console.log(`[ShopService] 🖥️ No terminals found for tenant ${tenantId}. Checking for branches...`);
+            const branches = await this.getBranches(tenantId);
+            if (branches.length > 0) {
+                const branchId = branches[0].id;
+                console.log(`[ShopService] Creating default 'Terminal 1' for branch ${branchId}...`);
+                await this.createTerminal(tenantId, {
+                    branchId: branchId,
+                    name: 'Terminal 1',
+                    code: 'T-01',
+                    status: 'Online'
+                });
+                return this.db.query('SELECT * FROM shop_terminals WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+            }
+        }
+
         console.log(`[ShopService] Found ${res.length} terminals in DB for tenant ${tenantId}`);
         return res;
     }

@@ -1,10 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
+import { usePOS } from '../../../context/POSContext';
 import { ICONS } from '../../../constants';
 
 const POSHeader: React.FC = () => {
     const { user, tenant } = useAuth();
+    const {
+        branches,
+        terminals,
+        selectedBranchId,
+        selectedTerminalId,
+        setSelectedBranchId,
+        setSelectedTerminalId
+    } = usePOS();
     const [time, setTime] = useState(new Date());
 
     useEffect(() => {
@@ -26,8 +35,32 @@ const POSHeader: React.FC = () => {
 
                 <div className="flex items-center gap-4 text-sm text-slate-300">
                     <div className="flex items-center gap-2">
+                        <span className="text-slate-500">Branch:</span>
+                        {branches.length > 1 ? (
+                            <select
+                                value={selectedBranchId || ''}
+                                onChange={(e) => setSelectedBranchId(e.target.value)}
+                                className="bg-slate-800 text-white border-none text-xs rounded px-2 py-1 outline-none appearance-none cursor-pointer hover:bg-slate-700 transition-colors"
+                            >
+                                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                            </select>
+                        ) : (
+                            <span className="font-semibold text-white">{branches.find(b => b.id === selectedBranchId)?.name || 'Default Branch'}</span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
                         <span className="text-slate-500">Terminal:</span>
-                        <span className="font-semibold text-white">T-01</span>
+                        {terminals.length > 1 ? (
+                            <select
+                                value={selectedTerminalId || ''}
+                                onChange={(e) => setSelectedTerminalId(e.target.value)}
+                                className="bg-slate-800 text-white border-none text-xs rounded px-2 py-1 outline-none appearance-none cursor-pointer hover:bg-slate-700 transition-colors"
+                            >
+                                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                        ) : (
+                            <span className="font-semibold text-white">{terminals.find(t => t.id === selectedTerminalId)?.name || 'T-01'}</span>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         <span className="text-slate-500">Shift:</span>
