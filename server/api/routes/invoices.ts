@@ -11,8 +11,8 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { status, invoiceType, projectId } = req.query;
-    
-    let query = 'SELECT * FROM invoices WHERE tenant_id = $1';
+
+    let query = 'SELECT * FROM invoices WHERE tenant_id = $1 AND deleted_at IS NULL';
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
@@ -44,14 +44,14 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const invoices = await db.query(
-      'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
       [req.params.id, req.tenantId]
     );
-    
+
     if (invoices.length === 0) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
-    
+
     res.json(invoices[0]);
   } catch (error) {
     console.error('Error fetching invoice:', error);
@@ -64,36 +64,36 @@ router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const invoice = req.body;
-    
+
     // Validate required fields
     if (!invoice.invoiceNumber) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Invoice number is required'
       });
     }
-    
+
     // Generate ID if not provided
     const invoiceId = invoice.id || `invoice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Check if invoice with this ID already exists and belongs to a different tenant
     if (invoice.id) {
       const existingInvoice = await db.query(
         'SELECT tenant_id FROM invoices WHERE id = $1',
         [invoiceId]
       );
-      
+
       if (existingInvoice.length > 0 && existingInvoice[0].tenant_id !== req.tenantId) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'Forbidden',
           message: 'An invoice with this ID already exists in another organization'
         });
       }
     }
-    
+
     // Check if invoice exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id, status FROM invoices WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
       [invoiceId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
@@ -106,16 +106,27 @@ router.post('/', async (req: TenantRequest, res) => {
         code: 'INVOICE_PAID_IMMUTABLE',
       });
     }
-    
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO invoices (
         id, tenant_id, invoice_number, contact_id, amount, paid_amount, status,
         issue_date, due_date, invoice_type, description, project_id, building_id,
         property_id, unit_id, category_id, agreement_id, security_deposit_charge,
-        service_charges, rental_month, user_id, created_at, updated_at
+        service_charges, rental_month, user_id, created_at, updated_at, version
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
-                COALESCE((SELECT created_at FROM invoices WHERE id = $1), NOW()), NOW())
+                COALESCE((SELECT created_at FROM invoices WHERE id = $1), NOW()), NOW(), 1)
       ON CONFLICT (id) 
       DO UPDATE SET
         invoice_number = EXCLUDED.invoice_number,
@@ -137,7 +148,10 @@ router.post('/', async (req: TenantRequest, res) => {
         service_charges = EXCLUDED.service_charges,
         rental_month = EXCLUDED.rental_month,
         user_id = EXCLUDED.user_id,
-        updated_at = NOW()
+        updated_at = NOW(),
+        version = COALESCE(invoices.version, 1) + 1,
+        deleted_at = NULL
+      WHERE invoices.tenant_id = $2 AND (invoices.version = $22 OR invoices.version IS NULL)
       RETURNING *`,
       [
         invoiceId,
@@ -160,11 +174,12 @@ router.post('/', async (req: TenantRequest, res) => {
         invoice.securityDepositCharge || null,
         invoice.serviceCharges || null,
         invoice.rentalMonth || null,
-        req.user?.userId || null
+        req.user?.userId || null,
+        serverVersion
       ]
     );
     const saved = result[0];
-    
+
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
       emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
@@ -179,7 +194,7 @@ router.post('/', async (req: TenantRequest, res) => {
         username: req.user?.username,
       });
     }
-    
+
     res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
     console.error('Error creating/updating invoice:', error);
@@ -198,7 +213,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
 
     // Immutability: reject updates to paid invoices
     const current = await db.query(
-      'SELECT status FROM invoices WHERE id = $1 AND tenant_id = $2',
+      'SELECT status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenantId]
     );
     if (current.length > 0 && current[0].status === 'Paid') {
@@ -209,45 +224,56 @@ router.put('/:id', async (req: TenantRequest, res) => {
       });
     }
 
-    const result = await db.query(
-      `UPDATE invoices 
-       SET invoice_number = $1, contact_id = $2, amount = $3, paid_amount = $4, 
-           status = $5, issue_date = $6, due_date = $7, invoice_type = $8, 
-           description = $9, project_id = $10, building_id = $11, property_id = $12,
-           unit_id = $13, category_id = $14, agreement_id = $15, 
-           security_deposit_charge = $16, service_charges = $17, rental_month = $18,
-           user_id = $19, updated_at = NOW()
-       WHERE id = $20 AND tenant_id = $21
-       RETURNING *`,
-      [
-        invoice.invoiceNumber,
-        invoice.contactId,
-        invoice.amount,
-        invoice.paidAmount || 0,
-        invoice.status,
-        invoice.issueDate,
-        invoice.dueDate,
-        invoice.invoiceType,
-        invoice.description || null,
-        invoice.projectId || null,
-        invoice.buildingId || null,
-        invoice.propertyId || null,
-        invoice.unitId || null,
-        invoice.categoryId || null,
-        invoice.agreementId || null,
-        invoice.securityDepositCharge || null,
-        invoice.serviceCharges || null,
-        invoice.rentalMonth || null,
-        req.user?.userId || null,
-        req.params.id,
-        req.tenantId
-      ]
-    );
-    
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let putQuery = `
+      UPDATE invoices 
+      SET invoice_number = $1, contact_id = $2, amount = $3, paid_amount = $4, 
+          status = $5, issue_date = $6, due_date = $7, invoice_type = $8, 
+          description = $9, project_id = $10, building_id = $11, property_id = $12,
+          unit_id = $13, category_id = $14, agreement_id = $15, 
+          security_deposit_charge = $16, service_charges = $17, rental_month = $18,
+          user_id = $19, updated_at = NOW(),
+          version = COALESCE(version, 1) + 1
+      WHERE id = $20 AND tenant_id = $21
+    `;
+    const putParams: any[] = [
+      invoice.invoiceNumber,
+      invoice.contactId,
+      invoice.amount,
+      invoice.paidAmount || 0,
+      invoice.status,
+      invoice.issueDate,
+      invoice.dueDate,
+      invoice.invoiceType,
+      invoice.description || null,
+      invoice.projectId || null,
+      invoice.buildingId || null,
+      invoice.propertyId || null,
+      invoice.unitId || null,
+      invoice.categoryId || null,
+      invoice.agreementId || null,
+      invoice.securityDepositCharge || null,
+      invoice.serviceCharges || null,
+      invoice.rentalMonth || null,
+      req.user?.userId || null,
+      req.params.id,
+      req.tenantId
+    ];
+
+    if (clientVersion != null) {
+      putQuery += ` AND version = $22`;
+      putParams.push(clientVersion);
+    }
+
+    putQuery += ` RETURNING *`;
+
+    const result = await db.query(putQuery, putParams);
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
       invoice: result[0],
       userId: req.user?.userId,
@@ -280,14 +306,14 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     }
 
     const result = await db.query(
-      'DELETE FROM invoices WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE invoices SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_DELETED, {
       invoiceId: req.params.id,
       userId: req.user?.userId,

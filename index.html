@@ -82,7 +82,15 @@
 <body class="bg-background">
   <div id="root"></div>
   <script>
-    if ('serviceWorker' in navigator) {
+    // In Electron: unregister any stale service workers (e.g. from previous web session)
+    // to prevent "Offline / app is not cached" when loading from file://
+    if (window.electronAPI?.isElectron && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+      });
+    }
+    // Only register service worker for web/PWA, not for Electron desktop
+    if ('serviceWorker' in navigator && !window.electronAPI?.isElectron) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js', { scope: './' })
           .then(() => {

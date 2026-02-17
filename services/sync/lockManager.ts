@@ -18,6 +18,7 @@ import { getDatabaseService } from '../database/databaseService';
 import { getWebSocketClient } from '../websocketClient';
 import { apiClient } from '../api/client';
 import { isMobileDevice } from '../../utils/platformDetection';
+import { isElectronWithSqlite, sqliteQuery, sqliteRun } from '../electronSqliteStorage';
 
 export interface RecordLock {
   entity: string;
@@ -34,10 +35,10 @@ class LockManager {
   private lockTimeout = 5 * 60 * 1000; // 5 minutes
   private cleanupInterval: number | null = null;
   private wsClient = getWebSocketClient();
+  private locksLoadPromise: Promise<void> | null = null;
 
   constructor() {
-    // Load locks from local storage on initialization
-    this.loadLocks();
+    this.locksLoadPromise = this.loadLocks();
     
     // Start cleanup interval (remove expired locks)
     this.startCleanup();
@@ -49,6 +50,17 @@ class LockManager {
   /**
    * Acquire a lock on a record
    */
+  private useSqliteLocks(): boolean {
+    return isElectronWithSqlite();
+  }
+
+  private async ensureLocksLoaded(): Promise<void> {
+    if (this.locksLoadPromise) {
+      await this.locksLoadPromise;
+      this.locksLoadPromise = null;
+    }
+  }
+
   async acquireLock(
     entity: string,
     entityId: string,
@@ -56,6 +68,7 @@ class LockManager {
     userName: string,
     tenantId: string
   ): Promise<boolean> {
+    await this.ensureLocksLoaded();
     const lockKey = `${entity}:${entityId}`;
     const now = Date.now();
 
@@ -66,7 +79,7 @@ class LockManager {
       if (existingLock.userId === userId) {
         // Same user - extend lock
         existingLock.expiresAt = now + this.lockTimeout;
-        this.saveLocks();
+        await this.saveLocks();
         return true;
       } else {
         // Different user - lock conflict
@@ -86,7 +99,7 @@ class LockManager {
     };
 
     this.localLocks.set(lockKey, lock);
-    this.saveLocks();
+    await this.saveLocks();
 
     // Sync lock to cloud (if online)
     if (!isMobileDevice()) {
@@ -122,7 +135,7 @@ class LockManager {
     }
 
     this.localLocks.delete(lockKey);
-    this.saveLocks();
+    await this.saveLocks();
 
     // Remove lock from cloud (if online)
     if (!isMobileDevice()) {
@@ -153,7 +166,7 @@ class LockManager {
     // Check if lock is expired
     if (lock.expiresAt <= Date.now()) {
       this.localLocks.delete(lockKey);
-      this.saveLocks();
+      void this.saveLocks();
       return false;
     }
 
@@ -174,7 +187,7 @@ class LockManager {
     // Check if lock is expired
     if (lock.expiresAt <= Date.now()) {
       this.localLocks.delete(lockKey);
-      this.saveLocks();
+      void this.saveLocks();
       return null;
     }
 
@@ -285,7 +298,7 @@ class LockManager {
       const existingLock = this.localLocks.get(lockKey);
       if (!existingLock || data.lockedAt > existingLock.lockedAt) {
         this.localLocks.set(lockKey, data);
-        this.saveLocks();
+        void this.saveLocks();
         console.log(`[LockManager] 🔒 Lock received from another user: ${lockKey} by ${data.userName}`);
       }
     });
@@ -294,7 +307,7 @@ class LockManager {
     this.wsClient.on('lock:released', (data: { entity: string; entityId: string }) => {
       const lockKey = `${data.entity}:${data.entityId}`;
       this.localLocks.delete(lockKey);
-      this.saveLocks();
+      void this.saveLocks();
       console.log(`[LockManager] 🔓 Lock released by another user: ${lockKey}`);
     });
   }
@@ -323,15 +336,19 @@ class LockManager {
     }
 
     if (cleaned > 0) {
-      this.saveLocks();
+      void this.saveLocks();
       console.log(`[LockManager] 🧹 Cleaned up ${cleaned} expired locks`);
     }
   }
 
   /**
-   * Save locks to localStorage
+   * Save locks to storage (SQLite in Electron, localStorage on web)
    */
-  private saveLocks(): void {
+  private async saveLocks(): Promise<void> {
+    if (this.useSqliteLocks()) {
+      await this.saveLocksToSqlite();
+      return;
+    }
     try {
       const locksArray = Array.from(this.localLocks.values());
       localStorage.setItem('record_locks', JSON.stringify(locksArray));
@@ -340,29 +357,80 @@ class LockManager {
     }
   }
 
+  private async saveLocksToSqlite(): Promise<void> {
+    await sqliteRun('DELETE FROM record_locks');
+    for (const lock of this.localLocks.values()) {
+      const id = `${lock.entity}:${lock.entityId}`;
+      await sqliteRun(
+        `INSERT INTO record_locks (id, entity_type, entity_id, user_id, user_name, tenant_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, lock.entity, lock.entityId, lock.userId, lock.userName || '', lock.tenantId || '', lock.expiresAt, lock.lockedAt]
+      );
+    }
+  }
+
   /**
-   * Load locks from localStorage
+   * Load locks from storage (SQLite in Electron, localStorage on web)
    */
-  private loadLocks(): void {
+  private async loadLocks(): Promise<void> {
+    if (this.useSqliteLocks()) {
+      await this.loadLocksFromSqlite();
+      return;
+    }
     try {
       const saved = localStorage.getItem('record_locks');
       if (saved) {
         const locksArray: RecordLock[] = JSON.parse(saved);
         const now = Date.now();
-        
-        // Only load non-expired locks
         for (const lock of locksArray) {
           if (lock.expiresAt > now) {
             const lockKey = `${lock.entity}:${lock.entityId}`;
             this.localLocks.set(lockKey, lock);
           }
         }
-        
         console.log(`[LockManager] Loaded ${this.localLocks.size} active locks`);
       }
     } catch (error) {
       console.error('[LockManager] Failed to load locks:', error);
       this.localLocks.clear();
+    }
+  }
+
+  private async loadLocksFromSqlite(): Promise<void> {
+    const rows = await sqliteQuery<{ id: string; entity_type: string; entity_id: string; user_id: string; user_name: string | null; tenant_id: string | null; expires_at: number; created_at: number }>('SELECT id, entity_type, entity_id, user_id, user_name, tenant_id, expires_at, created_at FROM record_locks');
+    const now = Date.now();
+    for (const r of rows) {
+      if (r.expires_at > now) {
+        const lockKey = `${r.entity_type}:${r.entity_id}`;
+        this.localLocks.set(lockKey, {
+          entity: r.entity_type,
+          entityId: r.entity_id,
+          userId: r.user_id,
+          userName: r.user_name || '',
+          tenantId: r.tenant_id || '',
+          lockedAt: r.created_at,
+          expiresAt: r.expires_at,
+        });
+      }
+    }
+    if (rows.length > 0) {
+      console.log(`[LockManager] Loaded ${this.localLocks.size} active locks from SQLite`);
+    }
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('record_locks') : null;
+    if (saved && rows.length === 0) {
+      try {
+        const legacy: RecordLock[] = JSON.parse(saved);
+        for (const lock of legacy) {
+          if (lock.expiresAt > now) {
+            const lockKey = `${lock.entity}:${lock.entityId}`;
+            this.localLocks.set(lockKey, lock);
+            await sqliteRun(
+              `INSERT INTO record_locks (id, entity_type, entity_id, user_id, user_name, tenant_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [`${lock.entity}:${lock.entityId}`, lock.entity, lock.entityId, lock.userId, lock.userName || '', lock.tenantId || '', lock.expiresAt, lock.lockedAt]
+            );
+          }
+        }
+        if (typeof localStorage !== 'undefined') localStorage.removeItem('record_locks');
+      } catch (_) { }
     }
   }
 
@@ -378,7 +446,7 @@ class LockManager {
    */
   clearAllLocks(): void {
     this.localLocks.clear();
-    this.saveLocks();
+    void this.saveLocks();
     console.log('[LockManager] All locks cleared');
   }
 

@@ -211,7 +211,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const transactions = await db.query(
-      'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
       [req.params.id, req.tenantId]
     );
 
@@ -219,7 +219,8 @@ router.get('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    res.json(transactions[0]);
+    const result = transactions[0];
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch transaction' });
   }
@@ -1075,7 +1076,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
           contract_id = $19, agreement_id = $20, batch_id = $21, is_system = $22, 
           user_id = $23, updated_at = NOW(),
           version = COALESCE(version, 1) + 1
-      WHERE id = $24 AND tenant_id = $25
+      WHERE id = $24 AND tenant_id = $25 AND version = $26
       RETURNING *
     `;
     const result = await db.transaction(async (client) => {
@@ -1104,8 +1105,18 @@ router.put('/:id', async (req: TenantRequest, res) => {
         transaction.isSystem || false,
         req.user?.userId || null,
         req.params.id,
-        req.tenantId
+        req.tenantId,
+        serverVersion // Use serverVersion for the condition
       ]);
+
+      if (updateResult.rows.length === 0) {
+        throw {
+          code: 'VERSION_CONFLICT',
+          message: 'Failed to update transaction. It might have been modified by another user or deleted.',
+          status: 409
+        };
+      }
+
       const updatedTransaction = updateResult.rows[0];
       await applyAccountBalanceChanges(client, req.tenantId!, oldTransaction[0], -1);
       await applyAccountBalanceChanges(client, req.tenantId!, updatedTransaction, 1);
@@ -1293,7 +1304,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     const result = await db.transaction(async (client) => {
       await applyAccountBalanceChanges(client, req.tenantId!, oldTransaction[0], -1);
       const deleteResult = await client.query(
-        'DELETE FROM transactions WHERE id = $1 AND tenant_id = $2 RETURNING id',
+        'UPDATE transactions SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
         [req.params.id, req.tenantId]
       );
       return deleteResult.rows[0];

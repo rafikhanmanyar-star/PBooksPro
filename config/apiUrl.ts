@@ -24,12 +24,17 @@ function isRemoteApiUrl(url: string): boolean {
  * In the browser: uses the same host as the page and port 3000, so when another PC
  * opens http://SERVER_IP:5173, API is http://SERVER_IP:3000/api.
  * Use VITE_API_URL for production/staging remote API.
+ * In Electron (file:// protocol), VITE_API_URL must be set or defaults to production.
  */
 export function getApiBaseUrl(): string {
   const env = import.meta.env.VITE_API_URL as string | undefined;
   if (env && isRemoteApiUrl(env)) return env.endsWith('/api') ? env : env.replace(/\/?$/, '') + '/api';
   if (typeof window !== 'undefined') {
     const { protocol, hostname } = window.location;
+    // Electron loads from file:// - hostname is empty, use VITE_API_URL or localhost
+    if (protocol === 'file:' || !hostname) {
+      return env || `http://localhost:${API_PORT}/api`;
+    }
     return `${protocol}//${hostname}:${API_PORT}/api`;
   }
   return env || `http://localhost:${API_PORT}/api`;

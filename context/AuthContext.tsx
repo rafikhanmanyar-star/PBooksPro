@@ -136,9 +136,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       try {
-        // 3. Clear the SyncManager in-memory/localStorage queue
+        // 3. Clear the SyncManager in-memory/SQLite/localStorage queue
         const { getSyncManager } = await import('../services/sync/syncManager');
-        getSyncManager().clearAll();
+        await getSyncManager().clearAll();
         logger.logCategory('auth', 'Cleared SyncManager queue on logout');
       } catch (e) {
         logger.warnCategory('auth', 'Failed to clear SyncManager queue on logout:', e);
@@ -228,7 +228,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
         const bidir = getBidirectionalSyncService();
         bidir.start(tenantId);
-        const BIDIR_SYNC_DELAY_MS = 5000;
+        const BIDIR_SYNC_DELAY_MS = 1000;
         bidirSyncTimeoutRef.current = setTimeout(() => {
           bidirSyncTimeoutRef.current = null;
           void bidir.runSync(tenantId);

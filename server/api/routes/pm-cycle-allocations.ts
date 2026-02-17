@@ -11,11 +11,11 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { projectId, cycleId, status } = req.query;
-    
-    let query = 'SELECT * FROM pm_cycle_allocations WHERE tenant_id = $1';
+
+    let query = 'SELECT * FROM pm_cycle_allocations WHERE tenant_id = $1 AND deleted_at IS NULL';
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
-    
+
     if (projectId) {
       query += ` AND project_id = $${paramIndex++}`;
       params.push(projectId);
@@ -28,9 +28,9 @@ router.get('/', async (req: TenantRequest, res) => {
       query += ` AND status = $${paramIndex++}`;
       params.push(status);
     }
-    
+
     query += ' ORDER BY allocation_date DESC, cycle_id DESC';
-    
+
     const allocations = await db.query(query, params);
     res.json(allocations);
   } catch (error) {
@@ -44,14 +44,14 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const allocations = await db.query(
-      'SELECT * FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
       [req.params.id, req.tenantId]
     );
-    
+
     if (allocations.length === 0) {
       return res.status(404).json({ error: 'PM cycle allocation not found' });
     }
-    
+
     res.json(allocations[0]);
   } catch (error) {
     console.error('Error fetching PM cycle allocation:', error);
@@ -64,70 +64,81 @@ router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const allocation = req.body;
-    
+
     // Validate required fields
     if (!allocation.projectId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Project ID is required'
       });
     }
     if (!allocation.cycleId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Cycle ID is required'
       });
     }
     if (!allocation.cycleLabel) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Cycle label is required'
       });
     }
     if (!allocation.frequency) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Frequency is required'
       });
     }
     if (!allocation.startDate) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Start date is required'
       });
     }
     if (!allocation.endDate) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'End date is required'
       });
     }
     if (allocation.amount === undefined || allocation.amount === null) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Amount is required'
       });
     }
-    
+
     // Generate ID if not provided
     const allocationId = allocation.id || `pm_alloc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Check if allocation exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, version FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2',
       [allocationId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
-    
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO pm_cycle_allocations (
         id, tenant_id, user_id, project_id, cycle_id, cycle_label, frequency,
         start_date, end_date, allocation_date, amount, paid_amount, status,
         bill_id, description, expense_total, fee_rate, excluded_category_ids,
-        created_at, updated_at
+        created_at, updated_at, version
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                COALESCE((SELECT created_at FROM pm_cycle_allocations WHERE id = $1), NOW()), NOW())
+                COALESCE((SELECT created_at FROM pm_cycle_allocations WHERE id = $1), NOW()), NOW(), 1)
       ON CONFLICT (tenant_id, project_id, cycle_id) 
       DO UPDATE SET
         cycle_label = EXCLUDED.cycle_label,
@@ -144,7 +155,10 @@ router.post('/', async (req: TenantRequest, res) => {
         fee_rate = EXCLUDED.fee_rate,
         excluded_category_ids = EXCLUDED.excluded_category_ids,
         user_id = EXCLUDED.user_id,
-        updated_at = NOW()
+        updated_at = NOW(),
+        version = COALESCE(pm_cycle_allocations.version, 1) + 1,
+        deleted_at = NULL
+      WHERE pm_cycle_allocations.tenant_id = $2 AND (pm_cycle_allocations.version = $19 OR pm_cycle_allocations.version IS NULL)
       RETURNING *`,
       [
         allocationId,
@@ -164,10 +178,11 @@ router.post('/', async (req: TenantRequest, res) => {
         allocation.description || null,
         allocation.expenseTotal || 0,
         allocation.feeRate || 0,
-        allocation.excludedCategoryIds ? JSON.stringify(allocation.excludedCategoryIds) : '[]'
+        allocation.excludedCategoryIds ? JSON.stringify(allocation.excludedCategoryIds) : '[]',
+        serverVersion
       ]
     );
-    
+
     emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.PM_CYCLE_ALLOCATION_UPDATED : WS_EVENTS.PM_CYCLE_ALLOCATION_CREATED, {
       allocation: result[0],
       userId: req.user?.userId,
@@ -178,12 +193,12 @@ router.post('/', async (req: TenantRequest, res) => {
   } catch (error: any) {
     console.error('Error creating/updating PM cycle allocation:', error);
     if (error.code === '23505') { // Unique violation
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'Duplicate allocation',
         message: 'A PM cycle allocation for this project and cycle already exists'
       });
     }
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to create/update PM cycle allocation',
       message: error.message || 'Internal server error'
     });
@@ -195,14 +210,14 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const result = await db.query(
-      'DELETE FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE pm_cycle_allocations SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'PM cycle allocation not found' });
     }
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.PM_CYCLE_ALLOCATION_DELETED, {
       allocationId: req.params.id,
       userId: req.user?.userId,

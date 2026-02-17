@@ -1,0 +1,9 @@
+{
+  "appId": "com.pbookspro.app.staging",
+  "productName": "PBooks Pro (Staging)",
+  "directories": { "output": "release-staging" },
+  "forceCodeSigning": false,
+  "win": {
+    "signAndEditExecutable": false
+  }
+}

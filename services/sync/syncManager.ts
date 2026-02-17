@@ -16,6 +16,8 @@ import { getDatabaseService } from '../database/databaseService';
 import { getCloudPostgreSQLService } from '../database/postgresqlCloudService';
 import { getConnectionMonitor } from '../connection/connectionMonitor';
 import { isMobileDevice } from '../../utils/platformDetection';
+import { SyncProgress } from '../../types/sync';
+import { isElectronWithSqlite, sqliteQuery, sqliteRun } from '../electronSqliteStorage';
 
 export interface SyncOperation {
   id: string;
@@ -40,6 +42,8 @@ class SyncManager {
   private maxRetries = 3;
   private retryDelay = 5000; // 5 seconds
   private activeTenantId: string | null = null;
+  private syncProgress: SyncProgress | null = null;
+  private queueLoadPromise: Promise<void> | null = null; // For async SQLite load
 
   // Batching configuration - larger batches and parallel execution for faster sync
   private readonly BATCH_SIZE = 20; // Process up to 20 operations per batch in parallel
@@ -49,7 +53,7 @@ class SyncManager {
     // Load sync queue from local storage on initialization
     // Try to get tenantId from localStorage for initial load
     this.activeTenantId = typeof window !== 'undefined' ? localStorage.getItem('tenant_id') : null;
-    this.loadSyncQueue();
+    this.queueLoadPromise = this.loadSyncQueue();
 
     // Start monitoring connection
     // Only sync on reconnection, not continuously
@@ -73,6 +77,7 @@ class SyncManager {
     entityId: string,
     data: any
   ): Promise<void> {
+    await this.ensureQueueLoaded();
     // Mobile: Don't queue, operations go directly to cloud
     if (isMobileDevice()) {
       console.warn('[SyncManager] Queue operation called on mobile - this should not happen');
@@ -126,7 +131,7 @@ class SyncManager {
     };
 
     this.queue.push(operation);
-    this.saveSyncQueue();
+    void this.saveSyncQueue();
 
     const pendingCount = this.queue.filter(op => op.status === 'pending').length;
 
@@ -250,7 +255,7 @@ class SyncManager {
    * Public method - can be called explicitly on login/reconnection
    */
   async syncQueueBatch(): Promise<void> {
-
+    await this.ensureQueueLoaded();
     if (isMobileDevice()) {
       return; // No sync needed on mobile
     }
@@ -292,7 +297,25 @@ class SyncManager {
       if (failedCount > 0) {
       } else {
       }
+      this.syncProgress = null; // Reset progress when finished
       return; // Nothing to sync
+    }
+
+    // Initialize or update progress tracking
+    const currentRemaining = pendingOps.length;
+    if (!this.syncProgress) {
+      this.syncProgress = {
+        total: currentRemaining,
+        completed: 0,
+        failed: 0
+      };
+    } else {
+      // If remaining work + what we already did is more than current total, 
+      // it means new items were added. Update total so progress bar doesn't jump.
+      const discoveredTotal = currentRemaining + this.syncProgress.completed + this.syncProgress.failed;
+      if (discoveredTotal > this.syncProgress.total) {
+        this.syncProgress.total = discoveredTotal;
+      }
     }
 
     // BATCH: Process operations in parallel within each batch for much faster sync
@@ -308,7 +331,7 @@ class SyncManager {
         op.status = 'syncing';
         op.syncStartedAt = Date.now();
       });
-      this.saveSyncQueue(); // Save immediately so status is visible
+      await this.saveSyncQueue(); // Save immediately so status is visible
 
       // Process batch in parallel (like SyncEngine) instead of one-by-one
       await Promise.allSettled(
@@ -317,6 +340,7 @@ class SyncManager {
             await this.syncOperation(operation);
             operation.status = 'completed';
             operation.syncStartedAt = undefined;
+            if (this.syncProgress) this.syncProgress.completed++;
           } catch (error: any) {
             // Don't retry if authentication is required
             if (error?.message === 'Authentication required' || error?.status === 401) {
@@ -328,6 +352,7 @@ class SyncManager {
             operation.status = 'failed';
             operation.syncStartedAt = undefined;
             operation.errorMessage = error instanceof Error ? error.message : String(error);
+            if (this.syncProgress) this.syncProgress.failed++;
 
             if (operation.retries >= this.maxRetries) {
               console.error(`[SyncManager] ❌ Failed to sync ${operation.entity}:${operation.entityId} after ${this.maxRetries} retries:`, error);
@@ -340,7 +365,7 @@ class SyncManager {
 
       // Remove completed operations
       this.queue = this.queue.filter(op => op.status !== 'completed');
-      this.saveSyncQueue();
+      await this.saveSyncQueue();
 
       const remainingPending = this.queue.filter(op => op.status === 'pending').length;
       const totalFailed = this.queue.filter(op => op.status === 'failed').length;
@@ -356,9 +381,12 @@ class SyncManager {
           }
         }, this.BATCH_DELAY_MS);
       } else {
+        // All done
+        this.syncProgress = null;
       }
     } catch (error) {
       console.error('[SyncManager] ❌ Batch sync error:', error);
+      this.syncProgress = null;
     } finally {
       this.isSyncing = false;
     }
@@ -424,6 +452,7 @@ class SyncManager {
             userId: user?.id
           });
           return; // Skip users with missing required fields
+          return; // Skip users with missing required fields
         }
       }
     }
@@ -483,48 +512,79 @@ class SyncManager {
     pending: number;
     syncing: number;
     failed: number;
+    progress: SyncProgress | null;
   } {
     const status = {
       total: this.queue.length,
       pending: this.queue.filter(op => op.status === 'pending').length,
       syncing: this.queue.filter(op => op.status === 'syncing').length,
       failed: this.queue.filter(op => op.status === 'failed').length,
+      progress: this.syncProgress
     };
-    // Reduced logging - only log when status changes or every 10 calls
-    if (!this._lastLoggedStatus ||
-      JSON.stringify(status) !== JSON.stringify(this._lastLoggedStatus) ||
-      (this._statusCallCount++ % 10 === 0)) {
-      this._lastLoggedStatus = status;
-    }
     return status;
   }
 
-  private _lastLoggedStatus?: { total: number; pending: number; syncing: number; failed: number };
+  /**
+   * Set pull (inbound) progress
+   */
+  setPullProgress(completed: number, total: number | null): void {
+    if (!this.syncProgress) {
+      this.syncProgress = {
+        total: this.queue.filter(op => op.status === 'pending').length,
+        completed: 0,
+        failed: 0
+      };
+    }
+
+    if (total !== null) {
+      this.syncProgress.inboundTotal = total;
+    }
+    this.syncProgress.inboundCompleted = completed;
+
+    // Dispatch event for UI updates
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sync:progress-update', { detail: this.syncProgress }));
+    }
+  }
+
+  /**
+   * Clear pull progress (call when inbound sync completes)
+   */
+  clearPullProgress(): void {
+    this.syncProgress = null;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sync:progress-update', { detail: null }));
+    }
+  }
+
+  private _lastLoggedStatus?: { total: number; pending: number; syncing: number; failed: number; progress: SyncProgress | null };
   private _statusCallCount = 0;
 
   /**
    * Remove a pending/completed operation by entity and entityId (e.g. after synced from outbox)
    */
-  removeByEntity(entity: string, entityId: string): void {
+  async removeByEntity(entity: string, entityId: string): Promise<void> {
+    await this.ensureQueueLoaded();
     const before = this.queue.length;
     this.queue = this.queue.filter(
       op => !(op.entity === entity && op.entityId === entityId)
     );
     if (this.queue.length !== before) {
-      this.saveSyncQueue();
+      await this.saveSyncQueue();
     }
   }
 
   /**
    * Clear completed operations from queue
    */
-  clearCompleted(): void {
+  async clearCompleted(): Promise<void> {
+    await this.ensureQueueLoaded();
     const before = this.queue.length;
     this.queue = this.queue.filter(op => op.status !== 'completed');
     const after = this.queue.length;
 
     if (before !== after) {
-      this.saveSyncQueue();
+      await this.saveSyncQueue();
     }
   }
 
@@ -534,13 +594,29 @@ class SyncManager {
    * Local changes need to be pushed upstream before clearing.
    * @deprecated Use bi-directional sync instead of clearing queue
    */
-  clearAll(): void {
+  async clearAll(): Promise<void> {
+    await this.ensureQueueLoaded();
     const count = this.queue.length;
     console.warn(`[SyncManager] ⚠️ clearAll() called - clearing ${count} operations! Stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     this.queue = [];
-    this.saveSyncQueue();
+    await this.saveSyncQueue();
     if (count > 0) {
       console.warn(`[SyncManager] ⚠️ Cleared all ${count} operations from queue`);
+    }
+  }
+
+  /**
+   * Check if sync queue uses SQLite (Electron) or localStorage
+   */
+  private useSqliteQueue(): boolean {
+    return isElectronWithSqlite();
+  }
+
+  /** Ensure queue is loaded from storage (waits for async SQLite load if in progress) */
+  private async ensureQueueLoaded(): Promise<void> {
+    if (this.queueLoadPromise) {
+      await this.queueLoadPromise;
+      this.queueLoadPromise = null;
     }
   }
 
@@ -575,59 +651,50 @@ class SyncManager {
     const previousTenantId = this.activeTenantId;
     this.activeTenantId = tenantId;
 
-    if (tenantId && tenantId !== previousTenantId) {
-      // Migrate legacy unscoped queue if it exists and new scoped key is empty
-      try {
-        const legacyQueue = localStorage.getItem('sync_queue');
-        const scopedKey = `sync_queue_${tenantId}`;
-        const scopedQueue = localStorage.getItem(scopedKey);
-        if (legacyQueue && !scopedQueue) {
-          // Move legacy queue to scoped key
-          localStorage.setItem(scopedKey, legacyQueue);
-          localStorage.removeItem('sync_queue');
-        }
-      } catch (_) { /* ignore migration errors */ }
-
-      // Reload queue for the new tenant
-      this.loadSyncQueue();
+    if (tenantId !== previousTenantId) {
+      if (!this.useSqliteQueue()) {
+        // Migrate legacy unscoped queue if it exists (localStorage only)
+        try {
+          const legacyQueue = localStorage.getItem('sync_queue');
+          const scopedKey = tenantId ? `sync_queue_${tenantId}` : 'sync_queue';
+          const scopedQueue = localStorage.getItem(scopedKey);
+          if (legacyQueue && !scopedQueue) {
+            localStorage.setItem(scopedKey, legacyQueue);
+            localStorage.removeItem('sync_queue');
+          }
+        } catch (_) { /* ignore migration errors */ }
+      }
+      this.queueLoadPromise = this.loadSyncQueue();
     }
   }
 
   /**
-   * Save sync queue to localStorage (tenant-scoped)
+   * Save sync queue to storage (SQLite in Electron, localStorage on web).
    * SECURITY: Queue is keyed by tenant to prevent cross-tenant data leaks.
-   * Handles quota exceeded errors by cleaning up old operations.
    */
-  private saveSyncQueue(): void {
+  private async saveSyncQueue(): Promise<void> {
+    if (this.useSqliteQueue()) {
+      await this.saveSyncQueueToSqlite();
+      return;
+    }
     try {
       const queueData = JSON.stringify(this.queue);
       const queueSizeKB = Math.round(queueData.length / 1024);
-
-      // Warn if queue is getting large (> 500KB)
       if (queueSizeKB > 500) {
         console.warn(`[SyncManager] ⚠️ Sync queue is large: ${queueSizeKB}KB (${this.queue.length} operations)`);
       }
-
       localStorage.setItem(this.getSyncQueueKey(), queueData);
     } catch (error: any) {
-      // Check if it's a quota exceeded error
       const isQuotaError = error?.name === 'QuotaExceededError' ||
         error?.code === 22 ||
         error?.code === 1014 ||
         error?.message?.includes('quota');
-
       if (isQuotaError) {
         console.error(`[SyncManager] ❌ localStorage quota exceeded! Queue has ${this.queue.length} operations. Cleaning up...`);
-
-        // Emergency cleanup: Remove old failed operations and keep only recent pending ones
         const beforeCount = this.queue.length;
-
-        // 1. Remove all failed operations that have exceeded max retries
         this.queue = this.queue.filter(op =>
           !(op.status === 'failed' && op.retries >= this.maxRetries)
         );
-
-        // 2. If still too many, keep only the most recent 100 pending operations
         if (this.queue.length > 100) {
           const pending = this.queue.filter(op => op.status === 'pending')
             .sort((a, b) => b.timestamp - a.timestamp)
@@ -635,59 +702,142 @@ class SyncManager {
           const syncing = this.queue.filter(op => op.status === 'syncing');
           this.queue = [...pending, ...syncing];
         }
-
-        console.warn(`[SyncManager] Cleaned up queue: ${beforeCount} -> ${this.queue.length} operations`);
-
-        // Try saving again
         try {
           localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(this.queue));
-        } catch (retryError) {
-          console.error('[SyncManager] ❌ Still failed after cleanup. Clearing queue to prevent data loss:', retryError);
-          // Last resort: clear the queue to prevent app from breaking
+        } catch {
           this.queue = [];
-          try {
-            localStorage.removeItem(this.getSyncQueueKey());
-          } catch { /* ignore */ }
+          try { localStorage.removeItem(this.getSyncQueueKey()); } catch { /* ignore */ }
         }
       } else {
-        console.error('[SyncManager] Failed to save sync queue:', {
-          error: error?.message || String(error),
-          name: error?.name,
-          code: error?.code,
-          queueLength: this.queue.length
-        });
+        console.error('[SyncManager] Failed to save sync queue:', error?.message || String(error));
       }
     }
   }
 
+  /** Save queue to SQLite sync_queue table (Electron only) */
+  private async saveSyncQueueToSqlite(): Promise<void> {
+    const tenantId = this.getCurrentTenantId();
+    const tenantKey = tenantId ?? '';
+    // Replace tenant's ops: delete existing, insert current
+    await sqliteRun(
+      "DELETE FROM sync_queue WHERE COALESCE(tenant_id, '') = ?",
+      [tenantKey]
+    );
+    for (const op of this.queue) {
+      const dataJson = op.data != null ? JSON.stringify(op.data) : null;
+      await sqliteRun(
+        `INSERT INTO sync_queue (id, tenant_id, type, entity, entity_id, data, timestamp, source, status, retries, error_message, sync_started_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          op.id,
+          op.tenantId ?? null,
+          op.type,
+          op.entity,
+          op.entityId,
+          dataJson,
+          op.timestamp,
+          op.source ?? 'local',
+          op.status,
+          op.retries ?? 0,
+          op.errorMessage ?? null,
+          op.syncStartedAt ?? null,
+        ]
+      );
+    }
+  }
+
   /**
-   * Load sync queue from localStorage (tenant-scoped)
+   * Load sync queue from storage (SQLite in Electron, localStorage on web).
    * SECURITY: Only loads the queue for the current tenant.
    */
-  private loadSyncQueue(): void {
+  private async loadSyncQueue(): Promise<void> {
+    if (this.useSqliteQueue()) {
+      await this.loadSyncQueueFromSqlite();
+      return;
+    }
     try {
       const saved = localStorage.getItem(this.getSyncQueueKey());
       if (saved) {
         this.queue = JSON.parse(saved);
-        // Filter out completed operations on load (they shouldn't be in the queue)
         const beforeCount = this.queue.length;
         this.queue = this.queue.filter(op => op.status !== 'completed');
-        const afterCount = this.queue.length;
-
-        // SECURITY: Also filter out operations that don't match the current tenant
         const tenantId = this.getCurrentTenantId();
         if (tenantId) {
           this.queue = this.queue.filter(op => !op.tenantId || op.tenantId === tenantId);
         }
-
         if (beforeCount !== this.queue.length) {
-          this.saveSyncQueue();
-        } else {
+          void this.saveSyncQueue();
         }
       }
     } catch (error) {
       console.error('[SyncManager] Failed to load sync queue:', error);
       this.queue = [];
+    }
+  }
+
+  /** Load queue from SQLite sync_queue table (Electron only). Migrates from localStorage on first run. */
+  private async loadSyncQueueFromSqlite(): Promise<void> {
+    const tenantId = this.getCurrentTenantId();
+    const tenantKey = tenantId ?? '';
+    const key = tenantId ? `sync_queue_${tenantId}` : 'sync_queue';
+
+    let rows = await sqliteQuery<{
+      id: string; tenant_id: string | null; type: string; entity: string; entity_id: string;
+      data: string | null; timestamp: number; source: string; status: string;
+      retries: number; error_message: string | null; sync_started_at: number | null;
+    }>(
+      "SELECT id, tenant_id, type, entity, entity_id, data, timestamp, source, status, retries, error_message, sync_started_at FROM sync_queue WHERE COALESCE(tenant_id, '') = ? ORDER BY timestamp ASC",
+      [tenantKey]
+    );
+
+    // One-time migration from localStorage if SQLite is empty
+    if (rows.length === 0 && typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          const legacy: SyncOperation[] = JSON.parse(saved);
+          const toMigrate = legacy.filter(op => op.status !== 'completed');
+          const tenantFiltered = tenantId ? toMigrate.filter(op => !op.tenantId || op.tenantId === tenantId) : toMigrate;
+          for (const op of tenantFiltered) {
+            await sqliteRun(
+              `INSERT INTO sync_queue (id, tenant_id, type, entity, entity_id, data, timestamp, source, status, retries, error_message, sync_started_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [op.id, op.tenantId ?? null, op.type, op.entity, op.entityId, op.data != null ? JSON.stringify(op.data) : null, op.timestamp, op.source ?? 'local', op.status, op.retries ?? 0, op.errorMessage ?? null, op.syncStartedAt ?? null]
+            );
+          }
+          if (tenantFiltered.length > 0) {
+            localStorage.removeItem(key);
+          }
+        } catch (_) { /* ignore migration errors */ }
+        rows = await sqliteQuery<{
+          id: string; tenant_id: string | null; type: string; entity: string; entity_id: string;
+          data: string | null; timestamp: number; source: string; status: string;
+          retries: number; error_message: string | null; sync_started_at: number | null;
+        }>(
+          "SELECT id, tenant_id, type, entity, entity_id, data, timestamp, source, status, retries, error_message, sync_started_at FROM sync_queue WHERE COALESCE(tenant_id, '') = ? ORDER BY timestamp ASC",
+          [tenantKey]
+        );
+      }
+    }
+
+    this.queue = rows
+      .filter(r => r.status !== 'completed')
+      .map(r => ({
+        id: r.id,
+        tenantId: r.tenant_id ?? undefined,
+        type: r.type as SyncOperation['type'],
+        entity: r.entity,
+        entityId: r.entity_id,
+        data: r.data ? JSON.parse(r.data) : null,
+        timestamp: r.timestamp,
+        source: 'local' as const,
+        status: r.status as SyncOperation['status'],
+        retries: r.retries ?? 0,
+        errorMessage: r.error_message ?? undefined,
+        syncStartedAt: r.sync_started_at ?? undefined,
+      }));
+    if (tenantId) {
+      this.queue = this.queue.filter(op => !op.tenantId || op.tenantId === tenantId);
     }
   }
 

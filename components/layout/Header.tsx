@@ -7,6 +7,7 @@ import { WhatsAppChatService, WhatsAppMessage, UnreadConversation, normalizePhon
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
+import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
 import { getWebSocketClient } from '../../services/websocketClient';
 import {
@@ -608,9 +609,11 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           <div className="flex items-center gap-2 sm:gap-4 justify-end flex-1">
 
             {/* Connection Status & Sync Status */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
               <ConnectionStatusIndicator showLabel={true} />
+              <div className="h-4 w-px bg-slate-200 mx-1"></div>
               <SyncStatusIndicator showDetails={false} />
+              <SyncProgressBar className={`ml-2 ${(typeof window !== 'undefined' && (window as any).electronAPI?.isElectron) ? 'flex' : 'hidden lg:flex'}`} />
             </div>
 
             <div className="relative" ref={notificationsRef}>
@@ -667,14 +670,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                                 )}
                               </div>
                               <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${item.badge.tone === 'blue'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : item.badge.tone === 'green'
-                                    ? 'bg-green-100 text-green-700'
-                                    : item.badge.tone === 'orange'
-                                      ? 'bg-orange-100 text-orange-700'
-                                      : item.badge.tone === 'red'
-                                        ? 'bg-rose-100 text-rose-700'
-                                        : 'bg-slate-100 text-slate-700'
+                                ? 'bg-blue-100 text-blue-700'
+                                : item.badge.tone === 'green'
+                                  ? 'bg-green-100 text-green-700'
+                                  : item.badge.tone === 'orange'
+                                    ? 'bg-orange-100 text-orange-700'
+                                    : item.badge.tone === 'red'
+                                      ? 'bg-rose-100 text-rose-700'
+                                      : 'bg-slate-100 text-slate-700'
                                 }`}>
                                 {item.badge.label}
                               </span>

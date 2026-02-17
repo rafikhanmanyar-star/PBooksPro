@@ -32,13 +32,13 @@ services:
       - key: PORT
         value: 3000
       - key: CORS_ORIGIN
-        value: https://www.pbookspro.com,https://www.app.pbookspro.com,https://app.pbookspro.com,https://admin.pbookspro.com,https://pbookspro-client.onrender.com,https://pbookspro-client-8sn6.onrender.com,https://pbookspro-admin.onrender.com,https://pbookspro-admin-8sn6.onrender.com,https://pbookspro-website.onrender.com,http://localhost:5173,http://localhost:5174
+        value: https://www.pbookspro.com,https://admin.pbookspro.com,https://pbookspro-admin.onrender.com,https://pbookspro-admin-8sn6.onrender.com,https://pbookspro-website.onrender.com,http://localhost:5173,http://localhost:5174,null
       - key: API_URL
         value: https://api.pbookspro.com
       - key: SERVER_URL
         value: https://api.pbookspro.com
       - key: CLIENT_URL
-        value: https://www.app.pbookspro.com
+        value: https://www.pbookspro.com
       # Payment Gateway Configuration (Paddle)
       # Add these in Render Dashboard → Environment tab
       # - key: PAYMENT_GATEWAY
@@ -56,21 +56,6 @@ services:
       # - key: PADDLE_ENVIRONMENT
       #   value: live
 
-  # Client Application (Static Site)
-  - type: web
-    name: pbookspro-client
-    runtime: static
-    branch: main
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_URL
-        value: https://api.pbookspro.com/api
-
   # Admin Application (Static Site)
   - type: web
     name: pbookspro-admin
@@ -82,13 +67,20 @@ services:
       - key: VITE_ADMIN_API_URL
         value: https://api.pbookspro.com/api/admin
 
-  # Website (Marketing/Landing Page)
+  # Website (Marketing/Landing Page + payment return pages for desktop app)
   - type: web
     name: pbookspro-website
     runtime: static
     branch: main
     buildCommand: echo "No build needed for static site"
     staticPublishPath: ./website/Website
+    routes:
+      - type: rewrite
+        source: /license/payment-success
+        destination: /license/payment-success.html
+      - type: rewrite
+        source: /license/payment-cancel
+        destination: /license/payment-cancel.html
 
   # Staging API Server - STAGING (deploys from staging branch only)
   - type: web
@@ -114,13 +106,13 @@ services:
       - key: PORT
         value: 3000
       - key: CORS_ORIGIN
-        value: https://pbookspro-client-staging.onrender.com,https://pbookspro-admin-staging.onrender.com,http://localhost:5173,http://localhost:5174
+        value: https://pbookspro-website-staging.onrender.com,https://pbookspro-admin-staging.onrender.com,http://localhost:5173,http://localhost:5174,null
       - key: API_URL
         value: https://pbookspro-api-staging.onrender.com
       - key: SERVER_URL
         value: https://pbookspro-api-staging.onrender.com
       - key: CLIENT_URL
-        value: https://pbookspro-client-staging.onrender.com
+        value: https://pbookspro-website-staging.onrender.com
       # Payment Gateway Configuration (Paddle - Sandbox for testing)
       # Add these in Render Dashboard → Environment tab
       # - key: PAYMENT_GATEWAY
@@ -138,21 +130,6 @@ services:
       # - key: PADDLE_ENVIRONMENT
       #   value: sandbox
 
-  # Staging Client Application
-  - type: web
-    name: pbookspro-client-staging
-    runtime: static
-    branch: staging
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_URL
-        value: https://pbookspro-api-staging.onrender.com/api
-
   # Staging Admin Application
   - type: web
     name: pbookspro-admin-staging
@@ -164,10 +141,17 @@ services:
       - key: VITE_ADMIN_API_URL
         value: https://pbookspro-api-staging.onrender.com/api/admin
 
-  # Staging Website (Marketing/Landing Page)
+  # Staging Website (Marketing/Landing Page + payment return pages for desktop app)
   - type: web
     name: pbookspro-website-staging
     runtime: static
     branch: staging
     buildCommand: echo "No build needed for static site"
     staticPublishPath: ./website/Website
+    routes:
+      - type: rewrite
+        source: /license/payment-success
+        destination: /license/payment-success.html
+      - type: rewrite
+        source: /license/payment-cancel
+        destination: /license/payment-cancel.html

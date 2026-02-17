@@ -43,7 +43,7 @@ router.get('/employees', async (req: TenantRequest, res) => {
               d.code as department_code
        FROM payroll_employees e
        LEFT JOIN payroll_departments d ON e.department_id = d.id
-       WHERE e.tenant_id = $1 
+       WHERE e.tenant_id = $1 AND e.deleted_at IS NULL
        ORDER BY e.name ASC`,
       [tenantId]
     );
@@ -72,7 +72,7 @@ router.get('/employees/:id', async (req: TenantRequest, res) => {
               d.description as department_description
        FROM payroll_employees e
        LEFT JOIN payroll_departments d ON e.department_id = d.id
-       WHERE e.id = $1 AND e.tenant_id = $2`,
+       WHERE e.id = $1 AND e.tenant_id = $2 AND e.deleted_at IS NULL`,
       [id, tenantId]
     );
 
@@ -125,27 +125,59 @@ router.post('/employees', async (req: TenantRequest, res) => {
       );
 
       if (lastEmployee.length > 0 && lastEmployee[0].employee_code) {
-        // Extract number from EID-XXXX format
-        const lastCode = lastEmployee[0].employee_code;
-        const match = lastCode.match(/EID-(\d+)/);
-        if (match) {
-          const nextNumber = parseInt(match[1]) + 1;
-          employeeCode = `EID-${nextNumber.toString().padStart(4, '0')}`;
-        }
+        // ...
       }
     } catch (error) {
       console.warn('Error generating employee code, using default:', error);
     }
 
+    const employeeId = req.body.id || `emp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const existing = await getDb().query(
+      'SELECT id, version FROM payroll_employees WHERE id = $1 AND tenant_id = $2',
+      [employeeId, tenantId]
+    );
+    const isUpdate = existing.length > 0;
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     const result = await getDb().query(
       `INSERT INTO payroll_employees 
-       (tenant_id, name, email, phone, address, designation, department, department_id, grade, 
-        joining_date, salary, projects, status, employee_code, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE', $13, $14)
+       (id, tenant_id, name, email, phone, address, designation, department, department_id, grade, 
+        joining_date, salary, projects, status, employee_code, created_by, version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'ACTIVE', $14, $15, 1)
+       ON CONFLICT (id) 
+       DO UPDATE SET
+         name = EXCLUDED.name,
+         email = EXCLUDED.email,
+         phone = EXCLUDED.phone,
+         address = EXCLUDED.address,
+         designation = EXCLUDED.designation,
+         department = EXCLUDED.department,
+         department_id = EXCLUDED.department_id,
+         grade = EXCLUDED.grade,
+         joining_date = EXCLUDED.joining_date,
+         salary = EXCLUDED.salary,
+         projects = EXCLUDED.projects,
+         status = EXCLUDED.status,
+         employee_code = EXCLUDED.employee_code,
+         updated_by = $15,
+         updated_at = NOW(),
+         version = COALESCE(payroll_employees.version, 1) + 1,
+         deleted_at = NULL
+       WHERE payroll_employees.tenant_id = $2 AND (payroll_employees.version = $16 OR payroll_employees.version IS NULL)
        RETURNING *`,
-      [tenantId, name, email, phone, address, designation, department, effectiveDepartmentId || null, grade,
+      [employeeId, tenantId, name, email, phone, address, designation, department, effectiveDepartmentId || null, grade,
         joining_date, JSON.stringify(salary || { basic: 0, allowances: [], deductions: [] }),
-        JSON.stringify(projects || []), employeeCode, userId]
+        JSON.stringify(projects || []), employeeCode, userId, serverVersion]
     );
 
     // Notify via WebSocket
@@ -186,8 +218,10 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
       }
     }
 
-    const result = await getDb().query(
-      `UPDATE payroll_employees SET
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let updateQuery = `
+      UPDATE payroll_employees SET
         name = COALESCE($1, name),
         email = COALESCE($2, email),
         phone = COALESCE($3, phone),
@@ -203,16 +237,27 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
         salary = COALESCE($13, salary),
         adjustments = COALESCE($14, adjustments),
         projects = COALESCE($15, projects),
-        updated_by = $16
-       WHERE id = $17 AND tenant_id = $18
-       RETURNING *`,
-      [name, email, phone, address, photo, designation, department, effectiveDepartmentId,
-        grade, joining_date, status, termination_date,
-        salary ? JSON.stringify(salary) : null,
-        adjustments ? JSON.stringify(adjustments) : null,
-        projects ? JSON.stringify(projects) : null,
-        userId, id, tenantId]
-    );
+        updated_by = $16,
+        updated_at = NOW(),
+        version = COALESCE(version, 1) + 1
+      WHERE id = $17 AND tenant_id = $18
+    `;
+    const queryParams: any[] = [
+      name, email, phone, address, photo, designation, department, effectiveDepartmentId,
+      grade, joining_date, status, termination_date,
+      salary ? JSON.stringify(salary) : null,
+      adjustments ? JSON.stringify(adjustments) : null,
+      projects ? JSON.stringify(projects) : null,
+      userId, id, tenantId
+    ];
+
+    if (clientVersion != null) {
+      updateQuery += ` AND version = $19`;
+      queryParams.push(clientVersion);
+    }
+
+    updateQuery += ` RETURNING *`;
+    const result = await getDb().query(updateQuery, queryParams);
 
     if (result.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
@@ -238,7 +283,7 @@ router.delete('/employees/:id', async (req: TenantRequest, res) => {
     }
 
     const result = await getDb().query(
-      `DELETE FROM payroll_employees WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      `UPDATE payroll_employees SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id`,
       [id, tenantId]
     );
 
@@ -269,7 +314,7 @@ router.get('/runs', async (req: TenantRequest, res) => {
 
     const runs = await getDb().query(
       `SELECT * FROM payroll_runs 
-       WHERE tenant_id = $1 
+       WHERE tenant_id = $1 AND deleted_at IS NULL
        ORDER BY year DESC, created_at DESC`,
       [tenantId]
     );
@@ -292,7 +337,7 @@ router.get('/runs/:id', async (req: TenantRequest, res) => {
     }
 
     const runs = await getDb().query(
-      `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
+      `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, tenantId]
     );
 
@@ -357,13 +402,44 @@ router.post('/runs', async (req: TenantRequest, res) => {
       [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0]]
     );
 
+    const runId = req.body.id || `run_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const existing = await getDb().query(
+      'SELECT id, version FROM payroll_runs WHERE id = $1 AND tenant_id = $2',
+      [runId, tenantId]
+    );
+    const isUpdate = existing.length > 0;
+
+    // Optimistic locking check
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     const result = await getDb().query(
       `INSERT INTO payroll_runs 
-       (tenant_id, month, year, period_start, period_end, status, employee_count, created_by)
-       VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, $7)
+       (id, tenant_id, month, year, period_start, period_end, status, employee_count, created_by, version)
+       VALUES ($1, $2, $3, $4, $5, $6, 'DRAFT', $7, $8, 1)
+       ON CONFLICT (id) 
+       DO UPDATE SET
+         month = EXCLUDED.month,
+         year = EXCLUDED.year,
+         period_start = EXCLUDED.period_start,
+         period_end = EXCLUDED.period_end,
+         status = EXCLUDED.status,
+         employee_count = EXCLUDED.employee_count,
+         updated_by = $8,
+         updated_at = NOW(),
+         version = COALESCE(payroll_runs.version, 1) + 1,
+         deleted_at = NULL
+       WHERE payroll_runs.tenant_id = $2 AND (payroll_runs.version = $9 OR payroll_runs.version IS NULL)
        RETURNING *`,
-      [tenantId, month, year, periodStart.toISOString().split('T')[0],
-        periodEnd.toISOString().split('T')[0], empCount[0]?.count || 0, userId]
+      [runId, tenantId, month, year, periodStart.toISOString().split('T')[0],
+        periodEnd.toISOString().split('T')[0], empCount[0]?.count || 0, userId, serverVersion]
     );
 
     emitToTenant(tenantId, 'payroll_run_created', { id: result[0].id });
@@ -552,13 +628,25 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       params.push(total_amount);
     }
 
-    const result = await getDb().query(
-      `UPDATE payroll_runs SET
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let updateQuery = `
+      UPDATE payroll_runs SET
         status = $1,
-        updated_by = $2
+        updated_by = $2,
+        updated_at = NOW(),
+        version = COALESCE(version, 1) + 1
         ${additionalFields}
-       WHERE id = $3 AND tenant_id = $4
-       RETURNING *`,
+      WHERE id = $3 AND tenant_id = $4
+    `;
+
+    if (clientVersion != null) {
+      updateQuery = updateQuery.replace('WHERE id = $3', `WHERE id = $3 AND version = $${params.length + 1}`);
+      params.push(clientVersion);
+    }
+
+    const result = await getDb().query(
+      updateQuery.replace('WHERE id = $3', 'WHERE id = $3'), // redundant but safe
       params
     );
 
@@ -572,6 +660,35 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error updating payroll run:', error);
     res.status(500).json({ error: 'Failed to update payroll run' });
+  }
+});
+
+// DELETE /payroll/runs/:id - Soft delete payroll run
+router.delete('/runs/:id', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Authentication required' });
+    }
+
+    const result = await getDb().query(
+      `UPDATE payroll_runs SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 
+       WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      [id, tenantId]
+    );
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Payroll run not found' });
+    }
+
+    emitToTenant(tenantId, 'payroll_run_updated', { id, deleted: true });
+
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('Error deleting payroll run:', error);
+    res.status(500).json({ error: 'Failed to delete payroll run' });
   }
 });
 

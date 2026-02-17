@@ -12,7 +12,7 @@ router.get('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const { status, projectId, categoryId } = req.query;
 
-    let query = 'SELECT * FROM bills WHERE tenant_id = $1';
+    let query = 'SELECT * FROM bills WHERE tenant_id = $1 AND deleted_at IS NULL';
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
@@ -44,7 +44,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const bills = await db.query(
-      'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
       [req.params.id, req.tenantId]
     );
 
@@ -93,7 +93,7 @@ router.post('/', async (req: TenantRequest, res) => {
 
     // Check if bill exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id, status FROM bills WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, status, bill_number, version FROM bills WHERE id = $1 AND tenant_id = $2',
       [billId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
@@ -104,6 +104,17 @@ router.post('/', async (req: TenantRequest, res) => {
         error: 'Immutable record',
         message: 'Cannot modify a paid bill. Posted financial records are immutable.',
         code: 'BILL_PAID_IMMUTABLE',
+      });
+    }
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
       });
     }
 
@@ -128,9 +139,9 @@ router.post('/', async (req: TenantRequest, res) => {
         id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status,
         issue_date, due_date, description, category_id, project_id, building_id,
         property_id, project_agreement_id, contract_id, staff_id, expense_bearer_type,
-        expense_category_items, document_path, document_id, user_id, created_at, updated_at
+        expense_category_items, document_path, document_id, user_id, created_at, updated_at, version
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
-                COALESCE((SELECT created_at FROM bills WHERE id = $1), NOW()), NOW())
+                COALESCE((SELECT created_at FROM bills WHERE id = $1), NOW()), NOW(), 1)
       ON CONFLICT (id) 
       DO UPDATE SET
         bill_number = EXCLUDED.bill_number,
@@ -154,7 +165,10 @@ router.post('/', async (req: TenantRequest, res) => {
         document_path = EXCLUDED.document_path,
         document_id = EXCLUDED.document_id,
         user_id = EXCLUDED.user_id,
-        updated_at = NOW()
+        updated_at = NOW(),
+        version = COALESCE(bills.version, 1) + 1,
+        deleted_at = NULL
+      WHERE bills.tenant_id = $2 AND (bills.version = $24 OR bills.version IS NULL)
       RETURNING *`,
       [
         billId,
@@ -179,7 +193,8 @@ router.post('/', async (req: TenantRequest, res) => {
         bill.expenseCategoryItems ? JSON.stringify(bill.expenseCategoryItems) : null,
         bill.documentPath || null,
         bill.documentId || null,
-        req.user?.userId || null
+        req.user?.userId || null,
+        serverVersion
       ]
     );
     const saved = result[0];
@@ -227,7 +242,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
 
     // Immutability: reject updates to paid bills
     const current = await db.query(
-      'SELECT status FROM bills WHERE id = $1 AND tenant_id = $2',
+      'SELECT status, version FROM bills WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenantId]
     );
     if (current.length > 0 && current[0].status === 'Paid') {
@@ -238,41 +253,52 @@ router.put('/:id', async (req: TenantRequest, res) => {
       });
     }
 
-    const result = await db.query(
-      `UPDATE bills 
-       SET bill_number = $1, contact_id = $2, vendor_id = $3, amount = $4, paid_amount = $5, 
-           status = $6, issue_date = $7, due_date = $8, description = $9, 
-           category_id = $10, project_id = $11, building_id = $12, property_id = $13,
-           project_agreement_id = $14, contract_id = $15, staff_id = $16, expense_bearer_type = $17,
-           expense_category_items = $18, document_path = $19, document_id = $20, user_id = $21, updated_at = NOW()
-       WHERE id = $22 AND tenant_id = $23
-       RETURNING *`,
-      [
-        bill.billNumber,
-        bill.contactId || null,
-        bill.vendorId || null,
-        bill.amount,
-        bill.paidAmount || 0,
-        bill.status || 'Unpaid',
-        bill.issueDate,
-        bill.dueDate || null,
-        bill.description || null,
-        bill.categoryId || null,
-        bill.projectId || null,
-        bill.buildingId || null,
-        bill.propertyId || null,
-        bill.projectAgreementId || null,
-        bill.contractId || null,
-        bill.staffId || null,
-        bill.expenseBearerType || null,
-        bill.expenseCategoryItems ? JSON.stringify(bill.expenseCategoryItems) : null,
-        bill.documentPath || null,
-        bill.documentId || null,
-        req.user?.userId || null,
-        req.params.id,
-        req.tenantId
-      ]
-    );
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let putQuery = `
+      UPDATE bills 
+      SET bill_number = $1, contact_id = $2, vendor_id = $3, amount = $4, paid_amount = $5, 
+          status = $6, issue_date = $7, due_date = $8, description = $9, 
+          category_id = $10, project_id = $11, building_id = $12, property_id = $13,
+          project_agreement_id = $14, contract_id = $15, staff_id = $16, expense_bearer_type = $17,
+          expense_category_items = $18, document_path = $19, document_id = $20, user_id = $21, updated_at = NOW(),
+          version = COALESCE(version, 1) + 1
+      WHERE id = $22 AND tenant_id = $23
+    `;
+    const putParams: any[] = [
+      bill.billNumber,
+      bill.contactId || null,
+      bill.vendorId || null,
+      bill.amount,
+      bill.paidAmount || 0,
+      bill.status || 'Unpaid',
+      bill.issueDate,
+      bill.dueDate || null,
+      bill.description || null,
+      bill.categoryId || null,
+      bill.projectId || null,
+      bill.buildingId || null,
+      bill.propertyId || null,
+      bill.projectAgreementId || null,
+      bill.contractId || null,
+      bill.staffId || null,
+      bill.expenseBearerType || null,
+      bill.expenseCategoryItems ? JSON.stringify(bill.expenseCategoryItems) : null,
+      bill.documentPath || null,
+      bill.documentId || null,
+      req.user?.userId || null,
+      req.params.id,
+      req.tenantId
+    ];
+
+    if (clientVersion != null) {
+      putQuery += ` AND version = $24`;
+      putParams.push(clientVersion);
+    }
+
+    putQuery += ` RETURNING *`;
+
+    const result = await db.query(putQuery, putParams);
 
     if (result.length === 0) {
       return res.status(404).json({ error: 'Bill not found' });
@@ -397,7 +423,8 @@ router.post('/:id/pay', async (req: TenantRequest, res) => {
       // Update bill (row is already locked via FOR UPDATE NOWAIT)
       const updatedBillResult = await client.query(
         `UPDATE bills 
-         SET paid_amount = $1, status = $2, updated_at = NOW() 
+         SET paid_amount = $1, status = $2, updated_at = NOW(), 
+             version = COALESCE(version, 1) + 1 
          WHERE id = $3 AND tenant_id = $4
          RETURNING *`,
         [totalPaid, newStatus, billId, req.tenantId]
@@ -490,7 +517,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     }
 
     const result = await db.query(
-      'DELETE FROM bills WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE bills SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
 

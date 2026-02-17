@@ -22,7 +22,7 @@ router.get('/', async (req: TenantRequest, res) => {
     }
 
     const accounts = await db.query(
-      'SELECT * FROM accounts WHERE tenant_id = $1 OR tenant_id IS NULL ORDER BY name',
+      'SELECT * FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND deleted_at IS NULL ORDER BY name',
       [req.tenantId]
     );
 
@@ -80,11 +80,24 @@ router.post('/', async (req: TenantRequest, res) => {
         // Update existing account
         console.log('🔄 POST /accounts - Updating existing account:', accountId);
         isUpdate = true;
+        // Optimistic locking check for POST update
+        const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+        const serverVersion = existing.rows[0].version;
+        if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+          throw {
+            code: 'VERSION_CONFLICT',
+            message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+            status: 409
+          };
+        }
+
         const updateResult = await client.query(
           `UPDATE accounts 
            SET name = $1, type = $2, balance = $3, description = $4, 
-               parent_account_id = $5, user_id = $6, updated_at = NOW()
-           WHERE id = $7 AND tenant_id = $8
+               parent_account_id = $5, user_id = $6, updated_at = NOW(),
+               version = COALESCE(version, 1) + 1,
+               deleted_at = NULL
+           WHERE id = $7 AND tenant_id = $8 AND (version = $9 OR version IS NULL)
            RETURNING *`,
           [
             account.name,
@@ -94,7 +107,8 @@ router.post('/', async (req: TenantRequest, res) => {
             account.parentAccountId || null,
             req.user?.userId || null,
             accountId,
-            req.tenantId
+            req.tenantId,
+            serverVersion
           ]
         );
         return updateResult.rows[0];
@@ -103,8 +117,9 @@ router.post('/', async (req: TenantRequest, res) => {
         console.log('➕ POST /accounts - Creating new account:', accountId);
         const insertResult = await client.query(
           `INSERT INTO accounts (
-            id, tenant_id, name, type, balance, description, parent_account_id, user_id, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+            id, tenant_id, name, type, balance, description, parent_account_id, user_id, 
+            created_at, updated_at, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), 1)
           RETURNING *`,
           [
             accountId,
@@ -182,22 +197,34 @@ router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const account = req.body;
-    const result = await db.query(
-      `UPDATE accounts 
-       SET name = $1, type = $2, balance = $3, description = $4, 
-           parent_account_id = $5, updated_at = NOW()
-       WHERE id = $6 AND tenant_id = $7
-       RETURNING *`,
-      [
-        account.name,
-        account.type,
-        account.balance,
-        account.description,
-        account.parentAccountId,
-        req.params.id,
-        req.tenantId
-      ]
-    );
+    // For simple PUT, we still want optimistic locking if version is provided
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let updateQuery = `
+      UPDATE accounts 
+      SET name = $1, type = $2, balance = $3, description = $4, 
+          parent_account_id = $5, updated_at = NOW(),
+          version = COALESCE(version, 1) + 1
+      WHERE id = $6 AND tenant_id = $7
+    `;
+    const queryParams: any[] = [
+      account.name,
+      account.type,
+      account.balance,
+      account.description,
+      account.parentAccountId,
+      req.params.id,
+      req.tenantId
+    ];
+
+    if (clientVersion != null) {
+      updateQuery += ` AND version = $8`;
+      queryParams.push(clientVersion);
+    }
+
+    updateQuery += ` RETURNING *`;
+
+    const result = await db.query(updateQuery, queryParams);
 
     if (result.length === 0) {
       return res.status(404).json({ error: 'Account not found' });
@@ -234,7 +261,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const result = await db.query(
-      'DELETE FROM accounts WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE accounts SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
 

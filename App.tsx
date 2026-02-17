@@ -584,9 +584,9 @@ const App: React.FC = () => {
   }
 
   // --- CLOUD AUTHENTICATION CHECK ---
-  // If using cloud authentication, check AuthContext first
-  // Otherwise fall back to local user check for backward compatibility
-  if (!isAuthenticated && !currentUser) {
+  // AuthContext is source of truth: when not authenticated, show login immediately.
+  // Don't wait for AppContext to clear currentUser (avoids blank screen after logout).
+  if (!isAuthenticated) {
     return <CloudLoginPage />;
   }
 

@@ -14,18 +14,47 @@ export async function runRentalTenantIdToContactIdMigration(): Promise<{ success
   const dbService = getDatabaseService();
   
   try {
-    // Ensure database is initialized
     if (!dbService.isReady()) {
       await dbService.initialize();
     }
     
     const db = dbService.getDatabase();
+    if (typeof (db as any).serialize !== 'function') {
+      return migrateWithServiceApi(dbService);
+    }
     return await migrateRentalTenantIdToContactId(db);
   } catch (error) {
     return {
       success: false,
       message: `Migration failed: ${error instanceof Error ? error.message : String(error)}`
     };
+  }
+}
+
+function migrateWithServiceApi(dbService: any): { success: boolean; message: string } {
+  const tableExists = dbService.query("SELECT name FROM sqlite_master WHERE type='table' AND name='rental_agreements'");
+  if (tableExists.length === 0) {
+    return { success: true, message: 'Table rental_agreements does not exist, nothing to migrate' };
+  }
+  const columns = dbService.query('PRAGMA table_info(rental_agreements)');
+  const hasContactId = columns.some((c: any) => c.name === 'contact_id');
+  const hasTenantId = columns.some((c: any) => c.name === 'tenant_id');
+  if (hasContactId && !hasTenantId) {
+    return { success: true, message: 'Migration already completed' };
+  }
+  if (hasContactId && hasTenantId) {
+    return { success: true, message: 'Both columns exist (current schema)' };
+  }
+  try {
+    dbService.transaction([
+      () => {
+        if (!hasContactId) dbService.execute('ALTER TABLE rental_agreements ADD COLUMN contact_id TEXT');
+        if (hasTenantId) dbService.execute('UPDATE rental_agreements SET contact_id = tenant_id WHERE tenant_id IS NOT NULL');
+      }
+    ]);
+    return { success: true, message: 'Successfully migrated tenant_id to contact_id in rental_agreements table' };
+  } catch (e) {
+    return { success: false, message: String(e) };
   }
 }
 

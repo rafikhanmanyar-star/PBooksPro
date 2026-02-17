@@ -192,7 +192,7 @@ async function fetchTable(
 ): Promise<Record<string, unknown>[]> {
   try {
     const rows = await db.query(
-      `SELECT * FROM ${table} WHERE ${tenantColumn} = $1`,
+      `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 AND deleted_at IS NULL`,
       [tenantId]
     );
     return (rows as any[]).map((row) => rowToCamel(row));
@@ -293,14 +293,14 @@ router.get('/bulk-chunked', async (req: TenantRequest, res) => {
       try {
         // Get total count for this entity
         const countResult = await db.query(
-          `SELECT COUNT(*) as count FROM ${table} WHERE ${tenantColumn} = $1`,
+          `SELECT COUNT(*) as count FROM ${table} WHERE ${tenantColumn} = $1 AND deleted_at IS NULL`,
           [tenantId]
         );
         const total = parseInt((countResult as any[])[0]?.count || '0');
 
         // Get paginated rows
         const rows = await db.query(
-          `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 ORDER BY id LIMIT $2 OFFSET $3`,
+          `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 AND deleted_at IS NULL ORDER BY id LIMIT $2 OFFSET $3`,
           [tenantId, limit, offset]
         );
 

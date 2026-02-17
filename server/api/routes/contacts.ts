@@ -11,7 +11,7 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const contacts = await db.query(
-      'SELECT * FROM contacts WHERE tenant_id = $1 ORDER BY name',
+      'SELECT * FROM contacts WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name',
       [req.tenantId]
     );
     res.json(contacts);
@@ -60,7 +60,7 @@ router.post('/', async (req: TenantRequest, res) => {
     // Check for duplicate contact name (case-insensitive, trimmed), excluding current ID
     const trimmedName = contact.name.trim();
     const existingContactByName = await db.query(
-      'SELECT id, name, type FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND id != $3',
+      'SELECT id, name, type, version FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND id != $3 AND deleted_at IS NULL',
       [req.tenantId, trimmedName, contactId]
     );
 
@@ -76,32 +76,45 @@ router.post('/', async (req: TenantRequest, res) => {
       });
     }
 
-    // Check if contact with this ID already exists and belongs to a different tenant
-    if (contact.id) {
-      const existingContact = await db.query(
-        'SELECT tenant_id FROM contacts WHERE id = $1',
-        [contactId]
-      );
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
 
-      if (existingContact.length > 0 && existingContact[0].tenant_id !== req.tenantId) {
-        console.error('❌ POST /contacts - Contact ID exists but belongs to different tenant:', {
-          contactId,
-          existingTenantId: existingContact[0].tenant_id,
-          currentTenantId: req.tenantId
-        });
-        return res.status(403).json({
-          error: 'Forbidden',
-          message: 'A contact with this ID already exists in another organization'
-        });
-      }
+    // Check if contact exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id, tenant_id, version FROM contacts WHERE id = $1',
+      [contactId]
+    );
+
+    const isUpdate = existing.length > 0;
+    const serverVersion = isUpdate ? existing[0].version : null;
+
+    if (isUpdate && existing[0].tenant_id !== req.tenantId) {
+      console.error('❌ POST /contacts - Contact ID exists but belongs to different tenant:', {
+        contactId,
+        existingTenantId: existing[0].tenant_id,
+        currentTenantId: req.tenantId
+      });
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'A contact with this ID already exists in another organization'
+      });
+    }
+
+    // Optimistic locking check for POST update
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
     }
 
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     // This prevents unique constraint violations when multiple requests come in simultaneously
     const result = await db.query(
       `INSERT INTO contacts (
-        id, tenant_id, name, type, description, contact_no, company_name, address, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        id, tenant_id, name, type, description, contact_no, company_name, address, user_id, 
+        created_at, updated_at, version
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), 1)
       ON CONFLICT (id) 
       DO UPDATE SET
         name = EXCLUDED.name,
@@ -111,8 +124,10 @@ router.post('/', async (req: TenantRequest, res) => {
         company_name = EXCLUDED.company_name,
         address = EXCLUDED.address,
         user_id = EXCLUDED.user_id,
-        updated_at = NOW()
-      WHERE contacts.tenant_id = $2
+        updated_at = NOW(),
+        version = COALESCE(contacts.version, 1) + 1,
+        deleted_at = NULL
+      WHERE contacts.tenant_id = $2 AND (contacts.version = $10 OR contacts.version IS NULL)
       RETURNING *`,
       [
         contactId,
@@ -123,7 +138,8 @@ router.post('/', async (req: TenantRequest, res) => {
         contact.contactNo || null,
         contact.companyName || null,
         contact.address || null,
-        req.user?.userId || null
+        req.user?.userId || null,
+        serverVersion
       ]
     );
 
@@ -142,13 +158,13 @@ router.post('/', async (req: TenantRequest, res) => {
         const savedContact = existingContact[0];
 
         // Emit WebSocket event
-        emitToTenant(req.tenantId!, WS_EVENTS.CONTACT_CREATED, {
+        emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.CONTACT_UPDATED : WS_EVENTS.CONTACT_CREATED, {
           contact: savedContact,
           userId: req.user?.userId,
           username: req.user?.username,
         });
 
-        return res.status(200).json(savedContact);
+        return res.status(isUpdate ? 200 : 201).json(savedContact);
       }
 
       console.error('❌ POST /contacts - Query returned no result and contact not found');
@@ -165,13 +181,13 @@ router.post('/', async (req: TenantRequest, res) => {
     });
 
     // Emit WebSocket event for real-time sync
-    emitToTenant(req.tenantId!, WS_EVENTS.CONTACT_CREATED, {
+    emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.CONTACT_UPDATED : WS_EVENTS.CONTACT_CREATED, {
       contact: savedContact,
       userId: req.user?.userId,
       username: req.user?.username,
     });
 
-    res.status(201).json(savedContact);
+    res.status(isUpdate ? 200 : 201).json(savedContact);
   } catch (error: any) {
     console.error('❌ POST /contacts - Error creating contact:', {
       error: error,
@@ -252,24 +268,35 @@ router.put('/:id', async (req: TenantRequest, res) => {
       });
     }
 
-    const result = await db.query(
-      `UPDATE contacts 
-       SET name = $1, type = $2, description = $3, contact_no = $4, 
-           company_name = $5, address = $6, user_id = $7, updated_at = NOW()
-       WHERE id = $8 AND tenant_id = $9
-       RETURNING *`,
-      [
-        contact.name,
-        contact.type,
-        contact.description || null,
-        contact.contactNo || null,
-        contact.companyName || null,
-        contact.address || null,
-        req.user?.userId || null,
-        req.params.id,
-        req.tenantId
-      ]
-    );
+    // Optimistic locking
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    let putQuery = `
+      UPDATE contacts 
+      SET name = $1, type = $2, description = $3, contact_no = $4, 
+          company_name = $5, address = $6, user_id = $7, updated_at = NOW(),
+          version = COALESCE(version, 1) + 1
+      WHERE id = $8 AND tenant_id = $9
+    `;
+    const putParams: any[] = [
+      contact.name,
+      contact.type,
+      contact.description || null,
+      contact.contactNo || null,
+      contact.companyName || null,
+      contact.address || null,
+      req.user?.userId || null,
+      req.params.id,
+      req.tenantId
+    ];
+
+    if (clientVersion != null) {
+      putQuery += ` AND version = $10`;
+      putParams.push(clientVersion);
+    }
+
+    putQuery += ` RETURNING *`;
+
+    const result = await db.query(putQuery, putParams);
 
     if (result.length === 0) {
       console.error('❌ PUT /contacts/:id - Contact not found:', req.params.id);
@@ -313,7 +340,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const result = await db.query(
-      'DELETE FROM contacts WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE contacts SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
 

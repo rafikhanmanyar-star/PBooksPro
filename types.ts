@@ -914,6 +914,7 @@ export type AppAction =
   | { type: 'SET_INITIAL_TABS'; payload: string[] }
   | { type: 'CLEAR_INITIAL_TABS' }
   | { type: 'SET_UPDATE_AVAILABLE'; payload: boolean }
+  | { type: 'BATCH_UPSERT_ENTITIES'; payload: Record<string, any[]> }
 
 
 // ==================== TASK MANAGEMENT TYPES ====================

@@ -186,7 +186,7 @@ class BidirectionalSyncService {
       if (item.entity_id && String(item.entity_id).startsWith('sys-')) {
         outbox.markSynced(item.id);
         pushed++;
-        syncManager.removeByEntity(item.entity_type, item.entity_id);
+        await syncManager.removeByEntity(item.entity_type, item.entity_id);
         continue;
       }
 
@@ -213,7 +213,7 @@ class BidirectionalSyncService {
         }
         outbox.markSynced(item.id);
         pushed++;
-        syncManager.removeByEntity(item.entity_type, item.entity_id);
+        await syncManager.removeByEntity(item.entity_type, item.entity_id);
       } catch (error: unknown) {
         const err = error as { status?: number; code?: string; message?: string; error?: string };
         const msg = error instanceof Error ? error.message : String(err?.message || err?.error || error);
@@ -227,7 +227,7 @@ class BidirectionalSyncService {
             logger.logCategory('sync', `⏭️ PAYMENT_OVERPAYMENT for ${item.entity_type}:${item.entity_id} - already paid on server, marking synced`);
             outbox.markSynced(item.id);
             pushed++;
-            syncManager.removeByEntity(item.entity_type, item.entity_id);
+            await syncManager.removeByEntity(item.entity_type, item.entity_id);
             continue;
           }
         }
@@ -239,7 +239,7 @@ class BidirectionalSyncService {
             logger.logCategory('sync', `⏭️ Server already has ${item.entity_type}:${item.entity_id}, marking synced`);
             outbox.markSynced(item.id);
             pushed++;
-            syncManager.removeByEntity(item.entity_type, item.entity_id);
+            await syncManager.removeByEntity(item.entity_type, item.entity_id);
             continue;
           }
           logger.warnCategory('sync', `Version conflict for ${item.entity_type}:${item.entity_id}. Logging conflict.`);
@@ -337,6 +337,12 @@ class BidirectionalSyncService {
     }
 
     const entities = response?.entities ?? {};
+    const entityCounts = Object.fromEntries(
+      Object.entries(entities)
+        .filter(([, v]) => Array.isArray(v))
+        .map(([k, v]) => [k, (v as unknown[]).length])
+    );
+    logger.logCategory('sync', '[CloudSync] Downstream received entities:', JSON.stringify(entityCounts));
     const entries: { entityKey: string; remote: Record<string, unknown> }[] = [];
     let applied = 0;
     let skipped = 0;
@@ -358,6 +364,9 @@ class BidirectionalSyncService {
     skipped += skippedTenant;
 
 
+    const syncManager = getSyncManager();
+    syncManager.setPullProgress(0, entries.length);
+
     const chunkSize = BidirectionalSyncService.DOWNSTREAM_CHUNK_SIZE;
 
     BaseRepository.disableSyncQueueing();
@@ -367,6 +376,8 @@ class BidirectionalSyncService {
 
       for (let i = 0; i < entries.length; i += chunkSize) {
         const chunk = entries.slice(i, i + chunkSize);
+        const chunkEntities: Record<string, any[]> = {};
+
         for (const { entityKey, remote } of chunk) {
           const id = remote.id as string;
           if (!id) continue;
@@ -417,11 +428,26 @@ class BidirectionalSyncService {
             const toApply = resolution.merged ?? remote;
             appStateRepo.upsertEntity(entityKey, toApply as Record<string, unknown>);
             applied++;
+
+            // Collect for real-time UI update
+            if (!chunkEntities[entityKey]) chunkEntities[entityKey] = [];
+            chunkEntities[entityKey].push(toApply);
           } catch (err) {
             logger.warnCategory('sync', `Downstream apply ${entityKey}/${id}:`, err);
             skipped++;
           }
         }
+
+        // Update progress
+        syncManager.setPullProgress(i + chunk.length, entries.length);
+
+        // Real-time UI update: dispatch applied entities for this chunk
+        if (typeof window !== 'undefined' && Object.keys(chunkEntities).length > 0) {
+          window.dispatchEvent(new CustomEvent('sync:chunk-applied', {
+            detail: { entities: chunkEntities, progress: (i + chunk.length) / entries.length }
+          }));
+        }
+
         if (i + chunkSize < entries.length) {
           await this.yieldToMain();
         }
@@ -432,6 +458,8 @@ class BidirectionalSyncService {
 
     metadata.setLastPullAt(tenantId, new Date().toISOString());
     logger.logCategory('sync', `Downstream: ${applied} applied, ${skipped} skipped, ${conflicts} conflicts logged`);
+
+    syncManager.clearPullProgress();
 
     // Notify AppContext to reload state from local DB when we applied new records
     // (Bidirectional sync writes to DB but does not update React state; UI stays empty otherwise)

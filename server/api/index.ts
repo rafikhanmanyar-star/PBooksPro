@@ -195,8 +195,10 @@ console.log('🌐 CORS Origins:', corsOrigins);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl)
+    // Allow requests with no origin (like mobile apps, curl, or Electron file://)
     if (!origin) return callback(null, true);
+    // Electron desktop app loads from file:// and sends origin "null"
+    if (origin === 'null') return callback(null, true);
 
     // Check if origin is allowed
     const isAllowed = corsOrigins.includes('*') ||

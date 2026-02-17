@@ -33,18 +33,18 @@ router.get('/', async (req: TenantRequest, res) => {
     const currentUserId = req.user?.userId;
     const currentUsername = req.user?.username;
     let currentUserName: string | null = null;
-    
+
     console.log('[PLAN API] GET /installment-plans request:', {
       tenantId: req.tenantId,
       currentUserId,
       currentUsername,
       userRole: req.userRole
     });
-    
+
     // Privacy Logic: 
     // 1. Admins see everything
     // 2. Others see only plans they created, requested approval for, or are assigned to approve
-    let query = 'SELECT * FROM installment_plans WHERE tenant_id = $1';
+    let query = 'SELECT * FROM installment_plans WHERE tenant_id = $1 AND deleted_at IS NULL';
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
@@ -96,17 +96,17 @@ router.get('/', async (req: TenantRequest, res) => {
     });
 
     const plans = await db.query(query, params);
-    
+
     console.log('[PLAN API] Query results:', {
       totalPlans: plans.length,
       pendingApprovalPlans: plans.filter((p: any) => p.status === 'Pending Approval').length,
-      plansForCurrentUser: plans.filter((p: any) => 
-        p.approval_requested_to === currentUserId || 
+      plansForCurrentUser: plans.filter((p: any) =>
+        p.approval_requested_to === currentUserId ||
         p.approval_requested_to === currentUsername ||
         p.approval_requested_to === currentUserName
       ).length
     });
-    
+
     // Map snake_case to camelCase
     const mapped = plans.map((p: any) => ({
       id: p.id,
@@ -171,7 +171,7 @@ router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const plan = req.body;
-    
+
     console.log('📥 POST /installment-plans - Request received:', {
       tenantId: req.tenantId,
       userId: req.user?.userId,
@@ -180,64 +180,64 @@ router.post('/', async (req: TenantRequest, res) => {
       leadId: plan.leadId,
       unitId: plan.unitId
     });
-    
+
     if (!plan.projectId || !plan.leadId || !plan.unitId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Project ID, Lead ID, and Unit ID are required'
       });
     }
-    
+
     // Validate required numeric fields
     if (plan.durationYears === undefined || plan.durationYears === null) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Duration years is required'
       });
     }
     if (plan.downPaymentPercentage === undefined || plan.downPaymentPercentage === null) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Down payment percentage is required'
       });
     }
     if (!plan.frequency) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Frequency is required'
       });
     }
     if (plan.listPrice === undefined || plan.listPrice === null) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'List price is required'
       });
     }
     if (plan.netValue === undefined || plan.netValue === null) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Net value is required'
       });
     }
     if (plan.downPaymentAmount === undefined || plan.downPaymentAmount === null) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Down payment amount is required'
       });
     }
     if (plan.installmentAmount === undefined || plan.installmentAmount === null) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Installment amount is required'
       });
     }
     if (plan.totalInstallments === undefined || plan.totalInstallments === null) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Total installments is required'
       });
     }
-    
+
     const planId = plan.id || `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const approvalRequestedById =
       plan.approvalRequestedById ||
@@ -257,13 +257,24 @@ router.post('/', async (req: TenantRequest, res) => {
         console.warn('Failed to normalize approval_requested_to value', approverError);
       }
     }
-    
+
     const existing = await db.query(
-      'SELECT id FROM installment_plans WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, version FROM installment_plans WHERE id = $1 AND tenant_id = $2',
       [planId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
-    
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     // Prepare JSONB fields
     let discountsJson = '[]';
     if (plan.discounts) {
@@ -278,7 +289,7 @@ router.post('/', async (req: TenantRequest, res) => {
         discountsJson = JSON.stringify(plan.discounts);
       }
     }
-    
+
     let selectedAmenitiesJson = '[]';
     if (plan.selectedAmenities) {
       if (typeof plan.selectedAmenities === 'string') {
@@ -292,7 +303,7 @@ router.post('/', async (req: TenantRequest, res) => {
         selectedAmenitiesJson = JSON.stringify(plan.selectedAmenities);
       }
     }
-    
+
     const availableColumns = await getInstallmentPlanColumns(db);
     const requiredColumns = [
       'id',
@@ -357,6 +368,8 @@ router.post('/', async (req: TenantRequest, res) => {
       { name: 'user_id', value: req.user?.userId || null, update: true },
       { name: 'created_at', raw: 'NOW()' },
       { name: 'updated_at', raw: 'NOW()' },
+      { name: 'version', raw: isUpdate ? `COALESCE(version, 1) + 1` : '1', update: true },
+      { name: 'deleted_at', raw: 'NULL', update: true },
     ];
 
     const optionalColumns = [
@@ -419,26 +432,27 @@ router.post('/', async (req: TenantRequest, res) => {
       updateSql.push('updated_at = NOW()');
     }
 
+    const conflictClause = `ON CONFLICT (id) DO UPDATE SET ${updateSql.join(', ')} WHERE installment_plans.tenant_id = $${params.length + 1} AND (installment_plans.version = $${params.length + 2} OR installment_plans.version IS NULL)`;
+
     const result = await db.query(
       `INSERT INTO installment_plans (${columnsSql.join(', ')})
        VALUES (${valuesSql.join(', ')})
-       ON CONFLICT (id)
-       DO UPDATE SET ${updateSql.join(', ')}
+       ${conflictClause}
        RETURNING *`,
-      params
+      [...params, req.tenantId, serverVersion]
     );
-    
+
     if (!result || result.length === 0) {
       console.error('❌ POST /installment-plans - No result returned from query');
       return res.status(500).json({ error: 'Failed to save installment plan', message: 'No data returned from database' });
     }
-    
+
     console.log('✅ POST /installment-plans - Plan saved successfully:', {
       id: result[0].id,
       projectId: result[0].project_id,
       tenantId: req.tenantId
     });
-    
+
     const saved = result[0];
     const mapped = {
       ...plan,
@@ -469,13 +483,13 @@ router.post('/', async (req: TenantRequest, res) => {
       createdAt: saved.created_at,
       updatedAt: saved.updated_at
     };
-    
+
     emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.INSTALLMENT_PLAN_UPDATED : WS_EVENTS.INSTALLMENT_PLAN_CREATED, {
       plan: mapped,
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    
+
     res.status(isUpdate ? 200 : 201).json(mapped);
   } catch (error: any) {
     console.error('Error saving installment plan:', error);
@@ -487,7 +501,7 @@ router.post('/', async (req: TenantRequest, res) => {
       table: error.table,
       column: error.column
     });
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to save installment plan',
       message: error.message || 'Unknown error',
       detail: error.detail || undefined
@@ -500,14 +514,14 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const result = await db.query(
-      'DELETE FROM installment_plans WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE installment_plans SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Installment plan not found' });
     }
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.INSTALLMENT_PLAN_DELETED, {
       planId: req.params.id,
       userId: req.user?.userId,

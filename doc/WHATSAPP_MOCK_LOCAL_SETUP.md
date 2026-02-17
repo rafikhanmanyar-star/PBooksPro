@@ -108,7 +108,7 @@ The mock must know where to send simulated incoming messages (your API’s webho
    **http://localhost:9999**
 2. In the **Configuration** section:
    - **Main app webhook URL**: set to  
-     `http://localhost:3000/api/whatsapp/webhook`
+     `   `
    - Click **Load config** to load current values (optional).
    - Click **Save config**.
 3. You should see a success message. Leave the mock UI open if you want to simulate messages later.

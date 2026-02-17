@@ -72,7 +72,7 @@ export class AppStateRepository {
         }
 
         // CRITICAL: Ensure all schema columns exist BEFORE loading data
-        // This prevents data loss when columns are missing (e.g., after restore)
+        console.log('[CloudSync] loadState: ensuring tables exist...');
         this.db.ensureAllTablesExist();
         this.db.ensureContractColumnsExist();
         // Ensure tenant_id columns exist on all relevant tables (idempotent)
@@ -583,6 +583,7 @@ export class AppStateRepository {
             initialTabs: []
         };
 
+        console.log(`[CloudSync] loadState done (from local DB): accounts=${state.accounts?.length ?? 0} contacts=${state.contacts?.length ?? 0} transactions=${state.transactions?.length ?? 0} installmentPlans=${state.installmentPlans?.length ?? 0} pmCycleAllocations=${state.pmCycleAllocations?.length ?? 0}`);
         return state;
     }
 
@@ -593,6 +594,9 @@ export class AppStateRepository {
      */
     async saveState(state: AppState, disableSyncQueueing: boolean = false): Promise<void> {
         AppStateRepository.saveQueue = AppStateRepository.saveQueue.then(async () => {
+            const entityCounts = `accounts=${state.accounts?.length ?? 0} contacts=${state.contacts?.length ?? 0} transactions=${state.transactions?.length ?? 0} invoices=${state.invoices?.length ?? 0} bills=${state.bills?.length ?? 0} projects=${state.projects?.length ?? 0} installmentPlans=${state.installmentPlans?.length ?? 0} pmCycleAllocations=${state.pmCycleAllocations?.length ?? 0}`;
+            console.log(`[CloudSync] saveState starting (fromCloud=${disableSyncQueueing}) ${entityCounts}`);
+
             try {
                 // Ensure database is initialized
                 if (!this.db.isReady()) {
@@ -600,11 +604,10 @@ export class AppStateRepository {
                 }
 
                 // Ensure all tables exist (safety check for existing databases)
-                // This will create any missing tables like 'quotations' if they don't exist
                 try {
                     this.db.ensureAllTablesExist();
                 } catch (tableCheckError) {
-                    console.warn('⚠️ Could not verify tables exist, continuing anyway:', tableCheckError);
+                    console.warn('[CloudSync] Could not verify tables exist, continuing anyway:', tableCheckError);
                 }
 
                 // Ensure tenant_id columns exist before saving (idempotent)
@@ -708,11 +711,25 @@ export class AppStateRepository {
                                 throw e;
                             }
 
+                            // Save vendors BEFORE transactions (transactions have FK vendor_id → vendors.id)
+                            try {
+                                this.vendorsRepo.saveAll(state.vendors || []);
+                            } catch (e) {
+                                console.error('❌ Failed to save vendors:', e);
+                                throw e;
+                            }
+
                             try {
                                 this.projectsRepo.saveAll(state.projects);
                                 this.buildingsRepo.saveAll(state.buildings);
                                 this.propertiesRepo.saveAll(state.properties);
                                 this.unitsRepo.saveAll(state.units);
+                                // Save contracts BEFORE bills (bills have FK contract_id → contracts.id)
+                                this.contractsRepo.saveAll((state.contracts || []).map(c => ({
+                                    ...c,
+                                    vendorId: c.vendorId || '',
+                                    expenseCategoryItems: c.expenseCategoryItems ? JSON.stringify(c.expenseCategoryItems) : undefined
+                                })));
                                 this.transactionsRepo.saveAll(state.transactions);
                                 this.invoicesRepo.saveAll(state.invoices);
                                 // Save bills with expenseCategoryItems serialized as JSON
@@ -774,7 +791,7 @@ export class AppStateRepository {
                                 })));
                                 this.budgetsRepo.saveAll(state.budgets);
                                 this.salesReturnsRepo.saveAll(state.salesReturns || []);
-                                this.vendorsRepo.saveAll(state.vendors || []);
+                                // vendors already saved above (before transactions)
 
                                 // Agreements and Contracts
                                 this.rentalAgreementsRepo.saveAll(state.rentalAgreements || []);
@@ -784,11 +801,7 @@ export class AppStateRepository {
                                     cancellationDetails: pa.cancellationDetails ? JSON.stringify(pa.cancellationDetails) : undefined,
                                     installmentPlan: pa.installmentPlan ? JSON.stringify(pa.installmentPlan) : undefined
                                 })));
-                                this.contractsRepo.saveAll((state.contracts || []).map(c => ({
-                                    ...c,
-                                    vendorId: c.vendorId || '',
-                                    expenseCategoryItems: c.expenseCategoryItems ? JSON.stringify(c.expenseCategoryItems) : undefined
-                                })));
+                                // contracts already saved above (before bills/transactions)
 
                                 // Other tables
                                 this.recurringTemplatesRepo.saveAll(state.recurringInvoiceTemplates || []);
@@ -853,7 +866,7 @@ export class AppStateRepository {
                     }
 
                 } catch (transactionError) {
-                    console.error('❌ Database transaction failed:', transactionError);
+                    console.error('[CloudSync] Database transaction failed:', transactionError);
                     // Check what's in the database even after transaction failure
                     try {
                         const contactsAfterError = this.contactsRepo.findAll();
@@ -865,9 +878,9 @@ export class AppStateRepository {
                 }
 
                 // Persist to storage after transaction completes
-                // Use async save to ensure data is persisted
                 await this.db.saveAsync();
                 const savedContacts = this.contactsRepo.findAll();
+                console.log(`[CloudSync] saveState completed successfully, contacts in DB: ${savedContacts.length}`);
 
                 if (savedContacts.length !== state.contacts.length) {
                     console.error(`❌ Contact count mismatch! Expected ${state.contacts.length}, found ${savedContacts.length}`);
