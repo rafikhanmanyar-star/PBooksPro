@@ -96,6 +96,43 @@ router.delete('/terminals/:id', async (req: any, res) => {
     }
 });
 
+// --- Shop product categories ---
+router.get('/categories', async (req: any, res) => {
+    try {
+        const categories = await getShopService().getShopCategories(req.tenantId);
+        res.json(categories);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/categories', async (req: any, res) => {
+    try {
+        const id = await getShopService().createShopCategory(req.tenantId, req.body);
+        res.status(201).json({ id, message: 'Category created' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/categories/:id', async (req: any, res) => {
+    try {
+        await getShopService().updateShopCategory(req.tenantId, req.params.id, req.body);
+        res.json({ success: true, message: 'Category updated' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/categories/:id', async (req: any, res) => {
+    try {
+        await getShopService().deleteShopCategory(req.tenantId, req.params.id);
+        res.json({ success: true, message: 'Category deleted' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // --- Products & Inventory ---
 router.get('/products', async (req: any, res) => {
     try {
@@ -168,7 +205,9 @@ router.get('/sales', async (req: any, res) => {
 
 router.post('/sales', async (req: any, res) => {
     try {
-        const saleId = await getShopService().createSale(req.tenantId, req.body);
+        // Use authenticated user id so shop_sales.user_id FK is always valid
+        const body = { ...req.body, userId: req.userId ?? req.body?.userId };
+        const saleId = await getShopService().createSale(req.tenantId, body);
         res.status(201).json({ id: saleId, message: 'Sale completed successfully' });
     } catch (error: any) {
         res.status(500).json({ error: error.message });

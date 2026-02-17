@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Payment Successful - PBooksPro</title>
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .payment-result {
+            min-height: 60vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+        }
+        .payment-result-box {
+            max-width: 480px;
+            padding: 2.5rem;
+            background: var(--bg-white, #fff);
+            border-radius: 12px;
+            box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1));
+        }
+        .payment-result-box .icon {
+            font-size: 3rem;
+            color: var(--success-color, #10b981);
+            margin-bottom: 1rem;
+        }
+        .payment-result-box h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .payment-result-box p {
+            color: var(--text-light, #6b7280);
+            margin-bottom: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-wrapper">
+                <div class="logo">
+                    <i class="fas fa-building"></i>
+                    <span>PBooksPro</span>
+                </div>
+                <ul class="nav-menu" id="navMenu">
+                    <li><a href="../index.html">Home</a></li>
+                    <li><a href="../download.html" class="btn-primary">Free Trial</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <section class="payment-result">
+        <div class="payment-result-box">
+            <div class="icon"><i class="fas fa-check-circle"></i></div>
+            <h1>Payment Successful</h1>
+            <p>Your license has been updated. You can close this window and return to the PBooks Pro desktop app. Your changes will be reflected automatically.</p>
+            <a href="../download.html" class="btn btn-primary">Back to PBooksPro</a>
+        </div>
+    </section>
+</body>
+</html>

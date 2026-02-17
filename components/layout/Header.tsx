@@ -7,6 +7,7 @@ import { WhatsAppChatService, WhatsAppMessage, UnreadConversation, normalizePhon
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
+import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
 import { getWebSocketClient } from '../../services/websocketClient';
 import {
@@ -257,13 +258,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       // 1. You are the approver and someone requested your approval
       const isApprover = isPendingApproval && (plan.approvalRequestedToId === currentUserId || isMatchingCurrentUser(plan.approvalRequestedToId));
       if (isApprover) {
-        console.log('[NOTIFICATION DEBUG] Found approval notification:', {
-          planId: plan.id,
-          approvalRequestedToId: plan.approvalRequestedToId,
-          currentUserId,
-          directMatch: plan.approvalRequestedToId === currentUserId,
-          fuzzyMatch: isMatchingCurrentUser(plan.approvalRequestedToId)
-        });
         const requester = userName(plan.approvalRequestedById || plan.userId);
         results.push({
           ...base,
@@ -320,22 +314,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
     // Filter out dismissed notifications - ensure they never reappear
     // Note: WhatsApp notifications are excluded from bell icon - they use the dedicated WhatsApp icon
-    const activeNotifications = [...items, ...bizPlanetItems].filter(item => {
-      const isDismissed = dismissedNotifications.has(item.id);
-      if (isDismissed) {
-        console.log('[NOTIFICATIONS] Filtering out dismissed notification:', item.id);
-      }
-      return !isDismissed;
-    });
-
-    console.log('[NOTIFICATION DEBUG] Notifications:', {
-      total: items.length + bizPlanetItems.length,
-      dismissed: dismissedNotifications.size,
-      active: activeNotifications.length,
-      currentUserId,
-      currentUsername: state.currentUser.username,
-      currentName: state.currentUser.name
-    });
+    const activeNotifications = [...items, ...bizPlanetItems].filter(item => !dismissedNotifications.has(item.id));
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
   }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, bizPlanetNotifications]);
@@ -608,9 +587,11 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           <div className="flex items-center gap-2 sm:gap-4 justify-end flex-1">
 
             {/* Connection Status & Sync Status */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
               <ConnectionStatusIndicator showLabel={true} />
+              <div className="h-4 w-px bg-slate-200 mx-1"></div>
               <SyncStatusIndicator showDetails={false} />
+              <SyncProgressBar className={`ml-2 ${(typeof window !== 'undefined' && (window as any).electronAPI?.isElectron) ? 'flex' : 'hidden lg:flex'}`} />
             </div>
 
             <div className="relative" ref={notificationsRef}>
@@ -620,7 +601,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                 title={notifications.length > 0 ? `${notifications.length} notifications` : 'Notifications'}
                 aria-label="Notifications"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1 1-3.46 0"></path></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
                 {notifications.length > 0 && (
                   <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
                     {notifications.length > 99 ? '99+' : notifications.length}
@@ -667,14 +648,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                                 )}
                               </div>
                               <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${item.badge.tone === 'blue'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : item.badge.tone === 'green'
-                                    ? 'bg-green-100 text-green-700'
-                                    : item.badge.tone === 'orange'
-                                      ? 'bg-orange-100 text-orange-700'
-                                      : item.badge.tone === 'red'
-                                        ? 'bg-rose-100 text-rose-700'
-                                        : 'bg-slate-100 text-slate-700'
+                                ? 'bg-blue-100 text-blue-700'
+                                : item.badge.tone === 'green'
+                                  ? 'bg-green-100 text-green-700'
+                                  : item.badge.tone === 'orange'
+                                    ? 'bg-orange-100 text-orange-700'
+                                    : item.badge.tone === 'red'
+                                      ? 'bg-rose-100 text-rose-700'
+                                      : 'bg-slate-100 text-slate-700'
                                 }`}>
                                 {item.badge.label}
                               </span>

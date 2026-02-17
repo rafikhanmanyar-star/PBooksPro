@@ -321,20 +321,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const handleLogout = async () => {
         if (confirm('Are you sure you want to logout?')) {
             try {
-                // Call logout API to clear session
+                // Call logout API to clear session (AuthContext sets isAuthenticated = false)
                 await logout();
                 // Clear local state
                 dispatch({ type: 'LOGOUT' });
                 // Clear localStorage
                 localStorage.removeItem('last_tenant_id');
                 localStorage.removeItem('last_identifier');
-                // Redirect to login - will be handled by AuthContext
-                window.location.href = '/';
+                // Do not use window.location.href = '/' — in Electron (file://) that becomes file:///C:/
+                // and causes "Not allowed to load local resource". App shows CloudLoginPage when !isAuthenticated.
             } catch (error) {
                 console.error('Logout error:', error);
                 // Still clear local state even if API call fails
                 dispatch({ type: 'LOGOUT' });
-                window.location.href = '/';
             }
         }
     };

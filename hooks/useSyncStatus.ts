@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { getSyncManager } from '../services/sync/syncManager';
 import { isMobileDevice } from '../utils/platformDetection';
+import { SyncProgress } from '../types/sync';
 
 export interface UseSyncStatusResult {
   total: number;
@@ -15,7 +16,9 @@ export interface UseSyncStatusResult {
   syncing: number;
   failed: number;
   isSyncing: boolean;
+  isInbound: boolean;
   hasPending: boolean;
+  progress: SyncProgress | null;
 }
 
 export function useSyncStatus(): UseSyncStatusResult {
@@ -24,6 +27,7 @@ export function useSyncStatus(): UseSyncStatusResult {
     pending: 0,
     syncing: 0,
     failed: 0,
+    progress: null as SyncProgress | null,
   });
 
   useEffect(() => {
@@ -33,7 +37,7 @@ export function useSyncStatus(): UseSyncStatusResult {
     }
 
     const syncManager = getSyncManager();
-    
+
     // Get initial status
     const updateStatus = () => {
       const newStatus = syncManager.getQueueStatus();
@@ -41,21 +45,38 @@ export function useSyncStatus(): UseSyncStatusResult {
       // console.log('[useSyncStatus] Updating status:', newStatus);
       setStatus(newStatus);
     };
-    
+
     updateStatus();
 
-    // Update status periodically
-    const interval = setInterval(updateStatus, 2000); // Every 2 seconds
+    // Listen for real-time progress updates
+    const handleProgressUpdate = (event: any) => {
+      const progress = event.detail ?? null;
+      setStatus(prev => ({
+        ...prev,
+        progress
+      }));
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('sync:progress-update', handleProgressUpdate);
+    }
+
+    // Update status periodically for queue counts
+    const interval = setInterval(updateStatus, 1000);
 
     // Cleanup
     return () => {
       clearInterval(interval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('sync:progress-update', handleProgressUpdate);
+      }
     };
   }, []);
 
   return {
     ...status,
-    isSyncing: status.syncing > 0,
+    isSyncing: status.syncing > 0 || !!status.progress,
+    isInbound: !!status.progress?.inboundTotal && (status.progress.inboundCompleted ?? 0) < status.progress.inboundTotal,
     hasPending: status.pending > 0 || status.failed > 0,
   };
 }

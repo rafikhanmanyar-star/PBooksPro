@@ -8,6 +8,7 @@
 import { CREATE_SCHEMA_SQL, SCHEMA_VERSION } from './schema';
 import { loadSqlJs } from './sqljs-loader';
 import { logger } from '../logger';
+import { ElectronDatabaseService } from './electronDatabaseService';
 
 // Types for sql.js
 type Database = any;
@@ -83,6 +84,40 @@ const IDB_STORE_NAME = 'finance';
 const IDB_KEY = 'finance_db';
 
 /**
+ * Electron file storage adapter.
+ * Persists sql.js DB to a real file on disk via IPC. No browser quota/cache issues.
+ */
+const electronFileStorage = {
+    async isSupported(): Promise<boolean> {
+        return typeof window !== 'undefined' && !!(window as any).sqliteBridge?.loadBlob;
+    },
+    async load(): Promise<Uint8Array | null> {
+        if (!(await this.isSupported())) return null;
+        try {
+            const data = await (window as any).sqliteBridge.loadBlob();
+            return data && data.length > 0 ? new Uint8Array(data) : null;
+        } catch (e) {
+            logger.warnCategory('database', 'Electron file storage load failed:', e);
+            return null;
+        }
+    },
+    async save(data: Uint8Array): Promise<void> {
+        if (!(await this.isSupported())) return;
+        const bridge = (window as any).sqliteBridge;
+        const result = await bridge.saveBlob(data);
+        if (result && !result.ok) throw new Error(result.error || 'Save failed');
+    },
+    async clear(): Promise<void> {
+        if (!(await this.isSupported())) return;
+        try {
+            await (window as any).sqliteBridge.clearBlob();
+        } catch {
+            // Ignore
+        }
+    },
+};
+
+/**
  * IndexedDB storage adapter.
  * Provides much larger quota than localStorage (~50MB+ vs ~5MB).
  * Use as fallback when OPFS fails to avoid QuotaExceededError.
@@ -141,7 +176,7 @@ class IndexedDBStorage {
         if (!(await this.isSupported())) return;
         const db = await this.getDb();
         // Use Blob instead of ArrayBuffer - better large-data support in Safari/private mode
-        const blob = new Blob([data]);
+        const blob = new Blob([data as any]);
         await new Promise<void>((resolve, reject) => {
             const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
             const req = tx.objectStore(IDB_STORE_NAME).put(blob, IDB_KEY);
@@ -188,7 +223,7 @@ class DatabaseService {
     private sqlJsModule: any = null;
     private opfs = new OpfsStorage();
     private indexedDBStorage = new IndexedDBStorage();
-    private storageMode: 'opfs' | 'indexedDB' | 'localStorage' = 'localStorage';
+    private storageMode: 'electron' | 'opfs' | 'indexedDB' | 'localStorage' = 'localStorage';
     private saveLock: Promise<void> = Promise.resolve(); // Lock to prevent concurrent saves
     private lastPersistenceError: string | null = null;
     private lastPersistenceErrorTime = 0;
@@ -267,10 +302,25 @@ class DatabaseService {
             const SQL = await Promise.race([initPromise, timeoutPromise]);
             this.sqlJs = SQL;
 
-            // Priority order: OPFS > localStorage
+            // Priority order: Electron file > OPFS > IndexedDB > localStorage
             let loadedData: Uint8Array | null = null;
 
-            // 1. Try OPFS first
+            // 0. Electron: real file on disk (no browser storage issues)
+            if (!this.db && (await electronFileStorage.isSupported())) {
+                const electronData = await electronFileStorage.load();
+                if (electronData) {
+                    try {
+                        this.db = new SQL.Database(electronData);
+                        this.storageMode = 'electron';
+                        logger.logCategory('database', '✅ Loaded existing database from Electron file storage');
+                        loadedData = electronData;
+                    } catch (parseError) {
+                        logger.warnCategory('database', '⚠️ Failed to parse Electron file database, trying OPFS:', parseError);
+                    }
+                }
+            }
+
+            // 1. Try OPFS
             if (!this.db) {
                 const opfsData = await this.opfs.load();
                 if (opfsData) {
@@ -318,13 +368,13 @@ class DatabaseService {
 
             if (!this.db) {
                 // Create new database
-                logger.logCategory('database', '📦 Creating new database...');
+                logger.logCategory('database', '[SchemaSync] Creating new database (no existing blob)');
                 this.db = new SQL.Database();
                 // Create schema - use exec() to support multiple statements
                 try {
                     this.db.exec(CREATE_SCHEMA_SQL);
                     // Set schema version directly (bypass isReady check during init)
-                    this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                    this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                         ['schema_version', SCHEMA_VERSION.toString()]);
                     logger.logCategory('database', '✅ Database schema created');
                 } catch (schemaError) {
@@ -380,7 +430,7 @@ class DatabaseService {
                     try {
                         this.db.exec(CREATE_SCHEMA_SQL);
                         // Set schema version directly (bypass isReady check during init)
-                        this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                        this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                             ['schema_version', SCHEMA_VERSION.toString()]);
                         logger.logCategory('database', '✅ Database recreated with new schema');
                     } catch (recreateError) {
@@ -609,6 +659,14 @@ class DatabaseService {
             db.run('BEGIN TRANSACTION');
             begun = true;
             this.inTransaction = true;
+
+            // Temporarily disable foreign keys to allow batch updates with temporary inconsistencies
+            // (e.g., deleting a parent before replacing it, or inserting children before parents in some batches)
+            try {
+                db.run('PRAGMA foreign_keys = OFF');
+            } catch (fkOffError) {
+                console.warn('[DatabaseService] Failed to disable foreign keys for transaction:', fkOffError);
+            }
         } catch (beginError) {
             // If we cannot start a transaction, surface the error immediately
             this.inTransaction = false;
@@ -643,6 +701,12 @@ class DatabaseService {
                 } catch (e) {
                     // Ignore if BaseRepository not available (may cause circular dependency warning)
                 }
+
+                // Re-enable foreign keys before rollback to leave DB in a clean state
+                try {
+                    db.run('PRAGMA foreign_keys = ON');
+                } catch (_) { }
+
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
@@ -683,6 +747,13 @@ class DatabaseService {
             }
 
             try {
+                // Re-enable foreign keys before commit to verify constraints are now met
+                try {
+                    db.run('PRAGMA foreign_keys = ON');
+                } catch (fkOnError) {
+                    console.warn('[DatabaseService] Failed to re-enable foreign keys before commit:', fkOnError);
+                }
+
                 db.run('COMMIT');
                 committed = true;
 
@@ -706,6 +777,7 @@ class DatabaseService {
                     // If commit fails, attempt rollback
                     if (begun) {
                         try {
+                            db.run('PRAGMA foreign_keys = ON'); // Try to re-enable before rollback
                             db.run('ROLLBACK');
                         } catch {
                             // Ignore
@@ -724,6 +796,11 @@ class DatabaseService {
                 } catch (e) {
                     // Ignore if BaseRepository not available (may cause circular dependency warning)
                 }
+
+                try {
+                    db.run('PRAGMA foreign_keys = ON'); // Try to re-enable before rollback
+                } catch (_) { }
+
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
@@ -1047,7 +1124,7 @@ class DatabaseService {
         if (!this.isReady()) return;
         try {
             this.execute(
-                'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                 [key, value]
             );
             this.save();
@@ -1108,7 +1185,7 @@ class DatabaseService {
     /**
      * Get current storage mode
      */
-    getStorageMode(): 'opfs' | 'localStorage' {
+    getStorageMode(): 'opfs' | 'localStorage' | 'electron' | 'indexedDB' {
         return this.storageMode;
     }
 
@@ -1162,6 +1239,8 @@ class DatabaseService {
                     this.ensureVendorIdColumnsExist();
                     // Ensure recurring template has invoice_type column
                     this.ensureRecurringTemplateColumnsExist();
+                    // Ensure transactions has building_id, is_system, updated_at (no FK on building_id for sync)
+                    this.ensureTransactionExtraColumnsExist();
 
                     // Run version-specific migrations
                     if (currentVersion < 3) {
@@ -1223,9 +1302,67 @@ class DatabaseService {
                         }
                     }
 
+                    if (currentVersion < 9) {
+                        try {
+                            // v9: tenants table (stub for FK refs), users columns, installment_plans marketing columns, whatsapp_menu_sessions
+                            this.rawExecute(
+                                `CREATE TABLE IF NOT EXISTS tenants (
+                                    id TEXT PRIMARY KEY,
+                                    name TEXT NOT NULL DEFAULT '',
+                                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                                )`
+                            );
+                            this.rawExecute(
+                                `CREATE TABLE IF NOT EXISTS whatsapp_menu_sessions (
+                                    id TEXT PRIMARY KEY,
+                                    tenant_id TEXT NOT NULL DEFAULT '',
+                                    phone_number TEXT NOT NULL,
+                                    current_menu_path TEXT NOT NULL DEFAULT 'root',
+                                    last_interaction_at TEXT NOT NULL DEFAULT (datetime('now')),
+                                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                                    UNIQUE(tenant_id, phone_number)
+                                )`
+                            );
+                            try {
+                                this.rawExecute('CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_tenant_phone ON whatsapp_menu_sessions(tenant_id, phone_number)');
+                                this.rawExecute('CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_last_interaction ON whatsapp_menu_sessions(tenant_id, last_interaction_at)');
+                            } catch (_) { }
+
+                            const userCols = this.rawQuery<{ name: string }>('PRAGMA table_info(users)');
+                            const userNames = new Set(userCols.map(c => c.name));
+                            if (!userNames.has('tenant_id')) this.rawExecute('ALTER TABLE users ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ""');
+                            if (!userNames.has('email')) this.rawExecute('ALTER TABLE users ADD COLUMN email TEXT');
+                            if (!userNames.has('is_active')) this.rawExecute('ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
+                            if (!userNames.has('login_status')) this.rawExecute('ALTER TABLE users ADD COLUMN login_status INTEGER NOT NULL DEFAULT 0');
+
+                            const ipCols = this.rawQuery<{ name: string }>('PRAGMA table_info(installment_plans)');
+                            const ipNames = new Set(ipCols.map(c => c.name));
+                            const ipColumns = [
+                                'duration_years INTEGER', 'down_payment_percentage REAL DEFAULT 0', 'frequency TEXT', 'list_price REAL DEFAULT 0',
+                                'customer_discount REAL DEFAULT 0', 'floor_discount REAL DEFAULT 0', 'lump_sum_discount REAL DEFAULT 0', 'misc_discount REAL DEFAULT 0',
+                                'down_payment_amount REAL DEFAULT 0', 'installment_amount REAL DEFAULT 0', 'total_installments INTEGER', 'description TEXT', 'user_id TEXT',
+                                'intro_text TEXT', 'root_id TEXT', 'approval_requested_by TEXT', 'approval_requested_to TEXT', 'approval_requested_at TEXT',
+                                'approval_reviewed_by TEXT', 'approval_reviewed_at TEXT', 'discounts TEXT', 'customer_discount_category_id TEXT',
+                                'floor_discount_category_id TEXT', 'lump_sum_discount_category_id TEXT', 'misc_discount_category_id TEXT',
+                                'selected_amenities TEXT', 'amenities_total REAL DEFAULT 0', 'updated_at TEXT'
+                            ];
+                            for (const colDef of ipColumns) {
+                                const colName = colDef.split(' ')[0];
+                                if (!ipNames.has(colName)) {
+                                    try {
+                                        this.rawExecute(`ALTER TABLE installment_plans ADD COLUMN ${colDef}`);
+                                    } catch (_) { }
+                                }
+                            }
+                        } catch (v9Error) {
+                            // ignore
+                        }
+                    }
+
                     // Update schema version directly (setMetadata relies on isReady)
                     this.rawExecute(
-                        'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                        'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                         ['schema_version', latestVersion.toString()]
                     );
 
@@ -1425,6 +1562,25 @@ class DatabaseService {
     }
 
     /**
+     * Add building_id, is_system, updated_at to transactions if missing (no FK on building_id for sync order).
+     */
+    private ensureTransactionExtraColumnsExist(): void {
+        if (!this.db || !this.isInitialized) return;
+        try {
+            const tableExists = this.query<{ name: string }>(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='transactions'"
+            ).length > 0;
+            if (!tableExists) return;
+            const columnNames = new Set(this.query<{ name: string }>('PRAGMA table_info(transactions)').map(c => c.name));
+            if (!columnNames.has('building_id')) this.execute('ALTER TABLE transactions ADD COLUMN building_id TEXT');
+            if (!columnNames.has('is_system')) this.execute('ALTER TABLE transactions ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
+            if (!columnNames.has('updated_at')) this.execute("ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
+        } catch (error) {
+            console.error('❌ Error ensuring transaction extra columns exist:', error);
+        }
+    }
+
+    /**
      * Ensure sync_outbox and sync_metadata exist (run first so no "no such table" during schema split)
      */
     private ensureSyncTablesExist(): void {
@@ -1465,61 +1621,40 @@ class DatabaseService {
     }
 
     /**
-     * Ensure all required tables exist (for existing databases that might be missing newer tables)
+     * Ensure all required tables exist (for existing databases that might be missing newer tables).
+     * Always runs the full schema - CREATE TABLE IF NOT EXISTS is idempotent, so this safely adds
+     * any new tables without affecting existing ones.
      */
     ensureAllTablesExist(): void {
         if (!this.db || !this.isInitialized) return;
 
-        // Create sync tables first so they exist before executeSchemaStatements runs (avoids "no such table: sync_outbox")
-        this.ensureSyncTablesExist();
-
         try {
-            // Get list of existing tables
-            const existingTables = this.query<{ name: string }>(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-            ).map(row => row.name.toLowerCase());
+            const beforeTables = this.rawQuery<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").map(r => r.name);
+            logger.logCategory('database', `[SchemaSync] ensureAllTablesExist: ${beforeTables.length} tables before schema run`);
 
-            // List of required tables from schema
-            const requiredTables = [
-                'metadata', 'users', 'accounts', 'contacts', 'vendors', 'categories', 'projects', 'buildings',
-                'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
-                'quotations', 'documents', 'rental_agreements', 'project_agreements',
-                'project_agreement_units', 'sales_returns', 'contracts', 'contract_categories',
-                'recurring_invoice_templates',
-                'transaction_log', 'error_log', 'app_settings', 'license_settings',
-                'chat_messages',
-                // Task Management
-                'tasks', 'task_updates', 'task_performance_scores', 'task_performance_config',
-                // Marketing / installment plans
-                'plan_amenities', 'installment_plans',
-                // Bi-directional sync
-                'sync_outbox', 'sync_metadata'
-            ];
+            // Create sync tables first so they exist before executeSchemaStatements runs (avoids "no such table: sync_outbox")
+            this.ensureSyncTablesExist();
 
-            // Check for missing tables
-            const missingTables = requiredTables.filter(table => !existingTables.includes(table.toLowerCase()));
+            // Always run full schema – ensures any new table in schema.ts gets created for existing DBs.
+            // CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS are idempotent.
+            this.executeSchemaStatements(CREATE_SCHEMA_SQL);
 
-            if (missingTables.length > 0) {
-                // Re-run schema creation (CREATE TABLE IF NOT EXISTS will only create missing tables)
-                // Execute each statement separately to handle index creation failures gracefully
-                this.executeSchemaStatements(CREATE_SCHEMA_SQL);
+            // Ensure transactions has building_id, is_system, updated_at (for sync; no FK on building_id)
+            this.ensureTransactionExtraColumnsExist();
 
-                // Verify tables were created
-                const verifyResult = this.db.exec(`SELECT name FROM sqlite_master WHERE type='table'`);
-                const createdTables = verifyResult[0]?.values.flat() || [];
-                const stillMissing = missingTables.filter(t => !createdTables.map((name: string) => name.toLowerCase()).includes(t.toLowerCase()));
-                if (stillMissing.length > 0) {
-                    console.error('❌ Failed to create some tables:', stillMissing);
-                } else {
-                }
+            const afterTables = this.rawQuery<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").map(r => r.name);
+            const added = afterTables.filter(t => !beforeTables.includes(t));
+            if (added.length > 0) {
+                logger.logCategory('database', `[SchemaSync] Created ${added.length} new table(s):`, added.join(', '));
             }
+            logger.logCategory('database', `[SchemaSync] ensureAllTablesExist done: ${afterTables.length} tables total`);
         } catch (error) {
-            console.error('Error ensuring tables exist:', error);
-            // If check fails, try to create schema anyway (safe with IF NOT EXISTS)
+            console.error('[SchemaSync] Error ensuring tables exist:', error);
             try {
                 this.executeSchemaStatements(CREATE_SCHEMA_SQL);
+                logger.logCategory('database', '[SchemaSync] Retry succeeded');
             } catch (createError) {
-                console.error('Failed to create missing tables:', createError);
+                console.error('[SchemaSync] Failed to create missing tables:', createError);
             }
         }
     }
@@ -1536,19 +1671,25 @@ class DatabaseService {
             .map(s => s.trim())
             .filter(s => s.length > 0);
 
+        let skippedIndex = 0;
         for (const statement of statements) {
             try {
                 this.db.exec(statement + ';');
             } catch (error: any) {
                 const errorMsg = error?.message || String(error);
                 // Silently skip index creation failures on missing columns
-                // This can happen when tenant_id columns haven't been added yet
                 if (errorMsg.includes('no such column') && statement.toUpperCase().includes('CREATE INDEX')) {
+                    skippedIndex++;
                 } else {
-                    // Re-throw other errors
+                    const tableMatch = statement.match(/CREATE TABLE(?:\s+IF NOT EXISTS)?\s+(\w+)/i) || statement.match(/CREATE INDEX.*ON\s+(\w+)/i);
+                    const tableName = tableMatch ? tableMatch[1] : '(unknown)';
+                    logger.logCategory('database', `[SchemaSync] executeSchemaStatements failed at ${tableName}:`, errorMsg.slice(0, 120));
                     throw error;
                 }
             }
+        }
+        if (skippedIndex > 0) {
+            logger.logCategory('database', `[SchemaSync] Skipped ${skippedIndex} index creation(s) (missing columns)`);
         }
     }
 
@@ -1653,6 +1794,23 @@ class DatabaseService {
                 }
             }
 
+            // Try Electron file storage first (desktop app - no browser storage)
+            if (await electronFileStorage.isSupported()) {
+                try {
+                    await electronFileStorage.save(data);
+                    this.storageMode = 'electron';
+                    this.lastPersistenceError = null;
+                    logger.logCategory('database', '✅ Database saved to Electron file storage');
+                    resolveLock!();
+                    return;
+                } catch (electronError) {
+                    const errMsg = errorToString(electronError);
+                    if (this.shouldLogPersistenceError(`Electron: ${errMsg}`)) {
+                        logger.warnCategory('database', `Electron file save failed: ${errMsg}`);
+                    }
+                }
+            }
+
             // Try OPFS (durable browser storage)
             if (await this.opfs.isSupported()) {
                 try {
@@ -1737,17 +1895,37 @@ let dbServiceInstance: DatabaseService | null = null;
 
 export const getDatabaseService = (config?: DatabaseConfig): DatabaseService => {
     if (!dbServiceInstance) {
-        dbServiceInstance = new DatabaseService(config);
+        if (typeof window !== 'undefined' && (window as unknown as { sqliteBridge?: { querySync?: unknown } }).sqliteBridge?.querySync) {
+            dbServiceInstance = new ElectronDatabaseService(config) as unknown as DatabaseService;
+        } else {
+            dbServiceInstance = new DatabaseService(config);
+        }
     }
     return dbServiceInstance;
 };
 
 /**
- * Clear all database storage (localStorage, OPFS, IndexedDB).
+ * Clear all database storage (localStorage, OPFS, IndexedDB, native SQLite).
  * Used by Fix button and console commands to fully reset local DB.
  */
 export async function clearAllDatabaseStorage(): Promise<void> {
     localStorage.removeItem('finance_db');
+    if (typeof window !== 'undefined') {
+        const bridge = (window as any).sqliteBridge;
+        if (bridge?.resetAndDeleteDb) {
+            try {
+                await bridge.resetAndDeleteDb();
+            } catch {
+                // Ignore
+            }
+        } else if (bridge?.clearBlob) {
+            try {
+                await bridge.clearBlob();
+            } catch {
+                // Ignore
+            }
+        }
+    }
     if (typeof navigator !== 'undefined' && navigator.storage?.getDirectory) {
         try {
             const root = await navigator.storage.getDirectory();

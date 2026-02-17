@@ -181,6 +181,15 @@ h3 { font-size: 1.25rem; font-weight: 600; }  /* 20px */
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
+@keyframes shimmer-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.animate-shimmer-slide {
+  animation: shimmer-slide 2s infinite;
+}
+
 /* Page transition animations */
 @keyframes page-enter {
   from {

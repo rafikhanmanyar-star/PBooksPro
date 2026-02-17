@@ -18,7 +18,7 @@ router.get('/', async (req: TenantRequest, res) => {
             'SELECT t.*, u.full_name as owner_name, i.title as initiative_name FROM task_items t ' +
             'LEFT JOIN users u ON t.owner_id = u.id ' +
             'LEFT JOIN task_initiatives i ON t.initiative_id = i.id ' +
-            'WHERE t.tenant_id = $1 ORDER BY t.due_date ASC',
+            'WHERE t.tenant_id = $1 AND t.deleted_at IS NULL ORDER BY t.due_date ASC',
             [req.tenantId]
         );
         res.json(tasks);
@@ -36,7 +36,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
             'SELECT t.*, u.full_name as owner_name, i.title as initiative_name FROM task_items t ' +
             'LEFT JOIN users u ON t.owner_id = u.id ' +
             'LEFT JOIN task_initiatives i ON t.initiative_id = i.id ' +
-            'WHERE t.id = $1 AND t.tenant_id = $2',
+            'WHERE t.id = $1 AND t.tenant_id = $2 AND t.deleted_at IS NULL',
             [req.params.id, req.tenantId]
         );
 
@@ -56,13 +56,46 @@ router.post('/', async (req: TenantRequest, res) => {
     try {
         const db = getDb();
         const task = req.body;
+        const taskId = task.id || `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const existing = await db.query(
+            'SELECT id, version FROM task_items WHERE id = $1 AND tenant_id = $2',
+            [taskId, req.tenantId]
+        );
+        const isUpdate = existing.length > 0;
+
+        // Optimistic locking check
+        const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+        const serverVersion = isUpdate ? existing[0].version : null;
+        if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+            return res.status(409).json({
+                error: 'Version conflict',
+                message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+                serverVersion,
+            });
+        }
+
         const result = await db.query(
             `INSERT INTO task_items (
-                tenant_id, title, description, initiative_id, owner_id, 
-                status, priority, start_date, due_date, estimated_hours, created_by
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                id, tenant_id, title, description, initiative_id, owner_id, 
+                status, priority, start_date, due_date, estimated_hours, created_by, version
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 1)
+            ON CONFLICT (id) DO UPDATE SET
+                title = EXCLUDED.title,
+                description = EXCLUDED.description,
+                initiative_id = EXCLUDED.initiative_id,
+                owner_id = EXCLUDED.owner_id,
+                status = EXCLUDED.status,
+                priority = EXCLUDED.priority,
+                start_date = EXCLUDED.start_date,
+                due_date = EXCLUDED.due_date,
+                estimated_hours = EXCLUDED.estimated_hours,
+                updated_at = NOW(),
+                version = COALESCE(task_items.version, 1) + 1,
+                deleted_at = NULL
+            WHERE task_items.tenant_id = $2 AND (task_items.version = $13 OR task_items.version IS NULL)
             RETURNING *`,
             [
+                taskId,
                 req.tenantId,
                 task.title,
                 task.description || null,
@@ -73,7 +106,8 @@ router.post('/', async (req: TenantRequest, res) => {
                 task.start_date || null,
                 task.due_date,
                 task.estimated_hours || 0,
-                req.user?.userId || null
+                req.user?.userId || null,
+                serverVersion
             ]
         );
 
@@ -94,30 +128,40 @@ router.put('/:id', async (req: TenantRequest, res) => {
     try {
         const db = getDb();
         const task = req.body;
-        const result = await db.query(
-            `UPDATE task_items SET 
-                title = $1, description = $2, initiative_id = $3, owner_id = $4,
-                status = $5, priority = $6, start_date = $7, due_date = $8,
-                estimated_hours = $9, actual_hours = $10, progress_percentage = $11,
-                updated_at = NOW()
-            WHERE id = $12 AND tenant_id = $13
-            RETURNING *`,
-            [
-                task.title,
-                task.description || null,
-                task.initiative_id || null,
-                task.owner_id || null,
-                task.status,
-                task.priority,
-                task.start_date || null,
-                task.due_date,
-                task.estimated_hours || 0,
-                task.actual_hours || 0,
-                task.progress_percentage || 0,
-                req.params.id,
-                req.tenantId
-            ]
-        );
+        const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+        let updateQuery = `
+                UPDATE task_items SET 
+                    title = $1, description = $2, initiative_id = $3, owner_id = $4,
+                    status = $5, priority = $6, start_date = $7, due_date = $8,
+                    estimated_hours = $9, actual_hours = $10, progress_percentage = $11,
+                    updated_at = NOW(),
+                    version = COALESCE(version, 1) + 1
+                WHERE id = $12 AND tenant_id = $13
+            `;
+        const queryParams: any[] = [
+            task.title,
+            task.description || null,
+            task.initiative_id || null,
+            task.owner_id || null,
+            task.status,
+            task.priority,
+            task.start_date || null,
+            task.due_date,
+            task.estimated_hours || 0,
+            task.actual_hours || 0,
+            task.progress_percentage || 0,
+            req.params.id,
+            req.tenantId
+        ];
+
+        if (clientVersion != null) {
+            updateQuery += ` AND version = $14`;
+            queryParams.push(clientVersion);
+        }
+
+        updateQuery += ` RETURNING *`;
+        const result = await db.query(updateQuery, queryParams);
 
         if (result.length === 0) {
             return res.status(404).json({ error: 'Task not found' });
@@ -135,6 +179,33 @@ router.put('/:id', async (req: TenantRequest, res) => {
     }
 });
 
+// DELETE task
+router.delete('/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const result = await db.query(
+            `UPDATE task_items SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 
+             WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+            [req.params.id, req.tenantId]
+        );
+
+        if (result.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
+
+        emitToTenant(req.tenantId!, WS_EVENTS.TASK_UPDATED, {
+            taskId: req.params.id,
+            deleted: true,
+            userId: req.user?.userId
+        });
+
+        res.json({ success: true, id: req.params.id });
+    } catch (error) {
+        console.error('Error deleting task:', error);
+        res.status(500).json({ error: 'Failed to delete task' });
+    }
+});
+
 // ==========================================
 // 2. Initiatives
 // ==========================================
@@ -146,13 +217,34 @@ router.get('/initiatives/list', async (req: TenantRequest, res) => {
         const initiatives = await db.query(
             'SELECT i.*, u.full_name as owner_name FROM task_initiatives i ' +
             'LEFT JOIN users u ON i.owner_id = u.id ' +
-            'WHERE i.tenant_id = $1 ORDER BY i.created_at DESC',
+            'WHERE i.tenant_id = $1 AND i.deleted_at IS NULL ORDER BY i.created_at DESC',
             [req.tenantId]
         );
         res.json(initiatives);
     } catch (error) {
         console.error('Error fetching initiatives:', error);
         res.status(500).json({ error: 'Failed to fetch initiatives' });
+    }
+});
+
+// DELETE initiative
+router.delete('/initiatives/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const result = await db.query(
+            `UPDATE task_initiatives SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 
+             WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+            [req.params.id, req.tenantId]
+        );
+
+        if (result.length === 0) {
+            return res.status(404).json({ error: 'Initiative not found' });
+        }
+
+        res.json({ success: true, id: req.params.id });
+    } catch (error) {
+        console.error('Error deleting initiative:', error);
+        res.status(500).json({ error: 'Failed to delete initiative' });
     }
 });
 
@@ -167,7 +259,7 @@ router.get('/objectives/:id', async (req: TenantRequest, res) => {
         const objectives = await db.query(
             'SELECT o.*, u.full_name as owner_name FROM task_objectives o ' +
             'LEFT JOIN users u ON o.owner_id = u.id ' +
-            'WHERE o.id = $1 AND o.tenant_id = $2',
+            'WHERE o.id = $1 AND o.tenant_id = $2 AND o.deleted_at IS NULL',
             [req.params.id, req.tenantId]
         );
 
@@ -181,7 +273,7 @@ router.get('/objectives/:id', async (req: TenantRequest, res) => {
         const keyResults = await db.query(
             'SELECT kr.*, u.full_name as owner_name FROM task_key_results kr ' +
             'LEFT JOIN users u ON kr.owner_id = u.id ' +
-            'WHERE kr.objective_id = $1 AND kr.tenant_id = $2 ORDER BY kr.created_at ASC',
+            'WHERE kr.objective_id = $1 AND kr.tenant_id = $2 AND kr.deleted_at IS NULL ORDER BY kr.created_at ASC',
             [objective.id, req.tenantId]
         );
 
@@ -201,8 +293,8 @@ router.post('/objectives', async (req: TenantRequest, res) => {
         const result = await db.query(
             `INSERT INTO task_objectives (
                 tenant_id, title, description, owner_id, parent_objective_id,
-                type, level, status, visibility, confidence_score, created_by
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                type, level, status, visibility, confidence_score, created_by, version
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING *`,
             [
                 req.tenantId,
@@ -215,7 +307,8 @@ router.post('/objectives', async (req: TenantRequest, res) => {
                 obj.status || 'Not Started',
                 obj.visibility || 'Public',
                 obj.confidence_score || 70,
-                req.user?.userId || null
+                req.user?.userId || null,
+                1
             ]
         );
 
@@ -228,6 +321,33 @@ router.post('/objectives', async (req: TenantRequest, res) => {
     } catch (error: any) {
         console.error('Error creating objective:', error);
         res.status(500).json({ error: 'Failed to create objective', message: error.message });
+    }
+});
+
+// DELETE objective
+router.delete('/objectives/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const result = await db.query(
+            `UPDATE task_objectives SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 
+             WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+            [req.params.id, req.tenantId]
+        );
+
+        if (result.length === 0) {
+            return res.status(404).json({ error: 'Objective not found' });
+        }
+
+        emitToTenant(req.tenantId!, WS_EVENTS.OBJECTIVE_UPDATED, {
+            objectiveId: req.params.id,
+            deleted: true,
+            userId: req.user?.userId
+        });
+
+        res.json({ success: true, id: req.params.id });
+    } catch (error) {
+        console.error('Error deleting objective:', error);
+        res.status(500).json({ error: 'Failed to delete objective' });
     }
 });
 
@@ -349,6 +469,27 @@ router.put('/key-results/:id', async (req: TenantRequest, res) => {
     } catch (error: any) {
         console.error('Error updating key result:', error);
         res.status(500).json({ error: 'Failed to update key result', message: error.message });
+    }
+});
+
+// DELETE key result
+router.delete('/key-results/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const result = await db.query(
+            `UPDATE task_key_results SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 
+             WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+            [req.params.id, req.tenantId]
+        );
+
+        if (result.length === 0) {
+            return res.status(404).json({ error: 'Key result not found' });
+        }
+
+        res.json({ success: true, id: req.params.id });
+    } catch (error) {
+        console.error('Error deleting key result:', error);
+        res.status(500).json({ error: 'Failed to delete key result' });
     }
 });
 

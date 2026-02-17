@@ -317,7 +317,8 @@ export class ApiClient {
           
           // Check if this is a background sync operation (data operations)
           // Don't auto-logout for background syncs - let user continue working locally
-          const isBackgroundSync = endpoint.includes('/contacts') || 
+          const isBackgroundSync = endpoint.includes('/state/') ||
+                                    endpoint.includes('/contacts') || 
                                     endpoint.includes('/transactions') || 
                                     endpoint.includes('/accounts') ||
                                     endpoint.includes('/invoices') ||

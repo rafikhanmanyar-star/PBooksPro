@@ -252,6 +252,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const addItem = useCallback(async (item: InventoryItem) => {
         try {
+            // Ensure we have an auth token before calling the API (avoids generic 401 message)
+            const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+            if (!token || token.trim() === '') {
+                alert('Please log in to create products. Your session may have expired.');
+                throw new Error('No authentication token');
+            }
+
             const payload = {
                 sku: item.sku,
                 barcode: item.barcode || null,
@@ -278,9 +285,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
         } catch (error: any) {
             console.error("Failed to create product:", error);
-            const msg = error.message || (typeof error === 'string' ? error : 'Check your SKU uniqueness or category.');
-            alert(`Failed to save SKU to database: ${msg}`);
-            // Do NOT fall back to local-only state to avoid confusion
+            const status = error?.status;
+            const msg = error?.message || (typeof error === 'string' ? error : 'Check your SKU uniqueness or category.');
+            if (status === 401 || /authentication token|session.*expired|not logged in/i.test(String(msg))) {
+                alert('Session expired or not logged in. Please log in again to create products.');
+            } else {
+                alert(`Failed to save SKU to database: ${msg}`);
+            }
             throw error;
         }
     }, [refreshItems]);

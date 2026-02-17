@@ -11,8 +11,8 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { status, projectId, clientId } = req.query;
-    
-    let query = 'SELECT * FROM project_agreements WHERE tenant_id = $1';
+
+    let query = 'SELECT * FROM project_agreements WHERE tenant_id = $1 AND deleted_at IS NULL';
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
@@ -44,14 +44,14 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreements = await db.query(
-      'SELECT * FROM project_agreements WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM project_agreements WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
       [req.params.id, req.tenantId]
     );
-    
+
     if (agreements.length === 0) {
       return res.status(404).json({ error: 'Project agreement not found' });
     }
-    
+
     res.json(agreements[0]);
   } catch (error) {
     console.error('Error fetching project agreement:', error);
@@ -64,40 +64,51 @@ router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreement = req.body;
-    
+
     // Validate required fields
     if (!agreement.agreementNumber) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Agreement number is required'
       });
     }
-    
+
     // Generate ID if not provided
     const agreementId = agreement.id || `project_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Check if agreement with this ID already exists and belongs to a different tenant
     if (agreement.id) {
       const existingAgreement = await db.query(
         'SELECT tenant_id FROM project_agreements WHERE id = $1',
         [agreementId]
       );
-      
+
       if (existingAgreement.length > 0 && existingAgreement[0].tenant_id !== req.tenantId) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'Forbidden',
           message: 'A project agreement with this ID already exists in another organization'
         });
       }
     }
-    
+
     // Check if agreement exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id FROM project_agreements WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, version FROM project_agreements WHERE id = $1 AND tenant_id = $2',
       [agreementId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
-    
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO project_agreements (
@@ -108,9 +119,9 @@ router.post('/', async (req: TenantRequest, res) => {
         list_price_category_id, customer_discount_category_id,
         floor_discount_category_id, lump_sum_discount_category_id,
         misc_discount_category_id, selling_price_category_id, rebate_category_id,
-        user_id, created_at, updated_at
+        user_id, created_at, updated_at, version
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
-                COALESCE((SELECT created_at FROM project_agreements WHERE id = $1), NOW()), NOW())
+                COALESCE((SELECT created_at FROM project_agreements WHERE id = $1), NOW()), NOW(), 1)
       ON CONFLICT (id) 
       DO UPDATE SET
         agreement_number = EXCLUDED.agreement_number,
@@ -138,7 +149,10 @@ router.post('/', async (req: TenantRequest, res) => {
         selling_price_category_id = EXCLUDED.selling_price_category_id,
         rebate_category_id = EXCLUDED.rebate_category_id,
         user_id = EXCLUDED.user_id,
-        updated_at = NOW()
+        updated_at = NOW(),
+        version = COALESCE(project_agreements.version, 1) + 1,
+        deleted_at = NULL
+      WHERE project_agreements.tenant_id = $2 AND (project_agreements.version = $28 OR project_agreements.version IS NULL)
       RETURNING *`,
       [
         agreementId,
@@ -167,11 +181,12 @@ router.post('/', async (req: TenantRequest, res) => {
         agreement.miscDiscountCategoryId || null,
         agreement.sellingPriceCategoryId || null,
         agreement.rebateCategoryId || null,
-        req.user?.userId || null
+        req.user?.userId || null,
+        serverVersion
       ]
     );
     const saved = result[0];
-    
+
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
       emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_AGREEMENT_UPDATED, {
@@ -186,7 +201,7 @@ router.post('/', async (req: TenantRequest, res) => {
         username: req.user?.username,
       });
     }
-    
+
     res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
     console.error('Error creating/updating project agreement:', error);
@@ -202,54 +217,64 @@ router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreement = req.body;
-    const result = await db.query(
-      `UPDATE project_agreements 
-       SET agreement_number = $1, client_id = $2, project_id = $3, unit_ids = $4,
-           list_price = $5, customer_discount = $6, floor_discount = $7,
-           lump_sum_discount = $8, misc_discount = $9, selling_price = $10,
-           rebate_amount = $11, rebate_broker_id = $12, issue_date = $13,
-           description = $14, status = $15, cancellation_details = $16,
-           installment_plan = $17,
-           list_price_category_id = $18, customer_discount_category_id = $19,
-           floor_discount_category_id = $20, lump_sum_discount_category_id = $21,
-           misc_discount_category_id = $22, selling_price_category_id = $23,
-           rebate_category_id = $24, updated_at = NOW()
-       WHERE id = $25 AND tenant_id = $26
-       RETURNING *`,
-      [
-        agreement.agreementNumber,
-        agreement.clientId,
-        agreement.projectId,
-        JSON.stringify(agreement.unitIds || []),
-        agreement.listPrice,
-        agreement.customerDiscount || 0,
-        agreement.floorDiscount || 0,
-        agreement.lumpSumDiscount || 0,
-        agreement.miscDiscount || 0,
-        agreement.sellingPrice,
-        agreement.rebateAmount || null,
-        agreement.rebateBrokerId || null,
-        agreement.issueDate,
-        agreement.description || null,
-        agreement.status,
-        agreement.cancellationDetails ? JSON.stringify(agreement.cancellationDetails) : null,
-        agreement.installmentPlan ? JSON.stringify(agreement.installmentPlan) : null,
-        agreement.listPriceCategoryId || null,
-        agreement.customerDiscountCategoryId || null,
-        agreement.floorDiscountCategoryId || null,
-        agreement.lumpSumDiscountCategoryId || null,
-        agreement.miscDiscountCategoryId || null,
-        agreement.sellingPriceCategoryId || null,
-        agreement.rebateCategoryId || null,
-        req.params.id,
-        req.tenantId
-      ]
-    );
-    
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let updateQuery = `
+      UPDATE project_agreements 
+      SET agreement_number = $1, client_id = $2, project_id = $3, unit_ids = $4,
+          list_price = $5, customer_discount = $6, floor_discount = $7,
+          lump_sum_discount = $8, misc_discount = $9, selling_price = $10,
+          rebate_amount = $11, rebate_broker_id = $12, issue_date = $13,
+          description = $14, status = $15, cancellation_details = $16,
+          installment_plan = $17,
+          list_price_category_id = $18, customer_discount_category_id = $19,
+          floor_discount_category_id = $20, lump_sum_discount_category_id = $21,
+          misc_discount_category_id = $22, selling_price_category_id = $23,
+          rebate_category_id = $24, updated_at = NOW(),
+          version = COALESCE(version, 1) + 1
+      WHERE id = $25 AND tenant_id = $26
+    `;
+    const queryParams: any[] = [
+      agreement.agreementNumber,
+      agreement.clientId,
+      agreement.projectId,
+      JSON.stringify(agreement.unitIds || []),
+      agreement.listPrice,
+      agreement.customerDiscount || 0,
+      agreement.floorDiscount || 0,
+      agreement.lumpSumDiscount || 0,
+      agreement.miscDiscount || 0,
+      agreement.sellingPrice,
+      agreement.rebateAmount || null,
+      agreement.rebateBrokerId || null,
+      agreement.issueDate,
+      agreement.description || null,
+      agreement.status,
+      agreement.cancellationDetails ? JSON.stringify(agreement.cancellationDetails) : null,
+      agreement.installmentPlan ? JSON.stringify(agreement.installmentPlan) : null,
+      agreement.listPriceCategoryId || null,
+      agreement.customerDiscountCategoryId || null,
+      agreement.floorDiscountCategoryId || null,
+      agreement.lumpSumDiscountCategoryId || null,
+      agreement.miscDiscountCategoryId || null,
+      agreement.sellingPriceCategoryId || null,
+      agreement.rebateCategoryId || null,
+      req.params.id,
+      req.tenantId
+    ];
+
+    if (clientVersion != null) {
+      updateQuery += ` AND version = $27`;
+      queryParams.push(clientVersion);
+    }
+
+    updateQuery += ` RETURNING *`;
+    const result = await db.query(updateQuery, queryParams);
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Project agreement not found' });
     }
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_AGREEMENT_UPDATED, {
       agreement: result[0],
       userId: req.user?.userId,
@@ -268,14 +293,14 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const result = await db.query(
-      'DELETE FROM project_agreements WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE project_agreements SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Project agreement not found' });
     }
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_AGREEMENT_DELETED, {
       agreementId: req.params.id,
       userId: req.user?.userId,

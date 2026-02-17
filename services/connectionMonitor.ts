@@ -25,8 +25,9 @@ class ConnectionMonitor {
   private initialize(): void {
     if (this.isInitialized) return;
 
-    // Set initial status
-    this.currentStatus = navigator.onLine ? 'online' : 'offline';
+    // In Electron (file://), navigator.onLine is often false; start as online and let health check verify
+    const isElectron = typeof window !== 'undefined' && (window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron;
+    this.currentStatus = (navigator.onLine || isElectron) ? 'online' : 'offline';
     
     // Listen to browser events
     window.addEventListener('online', this.handleOnline);

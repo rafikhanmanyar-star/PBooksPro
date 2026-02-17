@@ -184,6 +184,12 @@ router.get('/changes', async (req: TenantRequest, res) => {
   }
 });
 
+/** Check if error is due to missing column (e.g. deleted_at not yet migrated) */
+function isMissingColumnError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /column ["']?\w+["']? does not exist/i.test(msg) || /no such column/i.test(msg);
+}
+
 async function fetchTable(
   db: ReturnType<typeof getDb>,
   tenantId: string,
@@ -192,11 +198,21 @@ async function fetchTable(
 ): Promise<Record<string, unknown>[]> {
   try {
     const rows = await db.query(
-      `SELECT * FROM ${table} WHERE ${tenantColumn} = $1`,
+      `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 AND deleted_at IS NULL`,
       [tenantId]
     );
     return (rows as any[]).map((row) => rowToCamel(row));
   } catch (err) {
+    // Fallback: tables may lack deleted_at if sync metadata migration not yet applied
+    if (isMissingColumnError(err)) {
+      try {
+        const rows = await db.query(`SELECT * FROM ${table} WHERE ${tenantColumn} = $1`, [tenantId]);
+        return (rows as any[]).map((row) => rowToCamel(row));
+      } catch (fallbackErr) {
+        console.warn(`[state/bulk] Skip ${table} (no deleted_at and base query failed):`, (fallbackErr as Error).message);
+        return [];
+      }
+    }
     if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
       try {
         const fallbackRows = await db.query(
@@ -290,28 +306,44 @@ router.get('/bulk-chunked', async (req: TenantRequest, res) => {
 
     // Fetch each entity with LIMIT and OFFSET
     const promises = BULK_ENTITIES.map(async ({ responseKey, table, tenantColumn }) => {
-      try {
-        // Get total count for this entity
+      const runQuery = async (useDeletedAt: boolean) => {
+        const countWhere = useDeletedAt
+          ? `${tenantColumn} = $1 AND deleted_at IS NULL`
+          : `${tenantColumn} = $1`;
         const countResult = await db.query(
-          `SELECT COUNT(*) as count FROM ${table} WHERE ${tenantColumn} = $1`,
+          `SELECT COUNT(*) as count FROM ${table} WHERE ${countWhere}`,
           [tenantId]
         );
         const total = parseInt((countResult as any[])[0]?.count || '0');
 
-        // Get paginated rows
+        const rowWhere = useDeletedAt
+          ? `${tenantColumn} = $1 AND deleted_at IS NULL`
+          : `${tenantColumn} = $1`;
         const rows = await db.query(
-          `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 ORDER BY id LIMIT $2 OFFSET $3`,
+          `SELECT * FROM ${table} WHERE ${rowWhere} ORDER BY id LIMIT $2 OFFSET $3`,
           [tenantId, limit, offset]
         );
+        return { rows: (rows as any[]).map(row => rowToCamel(row)), total };
+      };
 
-        const camelRows = (rows as any[]).map(row => rowToCamel(row));
-
-        // Check if this entity has more records
+      try {
+        const { rows: camelRows, total } = await runQuery(true);
         const entityHasMore = offset + camelRows.length < total;
         if (entityHasMore) hasMore = true;
-
         return { responseKey, rows: camelRows, total };
       } catch (err) {
+        // Fallback when deleted_at column does not exist (migration not applied)
+        if (isMissingColumnError(err)) {
+          try {
+            const { rows: camelRows, total } = await runQuery(false);
+            const entityHasMore = offset + camelRows.length < total;
+            if (entityHasMore) hasMore = true;
+            return { responseKey, rows: camelRows, total };
+          } catch (fallbackErr) {
+            console.warn(`[bulk-chunked] Skip ${table}:`, (fallbackErr as Error).message);
+            return { responseKey, rows: [], total: 0 };
+          }
+        }
         // Fallback for rental_agreements with org_id
         if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
           try {

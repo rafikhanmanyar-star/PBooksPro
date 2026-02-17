@@ -39,7 +39,7 @@ function buildTenantClause(info: { hasOrgId: boolean; hasTenantId: boolean }, in
  */
 function transformRentalAgreement(dbResult: any): any {
   if (!dbResult) return dbResult;
-  
+
   return {
     id: dbResult.id,
     agreementNumber: dbResult.agreement_number || dbResult.agreementNumber,
@@ -70,7 +70,7 @@ router.get('/', async (req: TenantRequest, res) => {
     const { status, propertyId } = req.query;
 
     const tenantInfo = await getTenantColumnInfo();
-    let query = `SELECT * FROM rental_agreements WHERE ${buildTenantClause(tenantInfo, 1)}`;
+    let query = `SELECT * FROM rental_agreements WHERE ${buildTenantClause(tenantInfo, 1)} AND deleted_at IS NULL`;
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
@@ -104,7 +104,7 @@ router.get('/', async (req: TenantRequest, res) => {
       query: 'SELECT * FROM rental_agreements WHERE org_id = $1',
       tenantId: req.tenantId
     });
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to fetch rental agreements',
       message: error?.message || 'Unknown error',
       code: error?.code
@@ -121,11 +121,11 @@ router.get('/:id', async (req: TenantRequest, res) => {
       `SELECT * FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
       [req.params.id, req.tenantId]
     );
-    
+
     if (agreements.length === 0) {
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
-    
+
     // Transform database result to camelCase for API response
     res.json(transformRentalAgreement(agreements[0]));
   } catch (error) {
@@ -140,7 +140,7 @@ router.post('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const agreement = req.body;
     const tenantInfo = await getTenantColumnInfo();
-    
+
     console.log('📝 POST /rental-agreements - Received request:', {
       tenantId: req.tenantId,
       userId: req.user?.userId,
@@ -156,19 +156,19 @@ router.post('/', async (req: TenantRequest, res) => {
       hasBody: !!agreement,
       bodyKeys: Object.keys(agreement || {})
     });
-    
+
     // Validate required fields
     if (!agreement.agreementNumber) {
       console.log('❌ POST /rental-agreements - Validation failed: agreementNumber is required');
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Agreement number is required'
       });
     }
-    
+
     // Generate ID if not provided
     const agreementId = agreement.id || `rental_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Check if agreement with this ID already exists and belongs to a different tenant
     if (agreement.id) {
       const tenantColumns = [
@@ -180,24 +180,35 @@ router.post('/', async (req: TenantRequest, res) => {
         `SELECT id${selectTenantColumns} FROM rental_agreements WHERE id = $1`,
         [agreementId]
       );
-      
+
       const existingRow = existingAgreement[0];
       const existingTenantId = existingRow?.org_id ?? existingRow?.tenant_id;
       if (existingAgreement.length > 0 && existingTenantId !== req.tenantId) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'Forbidden',
           message: 'A rental agreement with this ID already exists in another organization'
         });
       }
     }
-    
+
     // Check if agreement exists to determine if this is a create or update
     const existing = await db.query(
-      `SELECT id, status FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
+      `SELECT id, status, version FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
       [agreementId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
-    
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     // If updating, check if invoices exist and if status is not Renewed
     if (isUpdate) {
       const existingAgreement = existing[0];
@@ -205,33 +216,34 @@ router.post('/', async (req: TenantRequest, res) => {
         'SELECT COUNT(*) as count FROM invoices WHERE agreement_id = $1 AND tenant_id = $2',
         [agreementId, req.tenantId]
       );
-      
+
       const invoiceCount = parseInt(hasInvoices[0]?.count || '0', 10);
       const isChangingStatusToRenewed = agreement.status === 'Renewed' && existingAgreement.status !== 'Renewed';
-      
+
       if (invoiceCount > 0 && existingAgreement.status !== 'Renewed') {
         // Only allow changing status to Renewed, prevent other field changes
         if (isChangingStatusToRenewed) {
           // Allow only status update, preserve all other fields from existing agreement
           const result = await db.query(
             `UPDATE rental_agreements 
-             SET status = $1, updated_at = NOW()
+             SET status = $1, updated_at = NOW(),
+                 version = COALESCE(version, 1) + 1
              WHERE id = $2 AND ${buildTenantClause(tenantInfo, 3)}
              RETURNING *`,
             ['Renewed', agreementId, req.tenantId]
           );
-          
+
           if (result.length === 0) {
             return res.status(404).json({ error: 'Rental agreement not found' });
           }
-          
+
           const transformedResult = transformRentalAgreement(result[0]);
           emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
             agreement: transformedResult,
             userId: req.user?.userId,
             username: req.user?.username,
           });
-          
+
           return res.status(200).json(transformedResult);
         } else {
           return res.status(400).json({
@@ -241,7 +253,7 @@ router.post('/', async (req: TenantRequest, res) => {
         }
       }
     }
-    
+
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const insertColumns = ['id'];
     const insertValues: any[] = [agreementId];
@@ -271,7 +283,8 @@ router.post('/', async (req: TenantRequest, res) => {
       'owner_id',
       'previous_agreement_id',
       'created_at',
-      'updated_at'
+      'updated_at',
+      'version'
     );
 
     insertValues.push(
@@ -292,8 +305,20 @@ router.post('/', async (req: TenantRequest, res) => {
     );
 
     const valuePlaceholders = insertColumns.map((_, idx) => `$${idx + 1}`);
-    valuePlaceholders[valuePlaceholders.length - 2] = `COALESCE((SELECT created_at FROM rental_agreements WHERE id = $1), NOW())`;
-    valuePlaceholders[valuePlaceholders.length - 1] = 'NOW()';
+    // Indices for special handling
+    const createdAtIdx = insertColumns.indexOf('created_at');
+    const updatedAtIdx = insertColumns.indexOf('updated_at');
+    const versionIdx = insertColumns.indexOf('version');
+
+    if (createdAtIdx !== -1) {
+      valuePlaceholders[createdAtIdx] = `COALESCE((SELECT created_at FROM rental_agreements WHERE id = $1), NOW())`;
+    }
+    if (updatedAtIdx !== -1) {
+      valuePlaceholders[updatedAtIdx] = `NOW()`;
+    }
+    if (versionIdx !== -1) {
+      valuePlaceholders[versionIdx] = `1`;
+    }
 
     const result = await db.query(
       `INSERT INTO rental_agreements (
@@ -315,20 +340,23 @@ router.post('/', async (req: TenantRequest, res) => {
         broker_fee = EXCLUDED.broker_fee,
         owner_id = EXCLUDED.owner_id,
         previous_agreement_id = EXCLUDED.previous_agreement_id,
-        updated_at = NOW()
+        updated_at = NOW(),
+        version = COALESCE(rental_agreements.version, 1) + 1,
+        deleted_at = NULL
+      WHERE (rental_agreements.org_id = $2 OR rental_agreements.tenant_id = $2) AND (rental_agreements.version = $${insertValues.length + 1} OR rental_agreements.version IS NULL)
       RETURNING *`,
-      insertValues
+      [...insertValues, serverVersion]
     );
     const saved = result[0];
     const transformedSaved = transformRentalAgreement(saved);
-    
+
     console.log('✅ POST /rental-agreements - Agreement saved successfully:', {
       id: saved.id,
       agreementNumber: saved.agreement_number,
       tenantId: req.tenantId,
       isUpdate
     });
-    
+
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
       console.log('📡 POST /rental-agreements - Emitting RENTAL_AGREEMENT_UPDATED event');
@@ -345,7 +373,7 @@ router.post('/', async (req: TenantRequest, res) => {
         username: req.user?.username,
       });
     }
-    
+
     res.status(isUpdate ? 200 : 201).json(transformedSaved);
   } catch (error: any) {
     console.error('Error creating/updating rental agreement:', error);
@@ -357,30 +385,30 @@ router.post('/', async (req: TenantRequest, res) => {
       column: error?.column,
       table: error?.table
     });
-    
+
     // Handle specific PostgreSQL error codes
     if (error.code === '23505') { // Unique violation
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Agreement number already exists',
         message: `An agreement with this number already exists: ${error.detail || ''}`
       });
     }
     if (error.code === '23502') { // NOT NULL violation
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Missing required field',
         message: `Required field is missing: ${error.column || error.detail || 'unknown field'}`,
         detail: error.detail
       });
     }
     if (error.code === '23503') { // Foreign key violation
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Invalid reference',
         message: `Referenced record does not exist: ${error.detail || error.constraint || 'unknown reference'}`,
         detail: error.detail
       });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Failed to save rental agreement',
       message: error?.message || 'Unknown error',
       code: error?.code
@@ -394,51 +422,52 @@ router.put('/:id', async (req: TenantRequest, res) => {
     const db = getDb();
     const agreement = req.body;
     const agreementId = req.params.id;
-    
+
     // Check if agreement exists and get its current status
     const existing = await db.query(
-      'SELECT id, status FROM rental_agreements WHERE id = $1 AND org_id = $2',
+      'SELECT id, status, version FROM rental_agreements WHERE id = $1 AND org_id = $2',
       [agreementId, req.tenantId]
     );
-    
+
     if (existing.length === 0) {
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
-    
+
     const existingAgreement = existing[0];
-    
+
     // Check if invoices exist and if status is not Renewed
     const hasInvoices = await db.query(
       'SELECT COUNT(*) as count FROM invoices WHERE agreement_id = $1 AND tenant_id = $2',
       [agreementId, req.tenantId]
     );
-    
+
     const invoiceCount = parseInt(hasInvoices[0]?.count || '0', 10);
     const isChangingStatusToRenewed = agreement.status === 'Renewed' && existingAgreement.status !== 'Renewed';
-    
+
     if (invoiceCount > 0 && existingAgreement.status !== 'Renewed') {
       // Only allow changing status to Renewed, prevent other field changes
       if (isChangingStatusToRenewed) {
         // Allow only status update, preserve all other fields from existing agreement
         const result = await db.query(
           `UPDATE rental_agreements 
-           SET status = $1, updated_at = NOW()
+           SET status = $1, updated_at = NOW(),
+               version = COALESCE(version, 1) + 1
            WHERE id = $2 AND org_id = $3
            RETURNING *`,
           ['Renewed', agreementId, req.tenantId]
         );
-        
+
         if (result.length === 0) {
           return res.status(404).json({ error: 'Rental agreement not found' });
         }
-        
+
         const transformedResult = transformRentalAgreement(result[0]);
         emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
           agreement: transformedResult,
           userId: req.user?.userId,
           username: req.user?.username,
         });
-        
+
         return res.json(transformedResult);
       } else {
         return res.status(400).json({
@@ -447,40 +476,50 @@ router.put('/:id', async (req: TenantRequest, res) => {
         });
       }
     }
-    
-    const result = await db.query(
-      `UPDATE rental_agreements 
-       SET agreement_number = $1, contact_id = $2, property_id = $3, start_date = $4, end_date = $5,
-           monthly_rent = $6, rent_due_date = $7, status = $8, description = $9,
-           security_deposit = $10, broker_id = $11, broker_fee = $12, owner_id = $13,
-           updated_at = NOW()
-       WHERE id = $14 AND org_id = $15
-       RETURNING *`,
-      [
-        agreement.agreementNumber,
-        agreement.contactId || null, // Contact ID (the tenant contact person)
-        agreement.propertyId,
-        agreement.startDate,
-        agreement.endDate,
-        agreement.monthlyRent,
-        agreement.rentDueDate,
-        agreement.status,
-        agreement.description || null,
-        agreement.securityDeposit || null,
-        agreement.brokerId || null,
-        agreement.brokerFee || null,
-        agreement.ownerId || null,
-        agreementId,
-        req.tenantId
-      ]
-    );
-    
+
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let updateQuery = `
+      UPDATE rental_agreements 
+      SET agreement_number = $1, contact_id = $2, property_id = $3, start_date = $4, end_date = $5,
+          monthly_rent = $6, rent_due_date = $7, status = $8, description = $9,
+          security_deposit = $10, broker_id = $11, broker_fee = $12, owner_id = $13,
+          updated_at = NOW(),
+          version = COALESCE(version, 1) + 1
+      WHERE id = $14 AND org_id = $15
+    `;
+    const queryParams: any[] = [
+      agreement.agreementNumber,
+      agreement.contactId || null,
+      agreement.propertyId,
+      agreement.startDate,
+      agreement.endDate,
+      agreement.monthlyRent,
+      agreement.rentDueDate,
+      agreement.status,
+      agreement.description || null,
+      agreement.securityDeposit || null,
+      agreement.brokerId || null,
+      agreement.brokerFee || null,
+      agreement.ownerId || null,
+      agreementId,
+      req.tenantId
+    ];
+
+    if (clientVersion != null) {
+      updateQuery += ` AND version = $16`;
+      queryParams.push(clientVersion);
+    }
+
+    updateQuery += ` RETURNING *`;
+    const result = await db.query(updateQuery, queryParams);
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
-    
+
     const transformedResult = transformRentalAgreement(result[0]);
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
       agreement: transformedResult,
       userId: req.user?.userId,
@@ -548,7 +587,7 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
 
     // 4. Mark old agreement as Renewed
     await db.query(
-      `UPDATE rental_agreements SET status = 'Renewed', updated_at = NOW() WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
+      `UPDATE rental_agreements SET status = 'Renewed', updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
       [oldId, req.tenantId]
     );
 
@@ -571,7 +610,7 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
       'start_date', 'end_date', 'monthly_rent', 'rent_due_date',
       'status', 'description', 'security_deposit',
       'broker_id', 'broker_fee', 'owner_id', 'previous_agreement_id',
-      'created_at', 'updated_at'
+      'created_at', 'updated_at', 'version'
     );
     insertVals.push(
       body.agreementNumber,
@@ -588,8 +627,9 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
       body.brokerFee ?? old.broker_fee ?? null,
       body.ownerId ?? old.owner_id ?? null,
       oldId, // previous_agreement_id
-      'NOW()', // placeholder, will be replaced
-      'NOW()'
+      'NOW()', // placeholders...
+      'NOW()',
+      '1'
     );
 
     // Build placeholders (last two are NOW())
@@ -797,7 +837,7 @@ router.post('/:id/terminate', async (req: TenantRequest, res) => {
     }
 
     const updateResult = await db.query(
-      `UPDATE rental_agreements SET status = $1, end_date = $2, description = $3, updated_at = NOW()
+      `UPDATE rental_agreements SET status = $1, end_date = $2, description = $3, updated_at = NOW(), version = COALESCE(version, 1) + 1
        WHERE id = $4 AND ${buildTenantClause(tenantInfo, 5)}
        RETURNING *`,
       [body.status || 'Terminated', body.endDate, description, agreementId, req.tenantId]
@@ -829,15 +869,16 @@ router.post('/:id/terminate', async (req: TenantRequest, res) => {
 router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    const tenantInfo = await getTenantColumnInfo();
     const result = await db.query(
-      'DELETE FROM rental_agreements WHERE id = $1 AND org_id = $2 RETURNING id',
+      `UPDATE rental_agreements SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)} RETURNING id`,
       [req.params.id, req.tenantId]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_DELETED, {
       agreementId: req.params.id,
       userId: req.user?.userId,

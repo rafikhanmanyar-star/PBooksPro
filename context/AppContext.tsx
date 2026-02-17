@@ -12,6 +12,7 @@ import packageJson from '../package.json';
 import { shouldSyncAction } from '../services/sync/dataFilter';
 import InitializationScreen from '../components/InitializationScreen';
 import { getSyncQueue } from '../services/syncQueue';
+import { getSyncManager } from '../services/sync/syncManager';
 import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
 import { getLastSyncTimestamp, setLastSyncTimestamp, isLastSyncRecent, clearLastSyncTimestamp } from '../utils/lastSyncStorage';
@@ -441,6 +442,31 @@ const reducer = (state: AppState, action: AppAction): AppState => {
     switch (action.type) {
         case 'SET_STATE':
             return { ...state, ...action.payload };
+        case 'BATCH_UPSERT_ENTITIES': {
+            const entities = action.payload;
+            let newState = { ...state };
+
+            for (const [entityKey, items] of Object.entries(entities)) {
+                if (!Array.isArray(items)) continue;
+
+                // Get the current array from state
+                const currentArray = (newState as any)[entityKey];
+                if (!Array.isArray(currentArray)) continue;
+
+                // Create a map for fast lookup
+                const itemMap = new Map(currentArray.map(item => [item.id, item]));
+
+                // Upsert items from payload
+                items.forEach(item => {
+                    itemMap.set(item.id, { ...(itemMap.get(item.id) || {}), ...item });
+                });
+
+                // Update state with new array
+                (newState as any)[entityKey] = Array.from(itemMap.values());
+            }
+
+            return newState;
+        }
         case 'SET_PAGE':
             return { ...state, currentPage: action.payload };
         case 'LOGIN':
@@ -1377,7 +1403,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             }, 300);
 
                             // STEP 2: Background sync with cloud — delay start so UI stays responsive, then defer heavy updates
-                            const BACKGROUND_SYNC_DELAY_MS = 2000;
+                            const BACKGROUND_SYNC_DELAY_MS = 1000;
                             setTimeout(() => {
                                 (async function runBackgroundCloudSync() {
                                     try {
@@ -1398,14 +1424,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             );
                                             if (currentTenantId && lastSync && hasBaseline && isLastSyncRecent(currentTenantId)) {
                                                 apiState = await apiService.loadStateViaIncrementalSync(lastSync, baseline as Partial<AppState>);
-                                                logger.logCategory('sync', '📥 Background: used incremental sync');
+                                                logger.logCategory('sync', '[CloudSync] Background: used incremental sync, entities:', Object.keys(apiState || {}).filter(k => Array.isArray((apiState as any)?.[k])).join(', '));
                                             } else {
-                                                apiState = await apiService.loadState();
+                                                const syncManager = getSyncManager();
+                                                try {
+                                                    apiState = await apiService.loadStateBulkChunked(
+                                                        (loaded, total) => syncManager.setPullProgress(loaded, total || null),
+                                                        200
+                                                    );
+                                                    syncManager.clearPullProgress();
+                                                    logger.logCategory('sync', '[CloudSync] Background: full bulk load done, entities:', Object.keys(apiState || {}).filter(k => Array.isArray((apiState as any)?.[k])).join(', '));
+                                                } catch (chunkErr) {
+                                                    logger.warnCategory('sync', '[CloudSync] Chunked load failed, falling back to loadState:', chunkErr);
+                                                    console.error('[CloudSync] loadStateBulkChunked failed:', chunkErr);
+                                                    syncManager.clearPullProgress();
+                                                    apiState = await apiService.loadState();
+                                                }
                                             }
                                         } catch (incErr) {
                                             logger.warnCategory('sync', '⚠️ Background incremental sync failed, full load:', incErr);
+                                            console.error('[CloudSync] Incremental sync failed, attempting full load:', incErr);
                                             if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
-                                            apiState = await apiService.loadState();
+                                            getSyncManager().clearPullProgress();
+                                            const syncManager = getSyncManager();
+                                            try {
+                                                apiState = await apiService.loadStateBulkChunked(
+                                                    (loaded, total) => syncManager.setPullProgress(loaded, total || null),
+                                                    200
+                                                );
+                                                syncManager.clearPullProgress();
+                                            } catch (chunkErr) {
+                                                logger.warnCategory('sync', '⚠️ Chunked load failed, falling back to loadState:', chunkErr);
+                                                console.error('[CloudSync] Chunked load failed (fallback to loadState):', chunkErr);
+                                                syncManager.clearPullProgress();
+                                                apiState = await apiService.loadState();
+                                            }
                                         }
                                         if (currentTenantId) {
                                             setLastSyncTimestamp(currentTenantId, new Date().toISOString());
@@ -1457,16 +1510,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         };
 
                                         // Defer heavy state update and save so main thread stays responsive.
-                                        // Must dispatch to reducer so UI (which reads from state) shows the data.
                                         const applyUpdate = () => {
                                             setStoredState(fullState);
                                             dispatchRef.current?.({ type: 'SET_STATE', payload: fullState, _isRemote: true } as any);
-                                            if (!useFallback && getDatabaseService().isReady() && saveNow) {
-                                                saveNow(fullState, { disableSyncQueueing: true }).catch((saveError: unknown) => {
-                                                    console.warn('⚠️ Background sync: could not save to local database:', saveError);
+                                            const dbReady = !useFallback && getDatabaseService().isReady() && saveNow;
+                                            logger.logCategory('sync', `[CloudSync] Merged API state: accounts=${fullState.accounts?.length ?? 0} contacts=${fullState.contacts?.length ?? 0} transactions=${fullState.transactions?.length ?? 0} installmentPlans=${fullState.installmentPlans?.length ?? 0} pmCycleAllocations=${fullState.pmCycleAllocations?.length ?? 0} | willSaveToLocal=${!!dbReady}`);
+                                            if (dbReady) {
+                                                saveNow(fullState, { disableSyncQueueing: true }).then(() => {
+                                                    logger.logCategory('sync', '[CloudSync] Background sync: saved to local SQLite successfully');
+                                                }).catch((saveError: unknown) => {
+                                                    console.warn('[CloudSync] Background sync: could not save to local database:', saveError);
                                                 });
+                                            } else {
+                                                logger.logCategory('sync', '[CloudSync] Background sync: skipping local save (useFallback or db not ready)');
                                             }
-                                            logger.logCategory('sync', '✅ Background cloud sync completed');
                                         };
                                         if (typeof requestIdleCallback !== 'undefined') {
                                             requestIdleCallback(applyUpdate, { timeout: 200 });
@@ -1475,6 +1532,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         }
                                     } catch (bgError) {
                                         logger.warnCategory('sync', '⚠️ Background cloud sync failed (app continues with local data):', bgError);
+                                        console.error('[CloudSync] Background sync error (check network, API URL, auth):', bgError);
                                     }
                                 })();
                             }, BACKGROUND_SYNC_DELAY_MS);
@@ -2621,7 +2679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return Array.from(merged.values());
         };
 
-        const applyApiState = (apiState: Partial<AppState>) => {
+        const applyApiState = (apiState: Partial<AppState>): AppState | null => {
             const updates: Partial<AppState> = {};
             const currentState = stateRef.current;
             if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
@@ -2653,10 +2711,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
             if (apiState.vendors) updates.vendors = mergeById(currentState.vendors || [], apiState.vendors);
             if (apiState.recurringInvoiceTemplates) updates.recurringInvoiceTemplates = mergeById(currentState.recurringInvoiceTemplates || [], apiState.recurringInvoiceTemplates);
-            if (Object.keys(updates).length === 0) return;
+            if (Object.keys(updates).length === 0) return null;
             const mergedState = { ...stateRef.current, ...updates };
             dispatch({ type: 'SET_STATE', payload: mergedState, _isRemote: true } as any);
             setStoredState(prev => ({ ...prev, ...updates }));
+            return mergedState as AppState;
+        };
+
+        const persistLoadedStateToDb = async (mergedState: AppState | null) => {
+            if (!mergedState || !saveNow) return;
+            try {
+                const dbService = getDatabaseService();
+                if (dbService.isReady()) {
+                    await saveNow(mergedState, { disableSyncQueueing: true });
+                    logger.logCategory('sync', '✅ Saved cloud data to local database');
+                }
+            } catch (saveErr) {
+                console.warn('[CloudSync] Failed to save loaded data to local DB:', saveErr);
+            }
         };
 
         try {
@@ -2666,7 +2738,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             try {
                 const critical = await apiService.loadStateBulk('accounts,contacts,categories,projects,buildings,properties,units,vendors');
                 if (critical && Object.keys(critical).length > 0) {
-                    applyApiState(critical);
+                    const mergedCritical = applyApiState(critical);
+                    if (mergedCritical) persistLoadedStateToDb(mergedCritical);
                     onCriticalLoaded?.(); // UI becomes interactive here
 
                     // STEP 2: Load remaining data in background (chunked, non-blocking)
@@ -2679,7 +2752,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         }
                     }, 200) // 200 records per chunk
                         .then(full => {
-                            applyApiState(full);
+                            const mergedFull = applyApiState(full);
+                            if (mergedFull) persistLoadedStateToDb(mergedFull);
                             setLoadProgress(null);
                             setInitMessage('Data loaded');
                             setInitProgress(100);
@@ -2691,7 +2765,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             // Fallback to regular bulk load if chunked fails
                             logger.logCategory('sync', '⚠️ Chunked load failed, falling back to bulk');
                             apiService.loadStateBulk()
-                                .then(full => applyApiState(full))
+                                .then(full => {
+                                    const merged = applyApiState(full);
+                                    if (merged) persistLoadedStateToDb(merged);
+                                })
                                 .catch(bulkErr => console.error('⚠️ Bulk fallback also failed:', bulkErr));
                         });
                     return;
@@ -2711,13 +2788,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     throw bulkErr;
                 }
             }
-            applyApiState(apiState);
+            const mergedFallback = applyApiState(apiState);
+            if (mergedFallback) persistLoadedStateToDb(mergedFallback);
             onCriticalLoaded?.();
         } catch (err) {
             console.error('⚠️ Failed to refresh data from API:', err);
             onCriticalLoaded?.();
         }
-    }, [dispatch, isAuthenticated, setStoredState, setInitMessage, setInitProgress, setLoadProgress]);
+    }, [dispatch, isAuthenticated, setStoredState, setInitMessage, setInitProgress, setLoadProgress, saveNow]);
 
     // Store refreshFromApi in a ref so WebSocket handlers always use the latest version
     const refreshFromApiRef = useRef(refreshFromApi);
@@ -2728,7 +2806,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Run refreshFromApi only after user logs in (not on initial load with existing session — init background sync handles that)
     useEffect(() => {
         const handleLoginSuccess = () => {
-            refreshFromApiRef.current(undefined);
+            logger.logCategory('sync', '📡 Login success: loading data from cloud...');
+            // Brief delay so localStorage/auth state and API client are fully updated before first request
+            setTimeout(() => {
+                refreshFromApiRef.current(undefined);
+            }, 100);
         };
         window.addEventListener('auth:login-success', handleLoginSuccess);
         return () => window.removeEventListener('auth:login-success', handleLoginSuccess);
@@ -3655,6 +3737,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
         }
     }, [state, useFallback, saveNow]);
+
+    // Listen for incremental sync updates
+    useEffect(() => {
+        const handleChunkApplied = (event: CustomEvent) => {
+            const { entities } = event.detail;
+            if (entities && Object.keys(entities).length > 0) {
+                dispatch({ type: 'BATCH_UPSERT_ENTITIES', payload: entities });
+            }
+        };
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('sync:chunk-applied', handleChunkApplied as EventListener);
+            return () => {
+                window.removeEventListener('sync:chunk-applied', handleChunkApplied as EventListener);
+            };
+        }
+    }, [dispatch]);
 
     // Auto-sync: on session restore, load from API when state is empty (init may have run before auth completed)
     const sessionRestoreRefreshDoneRef = useRef(false);

@@ -11,6 +11,7 @@
 import { getDatabaseService } from '../database/databaseService';
 import { getConnectionMonitor } from '../connection/connectionMonitor';
 import { isMobileDevice } from '../../utils/platformDetection';
+import { isElectronWithSqlite, sqliteQuery, sqliteRun } from '../electronSqliteStorage';
 
 export interface OfflineLock {
   tenantId: string;
@@ -24,10 +25,10 @@ class OfflineLockManager {
   private connectionMonitor = getConnectionMonitor();
   private currentUserId: string | null = null;
   private currentTenantId: string | null = null;
+  private locksLoadPromise: Promise<void> | null = null;
 
   constructor() {
-    // Load offline locks from local storage
-    this.loadOfflineLocks();
+    this.locksLoadPromise = this.loadOfflineLocks();
     
     // Monitor connection status
     this.connectionMonitor.startMonitoring({
@@ -75,7 +76,7 @@ class OfflineLockManager {
       } else {
         // Same user - lock already exists, extend it
         existingLock.lockedAt = Date.now();
-        this.saveOfflineLocks();
+        void this.saveOfflineLocks();
         return;
       }
     }
@@ -89,7 +90,7 @@ class OfflineLockManager {
     };
 
     this.offlineLocks.set(this.currentTenantId, lock);
-    this.saveOfflineLocks();
+    void this.saveOfflineLocks();
 
     console.log(
       `[OfflineLockManager] ✅ Offline write lock acquired for tenant ${this.currentTenantId} by user ${this.currentUserId}`
@@ -114,7 +115,7 @@ class OfflineLockManager {
     
     if (lock && lock.userId === this.currentUserId) {
       this.offlineLocks.delete(this.currentTenantId);
-      this.saveOfflineLocks();
+      void this.saveOfflineLocks();
       
       console.log(
         `[OfflineLockManager] 🔓 Offline write lock released for tenant ${this.currentTenantId}`
@@ -207,14 +208,22 @@ class OfflineLockManager {
    */
   releaseOfflineLock(tenantId: string): void {
     this.offlineLocks.delete(tenantId);
-    this.saveOfflineLocks();
+    void this.saveOfflineLocks();
     console.log(`[OfflineLockManager] 🔓 Offline lock force-released for tenant ${tenantId}`);
   }
 
+  private useSqliteLocks(): boolean {
+    return isElectronWithSqlite();
+  }
+
   /**
-   * Save offline locks to localStorage
+   * Save offline locks to storage (SQLite in Electron, localStorage on web)
    */
-  private saveOfflineLocks(): void {
+  private async saveOfflineLocks(): Promise<void> {
+    if (this.useSqliteLocks()) {
+      await this.saveOfflineLocksToSqlite();
+      return;
+    }
     try {
       const locksArray = Array.from(this.offlineLocks.values());
       localStorage.setItem('offline_locks', JSON.stringify(locksArray));
@@ -223,24 +232,70 @@ class OfflineLockManager {
     }
   }
 
+  private async saveOfflineLocksToSqlite(): Promise<void> {
+    await sqliteRun('DELETE FROM offline_locks');
+    for (const lock of this.offlineLocks.values()) {
+      const expiresAt = lock.lockedAt + 7 * 24 * 60 * 60 * 1000;
+      await sqliteRun(
+        `INSERT INTO offline_locks (id, tenant_id, user_id, user_name, locked_at, entity_type, entity_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, 'tenant', ?, ?, ?)`,
+        [lock.tenantId, lock.tenantId, lock.userId, lock.userName || '', lock.lockedAt, lock.tenantId, expiresAt, lock.lockedAt]
+      );
+    }
+  }
+
   /**
-   * Load offline locks from localStorage
+   * Load offline locks from storage (SQLite in Electron, localStorage on web)
    */
-  private loadOfflineLocks(): void {
+  private async loadOfflineLocks(): Promise<void> {
+    if (this.useSqliteLocks()) {
+      await this.loadOfflineLocksFromSqlite();
+      return;
+    }
     try {
       const saved = localStorage.getItem('offline_locks');
       if (saved) {
         const locksArray: OfflineLock[] = JSON.parse(saved);
-        
         for (const lock of locksArray) {
           this.offlineLocks.set(lock.tenantId, lock);
         }
-        
         console.log(`[OfflineLockManager] Loaded ${this.offlineLocks.size} offline locks`);
       }
     } catch (error) {
       console.error('[OfflineLockManager] Failed to load offline locks:', error);
       this.offlineLocks.clear();
+    }
+  }
+
+  private async loadOfflineLocksFromSqlite(): Promise<void> {
+    const rows = await sqliteQuery<{ id: string; tenant_id: string | null; user_id: string; user_name: string | null; locked_at: number | null; created_at: number | null }>(
+      'SELECT id, tenant_id, user_id, user_name, locked_at, created_at FROM offline_locks'
+    );
+    for (const r of rows) {
+      const tenantId = r.tenant_id ?? r.id;
+      this.offlineLocks.set(tenantId, {
+        tenantId,
+        userId: r.user_id,
+        userName: r.user_name || '',
+        lockedAt: r.locked_at ?? r.created_at ?? 0,
+      });
+    }
+    if (rows.length > 0) {
+      console.log(`[OfflineLockManager] Loaded ${this.offlineLocks.size} offline locks from SQLite`);
+    }
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('offline_locks') : null;
+    if (saved && rows.length === 0) {
+      try {
+        const legacy: OfflineLock[] = JSON.parse(saved);
+        for (const lock of legacy) {
+          this.offlineLocks.set(lock.tenantId, lock);
+          const expiresAt = lock.lockedAt + 7 * 24 * 60 * 60 * 1000;
+          await sqliteRun(
+            `INSERT INTO offline_locks (id, tenant_id, user_id, user_name, locked_at, entity_type, entity_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, 'tenant', ?, ?, ?)`,
+            [lock.tenantId, lock.tenantId, lock.userId, lock.userName || '', lock.lockedAt, lock.tenantId, expiresAt, lock.lockedAt]
+          );
+        }
+        if (typeof localStorage !== 'undefined') localStorage.removeItem('offline_locks');
+      } catch (_) { }
     }
   }
 
@@ -256,7 +311,7 @@ class OfflineLockManager {
    */
   clearAllOfflineLocks(): void {
     this.offlineLocks.clear();
-    this.saveOfflineLocks();
+    void this.saveOfflineLocks();
     console.log('[OfflineLockManager] All offline locks cleared');
   }
 

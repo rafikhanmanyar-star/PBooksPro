@@ -62,28 +62,13 @@ export class TransactionsRepository extends BaseRepository<any> {
         try {
             this.nativeService = getNativeDatabaseService();
             const isAvailable = this.nativeService.isNativeAvailable();
-            console.log('🔍 TransactionsRepository: Native service available?', isAvailable);
-
-            // Enable native backend by default if available (can be disabled via feature flag)
-            // Check localStorage for feature flag
             if (typeof window !== 'undefined') {
                 const flag = localStorage.getItem('useNativeDatabase');
-                console.log('🔍 TransactionsRepository: Feature flag value:', flag);
-                if (flag !== null) {
-                    this.useNativeBackend = flag === 'true' && isAvailable;
-                    console.log('🔍 TransactionsRepository: Using feature flag, useNativeBackend =', this.useNativeBackend);
-                } else {
-                    // No flag set, use default (enabled if available)
-                    this.useNativeBackend = isAvailable;
-                    console.log('🔍 TransactionsRepository: No feature flag, using default, useNativeBackend =', this.useNativeBackend);
-                }
+                this.useNativeBackend = flag !== null ? flag === 'true' && isAvailable : isAvailable;
             } else {
                 this.useNativeBackend = isAvailable;
-                console.log('🔍 TransactionsRepository: Not in browser, useNativeBackend =', this.useNativeBackend);
             }
         } catch (e) {
-            // Native service not available, use sql.js
-            console.error('❌ TransactionsRepository: Failed to load native service:', e);
             this.useNativeBackend = false;
         }
     }
@@ -267,7 +252,7 @@ export class BudgetsRepository extends BaseRepository<any> {
 }
 
 export class RentalAgreementsRepository extends BaseRepository<any> {
-    constructor() { super('rental_agreements'); }
+    constructor() { super('rental_agreements', 'id', 'org_id'); }
 }
 
 export class ProjectAgreementsRepository extends BaseRepository<any> {
@@ -481,7 +466,7 @@ export class ChatMessagesRepository extends BaseRepository<any> {
     markAsRead(senderId: string, recipientId: string): void {
         const sql = `
             UPDATE chat_messages 
-            SET read_at = datetime('now')
+            SET read_at = datetime(\'now\')
             WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL
         `;
         this.db.execute(sql, [senderId, recipientId]);
@@ -524,7 +509,7 @@ export class AppSettingsRepository {
     setSetting(key: string, value: any): void {
         const jsonValue = typeof value === 'string' ? value : JSON.stringify(value);
         this.db.execute(
-            'INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+            'INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
             [key, jsonValue]
         );
         // Don't call save() here if we're in a transaction - it will be saved after transaction commits

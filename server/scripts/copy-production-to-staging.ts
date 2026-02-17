@@ -98,7 +98,8 @@ async function main() {
     console.log('\n🧹 Cleaned up dump file');
   }
 
-  console.log('\n✅ Done! Staging now has production data. Test at: https://pbookspro-client-staging.onrender.com');
+  console.log('\n✅ Done! Staging now has production data.');
+  console.log('   Staging API: https://pbookspro-api-staging.onrender.com (health: https://pbookspro-api-staging.onrender.com/health)');
 }
 
 main().catch((err) => {

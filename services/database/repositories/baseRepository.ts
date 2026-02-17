@@ -21,6 +21,8 @@ interface PendingSyncOperation {
 export abstract class BaseRepository<T> {
     protected tableName: string;
     protected primaryKey: string;
+    /** Column for tenant isolation (default tenant_id). rental_agreements uses org_id to match PostgreSQL. */
+    protected tenantColumn: string;
     private tableColumns: Set<string> | null = null;
 
     // Static tracker for pending sync operations during transactions
@@ -30,9 +32,10 @@ export abstract class BaseRepository<T> {
     // This prevents creating sync operations for data that's already in the cloud
     private static syncQueueingDisabled = false;
 
-    constructor(tableName: string, primaryKey: string = 'id') {
+    constructor(tableName: string, primaryKey: string = 'id', tenantColumn: string = 'tenant_id') {
         this.tableName = tableName;
         this.primaryKey = primaryKey;
+        this.tenantColumn = tenantColumn;
     }
 
     /**
@@ -58,7 +61,7 @@ export abstract class BaseRepository<T> {
      */
     static disableSyncQueueing(): void {
         BaseRepository.syncQueueingDisabled = true;
-        console.log('[BaseRepository] Sync queueing disabled (syncing from cloud)');
+        // Sync queueing disabled when syncing from cloud
     }
 
     /**
@@ -66,7 +69,7 @@ export abstract class BaseRepository<T> {
      */
     static enableSyncQueueing(): void {
         BaseRepository.syncQueueingDisabled = false;
-        console.log('[BaseRepository] Sync queueing enabled (normal operation)');
+        // Sync queueing enabled (normal operation)
     }
 
     /**
@@ -136,9 +139,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                // Use tenant_id for all tables (org_id was renamed to tenant_id in rental_agreements for consistency)
-                const tenantColumn = 'tenant_id';
-                whereConditions.push(`${tenantColumn} = ?`);
+                whereConditions.push(`${this.tenantColumn} = ?`);
                 whereParams.push(tenantId);
             }
         }
@@ -199,7 +200,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 sql += ` AND ${tenantColumn} = ?`;
                 params.push(tenantId);
             }
@@ -230,7 +231,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 sql += ` AND ${tenantColumn} = ?`;
                 queryParams.push(tenantId);
             }
@@ -303,7 +304,6 @@ export abstract class BaseRepository<T> {
         }
 
         this.tableColumns = new Set(rows.map(r => r.name));
-        console.log(`✅ Loaded ${this.tableColumns.size} columns for ${this.tableName}:`, Array.from(this.tableColumns).join(', '));
         return this.tableColumns;
     }
 
@@ -336,7 +336,7 @@ export abstract class BaseRepository<T> {
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                 const tenantId = getCurrentTenantId();
                 if (tenantId) {
-                    const tenantColumn = 'tenant_id';
+                    const tenantColumn = this.tenantColumn;
                     if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
                         dbData[tenantColumn] = tenantId;
                     }
@@ -427,7 +427,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 if (columnsSet.has(tenantColumn)) {
                     dbData[tenantColumn] = tenantId;
                 }
@@ -455,7 +455,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 sql += ` AND ${tenantColumn} = ?`;
                 values.push(tenantId);
             }
@@ -532,7 +532,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
             } else {
                 this.db.execute(`DELETE FROM ${this.tableName}`);
@@ -576,7 +576,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 sql += ` WHERE ${tenantColumn} = ?`;
                 params.push(tenantId);
             }
@@ -641,13 +641,27 @@ export abstract class BaseRepository<T> {
     }
 
     /**
+     * Tables that are referenced by other tables in the same save batch (appStateRepository).
+     * When saving 0 records we must not DELETE these, or FK constraint fails (dependents still exist).
+     */
+    private static readonly TABLES_WITH_DEPENDENTS_IN_SAVE_BATCH = new Set([
+        'accounts',   // transactions, bills, etc. reference account_id
+        'contacts',   // properties, rental_agreements, etc. reference owner_id/client_id
+        'categories', // projects, budgets, etc. reference category_id
+        'users',      // Many tables reference user_id
+        'vendors',    // bills, transactions reference vendor_id
+        'projects',   // units, contracts, etc. reference project_id
+        'buildings',  // properties reference building_id
+        'properties', // rental_agreements reference property_id
+        'units',      // rental_agreements, project_agreements reference unit_id
+    ]);
+
+    /**
      * Save all records (delete existing and insert new)
      * For tables with UNIQUE constraints (like users), use INSERT OR REPLACE
      */
     saveAll(records: T[]): void {
         try {
-            console.log(`🔄 saveAll called for ${this.tableName} with ${records.length} records`);
-
             // For certain tables, use INSERT OR REPLACE
             // This prevents UNIQUE constraint violations when saving the same records multiple times
             // and avoids cross-tenant collisions for system IDs (e.g., sys-acc-*, sys-cat-*)
@@ -679,12 +693,9 @@ export abstract class BaseRepository<T> {
                 // For users, use INSERT OR REPLACE instead of DELETE + INSERT
                 // This handles UNIQUE constraint on (tenant_id, username) gracefully
                 if (records.length > 0) {
-                    console.log(`📥 Starting to insert/replace ${records.length} records into ${this.tableName}`);
                     records.forEach((record, index) => {
                         try {
-                            console.log(`  → Inserting/replacing record ${index + 1}/${records.length} into ${this.tableName}`);
                             this.insertOrReplace(record);
-                            console.log(`  ✅ Successfully inserted/replaced record ${index + 1} into ${this.tableName}`);
                         } catch (insertError) {
                             console.error(`❌ Error inserting/replacing record ${index} into ${this.tableName}:`, insertError);
                             console.error('Failed record:', record);
@@ -693,65 +704,54 @@ export abstract class BaseRepository<T> {
                     });
                     console.log(`✅ Completed inserting/replacing ${records.length} records to ${this.tableName}`);
                 } else {
-                    // If no records, delete all for current tenant
-                    if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                        const tenantId = getCurrentTenantId();
-                        if (tenantId) {
-                            const tenantColumn = 'tenant_id';
-                            this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                            console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
-                        }
+                    // When saving 0 records, avoid DELETE on tables that are referenced by others
+                    // in the same transaction (we save projects → buildings → properties → units);
+                    // deleting buildings would fail because properties still reference them.
+                    if (skipDeleteToAvoidFk) {
+                        // Skip DELETE to avoid FK violation (properties reference buildings, etc.)
+                        console.log(`[BaseRepository] Skipping DELETE for ${this.tableName} (has dependents or potential FK issues)`);
                     } else {
-                        this.db.execute(`DELETE FROM ${this.tableName}`);
-                        console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
+                        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                            const tenantId = getCurrentTenantId();
+                            if (tenantId) {
+                                const tenantColumn = this.tenantColumn;
+                                this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
+                            } else {
+                                // IMPORTANT: If we are supposed to filter by tenant but NO tenant is in context,
+                                // we MUST NOT perform a global delete. This prevents accidental data loss
+                                // during app loading or when session expires.
+                                console.warn(`[BaseRepository] Skipping DELETE for ${this.tableName}: no tenantId in context`);
+                            }
+                        } else {
+                            this.db.execute(`DELETE FROM ${this.tableName}`);
+                        }
                     }
                 }
             } else {
                 // For other tables, use the original DELETE + INSERT approach
-                // Delete all existing records for current tenant only
                 if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                     const tenantId = getCurrentTenantId();
                     if (tenantId) {
-                        const tenantColumn = 'tenant_id';
+                        const tenantColumn = this.tenantColumn;
                         this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                        console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
                     } else {
-                        // No tenant ID, delete all (shouldn't happen in normal flow)
-                        this.db.execute(`DELETE FROM ${this.tableName}`);
-                        console.log(`🗑️ Deleted all existing records from ${this.tableName} (no tenant filter)`);
+                        // Avoid global delete if no tenant context
+                        console.warn(`[BaseRepository] Skipping global DELETE for ${this.tableName}: no tenantId in context`);
                     }
                 } else {
-                    // Global table, delete all
                     this.db.execute(`DELETE FROM ${this.tableName}`);
-                    console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
                 }
 
-                // Insert all new records
                 if (records.length > 0) {
-                    console.log(`📥 Starting to insert ${records.length} records into ${this.tableName}`);
                     records.forEach((record, index) => {
                         try {
-                            console.log(`  → Inserting record ${index + 1}/${records.length} into ${this.tableName}`);
                             this.insert(record);
-                            console.log(`  ✅ Successfully inserted record ${index + 1} into ${this.tableName}`);
                         } catch (insertError) {
                             console.error(`❌ Error inserting record ${index} into ${this.tableName}:`, insertError);
                             console.error('Failed record:', record);
                             throw insertError; // Re-throw to stop the process and rollback transaction
                         }
                     });
-
-                    // Log successful save (for debugging)
-                    console.log(`✅ Completed inserting ${records.length} records to ${this.tableName}`);
-
-                    // Verify the save for contacts (after transaction commits)
-                    if (this.tableName === 'contacts' && records.length > 0) {
-                        // Note: Verification happens after transaction commits in appStateRepository
-                        // This is just a log to track the save operation
-                        console.log(`📝 Contact save completed: ${records.length} contacts processed`);
-                    }
-                } else {
-                    console.log(`📦 ${this.tableName} table cleared (no records to save)`);
                 }
             }
         } catch (error) {
@@ -780,7 +780,7 @@ export abstract class BaseRepository<T> {
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                 const tenantId = getCurrentTenantId();
                 if (tenantId) {
-                    const tenantColumn = 'tenant_id';
+                    const tenantColumn = this.tenantColumn;
                     if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
                         dbData[tenantColumn] = tenantId;
                     }

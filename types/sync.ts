@@ -53,6 +53,8 @@ export interface SyncProgress {
   completed: number;
   failed: number;
   current?: SyncQueueItem;
+  inboundTotal?: number;
+  inboundCompleted?: number;
 }
 
 export type ConnectionStatus = 'online' | 'offline' | 'checking';

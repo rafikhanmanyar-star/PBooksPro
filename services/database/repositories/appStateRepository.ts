@@ -25,6 +25,28 @@ import { getSyncOutboxService } from '../../sync/syncOutboxService';
 import { getCurrentTenantId } from '../tenantUtils';
 import { getCurrentUserId } from '../userUtils';
 
+/** Sort items so parents appear before children (for FK parent_id → id). Handles missing parents and cycles. */
+function sortByParentOrder<T>(
+    items: T[],
+    getId: (t: T) => string,
+    getParentId: (t: T) => string | null | undefined
+): T[] {
+    if (items.length === 0) return [];
+    const byId = new Map(items.map(i => [getId(i), i]));
+    const depthCache = new Map<string, number>();
+    const depth = (id: string, visited = new Set<string>()): number => {
+        if (depthCache.has(id)) return depthCache.get(id)!;
+        if (visited.has(id)) return 0;
+        visited.add(id);
+        const item = byId.get(id);
+        const parentId = getParentId(item!);
+        const d = parentId && byId.has(parentId) ? 1 + depth(parentId, visited) : 0;
+        depthCache.set(id, d);
+        return d;
+    };
+    return [...items].sort((a, b) => depth(getId(a)) - depth(getId(b)));
+}
+
 export class AppStateRepository {
     private db = getDatabaseService();
     private static saveQueue: Promise<void> = Promise.resolve();
@@ -72,7 +94,7 @@ export class AppStateRepository {
         }
 
         // CRITICAL: Ensure all schema columns exist BEFORE loading data
-        // This prevents data loss when columns are missing (e.g., after restore)
+        console.log('[CloudSync] loadState: ensuring tables exist...');
         this.db.ensureAllTablesExist();
         this.db.ensureContractColumnsExist();
         // Ensure tenant_id columns exist on all relevant tables (idempotent)
@@ -331,9 +353,8 @@ export class AppStateRepository {
                 const normalizedAgreement: RentalAgreement = {
                     id: ra.id || '',
                     agreementNumber: ra.agreementNumber ?? ra.agreement_number ?? '',
-                    // Contact ID (the tenant contact person in rental management, NOT the organization tenant_id)
-                    // Backward compatibility: also check tenantId/tenant_id for old data
-                    contactId: ra.contactId ?? ra.contact_id ?? ra.tenantId ?? ra.tenant_id ?? '',
+                    // Contact ID (the tenant contact person in rental management). org_id is for tenant isolation.
+                    contactId: ra.contactId ?? ra.contact_id ?? '',
                     propertyId: ra.propertyId ?? ra.property_id ?? '',
                     startDate: ra.startDate ?? ra.start_date ?? new Date().toISOString().split('T')[0],
                     endDate: ra.endDate ?? ra.end_date ?? new Date().toISOString().split('T')[0],
@@ -583,6 +604,7 @@ export class AppStateRepository {
             initialTabs: []
         };
 
+        console.log(`[CloudSync] loadState done (from local DB): accounts=${state.accounts?.length ?? 0} contacts=${state.contacts?.length ?? 0} transactions=${state.transactions?.length ?? 0} installmentPlans=${state.installmentPlans?.length ?? 0} pmCycleAllocations=${state.pmCycleAllocations?.length ?? 0}`);
         return state;
     }
 
@@ -593,6 +615,9 @@ export class AppStateRepository {
      */
     async saveState(state: AppState, disableSyncQueueing: boolean = false): Promise<void> {
         AppStateRepository.saveQueue = AppStateRepository.saveQueue.then(async () => {
+            const entityCounts = `accounts=${state.accounts?.length ?? 0} contacts=${state.contacts?.length ?? 0} transactions=${state.transactions?.length ?? 0} invoices=${state.invoices?.length ?? 0} bills=${state.bills?.length ?? 0} projects=${state.projects?.length ?? 0} installmentPlans=${state.installmentPlans?.length ?? 0} pmCycleAllocations=${state.pmCycleAllocations?.length ?? 0}`;
+            console.log(`[CloudSync] saveState starting (fromCloud=${disableSyncQueueing}) ${entityCounts}`);
+
             try {
                 // Ensure database is initialized
                 if (!this.db.isReady()) {
@@ -600,11 +625,10 @@ export class AppStateRepository {
                 }
 
                 // Ensure all tables exist (safety check for existing databases)
-                // This will create any missing tables like 'quotations' if they don't exist
                 try {
                     this.db.ensureAllTablesExist();
                 } catch (tableCheckError) {
-                    console.warn('⚠️ Could not verify tables exist, continuing anyway:', tableCheckError);
+                    console.warn('[CloudSync] Could not verify tables exist, continuing anyway:', tableCheckError);
                 }
 
                 // Ensure tenant_id columns exist before saving (idempotent)
@@ -674,8 +698,18 @@ export class AppStateRepository {
 
                     this.db.transaction([
                         () => {
-                            // Save all entities with individual error handling
+                            // Build ID sets for FK sanitization (in scope for all save steps; avoids FOREIGN KEY constraint failed)
+                            const contactIds = new Set(state.contacts.map(c => c.id));
+                            const projectIds = new Set(state.projects.map(p => p.id));
+                            const buildingIds = new Set(state.buildings.map(b => b.id));
+                            const accountIds = new Set(state.accounts.map(a => a.id));
+                            const categoryIds = new Set(state.categories.map(c => c.id));
+                            const vendorIds = new Set((state.vendors || []).map(v => v.id));
+                            const contractIds = new Set((state.contracts || []).map(c => c.id));
+                            const propertyIds = new Set(state.properties.map(p => p.id));
+                            const unitIds = new Set(state.units.map(u => u.id));
 
+                            // Save all entities with individual error handling
                             try {
                                 this.usersRepo.saveAll(state.users);
                             } catch (e) {
@@ -684,7 +718,20 @@ export class AppStateRepository {
                             }
 
                             try {
-                                this.accountsRepo.saveAll(state.accounts);
+                                const accountsOrdered = sortByParentOrder(
+                                    state.accounts,
+                                    a => a.id,
+                                    a => (a as { parentAccountId?: string; parent_account_id?: string }).parentAccountId ?? (a as { parent_account_id?: string }).parent_account_id ?? null
+                                ).map(a => {
+                                    // Sanitize parent_account_id reference
+                                    const pid = (a as any).parentAccountId ?? (a as any).parent_account_id;
+                                    if (pid && !accountIds.has(pid)) {
+                                        console.warn(`[AppStateRepository] Sanitizing account ${a.id}: parent account ${pid} not in batch.`);
+                                        return { ...a, parentAccountId: null, parent_account_id: null };
+                                    }
+                                    return a;
+                                });
+                                this.accountsRepo.saveAll(accountsOrdered);
                             } catch (e) {
                                 console.error('❌ Failed to save accounts:', e);
                                 throw e;
@@ -702,22 +749,67 @@ export class AppStateRepository {
                             }
 
                             try {
-                                this.categoriesRepo.saveAll(state.categories);
+                                const categoriesOrdered = sortByParentOrder(
+                                    state.categories,
+                                    c => c.id,
+                                    c => (c as { parentCategoryId?: string; parent_category_id?: string }).parentCategoryId ?? (c as { parent_category_id?: string }).parent_category_id ?? null
+                                ).map(c => {
+                                    // Sanitize parent_category_id reference
+                                    const pid = (c as any).parentCategoryId ?? (c as any).parent_category_id;
+                                    if (pid && !categoryIds.has(pid)) {
+                                        console.warn(`[AppStateRepository] Sanitizing category ${c.id}: parent category ${pid} not in batch.`);
+                                        return { ...c, parentCategoryId: null, parent_category_id: null };
+                                    }
+                                    return c;
+                                });
+                                this.categoriesRepo.saveAll(categoriesOrdered);
                             } catch (e) {
                                 console.error('❌ Failed to save categories:', e);
+                                throw e;
+                            }
+
+                            // Save vendors BEFORE transactions (transactions have FK vendor_id → vendors.id)
+                            try {
+                                this.vendorsRepo.saveAll(state.vendors || []);
+                            } catch (e) {
+                                console.error('❌ Failed to save vendors:', e);
                                 throw e;
                             }
 
                             try {
                                 this.projectsRepo.saveAll(state.projects);
                                 this.buildingsRepo.saveAll(state.buildings);
-                                this.propertiesRepo.saveAll(state.properties);
-                                this.unitsRepo.saveAll(state.units);
-                                this.transactionsRepo.saveAll(state.transactions);
-                                this.invoicesRepo.saveAll(state.invoices);
-                                // Save bills with expenseCategoryItems serialized as JSON
-                                // Ensure all fields are explicitly included to prevent data loss
-                                this.billsRepo.saveAll(state.bills.map(b => {
+                                // Filter properties: owner_id FK→contacts, building_id FK→buildings
+                                const validProperties = state.properties.filter(
+                                    p => contactIds.has(p.ownerId ?? (p as any).owner_id ?? '') &&
+                                        buildingIds.has(p.buildingId ?? (p as any).building_id ?? '')
+                                );
+                                this.propertiesRepo.saveAll(validProperties);
+                                // Filter units: project_id FK→projects (required), contact_id FK→contacts (optional)
+                                const validUnits = state.units.filter(
+                                    u => projectIds.has(u.projectId ?? (u as any).project_id ?? '') &&
+                                        (!(u.contactId ?? (u as any).contact_id) || contactIds.has(u.contactId ?? (u as any).contact_id))
+                                );
+                                this.unitsRepo.saveAll(validUnits);
+                                // Filter contracts: project_id FK→projects (required), vendor_id FK→vendors (required)
+                                const validContracts = (state.contracts || []).filter(c =>
+                                    projectIds.has(c.projectId ?? (c as any).project_id ?? '') &&
+                                    vendorIds.has(c.vendorId ?? (c as any).vendor_id ?? '')
+                                ).map(c => ({
+                                    ...c,
+                                    vendorId: c.vendorId || '',
+                                    expenseCategoryItems: c.expenseCategoryItems ? JSON.stringify(c.expenseCategoryItems) : undefined
+                                }));
+                                const contractIdsForFilter = new Set(validContracts.map(c => c.id));
+                                this.contractsRepo.saveAll(validContracts);
+                                // Filter invoices: only save those with valid contact_id (invoices.contact_id NOT NULL, FK to contacts)
+                                const validInvoices = state.invoices.filter(inv =>
+                                    contactIds.has(inv.contactId ?? (inv as any).contact_id ?? '')
+                                );
+                                const invoiceIds = new Set(validInvoices.map(i => i.id));
+                                this.invoicesRepo.saveAll(validInvoices);
+                                // Sanitize bills: null contact_id/vendor_id if not in batch (avoids FK constraint failed)
+                                const sanitizedBills = state.bills.map(b => {
                                     const billToSave: any = {
                                         id: b.id,
                                         billNumber: b.billNumber || `BILL-${b.id}`,
@@ -726,17 +818,18 @@ export class AppStateRepository {
                                         status: b.status || 'Unpaid',
                                         issueDate: b.issueDate || new Date().toISOString().split('T')[0],
                                     };
-                                    // Only include optional fields if they have values (to avoid skipping in objectToDbFormat)
-                                    if (b.contactId) billToSave.contactId = b.contactId;
-                                    if (b.vendorId) billToSave.vendorId = b.vendorId;
+                                    const cid = b.contactId ?? (b as any).contact_id;
+                                    const vid = b.vendorId ?? (b as any).vendor_id;
+                                    if (cid && contactIds.has(cid)) billToSave.contactId = cid;
+                                    if (vid && vendorIds.has(vid)) billToSave.vendorId = vid;
                                     if (b.dueDate) billToSave.dueDate = b.dueDate;
                                     if (b.description) billToSave.description = b.description;
-                                    if (b.categoryId) billToSave.categoryId = b.categoryId;
-                                    if (b.projectId) billToSave.projectId = b.projectId;
+                                    if (b.categoryId && categoryIds.has(b.categoryId)) billToSave.categoryId = b.categoryId;
+                                    if (b.projectId && projectIds.has(b.projectId)) billToSave.projectId = b.projectId;
                                     if (b.buildingId) billToSave.buildingId = b.buildingId;
                                     if (b.propertyId) billToSave.propertyId = b.propertyId;
                                     if (b.projectAgreementId) billToSave.projectAgreementId = b.projectAgreementId;
-                                    if (b.contractId) billToSave.contractId = b.contractId;
+                                    if (b.contractId && contractIdsForFilter.has(b.contractId)) billToSave.contractId = b.contractId;
                                     if (b.staffId) billToSave.staffId = b.staffId;
                                     if (b.documentPath) billToSave.documentPath = b.documentPath;
                                     if (b.documentId) billToSave.documentId = b.documentId;
@@ -746,19 +839,56 @@ export class AppStateRepository {
                                             : JSON.stringify(b.expenseCategoryItems);
                                     }
                                     return billToSave;
-                                }));
+                                });
+                                const billIds = new Set(sanitizedBills.map(b => b.id));
+                                this.billsRepo.saveAll(sanitizedBills);
+                                // Sanitize transactions so FKs only reference entities in this batch (avoids FK constraint failed)
+                                const sanitizedTransactions = state.transactions
+                                    .filter(t => accountIds.has(t.accountId ?? (t as any).account_id ?? ''))
+                                    .map(t => {
+                                        const out = { ...t };
+                                        if ((t.billId ?? (t as any).bill_id) && !billIds.has(t.billId ?? (t as any).bill_id)) {
+                                            (out as any).billId = undefined;
+                                            (out as any).bill_id = undefined;
+                                        }
+                                        if ((t.invoiceId ?? (t as any).invoice_id) && !invoiceIds.has(t.invoiceId ?? (t as any).invoice_id)) {
+                                            (out as any).invoiceId = undefined;
+                                            (out as any).invoice_id = undefined;
+                                        }
+                                        if ((t.categoryId ?? (t as any).category_id) && !categoryIds.has(t.categoryId ?? (t as any).category_id)) {
+                                            (out as any).categoryId = undefined;
+                                            (out as any).category_id = undefined;
+                                        }
+                                        if ((t.contactId ?? (t as any).contact_id) && !contactIds.has(t.contactId ?? (t as any).contact_id)) {
+                                            (out as any).contactId = undefined;
+                                            (out as any).contact_id = undefined;
+                                        }
+                                        if ((t.vendorId ?? (t as any).vendor_id) && !vendorIds.has(t.vendorId ?? (t as any).vendor_id)) {
+                                            (out as any).vendorId = undefined;
+                                            (out as any).vendor_id = undefined;
+                                        }
+                                        if ((t.projectId ?? (t as any).project_id) && !projectIds.has(t.projectId ?? (t as any).project_id)) {
+                                            (out as any).projectId = undefined;
+                                            (out as any).project_id = undefined;
+                                        }
+                                        return out;
+                                    });
+                                this.transactionsRepo.saveAll(sanitizedTransactions);
                             } catch (e) {
-                                console.error('❌ Failed to save projects/buildings/properties/units/transactions/invoices/bills:', e);
+                                console.error('❌ Failed to save projects/buildings/properties/units/contracts/invoices/bills/transactions:', e);
                                 throw e;
                             }
 
-                            // Save quotations with items serialized as JSON
+                            // Save quotations: only those with valid vendor_id (quotations.vendor_id NOT NULL, FK to vendors)
                             try {
-                                this.quotationsRepo.saveAll(state.quotations.map(q => ({
+                                const validQuotations = (state.quotations || []).filter(q =>
+                                    vendorIds.has(q.vendorId ?? (q as any).vendor_id ?? '')
+                                ).map(q => ({
                                     ...q,
                                     vendorId: q.vendorId || '',
                                     items: typeof q.items === 'string' ? q.items : JSON.stringify(q.items)
-                                })));
+                                }));
+                                this.quotationsRepo.saveAll(validQuotations);
                             } catch (e) {
                                 console.error('❌ Failed to save quotations:', e);
                                 throw e;
@@ -768,30 +898,70 @@ export class AppStateRepository {
                                 this.documentsRepo.saveAll(state.documents);
                                 this.pmCycleAllocationsRepo.saveAll((state.pmCycleAllocations || []).map(pm => ({
                                     ...pm,
+                                    projectId: projectIds.has(pm.projectId) ? pm.projectId : null,
                                     excludedCategoryIds: pm.excludedCategoryIds
                                         ? (typeof pm.excludedCategoryIds === 'string' ? pm.excludedCategoryIds : JSON.stringify(pm.excludedCategoryIds))
                                         : undefined
                                 })));
-                                this.budgetsRepo.saveAll(state.budgets);
-                                this.salesReturnsRepo.saveAll(state.salesReturns || []);
-                                this.vendorsRepo.saveAll(state.vendors || []);
-
-                                // Agreements and Contracts
-                                this.rentalAgreementsRepo.saveAll(state.rentalAgreements || []);
-                                this.projectAgreementsRepo.saveAll((state.projectAgreements || []).map(pa => ({
+                                // Filter budgets: category_id FK→categories (required), project_id FK→projects (optional)
+                                const validBudgets = (state.budgets || []).filter(b =>
+                                    categoryIds.has(b.categoryId ?? (b as any).category_id ?? '') &&
+                                    (!(b.projectId ?? (b as any).project_id) || projectIds.has(b.projectId ?? (b as any).project_id))
+                                );
+                                this.budgetsRepo.saveAll(validBudgets);
+                                // Filter rental_agreements: contact_id FK→contacts, property_id FK→properties
+                                const validProps = state.properties.filter(p =>
+                                    contactIds.has(p.ownerId ?? (p as any).owner_id ?? '') &&
+                                    buildingIds.has(p.buildingId ?? (p as any).building_id ?? '')
+                                );
+                                const propertyIds = new Set(validProps.map(p => p.id));
+                                const validRentalAgreements = (state.rentalAgreements || []).filter(ra =>
+                                    contactIds.has(ra.contactId ?? (ra as any).contact_id ?? '') &&
+                                    propertyIds.has(ra.propertyId ?? (ra as any).property_id ?? '')
+                                );
+                                this.rentalAgreementsRepo.saveAll(validRentalAgreements);
+                                // Filter project_agreements: client_id FK→contacts, project_id FK→projects
+                                const validProjectAgreements = (state.projectAgreements || []).filter(pa =>
+                                    contactIds.has(pa.clientId ?? (pa as any).client_id ?? '') &&
+                                    projectIds.has(pa.projectId ?? (pa as any).project_id ?? '')
+                                ).map(pa => ({
                                     ...pa,
                                     unitIds: JSON.stringify(pa.unitIds),
                                     cancellationDetails: pa.cancellationDetails ? JSON.stringify(pa.cancellationDetails) : undefined,
                                     installmentPlan: pa.installmentPlan ? JSON.stringify(pa.installmentPlan) : undefined
-                                })));
-                                this.contractsRepo.saveAll((state.contracts || []).map(c => ({
-                                    ...c,
-                                    vendorId: c.vendorId || '',
-                                    expenseCategoryItems: c.expenseCategoryItems ? JSON.stringify(c.expenseCategoryItems) : undefined
-                                })));
+                                }));
+                                const projectAgreementIds = new Set(validProjectAgreements.map(pa => pa.id));
+                                this.projectAgreementsRepo.saveAll(validProjectAgreements);
+                                // Filter sales_returns: agreement_id FK→project_agreements, refund_bill_id FK→bills (optional)
+                                const billIdsForFilter = new Set(state.bills.map(b => b.id));
+                                const validSalesReturns = (state.salesReturns || []).filter(sr =>
+                                    projectAgreementIds.has(sr.agreementId ?? (sr as any).agreement_id ?? '') &&
+                                    (!(sr.refundBillId ?? (sr as any).refund_bill_id) || billIdsForFilter.has(sr.refundBillId ?? (sr as any).refund_bill_id))
+                                );
+                                this.salesReturnsRepo.saveAll(validSalesReturns);
+                                // contracts already saved above (before bills/transactions)
 
                                 // Other tables
-                                this.recurringTemplatesRepo.saveAll(state.recurringInvoiceTemplates || []);
+                                // Filter recurring_templates: contact_id FK→contacts, property_id FK→properties
+                                const validRecurringTemplates = (state.recurringInvoiceTemplates || []).map(t => ({
+                                    ...t,
+                                    contactId: contactIds.has(t.contactId) ? t.contactId : null,
+                                    propertyId: propertyIds.has(t.propertyId) ? t.propertyId : null,
+                                    buildingId: buildingIds.has(t.buildingId) ? t.buildingId : null
+                                }));
+                                this.recurringTemplatesRepo.saveAll(validRecurringTemplates);
+
+                                // Sanitize installment_plans: project_id FK→projects, lead_id FK→contacts, unit_id FK→units
+                                const sanitizedInstallmentPlans = (state.installmentPlans || []).map(plan => ({
+                                    ...plan,
+                                    projectId: projectIds.has(plan.projectId) ? plan.projectId : null,
+                                    leadId: contactIds.has(plan.leadId) ? plan.leadId : null,
+                                    unitId: unitIds.has(plan.unitId) ? plan.unitId : null
+                                }));
+                                const installmentPlanIds = new Set(sanitizedInstallmentPlans.map(p => p.id));
+                                this.installmentPlansRepo.saveAll(sanitizedInstallmentPlans);
+
+                                // plan_amenities is master data, no FKs to sanitize
                                 this.planAmenitiesRepo.saveAll(state.planAmenities || []);
 
                             } catch (e) {
@@ -853,7 +1023,7 @@ export class AppStateRepository {
                     }
 
                 } catch (transactionError) {
-                    console.error('❌ Database transaction failed:', transactionError);
+                    console.error('[CloudSync] Database transaction failed:', transactionError);
                     // Check what's in the database even after transaction failure
                     try {
                         const contactsAfterError = this.contactsRepo.findAll();
@@ -865,9 +1035,9 @@ export class AppStateRepository {
                 }
 
                 // Persist to storage after transaction completes
-                // Use async save to ensure data is persisted
                 await this.db.saveAsync();
                 const savedContacts = this.contactsRepo.findAll();
+                console.log(`[CloudSync] saveState completed successfully, contacts in DB: ${savedContacts.length}`);
 
                 if (savedContacts.length !== state.contacts.length) {
                     console.error(`❌ Contact count mismatch! Expected ${state.contacts.length}, found ${savedContacts.length}`);

@@ -111,11 +111,15 @@ export const payrollApi = {
     }
   },
 
-  // Create new payroll run
-  async createPayrollRun(data: PayrollRunCreateRequest): Promise<PayrollRun | null> {
+  // Create new payroll run (server generates payslips and auto-approves in one step)
+  async createPayrollRun(data: PayrollRunCreateRequest): Promise<PayrollRunWithSummary | null> {
     try {
       const response = await apiClient.post<any>('/payroll/runs', data);
-      return response ? normalizePayrollRun(response) : null;
+      if (!response) return null;
+      return {
+        ...normalizePayrollRun(response),
+        processing_summary: response.processing_summary
+      };
     } catch (error) {
       console.error('Error creating payroll run:', error);
       throw error;

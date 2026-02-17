@@ -10,7 +10,7 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const templates = await db.query(
-      'SELECT * FROM recurring_invoice_templates WHERE tenant_id = $1 ORDER BY created_at DESC',
+      'SELECT * FROM recurring_invoice_templates WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC',
       [req.tenantId]
     );
     res.json(templates);
@@ -24,7 +24,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const templates = await db.query(
-      'SELECT * FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
       [req.params.id, req.tenantId]
     );
     if (templates.length === 0) {
@@ -60,18 +60,29 @@ router.post('/', async (req: TenantRequest, res) => {
     }
 
     const existing = await db.query(
-      'SELECT id FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, version FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2',
       [templateId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
-    
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     const result = await db.query(
       `INSERT INTO recurring_invoice_templates (
         id, tenant_id, user_id, contact_id, property_id, building_id, amount, description_template,
         day_of_month, next_due_date, active, agreement_id, invoice_type, frequency, auto_generate,
-        max_occurrences, generated_count, last_generated_date, created_at, updated_at
+        max_occurrences, generated_count, last_generated_date, created_at, updated_at, version
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                COALESCE((SELECT created_at FROM recurring_invoice_templates WHERE id = $1), NOW()), NOW())
+                COALESCE((SELECT created_at FROM recurring_invoice_templates WHERE id = $1), NOW()), NOW(), 1)
       ON CONFLICT (id) DO UPDATE SET
         contact_id = EXCLUDED.contact_id, property_id = EXCLUDED.property_id, building_id = EXCLUDED.building_id,
         amount = EXCLUDED.amount, description_template = EXCLUDED.description_template,
@@ -80,7 +91,10 @@ router.post('/', async (req: TenantRequest, res) => {
         frequency = EXCLUDED.frequency,
         auto_generate = EXCLUDED.auto_generate, max_occurrences = EXCLUDED.max_occurrences,
         generated_count = EXCLUDED.generated_count, last_generated_date = EXCLUDED.last_generated_date,
-        user_id = EXCLUDED.user_id, updated_at = NOW()
+        user_id = EXCLUDED.user_id, updated_at = NOW(),
+        version = COALESCE(recurring_invoice_templates.version, 1) + 1,
+        deleted_at = NULL
+      WHERE recurring_invoice_templates.tenant_id = $2 AND (recurring_invoice_templates.version = $19 OR recurring_invoice_templates.version IS NULL)
       RETURNING *`,
       [
         templateId, req.tenantId, userId,
@@ -90,10 +104,11 @@ router.post('/', async (req: TenantRequest, res) => {
         template.active !== false, agreementId,
         template.invoiceType || 'Rental', template.frequency || null, template.autoGenerate || false,
         template.maxOccurrences || null, template.generatedCount || 0,
-        template.lastGeneratedDate || null
+        template.lastGeneratedDate || null,
+        serverVersion
       ]
     );
-    
+
     emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.RECURRING_INVOICE_TEMPLATE_UPDATED : WS_EVENTS.RECURRING_INVOICE_TEMPLATE_CREATED, {
       template: result[0], userId: req.user?.userId, username: req.user?.username,
     });
@@ -121,7 +136,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const result = await db.query(
-      'DELETE FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE recurring_invoice_templates SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
     if (result.length === 0) {

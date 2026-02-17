@@ -37,13 +37,13 @@ router.get('/', async (req: TenantRequest, res) => {
     let sql = `
       SELECT a.id, a.tenant_id, a.title, a.description, a.category_id, a.product_brand, a.product_model,
              a.min_order_quantity, a.unit, a.specifications, a.contact_email, a.contact_phone, a.status,
-             a.views, a.likes, a.created_at, a.updated_at,
+             a.views, a.likes, a.created_at, a.updated_at, a.version,
              c.name AS category_name,
              t.name AS supplier_name, t.company_name AS supplier_company_name, t.email AS supplier_email
       FROM marketplace_ads a
       JOIN marketplace_categories c ON c.id = a.category_id
       JOIN tenants t ON t.id = a.tenant_id
-      WHERE a.status = 'ACTIVE'
+      WHERE a.status = 'ACTIVE' AND a.deleted_at IS NULL
     `;
     const params: any[] = [];
     let idx = 1;
@@ -107,11 +107,11 @@ router.get('/my-ads', async (req: TenantRequest, res) => {
     const rows = await db.query(
       `SELECT a.id, a.tenant_id, a.title, a.description, a.category_id, a.product_brand, a.product_model,
               a.min_order_quantity, a.unit, a.specifications, a.contact_email, a.contact_phone, a.status,
-              a.views, a.likes, a.created_at, a.updated_at,
+              a.views, a.likes, a.created_at, a.updated_at, a.version,
               c.name AS category_name
        FROM marketplace_ads a
        JOIN marketplace_categories c ON c.id = a.category_id
-       WHERE a.tenant_id = $1
+       WHERE a.tenant_id = $1 AND a.deleted_at IS NULL
        ORDER BY a.created_at DESC`,
       [tenantId]
     );
@@ -154,7 +154,7 @@ router.get('/ads-today', async (req: TenantRequest, res) => {
     const db = getDb();
     const rows = await db.query(
       `SELECT COUNT(*) AS count FROM marketplace_ads
-       WHERE tenant_id = $1 AND DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE`,
+       WHERE tenant_id = $1 AND deleted_at IS NULL AND DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE`,
       [tenantId]
     );
     const count = parseInt(String(rows[0]?.count ?? 0), 10);
@@ -181,13 +181,13 @@ router.get('/:id', async (req: TenantRequest, res) => {
     const rows = await db.query(
       `SELECT a.id, a.tenant_id, a.title, a.description, a.category_id, a.product_brand, a.product_model,
               a.min_order_quantity, a.unit, a.specifications, a.contact_email, a.contact_phone, a.status,
-              a.views, a.likes, a.created_at, a.updated_at,
+              a.views, a.likes, a.created_at, a.updated_at, a.version,
               c.name AS category_name,
               t.name AS supplier_name, t.company_name AS supplier_company_name, t.email AS supplier_email
        FROM marketplace_ads a
        JOIN marketplace_categories c ON c.id = a.category_id
        JOIN tenants t ON t.id = a.tenant_id
-       WHERE a.id = $1 AND a.status = 'ACTIVE'`,
+       WHERE a.id = $1 AND a.status = 'ACTIVE' AND a.deleted_at IS NULL`,
       [id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Ad not found' });
@@ -218,7 +218,7 @@ router.post('/:id/like', async (req: TenantRequest, res) => {
     const { id } = req.params;
 
     const result = await db.query(
-      'UPDATE marketplace_ads SET likes = COALESCE(likes, 0) + 1 WHERE id = $1 RETURNING likes',
+      'UPDATE marketplace_ads SET likes = COALESCE(likes, 0) + 1 WHERE id = $1 AND deleted_at IS NULL RETURNING likes',
       [id]
     );
 
@@ -261,7 +261,7 @@ router.post('/', async (req: TenantRequest, res) => {
 
     const countResult = await db.query(
       `SELECT COUNT(*) AS count FROM marketplace_ads
-       WHERE tenant_id = $1 AND DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE`,
+       WHERE tenant_id = $1 AND deleted_at IS NULL AND DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE`,
       [tenantId]
     );
     const todayCount = parseInt(String(countResult[0]?.count ?? 0), 10);
@@ -278,8 +278,8 @@ router.post('/', async (req: TenantRequest, res) => {
       `INSERT INTO marketplace_ads (
         id, tenant_id, title, description, category_id,
         product_brand, product_model, min_order_quantity, unit, specifications,
-        contact_email, contact_phone, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PENDING')`,
+        contact_email, contact_phone, status, version
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PENDING', 1)`,
       [
         id,
         tenantId,
@@ -344,7 +344,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     const db = getDb();
     const { id } = req.params;
     const result = await db.query(
-      'DELETE FROM marketplace_ads WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE marketplace_ads SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [id, tenantId]
     );
     if (result.length === 0) return res.status(404).json({ error: 'Ad not found or you cannot delete it' });

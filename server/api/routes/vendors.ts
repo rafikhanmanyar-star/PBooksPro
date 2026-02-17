@@ -11,7 +11,7 @@ router.get('/', async (req: TenantRequest, res) => {
     try {
         const db = getDb();
         const vendors = await db.query(
-            'SELECT * FROM vendors WHERE tenant_id = $1 ORDER BY name',
+            'SELECT * FROM vendors WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name',
             [req.tenantId]
         );
         res.json(vendors);
@@ -41,7 +41,7 @@ router.post('/', async (req: TenantRequest, res) => {
         // Check for duplicate vendor name, excluding the current vendor ID if it already exists
         const trimmedName = vendor.name.trim();
         const existingVendorByName = await db.query(
-            'SELECT id, name FROM vendors WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND id != $3',
+            'SELECT id, name, version FROM vendors WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND id != $3 AND deleted_at IS NULL',
             [req.tenantId, trimmedName, vendorId]
         );
 
@@ -52,10 +52,30 @@ router.post('/', async (req: TenantRequest, res) => {
             });
         }
 
+        const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+        // Check if vendor exists to determine if this is a create or update
+        const existing = await db.query(
+            'SELECT id, version FROM vendors WHERE id = $1 AND tenant_id = $2',
+            [vendorId, req.tenantId]
+        );
+        const isUpdate = existing.length > 0;
+
+        // Optimistic locking check for POST update
+        const serverVersion = isUpdate ? existing[0].version : null;
+        if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+            return res.status(409).json({
+                error: 'Version conflict',
+                message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+                serverVersion,
+            });
+        }
+
         const result = await db.query(
             `INSERT INTO vendors (
-        id, tenant_id, name, description, contact_no, company_name, address, is_active, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        id, tenant_id, name, description, contact_no, company_name, address, is_active, user_id, 
+        created_at, updated_at, version
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), 1)
       ON CONFLICT (id) 
       DO UPDATE SET
         name = EXCLUDED.name,
@@ -65,8 +85,10 @@ router.post('/', async (req: TenantRequest, res) => {
         address = EXCLUDED.address,
         is_active = EXCLUDED.is_active,
         user_id = EXCLUDED.user_id,
-        updated_at = NOW()
-      WHERE vendors.tenant_id = $2
+        updated_at = NOW(),
+        version = COALESCE(vendors.version, 1) + 1,
+        deleted_at = NULL
+      WHERE vendors.tenant_id = $2 AND (vendors.version = $10 OR vendors.version IS NULL)
       RETURNING *`,
             [
                 vendorId,
@@ -77,7 +99,8 @@ router.post('/', async (req: TenantRequest, res) => {
                 vendor.companyName || null,
                 vendor.address || null,
                 vendor.isActive !== undefined ? vendor.isActive : true,
-                req.user?.userId || null
+                req.user?.userId || null,
+                serverVersion
             ]
         );
 
@@ -88,13 +111,13 @@ router.post('/', async (req: TenantRequest, res) => {
         const savedVendor = result[0];
 
         // Emit WebSocket event
-        emitToTenant(req.tenantId!, WS_EVENTS.VENDOR_CREATED, {
+        emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.VENDOR_UPDATED : WS_EVENTS.VENDOR_CREATED, {
             vendor: savedVendor,
             userId: req.user?.userId,
             username: req.user?.username,
         });
 
-        res.status(201).json(savedVendor);
+        res.status(isUpdate ? 200 : 201).json(savedVendor);
     } catch (error: any) {
         console.error('Error creating vendor:', error);
         res.status(500).json({
@@ -130,24 +153,35 @@ router.put('/:id', async (req: TenantRequest, res) => {
             });
         }
 
-        const result = await db.query(
-            `UPDATE vendors 
-       SET name = $1, description = $2, contact_no = $3, 
-           company_name = $4, address = $5, is_active = $6, user_id = $7, updated_at = NOW()
-       WHERE id = $8 AND tenant_id = $9
-       RETURNING *`,
-            [
-                vendor.name,
-                vendor.description || null,
-                vendor.contactNo || null,
-                vendor.companyName || null,
-                vendor.address || null,
-                vendor.isActive !== undefined ? vendor.isActive : true,
-                req.user?.userId || null,
-                req.params.id,
-                req.tenantId
-            ]
-        );
+        const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+        let putQuery = `
+          UPDATE vendors 
+          SET name = $1, description = $2, contact_no = $3, 
+              company_name = $4, address = $5, is_active = $6, user_id = $7, updated_at = NOW(),
+              version = COALESCE(version, 1) + 1
+          WHERE id = $8 AND tenant_id = $9
+        `;
+        const putParams: any[] = [
+            vendor.name,
+            vendor.description || null,
+            vendor.contactNo || null,
+            vendor.companyName || null,
+            vendor.address || null,
+            vendor.isActive !== undefined ? vendor.isActive : true,
+            req.user?.userId || null,
+            req.params.id,
+            req.tenantId
+        ];
+
+        if (clientVersion != null) {
+            putQuery += ` AND version = $10`;
+            putParams.push(clientVersion);
+        }
+
+        putQuery += ` RETURNING *`;
+
+        const result = await db.query(putQuery, putParams);
 
         if (result.length === 0) {
             return res.status(404).json({ error: 'Vendor not found' });
@@ -179,7 +213,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
         // For now we rely on DB constraints
 
         const result = await db.query(
-            'DELETE FROM vendors WHERE id = $1 AND tenant_id = $2 RETURNING id',
+            'UPDATE vendors SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
             [req.params.id, req.tenantId]
         );
 

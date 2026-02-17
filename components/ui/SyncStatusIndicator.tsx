@@ -14,11 +14,11 @@ interface SyncStatusIndicatorProps {
   className?: string;
 }
 
-const SyncStatusIndicator: React.FC<SyncStatusIndicatorProps> = ({ 
+const SyncStatusIndicator: React.FC<SyncStatusIndicatorProps> = ({
   showDetails = false,
-  className = '' 
+  className = ''
 }) => {
-  const { pending, syncing, failed, isSyncing, hasPending } = useSyncStatus();
+  const { pending, syncing, failed, isSyncing, isInbound, hasPending } = useSyncStatus();
   const isMobile = isMobileDevice();
 
   // Mobile doesn't have sync queue
@@ -36,17 +36,17 @@ const SyncStatusIndicator: React.FC<SyncStatusIndicatorProps> = ({
       {isSyncing && (
         <div className="flex items-center gap-1.5">
           <div className="relative">
-            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <div className="absolute inset-0 w-2 h-2 rounded-full bg-blue-500 animate-ping opacity-75" />
+            <div className={`w-2 h-2 rounded-full animate-pulse ${isInbound ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+            <div className={`absolute inset-0 w-2 h-2 rounded-full animate-ping opacity-75 ${isInbound ? 'bg-emerald-500' : 'bg-blue-500'}`} />
           </div>
           {showDetails && (
-            <span className="text-xs font-medium text-slate-700">
-              Syncing...
+            <span className={`text-xs font-medium ${isInbound ? 'text-emerald-700' : 'text-slate-700'}`}>
+              {isInbound ? 'Loading...' : 'Syncing...'}
             </span>
           )}
         </div>
       )}
-      
+
       {pending > 0 && !isSyncing && (
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-amber-500" />

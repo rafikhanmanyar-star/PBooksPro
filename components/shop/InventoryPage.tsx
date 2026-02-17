@@ -1,19 +1,21 @@
-
-import React, { useState } from 'react';
-import { InventoryProvider, useInventory } from '../../context/InventoryContext';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useInventory } from '../../context/InventoryContext';
 import InventoryDashboard from './inventory/InventoryDashboard';
 import StockMaster from './inventory/StockMaster';
 import StockMovements from './inventory/StockMovements';
 import StockAdjustments from './inventory/StockAdjustments';
+import InventoryCategories from './inventory/InventoryCategories';
 import { ICONS } from '../../constants';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import { shopApi, ShopProductCategory } from '../../services/api/shopApi';
 
 const InventoryContent: React.FC = () => {
     const { addItem, refreshItems } = useInventory();
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'stock' | 'movements' | 'adjustments'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'stock' | 'movements' | 'adjustments' | 'categories'>('dashboard');
     const [isNewSkuModalOpen, setIsNewSkuModalOpen] = useState(false);
+    const [shopCategories, setShopCategories] = useState<ShopProductCategory[]>([]);
     const [newItemData, setNewItemData] = useState({
         sku: '',
         barcode: '',
@@ -25,11 +27,20 @@ const InventoryContent: React.FC = () => {
         unit: 'pcs'
     });
 
-    // 🔄 Refresh items when component mounts to get latest SKUs
-    React.useEffect(() => {
-        console.log('🔄 [InventoryPage] Refreshing items on mount...');
+    const loadShopCategories = useCallback(async () => {
+        try {
+            const list = await shopApi.getShopCategories();
+            setShopCategories(Array.isArray(list) ? list : []);
+        } catch {
+            setShopCategories([]);
+        }
+    }, []);
+
+    // Refresh items and shop categories when component mounts
+    useEffect(() => {
         refreshItems();
-    }, [refreshItems]);
+        loadShopCategories();
+    }, [refreshItems, loadShopCategories]);
 
     const handleCreateSku = async () => {
         try {
@@ -72,6 +83,7 @@ const InventoryContent: React.FC = () => {
         { id: 'stock', label: 'Stock Master', icon: ICONS.package },
         { id: 'movements', label: 'Movements', icon: ICONS.trendingUp },
         { id: 'adjustments', label: 'Adjustments', icon: ICONS.settings },
+        { id: 'categories', label: 'Categories', icon: ICONS.folder },
     ];
 
     return (
@@ -119,6 +131,7 @@ const InventoryContent: React.FC = () => {
                 {activeTab === 'stock' && <StockMaster />}
                 {activeTab === 'movements' && <StockMovements />}
                 {activeTab === 'adjustments' && <StockAdjustments />}
+                {activeTab === 'categories' && <InventoryCategories />}
             </div>
 
             <Modal
@@ -151,12 +164,22 @@ const InventoryContent: React.FC = () => {
                         />
                     </div>
                     <div className="grid grid-cols-3 gap-4">
-                        <Input
-                            label="Category"
-                            placeholder="e.g. Apparel"
-                            value={newItemData.category}
-                            onChange={(e) => setNewItemData({ ...newItemData, category: e.target.value })}
-                        />
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                            <select
+                                className="block w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                value={newItemData.category}
+                                onChange={(e) => setNewItemData({ ...newItemData, category: e.target.value })}
+                            >
+                                <option value="General">General</option>
+                                {shopCategories.map(c => (
+                                    <option key={c.id} value={c.name}>{c.name}</option>
+                                ))}
+                            </select>
+                            {shopCategories.length === 0 && (
+                                <p className="text-xs text-slate-500 mt-1">Add categories in the Categories tab to list them here.</p>
+                            )}
+                        </div>
                         <Input
                             label="Unit"
                             placeholder="pcs, kg, etc"

@@ -23,11 +23,145 @@ const calculateAmount = (basic: number, amount: number, isPercentage: boolean): 
   return roundToTwo(calculated);
 };
 
+/** Internal: generate payslips for a payroll run. Does not update run status. */
+async function generatePayslipsForRun(
+  tenantId: string,
+  runId: string,
+  run: { month: string; year: number }
+): Promise<{
+  newPayslipsCount: number;
+  newTotalAmount: number;
+  existingTotalAmount: number;
+  existingEmployeeIds: Set<string>;
+  totalEmployeeCount: number;
+  combinedTotalAmount: number;
+}> {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthIndex = monthNames.indexOf(run.month);
+  if (monthIndex === -1) throw new Error(`Invalid month: ${run.month}`);
+
+  const periodStart = new Date(run.year, monthIndex, 1);
+  const periodEnd = new Date(run.year, monthIndex + 1, 0);
+  const daysInMonth = periodEnd.getDate();
+
+  const existingPayslips = await getDb().query(
+    `SELECT employee_id, net_pay FROM payslips 
+     WHERE payroll_run_id = $1 AND tenant_id = $2`,
+    [runId, tenantId]
+  );
+  const existingEmployeeIds = new Set(existingPayslips.map((p: any) => p.employee_id));
+  const existingTotalAmount = existingPayslips.reduce((sum: number, p: any) => sum + parseFloat(p.net_pay || 0), 0);
+
+  const employees = await getDb().query(
+    `SELECT * FROM payroll_employees 
+     WHERE tenant_id = $1 AND status = 'ACTIVE'
+     AND joining_date <= $2
+     AND (termination_date IS NULL OR termination_date >= $3)
+     AND id NOT IN (
+       SELECT employee_id FROM payslips 
+       WHERE payroll_run_id = $4 AND tenant_id = $1
+     )`,
+    [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0], runId]
+  );
+
+  let newTotalAmount = 0;
+  let newPayslipsCount = 0;
+
+  for (const emp of employees) {
+    const salary = emp.salary || {};
+    const joiningDate = new Date(emp.joining_date);
+    let proRataFactor = 1.0;
+    let workedDays = daysInMonth;
+
+    if (joiningDate >= periodStart && joiningDate <= periodEnd) {
+      workedDays = periodEnd.getDate() - joiningDate.getDate() + 1;
+      proRataFactor = workedDays / daysInMonth;
+    }
+    if (emp.termination_date) {
+      const terminationDate = new Date(emp.termination_date);
+      if (terminationDate >= periodStart && terminationDate <= periodEnd) {
+        workedDays = terminationDate.getDate();
+        proRataFactor = workedDays / daysInMonth;
+      }
+    }
+
+    const basic = roundToTwo((salary.basic || 0) * proRataFactor);
+    let totalAllowances = 0;
+    (salary.allowances || [])
+      .filter((a: any) => {
+        const name = (a.name || '').toLowerCase();
+        return name !== 'basic pay' && name !== 'basic salary';
+      })
+      .forEach((a: any) => {
+        const allowanceAmount = calculateAmount(salary.basic || 0, a.amount, a.is_percentage);
+        totalAllowances += roundToTwo(allowanceAmount * proRataFactor);
+      });
+    totalAllowances = roundToTwo(totalAllowances);
+
+    const grossForDeductions = roundToTwo(basic + totalAllowances);
+    let totalDeductions = 0;
+    (salary.deductions || []).forEach((d: any) => {
+      totalDeductions += calculateAmount(grossForDeductions, d.amount, d.is_percentage);
+    });
+    totalDeductions = roundToTwo(totalDeductions);
+
+    const adjustments = emp.adjustments || [];
+    const earningAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'EARNING').reduce((sum: number, a: any) => sum + a.amount, 0));
+    const deductionAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'DEDUCTION').reduce((sum: number, a: any) => sum + a.amount, 0));
+
+    const grossPay = roundToTwo(basic + totalAllowances + earningAdj);
+    const netPay = roundToTwo(grossPay - totalDeductions - deductionAdj);
+
+    newTotalAmount += netPay;
+    newPayslipsCount++;
+
+    await getDb().query(
+      `INSERT INTO payslips 
+       (tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
+        total_deductions, total_adjustments, gross_pay, net_pay,
+        allowance_details, deduction_details, adjustment_details)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [tenantId, runId, emp.id, basic, totalAllowances, totalDeductions,
+        earningAdj - deductionAdj, grossPay, netPay,
+        JSON.stringify(salary.allowances || []),
+        JSON.stringify(salary.deductions || []),
+        JSON.stringify(adjustments)]
+    );
+  }
+
+  const combinedTotalAmount = existingTotalAmount + newTotalAmount;
+  const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
+
+  return {
+    newPayslipsCount,
+    newTotalAmount,
+    existingTotalAmount,
+    existingEmployeeIds,
+    totalEmployeeCount,
+    combinedTotalAmount
+  };
+}
+
 const router = Router();
 
 // =====================================================
 // EMPLOYEE ROUTES
 // =====================================================
+
+// Helper: run employees list query; if deleted_at column is missing (e.g. migration not run), retry without it
+async function queryEmployeesWithDepartments(tenantId: string, includeDeletedFilter: boolean) {
+  return getDb().query(
+    `SELECT e.*, 
+            d.name as department_name,
+            d.code as department_code
+     FROM payroll_employees e
+     LEFT JOIN payroll_departments d ON e.department_id = d.id
+     WHERE e.tenant_id = $1${includeDeletedFilter ? ' AND e.deleted_at IS NULL' : ''}
+     ORDER BY e.name ASC`,
+    [tenantId]
+  );
+}
 
 // GET /payroll/employees - List all employees with department info
 router.get('/employees', async (req: TenantRequest, res) => {
@@ -37,23 +171,44 @@ router.get('/employees', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const employees = await getDb().query(
-      `SELECT e.*, 
-              d.name as department_name,
-              d.code as department_code
-       FROM payroll_employees e
-       LEFT JOIN payroll_departments d ON e.department_id = d.id
-       WHERE e.tenant_id = $1 
-       ORDER BY e.name ASC`,
-      [tenantId]
-    );
+    let employees: any[];
+    try {
+      employees = await queryEmployeesWithDepartments(tenantId, true);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes('deleted_at') || msg.includes('does not exist')) {
+        console.warn('Payroll employees: deleted_at column missing, using fallback query. Run migration 20260216_add_missing_sync_metadata.sql.');
+        employees = await queryEmployeesWithDepartments(tenantId, false);
+      } else {
+        throw err;
+      }
+    }
 
     res.json(employees);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching payroll employees:', error);
-    res.status(500).json({ error: 'Failed to fetch employees' });
+    const message = error?.message || 'Failed to fetch employees';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to fetch employees',
+      ...(isStagingOrDev && { details: message }),
+    });
   }
 });
+
+// Helper: single employee by id (optional deleted_at filter for compatibility)
+async function queryEmployeeById(id: string, tenantId: string, includeDeletedFilter: boolean) {
+  return getDb().query(
+    `SELECT e.*, 
+            d.name as department_name,
+            d.code as department_code,
+            d.description as department_description
+     FROM payroll_employees e
+     LEFT JOIN payroll_departments d ON e.department_id = d.id
+     WHERE e.id = $1 AND e.tenant_id = $2${includeDeletedFilter ? ' AND e.deleted_at IS NULL' : ''}`,
+    [id, tenantId]
+  );
+}
 
 // GET /payroll/employees/:id - Get single employee with department info
 router.get('/employees/:id', async (req: TenantRequest, res) => {
@@ -65,25 +220,31 @@ router.get('/employees/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const employees = await getDb().query(
-      `SELECT e.*, 
-              d.name as department_name,
-              d.code as department_code,
-              d.description as department_description
-       FROM payroll_employees e
-       LEFT JOIN payroll_departments d ON e.department_id = d.id
-       WHERE e.id = $1 AND e.tenant_id = $2`,
-      [id, tenantId]
-    );
+    let employees: any[];
+    try {
+      employees = await queryEmployeeById(id, tenantId, true);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes('deleted_at') || msg.includes('does not exist')) {
+        employees = await queryEmployeeById(id, tenantId, false);
+      } else {
+        throw err;
+      }
+    }
 
     if (employees.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
     res.json(employees[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching employee:', error);
-    res.status(500).json({ error: 'Failed to fetch employee' });
+    const message = error?.message || 'Failed to fetch employee';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to fetch employee',
+      ...(isStagingOrDev && { details: message }),
+    });
   }
 });
 
@@ -125,36 +286,80 @@ router.post('/employees', async (req: TenantRequest, res) => {
       );
 
       if (lastEmployee.length > 0 && lastEmployee[0].employee_code) {
-        // Extract number from EID-XXXX format
-        const lastCode = lastEmployee[0].employee_code;
-        const match = lastCode.match(/EID-(\d+)/);
+        const match = (lastEmployee[0].employee_code as string).match(/^EID-(\d+)$/);
         if (match) {
-          const nextNumber = parseInt(match[1]) + 1;
-          employeeCode = `EID-${nextNumber.toString().padStart(4, '0')}`;
+          const nextNum = parseInt(match[1], 10) + 1;
+          employeeCode = `EID-${String(nextNum).padStart(4, '0')}`;
         }
       }
     } catch (error) {
       console.warn('Error generating employee code, using default:', error);
     }
 
+    const employeeId = req.body.id || `emp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const existing = await getDb().query(
+      'SELECT id, version FROM payroll_employees WHERE id = $1 AND tenant_id = $2',
+      [employeeId, tenantId]
+    );
+    const isUpdate = existing.length > 0;
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     const result = await getDb().query(
       `INSERT INTO payroll_employees 
-       (tenant_id, name, email, phone, address, designation, department, department_id, grade, 
-        joining_date, salary, projects, status, employee_code, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE', $13, $14)
+       (id, tenant_id, name, email, phone, address, designation, department, department_id, grade, 
+        joining_date, salary, projects, status, employee_code, created_by, version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'ACTIVE', $14, $15, 1)
+       ON CONFLICT (id) 
+       DO UPDATE SET
+         name = EXCLUDED.name,
+         email = EXCLUDED.email,
+         phone = EXCLUDED.phone,
+         address = EXCLUDED.address,
+         designation = EXCLUDED.designation,
+         department = EXCLUDED.department,
+         department_id = EXCLUDED.department_id,
+         grade = EXCLUDED.grade,
+         joining_date = EXCLUDED.joining_date,
+         salary = EXCLUDED.salary,
+         projects = EXCLUDED.projects,
+         status = EXCLUDED.status,
+         employee_code = EXCLUDED.employee_code,
+         updated_by = $15,
+         updated_at = NOW(),
+         version = COALESCE(payroll_employees.version, 1) + 1,
+         deleted_at = NULL
+       WHERE payroll_employees.tenant_id = $2 AND (payroll_employees.version = $16 OR payroll_employees.version IS NULL)
        RETURNING *`,
-      [tenantId, name, email, phone, address, designation, department, effectiveDepartmentId || null, grade,
+      [employeeId, tenantId, name, email, phone, address, designation, department, effectiveDepartmentId || null, grade,
         joining_date, JSON.stringify(salary || { basic: 0, allowances: [], deductions: [] }),
-        JSON.stringify(projects || []), employeeCode, userId]
+        JSON.stringify(projects || []), employeeCode, userId, serverVersion]
     );
 
     // Notify via WebSocket
     emitToTenant(tenantId, 'payroll_employee_created', { id: result[0].id });
 
     res.status(201).json(result[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating employee:', error);
-    res.status(500).json({ error: 'Failed to create employee' });
+    const message = error?.message || 'Failed to create employee';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    const migrationHint = (message.includes('does not exist') || message.includes('relation')) && isStagingOrDev
+      ? ' Run migrations: postgresql-schema.sql and 20260216_add_sync_audit_metadata.sql (or 20260216_add_missing_sync_metadata.sql).'
+      : '';
+    res.status(500).json({
+      error: 'Failed to create employee',
+      ...(isStagingOrDev && { details: message + migrationHint }),
+    });
   }
 });
 
@@ -186,8 +391,10 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
       }
     }
 
-    const result = await getDb().query(
-      `UPDATE payroll_employees SET
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let updateQuery = `
+      UPDATE payroll_employees SET
         name = COALESCE($1, name),
         email = COALESCE($2, email),
         phone = COALESCE($3, phone),
@@ -203,16 +410,27 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
         salary = COALESCE($13, salary),
         adjustments = COALESCE($14, adjustments),
         projects = COALESCE($15, projects),
-        updated_by = $16
-       WHERE id = $17 AND tenant_id = $18
-       RETURNING *`,
-      [name, email, phone, address, photo, designation, department, effectiveDepartmentId,
-        grade, joining_date, status, termination_date,
-        salary ? JSON.stringify(salary) : null,
-        adjustments ? JSON.stringify(adjustments) : null,
-        projects ? JSON.stringify(projects) : null,
-        userId, id, tenantId]
-    );
+        updated_by = $16,
+        updated_at = NOW(),
+        version = COALESCE(version, 1) + 1
+      WHERE id = $17 AND tenant_id = $18
+    `;
+    const queryParams: any[] = [
+      name, email, phone, address, photo, designation, department, effectiveDepartmentId,
+      grade, joining_date, status, termination_date,
+      salary ? JSON.stringify(salary) : null,
+      adjustments ? JSON.stringify(adjustments) : null,
+      projects ? JSON.stringify(projects) : null,
+      userId, id, tenantId
+    ];
+
+    if (clientVersion != null) {
+      updateQuery += ` AND version = $19`;
+      queryParams.push(clientVersion);
+    }
+
+    updateQuery += ` RETURNING *`;
+    const result = await getDb().query(updateQuery, queryParams);
 
     if (result.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
@@ -238,7 +456,7 @@ router.delete('/employees/:id', async (req: TenantRequest, res) => {
     }
 
     const result = await getDb().query(
-      `DELETE FROM payroll_employees WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      `UPDATE payroll_employees SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id`,
       [id, tenantId]
     );
 
@@ -259,6 +477,22 @@ router.delete('/employees/:id', async (req: TenantRequest, res) => {
 // PAYROLL RUNS ROUTES
 // =====================================================
 
+// Helper: query payroll runs (with optional deleted_at filter for schema compatibility)
+async function queryPayrollRuns(tenantId: string, includeDeletedFilter: boolean): Promise<any[]> {
+  if (includeDeletedFilter) {
+    return getDb().query(
+      `SELECT * FROM payroll_runs 
+       WHERE tenant_id = $1 AND deleted_at IS NULL
+       ORDER BY year DESC, created_at DESC`,
+      [tenantId]
+    );
+  }
+  return getDb().query(
+    `SELECT * FROM payroll_runs WHERE tenant_id = $1 ORDER BY year DESC, created_at DESC`,
+    [tenantId]
+  );
+}
+
 // GET /payroll/runs - List all payroll runs
 router.get('/runs', async (req: TenantRequest, res) => {
   try {
@@ -267,17 +501,31 @@ router.get('/runs', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const runs = await getDb().query(
-      `SELECT * FROM payroll_runs 
-       WHERE tenant_id = $1 
-       ORDER BY year DESC, created_at DESC`,
-      [tenantId]
-    );
+    let runs: any[];
+    try {
+      runs = await queryPayrollRuns(tenantId, true);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes('deleted_at') || msg.includes('does not exist')) {
+        console.warn('Payroll runs: deleted_at column missing, using fallback query. Run migration 20260216_add_sync_audit_metadata.sql or 20260216_add_missing_sync_metadata.sql.');
+        runs = await queryPayrollRuns(tenantId, false);
+      } else {
+        throw err;
+      }
+    }
 
     res.json(runs);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching payroll runs:', error);
-    res.status(500).json({ error: 'Failed to fetch payroll runs' });
+    const message = error?.message || 'Failed to fetch payroll runs';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    const migrationHint = (message.includes('does not exist') || message.includes('relation')) && isStagingOrDev
+      ? ' Ensure payroll migrations have been run on this database (e.g. postgresql-schema.sql and 20260216_add_sync_audit_metadata.sql).'
+      : '';
+    res.status(500).json({
+      error: 'Failed to fetch payroll runs',
+      ...(isStagingOrDev && { details: message + migrationHint }),
+    });
   }
 });
 
@@ -291,19 +539,37 @@ router.get('/runs/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const runs = await getDb().query(
-      `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId]
-    );
+    let runs: any[];
+    try {
+      runs = await getDb().query(
+        `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+        [id, tenantId]
+      );
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes('deleted_at') || msg.includes('does not exist')) {
+        runs = await getDb().query(
+          `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
+          [id, tenantId]
+        );
+      } else {
+        throw err;
+      }
+    }
 
     if (runs.length === 0) {
       return res.status(404).json({ error: 'Payroll run not found' });
     }
 
     res.json(runs[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching payroll run:', error);
-    res.status(500).json({ error: 'Failed to fetch payroll run' });
+    const message = error?.message || 'Failed to fetch payroll run';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to fetch payroll run',
+      ...(isStagingOrDev && { details: message }),
+    });
   }
 });
 
@@ -357,18 +623,85 @@ router.post('/runs', async (req: TenantRequest, res) => {
       [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0]]
     );
 
+    const runId = req.body.id || `run_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const existing = await getDb().query(
+      'SELECT id, version FROM payroll_runs WHERE id = $1 AND tenant_id = $2',
+      [runId, tenantId]
+    );
+    const isUpdate = existing.length > 0;
+
+    // Optimistic locking check
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     const result = await getDb().query(
       `INSERT INTO payroll_runs 
-       (tenant_id, month, year, period_start, period_end, status, employee_count, created_by)
-       VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, $7)
+       (id, tenant_id, month, year, period_start, period_end, status, employee_count, created_by, version)
+       VALUES ($1, $2, $3, $4, $5, $6, 'DRAFT', $7, $8, 1)
+       ON CONFLICT (id) 
+       DO UPDATE SET
+         month = EXCLUDED.month,
+         year = EXCLUDED.year,
+         period_start = EXCLUDED.period_start,
+         period_end = EXCLUDED.period_end,
+         status = EXCLUDED.status,
+         employee_count = EXCLUDED.employee_count,
+         updated_by = $8,
+         updated_at = NOW(),
+         version = COALESCE(payroll_runs.version, 1) + 1,
+         deleted_at = NULL
+       WHERE payroll_runs.tenant_id = $2 AND (payroll_runs.version = $9 OR payroll_runs.version IS NULL)
        RETURNING *`,
-      [tenantId, month, year, periodStart.toISOString().split('T')[0],
-        periodEnd.toISOString().split('T')[0], empCount[0]?.count || 0, userId]
+      [runId, tenantId, month, year, periodStart.toISOString().split('T')[0],
+        periodEnd.toISOString().split('T')[0], empCount[0]?.count || 0, userId, serverVersion]
     );
 
-    emitToTenant(tenantId, 'payroll_run_created', { id: result[0].id });
+    const createdRun = result[0];
 
-    res.status(201).json(result[0]);
+    // Generate payslips immediately (no separate approval step)
+    let processing_summary = {
+      new_payslips_generated: 0,
+      existing_payslips_skipped: 0,
+      total_payslips: createdRun.employee_count || 0,
+      new_amount_added: 0,
+      previous_amount: 0,
+      total_amount: parseFloat(createdRun.total_amount || 0)
+    };
+    try {
+      const summary = await generatePayslipsForRun(tenantId, createdRun.id, { month: createdRun.month, year: createdRun.year });
+      const updateResult = await getDb().query(
+        `UPDATE payroll_runs SET
+          status = 'APPROVED',
+          total_amount = $1,
+          employee_count = $2,
+          updated_by = $3
+         WHERE id = $4 AND tenant_id = $5
+         RETURNING *`,
+        [summary.combinedTotalAmount, summary.totalEmployeeCount, userId, createdRun.id, tenantId]
+      );
+      const updatedRun = updateResult[0];
+      processing_summary = {
+        new_payslips_generated: summary.newPayslipsCount,
+        existing_payslips_skipped: summary.existingEmployeeIds.size,
+        total_payslips: summary.totalEmployeeCount,
+        new_amount_added: summary.newTotalAmount,
+        previous_amount: summary.existingTotalAmount,
+        total_amount: summary.combinedTotalAmount
+      };
+      emitToTenant(tenantId, 'payroll_run_created', { id: createdRun.id });
+      return res.status(201).json({ ...updatedRun, processing_summary });
+    } catch (processErr) {
+      console.error('Error generating payslips on create:', processErr);
+      emitToTenant(tenantId, 'payroll_run_created', { id: createdRun.id });
+      return res.status(201).json({ ...createdRun, processing_summary });
+    }
   } catch (error: any) {
     console.error('Error creating payroll run:', error);
     console.error('Error details:', { code: error.code, detail: error.detail, constraint: error.constraint, message: error.message });
@@ -383,7 +716,15 @@ router.post('/runs', async (req: TenantRequest, res) => {
       return res.status(403).json({ error: 'Permission denied - tenant context issue' });
     }
 
-    res.status(500).json({ error: 'Failed to create payroll run', details: error.message });
+    const message = error?.message || 'Failed to create payroll run';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    const migrationHint = (message.includes('does not exist') || message.includes('relation')) && isStagingOrDev
+      ? ' Run migrations: postgresql-schema.sql and 20260216_add_sync_audit_metadata.sql (or 20260216_add_missing_sync_metadata.sql).'
+      : '';
+    return res.status(500).json({
+      error: 'Failed to create payroll run',
+      ...(isStagingOrDev && { details: message + migrationHint }),
+    });
   }
 });
 
@@ -414,9 +755,9 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 
     // Define valid status transitions
     const validTransitions: { [key: string]: string[] } = {
-      'DRAFT': ['APPROVED', 'CANCELLED', 'PROCESSING'],
+      'DRAFT': ['APPROVED', 'PAID', 'CANCELLED', 'PROCESSING'],
       'PROCESSING': ['DRAFT', 'CANCELLED'],
-      'APPROVED': ['PAID', 'DRAFT'], // Allow going back to DRAFT if needed (with proper authorization)
+      'APPROVED': ['PAID', 'DRAFT'],
       'PAID': [], // Final state - no transitions allowed
       'CANCELLED': [] // Final state - no transitions allowed
     };
@@ -491,12 +832,11 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       }
     }
 
-    // Validation before marking as PAID
+    // Validation before marking as PAID (allow DRAFT or APPROVED once all payslips are paid)
     if (status === 'PAID') {
-      // Require APPROVED status first
-      if (currentStatus !== 'APPROVED') {
+      if (currentStatus !== 'APPROVED' && currentStatus !== 'DRAFT') {
         return res.status(400).json({
-          error: 'Payroll run must be APPROVED before it can be marked as PAID',
+          error: 'Payroll run must be DRAFT or APPROVED before it can be marked as PAID',
           currentStatus
         });
       }
@@ -552,13 +892,25 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       params.push(total_amount);
     }
 
-    const result = await getDb().query(
-      `UPDATE payroll_runs SET
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let updateQuery = `
+      UPDATE payroll_runs SET
         status = $1,
-        updated_by = $2
+        updated_by = $2,
+        updated_at = NOW(),
+        version = COALESCE(version, 1) + 1
         ${additionalFields}
-       WHERE id = $3 AND tenant_id = $4
-       RETURNING *`,
+      WHERE id = $3 AND tenant_id = $4
+    `;
+
+    if (clientVersion != null) {
+      updateQuery = updateQuery.replace('WHERE id = $3', `WHERE id = $3 AND version = $${params.length + 1}`);
+      params.push(clientVersion);
+    }
+
+    const result = await getDb().query(
+      updateQuery.replace('WHERE id = $3', 'WHERE id = $3'), // redundant but safe
       params
     );
 
@@ -572,6 +924,35 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error updating payroll run:', error);
     res.status(500).json({ error: 'Failed to update payroll run' });
+  }
+});
+
+// DELETE /payroll/runs/:id - Soft delete payroll run
+router.delete('/runs/:id', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Authentication required' });
+    }
+
+    const result = await getDb().query(
+      `UPDATE payroll_runs SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 
+       WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      [id, tenantId]
+    );
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Payroll run not found' });
+    }
+
+    emitToTenant(tenantId, 'payroll_run_updated', { id, deleted: true });
+
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('Error deleting payroll run:', error);
+    res.status(500).json({ error: 'Failed to delete payroll run' });
   }
 });
 
@@ -608,7 +989,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     }
 
     if (currentStatus === 'APPROVED') {
-      console.log(`📋 Re-processing APPROVED payroll run ${id} to add new employees. Will revert to DRAFT for re-approval.`);
+      console.log(`📋 Re-processing APPROVED payroll run ${id} to add new employees. Will auto-approve after.`);
     }
 
     // Set status to PROCESSING while processing
@@ -620,141 +1001,11 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     }
 
     try {
-      // Get the payroll run to determine the period
       const run = runCheck[0];
+      const summary = await generatePayslipsForRun(tenantId, id, { month: run.month, year: run.year });
 
-      // Calculate period start and end dates
-      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'];
-      const monthIndex = monthNames.indexOf(run.month);
-      if (monthIndex === -1) {
-        throw new Error(`Invalid month: ${run.month}`);
-      }
-
-      const periodStart = new Date(run.year, monthIndex, 1);
-      const periodEnd = new Date(run.year, monthIndex + 1, 0); // Last day of month
-      const daysInMonth = periodEnd.getDate();
-
-      // Get employees who already have payslips for this run
-      const existingPayslips = await getDb().query(
-        `SELECT employee_id, net_pay FROM payslips 
-       WHERE payroll_run_id = $1 AND tenant_id = $2`,
-        [id, tenantId]
-      );
-
-      const existingEmployeeIds = new Set(existingPayslips.map((p: any) => p.employee_id));
-      const existingTotalAmount = existingPayslips.reduce((sum: number, p: any) => sum + parseFloat(p.net_pay || 0), 0);
-
-      // Get active employees who DON'T already have a payslip for this run
-      // AND whose joining_date is on or before the last day of the payroll period
-      const employees = await getDb().query(
-        `SELECT * FROM payroll_employees 
-       WHERE tenant_id = $1 AND status = 'ACTIVE'
-       AND joining_date <= $2
-       AND (termination_date IS NULL OR termination_date >= $3)
-       AND id NOT IN (
-         SELECT employee_id FROM payslips 
-         WHERE payroll_run_id = $4 AND tenant_id = $1
-       )`,
-        [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0], id]
-      );
-
-      let newTotalAmount = 0;
-      let newPayslipsCount = 0;
-
-      // Generate payslips only for new employees (those without existing payslips)
-      for (const emp of employees) {
-        const salary = emp.salary;
-
-        // Calculate pro-rata factor if employee joined mid-month
-        const joiningDate = new Date(emp.joining_date);
-        let proRataFactor = 1.0;
-        let workedDays = daysInMonth;
-
-        // Check if employee joined within this payroll month
-        if (joiningDate >= periodStart && joiningDate <= periodEnd) {
-          // Calculate days worked from joining date to end of month
-          workedDays = periodEnd.getDate() - joiningDate.getDate() + 1;
-          proRataFactor = workedDays / daysInMonth;
-          console.log(`📅 Pro-rata calculation for ${emp.name}: Joined ${emp.joining_date}, worked ${workedDays}/${daysInMonth} days, factor: ${proRataFactor.toFixed(4)}`);
-        }
-
-        // Check if employee terminated mid-month
-        if (emp.termination_date) {
-          const terminationDate = new Date(emp.termination_date);
-          if (terminationDate >= periodStart && terminationDate <= periodEnd) {
-            // Calculate days worked from start of month to termination date
-            workedDays = terminationDate.getDate();
-            proRataFactor = workedDays / daysInMonth;
-            console.log(`📅 Pro-rata calculation for ${emp.name}: Terminated ${emp.termination_date}, worked ${workedDays}/${daysInMonth} days, factor: ${proRataFactor.toFixed(4)}`);
-          }
-        }
-
-        // Apply pro-rata to basic salary
-        const basic = roundToTwo((salary.basic || 0) * proRataFactor);
-
-        // Calculate allowances (filter out "Basic Pay" if it exists in legacy data)
-        // All amounts rounded to 2 decimal places
-        let totalAllowances = 0;
-        (salary.allowances || [])
-          .filter((a: any) => {
-            const name = (a.name || '').toLowerCase();
-            return name !== 'basic pay' && name !== 'basic salary';
-          })
-          .forEach((a: any) => {
-            // Apply pro-rata to allowances as well
-            const allowanceAmount = calculateAmount(salary.basic || 0, a.amount, a.is_percentage);
-            totalAllowances += roundToTwo(allowanceAmount * proRataFactor);
-          });
-        totalAllowances = roundToTwo(totalAllowances);
-
-        // Calculate deductions (rounded to 2 decimal places)
-        const grossForDeductions = roundToTwo(basic + totalAllowances);
-        let totalDeductions = 0;
-        (salary.deductions || []).forEach((d: any) => {
-          totalDeductions += calculateAmount(grossForDeductions, d.amount, d.is_percentage);
-        });
-        totalDeductions = roundToTwo(totalDeductions);
-
-        // Calculate adjustments (rounded to 2 decimal places)
-        const adjustments = emp.adjustments || [];
-        const earningAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'EARNING')
-          .reduce((sum: number, a: any) => sum + a.amount, 0));
-        const deductionAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'DEDUCTION')
-          .reduce((sum: number, a: any) => sum + a.amount, 0));
-
-        const grossPay = roundToTwo(basic + totalAllowances + earningAdj);
-        const netPay = roundToTwo(grossPay - totalDeductions - deductionAdj);
-
-        newTotalAmount += netPay;
-        newPayslipsCount++;
-
-        // Insert payslip (no ON CONFLICT update - we only insert new ones)
-        await getDb().query(
-          `INSERT INTO payslips 
-         (tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
-          total_deductions, total_adjustments, gross_pay, net_pay,
-          allowance_details, deduction_details, adjustment_details)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-          [tenantId, id, emp.id, basic, totalAllowances, totalDeductions,
-            earningAdj - deductionAdj, grossPay, netPay,
-            JSON.stringify(salary.allowances || []),
-            JSON.stringify(salary.deductions || []),
-            JSON.stringify(adjustments)]
-        );
-      }
-
-      // Calculate combined totals (existing + new)
-      const combinedTotalAmount = existingTotalAmount + newTotalAmount;
-      const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
-
-      // Update payroll run with combined totals
-      // If new payslips were generated, revert to DRAFT for re-approval
-      // Otherwise keep current status (no changes needed)
-      const newStatus = newPayslipsCount > 0 ? 'DRAFT' : currentStatus;
-      if (newPayslipsCount > 0 && currentStatus === 'APPROVED') {
-        console.log(`📋 Payroll run ${id} reverted from APPROVED to DRAFT: ${newPayslipsCount} new payslips added for backdated employees.`);
-      }
+      // After generating payslips: set status to APPROVED (no separate approval step)
+      const newStatus = summary.newPayslipsCount > 0 ? 'APPROVED' : currentStatus;
 
       const result = await getDb().query(
         `UPDATE payroll_runs SET
@@ -764,25 +1015,23 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
           updated_by = $4
          WHERE id = $5 AND tenant_id = $6
          RETURNING *`,
-        [newStatus, combinedTotalAmount, totalEmployeeCount, userId, id, tenantId]
+        [newStatus, summary.combinedTotalAmount, summary.totalEmployeeCount, userId, id, tenantId]
       );
 
       emitToTenant(tenantId, 'payroll_run_updated', { id });
 
-      // Return detailed response with info about new vs existing payslips
       res.json({
         ...result[0],
         processing_summary: {
-          new_payslips_generated: newPayslipsCount,
-          existing_payslips_skipped: existingEmployeeIds.size,
-          total_payslips: totalEmployeeCount,
-          new_amount_added: newTotalAmount,
-          previous_amount: existingTotalAmount,
-          total_amount: combinedTotalAmount
+          new_payslips_generated: summary.newPayslipsCount,
+          existing_payslips_skipped: summary.existingEmployeeIds.size,
+          total_payslips: summary.totalEmployeeCount,
+          new_amount_added: summary.newTotalAmount,
+          previous_amount: summary.existingTotalAmount,
+          total_amount: summary.combinedTotalAmount
         }
       });
     } catch (processingError) {
-      // On error, revert status back to previous state (or DRAFT)
       await getDb().query(
         `UPDATE payroll_runs SET status = $1, updated_by = $2 WHERE id = $3 AND tenant_id = $4`,
         [currentStatus === 'PROCESSING' ? 'DRAFT' : currentStatus, userId, id, tenantId]

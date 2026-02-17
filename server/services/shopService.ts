@@ -35,7 +35,19 @@ export class ShopService {
 
     // --- Branch Methods ---
     async getBranches(tenantId: string) {
-        return this.db.query('SELECT * FROM shop_branches WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+        const branches = await this.db.query('SELECT * FROM shop_branches WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+        if (branches.length === 0) {
+            console.log(`[ShopService] 🏪 No branches found for tenant ${tenantId}. Creating default 'Main Store'...`);
+            const branchId = await this.createBranch(tenantId, {
+                name: 'Main Store',
+                code: 'MAIN',
+                type: 'Flagship',
+                location: 'Head Office',
+                timezone: 'GMT+5'
+            });
+            return this.db.query('SELECT * FROM shop_branches WHERE id = $1', [branchId]);
+        }
+        return branches;
     }
 
     // --- Warehouse Methods ---
@@ -107,6 +119,23 @@ export class ShopService {
     async getTerminals(tenantId: string) {
         console.log(`[ShopService] Fetching terminals for tenant: ${tenantId}`);
         const res = await this.db.query('SELECT * FROM shop_terminals WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+
+        if (res.length === 0) {
+            console.log(`[ShopService] 🖥️ No terminals found for tenant ${tenantId}. Checking for branches...`);
+            const branches = await this.getBranches(tenantId);
+            if (branches.length > 0) {
+                const branchId = branches[0].id;
+                console.log(`[ShopService] Creating default 'Terminal 1' for branch ${branchId}...`);
+                await this.createTerminal(tenantId, {
+                    branchId: branchId,
+                    name: 'Terminal 1',
+                    code: 'T-01',
+                    status: 'Online'
+                });
+                return this.db.query('SELECT * FROM shop_terminals WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+            }
+        }
+
         console.log(`[ShopService] Found ${res.length} terminals in DB for tenant ${tenantId}`);
         return res;
     }
@@ -587,6 +616,47 @@ export class ShopService {
             data.loyaltyRedemptionRatio
         ]);
         return res[0];
+    }
+
+    // --- Shop product categories (uses categories table with type = 'product') ---
+    async getShopCategories(tenantId: string) {
+        const rows = await this.db.query(
+            `SELECT id, name, type, created_at FROM categories 
+             WHERE tenant_id = $1 AND type = 'product' AND deleted_at IS NULL
+             ORDER BY name`,
+            [tenantId]
+        );
+        return rows;
+    }
+
+    async createShopCategory(tenantId: string, data: { name: string }) {
+        const id = `shop_cat_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+        await this.db.query(
+            `INSERT INTO categories (id, tenant_id, name, type, is_permanent, is_rental, created_at, updated_at)
+             VALUES ($1, $2, $3, 'product', false, false, NOW(), NOW())`,
+            [id, tenantId, data.name]
+        );
+        return id;
+    }
+
+    async updateShopCategory(tenantId: string, categoryId: string, data: { name: string }) {
+        await this.db.query(
+            `UPDATE categories SET name = $1, updated_at = NOW() 
+             WHERE id = $2 AND tenant_id = $3 AND type = 'product'`,
+            [data.name, categoryId, tenantId]
+        );
+    }
+
+    async deleteShopCategory(tenantId: string, categoryId: string) {
+        await this.db.query(
+            `UPDATE shop_products SET category_id = NULL WHERE tenant_id = $1 AND category_id = $2`,
+            [tenantId, categoryId]
+        );
+        await this.db.query(
+            `UPDATE categories SET deleted_at = NOW(), updated_at = NOW() 
+             WHERE id = $1 AND tenant_id = $2 AND type = 'product'`,
+            [categoryId, tenantId]
+        );
     }
 }
 

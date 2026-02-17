@@ -11,7 +11,7 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const units = await db.query(
-      'SELECT * FROM units WHERE tenant_id = $1 ORDER BY name',
+      'SELECT * FROM units WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name',
       [req.tenantId]
     );
     res.json(units);
@@ -26,14 +26,14 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const units = await db.query(
-      'SELECT * FROM units WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM units WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
       [req.params.id, req.tenantId]
     );
-    
+
     if (units.length === 0) {
       return res.status(404).json({ error: 'Unit not found' });
     }
-    
+
     res.json(units[0]);
   } catch (error) {
     console.error('Error fetching unit:', error);
@@ -46,45 +46,58 @@ router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const unit = req.body;
-    
+
     // Validate required fields
     if (!unit.name) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Name is required'
       });
     }
-    
+
     // Generate ID if not provided
     const unitId = unit.id || `unit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Check if unit with this ID already exists and belongs to a different tenant
     if (unit.id) {
       const existingUnit = await db.query(
         'SELECT tenant_id FROM units WHERE id = $1',
         [unitId]
       );
-      
+
       if (existingUnit.length > 0 && existingUnit[0].tenant_id !== req.tenantId) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'Forbidden',
           message: 'A unit with this ID already exists in another organization'
         });
       }
     }
-    
+
     // Check if unit exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id FROM units WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, version FROM units WHERE id = $1 AND tenant_id = $2',
       [unitId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
-    
+
+    // Optimistic locking check for POST update
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = isUpdate ? existing[0].version : null;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
+        serverVersion,
+      });
+    }
+
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     // Explicitly handle all fields with || null to ensure data preservation (same logic as bills)
     const result = await db.query(
-      `INSERT INTO units (id, tenant_id, name, project_id, contact_id, sale_price, description, type, area, floor, user_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE((SELECT created_at FROM units WHERE id = $1), NOW()), NOW())
+      `INSERT INTO units (
+        id, tenant_id, name, project_id, contact_id, sale_price, description, 
+        type, area, floor, user_id, created_at, updated_at, version
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE((SELECT created_at FROM units WHERE id = $1), NOW()), NOW(), 1)
        ON CONFLICT (id) 
        DO UPDATE SET
          name = EXCLUDED.name,
@@ -96,7 +109,10 @@ router.post('/', async (req: TenantRequest, res) => {
          area = EXCLUDED.area,
          floor = EXCLUDED.floor,
          user_id = EXCLUDED.user_id,
-         updated_at = NOW()
+         updated_at = NOW(),
+         version = COALESCE(units.version, 1) + 1,
+         deleted_at = NULL
+       WHERE units.tenant_id = $2 AND (units.version = $12 OR units.version IS NULL)
        RETURNING *`,
       [
         unitId,
@@ -109,11 +125,12 @@ router.post('/', async (req: TenantRequest, res) => {
         unit.type || null,
         unit.area || null,
         unit.floor || null,
-        req.user?.userId || null
+        req.user?.userId || null,
+        serverVersion
       ]
     );
     const saved = result[0];
-    
+
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
       emitToTenant(req.tenantId!, WS_EVENTS.UNIT_UPDATED, {
@@ -128,7 +145,7 @@ router.post('/', async (req: TenantRequest, res) => {
         username: req.user?.username,
       });
     }
-    
+
     res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error) {
     console.error('Error creating/updating unit:', error);
@@ -142,38 +159,48 @@ router.put('/:id', async (req: TenantRequest, res) => {
     const db = getDb();
     const unit = req.body;
     // Explicitly handle all fields with || null to ensure data preservation (same logic as bills)
-    const result = await db.query(
-      `UPDATE units 
-       SET name = $1, project_id = $2, contact_id = $3, sale_price = $4, 
-           description = $5, type = $6, area = $7, floor = $8, user_id = $9, updated_at = NOW()
-       WHERE id = $10 AND tenant_id = $11
-       RETURNING *`,
-      [
-        unit.name,
-        unit.projectId || null,
-        unit.contactId || null,
-        unit.salePrice || null,
-        unit.description || null,
-        unit.type || null,
-        unit.area || null,
-        unit.floor || null,
-        req.user?.userId || null,
-        req.params.id,
-        req.tenantId
-      ]
-    );
-    
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+
+    let updateQuery = `
+      UPDATE units 
+      SET name = $1, project_id = $2, contact_id = $3, sale_price = $4, 
+          description = $5, type = $6, area = $7, floor = $8, user_id = $9, updated_at = NOW(),
+          version = COALESCE(version, 1) + 1
+      WHERE id = $10 AND tenant_id = $11
+    `;
+    const queryParams: any[] = [
+      unit.name,
+      unit.projectId || null,
+      unit.contactId || null,
+      unit.salePrice || null,
+      unit.description || null,
+      unit.type || null,
+      unit.area || null,
+      unit.floor || null,
+      req.user?.userId || null,
+      req.params.id,
+      req.tenantId
+    ];
+
+    if (clientVersion != null) {
+      updateQuery += ` AND version = $12`;
+      queryParams.push(clientVersion);
+    }
+
+    updateQuery += ` RETURNING *`;
+    const result = await db.query(updateQuery, queryParams);
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Unit not found' });
     }
-    
+
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, WS_EVENTS.UNIT_UPDATED, {
       unit: result[0],
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    
+
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating unit:', error);
@@ -186,21 +213,21 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const result = await db.query(
-      'DELETE FROM units WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'UPDATE units SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Unit not found' });
     }
-    
+
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, WS_EVENTS.UNIT_DELETED, {
       unitId: req.params.id,
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting unit:', error);

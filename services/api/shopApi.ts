@@ -20,9 +20,20 @@ export interface ShopProduct {
     tax_rate: number;
 }
 
+export interface ShopProductCategory {
+    id: string;
+    name: string;
+    type: string;
+    created_at?: string;
+}
+
 export const shopApi = {
     getBranches: () => apiClient.get<ShopBranch[]>('/shop/branches'),
     getWarehouses: () => apiClient.get<any[]>('/shop/warehouses'),
+    getShopCategories: () => apiClient.get<ShopProductCategory[]>('/shop/categories'),
+    createShopCategory: (data: { name: string }) => apiClient.post<{ id: string }>('/shop/categories', data),
+    updateShopCategory: (id: string, data: { name: string }) => apiClient.put(`/shop/categories/${id}`, data),
+    deleteShopCategory: (id: string) => apiClient.delete(`/shop/categories/${id}`),
     getProducts: () => apiClient.get<ShopProduct[]>('/shop/products'),
     createProduct: (productData: any) => apiClient.post('/shop/products', productData),
     updateProduct: (id: string, data: any) => apiClient.put(`/shop/products/${id}`, data),
