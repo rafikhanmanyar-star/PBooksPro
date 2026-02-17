@@ -1436,12 +1436,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                                     logger.logCategory('sync', '[CloudSync] Background: full bulk load done, entities:', Object.keys(apiState || {}).filter(k => Array.isArray((apiState as any)?.[k])).join(', '));
                                                 } catch (chunkErr) {
                                                     logger.warnCategory('sync', '[CloudSync] Chunked load failed, falling back to loadState:', chunkErr);
+                                                    console.error('[CloudSync] loadStateBulkChunked failed:', chunkErr);
                                                     syncManager.clearPullProgress();
                                                     apiState = await apiService.loadState();
                                                 }
                                             }
                                         } catch (incErr) {
                                             logger.warnCategory('sync', '⚠️ Background incremental sync failed, full load:', incErr);
+                                            console.error('[CloudSync] Incremental sync failed, attempting full load:', incErr);
                                             if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
                                             getSyncManager().clearPullProgress();
                                             const syncManager = getSyncManager();
@@ -1453,6 +1455,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                                 syncManager.clearPullProgress();
                                             } catch (chunkErr) {
                                                 logger.warnCategory('sync', '⚠️ Chunked load failed, falling back to loadState:', chunkErr);
+                                                console.error('[CloudSync] Chunked load failed (fallback to loadState):', chunkErr);
                                                 syncManager.clearPullProgress();
                                                 apiState = await apiService.loadState();
                                             }
@@ -1529,6 +1532,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         }
                                     } catch (bgError) {
                                         logger.warnCategory('sync', '⚠️ Background cloud sync failed (app continues with local data):', bgError);
+                                        console.error('[CloudSync] Background sync error (check network, API URL, auth):', bgError);
                                     }
                                 })();
                             }, BACKGROUND_SYNC_DELAY_MS);

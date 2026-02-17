@@ -331,9 +331,8 @@ export class AppStateRepository {
                 const normalizedAgreement: RentalAgreement = {
                     id: ra.id || '',
                     agreementNumber: ra.agreementNumber ?? ra.agreement_number ?? '',
-                    // Contact ID (the tenant contact person in rental management, NOT the organization tenant_id)
-                    // Backward compatibility: also check tenantId/tenant_id for old data
-                    contactId: ra.contactId ?? ra.contact_id ?? ra.tenantId ?? ra.tenant_id ?? '',
+                    // Contact ID (the tenant contact person in rental management). org_id is for tenant isolation.
+                    contactId: ra.contactId ?? ra.contact_id ?? '',
                     propertyId: ra.propertyId ?? ra.property_id ?? '',
                     startDate: ra.startDate ?? ra.start_date ?? new Date().toISOString().split('T')[0],
                     endDate: ra.endDate ?? ra.end_date ?? new Date().toISOString().split('T')[0],

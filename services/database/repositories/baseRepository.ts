@@ -21,6 +21,8 @@ interface PendingSyncOperation {
 export abstract class BaseRepository<T> {
     protected tableName: string;
     protected primaryKey: string;
+    /** Column for tenant isolation (default tenant_id). rental_agreements uses org_id to match PostgreSQL. */
+    protected tenantColumn: string;
     private tableColumns: Set<string> | null = null;
 
     // Static tracker for pending sync operations during transactions
@@ -30,9 +32,10 @@ export abstract class BaseRepository<T> {
     // This prevents creating sync operations for data that's already in the cloud
     private static syncQueueingDisabled = false;
 
-    constructor(tableName: string, primaryKey: string = 'id') {
+    constructor(tableName: string, primaryKey: string = 'id', tenantColumn: string = 'tenant_id') {
         this.tableName = tableName;
         this.primaryKey = primaryKey;
+        this.tenantColumn = tenantColumn;
     }
 
     /**
@@ -136,9 +139,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                // Use tenant_id for all tables (org_id was renamed to tenant_id in rental_agreements for consistency)
-                const tenantColumn = 'tenant_id';
-                whereConditions.push(`${tenantColumn} = ?`);
+                whereConditions.push(`${this.tenantColumn} = ?`);
                 whereParams.push(tenantId);
             }
         }
@@ -199,7 +200,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 sql += ` AND ${tenantColumn} = ?`;
                 params.push(tenantId);
             }
@@ -230,7 +231,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 sql += ` AND ${tenantColumn} = ?`;
                 queryParams.push(tenantId);
             }
@@ -336,7 +337,7 @@ export abstract class BaseRepository<T> {
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                 const tenantId = getCurrentTenantId();
                 if (tenantId) {
-                    const tenantColumn = 'tenant_id';
+                    const tenantColumn = this.tenantColumn;
                     if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
                         dbData[tenantColumn] = tenantId;
                     }
@@ -427,7 +428,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 if (columnsSet.has(tenantColumn)) {
                     dbData[tenantColumn] = tenantId;
                 }
@@ -455,7 +456,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 sql += ` AND ${tenantColumn} = ?`;
                 values.push(tenantId);
             }
@@ -532,7 +533,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
             } else {
                 this.db.execute(`DELETE FROM ${this.tableName}`);
@@ -576,7 +577,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
+                const tenantColumn = this.tenantColumn;
                 sql += ` WHERE ${tenantColumn} = ?`;
                 params.push(tenantId);
             }
@@ -697,7 +698,7 @@ export abstract class BaseRepository<T> {
                     if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                         const tenantId = getCurrentTenantId();
                         if (tenantId) {
-                            const tenantColumn = 'tenant_id';
+                            const tenantColumn = this.tenantColumn;
                             this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
                             console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
                         }
@@ -712,7 +713,7 @@ export abstract class BaseRepository<T> {
                 if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                     const tenantId = getCurrentTenantId();
                     if (tenantId) {
-                        const tenantColumn = 'tenant_id';
+                        const tenantColumn = this.tenantColumn;
                         this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
                         console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
                     } else {
@@ -780,7 +781,7 @@ export abstract class BaseRepository<T> {
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                 const tenantId = getCurrentTenantId();
                 if (tenantId) {
-                    const tenantColumn = 'tenant_id';
+                    const tenantColumn = this.tenantColumn;
                     if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
                         dbData[tenantColumn] = tenantId;
                     }

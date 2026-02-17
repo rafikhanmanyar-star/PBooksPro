@@ -259,3 +259,74 @@ These migrations extend the base PostgreSQL schema toward SQLite:
 3. **Document sync mapping**: The `ENTITY_KEY_MAP` in `appStateApi.ts` maps API keys to AppState; ensure PostgreSQL columns align with what the client expects.
 4. **Test sync paths** for entities with schema differences (installment_plans, project_agreements, invoices, bills).
 5. **Handle missing tables**: Sync skips entities not in `ENTITY_QUERIES`; confirm `inventory_items`, `warehouses` exist in PG if used.
+
+---
+
+## 8. Schema Alignment Approach (2026-02-17)
+
+- **PostgreSQL is the source of truth** – Cloud/PostgreSQL schema is not changed.
+- **SQLite aligned to PostgreSQL** – Local SQLite schema in `services/database/schema.ts` and `electron/schema.sql` matches PostgreSQL. SCHEMA_VERSION 9.
+- **`rental_agreements`** uses `org_id` in both SQLite and PostgreSQL for tenant isolation.
+- **Server tolerance**: `state/bulk` and `state/bulk-chunked` fall back to queries without `deleted_at` when that column is missing on PostgreSQL.
+
+---
+
+## 9. Alignment changes (2026-02-17, v9) – SQLite only
+
+The following were added to the **local SQLite** schema (and migrations for existing DBs) so local matches PostgreSQL staging. **No PostgreSQL changes.**
+
+| Change | Description |
+|--------|-------------|
+| **tenants** | New table (minimal stub: id, name, created_at, updated_at) for FK refs from `supplier_registration_requests` and `registered_suppliers`. |
+| **users** | Added columns: `tenant_id`, `email`, `is_active`, `login_status`. New installs use `UNIQUE(tenant_id, username)`. |
+| **installment_plans** | Added marketing/approval columns from PG migration 20260213: `duration_years`, `down_payment_percentage`, `frequency`, `list_price`, discount columns, `installment_amount`, `total_installments`, `description`, `user_id`, `intro_text`, `root_id`, approval_* columns, `discounts`, *\_category_id columns, `selected_amenities`, `amenities_total`, `updated_at`. |
+| **payroll_runs** | `created_by` made nullable (TEXT) for sync compatibility with PG. |
+| **whatsapp_menu_sessions** | New table (aligned with PG 20260210): id, tenant_id, phone_number, current_menu_path, last_interaction_at, created_at, UNIQUE(tenant_id, phone_number). |
+
+---
+
+## 10. How the local SQLite DB is updated (no manual work)
+
+The app updates the local SQLite schema **automatically** when the database is opened. No manual steps or scripts are required.
+
+### Step-by-step (what happens under the hood)
+
+1. **App starts**  
+   The app loads and the database layer initializes (either **Electron** native SQLite or **web** sql.js, depending on how you run the app).
+
+2. **Schema version is read**  
+   The code reads `metadata.schema_version` from the local DB (e.g. `8` for an existing DB, or nothing for a new one).
+
+3. **Version check**  
+   If `currentVersion < 9` (the current `SCHEMA_VERSION` in code):
+   - **Electron:** `electronDatabaseService._doInitialize()` runs `runV9Migrations()`.
+   - **Web:** `databaseService.checkAndMigrateSchema()` runs the v9 migration block.
+
+4. **V9 migration runs (existing DBs only)**  
+   The migration:
+   - Creates the **tenants** table if it does not exist.
+   - Creates the **whatsapp_menu_sessions** table and its indexes if they do not exist.
+   - Adds to **users**: `tenant_id`, `email`, `is_active`, `login_status` (only if each column is missing).
+   - Adds to **installment_plans**: all new marketing/approval columns (only if each is missing).
+
+5. **Schema version is saved**  
+   The app writes `schema_version = 9` into the `metadata` table so the migration does not run again.
+
+6. **Normal run**  
+   The rest of the app uses the updated schema as usual.
+
+### What you need to do
+
+| Scenario | Your action |
+|----------|-------------|
+| **Existing install (already has local DB)** | None. Open the app as usual; the migration runs once on first load after the update. |
+| **New install (no DB yet)** | None. The full v9 schema is applied when the DB is first created. |
+| **Electron desktop** | Just run/package the app; `electronDatabaseService` handles migration. |
+| **Web (Vite dev or build)** | Just load the app; `databaseService` handles migration. |
+
+### Optional checks (no action required)
+
+- To confirm the version after opening the app once, you can inspect the `metadata` table: `SELECT * FROM metadata WHERE key = 'schema_version'` → should be `9`.
+- If you ever reset or delete the local DB file, the next run will create a new DB with the full v9 schema from `CREATE_SCHEMA_SQL` / `electron/schema.sql`.
+
+**Summary:** No manual work is required. Deploy the new code and open the app; the local SQLite DB is updated automatically to v9.

@@ -138,6 +138,8 @@ export class ElectronDatabaseService {
         this.ensureVendorIdColumnsExist();
         this.ensureRecurringTemplateColumnsExist();
         if (currentVersion < 7) await this.runV7Migrations();
+        if (currentVersion < 8) await this.runV8Migrations();
+        if (currentVersion < 9) await this.runV9Migrations();
         this.rawExecute(
           'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
           ['schema_version', SCHEMA_VERSION.toString()]
@@ -173,18 +175,74 @@ export class ElectronDatabaseService {
         if (!names.has('deleted_at')) this.rawExecute(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
       } catch (_) {}
     }
+  }
+
+  private async runV8Migrations(): Promise<void> {
+    // v8: rental_agreements uses org_id (PostgreSQL-aligned). Add org_id if table has tenant_id.
     try {
       const raCols = this.rawQuery<{ name: string }>('PRAGMA table_info(rental_agreements)');
       const raNames = new Set(raCols.map(c => c.name));
-      if (raNames.has('org_id') && !raNames.has('tenant_id')) {
-        this.rawExecute('ALTER TABLE rental_agreements RENAME COLUMN org_id TO tenant_id');
+      if (!raNames.has('org_id') && raNames.has('tenant_id')) {
+        this.rawExecute('ALTER TABLE rental_agreements ADD COLUMN org_id TEXT NOT NULL DEFAULT ""');
+        this.rawExecute('UPDATE rental_agreements SET org_id = tenant_id WHERE tenant_id IS NOT NULL AND tenant_id != ""');
       }
     } catch (_) {}
-    for (const table of entityTables) {
+  }
+
+  private async runV9Migrations(): Promise<void> {
+    // v9: tenants stub, users columns, installment_plans marketing columns, whatsapp_menu_sessions (PostgreSQL-aligned)
+    try {
+      this.rawExecute(
+        `CREATE TABLE IF NOT EXISTS tenants (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`
+      );
+      this.rawExecute(
+        `CREATE TABLE IF NOT EXISTS whatsapp_menu_sessions (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL DEFAULT '',
+          phone_number TEXT NOT NULL,
+          current_menu_path TEXT NOT NULL DEFAULT 'root',
+          last_interaction_at TEXT NOT NULL DEFAULT (datetime('now')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(tenant_id, phone_number)
+        )`
+      );
       try {
-        this.rawExecute(`UPDATE ${table} SET tenant_id = '' WHERE tenant_id IS NULL`);
+        this.rawExecute('CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_tenant_phone ON whatsapp_menu_sessions(tenant_id, phone_number)');
+        this.rawExecute('CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_last_interaction ON whatsapp_menu_sessions(tenant_id, last_interaction_at)');
       } catch (_) {}
-    }
+
+      const userCols = this.rawQuery<{ name: string }>('PRAGMA table_info(users)');
+      const userNames = new Set(userCols.map(c => c.name));
+      if (!userNames.has('tenant_id')) this.rawExecute('ALTER TABLE users ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ""');
+      if (!userNames.has('email')) this.rawExecute('ALTER TABLE users ADD COLUMN email TEXT');
+      if (!userNames.has('is_active')) this.rawExecute('ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
+      if (!userNames.has('login_status')) this.rawExecute('ALTER TABLE users ADD COLUMN login_status INTEGER NOT NULL DEFAULT 0');
+
+      const ipCols = this.rawQuery<{ name: string }>('PRAGMA table_info(installment_plans)');
+      const ipNames = new Set(ipCols.map(c => c.name));
+      const ipColumns = [
+        'duration_years INTEGER', 'down_payment_percentage REAL DEFAULT 0', 'frequency TEXT', 'list_price REAL DEFAULT 0',
+        'customer_discount REAL DEFAULT 0', 'floor_discount REAL DEFAULT 0', 'lump_sum_discount REAL DEFAULT 0', 'misc_discount REAL DEFAULT 0',
+        'down_payment_amount REAL DEFAULT 0', 'installment_amount REAL DEFAULT 0', 'total_installments INTEGER', 'description TEXT', 'user_id TEXT',
+        'intro_text TEXT', 'root_id TEXT', 'approval_requested_by TEXT', 'approval_requested_to TEXT', 'approval_requested_at TEXT',
+        'approval_reviewed_by TEXT', 'approval_reviewed_at TEXT', 'discounts TEXT', 'customer_discount_category_id TEXT',
+        'floor_discount_category_id TEXT', 'lump_sum_discount_category_id TEXT', 'misc_discount_category_id TEXT',
+        'selected_amenities TEXT', 'amenities_total REAL DEFAULT 0', 'updated_at TEXT'
+      ];
+      for (const colDef of ipColumns) {
+        const colName = colDef.split(' ')[0];
+        if (!ipNames.has(colName)) {
+          try {
+            this.rawExecute(`ALTER TABLE installment_plans ADD COLUMN ${colDef}`);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 
   ensureAllTablesExist(): void {

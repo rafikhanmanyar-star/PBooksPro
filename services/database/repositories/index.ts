@@ -267,7 +267,7 @@ export class BudgetsRepository extends BaseRepository<any> {
 }
 
 export class RentalAgreementsRepository extends BaseRepository<any> {
-    constructor() { super('rental_agreements'); }
+    constructor() { super('rental_agreements', 'id', 'org_id'); }
 }
 
 export class ProjectAgreementsRepository extends BaseRepository<any> {
