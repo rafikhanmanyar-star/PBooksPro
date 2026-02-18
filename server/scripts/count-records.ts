@@ -28,7 +28,6 @@ async function countRecords() {
             'bills',
             'payroll_employees',
             'payslips',
-            'shop_sales',
             'inventory_batches',
             'quotations',
             'project_agreements'

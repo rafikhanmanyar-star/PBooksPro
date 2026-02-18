@@ -458,31 +458,6 @@ export class ElectronDatabaseService {
     }
   }
 
-  clearPosData(tenantId?: string): void {
-    const db = this.getDatabase();
-    const tables = ['shop_sale_items', 'shop_sales', 'shop_inventory_movements', 'shop_inventory', 'shop_loyalty_members', 'shop_products', 'shop_terminals', 'shop_warehouses', 'shop_branches', 'shop_policies'];
-    db.run('BEGIN TRANSACTION');
-    try {
-      db.run('PRAGMA foreign_keys = OFF');
-      for (const table of tables) {
-        try {
-          if (tenantId) db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
-          else db.run(`DELETE FROM ${table}`);
-        } catch (_) { }
-      }
-      if (!tenantId) {
-        for (const table of tables) {
-          try { db.run('DELETE FROM sqlite_sequence WHERE name = ?', [table]); } catch (_) { }
-        }
-      }
-      db.run('PRAGMA foreign_keys = ON');
-      db.run('COMMIT');
-    } catch (e) {
-      db.run('ROLLBACK');
-      throw e;
-    }
-  }
-
   clearAllData(tenantId?: string): void {
     const db = this.getDatabase();
     const tables = ['users', 'accounts', 'contacts', 'categories', 'projects', 'buildings', 'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets', 'rental_agreements', 'project_agreements', 'sales_returns', 'contracts', 'recurring_invoice_templates', 'transaction_log', 'error_log', 'app_settings', 'license_settings', 'project_agreement_units', 'contract_categories', 'pm_cycle_allocations'];

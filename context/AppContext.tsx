@@ -1161,7 +1161,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         const currentState = await appStateRepo.loadState();
                         if (currentState.currentUser) {
                             currentState.currentUser = null;
-                            await appStateRepo.saveState(currentState);
+                            await appStateRepo.saveState(currentState, true);
                             logger.logCategory('database', '✅ Cleared user from database');
                         }
                     }
@@ -3717,7 +3717,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const dbService = getDatabaseService();
                     if (dbService.isReady()) {
                         const appStateRepo = await getAppStateRepository();
-                        await appStateRepo.saveState(state);
+                        await appStateRepo.saveState(state, true);
                         logger.logCategory('database', '✅ State saved successfully before logout');
                     } else {
                         logger.warnCategory('database', '⚠️ Database not ready, skipping save before logout');

@@ -31,7 +31,6 @@ import MigratAIWizard from './MigratAIWizard';
 import LicenseManagement from '../license/LicenseManagement';
 import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
-import ClearPosDataModal from './ClearPosDataModal';
 import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
 import { getDatabaseService } from '../../services/database/databaseService';
 import { apiClient } from '../../services/api/client';
@@ -124,7 +123,6 @@ const SettingsPage: React.FC = () => {
     const [isMigrationWizardOpen, setIsMigrationWizardOpen] = useState(false);
     const [isAddNewMenuOpen, setIsAddNewMenuOpen] = useState(false);
     const [isClearTransactionsModalOpen, setIsClearTransactionsModalOpen] = useState(false);
-    const [isClearPosDataModalOpen, setIsClearPosDataModalOpen] = useState(false);
 
     // Check if user is admin - use AuthContext user (cloud auth) or fallback to AppContext currentUser (local)
     const isAdmin = authUser?.role === 'Admin' || state.currentUser?.role === 'Admin';
@@ -450,36 +448,6 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const handleClearPosData = async () => {
-        try {
-            console.log('🧹 Starting clear POS data process...');
-
-            // Step 1: Clear from cloud database (server)
-            console.log('📡 Clearing POS data from cloud database...');
-            const result = await dataManagementApi.clearPosData();
-            console.log('✅ Cloud POS data cleared:', result.details);
-
-            // Step 2: Clear from local database
-            console.log('💾 Clearing POS data from local database...');
-            const dbService = getDatabaseService();
-            if (dbService.isReady()) {
-                dbService.clearPosData();
-                console.log('✅ Local POS data cleared');
-            }
-
-            showToast(
-                `Successfully cleared ${result.details.recordsDeleted} POS records from local and cloud databases.`,
-                'success'
-            );
-        } catch (error: any) {
-            console.error('❌ Error clearing POS data:', error);
-            showAlert(
-                error?.message || 'Failed to clear POS data. Please try again.',
-                { title: 'Error' }
-            );
-            throw error;
-        }
-    };
     const handleFactoryReset = async () => {
         if (await showConfirm('FACTORY RESET WARNING: This will wipe ALL data and return the app to a fresh install state. \n\nAre you absolutely sure?', { title: 'Factory Reset', confirmLabel: 'Wipe Everything', cancelLabel: 'Cancel' })) {
             dispatch({ type: 'LOAD_SAMPLE_DATA' });
@@ -805,13 +773,6 @@ const SettingsPage: React.FC = () => {
                             <p className="text-xs text-rose-500 mt-2 font-semibold">⚠️ Admin Only</p>
                         </button>
                     )}
-                    {isAdmin && (
-                        <button onClick={() => setIsClearPosDataModalOpen(true)} className="p-4 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 hover:border-rose-300 transition-all text-left group">
-                            <div className="font-bold text-rose-700 mb-1 flex items-center gap-2">{ICONS.trash} Clear POS Data</div>
-                            <p className="text-xs text-rose-600/80 leading-relaxed">Deletes POS/Shop module data (products, inventory, sales, loyalty, branches/terminals).</p>
-                            <p className="text-xs text-rose-500 mt-2 font-semibold">⚠️ Admin Only</p>
-                        </button>
-                    )}
                     <button onClick={handleFactoryReset} className="p-4 bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-900 transition-all text-left group">
                         <div className="font-bold text-white mb-1 flex items-center gap-2">{ICONS.alertTriangle} Factory Reset</div>
                         <p className="text-xs text-slate-400 leading-relaxed">Completely wipes ALL data and restores the application to a fresh install state.</p>
@@ -1038,11 +999,6 @@ const SettingsPage: React.FC = () => {
                 onConfirm={handleClearTransactions}
             />
 
-            <ClearPosDataModal
-                isOpen={isClearPosDataModalOpen}
-                onClose={() => setIsClearPosDataModalOpen(false)}
-                onConfirm={handleClearPosData}
-            />
         </div>
     );
 };

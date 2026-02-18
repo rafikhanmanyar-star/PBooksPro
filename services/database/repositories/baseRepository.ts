@@ -667,9 +667,6 @@ export abstract class BaseRepository<T> {
                 || this.tableName === 'purchase_bills'
                 || this.tableName === 'purchase_bill_items'
                 || this.tableName === 'purchase_bill_payments'
-                || this.tableName === 'shop_config'
-                || this.tableName === 'shop_sales'
-                || this.tableName === 'shop_sale_items'
                 || this.tableName === 'inventory_stock'
                 || this.tableName === 'transactions';
 

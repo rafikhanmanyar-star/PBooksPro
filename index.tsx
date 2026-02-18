@@ -103,9 +103,6 @@ const initApp = async () => {
       { default: ErrorBoundary },
       { PayrollProvider },
       { PrintProvider },
-      { InventoryProvider },
-      { AccountingProvider },
-      { LoyaltyProvider }
     ] = await Promise.all([
       import('./App'),
       import('./context/AppContext'),
@@ -121,9 +118,6 @@ const initApp = async () => {
       import('./components/ErrorBoundary'),
       import('./context/PayrollContext'),
       import('./context/PrintContext'),
-      import('./context/InventoryContext'),
-      import('./context/AccountingContext'),
-      import('./context/LoyaltyContext')
     ]);
 
     const root = ReactDOM.createRoot(rootElement);
@@ -147,13 +141,7 @@ const initApp = async () => {
                             <NotificationProvider>
                               <WhatsAppProvider>
                                 <PayrollProvider>
-                                  <InventoryProvider>
-                                    <AccountingProvider>
-                                      <LoyaltyProvider>
-                                        <App />
-                                      </LoyaltyProvider>
-                                    </AccountingProvider>
-                                  </InventoryProvider>
+                                  <App />
                                 </PayrollProvider>
                               </WhatsAppProvider>
                             </NotificationProvider>

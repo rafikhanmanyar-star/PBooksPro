@@ -937,7 +937,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// DELETE /payroll/runs/:id - Soft delete payroll run
+// DELETE /payroll/runs/:id - Delete payroll run and its unpaid payslips
 router.delete('/runs/:id', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -947,19 +947,46 @@ router.delete('/runs/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Authentication required' });
     }
 
-    const result = await getDb().query(
-      `UPDATE payroll_runs SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 
-       WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+    const runCheck = await getDb().query(
+      `SELECT id, status, month, year FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
 
-    if (result.length === 0) {
+    if (runCheck.length === 0) {
       return res.status(404).json({ error: 'Payroll run not found' });
     }
 
-    emitToTenant(tenantId, 'payroll_run_updated', { id, deleted: true });
+    const run = runCheck[0];
 
-    res.json({ success: true, id });
+    // Check if any payslips are already paid
+    const paidCheck = await getDb().query(
+      `SELECT COUNT(*) as paid_count FROM payslips 
+       WHERE payroll_run_id = $1 AND tenant_id = $2 AND is_paid = true`,
+      [id, tenantId]
+    );
+    const paidCount = parseInt(paidCheck[0]?.paid_count || '0');
+
+    if (paidCount > 0) {
+      return res.status(400).json({
+        error: `Cannot delete: ${paidCount} payslip(s) have already been paid. Only cycles with no paid payslips can be deleted.`,
+        paidCount
+      });
+    }
+
+    // Delete payslips first (FK constraint), then the run
+    await getDb().query(
+      `DELETE FROM payslips WHERE payroll_run_id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    await getDb().query(
+      `DELETE FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    emitToTenant(tenantId, 'payroll_run_deleted', { id });
+
+    res.json({ success: true, id, message: `Payroll cycle ${run.month} ${run.year} deleted successfully.` });
   } catch (error) {
     console.error('Error deleting payroll run:', error);
     res.status(500).json({ error: 'Failed to delete payroll run' });
@@ -1048,9 +1075,14 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       );
       throw processingError;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error processing payroll:', error);
-    res.status(500).json({ error: 'Failed to process payroll' });
+    const message = error?.message || 'Failed to process payroll';
+    const isStagingOrDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to process payroll',
+      ...(isStagingOrDev && { details: message }),
+    });
   }
 });
 

@@ -180,6 +180,20 @@ export const payrollApi = {
     }
   },
 
+  // Delete payroll run and its unpaid payslips
+  async deletePayrollRun(id: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const response = await apiClient.delete<{ success: boolean; message: string }>(`/payroll/runs/${id}`);
+      return response;
+    } catch (error: any) {
+      console.error('Error deleting payroll run:', error);
+      return {
+        success: false,
+        error: error?.error || error?.message || 'Failed to delete payroll run'
+      };
+    }
+  },
+
   // ==================== GRADE LEVELS ====================
 
   async getGradeLevels(): Promise<GradeLevel[]> {

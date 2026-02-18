@@ -252,18 +252,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
                 ]
             },
-            {
-                title: 'My Shop',
-                items: [
-                    { page: 'posSales', label: 'POS Sales', icon: ICONS.shoppingCart },
-                    { page: 'inventory', label: 'Inventory', icon: ICONS.package },
-                    { page: 'procurement', label: 'Procurement', icon: ICONS.archive },
-                    { page: 'accounting', label: 'Accounting', icon: ICONS.fileText },
-                    { page: 'loyalty', label: 'Loyalty', icon: ICONS.heart },
-                    { page: 'multiStore', label: 'Multi-store', icon: ICONS.grid },
-                    { page: 'biDashboards', label: 'BI Dashboards', icon: ICONS.barChart },
-                ]
-            }
         ];
 
         // Add Settings for non-Accounts users
@@ -301,9 +289,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             }
             if (group.title === 'B2B') {
                 return hasModule('biz_planet');
-            }
-            if (group.title === 'My Shop') {
-                return hasModule('shop');
             }
             return true; // Always show Overview, Financials, People, System
         });
