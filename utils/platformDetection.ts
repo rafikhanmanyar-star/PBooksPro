@@ -12,19 +12,15 @@
  */
 export function isMobileDevice(): boolean {
   if (typeof window === 'undefined') return false;
-  
+  // Electron is always desktop - has local SQLite, never treat as mobile
+  if (isElectron()) return false;
+
   // Check screen width (existing pattern in codebase)
   const isSmallScreen = window.innerWidth < 768;
-  
   // Check user agent for mobile devices
   const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
   const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-  
-  // Check for touch support (mobile devices typically have touch)
-  const hasTouchSupport = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  
   // Consider it mobile if small screen OR mobile user agent
-  // Touch support is a hint but not definitive (some laptops have touch)
   return isSmallScreen || isMobileUserAgent;
 }
 

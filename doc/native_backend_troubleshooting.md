@@ -56,7 +56,7 @@ If you see:
 ```
 
 This means `better-sqlite3` failed to load. Common causes:
-- Node.js version mismatch (rebuild: `npm rebuild better-sqlite3`)
+- Node.js/Electron version mismatch (Electron: run `npx electron-rebuild`; Node-only: `npm rebuild better-sqlite3`)
 - Missing native dependencies
 
 ### Step 4: Verify IPC Handlers
@@ -108,10 +108,19 @@ Verify the native database exists:
 3. Reload: `location.reload()`
 
 #### Issue: "Failed to initialize native SQLite backend"
-**Fix:**
-1. Rebuild: `npm rebuild better-sqlite3`
-2. Check Node.js version compatibility
-3. Verify `better-sqlite3` is in `package.json` dependencies
+
+**NODE_MODULE_VERSION mismatch (e.g. "compiled against 137, requires 130"):**
+
+Electron 33 bundles Node 22. If your system Node is 23 or 24, `better-sqlite3` will be compiled for the wrong version.
+
+**Recommended fix – use Node 22 for this project:**
+1. Install [nvm-windows](https://github.com/coreybutler/nvm-windows) or [fnm](https://github.com/Schniz/fnm)
+2. Run: `nvm install 22` and `nvm use 22` (or `fnm use` if `.nvmrc` exists)
+3. Delete `node_modules` and run `npm install`
+4. Run the app again
+
+**Alternative** (requires Visual Studio C++ build tools):
+- `npx electron-rebuild -f -w better-sqlite3`
 
 #### Issue: "No transactions loaded"
 **Fix:**

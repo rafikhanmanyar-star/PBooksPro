@@ -637,7 +637,9 @@ CREATE TABLE IF NOT EXISTS payroll_employees (
     created_by TEXT NOT NULL,
     updated_by TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    version INTEGER DEFAULT 1,
+    deleted_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_payroll_employees_tenant ON payroll_employees(tenant_id);
@@ -663,7 +665,9 @@ CREATE TABLE IF NOT EXISTS payroll_runs (
     approved_at TIMESTAMP,
     paid_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    version INTEGER DEFAULT 1,
+    deleted_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_payroll_runs_tenant ON payroll_runs(tenant_id);

@@ -10,6 +10,7 @@ import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
 import { getWebSocketClient } from '../../services/websocketClient';
+import { isStagingEnvironment } from '../../config/apiUrl';
 import {
   BizPlanetNotification,
   BIZ_PLANET_NOTIFICATIONS_EVENT,
@@ -544,6 +545,11 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   return (
     <>
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200/80 shadow-sm transition-all duration-300">
+        {isStagingEnvironment() && (
+          <div className="w-full bg-amber-500 text-amber-950 text-center py-1 text-xs font-semibold tracking-wider">
+            STAGING
+          </div>
+        )}
         {isNavigating && (
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-pulse" />
         )}

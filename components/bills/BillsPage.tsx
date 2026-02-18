@@ -407,9 +407,10 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         // Add payment rows
         if (typeFilter === 'All' || typeFilter === 'Payments') {
             state.transactions
-                .filter(tx => tx.type === TransactionType.EXPENSE && tx.billId)
+                .filter(tx => tx.type === TransactionType.EXPENSE && (tx.billId ?? (tx as any).bill_id))
                 .forEach(payment => {
-                    const bill = state.bills.find(b => b.id === payment.billId);
+                    const pid = String(payment.billId ?? (payment as any).bill_id ?? '');
+                    const bill = state.bills.find(b => String(b.id) === pid);
                     if (!bill || !baseBills.includes(bill)) return; // Only include payments for bills in our base list
 
                     const project = state.projects.find(p => p.id === bill.projectId);
@@ -451,7 +452,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             } else if (selectedNode.type === 'vendor') {
                 const parentGroupId = selectedNode.parentId || 'unassigned';
                 result = result.filter(row => {
-                    const bill = row.bill || (row.payment ? state.bills.find(b => b.id === row.payment?.billId) : null);
+                    const bill = row.bill || (row.payment ? state.bills.find(b => String(b.id) === String(row.payment?.billId ?? (row.payment as any)?.bill_id ?? '')) : null);
                     if (!bill) return false;
                     const vendorId = bill.vendorId;
                     if (parentGroupId === 'unassigned') {

@@ -11,19 +11,21 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron:extract-schema": "node scripts/extract-schema.cjs",
-    "electron": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://api.pbookspro.com/api vite build && electron .",
+    "electron": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://api.pbookspro.com/api npm run build && electron-builder --win",
     "electron:dev": "cross-env VITE_ELECTRON_BUILD=true vite build && electron . --enable-logging",
     "electron:pack": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true npm run build && electron-builder --dir",
     "electron:production": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://api.pbookspro.com/api npm run build && electron-builder --win",
     "electron:production:installer": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://api.pbookspro.com/api npm run build && electron-builder --win nsis",
-    "electron:staging": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://pbookspro-api-staging.onrender.com/api npm run build && electron-builder --win --config electron-builder.staging.json",
+    "electron:staging": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://pbookspro-api-staging.onrender.com/api npm run build && electron . --enable-logging",
     "electron:staging:installer": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://pbookspro-api-staging.onrender.com/api npm run build && electron-builder --win nsis --config electron-builder.staging.json",
     "electron:dist": "npm run electron:production",
     "electron:installer": "npm run electron:production:installer",
     "update-server": "node update-server/server.cjs",
     "mcp:build": "cd mcp-server && npm run build",
     "mcp:dev": "cd mcp-server && npm run dev",
-    "mcp:install": "cd mcp-server && npm install"
+    "mcp:install": "cd mcp-server && npm install",
+    "clear-local-transactions": "node tools/clear-local-transactions.cjs",
+    "postinstall": "electron-rebuild"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -46,10 +48,11 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "cross-env": "^7.0.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "cross-env": "^7.0.3",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "electron-rebuild": "^3.2.9",
     "typescript": "~5.8.2",
     "vite": "^7.2.4"
   },
@@ -65,7 +68,10 @@
       "electron/**/*"
     ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "electron/assets/icon.ico",
       "signAndEditExecutable": false
     },
