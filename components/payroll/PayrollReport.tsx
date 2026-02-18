@@ -86,16 +86,16 @@ const PayrollReport: React.FC = () => {
     let totalDeductions = 0;
 
     employees.forEach(emp => {
-      // Convert to number if string (handles database DECIMAL types)
-      const basicSalary = typeof emp.salary.basic === 'string' ? parseFloat(emp.salary.basic) : emp.salary.basic;
+      const salary = emp.salary || { basic: 0, allowances: [], deductions: [] };
+      const basicSalary = typeof salary.basic === 'string' ? parseFloat(salary.basic) : (salary.basic ?? 0);
       totalBasic += basicSalary || 0;
       
-      emp.salary.allowances.forEach(a => {
-        const amount = typeof a.amount === 'string' ? parseFloat(a.amount) : a.amount;
+      (salary.allowances || []).forEach((a: any) => {
+        const amount = typeof a.amount === 'string' ? parseFloat(a.amount) : (a.amount ?? 0);
         totalAllowances += a.is_percentage ? (basicSalary * amount) / 100 : amount;
       });
-      emp.salary.deductions.forEach(d => {
-        const amount = typeof d.amount === 'string' ? parseFloat(d.amount) : d.amount;
+      (salary.deductions || []).forEach((d: any) => {
+        const amount = typeof d.amount === 'string' ? parseFloat(d.amount) : (d.amount ?? 0);
         totalDeductions += d.is_percentage ? (basicSalary * amount) / 100 : amount;
       });
     });

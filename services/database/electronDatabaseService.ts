@@ -353,45 +353,44 @@ export class ElectronDatabaseService {
     const db = this.getDatabase();
     let committed = false;
     try {
-      db.run('BEGIN TRANSACTION');
-      this.inTransaction = true;
-
-      // Temporarily disable foreign keys to allow batch updates with temporary inconsistencies
-      // (e.g., deleting a parent before replacing it, or inserting children before parents in some batches)
+      // PRAGMA foreign_keys must run BEFORE BEGIN - inside a transaction it is silently ignored
       try {
         db.run('PRAGMA foreign_keys = OFF');
       } catch (e) {
         console.warn('[ElectronDatabaseService] Failed to disable foreign keys for transaction:', e);
       }
 
+      db.run('BEGIN TRANSACTION');
+      this.inTransaction = true;
+
       for (let i = 0; i < operations.length; i++) {
         try {
           operations[i]();
         } catch (opError) {
           import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => { });
-          try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
           try { db.run('ROLLBACK'); } catch (_) { }
+          try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
           throw opError;
         }
       }
 
-      // Re-enable foreign keys before commit
+      db.run('COMMIT');
+      committed = true;
+
+      // Re-enable foreign keys after commit (must be outside transaction)
       try {
         db.run('PRAGMA foreign_keys = ON');
       } catch (e) {
-        console.warn('[ElectronDatabaseService] Failed to re-enable foreign keys before commit:', e);
+        console.warn('[ElectronDatabaseService] Failed to re-enable foreign keys after commit:', e);
       }
-
-      db.run('COMMIT');
-      committed = true;
       if (onCommit) {
         try { onCommit(); } catch (e) { console.error('Post-commit error:', e); }
       }
     } catch (error) {
       if (!committed) {
         import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => { });
-        try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
         try { db.run('ROLLBACK'); } catch (_) { }
+        try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
       }
       throw error;
     } finally {

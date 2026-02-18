@@ -475,16 +475,20 @@ class SyncManager {
         throw new Error('Authentication required'); // Don't retry
       }
 
-      // Handle 409 Conflict errors for create operations
-      // If the record already exists in the cloud, treat it as success
-      // This happens when local DB has records that were already synced to cloud
-      if (error?.status === 409 && operation.type === 'create') {
+      // Handle 409 Conflict: duplicate = success; version conflict = accept server, remove from queue
+      if (error?.status === 409) {
         const errorMessage = (error?.message || error?.error || String(error)).toLowerCase();
         const isDuplicateError = errorMessage.includes('duplicate') ||
           errorMessage.includes('already exists');
+        const isVersionConflict = errorMessage.includes('version conflict') ||
+          errorMessage.includes('expected version');
 
-        if (isDuplicateError) {
-          return; // Success - record already exists, no need to retry
+        if (isDuplicateError && (operation.type === 'create' || operation.type === 'update')) {
+          return; // Success - record already exists
+        }
+        if (isVersionConflict) {
+          // Server has newer version - accept server wins, treat as success to stop retries
+          return;
         }
       }
 
@@ -496,6 +500,15 @@ class SyncManager {
         const code = (error as any)?.code;
         if (code === 'PAYMENT_OVERPAYMENT' || msg.includes('Overpayment') || msg.includes('would exceed')) {
           return; // Success - payment already reflected, no need to retry
+        }
+      }
+
+      // Handle TRANSACTION_IMMUTABLE: transaction linked to paid invoice/bill — non-retriable
+      if (operation.entity === 'transaction' || operation.entity === 'transactions') {
+        const msg = String(error?.message || error?.error || '');
+        const code = (error as any)?.code;
+        if (code === 'TRANSACTION_IMMUTABLE' || /cannot modify a payment transaction linked to a paid/i.test(msg)) {
+          return; // Server already has the correct state, no need to retry
         }
       }
 

@@ -23,6 +23,15 @@ const calculateAmount = (basic: number, amount: number, isPercentage: boolean): 
   return roundToTwo(calculated);
 };
 
+/** Parse a field that may be a JSON string or already-parsed object/array */
+function parseJsonField<T>(value: any, fallback: T): T {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') {
+    try { return JSON.parse(value); } catch { return fallback; }
+  }
+  return value as T;
+}
+
 /** Internal: generate payslips for a payroll run. Does not update run status. */
 async function generatePayslipsForRun(
   tenantId: string,
@@ -69,7 +78,7 @@ async function generatePayslipsForRun(
   let newPayslipsCount = 0;
 
   for (const emp of employees) {
-    const salary = emp.salary || {};
+    const salary = parseJsonField(emp.salary, { basic: 0, allowances: [], deductions: [] });
     const joiningDate = new Date(emp.joining_date);
     let proRataFactor = 1.0;
     let workedDays = daysInMonth;
@@ -106,7 +115,7 @@ async function generatePayslipsForRun(
     });
     totalDeductions = roundToTwo(totalDeductions);
 
-    const adjustments = emp.adjustments || [];
+    const adjustments: any[] = parseJsonField(emp.adjustments, []);
     const earningAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'EARNING').reduce((sum: number, a: any) => sum + a.amount, 0));
     const deductionAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'DEDUCTION').reduce((sum: number, a: any) => sum + a.amount, 0));
 
@@ -116,13 +125,14 @@ async function generatePayslipsForRun(
     newTotalAmount += netPay;
     newPayslipsCount++;
 
+    const payslipId = `ps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     await getDb().query(
       `INSERT INTO payslips 
-       (tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
+       (id, tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
         total_deductions, total_adjustments, gross_pay, net_pay,
         allowance_details, deduction_details, adjustment_details)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [tenantId, runId, emp.id, basic, totalAllowances, totalDeductions,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [payslipId, tenantId, runId, emp.id, basic, totalAllowances, totalDeductions,
         earningAdj - deductionAdj, grossPay, netPay,
         JSON.stringify(salary.allowances || []),
         JSON.stringify(salary.deductions || []),
@@ -1463,17 +1473,37 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       paymentAmount = parsed;
     }
 
-    // Determine project from employee's project allocation (first one with highest allocation)
-    let effectiveProjectId = projectId;
-    if (!effectiveProjectId && payslip.employee_projects) {
+    // Build project cost allocation: if user provided projectId, use single project; otherwise split by employee's project allocation
+    type ProjectSplit = { project_id: string | null; amount: number };
+    let projectSplits: ProjectSplit[] = [];
+
+    if (projectId) {
+      // User selected a single project - all cost goes there
+      projectSplits = [{ project_id: projectId, amount: paymentAmount }];
+    } else if (payslip.employee_projects) {
       const projects = typeof payslip.employee_projects === 'string'
         ? JSON.parse(payslip.employee_projects)
         : payslip.employee_projects;
       if (projects && projects.length > 0) {
-        // Sort by percentage descending and get the first one
-        const sortedProjects = [...projects].sort((a: any, b: any) => (b.percentage || 0) - (a.percentage || 0));
-        effectiveProjectId = sortedProjects[0].project_id;
+        const totalPct = projects.reduce((s: number, p: any) => s + (p.percentage || 0), 0);
+        if (totalPct > 0) {
+          let allocated = 0;
+          for (let i = 0; i < projects.length; i++) {
+            const pct = (projects[i].percentage || 0) / totalPct;
+            const amt = i === projects.length - 1
+              ? roundToTwo(paymentAmount - allocated)
+              : roundToTwo(paymentAmount * pct);
+            allocated += amt;
+            if (amt > 0 && projects[i].project_id) {
+              projectSplits.push({ project_id: projects[i].project_id, amount: amt });
+            }
+          }
+        }
       }
+    }
+    // Fallback: no project (cost to general overhead)
+    if (projectSplits.length === 0) {
+      projectSplits = [{ project_id: null as any, amount: paymentAmount }];
     }
 
     const txnDescription = description || `Salary payment for ${payslip.employee_name} - ${payslip.month} ${payslip.year}`;
@@ -1544,38 +1574,38 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       const account = accountCheck.rows[0];
       console.log('✅ Account verified:', { id: account.id, name: account.name, type: account.type, balance: account.balance });
 
-      // Generate transaction ID
-      const transactionId = `payslip-pay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Create one expense transaction per project allocation (records cost in each assigned project)
+      const allTransactions: any[] = [];
+      const baseTxnId = `payslip-pay-${Date.now()}`;
 
-      console.log('💳 Creating transaction:', {
-        id: transactionId,
-        type: 'Expense',
-        amount: paymentAmount,
-        accountId: accountId,
-        categoryId: effectiveCategoryId,
-        projectId: effectiveProjectId
-      });
+      for (let i = 0; i < projectSplits.length; i++) {
+        const split = projectSplits[i];
+        const transactionId = projectSplits.length > 1 ? `${baseTxnId}-${i}` : baseTxnId;
+        const desc = projectSplits.length > 1
+          ? `${txnDescription} (${roundToTwo((split.amount / paymentAmount) * 100)}% to project)`
+          : txnDescription;
 
-      // Create expense transaction for salary payment
-      const transactionResult = await client.query(
-        `INSERT INTO transactions 
-         (id, tenant_id, type, amount, date, description, account_id, category_id, project_id, user_id, payslip_id)
-         VALUES ($1, $2, 'Expense', $3, CURRENT_DATE, $4, $5, $6, $7, $8, $9)
-         RETURNING *`,
-        [transactionId, tenantId, paymentAmount, txnDescription, accountId, effectiveCategoryId, effectiveProjectId || null, userId, id]
-      );
+        const transactionResult = await client.query(
+          `INSERT INTO transactions 
+           (id, tenant_id, type, amount, date, description, account_id, category_id, project_id, user_id, payslip_id)
+           VALUES ($1, $2, 'Expense', $3, CURRENT_DATE, $4, $5, $6, $7, $8, $9)
+           RETURNING *`,
+          [transactionId, tenantId, split.amount, desc, accountId, effectiveCategoryId, split.project_id || null, userId, id]
+        );
+        allTransactions.push(transactionResult.rows[0]);
+      }
 
-      const transaction = transactionResult.rows[0];
-      console.log('✅ Transaction created:', transaction.id);
+      const transaction = allTransactions[0];
+      console.log('✅ Transactions created:', allTransactions.length, allTransactions.map((t: any) => ({ id: t.id, amount: t.amount, project_id: t.project_id })));
 
-      // Update account balance (supports both tenant-specific and global accounts)
+      // Update account balance once (total amount)
       await client.query(
         `UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL)`,
         [paymentAmount, accountId, tenantId]
       );
       console.log('✅ Account balance updated');
 
-      // Mark payslip as paid
+      // Mark payslip as paid (store first transaction ID for reference)
       const updateResult = await client.query(
         `UPDATE payslips SET 
           is_paid = true,
@@ -1607,7 +1637,8 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       }
 
       return {
-        transaction: transaction,
+        transaction,
+        transactions: allTransactions,
         payslip: updateResult.rows[0],
         totalCount: totalNum,
         paidCount: paidNum
@@ -1621,6 +1652,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     emitToTenant(tenantId, 'payslip_paid', {
       payslipId: id,
       transactionId: result.transaction.id,
+      transactions: result.transactions,
       employeeId: payslip.employee_id,
       runId: payslip.run_id,
       paidCount: paidPayslips,
@@ -1632,6 +1664,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       success: true,
       payslip: result.payslip,
       transaction: result.transaction,
+      transactions: result.transactions,
       paymentSummary: {
         paidPayslips,
         totalPayslips,

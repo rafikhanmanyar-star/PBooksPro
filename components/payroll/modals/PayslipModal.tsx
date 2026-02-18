@@ -226,12 +226,10 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
         setSelectedCategoryId(salaryExpensesCat.id);
       }
 
-      // If employee has project allocation, use that as default project
+      // When employee has project allocation, leave project empty so backend splits cost across projects
+      // User can override by selecting a single project in the dropdown
       if (employee.projects && employee.projects.length > 0) {
-        const sortedProjects = [...employee.projects].sort((a, b) => (b.percentage || 0) - (a.percentage || 0));
-        if (sortedProjects[0].project_id) {
-          setSelectedProjectId(sortedProjects[0].project_id);
-        }
+        setSelectedProjectId(''); // Auto-split by allocation
       }
     } else {
       // Reset selections when modal closes
@@ -696,12 +694,12 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     }))}
                     selectedId={selectedProjectId}
                     onSelect={(item) => setSelectedProjectId(item?.id || '')}
-                    placeholder="Select Project (Optional)"
+                    placeholder={employee.projects?.length ? "Leave empty to split by employee allocation" : "Select Project (Optional)"}
                     entityType="project"
                   />
-                  {employee.projects && employee.projects.length > 0 && (
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Employee allocation: {employee.projects.map(p => `${p.project_name} (${p.percentage}%)`).join(', ')}
+                  {employee.projects && employee.projects.length > 0 && !selectedProjectId && (
+                    <p className="text-[10px] text-emerald-600 mt-1">
+                      Cost will be split: {employee.projects.map(p => `${p.project_name} (${p.percentage}%)`).join(', ')}
                     </p>
                   )}
                 </div>
@@ -871,14 +869,15 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                           setIsPaid(true);
                           setShowPaymentForm(false);
 
-                          // Dispatch transaction to global state so balances and ledger update immediately
-                          if (result.transaction) {
+                          // Dispatch all transactions to global state (one per project when split by allocation)
+                          const txns = result.transactions || (result.transaction ? [result.transaction] : []);
+                          txns.forEach((txn: any) => {
                             dispatch({
                               type: 'ADD_TRANSACTION',
-                              payload: result.transaction,
+                              payload: txn,
                               _isRemote: true // Skip sync because server already has it
                             } as any);
-                          }
+                          });
 
                           if (onPaymentComplete) onPaymentComplete();
                         } else {

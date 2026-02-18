@@ -109,11 +109,11 @@ router.post('/', async (req: TenantRequest, res) => {
         const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
         const serverVersion = existing.rows[0].version;
         if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
-          throw {
-            code: 'VERSION_CONFLICT',
-            message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
-            status: 409
-          };
+          const err: any = new Error(`Expected version ${clientVersion} but server has version ${serverVersion}.`);
+          err.code = 'VERSION_CONFLICT';
+          err.status = 409;
+          err.serverVersion = serverVersion;
+          throw err;
         }
 
         // Update existing category
@@ -207,6 +207,20 @@ router.post('/', async (req: TenantRequest, res) => {
       categoryType: req.body?.type,
       requestBody: JSON.stringify(req.body).substring(0, 300)
     });
+
+    // Handle version conflict (thrown from optimistic locking check)
+    // Also match by message in case code/status are lost during transaction propagation
+    const isVersionConflict =
+      error.code === 'VERSION_CONFLICT' ||
+      error.status === 409 ||
+      (typeof error.message === 'string' && /Expected version \d+ but server has version \d+/.test(error.message));
+    if (isVersionConflict) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: error.message || 'Version conflict',
+        serverVersion: error.serverVersion,
+      });
+    }
 
     // Handle specific database errors
     if (error.code === '23505') { // Unique violation

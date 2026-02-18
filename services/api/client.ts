@@ -388,11 +388,14 @@ export class ApiClient {
       }
 
       if (!response.ok) {
-        const error: ApiError = {
+        const error: ApiError & Record<string, unknown> = {
           error: data.error || data.message || 'Request failed',
           message: data.message || data.error,
           status: response.status,
           ...(data.code && { code: data.code }),
+          ...(data.existingRunId && { existingRunId: data.existingRunId }),
+          ...(data.existingStatus && { existingStatus: data.existingStatus }),
+          ...(data.serverVersion != null && { serverVersion: data.serverVersion }),
         };
         console.error('API Error:', error);
         throw error;

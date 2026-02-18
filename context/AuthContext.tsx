@@ -321,11 +321,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.isAuthenticated]);
 
   /**
-   * Check if user is already authenticated (from localStorage)
+   * Check authentication state on app load.
+   * Auto-login from stored token is DISABLED - users must always enter credentials
+   * to prevent unintended access and avoid fallback to generic "User" display name.
    */
   useEffect(() => {
-    // Use a ref to prevent multiple simultaneous auth checks
-    let isChecking = false;
     let isMounted = true;
 
     // Listen for auth expiration events from API client
@@ -339,195 +339,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const checkAuth = async () => {
-      // Prevent multiple simultaneous checks
-      if (isChecking) {
-        return;
-      }
-      isChecking = true;
       try {
         const token = apiClient.getToken();
         const tenantId = apiClient.getTenantId();
 
         if (token && tenantId) {
-          // Check if token is expired before making API call
-          if (apiClient.isTokenExpired()) {
-            if (isMounted) {
-              logger.logCategory('auth', 'Token in localStorage is expired, clearing auth');
-              apiClient.clearAuth();
-              setState({
-                isAuthenticated: false,
-                user: null,
-                tenant: null,
-                isLoading: false,
-                error: null,
-              });
-            }
-            return;
-          }
-
-          // Verify token is still valid by checking license status
-          try {
-            const licenseStatus = await apiClient.get<{
-              isValid?: boolean;
-              isExpired?: boolean;
-              licenseStatus?: string;
-            }>('/tenants/license-status');
-            if (!isMounted) return;
-
-            const isValid = typeof licenseStatus.isValid === 'boolean'
-              ? licenseStatus.isValid
-              : !(licenseStatus.isExpired === true || licenseStatus.licenseStatus === 'expired');
-
-            if (isValid) {
-              // Token is valid, restore session
-              // Fetch user and tenant info from API
-              try {
-                const tenantInfo = await apiClient.get<{
-                  id: string;
-                  name: string;
-                  company_name: string;
-                }>('/tenants/me');
-
-                // Try to decode user info from JWT token
-                let userInfo = {
-                  id: localStorage.getItem('user_id') || 'current-user',
-                  username: 'user',
-                  name: 'User',
-                  role: 'User',
-                  tenantId: tenantInfo.id,
-                };
-
-                try {
-                  // Decode JWT to get user info
-                  const parts = token.split('.');
-                  if (parts.length === 3) {
-                    const payload = JSON.parse(atob(parts[1]));
-                    userInfo = {
-                      id: payload.userId || payload.sub || localStorage.getItem('user_id') || 'current-user',
-                      username: payload.username || 'user',
-                      name: payload.name || 'User',
-                      role: payload.role || 'User',
-                      tenantId: tenantInfo.id,
-                    };
-                  }
-                } catch (decodeError) {
-                  logger.warnCategory('auth', 'Could not decode user info from token:', decodeError);
-                }
-
-                if (isMounted) {
-                  setState({
-                    isAuthenticated: true,
-                    user: userInfo,
-                    tenant: {
-                      id: tenantInfo.id,
-                      name: tenantInfo.name,
-                      companyName: tenantInfo.company_name,
-                    },
-                    isLoading: false,
-                    error: null,
-                  });
-                }
-              } catch (fetchError) {
-                // If we can't fetch tenant info, still allow access (token is valid)
-                if (isMounted) {
-                  setState(prev => ({
-                    ...prev,
-                    isAuthenticated: true,
-                    isLoading: false,
-                  }));
-                }
-              }
-            } else {
-              // License expired, clear auth
-              if (isMounted) {
-                apiClient.clearAuth();
-                setState({
-                  isAuthenticated: false,
-                  user: null,
-                  tenant: null,
-                  isLoading: false,
-                  error: 'License has expired. Please renew your license.',
-                });
-              }
-            }
-          } catch (error: any) {
-            if (!isMounted) return;
-
-            // Token invalid or expired, or network error
-            // Don't clear auth on network errors - might be temporary
-            const errorMessage = error instanceof Error ? error.message : String(error);
-
-            // Check if it's a 401 error (token invalid/expired)
-            if (error?.status === 401) {
-              // Token is invalid or expired - clear auth silently
-              // Don't log as error - this is expected if token is expired
-              logger.logCategory('auth', 'Token verification failed (401) - clearing auth, user needs to re-login');
-              apiClient.clearAuth();
-              setState({
-                isAuthenticated: false,
-                user: null,
-                tenant: null,
-                isLoading: false,
-                error: null,
-              });
-            } else if (errorMessage.includes('Network') || errorMessage.includes('Failed to fetch')) {
-              // Offline-first: allow authenticated offline when token is valid but network unavailable
-              // Decode user/tenant from JWT so app can show UI from local data
-              let userInfo: { id: string; username: string; name: string; role: string; tenantId: string } = {
-                id: localStorage.getItem('user_id') || 'current-user',
-                username: 'user',
-                name: 'User',
-                role: 'User',
-                tenantId: tenantId,
-              };
-              try {
-                const parts = token.split('.');
-                if (parts.length === 3) {
-                  const payload = JSON.parse(atob(parts[1]));
-                  userInfo = {
-                    id: payload.userId || payload.sub || userInfo.id,
-                    username: payload.username || userInfo.username,
-                    name: payload.name || userInfo.name,
-                    role: payload.role || userInfo.role,
-                    tenantId: payload.tenantId || tenantId,
-                  };
-                }
-              } catch (_) { /* use defaults */ }
-              if (isMounted) {
-                logger.logCategory('auth', 'Offline: using stored token (network unavailable)');
-                setState({
-                  isAuthenticated: true,
-                  user: userInfo,
-                  tenant: { id: tenantId, name: '', companyName: '' },
-                  isLoading: false,
-                  error: null,
-                });
-              }
-            } else {
-              // Other error - clear auth
-              logger.warnCategory('auth', 'Token verification failed with unexpected error:', error);
-              apiClient.clearAuth();
-              setState({
-                isAuthenticated: false,
-                user: null,
-                tenant: null,
-                isLoading: false,
-                error: null,
-              });
-            }
-          }
-        } else {
+          // Auto-login disabled: clear any stored auth and require explicit credentials.
+          // This prevents the app from logging in without user interaction and avoids
+          // displaying the generic "User" fallback when JWT lacks user details.
           if (isMounted) {
-            setState(prev => ({ ...prev, isLoading: false }));
+            logger.logCategory('auth', 'Auto-login disabled: clearing stored auth, user must sign in');
+            apiClient.clearAuth();
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('user_id');
+            }
+            setState({
+              isAuthenticated: false,
+              user: null,
+              tenant: null,
+              isLoading: false,
+              error: null,
+            });
           }
+          return;
+        }
+
+        if (isMounted) {
+          setState(prev => ({ ...prev, isLoading: false }));
         }
       } catch (error) {
         if (isMounted) {
           logger.errorCategory('auth', 'Auth check error:', error);
           setState(prev => ({ ...prev, isLoading: false }));
         }
-      } finally {
-        isChecking = false;
       }
     };
 
