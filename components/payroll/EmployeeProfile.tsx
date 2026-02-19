@@ -129,26 +129,26 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
   };
 
   const calculateGross = () => {
-    const allowances = employee.salary.allowances
-      .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
-      .reduce((acc, curr) => {
-        return acc + calculateAmount(employee.salary.basic, curr.amount, curr.is_percentage);
+    const allowances = (employee.salary?.allowances || [])
+      .filter((a: any) => (a.name || '').toLowerCase() !== 'basic pay' && (a.name || '').toLowerCase() !== 'basic salary')
+      .reduce((acc: number, curr: any) => {
+        return acc + calculateAmount(employee.salary?.basic ?? 0, curr.amount, curr.is_percentage);
       }, 0);
     const earningsAdjustments = (employee.adjustments || [])
       .filter(a => a.type === 'EARNING')
       .reduce((acc, curr) => acc + curr.amount, 0);
-    return roundToTwo(employee.salary.basic + allowances + earningsAdjustments);
+    return roundToTwo((employee.salary?.basic ?? 0) + allowances + earningsAdjustments);
   };
 
   const calculateNet = () => {
-    const grossWithoutAdjs = roundToTwo(employee.salary.basic + employee.salary.allowances
-      .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
-      .reduce((acc, curr) => {
-        return acc + calculateAmount(employee.salary.basic, curr.amount, curr.is_percentage);
+    const grossWithoutAdjs = roundToTwo((employee.salary?.basic ?? 0) + (employee.salary?.allowances || [])
+      .filter((a: any) => (a.name || '').toLowerCase() !== 'basic pay' && (a.name || '').toLowerCase() !== 'basic salary')
+      .reduce((acc: number, curr: any) => {
+        return acc + calculateAmount(employee.salary?.basic ?? 0, curr.amount, curr.is_percentage);
       }, 0));
     
     const gross = calculateGross();
-    const deductions = employee.salary.deductions.reduce((acc, curr) => {
+    const deductions = (employee.salary?.deductions || []).reduce((acc: number, curr: any) => {
       return acc + calculateAmount(grossWithoutAdjs, curr.amount, curr.is_percentage);
     }, 0);
 
@@ -484,14 +484,14 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                         <span className="font-bold text-slate-900 text-sm sm:text-base">Basic Pay</span>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter hidden sm:block">Guaranteed Fixed</p>
                       </div>
-                      <span className="text-lg sm:text-xl font-black text-slate-900">PKR {formatCurrency(employee.salary.basic)}</span>
+                      <span className="text-lg sm:text-xl font-black text-slate-900">PKR {formatCurrency(employee.salary?.basic ?? 0)}</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                       <div className="space-y-2 sm:space-y-3">
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Earnings/Allowances</p>
-                        {employee.salary.allowances
-                          .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
-                          .map((a, i) => (
+                        {(employee.salary?.allowances || [])
+                          .filter((a: any) => (a.name || '').toLowerCase() !== 'basic pay' && (a.name || '').toLowerCase() !== 'basic salary')
+                          .map((a: any, i: number) => (
                             <div key={i} className="flex justify-between items-center p-2 sm:p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
                               <span className="text-xs sm:text-sm font-bold text-slate-700">{a.name}</span>
                               <span className="text-green-600 font-black text-xs sm:text-sm">
@@ -502,7 +502,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                       </div>
                       <div className="space-y-2 sm:space-y-3">
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Statutory Deductions</p>
-                        {employee.salary.deductions.map((d, i) => (
+                        {(employee.salary?.deductions || []).map((d: any, i: number) => (
                           <div key={i} className="flex justify-between items-center p-2 sm:p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
                             <span className="text-xs sm:text-sm font-bold text-slate-700">{d.name}</span>
                             <span className="text-red-500 font-black text-xs sm:text-sm">

@@ -1,5 +1,6 @@
 -- Migration: Add Soft Deletes and Versioning for Missing Tables
 -- Created: 2026-02-16
+-- Skips tables that don't exist (e.g. task_* tables may not exist yet)
 
 DO $$ 
 DECLARE
@@ -11,6 +12,14 @@ DECLARE
 BEGIN
     FOREACH table_name_text IN ARRAY target_tables
     LOOP
+        -- Skip if table doesn't exist
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_name = table_name_text
+        ) THEN
+            CONTINUE;
+        END IF;
+
         -- Add deleted_at if it doesn't exist
         IF NOT EXISTS (
             SELECT 1 FROM information_schema.columns 
@@ -40,6 +49,13 @@ DECLARE
 BEGIN
     FOREACH table_name_text IN ARRAY target_tables
     LOOP
+        -- Skip if table doesn't exist
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_name = table_name_text
+        ) THEN
+            CONTINUE;
+        END IF;
         EXECUTE format('UPDATE %I SET version = 1 WHERE version IS NULL', table_name_text);
     END LOOP;
 END $$;

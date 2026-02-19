@@ -10,7 +10,6 @@ import {
   Briefcase, 
   Building2, 
   DollarSign, 
-  ShieldCheck,
   AlertCircle,
   Calendar,
   User,
@@ -21,7 +20,6 @@ import {
   MapPin,
   Award,
   CheckCircle2,
-  XCircle,
   PieChart,
   Plus,
   Trash2,
@@ -32,46 +30,48 @@ import {
   EmploymentStatus, 
   ProjectAllocation, 
   PayrollProject,
-  Department,
   EmployeeFormProps,
-  EmployeeSalaryComponent
 } from './types';
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, calculateAmount } from './utils/formatters';
-
-interface SalaryComponentState {
-  name: string;
-  amount: number;
-  is_percentage: boolean;
-  isEnabled: boolean;
-}
+import { formatCurrency } from './utils/formatters';
 
 const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee }) => {
   const { user, tenant } = useAuth();
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
 
-  // Get configuration data
-  const earningTemplates = useMemo(() => {
-    if (!tenantId) return [];
-    return storageService.getEarningTypes(tenantId);
-  }, [tenantId]);
+  // Departments and grades - fetch from API with localStorage fallback
+  const [availableDepartments, setAvailableDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [availableGrades, setAvailableGrades] = useState<{ id: string; name: string; description?: string; min_salary?: number; max_salary?: number }[]>([]);
 
-  const deductionTemplates = useMemo(() => {
-    if (!tenantId) return [];
-    return storageService.getDeductionTypes(tenantId);
-  }, [tenantId]);
-
-  const availableGrades = useMemo(() => {
-    if (!tenantId) return [];
-    return storageService.getGradeLevels(tenantId);
-  }, [tenantId]);
-
-  const availableDepartments = useMemo(() => {
-    if (!tenantId) return [];
-    return storageService.getDepartments(tenantId).filter(d => d.is_active);
+  useEffect(() => {
+    const fetchConfig = async () => {
+      if (!tenantId) return;
+      try {
+        const [depts, grades] = await Promise.all([
+          payrollApi.getDepartments(),
+          payrollApi.getGradeLevels(),
+        ]);
+        if (depts.length > 0) {
+          setAvailableDepartments(depts.filter((d: any) => d.is_active !== false).map((d: any) => ({ id: d.id, name: d.name })));
+        } else {
+          const fromStorage = storageService.getDepartments(tenantId).filter(d => d.is_active);
+          setAvailableDepartments(fromStorage.map(d => ({ id: d.id, name: d.name })));
+        }
+        if (grades.length > 0) {
+          setAvailableGrades(grades.map((g: any) => ({ id: g.id, name: g.name, description: g.description, min_salary: g.min_salary, max_salary: g.max_salary })));
+        } else {
+          const fromStorage = storageService.getGradeLevels(tenantId);
+          setAvailableGrades(fromStorage.map(g => ({ id: g.id, name: g.name, description: g.description, min_salary: g.min_salary, max_salary: g.max_salary })));
+        }
+      } catch {
+        setAvailableDepartments(storageService.getDepartments(tenantId).filter(d => d.is_active).map(d => ({ id: d.id, name: d.name })));
+        setAvailableGrades(storageService.getGradeLevels(tenantId).map(g => ({ id: g.id, name: g.name, description: g.description, min_salary: g.min_salary, max_salary: g.max_salary })));
+      }
+    };
+    fetchConfig();
   }, [tenantId]);
 
   // Projects state - fetched from main application's settings
@@ -127,84 +127,29 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     phone: employee?.phone || '',
     address: employee?.address || '',
     designation: employee?.designation || '',
-    department: employee?.department || (availableDepartments.length > 0 ? availableDepartments[0].name : 'Engineering'),
-    grade: employee?.grade || (availableGrades.length > 0 ? availableGrades[0].name : ''),
+    department: employee?.department || 'General',
+    grade: employee?.grade || '',
     joiningDate: employee?.joining_date || new Date().toISOString().split('T')[0],
-    basicSalary: employee?.salary.basic || 0,
+    basicSalary: employee?.salary?.basic || 0,
   });
 
-  const [allowances, setAllowances] = useState<SalaryComponentState[]>([]);
-  const [deductions, setDeductions] = useState<SalaryComponentState[]>([]);
   const [assignedProjects, setAssignedProjects] = useState<ProjectAllocation[]>(
     employee?.projects || []
   );
 
-  // Initialize salary components from templates or existing employee
+  // Update department/grade defaults when config loads (new employees only)
   useEffect(() => {
-    if (employee) {
-      // Use existing employee's salary components
-      // Filter out "Basic Pay" if it exists (legacy data cleanup)
-      setAllowances(employee.salary.allowances
-        .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
-        .map(a => ({
-          name: a.name,
-          amount: a.amount,
-          is_percentage: a.is_percentage,
-          isEnabled: true
-        })));
-      setDeductions(employee.salary.deductions.map(d => ({
-        name: d.name,
-        amount: d.amount,
-        is_percentage: d.is_percentage,
-        isEnabled: true
-      })));
-    } else {
-      // Use templates for new employee
-      // Filter out "Basic Pay" if it exists (legacy data cleanup)
-      if (earningTemplates.length > 0) {
-        setAllowances(earningTemplates
-          .filter(t => t.name.toLowerCase() !== 'basic pay' && t.name.toLowerCase() !== 'basic salary')
-          .map(t => ({ 
-            name: t.name,
-            amount: t.amount,
-            is_percentage: t.is_percentage,
-            isEnabled: true 
-          })));
+    if (employee || availableDepartments.length === 0) return;
+    setFormData(f => {
+      if (f.department === 'General' && availableDepartments[0]) {
+        return { ...f, department: availableDepartments[0].name };
       }
-      if (deductionTemplates.length > 0) {
-        setDeductions(deductionTemplates.map(t => ({ 
-          name: t.name,
-          amount: t.amount,
-          is_percentage: t.is_percentage,
-          isEnabled: true 
-        })));
+      if (!f.grade && availableGrades[0]) {
+        return { ...f, grade: availableGrades[0].name };
       }
-    }
-  }, [employee, earningTemplates, deductionTemplates, tenantId]);
-
-  const handleToggleComponent = (type: 'allowance' | 'deduction', index: number) => {
-    if (type === 'allowance') {
-      const newArr = [...allowances];
-      newArr[index].isEnabled = !newArr[index].isEnabled;
-      setAllowances(newArr);
-    } else {
-      const newArr = [...deductions];
-      newArr[index].isEnabled = !newArr[index].isEnabled;
-      setDeductions(newArr);
-    }
-  };
-
-  const handleUpdateComponentAmount = (type: 'allowance' | 'deduction', index: number, val: number) => {
-    if (type === 'allowance') {
-      const newArr = [...allowances];
-      newArr[index].amount = val;
-      setAllowances(newArr);
-    } else {
-      const newArr = [...deductions];
-      newArr[index].amount = val;
-      setDeductions(newArr);
-    }
-  };
+      return f;
+    });
+  }, [availableDepartments, availableGrades, employee]);
 
   const addProjectAssignment = () => {
     if (globalProjects.length === 0) return;
@@ -251,12 +196,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
 
     const salaryData = {
       basic: formData.basicSalary,
-      allowances: allowances
-        .filter(a => a.isEnabled)
-        .map(({ name, amount, is_percentage }) => ({ name, amount, is_percentage })),
-      deductions: deductions
-        .filter(d => d.isEnabled)
-        .map(({ name, amount, is_percentage }) => ({ name, amount, is_percentage }))
+      allowances: [],
+      deductions: []
     };
 
     try {
@@ -290,8 +231,10 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           storageService.updateEmployee(tenantId, employeeData, userId);
         }
       } else {
-        // Create new employee
+        // Create new employee - generate ID upfront so API and localStorage use same ID (enables sync on later update)
+        const newEmployeeId = `emp-${Date.now()}`;
         const createData = {
+          id: newEmployeeId,
           name: formData.name,
           email: formData.email,
           phone: formData.phone,
@@ -306,7 +249,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
 
         // Try API first to save to cloud database
         try {
-          const createdEmployee = await payrollApi.createEmployee(createData);
+          const createdEmployee = await payrollApi.createEmployee(createData as any);
           if (createdEmployee) {
             // Also update localStorage cache for offline access
             storageService.addEmployee(tenantId, createdEmployee, userId);
@@ -328,9 +271,9 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
             employeeCode = `EID-${(maxNumber + 1).toString().padStart(4, '0')}`;
           }
           
-          // Fallback to localStorage only
+          // Fallback to localStorage only (same ID as createData for later sync)
           const employeeData: PayrollEmployee = {
-            id: `emp-${Date.now()}`,
+            id: newEmployeeId,
             tenant_id: tenantId,
             name: formData.name,
             email: formData.email,
@@ -360,35 +303,11 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     }
   };
 
-  const selectedGradeInfo = availableGrades.find(g => g.name === formData.grade);
+  const selectedGradeInfo = availableGrades.find((g: any) => g.name === formData.grade);
   const QUICK_PERCENTAGES = [0, 25, 50, 75, 100];
 
-  // Calculate net salary from basic salary + allowances - deductions
-  const netSalary = useMemo(() => {
-    const basicSalary = formData.basicSalary || 0;
-    
-    // Calculate total allowances
-    const totalAllowances = allowances
-      .filter(a => a.isEnabled)
-      .reduce((sum, a) => {
-        if (a.is_percentage) {
-          return sum + (basicSalary * a.amount) / 100;
-        }
-        return sum + a.amount;
-      }, 0);
-    
-    // Calculate total deductions
-    const totalDeductions = deductions
-      .filter(d => d.isEnabled)
-      .reduce((sum, d) => {
-        if (d.is_percentage) {
-          return sum + (basicSalary * d.amount) / 100;
-        }
-        return sum + d.amount;
-      }, 0);
-    
-    return basicSalary + totalAllowances - totalDeductions;
-  }, [formData.basicSalary, allowances, deductions]);
+  // Net salary = basic salary (simplified - no components)
+  const netSalary = formData.basicSalary || 0;
 
   if (!tenantId) {
     return (
@@ -517,13 +436,12 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                   ))
                 ) : (
                   <>
+                    <option value="General">General</option>
                     <option value="Engineering">Engineering</option>
                     <option value="Product">Product</option>
                     <option value="Sales">Sales</option>
-                    <option value="Human Resources">Human Resources</option>
                     <option value="Operations">Operations</option>
                     <option value="Finance">Finance</option>
-                    <option value="Marketing">Marketing</option>
                   </>
                 )}
               </select>
@@ -537,9 +455,19 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                 onChange={e => setFormData({...formData, grade: e.target.value})}
                 className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none bg-white font-medium text-sm"
               >
-                {availableGrades.map(g => (
-                  <option key={g.id} value={g.name}>{g.name} - {g.description}</option>
-                ))}
+                {availableGrades.length > 0 ? (
+                  availableGrades.map((g: any) => (
+                    <option key={g.id} value={g.name}>{g.name}{g.description ? ` - ${g.description}` : ''}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="">Select grade</option>
+                    <option value="Junior">Junior</option>
+                    <option value="Mid">Mid</option>
+                    <option value="Senior">Senior</option>
+                    <option value="Lead">Lead</option>
+                  </>
+                )}
               </select>
               {selectedGradeInfo && (
                 <p className="mt-2 text-[10px] font-black uppercase text-blue-600 tracking-widest px-1">
@@ -677,19 +605,18 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           </div>
         </div>
 
-        {/* Salary Setup */}
+        {/* Salary - Simple: Basic salary only */}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-8 py-5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+          <div className="px-8 py-5 bg-slate-50 border-b border-slate-100">
             <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-              <DollarSign size={14} className="text-emerald-600" /> Salary Setup
+              <DollarSign size={14} className="text-emerald-600" /> Monthly Salary
             </h3>
-            <span className="text-[10px] font-black text-slate-400 uppercase bg-white border border-slate-200 px-2 py-1 rounded-lg">Customize Components</span>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-1">Basic pay per month. Net pay = basic salary.</p>
           </div>
-          
-          <div className="p-8 space-y-10">
+          <div className="p-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Base Salary (Monthly) <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Basic Salary (Monthly) <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">PKR</div>
                   <input 
@@ -701,105 +628,15 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Net Salary (Calculated)</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Net Payable</label>
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">PKR</div>
                   <input 
                     type="text"
                     readOnly
                     value={netSalary.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    className={`w-full pl-12 pr-4 py-3 rounded-xl border outline-none transition-all font-black text-lg cursor-not-allowed ${
-                      netSalary >= 0 
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
-                        : 'bg-red-50 border-red-200 text-red-700'
-                    }`}
+                    className="w-full pl-12 pr-4 py-3 rounded-xl border outline-none transition-all font-black text-lg cursor-not-allowed bg-emerald-50 border-emerald-200 text-emerald-700"
                   />
-                </div>
-                <p className="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-tight">
-                  = Basic + Allowances - Deductions
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-4">
-              {/* Allowances */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-tighter flex items-center gap-2">
-                  <Building2 size={12} className="text-blue-500" /> Allowances
-                </h4>
-                <div className="space-y-3">
-                  {allowances.map((a, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`relative flex flex-col p-4 rounded-2xl border transition-all ${a.isEnabled ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-50 border-slate-100 opacity-60'}`}
-                    >
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-sm font-bold text-slate-700">{a.name}</span>
-                        <button 
-                          type="button"
-                          onClick={() => handleToggleComponent('allowance', idx)}
-                          className={`p-1 rounded-lg transition-colors ${a.isEnabled ? 'text-blue-600 hover:bg-blue-50' : 'text-slate-400 hover:bg-slate-200'}`}
-                        >
-                          {a.isEnabled ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-black">{a.is_percentage ? '%' : 'PKR'}</div>
-                          <input 
-                            type="number"
-                            value={a.amount}
-                            disabled={!a.isEnabled}
-                            onChange={(e) => handleUpdateComponentAmount('allowance', idx, parseFloat(e.target.value) || 0)}
-                            className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-100 focus:border-blue-300 outline-none text-sm font-black disabled:bg-transparent"
-                          />
-                        </div>
-                        {a.is_percentage && a.isEnabled && (
-                          <div className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                            = PKR {formatCurrency(calculateAmount(formData.basicSalary, a.amount, true))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Deductions */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-tighter flex items-center gap-2">
-                  <ShieldCheck size={12} className="text-red-500" /> Deductions
-                </h4>
-                <div className="space-y-3">
-                  {deductions.map((d, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`relative flex flex-col p-4 rounded-2xl border transition-all ${d.isEnabled ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-50 border-slate-100 opacity-60'}`}
-                    >
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-sm font-bold text-slate-700">{d.name}</span>
-                        <button 
-                          type="button"
-                          onClick={() => handleToggleComponent('deduction', idx)}
-                          className={`p-1 rounded-lg transition-colors ${d.isEnabled ? 'text-red-600 hover:bg-red-50' : 'text-slate-400 hover:bg-slate-200'}`}
-                        >
-                          {d.isEnabled ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-black">{d.is_percentage ? '%' : 'PKR'}</div>
-                          <input 
-                            type="number"
-                            value={d.amount}
-                            disabled={!d.isEnabled}
-                            onChange={(e) => handleUpdateComponentAmount('deduction', idx, parseFloat(e.target.value) || 0)}
-                            className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-100 focus:border-red-300 outline-none text-sm font-black disabled:bg-transparent"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
             </div>

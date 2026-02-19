@@ -42,13 +42,7 @@ export type Page =
   | 'bizPlanet'
   | 'marketing'
   | 'payroll'
-  | 'posSales'
-  | 'inventory'
-  | 'accounting'
-  | 'loyalty'
-  | 'multiStore'
-  | 'procurement'
-  | 'biDashboards';
+;
 
 export enum TransactionType {
   INCOME = 'Income',

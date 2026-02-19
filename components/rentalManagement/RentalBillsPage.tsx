@@ -477,7 +477,8 @@ const RentalBillsPage: React.FC = () => {
                 const vendor = state.vendors?.find(v => v.id === bill.vendorId);
                 const isExpanded = expandedBillIds.has(bill.id);
                 const hasPayments = bill.paidAmount > 0;
-                const payments = hasPayments ? state.transactions.filter(t => t.billId === bill.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+                const billIdStr = String(bill.id);
+                const payments = hasPayments ? state.transactions.filter(t => String(t.billId ?? (t as any).bill_id ?? '') === billIdStr).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
                 const whatsAppOpts = getWhatsAppOptions(bill);
 
                 return (

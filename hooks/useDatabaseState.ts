@@ -148,7 +148,7 @@ export function useDatabaseState<T extends AppState>(
                                 ensureDatabaseInitialized()
                                     .then(async () => {
                                         const appStateRepo = await getAppStateRepository();
-                                        await appStateRepo.saveState(valueToSave as AppState);
+                                        await appStateRepo.saveState(valueToSave as AppState, true);
                                     })
                                     .catch(() => {});
                             }
@@ -223,7 +223,7 @@ export function useDatabaseState<T extends AppState>(
                     }
 
                     const appStateRepo = await getAppStateRepository();
-                    await appStateRepo.saveState(valueToSave as AppState);
+                    await appStateRepo.saveState(valueToSave as AppState, true);
                     if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
                     pendingSaveRef.current = null;
                 } catch (error) {
@@ -284,7 +284,7 @@ export function useDatabaseState<T extends AppState>(
                 ensureDatabaseInitialized()
                     .then(async () => {
                         const appStateRepo = await getAppStateRepository();
-                        await appStateRepo.saveState(valueToSave as AppState);
+                        await appStateRepo.saveState(valueToSave as AppState, true);
                     })
                     .catch((error) => {
                         const errorMsg = error?.message || String(error);
@@ -313,7 +313,7 @@ export function useDatabaseState<T extends AppState>(
                     ensureDatabaseInitialized().then(async () => {
                         try {
                             const appStateRepo = await getAppStateRepository();
-                            await appStateRepo.saveState(valueToSave as AppState);
+                            await appStateRepo.saveState(valueToSave as AppState, true);
                             if (typeof localStorage !== 'undefined') {
                                 localStorage.removeItem(DB_STATE_DIRTY_KEY);
                             }

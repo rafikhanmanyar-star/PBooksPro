@@ -1033,6 +1033,15 @@ router.post('/', async (req: TenantRequest, res) => {
       });
     }
 
+    // Handle immutable transaction (linked to paid invoice/bill) — non-retriable
+    if (error.code === 'TRANSACTION_IMMUTABLE') {
+      return res.status(409).json({
+        error: 'Failed to create/update transaction',
+        message: error.message,
+        code: 'TRANSACTION_IMMUTABLE'
+      });
+    }
+
     res.status(500).json({
       error: 'Failed to create/update transaction',
       message: error.message || 'Internal server error'

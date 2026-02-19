@@ -488,7 +488,6 @@ class DatabaseService {
             this.initializationError = null;
 
             // Ensure all required tables exist (creates missing tables in existing databases)
-            // This is critical for adding new tables like my_shop_sales_returns
             this.ensureAllTablesExist();
 
             // Start auto-save if enabled
@@ -656,17 +655,16 @@ class DatabaseService {
         let begun = false;
 
         try {
-            db.run('BEGIN TRANSACTION');
-            begun = true;
-            this.inTransaction = true;
-
-            // Temporarily disable foreign keys to allow batch updates with temporary inconsistencies
-            // (e.g., deleting a parent before replacing it, or inserting children before parents in some batches)
+            // PRAGMA foreign_keys must run BEFORE BEGIN - inside a transaction it is silently ignored
             try {
                 db.run('PRAGMA foreign_keys = OFF');
             } catch (fkOffError) {
                 console.warn('[DatabaseService] Failed to disable foreign keys for transaction:', fkOffError);
             }
+
+            db.run('BEGIN TRANSACTION');
+            begun = true;
+            this.inTransaction = true;
         } catch (beginError) {
             // If we cannot start a transaction, surface the error immediately
             this.inTransaction = false;
@@ -702,11 +700,6 @@ class DatabaseService {
                     // Ignore if BaseRepository not available (may cause circular dependency warning)
                 }
 
-                // Re-enable foreign keys before rollback to leave DB in a clean state
-                try {
-                    db.run('PRAGMA foreign_keys = ON');
-                } catch (_) { }
-
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
@@ -716,6 +709,9 @@ class DatabaseService {
                             console.error('Rollback failed:', rollbackError);
                         }
                     }
+                    try {
+                        db.run('PRAGMA foreign_keys = ON');
+                    } catch (_) { }
                 }
                 throw operationError;
             }
@@ -747,15 +743,15 @@ class DatabaseService {
             }
 
             try {
-                // Re-enable foreign keys before commit to verify constraints are now met
+                db.run('COMMIT');
+                committed = true;
+
+                // Re-enable foreign keys after commit (must be outside transaction)
                 try {
                     db.run('PRAGMA foreign_keys = ON');
                 } catch (fkOnError) {
-                    console.warn('[DatabaseService] Failed to re-enable foreign keys before commit:', fkOnError);
+                    console.warn('[DatabaseService] Failed to re-enable foreign keys after commit:', fkOnError);
                 }
-
-                db.run('COMMIT');
-                committed = true;
 
                 // Call post-commit callback if provided (before clearing inTransaction flag)
                 if (onCommit) {
@@ -777,8 +773,8 @@ class DatabaseService {
                     // If commit fails, attempt rollback
                     if (begun) {
                         try {
-                            db.run('PRAGMA foreign_keys = ON'); // Try to re-enable before rollback
                             db.run('ROLLBACK');
+                            db.run('PRAGMA foreign_keys = ON');
                         } catch {
                             // Ignore
                         }
@@ -797,10 +793,6 @@ class DatabaseService {
                     // Ignore if BaseRepository not available (may cause circular dependency warning)
                 }
 
-                try {
-                    db.run('PRAGMA foreign_keys = ON'); // Try to re-enable before rollback
-                } catch (_) { }
-
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
@@ -810,6 +802,9 @@ class DatabaseService {
                             console.error('Rollback failed:', rollbackError);
                         }
                     }
+                    try {
+                        db.run('PRAGMA foreign_keys = ON');
+                    } catch (_) { }
                 }
             }
             throw error;
@@ -984,68 +979,6 @@ class DatabaseService {
         } catch (error) {
             db.run('ROLLBACK');
             console.error('❌ Error clearing transaction data:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Clear all POS / Shop module data from local database (keeps schema)
-     *
-     * @param tenantId - If provided, only clears data for this tenant. If not, clears all.
-     */
-    clearPosData(tenantId?: string): void {
-        const db = this.getDatabase();
-
-        // ORDER MATTERS: Delete child tables before parent tables to respect foreign key constraints
-        const posTables = [
-            'shop_sale_items',
-            'shop_sales',
-            'shop_inventory_movements',
-            'shop_inventory',
-            'shop_loyalty_members',
-            'shop_products',
-            'shop_terminals',
-            'shop_warehouses',
-            'shop_branches',
-            'shop_policies',
-        ];
-
-        db.run('BEGIN TRANSACTION');
-        try {
-            // Disable foreign keys temporarily
-            db.run('PRAGMA foreign_keys = OFF');
-
-            posTables.forEach(table => {
-                try {
-                    if (tenantId) {
-                        db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
-                    } else {
-                        db.run(`DELETE FROM ${table}`);
-                    }
-                } catch (error) {
-                    // Table might not exist in older local DBs; don't fail the whole clear
-                }
-            });
-
-            // Reset auto-increment counters for cleared tables (only when clearing all)
-            if (!tenantId) {
-                posTables.forEach(table => {
-                    try {
-                        db.run(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
-                    } catch {
-                        // Ignore - table might not have auto-increment
-                    }
-                });
-            }
-
-            // Re-enable foreign keys
-            db.run('PRAGMA foreign_keys = ON');
-
-            db.run('COMMIT');
-            this.save();
-        } catch (error) {
-            db.run('ROLLBACK');
-            console.error('❌ Error clearing POS data:', error);
             throw error;
         }
     }

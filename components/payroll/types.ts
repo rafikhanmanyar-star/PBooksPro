@@ -335,7 +335,20 @@ export interface EmployeeProfileProps {
 export type Employee = PayrollEmployee;
 
 // Helper to convert legacy format to new format
+/** Safely parse a value that may be a JSON string or already-parsed object/array */
+function safeJsonParse<T>(value: any, fallback: T): T {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') {
+    try { return JSON.parse(value); } catch { return fallback; }
+  }
+  return value as T;
+}
+
 export function normalizeEmployee(emp: any): PayrollEmployee {
+  const salary = safeJsonParse(emp.salary, { basic: 0, allowances: [], deductions: [] });
+  const rawAdjustments = safeJsonParse(emp.adjustments, []);
+  const rawProjects = safeJsonParse(emp.projects, []);
+
   return {
     id: emp.id,
     tenant_id: emp.tenant_id || emp.tenantId || '',
@@ -355,8 +368,12 @@ export function normalizeEmployee(emp: any): PayrollEmployee {
     status: emp.status,
     joining_date: emp.joining_date || emp.joiningDate,
     termination_date: emp.termination_date || emp.terminationDate,
-    salary: emp.salary,
-    adjustments: (emp.adjustments || []).map((adj: any) => ({
+    salary: {
+      basic: salary.basic ?? 0,
+      allowances: Array.isArray(salary.allowances) ? salary.allowances : [],
+      deductions: Array.isArray(salary.deductions) ? salary.deductions : [],
+    },
+    adjustments: (Array.isArray(rawAdjustments) ? rawAdjustments : []).map((adj: any) => ({
       id: adj.id,
       name: adj.name,
       amount: adj.amount,
@@ -364,7 +381,7 @@ export function normalizeEmployee(emp: any): PayrollEmployee {
       date_added: adj.date_added || adj.dateAdded,
       created_by: adj.created_by || adj.createdBy
     })),
-    projects: (emp.projects || []).map((p: any) => ({
+    projects: (Array.isArray(rawProjects) ? rawProjects : []).map((p: any) => ({
       project_id: p.project_id || p.projectId,
       project_name: p.project_name || p.projectName,
       percentage: p.percentage,

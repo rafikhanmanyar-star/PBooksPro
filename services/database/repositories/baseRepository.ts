@@ -641,22 +641,6 @@ export abstract class BaseRepository<T> {
     }
 
     /**
-     * Tables that are referenced by other tables in the same save batch (appStateRepository).
-     * When saving 0 records we must not DELETE these, or FK constraint fails (dependents still exist).
-     */
-    private static readonly TABLES_WITH_DEPENDENTS_IN_SAVE_BATCH = new Set([
-        'accounts',   // transactions, bills, etc. reference account_id
-        'contacts',   // properties, rental_agreements, etc. reference owner_id/client_id
-        'categories', // projects, budgets, etc. reference category_id
-        'users',      // Many tables reference user_id
-        'vendors',    // bills, transactions reference vendor_id
-        'projects',   // units, contracts, etc. reference project_id
-        'buildings',  // properties reference building_id
-        'properties', // rental_agreements reference property_id
-        'units',      // rental_agreements, project_agreements reference unit_id
-    ]);
-
-    /**
      * Save all records (delete existing and insert new)
      * For tables with UNIQUE constraints (like users), use INSERT OR REPLACE
      */
@@ -683,9 +667,6 @@ export abstract class BaseRepository<T> {
                 || this.tableName === 'purchase_bills'
                 || this.tableName === 'purchase_bill_items'
                 || this.tableName === 'purchase_bill_payments'
-                || this.tableName === 'shop_config'
-                || this.tableName === 'shop_sales'
-                || this.tableName === 'shop_sale_items'
                 || this.tableName === 'inventory_stock'
                 || this.tableName === 'transactions';
 
@@ -704,27 +685,21 @@ export abstract class BaseRepository<T> {
                     });
                     console.log(`✅ Completed inserting/replacing ${records.length} records to ${this.tableName}`);
                 } else {
-                    // When saving 0 records, avoid DELETE on tables that are referenced by others
-                    // in the same transaction (we save projects → buildings → properties → units);
-                    // deleting buildings would fail because properties still reference them.
-                    if (skipDeleteToAvoidFk) {
-                        // Skip DELETE to avoid FK violation (properties reference buildings, etc.)
-                        console.log(`[BaseRepository] Skipping DELETE for ${this.tableName} (has dependents or potential FK issues)`);
-                    } else {
-                        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                            const tenantId = getCurrentTenantId();
-                            if (tenantId) {
-                                const tenantColumn = this.tenantColumn;
-                                this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                            } else {
-                                // IMPORTANT: If we are supposed to filter by tenant but NO tenant is in context,
-                                // we MUST NOT perform a global delete. This prevents accidental data loss
-                                // during app loading or when session expires.
-                                console.warn(`[BaseRepository] Skipping DELETE for ${this.tableName}: no tenantId in context`);
-                            }
+                    // When saving 0 records, delete to match desired state. FKs are disabled during
+                    // saveState transaction, so we can safely delete in dependency order.
+                    if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                        const tenantId = getCurrentTenantId();
+                        if (tenantId) {
+                            const tenantColumn = this.tenantColumn;
+                            this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
                         } else {
-                            this.db.execute(`DELETE FROM ${this.tableName}`);
+                            // IMPORTANT: If we are supposed to filter by tenant but NO tenant is in context,
+                            // we MUST NOT perform a global delete. This prevents accidental data loss
+                            // during app loading or when session expires.
+                            console.warn(`[BaseRepository] Skipping DELETE for ${this.tableName}: no tenantId in context`);
                         }
+                    } else {
+                        this.db.execute(`DELETE FROM ${this.tableName}`);
                     }
                 }
             } else {

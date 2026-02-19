@@ -353,45 +353,44 @@ export class ElectronDatabaseService {
     const db = this.getDatabase();
     let committed = false;
     try {
-      db.run('BEGIN TRANSACTION');
-      this.inTransaction = true;
-
-      // Temporarily disable foreign keys to allow batch updates with temporary inconsistencies
-      // (e.g., deleting a parent before replacing it, or inserting children before parents in some batches)
+      // PRAGMA foreign_keys must run BEFORE BEGIN - inside a transaction it is silently ignored
       try {
         db.run('PRAGMA foreign_keys = OFF');
       } catch (e) {
         console.warn('[ElectronDatabaseService] Failed to disable foreign keys for transaction:', e);
       }
 
+      db.run('BEGIN TRANSACTION');
+      this.inTransaction = true;
+
       for (let i = 0; i < operations.length; i++) {
         try {
           operations[i]();
         } catch (opError) {
           import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => { });
-          try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
           try { db.run('ROLLBACK'); } catch (_) { }
+          try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
           throw opError;
         }
       }
 
-      // Re-enable foreign keys before commit
+      db.run('COMMIT');
+      committed = true;
+
+      // Re-enable foreign keys after commit (must be outside transaction)
       try {
         db.run('PRAGMA foreign_keys = ON');
       } catch (e) {
-        console.warn('[ElectronDatabaseService] Failed to re-enable foreign keys before commit:', e);
+        console.warn('[ElectronDatabaseService] Failed to re-enable foreign keys after commit:', e);
       }
-
-      db.run('COMMIT');
-      committed = true;
       if (onCommit) {
         try { onCommit(); } catch (e) { console.error('Post-commit error:', e); }
       }
     } catch (error) {
       if (!committed) {
         import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => { });
-        try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
         try { db.run('ROLLBACK'); } catch (_) { }
+        try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
       }
       throw error;
     } finally {
@@ -437,31 +436,6 @@ export class ElectronDatabaseService {
   clearTransactionData(tenantId?: string): void {
     const db = this.getDatabase();
     const tables = ['transactions', 'sales_returns', 'pm_cycle_allocations', 'invoices', 'bills', 'quotations', 'recurring_invoice_templates', 'contracts', 'rental_agreements', 'project_agreements', 'accounts'];
-    db.run('BEGIN TRANSACTION');
-    try {
-      db.run('PRAGMA foreign_keys = OFF');
-      for (const table of tables) {
-        try {
-          if (tenantId) db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
-          else db.run(`DELETE FROM ${table}`);
-        } catch (_) { }
-      }
-      if (!tenantId) {
-        for (const table of tables) {
-          try { db.run('DELETE FROM sqlite_sequence WHERE name = ?', [table]); } catch (_) { }
-        }
-      }
-      db.run('PRAGMA foreign_keys = ON');
-      db.run('COMMIT');
-    } catch (e) {
-      db.run('ROLLBACK');
-      throw e;
-    }
-  }
-
-  clearPosData(tenantId?: string): void {
-    const db = this.getDatabase();
-    const tables = ['shop_sale_items', 'shop_sales', 'shop_inventory_movements', 'shop_inventory', 'shop_loyalty_members', 'shop_products', 'shop_terminals', 'shop_warehouses', 'shop_branches', 'shop_policies'];
     db.run('BEGIN TRANSACTION');
     try {
       db.run('PRAGMA foreign_keys = OFF');

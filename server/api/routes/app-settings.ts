@@ -55,17 +55,21 @@ router.post('/', async (req: TenantRequest, res) => {
         message: 'Setting key is required'
       });
     }
+    if (!req.tenantId) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Tenant context is required'
+      });
+    }
     
+    const valueStr = typeof value === 'object' ? JSON.stringify(value) : value;
     const result = await db.query(
-      `INSERT INTO app_settings (key, tenant_id, user_id, value, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (tenant_id, key) 
-       DO UPDATE SET
-         value = EXCLUDED.value,
-         user_id = EXCLUDED.user_id,
-         updated_at = NOW()
+      `INSERT INTO app_settings (key, tenant_id, value)
+       VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT ON CONSTRAINT app_settings_pkey
+       DO UPDATE SET value = EXCLUDED.value
        RETURNING *`,
-      [key, req.tenantId, req.user?.userId || null, typeof value === 'object' ? JSON.stringify(value) : value]
+      [key, req.tenantId, valueStr]
     );
     
     emitToTenant(req.tenantId!, WS_EVENTS.APP_SETTING_UPDATED, {

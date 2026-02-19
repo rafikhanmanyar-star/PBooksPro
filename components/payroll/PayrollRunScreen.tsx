@@ -14,7 +14,8 @@ import {
   Eye,
   Search,
   Printer,
-  ArrowLeft
+  ArrowLeft,
+  Trash2
 } from 'lucide-react';
 import {
   PayrollStatus,
@@ -27,7 +28,7 @@ import {
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import PayslipModal from './modals/PayslipModal';
-import { formatCurrency, calculateAmount, roundToTwo } from './utils/formatters';
+import { formatCurrency, roundToTwo } from './utils/formatters';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
 
@@ -54,6 +55,8 @@ const PayrollRunScreen: React.FC = () => {
   const [loadingPayslips, setLoadingPayslips] = useState(false);
   const [processingSummary, setProcessingSummary] = useState<PayrollProcessingSummary | null>(null);
   const [reprocessing, setReprocessing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [newRunData, setNewRunData] = useState({
     month: 'January',
@@ -106,25 +109,15 @@ const PayrollRunScreen: React.FC = () => {
   const calculatePayrollTotals = () => {
     let total = 0;
     activeEmployees.forEach(emp => {
-      const basic = emp.salary.basic;
-      // Filter out "Basic Pay" from allowances (legacy data cleanup)
-      const allowances = emp.salary.allowances
-        .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
-        .reduce((acc, curr) => {
-          return acc + calculateAmount(basic, curr.amount, curr.is_percentage);
-        }, 0);
-      const earningsAdjustments = (emp.adjustments || [])
-        .filter(a => a.type === 'EARNING')
-        .reduce((acc, curr) => acc + curr.amount, 0);
-      const gross = roundToTwo(basic + allowances + earningsAdjustments);
-      const standardGross = roundToTwo(basic + allowances);
-      const deductions = emp.salary.deductions.reduce((acc, curr) => {
-        return acc + calculateAmount(standardGross, curr.amount, curr.is_percentage);
-      }, 0);
-      const deductionAdjustments = (emp.adjustments || [])
-        .filter(a => a.type === 'DEDUCTION')
-        .reduce((acc, curr) => acc + curr.amount, 0);
-      total += roundToTwo(gross - deductions - deductionAdjustments);
+      const basic = emp.salary?.basic ?? 0;
+      const allowances = (emp.salary?.allowances || [])
+        .filter((a: any) => (a.name || '').toLowerCase() !== 'basic pay' && (a.name || '').toLowerCase() !== 'basic salary')
+        .reduce((acc: number, curr: any) => acc + (curr.is_percentage ? (basic * curr.amount) / 100 : curr.amount), 0);
+      const deductions = (emp.salary?.deductions || []).reduce((acc: number, curr: any) =>
+        acc + (curr.is_percentage ? (basic * curr.amount) / 100 : curr.amount), 0);
+      const adjustments = (emp.adjustments || []).reduce((acc: number, a: any) =>
+        acc + (a.type === 'EARNING' ? a.amount : -a.amount), 0);
+      total += roundToTwo(basic + allowances - deductions + adjustments);
     });
     return roundToTwo(total);
   };
@@ -147,6 +140,11 @@ const PayrollRunScreen: React.FC = () => {
           setProcessingSummary(newRun.processing_summary);
         }
         storageService.addPayrollRun(tenantId, newRun, userId);
+        await refreshRuns();
+        // Open the new run to show payslips
+        setSelectedRunDetail(newRun);
+        const payslips = await payrollApi.getPayslipsByRun(newRun.id);
+        setPayslipsForRun(payslips);
       } else {
         // Fallback to localStorage only
         const totalAmount = calculatePayrollTotals();
@@ -161,27 +159,84 @@ const PayrollRunScreen: React.FC = () => {
           created_by: userId,
         };
         storageService.addPayrollRun(tenantId, localRun, userId);
+        await refreshRuns();
       }
-    } catch (error) {
-      console.error('Failed to create payroll run via API:', error);
-      // Fallback to localStorage only
-      const totalAmount = calculatePayrollTotals();
-      const localRun: PayrollRun = {
-        id: `run-${Date.now()}`,
-        tenant_id: tenantId,
-        month: newRunData.month,
-        year: newRunData.year,
-        status: PayrollStatus.DRAFT,
-        total_amount: totalAmount,
-        employee_count: activeEmployees.length,
-        created_by: userId,
-      };
-      storageService.addPayrollRun(tenantId, localRun, userId);
+    } catch (error: any) {
+      // 409 = run already exists for this month - open it and add missing payslips for new employees
+      if (error?.status === 409 && (error as any).existingRunId) {
+        const existingId = (error as any).existingRunId;
+        try {
+          const existingRun = await payrollApi.getPayrollRun(existingId);
+          if (existingRun) {
+            setSelectedRunDetail(existingRun);
+            // Fetch existing payslips first so user always sees what's there
+            const payslips = await payrollApi.getPayslipsByRun(existingId);
+            setPayslipsForRun(payslips);
+
+            // Try to process to add payslips for new/backdated employees
+            try {
+              const processedRun = await payrollApi.processPayrollRun(existingId);
+              if (processedRun?.processing_summary) {
+                setProcessingSummary(processedRun.processing_summary);
+              }
+              // Refresh payslips after processing (new ones may have been added)
+              const updatedPayslips = await payrollApi.getPayslipsByRun(existingId);
+              setPayslipsForRun(updatedPayslips);
+              setSelectedRunDetail(prev => prev ? { ...prev, ...processedRun } : existingRun);
+            } catch (processError: any) {
+              console.warn('Could not reprocess existing payroll run:', processError);
+              // Still show the run with its existing payslips
+            }
+            await refreshRuns();
+          } else {
+            await refreshRuns();
+          }
+        } catch (fetchError) {
+          console.error('Failed to fetch existing payroll run:', fetchError);
+          await refreshRuns();
+        }
+      } else {
+        console.error('Failed to create payroll run via API:', error);
+        const totalAmount = calculatePayrollTotals();
+        const localRun: PayrollRun = {
+          id: `run-${Date.now()}`,
+          tenant_id: tenantId,
+          month: newRunData.month,
+          year: newRunData.year,
+          status: PayrollStatus.DRAFT,
+          total_amount: totalAmount,
+          employee_count: activeEmployees.length,
+          created_by: userId,
+        };
+        storageService.addPayrollRun(tenantId, localRun, userId);
+        await refreshRuns();
+      }
     }
 
     setCalculating(false);
     setIsCreating(false);
-    await refreshRuns();
+  };
+
+  const handleDeleteRun = async () => {
+    if (!selectedRunDetail) return;
+    setDeleting(true);
+    try {
+      const result = await payrollApi.deletePayrollRun(selectedRunDetail.id);
+      if (result.success) {
+        setShowDeleteConfirm(false);
+        setSelectedRunDetail(null);
+        setPayslipsForRun([]);
+        setProcessingSummary(null);
+        await refreshRuns();
+      } else {
+        alert(result.error || 'Failed to delete payroll cycle.');
+      }
+    } catch (error: any) {
+      console.error('Failed to delete payroll run:', error);
+      alert(error?.error || error?.message || 'Failed to delete payroll cycle.');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Re-process an existing payroll run to add payslips for new employees
@@ -280,7 +335,7 @@ const PayrollRunScreen: React.FC = () => {
           <button onClick={() => setIsCreating(false)} className="text-blue-600 hover:underline flex items-center gap-1 font-bold group">
             <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" /> Back to History
           </button>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Initiate Payroll Run</h1>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Run Payroll</h1>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
@@ -339,9 +394,9 @@ const PayrollRunScreen: React.FC = () => {
             className="px-12 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-2xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-1 transition-all disabled:opacity-50 flex items-center gap-3"
           >
             {calculating ? (
-              <><Loader2 size={24} className="animate-spin" /> Calculating Cycle...</>
+              <><Loader2 size={24} className="animate-spin" /> Generating Payslips...</>
             ) : (
-              <><PlayCircle size={24} /> Generate Draft Payroll</>
+              <><PlayCircle size={24} /> Run Payroll & Generate Payslips</>
             )}
           </button>
         </div>
@@ -403,17 +458,28 @@ const PayrollRunScreen: React.FC = () => {
         {/* Status Action Buttons */}
         {selectedRunDetail.status !== PayrollStatus.CANCELLED && (
           <div className="flex gap-3 justify-end no-print flex-wrap">
-            {/* Re-process button - to add payslips for new employees (including backdated) */}
-            {(selectedRunDetail.status === PayrollStatus.DRAFT || selectedRunDetail.status === PayrollStatus.PROCESSING || selectedRunDetail.status === PayrollStatus.APPROVED) && (
+            {/* Delete cycle - only when no payslips are paid */}
+            {selectedRunDetail.status !== PayrollStatus.PAID && !payslipsForRun.some(p => p.is_paid) && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={deleting}
+                className="px-6 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all disabled:opacity-50 flex items-center gap-2 border border-red-200"
+              >
+                <Trash2 size={16} /> Delete Cycle
+              </button>
+            )}
+            {/* Re-run to add payslips for backdated employees */}
+            {selectedRunDetail.status !== PayrollStatus.PAID && (
               <button
                 onClick={() => handleReprocessRun(selectedRunDetail)}
                 disabled={reprocessing}
                 className="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all disabled:opacity-50 flex items-center gap-2"
+                title="Add payslips for employees created with backdated joining dates"
               >
                 {reprocessing ? (
                   <><Loader2 size={16} className="animate-spin" /> Processing...</>
                 ) : (
-                  <><PlayCircle size={16} /> Add New Employees</>
+                  <><PlayCircle size={16} /> Add Backdated Employees</>
                 )}
               </button>
             )}
@@ -449,12 +515,28 @@ const PayrollRunScreen: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {payslipsForRun.length > 0 ? (
                   payslipsForRun.map(payslip => {
-                    // Find the employee for this payslip (use data from payslip if available)
+                    // Find the employee for this payslip; build a stub from payslip data if employee is no longer active
                     const emp = activeEmployees.find(e => e.id === payslip.employee_id);
-                    const employeeName = (payslip as any).employee_name || emp?.name || 'Unknown Employee';
-                    const employeeDept = (payslip as any).department || emp?.department || '—';
+                    const payslipAny = payslip as any;
+                    const employeeName = payslipAny.employee_name || emp?.name || 'Unknown Employee';
+                    const employeeDept = payslipAny.department || emp?.department || '—';
                     const employeeCode = emp?.employee_code || payslip.employee_id.substring(0, 8);
                     const isPaid = payslip.is_paid || false;
+
+                    const effectiveEmployee: PayrollEmployee = emp || {
+                      id: payslip.employee_id,
+                      tenant_id: tenantId,
+                      name: employeeName,
+                      designation: payslipAny.designation || '',
+                      department: employeeDept,
+                      grade: '',
+                      status: EmploymentStatus.ACTIVE,
+                      joining_date: '',
+                      salary: { basic: payslip.basic_pay || 0, allowances: [], deductions: [] },
+                      adjustments: [],
+                      projects: [],
+                      created_by: '',
+                    };
 
                     return (
                       <tr key={payslip.id} className="hover:bg-slate-50 transition-colors">
@@ -480,16 +562,14 @@ const PayrollRunScreen: React.FC = () => {
                           )}
                         </td>
                         <td className="px-8 py-4 text-right no-print">
-                          {emp && (
-                            <button
-                              onClick={() => setSelectedEmployeeForPayslip(emp)}
-                              className={`font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto px-3 py-1.5 rounded-lg transition-all ${isPaid ? 'text-slate-600 hover:bg-slate-100' : 'text-blue-600 hover:bg-blue-50'
-                                }`}
-                              title={isPaid ? 'View payslip' : 'View / Pay payslip'}
-                            >
-                              <Eye size={14} /> {isPaid ? 'View' : 'View / Pay'}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setSelectedEmployeeForPayslip(effectiveEmployee)}
+                            className={`font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto px-3 py-1.5 rounded-lg transition-all ${isPaid ? 'text-slate-600 hover:bg-slate-100' : 'text-blue-600 hover:bg-blue-50'
+                              }`}
+                            title={isPaid ? 'View payslip' : 'View / Pay payslip'}
+                          >
+                            <Eye size={14} /> {isPaid ? 'View' : 'View / Pay'}
+                          </button>
                         </td>
                       </tr>
                     );
@@ -497,9 +577,9 @@ const PayrollRunScreen: React.FC = () => {
                 ) : (
                   <tr>
                     <td colSpan={5} className="px-8 py-12 text-center">
-                      <div className="text-slate-400 font-medium">No payslips generated yet.</div>
+                      <div className="text-slate-400 font-medium">No payslips yet.</div>
                       <p className="text-xs text-slate-400 mt-1">
-                        Click "Add New Employees" to generate payslips for active employees.
+                        Click "Add Backdated Employees" if you added employees with past joining dates.
                       </p>
                     </td>
                   </tr>
@@ -518,6 +598,45 @@ const PayrollRunScreen: React.FC = () => {
             payslipData={getPayslipForEmployee(selectedEmployeeForPayslip.id)}
             onPaymentComplete={handlePayslipPaymentComplete}
           />
+        )}
+
+        {showDeleteConfirm && selectedRunDetail && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 no-print">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <Trash2 size={20} className="text-red-600" />
+                </div>
+                <h3 className="text-lg font-black text-slate-900">Delete Payroll Cycle</h3>
+              </div>
+              <p className="text-sm text-slate-600 mb-2">
+                Are you sure you want to delete the <span className="font-bold">{selectedRunDetail.month} {selectedRunDetail.year}</span> payroll cycle?
+              </p>
+              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-6">
+                This will permanently delete the cycle and all its payslips. You can re-run the cycle afterward to regenerate payslips.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleting}
+                  className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteRun}
+                  disabled={deleting}
+                  className="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  {deleting ? (
+                    <><Loader2 size={14} className="animate-spin" /> Deleting...</>
+                  ) : (
+                    <><Trash2 size={14} /> Delete Cycle</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );

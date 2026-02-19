@@ -53,15 +53,6 @@ const OFFERS = [
     yearlyPrice: 20000,
     icon: '🌐'
   },
-  {
-    key: 'shop',
-    label: 'My Shop (POS & Inventory)',
-    description: 'Run your retail business across multiple locations with real-time sync and loyalty tools.',
-    features: ['Multi-Store POS', 'Inventory Sync', 'Loyalty Program', 'Supplier Ledger'],
-    monthlyPrice: 4000,
-    yearlyPrice: 40000,
-    icon: '🛒'
-  }
 ];
 
 const LicenseManagement: React.FC = () => {

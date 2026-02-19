@@ -49,3 +49,12 @@ export function getWsServerUrl(): string {
   const api = getApiBaseUrl();
   return api.replace(/\/api\/?$/, '');
 }
+
+/**
+ * Returns true when the app is configured to use the staging API server.
+ * Used to show a "Staging" banner in the UI to avoid confusion with production.
+ */
+export function isStagingEnvironment(): boolean {
+  const apiUrl = (import.meta.env.VITE_API_URL as string) || '';
+  return apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com');
+}

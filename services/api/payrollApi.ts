@@ -70,7 +70,32 @@ export const payrollApi = {
     try {
       const response = await apiClient.put<any>(`/payroll/employees/${id}`, data);
       return response ? normalizeEmployee(response) : null;
-    } catch (error) {
+    } catch (error: any) {
+      // 404 = employee exists only locally (e.g. create failed earlier) - sync to server by creating
+      if (error?.status === 404) {
+        try {
+          const createPayload = {
+            id,
+            name: data.name ?? 'Unknown',
+            email: data.email,
+            phone: data.phone,
+            address: data.address,
+            designation: data.designation ?? 'Staff',
+            department: data.department ?? 'General',
+            department_id: data.department_id,
+            grade: data.grade ?? '',
+            joining_date: data.joining_date ?? new Date().toISOString().split('T')[0],
+            salary: data.salary ?? { basic: 0, allowances: [], deductions: [] },
+            projects: data.projects ?? [],
+          };
+          const createResponse = await apiClient.post<any>('/payroll/employees', createPayload);
+          if (createResponse) {
+            return normalizeEmployee(createResponse);
+          }
+        } catch (createErr) {
+          console.warn('Could not sync local employee to server:', createErr);
+        }
+      }
       console.error('Error updating employee:', error);
       throw error;
     }
@@ -152,6 +177,20 @@ export const payrollApi = {
     } catch (error) {
       console.error('Error processing payroll run:', error);
       throw error;
+    }
+  },
+
+  // Delete payroll run and its unpaid payslips
+  async deletePayrollRun(id: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const response = await apiClient.delete<{ success: boolean; message: string }>(`/payroll/runs/${id}`);
+      return response;
+    } catch (error: any) {
+      console.error('Error deleting payroll run:', error);
+      return {
+        success: false,
+        error: error?.error || error?.message || 'Failed to delete payroll run'
+      };
     }
   },
 

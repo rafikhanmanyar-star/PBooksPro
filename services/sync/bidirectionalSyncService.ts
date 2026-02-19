@@ -27,6 +27,40 @@ import { navPerfLog } from '../../utils/navPerfLogger';
 import { BaseRepository } from '../database/repositories/baseRepository';
 import { AppStateRepository } from '../database/repositories/appStateRepository';
 
+// Dependency order for syncing: parent entities first, child entities last.
+// Used by both upstream (push) and downstream (pull) to prevent FK constraint failures.
+const UPSTREAM_ENTITY_ORDER: Record<string, number> = {
+  accounts: 0,
+  contacts: 1,
+  vendors: 2,
+  categories: 3,
+  projects: 4,
+  buildings: 5,
+  properties: 6,
+  units: 7,
+  plan_amenities: 8,
+  documents: 9,
+  budgets: 10,
+  rental_agreements: 11,
+  project_agreements: 12,
+  contracts: 13,
+  invoices: 14,
+  bills: 15,
+  quotations: 16,
+  transactions: 17,
+  recurring_invoice_templates: 18,
+  pm_cycle_allocations: 19,
+  installment_plans: 20,
+  sales_returns: 21,
+  payroll_departments: 22,
+  payroll_grades: 23,
+  payroll_salary_components: 24,
+  payroll_employees: 25,
+  payroll_runs: 26,
+  payslips: 27,
+};
+const UPSTREAM_DEFAULT_ORDER = 50;
+
 const ENTITY_TO_ENDPOINT: Record<string, string> = {
   accounts: '/accounts',
   contacts: '/contacts',
@@ -50,6 +84,12 @@ const ENTITY_TO_ENDPOINT: Record<string, string> = {
   project_agreements: '/project-agreements',
   installment_plans: '/installment-plans',
   vendors: '/vendors',
+  payroll_employees: '/payroll/employees',
+  payroll_runs: '/payroll/runs',
+  payslips: '/payroll/payslips',
+  payroll_departments: '/payroll/departments',
+  payroll_grades: '/payroll/grades',
+  payroll_salary_components: '/payroll/salary-components',
 };
 
 export interface BidirectionalSyncResult {
@@ -164,6 +204,15 @@ class BidirectionalSyncService {
       logger.logCategory('sync', 'Upstream: nothing to push (outbox and SyncManager empty)');
       return { pushed: 0, failed: 0 };
     }
+
+    // Sort by entity dependency order to prevent FK violations (e.g. contacts before transactions)
+    // Stable sort preserves FIFO order within the same entity type
+    outboxPending.sort(
+      (a, b) =>
+        (UPSTREAM_ENTITY_ORDER[a.entity_type] ?? UPSTREAM_DEFAULT_ORDER) -
+        (UPSTREAM_ENTITY_ORDER[b.entity_type] ?? UPSTREAM_DEFAULT_ORDER)
+    );
+
     for (const item of outboxPending) {
       // SECURITY: Verify outbox item belongs to the current tenant before pushing
       if (item.tenant_id !== tenantId) {
@@ -224,8 +273,8 @@ class BidirectionalSyncService {
           const code = err?.code;
           const errMsg = String(msg || '');
           if (code === 'PAYMENT_OVERPAYMENT' || errMsg.includes('Overpayment') || errMsg.includes('would exceed')) {
-            logger.logCategory('sync', `⏭️ PAYMENT_OVERPAYMENT for ${item.entity_type}:${item.entity_id} - already paid on server, marking synced`);
-            outbox.markSynced(item.id);
+            logger.logCategory('sync', `⏭️ PAYMENT_OVERPAYMENT for ${item.entity_type}:${item.entity_id} - already paid on server, marking ALL entries synced`);
+            outbox.markAllSyncedForEntity(tenantId, item.entity_type, item.entity_id);
             pushed++;
             await syncManager.removeByEntity(item.entity_type, item.entity_id);
             continue;
@@ -234,15 +283,27 @@ class BidirectionalSyncService {
 
         // Handle 409 Conflict: "Duplicate" / "already exists" = server has it, mark synced; else version conflict
         if (status === 409) {
-          const isDuplicate = /duplicate|already exists/i.test(msg || '');
-          if (isDuplicate) {
-            logger.logCategory('sync', `⏭️ Server already has ${item.entity_type}:${item.entity_id}, marking synced`);
-            outbox.markSynced(item.id);
+          // TRANSACTION_IMMUTABLE: transaction is linked to a paid invoice/bill — non-retriable
+          const errCode = err?.code || (typeof msg === 'string' && msg.includes('TRANSACTION_IMMUTABLE') ? 'TRANSACTION_IMMUTABLE' : '');
+          if (errCode === 'TRANSACTION_IMMUTABLE' || /cannot modify a payment transaction linked to a paid/i.test(msg || '')) {
+            logger.logCategory('sync', `⏭️ TRANSACTION_IMMUTABLE for ${item.entity_type}:${item.entity_id} - linked to paid invoice/bill, marking ALL entries synced`);
+            outbox.markAllSyncedForEntity(tenantId, item.entity_type, item.entity_id);
             pushed++;
             await syncManager.removeByEntity(item.entity_type, item.entity_id);
             continue;
           }
-          logger.warnCategory('sync', `Version conflict for ${item.entity_type}:${item.entity_id}. Logging conflict.`);
+
+          const isDuplicate = /duplicate|already exists/i.test(msg || '');
+          if (isDuplicate) {
+            logger.logCategory('sync', `⏭️ Server already has ${item.entity_type}:${item.entity_id}, marking ALL entries synced`);
+            outbox.markAllSyncedForEntity(tenantId, item.entity_type, item.entity_id);
+            pushed++;
+            await syncManager.removeByEntity(item.entity_type, item.entity_id);
+            continue;
+          }
+          // Version conflict: server has newer version - accept server wins, mark synced to stop retries
+          const serverVersion = (err as { serverVersion?: number }).serverVersion;
+          logger.logCategory('sync', `⏭️ Version conflict for ${item.entity_type}:${item.entity_id} (local=${entityVersion}, server=${serverVersion ?? '?'}). Accepting server version.`);
           logConflict({
             tenantId,
             entityType: item.entity_type,
@@ -250,11 +311,23 @@ class BidirectionalSyncService {
             localVersion: entityVersion,
             localData: payload,
             remoteData: null,
-            resolution: 'pending_review',
+            resolution: 'server_wins',
           });
-          outbox.markFailed(item.id, `Version conflict (409): ${msg}`);
-          failed++;
+          outbox.markSynced(item.id);
+          pushed++;
+          await syncManager.removeByEntity(item.entity_type, item.entity_id);
           continue;
+        }
+
+        // Fallback: handle TRANSACTION_IMMUTABLE even if server returns 500 (pre-fix servers)
+        if (status === 500 && (item.entity_type === 'transactions' || item.entity_type === 'transaction')) {
+          if (/cannot modify a payment transaction linked to a paid/i.test(msg || '')) {
+            logger.logCategory('sync', `⏭️ TRANSACTION_IMMUTABLE (500) for ${item.entity_type}:${item.entity_id} - linked to paid invoice/bill, marking ALL entries synced`);
+            outbox.markAllSyncedForEntity(tenantId, item.entity_type, item.entity_id);
+            pushed++;
+            await syncManager.removeByEntity(item.entity_type, item.entity_id);
+            continue;
+          }
         }
 
         outbox.markFailed(item.id, msg);
@@ -347,7 +420,48 @@ class BidirectionalSyncService {
     let applied = 0;
     let skipped = 0;
     let skippedTenant = 0;
-    for (const [entityKey, items] of Object.entries(entities)) {
+
+    // Process entities in dependency order: parent tables first, child tables last.
+    // This prevents FOREIGN KEY constraint failures during downstream insert
+    // (e.g. a transaction referencing a contact that hasn't been inserted yet).
+    const ENTITY_ORDER: Record<string, number> = {
+      accounts: 0,
+      contacts: 1,
+      vendors: 2,
+      categories: 3,
+      projects: 4,
+      buildings: 5,
+      properties: 6,
+      units: 7,
+      plan_amenities: 8,
+      documents: 9,
+      budgets: 10,
+      rental_agreements: 11,
+      project_agreements: 12,
+      contracts: 13,
+      invoices: 14,
+      bills: 15,
+      quotations: 16,
+      transactions: 17,
+      recurring_invoice_templates: 18,
+      pm_cycle_allocations: 19,
+      installment_plans: 20,
+      sales_returns: 21,
+      payroll_departments: 22,
+      payroll_grades: 23,
+      payroll_salary_components: 24,
+      payroll_employees: 25,
+      payroll_runs: 26,
+      payslips: 27,
+    };
+    const DEFAULT_ORDER = 50;
+
+    const sortedEntityKeys = Object.keys(entities).sort(
+      (a, b) => (ENTITY_ORDER[a] ?? DEFAULT_ORDER) - (ENTITY_ORDER[b] ?? DEFAULT_ORDER)
+    );
+
+    for (const entityKey of sortedEntityKeys) {
+      const items = entities[entityKey];
       if (!Array.isArray(items)) continue;
       for (const remote of items) {
         const id = (remote as { id?: string }).id;
@@ -370,6 +484,16 @@ class BidirectionalSyncService {
     const chunkSize = BidirectionalSyncService.DOWNSTREAM_CHUNK_SIZE;
 
     BaseRepository.disableSyncQueueing();
+
+    // Disable FK checks during downstream apply to prevent constraint failures
+    // caused by entity ordering (e.g. transaction arriving before its contact).
+    // The data integrity is guaranteed by the server; local is a cache.
+    try {
+      dbService.execute('PRAGMA foreign_keys = OFF');
+    } catch (fkErr) {
+      logger.warnCategory('sync', 'Could not disable foreign keys for downstream:', fkErr);
+    }
+
     try {
       const appStateRepo = new AppStateRepository();
       const resolver = getConflictResolver();
@@ -454,6 +578,12 @@ class BidirectionalSyncService {
       }
     } finally {
       BaseRepository.enableSyncQueueing();
+      // Re-enable FK checks after downstream apply
+      try {
+        dbService.execute('PRAGMA foreign_keys = ON');
+      } catch (fkErr) {
+        logger.warnCategory('sync', 'Could not re-enable foreign keys after downstream:', fkErr);
+      }
     }
 
     metadata.setLastPullAt(tenantId, new Date().toISOString());

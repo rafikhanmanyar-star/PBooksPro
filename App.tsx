@@ -69,15 +69,6 @@ const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub')
 // Task Management Modules
 const TaskModuleRouter = lazyWithRetry(() => import('./components/tasks/TaskModuleRouter'));
 
-// Shop Modules
-const POSSalesPage = lazyWithRetry(() => import('./components/shop/POSSalesPage'));
-const InventoryPage = lazyWithRetry(() => import('./components/shop/InventoryPage'));
-const AccountingPage = lazyWithRetry(() => import('./components/shop/AccountingPage'));
-const LoyaltyPage = lazyWithRetry(() => import('./components/shop/LoyaltyPage'));
-const MultiStorePage = lazyWithRetry(() => import('./components/shop/MultiStorePage'));
-const BIDashboardsPage = lazyWithRetry(() => import('./components/shop/BIDashboardsPage'));
-const ProcurementPage = lazyWithRetry(() => import('./components/shop/ProcurementPage'));
-
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
   DASHBOARD: ['dashboard'],
@@ -104,13 +95,6 @@ const PAGE_GROUPS = {
   IMPORT: ['import'],
   BIZ_PLANET: ['bizPlanet'],
   PAYROLL: ['payroll'],
-  POS_SALES: ['posSales'],
-  INVENTORY: ['inventory'],
-  SHOP_ACCOUNTING: ['accounting'],
-  LOYALTY: ['loyalty'],
-  MULTI_STORE: ['multiStore'],
-  PROCUREMENT: ['procurement'],
-  BI_DASHBOARDS: ['biDashboards'],
 };
 
 const App: React.FC = () => {
@@ -124,9 +108,6 @@ const App: React.FC = () => {
 
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
-
-  // POS Sales: allow toggling sidebar visibility (F7 Full screen)
-  const [isPosFullScreen, setIsPosFullScreen] = useState(false);
 
   // Use React 18 startTransition for non-blocking navigation (improves INP)
   const [isPending, startNavTransition] = useTransition();
@@ -328,26 +309,6 @@ const App: React.FC = () => {
     }
   }, [isAuthenticated, dispatch, user?.id]);
 
-  // Listen for POS fullscreen toggle events emitted by the POS page
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const ce = event as CustomEvent<{ enabled?: boolean }>;
-      setIsPosFullScreen(Boolean(ce.detail?.enabled));
-    };
-
-    window.addEventListener('pos:fullscreen', handler as EventListener);
-    return () => window.removeEventListener('pos:fullscreen', handler as EventListener);
-  }, []);
-
-  // Safety: if leaving POS Sales, always restore normal layout
-  useEffect(() => {
-    if (currentPage !== 'posSales' && isPosFullScreen) {
-      setIsPosFullScreen(false);
-    }
-  }, [currentPage, isPosFullScreen]);
-
-
-
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {
     navPerfLog('nav requested', { page });
@@ -473,14 +434,6 @@ const App: React.FC = () => {
 
       case 'bizPlanet': return 'Biz Planet';
       case 'payroll': return 'Payroll Management';
-      case 'posSales': return 'POS Sales Screen';
-      case 'inventory': return 'Inventory Management';
-      case 'accounting': return 'Shop Accounting';
-      case 'loyalty': return 'Loyalty Program';
-      case 'multiStore': return 'Multi-store Management';
-      case 'biDashboards': return 'BI Dashboards';
-      case 'procurement': return 'Procurement & Purchasing';
-
       // Task Modules
       case 'tasks': return 'My Tasks';
       case 'tasksCalendar': return 'Task Calendar';
@@ -600,8 +553,6 @@ const App: React.FC = () => {
     return <LoadingShell />;
   }
 
-  const shouldHideSidebar = currentPage === 'posSales' && isPosFullScreen;
-
   return (
     <OfflineProvider>
       <PrintController />
@@ -610,11 +561,11 @@ const App: React.FC = () => {
         onContextMenu={(e) => e.preventDefault()}
       >
         {/* Left Fixed Sidebar (Desktop) */}
-        {!shouldHideSidebar && <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />}
+        <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />
 
         {/* Main Content Wrapper */}
         <div
-          className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out ${shouldHideSidebar ? '' : 'md:pl-64'}`}
+          className="flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out md:pl-64"
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
@@ -639,14 +590,6 @@ const App: React.FC = () => {
               {renderPersistentPage('TASKS', <TaskModuleRouter currentPage={currentPage} />)}
               {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
-              {renderPersistentPage('POS_SALES', <POSSalesPage />)}
-              {renderPersistentPage('INVENTORY', <InventoryPage />)}
-              {renderPersistentPage('SHOP_ACCOUNTING', <AccountingPage />)}
-              {renderPersistentPage('LOYALTY', <LoyaltyPage />)}
-              {renderPersistentPage('MULTI_STORE', <MultiStorePage />)}
-              {renderPersistentPage('BI_DASHBOARDS', <BIDashboardsPage />)}
-              {renderPersistentPage('PROCUREMENT', <ProcurementPage />)}
-
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>
