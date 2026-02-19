@@ -19,6 +19,9 @@ win-unpacked
 mac-unpacked
 linux-unpacked
 
+# Installer exe files (hosted on GitHub Releases, not in git)
+website/Website/updates/*.exe
+
 # Code signing certificates (NEVER commit these!)
 *.pfx
 *.p12
