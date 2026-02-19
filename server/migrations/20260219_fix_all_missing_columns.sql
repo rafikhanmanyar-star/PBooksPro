@@ -21,7 +21,7 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()
 UPDATE invoices SET updated_at = created_at WHERE updated_at IS NULL;
 
 -- ========================================================================
--- 2. RENTAL_AGREEMENTS - 7 missing columns
+-- 2. RENTAL_AGREEMENTS - 8 missing columns
 -- ========================================================================
 ALTER TABLE rental_agreements ADD COLUMN IF NOT EXISTS rent_due_date INTEGER;
 ALTER TABLE rental_agreements ADD COLUMN IF NOT EXISTS description TEXT;
@@ -29,6 +29,7 @@ ALTER TABLE rental_agreements ADD COLUMN IF NOT EXISTS security_deposit DECIMAL(
 ALTER TABLE rental_agreements ADD COLUMN IF NOT EXISTS broker_id TEXT;
 ALTER TABLE rental_agreements ADD COLUMN IF NOT EXISTS broker_fee DECIMAL(15, 2);
 ALTER TABLE rental_agreements ADD COLUMN IF NOT EXISTS owner_id TEXT;
+ALTER TABLE rental_agreements ADD COLUMN IF NOT EXISTS previous_agreement_id TEXT;
 ALTER TABLE rental_agreements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 UPDATE rental_agreements SET updated_at = created_at WHERE updated_at IS NULL;
 
