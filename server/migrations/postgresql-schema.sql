@@ -127,9 +127,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    description TEXT,
     is_permanent BOOLEAN NOT NULL DEFAULT FALSE,
     parent_account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    user_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS contacts (
@@ -176,17 +179,29 @@ CREATE TABLE IF NOT EXISTS transactions (
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     type TEXT NOT NULL,
+    subtype TEXT,
     amount DECIMAL(15, 2) NOT NULL,
     date DATE NOT NULL,
     description TEXT,
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    from_account_id TEXT,
+    to_account_id TEXT,
     category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
     contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,
     vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL,
     project_id TEXT,
+    building_id TEXT,
+    property_id TEXT,
+    unit_id TEXT,
     invoice_id TEXT,
     bill_id TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    payslip_id TEXT,
+    contract_id TEXT,
+    agreement_id TEXT,
+    batch_id TEXT,
+    is_system BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 DO $$ BEGIN
@@ -212,15 +227,24 @@ CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    description TEXT,
+    color TEXT,
     status TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    pm_config JSONB,
+    installment_config JSONB,
+    user_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS buildings (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    description TEXT,
+    color TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS properties (
@@ -229,7 +253,10 @@ CREATE TABLE IF NOT EXISTS properties (
     name TEXT NOT NULL,
     owner_id TEXT NOT NULL REFERENCES contacts(id),
     building_id TEXT NOT NULL REFERENCES buildings(id),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    description TEXT,
+    monthly_service_charge DECIMAL(15, 2),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS units (
@@ -238,7 +265,14 @@ CREATE TABLE IF NOT EXISTS units (
     name TEXT NOT NULL,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     contact_id TEXT REFERENCES contacts(id),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    sale_price DECIMAL(15, 2),
+    description TEXT,
+    type TEXT,
+    area DECIMAL(15, 2),
+    floor TEXT,
+    user_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS invoices (
@@ -252,7 +286,19 @@ CREATE TABLE IF NOT EXISTS invoices (
     issue_date DATE NOT NULL,
     due_date DATE NOT NULL,
     invoice_type TEXT NOT NULL,
+    description TEXT,
+    project_id TEXT,
+    building_id TEXT,
+    property_id TEXT,
+    unit_id TEXT,
+    category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+    agreement_id TEXT,
+    security_deposit_charge DECIMAL(15, 2),
+    service_charges DECIMAL(15, 2),
+    rental_month TEXT,
+    user_id TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE(tenant_id, invoice_number)
 );
 
@@ -266,9 +312,22 @@ CREATE TABLE IF NOT EXISTS bills (
     paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'Unpaid',
     issue_date DATE NOT NULL,
+    due_date DATE,
+    description TEXT,
+    category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+    project_id TEXT,
+    building_id TEXT,
+    property_id TEXT,
+    project_agreement_id TEXT,
+    contract_id TEXT,
+    staff_id TEXT,
     bill_version INTEGER DEFAULT 1,
+    expense_category_items JSONB,
+    document_path TEXT,
     document_id TEXT,
+    user_id TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE(tenant_id, bill_number)
 );
 
@@ -293,9 +352,16 @@ CREATE TABLE IF NOT EXISTS rental_agreements (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     monthly_rent DECIMAL(15, 2) NOT NULL,
+    rent_due_date INTEGER,
     status TEXT NOT NULL,
+    description TEXT,
+    security_deposit DECIMAL(15, 2),
+    broker_id TEXT,
+    broker_fee DECIMAL(15, 2),
+    owner_id TEXT,
     previous_agreement_id TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE(org_id, agreement_number)
 );
 
@@ -313,10 +379,30 @@ CREATE TABLE IF NOT EXISTS project_agreements (
     agreement_number TEXT NOT NULL,
     client_id TEXT NOT NULL REFERENCES contacts(id),
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    unit_ids TEXT,
+    list_price DECIMAL(15, 2),
+    customer_discount DECIMAL(15, 2),
+    floor_discount DECIMAL(15, 2),
+    lump_sum_discount DECIMAL(15, 2),
+    misc_discount DECIMAL(15, 2),
     selling_price DECIMAL(15, 2) NOT NULL,
+    rebate_amount DECIMAL(15, 2),
+    rebate_broker_id TEXT,
+    issue_date DATE,
+    description TEXT,
     status TEXT NOT NULL,
+    cancellation_details JSONB,
     installment_plan JSONB,
+    list_price_category_id TEXT,
+    customer_discount_category_id TEXT,
+    floor_discount_category_id TEXT,
+    lump_sum_discount_category_id TEXT,
+    misc_discount_category_id TEXT,
+    selling_price_category_id TEXT,
+    rebate_category_id TEXT,
+    user_id TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE(tenant_id, agreement_number)
 );
 
@@ -339,9 +425,21 @@ CREATE TABLE IF NOT EXISTS contracts (
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     vendor_id TEXT NOT NULL REFERENCES vendors(id),
     total_amount DECIMAL(15, 2) NOT NULL,
+    area DECIMAL(15, 2),
+    rate DECIMAL(15, 2),
+    start_date DATE,
+    end_date DATE,
     status TEXT NOT NULL,
+    category_ids TEXT,
+    expense_category_items JSONB,
+    terms_and_conditions TEXT,
+    payment_terms TEXT,
+    description TEXT,
+    document_path TEXT,
+    document_id TEXT,
     user_id TEXT REFERENCES users(id),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE(tenant_id, contract_number)
 );
 

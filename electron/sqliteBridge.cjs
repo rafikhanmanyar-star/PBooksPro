@@ -10,7 +10,32 @@ const fs = require('fs');
 
 let db = null;
 let dbPath = null;
-const SQLITE_FILE_NAME = 'finance.db';
+let _isStaging = null;
+
+function isStaging() {
+  if (_isStaging !== null) return _isStaging;
+  try {
+    const { app } = require('electron');
+    const configPath = path.join(app.getAppPath(), 'dist', 'env-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      _isStaging = !!config.isStaging;
+    } else {
+      _isStaging = false;
+    }
+  } catch {
+    _isStaging = false;
+  }
+  return _isStaging;
+}
+
+function getDbFileName() {
+  return isStaging() ? 'PBooksPro-Staging.db' : 'PBooksPro.db';
+}
+
+function getSqlJsBlobName() {
+  return isStaging() ? 'PBooksPro-Staging_sqljs.bin' : 'PBooksPro_sqljs.bin';
+}
 
 function getDbPath() {
   if (dbPath) return dbPath;
@@ -20,7 +45,8 @@ function getDbPath() {
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }
-  dbPath = path.join(dbDir, SQLITE_FILE_NAME);
+  dbPath = path.join(dbDir, getDbFileName());
+  console.log(`[SQLiteBridge] DB path: ${dbPath} (staging=${isStaging()})`);
   return dbPath;
 }
 
@@ -29,7 +55,7 @@ function getSqlJsBlobPath() {
   const { app } = require('electron');
   const userData = app.getPath('userData');
   const dbDir = path.join(userData, 'pbookspro');
-  return path.join(dbDir, 'finance_sqljs.bin');
+  return path.join(dbDir, getSqlJsBlobName());
 }
 
 function getDb() {

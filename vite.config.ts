@@ -1,7 +1,7 @@
 
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { copyFileSync, existsSync, readFileSync } from 'fs'
+import { copyFileSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, resolve } from 'path'
 
 // Read version from package.json
@@ -112,6 +112,20 @@ export default defineConfig({
           '<!-- Importmap removed in production build - dependencies are bundled -->'
         )
         return result
+      }
+    },
+    {
+      name: 'write-env-config',
+      closeBundle() {
+        const distDir = join(process.cwd(), 'dist');
+        if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
+        const apiUrl = process.env.VITE_API_URL || '';
+        const isStaging = apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com');
+        writeFileSync(
+          join(distDir, 'env-config.json'),
+          JSON.stringify({ apiUrl, isStaging }, null, 2)
+        );
+        console.log(`✅ Wrote env-config.json (isStaging=${isStaging})`);
       }
     },
     {
