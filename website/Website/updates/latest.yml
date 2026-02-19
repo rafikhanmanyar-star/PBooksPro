@@ -1,8 +1,8 @@
-version: 1.2.0
+version: 1.2.1
 files:
-  - url: https://github.com/rafikhanmanyar-star/PBooksPro/releases/download/v1.2.0/PBooks.Pro.Setup.1.2.0.exe
-    sha512: Z2RIP2SFFoRxl3lkVjtMzw06DiuNFXYOgR+oxBPe/6PoNn+tPlrEHc1An3hzWTS3vSY9cAtregcYBGke4K+tEA==
-    size: 112319383
-path: https://github.com/rafikhanmanyar-star/PBooksPro/releases/download/v1.2.0/PBooks.Pro.Setup.1.2.0.exe
-sha512: Z2RIP2SFFoRxl3lkVjtMzw06DiuNFXYOgR+oxBPe/6PoNn+tPlrEHc1An3hzWTS3vSY9cAtregcYBGke4K+tEA==
-releaseDate: '2026-02-19T16:08:26.166Z'
+  - url: PBooks Pro Setup 1.2.1.exe
+    sha512: MeO8xSwZMatooDJtVLAeJYQpoIEeEwY/gSQ+odf4byctbzizbdq5/cduuvia6sZ7dHqUYPXBcw2PQzS6c04A+Q==
+    size: 112322446
+path: PBooks Pro Setup 1.2.1.exe
+sha512: MeO8xSwZMatooDJtVLAeJYQpoIEeEwY/gSQ+odf4byctbzizbdq5/cduuvia6sZ7dHqUYPXBcw2PQzS6c04A+Q==
+releaseDate: '2026-02-19T17:29:32.819Z'
