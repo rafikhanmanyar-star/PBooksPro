@@ -9,6 +9,6 @@
   },
   "publish": {
     "provider": "generic",
-    "url": "https://pbookspro-website-staging.onrender.com/updates"
+    "url": "https://pbookspro-api-staging.onrender.com/api/app-info/updates"
   }
 }

@@ -81,13 +81,6 @@ services:
       - type: rewrite
         source: /license/payment-cancel
         destination: /license/payment-cancel.html
-    headers:
-      - path: /updates/*
-        name: Cache-Control
-        value: no-cache, no-store, must-revalidate
-      - path: /updates/*.yml
-        name: Content-Type
-        value: text/yaml
 
   # Staging API Server - STAGING (deploys from staging branch only)
   - type: web
