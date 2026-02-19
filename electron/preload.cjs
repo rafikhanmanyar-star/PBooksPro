@@ -24,6 +24,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     node: process.versions.node,
   },
   isElectron: true,
+  updater: {
+    checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+    installUpdate: () => ipcRenderer.send('install-update'),
+    onChecking: (callback) => {
+      ipcRenderer.on('update-checking', () => callback());
+      return () => ipcRenderer.removeAllListeners('update-checking');
+    },
+    onUpdateAvailable: (callback) => {
+      ipcRenderer.on('update-available', (_, info) => callback(info));
+      return () => ipcRenderer.removeAllListeners('update-available');
+    },
+    onUpdateNotAvailable: (callback) => {
+      ipcRenderer.on('update-not-available', () => callback());
+      return () => ipcRenderer.removeAllListeners('update-not-available');
+    },
+    onDownloadProgress: (callback) => {
+      ipcRenderer.on('update-download-progress', (_, progress) => callback(progress));
+      return () => ipcRenderer.removeAllListeners('update-download-progress');
+    },
+    onUpdateDownloaded: (callback) => {
+      ipcRenderer.on('update-downloaded', (_, info) => callback(info));
+      return () => ipcRenderer.removeAllListeners('update-downloaded');
+    },
+    onError: (callback) => {
+      ipcRenderer.on('update-error', (_, message) => callback(message));
+      return () => ipcRenderer.removeAllListeners('update-error');
+    },
+  },
 });
 
 contextBridge.exposeInMainWorld('sqliteBridge', {

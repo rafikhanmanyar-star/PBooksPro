@@ -1,106 +1,128 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePWA } from '../../context/PWAContext';
+import { useUpdate } from '../../context/UpdateContext';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
 import { RefreshCw, CheckCircle, AlertCircle, Download, ArrowDownToLine, Copy } from 'lucide-react';
 import packageJson from '../../package.json';
 
-
-interface UpdateInfo {
-  version: string;
-}
-
 type UpdateStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
 
 const UpdateCheck: React.FC = () => {
-  const { isUpdateAvailable, checkForUpdates, applyUpdate } = usePWA();
+  const { isUpdateAvailable, checkForUpdates: pwaCheckForUpdates, applyUpdate } = usePWA();
+  const {
+    isChecking: electronChecking,
+    updateAvailable: electronUpdateAvailable,
+    updateDownloaded: electronUpdateDownloaded,
+    updateInfo: electronUpdateInfo,
+    downloadProgress: electronDownloadProgress,
+    error: electronError,
+    checkForUpdates: electronCheckForUpdates,
+    installUpdate: electronInstallUpdate,
+    isElectronUpdate,
+  } = useUpdate();
   const { showConfirm, showToast } = useNotification();
-  
+
   const [status, setStatus] = useState<UpdateStatus>('idle');
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<{ percent: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
-  const [currentVersion, setCurrentVersion] = useState<string>('');
-  
-  // Get current app version
+  const currentVersion = packageJson.version;
+
+  // Sync Electron update state into local status
   useEffect(() => {
-    // Use version from package.json
-    setCurrentVersion(packageJson.version);
-  }, []);
+    if (!isElectronUpdate) return;
 
-  // Electron update events removed - only PWA updates supported
+    if (electronChecking) {
+      setStatus('checking');
+    } else if (electronUpdateDownloaded) {
+      setStatus('downloaded');
+    } else if (electronDownloadProgress) {
+      setStatus('downloading');
+    } else if (electronUpdateAvailable) {
+      setStatus('available');
+    } else if (electronError) {
+      setStatus('error');
+      setError(electronError);
+      setErrorDetails(electronError);
+    }
+  }, [isElectronUpdate, electronChecking, electronUpdateAvailable, electronUpdateDownloaded, electronDownloadProgress, electronError]);
 
-  // Manual check for updates (PWA only)
+  // PWA update detection
+  useEffect(() => {
+    if (isElectronUpdate) return;
+    if (isUpdateAvailable && status === 'idle') {
+      setStatus('available');
+    }
+  }, [isUpdateAvailable, status, isElectronUpdate]);
+
   const handleCheckForUpdates = useCallback(async () => {
     setStatus('checking');
     setError(null);
     setErrorDetails(null);
     showToast("Checking for updates...", "info");
-    try {
-      await checkForUpdates();
-      // Wait a moment for service worker to detect updates
+
+    if (isElectronUpdate) {
+      electronCheckForUpdates();
+      // Status will be updated via the useEffect above
+      // Set a timeout to reset if no response within 15 seconds
       setTimeout(() => {
-        if (isUpdateAvailable) {
-          setStatus('available');
-          setUpdateInfo({ version: 'Latest' });
-        } else {
-          setStatus('not-available');
-          setTimeout(() => setStatus('idle'), 3000);
-        }
-      }, 1500);
-    } catch (err) {
-      setStatus('error');
-      const errorMessage = err instanceof Error ? err.message : 'Failed to check for updates';
-      setError(errorMessage);
-      setErrorDetails(err instanceof Error ? (err.stack || err.message) : String(err));
+        setStatus((prev) => (prev === 'checking' ? 'not-available' : prev));
+      }, 15000);
+    } else {
+      try {
+        await pwaCheckForUpdates();
+        setTimeout(() => {
+          if (isUpdateAvailable) {
+            setStatus('available');
+          } else {
+            setStatus('not-available');
+            setTimeout(() => setStatus('idle'), 3000);
+          }
+        }, 1500);
+      } catch (err) {
+        setStatus('error');
+        const errorMessage = err instanceof Error ? err.message : 'Failed to check for updates';
+        setError(errorMessage);
+        setErrorDetails(err instanceof Error ? (err.stack || err.message) : String(err));
+      }
     }
-  }, [checkForUpdates, isUpdateAvailable, showToast]);
+  }, [isElectronUpdate, electronCheckForUpdates, pwaCheckForUpdates, isUpdateAvailable, showToast]);
 
-  // Monitor PWA update availability
-  useEffect(() => {
-    if (isUpdateAvailable && status === 'idle') {
-      setStatus('available');
-      setUpdateInfo({ version: 'Latest' });
-    }
-  }, [isUpdateAvailable, status]);
-
-  // Install update (PWA only)
   const handleInstall = useCallback(async () => {
-    const confirm = await showConfirm("A new version of the app is available. Update now?", { 
-      title: "Update Available", 
-      confirmLabel: "Update & Reload" 
-    });
-    if (confirm) {
-      applyUpdate();
+    if (isElectronUpdate) {
+      const confirm = await showConfirm(
+        "The update has been downloaded. The app will restart to apply the update. Continue?",
+        { title: "Install Update", confirmLabel: "Restart & Install" }
+      );
+      if (confirm) {
+        electronInstallUpdate();
+      }
+    } else {
+      const confirm = await showConfirm("A new version of the app is available. Update now?", {
+        title: "Update Available",
+        confirmLabel: "Update & Reload",
+      });
+      if (confirm) {
+        applyUpdate();
+      }
     }
-  }, [showConfirm, applyUpdate]);
+  }, [isElectronUpdate, showConfirm, electronInstallUpdate, applyUpdate]);
 
-  // Format bytes to human readable
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  // Copy error to clipboard
   const handleCopyError = useCallback(async () => {
     const errorText = errorDetails || error || 'No error details available';
     const fullErrorText = `Update Error Details\n` +
       `===================\n` +
       `Version: ${currentVersion}\n` +
+      `Platform: ${isElectronUpdate ? 'Electron' : 'Web/PWA'}\n` +
       `Status: ${status}\n` +
       `Error: ${error || 'Unknown error'}\n` +
       `\nDetails:\n${errorText}\n` +
       `\nTimestamp: ${new Date().toISOString()}`;
-    
+
     try {
       await navigator.clipboard.writeText(fullErrorText);
       showToast('Error details copied to clipboard', 'success');
     } catch (err) {
-      // Fallback for older browsers
       const textArea = document.createElement('textarea');
       textArea.value = fullErrorText;
       textArea.style.position = 'fixed';
@@ -115,7 +137,7 @@ const UpdateCheck: React.FC = () => {
       }
       document.body.removeChild(textArea);
     }
-  }, [error, errorDetails, currentVersion, status, showToast]);
+  }, [error, errorDetails, currentVersion, status, showToast, isElectronUpdate]);
 
   return (
     <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/50" data-update-section>
@@ -125,14 +147,15 @@ const UpdateCheck: React.FC = () => {
         </svg>
         Application Updates
       </h4>
-      
+
       <div className="space-y-4">
-        {/* Current Version */}
         <div className="text-sm text-slate-600">
           <span className="font-medium">Current Version:</span> {currentVersion || 'Unknown'}
+          {isElectronUpdate && (
+            <span className="ml-2 text-xs text-slate-400">(Desktop)</span>
+          )}
         </div>
 
-        {/* Status Display */}
         {status === 'checking' && (
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <RefreshCw className="w-4 h-4 animate-spin" />
@@ -145,17 +168,23 @@ const UpdateCheck: React.FC = () => {
             <div className="flex items-center gap-2 text-sm">
               <Download className="w-4 h-4 text-emerald-600" />
               <span className="font-medium text-emerald-700">
-                {updateInfo ? `Version ${updateInfo.version} is available` : 'An update is available'}
+                {electronUpdateInfo
+                  ? `Version ${electronUpdateInfo.version} is available`
+                  : 'An update is available'}
               </span>
             </div>
-            <Button onClick={handleInstall} className="w-full sm:w-auto">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Update & Reload
-            </Button>
+            {isElectronUpdate ? (
+              <p className="text-xs text-slate-500">Downloading in background...</p>
+            ) : (
+              <Button onClick={handleInstall} className="w-full sm:w-auto">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Update & Reload
+              </Button>
+            )}
           </div>
         )}
 
-        {status === 'downloading' && downloadProgress && (
+        {status === 'downloading' && electronDownloadProgress && (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <ArrowDownToLine className="w-4 h-4 animate-bounce" />
@@ -164,21 +193,23 @@ const UpdateCheck: React.FC = () => {
             <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 transition-all duration-300 ease-out"
-                style={{ width: `${downloadProgress.percent}%` }}
+                style={{ width: `${electronDownloadProgress.percent}%` }}
               />
             </div>
             <p className="text-center text-xs font-medium text-indigo-600">
-              {downloadProgress.percent.toFixed(1)}% complete
+              {electronDownloadProgress.percent.toFixed(1)}% complete
             </p>
           </div>
         )}
 
-        {status === 'downloaded' && updateInfo && (
+        {status === 'downloaded' && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
               <CheckCircle className="w-4 h-4 text-emerald-600" />
               <span className="font-medium text-emerald-700">
-                Version {updateInfo.version} downloaded. Ready to install.
+                {electronUpdateInfo
+                  ? `Version ${electronUpdateInfo.version} downloaded. Ready to install.`
+                  : 'Update downloaded. Ready to install.'}
               </span>
             </div>
             <Button onClick={handleInstall} variant="primary" className="w-full sm:w-auto">
@@ -187,7 +218,6 @@ const UpdateCheck: React.FC = () => {
             </Button>
           </div>
         )}
-        
 
         {status === 'not-available' && (
           <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -213,18 +243,18 @@ const UpdateCheck: React.FC = () => {
                 </div>
               </div>
               <div className="flex gap-2 mt-2">
-                <Button 
-                  onClick={handleCopyError} 
-                  variant="secondary" 
+                <Button
+                  onClick={handleCopyError}
+                  variant="secondary"
                   className="text-xs py-1 px-2 h-auto"
                   title="Copy error details to clipboard"
                 >
                   <Copy className="w-3 h-3 mr-1" />
                   Copy Error Log
                 </Button>
-                <Button 
-                  onClick={handleCheckForUpdates} 
-                  variant="secondary" 
+                <Button
+                  onClick={handleCheckForUpdates}
+                  variant="secondary"
                   className="text-xs py-1 px-2 h-auto"
                 >
                   <RefreshCw className="w-3 h-3 mr-1" />
@@ -235,7 +265,6 @@ const UpdateCheck: React.FC = () => {
           </div>
         )}
 
-        {/* Check for Updates Button */}
         {(status === 'idle' || status === 'not-available') && (
           <Button onClick={handleCheckForUpdates} variant="secondary" className="w-full sm:w-auto">
             <RefreshCw className="w-4 h-4 mr-2" />
@@ -248,4 +277,3 @@ const UpdateCheck: React.FC = () => {
 };
 
 export default UpdateCheck;
-
