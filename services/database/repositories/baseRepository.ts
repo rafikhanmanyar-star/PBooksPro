@@ -590,33 +590,39 @@ export abstract class BaseRepository<T> {
         return results[0]?.count || 0;
     }
 
+    private static syncQueueErrorCount = 0;
+    private static syncQueueErrorLogged = false;
+
     /**
      * Queue operation for sync to cloud (desktop only)
      * Skips queueing if sync queueing is disabled (e.g., when syncing from cloud)
      */
     private queueForSync(type: 'create' | 'update' | 'delete', entityId: string, data: any): void {
-        // Only queue on desktop (mobile uses cloud directly)
         if (isMobileDevice()) {
             return;
         }
 
-        // Skip queueing if disabled (e.g., when syncing FROM cloud TO local)
         if (BaseRepository.syncQueueingDisabled) {
-            console.debug(`[BaseRepository] Skipping sync queue for ${this.tableName}:${entityId} (sync queueing disabled - syncing from cloud)`);
             return;
         }
 
         try {
-            // Single source of truth: sync_outbox (persistent, durable). SyncManager queue deprecated.
             const tenantId = getCurrentTenantId();
             const userId = getCurrentUserId();
             if (tenantId && this.db.isReady()) {
                 const outbox = getSyncOutboxService();
                 outbox.enqueue(tenantId, this.tableName, type, entityId, data || {}, userId ?? undefined);
-                console.log(`[BaseRepository] ✅ Queued to outbox: ${type} ${this.tableName}:${entityId}`);
             }
+            BaseRepository.syncQueueErrorCount = 0;
+            BaseRepository.syncQueueErrorLogged = false;
         } catch (error) {
-            console.debug(`[BaseRepository] Failed to queue sync for ${this.tableName}:${entityId}:`, error);
+            BaseRepository.syncQueueErrorCount++;
+            if (!BaseRepository.syncQueueErrorLogged) {
+                console.warn(`[BaseRepository] Failed to queue sync for ${this.tableName}:${entityId}:`, error);
+                BaseRepository.syncQueueErrorLogged = true;
+            } else if (BaseRepository.syncQueueErrorCount % 100 === 0) {
+                console.warn(`[BaseRepository] Sync queue failures: ${BaseRepository.syncQueueErrorCount} total (suppressing repeated logs)`);
+            }
         }
     }
 

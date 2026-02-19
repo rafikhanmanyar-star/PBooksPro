@@ -32,9 +32,47 @@ function generateId(): string {
 }
 
 class SyncOutboxService {
+  private tableVerified = false;
+
   private get db() {
     if (isMobileDevice()) throw new Error('SyncOutboxService is for desktop only');
     return getDatabaseService();
+  }
+
+  private ensureTable(): void {
+    if (this.tableVerified) return;
+    const db = this.db;
+    if (!db.isReady()) return;
+    try {
+      const tables = db.query<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='sync_outbox'"
+      );
+      if (tables.length === 0) {
+        db.execute(`
+          CREATE TABLE IF NOT EXISTS sync_outbox (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            user_id TEXT,
+            entity_type TEXT NOT NULL,
+            action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+            entity_id TEXT NOT NULL,
+            payload_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            synced_at TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'syncing', 'synced', 'failed')),
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT
+          )
+        `);
+        db.execute('CREATE INDEX IF NOT EXISTS idx_sync_outbox_tenant_status ON sync_outbox(tenant_id, status)');
+        db.execute('CREATE INDEX IF NOT EXISTS idx_sync_outbox_created ON sync_outbox(created_at)');
+        console.log('[SyncOutbox] Created missing sync_outbox table');
+      }
+      this.tableVerified = true;
+    } catch (err) {
+      console.warn('[SyncOutbox] ensureTable failed:', err);
+    }
   }
 
   /**
@@ -54,6 +92,7 @@ class SyncOutboxService {
       console.warn('[SyncOutbox] DB not ready, skipping enqueue');
       return id;
     }
+    this.ensureTable();
     this.db.execute(
       `INSERT INTO sync_outbox (id, tenant_id, user_id, entity_type, action, entity_id, payload_json, created_at, updated_at, synced_at, status, retry_count, error_message)
        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), NULL, 'pending', 0, NULL)`,
@@ -72,6 +111,7 @@ class SyncOutboxService {
    */
   getPending(tenantId: string): SyncOutboxItem[] {
     if (!this.db.isReady()) return [];
+    this.ensureTable();
     const rows = this.db.query<SyncOutboxItem>(
       `SELECT * FROM sync_outbox WHERE tenant_id = ? AND status IN ('pending', 'failed') ORDER BY created_at ASC`,
       [tenantId]
