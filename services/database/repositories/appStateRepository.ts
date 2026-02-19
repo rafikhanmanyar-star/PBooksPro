@@ -833,11 +833,14 @@ export class AppStateRepository {
                                     if (b.staffId) billToSave.staffId = b.staffId;
                                     if (b.documentPath) billToSave.documentPath = b.documentPath;
                                     if (b.documentId) billToSave.documentId = b.documentId;
+                                    if (b.expenseBearerType) billToSave.expenseBearerType = b.expenseBearerType;
                                     if (b.expenseCategoryItems) {
                                         billToSave.expenseCategoryItems = typeof b.expenseCategoryItems === 'string'
                                             ? b.expenseCategoryItems
                                             : JSON.stringify(b.expenseCategoryItems);
                                     }
+                                    if ((b as any).userId ?? (b as any).user_id) billToSave.userId = (b as any).userId ?? (b as any).user_id;
+                                    if (b.version != null) billToSave.version = b.version;
                                     return billToSave;
                                 });
                                 const billIds = new Set(sanitizedBills.map(b => b.id));
