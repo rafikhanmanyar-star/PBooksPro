@@ -3,7 +3,8 @@
  * Desktop wrapper for the PBooks Pro web application.
  */
 
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const sqliteBridge = require('./sqliteBridge.cjs');
@@ -78,7 +79,73 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+// --- Auto-updater setup ---
+
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+if (isDev) {
+  autoUpdater.logger = console;
+  autoUpdater.forceDevUpdateConfig = true;
+}
+
+function setupAutoUpdater() {
+  autoUpdater.on('checking-for-update', () => {
+    mainWindow?.webContents.send('update-checking');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    mainWindow?.webContents.send('update-available', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    mainWindow?.webContents.send('update-not-available');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update-download-progress', {
+      bytesPerSecond: progress.bytesPerSecond,
+      percent: progress.percent,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    mainWindow?.webContents.send('update-downloaded', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    mainWindow?.webContents.send('update-error', err?.message || 'Unknown update error');
+  });
+
+  ipcMain.on('install-update', () => {
+    autoUpdater.quitAndInstall(false, true);
+  });
+
+  ipcMain.on('check-for-updates', () => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      mainWindow?.webContents.send('update-error', err?.message || 'Failed to check for updates');
+    });
+  });
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  setupAutoUpdater();
+  // Check for updates 10 seconds after launch
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 10000);
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

@@ -6,5 +6,9 @@
   "win": {
     "icon": "electron/assets/icon.ico",
     "signAndEditExecutable": false
+  },
+  "publish": {
+    "provider": "generic",
+    "url": "https://pbookspro-website-staging.onrender.com/updates"
   }
 }
