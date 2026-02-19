@@ -19,6 +19,33 @@ import { isMobileDevice } from '../../utils/platformDetection';
 import { SyncProgress } from '../../types/sync';
 import { isElectronWithSqlite, sqliteQuery, sqliteRun } from '../electronSqliteStorage';
 
+// Dependency order: parent entities first so FK constraints are satisfied on the server.
+const ENTITY_SYNC_ORDER: Record<string, number> = {
+  accounts: 0,
+  account: 0,
+  contacts: 1,
+  contact: 1,
+  vendors: 2,
+  vendor: 2,
+  categories: 3,
+  category: 3,
+  projects: 4,
+  project: 4,
+  buildings: 5,
+  building: 5,
+  properties: 6,
+  property: 6,
+  units: 7,
+  unit: 7,
+  invoices: 14,
+  invoice: 14,
+  bills: 15,
+  bill: 15,
+  transactions: 17,
+  transaction: 17,
+};
+const ENTITY_SYNC_DEFAULT_ORDER = 50;
+
 export interface SyncOperation {
   id: string;
   tenantId?: string; // Tenant that owns this operation (for isolation)
@@ -301,6 +328,13 @@ class SyncManager {
       return; // Nothing to sync
     }
 
+    // Sort by entity dependency order so parent entities (contacts) sync before children (transactions)
+    pendingOps.sort(
+      (a, b) =>
+        (ENTITY_SYNC_ORDER[a.entity] ?? ENTITY_SYNC_DEFAULT_ORDER) -
+        (ENTITY_SYNC_ORDER[b.entity] ?? ENTITY_SYNC_DEFAULT_ORDER)
+    );
+
     // Initialize or update progress tracking
     const currentRemaining = pendingOps.length;
     if (!this.syncProgress) {
@@ -345,6 +379,21 @@ class SyncManager {
             // Don't retry if authentication is required
             if (error?.message === 'Authentication required' || error?.status === 401) {
               operation.status = 'pending'; // Keep as pending, will sync after login
+              return;
+            }
+
+            // Non-retriable server rejections: mark completed to stop retrying
+            const errMsg = (error?.message || error?.error || '').toLowerCase();
+            const isNonRetriable =
+              error?.code === 'TRANSACTION_IMMUTABLE' ||
+              error?.code === 'PAYMENT_OVERPAYMENT' ||
+              errMsg.includes('cannot modify a payment transaction linked to a paid') ||
+              (error?.status === 409 && (errMsg.includes('duplicate') || errMsg.includes('already exists')));
+            if (isNonRetriable) {
+              console.log(`[SyncManager] ⏭️ Non-retriable error for ${operation.entity}:${operation.entityId}, marking completed:`, errMsg);
+              operation.status = 'completed';
+              operation.syncStartedAt = undefined;
+              if (this.syncProgress) this.syncProgress.completed++;
               return;
             }
 
@@ -482,12 +531,13 @@ class SyncManager {
           errorMessage.includes('already exists');
         const isVersionConflict = errorMessage.includes('version conflict') ||
           errorMessage.includes('expected version');
+        const isImmutable = error?.code === 'TRANSACTION_IMMUTABLE' ||
+          errorMessage.includes('cannot modify a payment transaction linked to a paid');
 
         if (isDuplicateError && (operation.type === 'create' || operation.type === 'update')) {
           return; // Success - record already exists
         }
-        if (isVersionConflict) {
-          // Server has newer version - accept server wins, treat as success to stop retries
+        if (isVersionConflict || isImmutable) {
           return;
         }
       }

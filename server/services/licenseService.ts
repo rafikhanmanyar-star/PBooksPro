@@ -3,10 +3,10 @@ import { DatabaseService } from './databaseService.js';
 
 const SECRET_SALT = process.env.LICENSE_SECRET_SALT || 'PBOOKSPRO_SECURE_SALT_2024';
 
-export type ModuleKey = 'real_estate' | 'rental' | 'tasks' | 'biz_planet' | 'shop';
+export type ModuleKey = 'real_estate' | 'rental' | 'tasks' | 'biz_planet';
 
 /** Default modules included when tenant has active paid license but no tenant_modules rows (e.g. base yearly/monthly). */
-export const DEFAULT_LICENSE_MODULES: ModuleKey[] = ['real_estate', 'rental', 'tasks', 'biz_planet', 'shop'];
+export const DEFAULT_LICENSE_MODULES: ModuleKey[] = ['real_estate', 'rental', 'tasks', 'biz_planet'];
 
 export interface TenantModule {
   id: string;

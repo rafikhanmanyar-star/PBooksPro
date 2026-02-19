@@ -45,7 +45,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     rental: { PKR: 3000, USD: 11 },
     tasks: { PKR: 2000, USD: 7 },
     biz_planet: { PKR: 2000, USD: 7 },
-    shop: { PKR: 4000, USD: 14 }
   };
 
   const isModulePayment = !!moduleKey;

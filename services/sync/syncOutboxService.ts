@@ -63,9 +63,12 @@ class SyncOutboxService {
     return id;
   }
 
+  private static readonly MAX_RETRIES = 10;
+
   /**
    * Get all pending items for a tenant (oldest first).
    * Applies exponential backoff for failed items: retry_count N waits 2^N seconds before retry.
+   * Items that have exceeded MAX_RETRIES are auto-marked as permanently failed and excluded.
    */
   getPending(tenantId: string): SyncOutboxItem[] {
     if (!this.db.isReady()) return [];
@@ -75,6 +78,10 @@ class SyncOutboxService {
     );
     const now = Date.now() / 1000; // seconds
     return rows.filter((item) => {
+      if ((item.retry_count || 0) >= SyncOutboxService.MAX_RETRIES) {
+        this.markPermanentlyFailed(item.id, item.error_message || 'Max retries exceeded');
+        return false;
+      }
       if (item.status === 'pending') return true;
       // Exponential backoff for failed: wait 2^retry_count seconds
       const backoffSeconds = Math.pow(2, Math.min(item.retry_count || 0, 10));
@@ -116,6 +123,32 @@ class SyncOutboxService {
     this.db.execute(
       `UPDATE sync_outbox SET status = 'failed', updated_at = datetime('now'), retry_count = retry_count + 1, error_message = ? WHERE id = ?`,
       [errorMessage?.slice(0, 500) ?? 'Unknown error', id]
+    );
+    this.db.save();
+  }
+
+  /**
+   * Mark item as permanently failed (won't be retried).
+   */
+  markPermanentlyFailed(id: string, errorMessage: string): void {
+    if (!this.db.isReady()) return;
+    this.db.execute(
+      `UPDATE sync_outbox SET status = 'synced', updated_at = datetime('now'), error_message = ? WHERE id = ?`,
+      [`PERMANENT: ${errorMessage?.slice(0, 480) ?? 'Max retries exceeded'}`, id]
+    );
+    this.db.save();
+  }
+
+  /**
+   * Mark ALL pending/failed entries for a given entity as synced.
+   * Used when the server confirms the entity state is correct (e.g. TRANSACTION_IMMUTABLE).
+   */
+  markAllSyncedForEntity(tenantId: string, entityType: string, entityId: string): void {
+    if (!this.db.isReady()) return;
+    this.db.execute(
+      `UPDATE sync_outbox SET status = 'synced', synced_at = datetime('now'), updated_at = datetime('now'), error_message = NULL
+       WHERE tenant_id = ? AND entity_type = ? AND entity_id = ? AND status IN ('pending', 'failed', 'syncing')`,
+      [tenantId, entityType, entityId]
     );
     this.db.save();
   }
