@@ -19,9 +19,38 @@ export interface SyncMetadataRow {
 }
 
 class SyncMetadataService {
+  private tableVerified = false;
+
   private get db() {
     if (isMobileDevice()) throw new Error('SyncMetadataService is for desktop only');
     return getDatabaseService();
+  }
+
+  private ensureTable(): void {
+    if (this.tableVerified) return;
+    const db = this.db;
+    if (!db.isReady()) return;
+    try {
+      const tables = db.query<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='sync_metadata'"
+      );
+      if (tables.length === 0) {
+        db.execute(`
+          CREATE TABLE IF NOT EXISTS sync_metadata (
+            tenant_id TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            last_synced_at TEXT NOT NULL,
+            last_pull_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (tenant_id, entity_type)
+          )
+        `);
+        console.log('[SyncMetadata] Created missing sync_metadata table');
+      }
+      this.tableVerified = true;
+    } catch (err) {
+      console.warn('[SyncMetadata] ensureTable failed:', err);
+    }
   }
 
   /**
@@ -30,6 +59,7 @@ class SyncMetadataService {
    */
   getLastPullAt(tenantId: string): string {
     if (!this.db.isReady()) return DEFAULT_EPOCH;
+    this.ensureTable();
     const row = this.db.query<SyncMetadataRow>(
       `SELECT last_pull_at FROM sync_metadata WHERE tenant_id = ? AND entity_type = '_global' LIMIT 1`,
       [tenantId]
@@ -43,6 +73,7 @@ class SyncMetadataService {
    */
   setLastPullAt(tenantId: string, isoTimestamp: string): void {
     if (!this.db.isReady()) return;
+    this.ensureTable();
     this.db.execute(
       `INSERT INTO sync_metadata (tenant_id, entity_type, last_synced_at, last_pull_at, updated_at)
        VALUES (?, '_global', ?, ?, datetime('now'))
@@ -58,6 +89,7 @@ class SyncMetadataService {
    */
   getLastSyncedAt(tenantId: string, entityType: string = '_global'): string {
     if (!this.db.isReady()) return DEFAULT_EPOCH;
+    this.ensureTable();
     const row = this.db.query<SyncMetadataRow>(
       `SELECT last_synced_at FROM sync_metadata WHERE tenant_id = ? AND entity_type = ? LIMIT 1`,
       [tenantId, entityType]
@@ -71,6 +103,7 @@ class SyncMetadataService {
    */
   setLastSyncedAt(tenantId: string, entityType: string, isoTimestamp: string): void {
     if (!this.db.isReady()) return;
+    this.ensureTable();
     this.db.execute(
       `INSERT INTO sync_metadata (tenant_id, entity_type, last_synced_at, last_pull_at, updated_at)
        VALUES (?, ?, ?, NULL, datetime('now'))

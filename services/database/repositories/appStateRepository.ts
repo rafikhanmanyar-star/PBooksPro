@@ -674,13 +674,20 @@ export class AppStateRepository {
                                 const userId = getCurrentUserId();
 
                                 if (tenantId) {
+                                    let syncErrors = 0;
                                     pendingOps.forEach(op => {
                                         try {
                                             outbox.enqueue(tenantId, op.tableName, op.type, op.entityId, op.data || {}, userId ?? undefined);
                                         } catch (syncError) {
-                                            console.error(`❌ Failed to queue sync for ${op.tableName}:${op.entityId}:`, syncError);
+                                            syncErrors++;
+                                            if (syncErrors === 1) {
+                                                console.error(`❌ Failed to queue sync for ${op.tableName}:${op.entityId}:`, syncError);
+                                            }
                                         }
                                     });
+                                    if (syncErrors > 1) {
+                                        console.error(`❌ ${syncErrors} total sync queue failures (suppressed repeated logs)`);
+                                    }
                                 } else {
                                     console.warn(`[AppStateRepository] No tenant context, skipping ${pendingOps.length} sync operations`);
                                 }
