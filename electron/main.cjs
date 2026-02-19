@@ -83,18 +83,23 @@ function createWindow() {
 
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.logger = console;
 
-if (isDev) {
-  autoUpdater.logger = console;
-  autoUpdater.forceDevUpdateConfig = true;
-}
+// Always set the feed URL explicitly at runtime to ensure the correct update server
+// is used regardless of what was baked in at build time
+autoUpdater.setFeedURL({
+  provider: 'generic',
+  url: 'https://api.pbookspro.com/api/app-info/updates',
+});
 
 function setupAutoUpdater() {
   autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for update...');
     mainWindow?.webContents.send('update-checking');
   });
 
   autoUpdater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Update available:', info.version);
     mainWindow?.webContents.send('update-available', {
       version: info.version,
       releaseDate: info.releaseDate,
@@ -102,11 +107,13 @@ function setupAutoUpdater() {
     });
   });
 
-  autoUpdater.on('update-not-available', () => {
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[AutoUpdater] No update available. Current:', info.version);
     mainWindow?.webContents.send('update-not-available');
   });
 
   autoUpdater.on('download-progress', (progress) => {
+    console.log(`[AutoUpdater] Download progress: ${progress.percent.toFixed(1)}% (${progress.transferred}/${progress.total})`);
     mainWindow?.webContents.send('update-download-progress', {
       bytesPerSecond: progress.bytesPerSecond,
       percent: progress.percent,
@@ -116,6 +123,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Update downloaded:', info.version);
     mainWindow?.webContents.send('update-downloaded', {
       version: info.version,
       releaseDate: info.releaseDate,
@@ -124,15 +132,19 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Error:', err);
     mainWindow?.webContents.send('update-error', err?.message || 'Unknown update error');
   });
 
   ipcMain.on('install-update', () => {
+    console.log('[AutoUpdater] Installing update and restarting...');
     autoUpdater.quitAndInstall(false, true);
   });
 
   ipcMain.on('check-for-updates', () => {
+    console.log('[AutoUpdater] Manual check triggered');
     autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[AutoUpdater] Manual check error:', err);
       mainWindow?.webContents.send('update-error', err?.message || 'Failed to check for updates');
     });
   });
