@@ -3716,7 +3716,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             try {
                 logger.logCategory('database', '💾 Saving state before logout...');
                 if (!useFallback && saveNow) {
-                    await saveNow(state);
+                    await saveNow(state, { disableSyncQueueing: true });
                     logger.logCategory('database', '✅ State saved successfully before logout');
                 } else if (!useFallback) {
                     const dbService = getDatabaseService();
