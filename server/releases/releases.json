@@ -1,59 +1,82 @@
 {
     "releases":  [
                      {
+                         "version":  "1.2.8",
                          "date":  "2026-02-20T18:17:29.3598730Z",
                          "environment":  "staging",
                          "files":  [
                                        {
-                                           "downloadUrl":  "https://pbookspro-api-staging.onrender.com/api/app-info/releases/download/PBooks%20Pro%20(Staging)%20Setup%201.1.6.exe",
+                                           "name":  "PBooks Pro (Staging) Setup 1.2.8.exe",
                                            "type":  "installer",
                                            "size":  115528919,
                                            "sha512":  "8ACDDEF46F9B8F22AAA679B5F08B5B8093F3D873A07C062FD72139817BBCC37A0504B95B246E2EDE3B04EB7CA929C1A8A33D5F61FE58401BBB12D32D5E61071B",
-                                           "name":  "PBooks Pro (Staging) Setup 1.1.6.exe"
+                                           "downloadUrl":  "https://pbookspro-api-staging.onrender.com/api/app-info/releases/download/PBooks%20Pro%20(Staging)%20Setup%201.2.8.exe"
                                        }
                                    ],
-                         "version":  "1.2.8",
                          "changelog":  ""
                      },
                      {
+                         "version":  "1.2.9",
                          "date":  "2026-02-20T18:23:41.2996182Z",
                          "environment":  "staging",
                          "files":  [
                                        {
-                                           "downloadUrl":  "https://pbookspro-api-staging.onrender.com/api/app-info/releases/download/PBooks%20Pro%20(Staging)%20Setup%201.1.6.exe",
+                                           "name":  "PBooks Pro (Staging) Setup 1.2.9.exe",
                                            "type":  "installer",
                                            "size":  115528919,
                                            "sha512":  "8ACDDEF46F9B8F22AAA679B5F08B5B8093F3D873A07C062FD72139817BBCC37A0504B95B246E2EDE3B04EB7CA929C1A8A33D5F61FE58401BBB12D32D5E61071B",
-                                           "name":  "PBooks Pro (Staging) Setup 1.1.6.exe"
+                                           "downloadUrl":  "https://pbookspro-api-staging.onrender.com/api/app-info/releases/download/PBooks%20Pro%20(Staging)%20Setup%201.2.9.exe"
                                        }
                                    ],
-                         "version":  "1.2.9",
                          "changelog":  ""
                      },
                      {
+                         "version":  "1.2.9",
                          "date":  "2026-02-20T18:26:49.4775577Z",
                          "environment":  "production",
                          "files":  [
                                        {
-                                           "downloadUrl":  "https://api.pbookspro.com/api/app-info/releases/download/PBooks%20Pro%20Setup%201.1.0.exe",
+                                           "name":  "PBooks.Pro.Setup.1.2.9.exe",
                                            "type":  "installer",
-                                           "size":  112319287,
+                                           "size":  112325444,
                                            "sha512":  "F8AECD542D5F26A72FC289016EB970B628297D4C4E7B31EADFDCC766EE629695839AFD6CBC8EA3991AF15BD75929ED01989D94ADFBA2690199B32E3237AC4C95",
-                                           "name":  "PBooks Pro Setup 1.1.0.exe"
-                                       },
-                                       {
-                                           "downloadUrl":  "https://api.pbookspro.com/api/app-info/releases/download/PBooks%20Pro%201.1.6.exe",
-                                           "type":  "portable",
-                                           "size":  111329844,
-                                           "sha512":  "D95EFBEB1A9D07BA6D5B977C9ECF78C9D351A55D7AACE48A9AEE9D43E64DE03E17986CB6FED233EB1FC0A45D34733F3311D0E57A29BACAC6C8F75A3F23EBF0BC",
-                                           "name":  "PBooks Pro 1.1.6.exe"
+                                           "downloadUrl":  "https://github.com/rafikhanmanyar-star/PBooksPro/releases/download/V1.2.9/PBooks.Pro.Setup.1.2.9.exe"
                                        }
                                    ],
-                         "version":  "1.2.9",
                          "changelog":  ""
                      },
                      {
+                         "version":  "1.2.10",
                          "date":  "2026-02-20T19:02:08.8428922Z",
+                         "environment":  "staging",
+                         "files":  [
+                                       {
+                                           "name":  "PBooks Pro (Staging) Setup 1.2.10.exe",
+                                           "type":  "installer",
+                                           "size":  115528919,
+                                           "sha512":  "8ACDDEF46F9B8F22AAA679B5F08B5B8093F3D873A07C062FD72139817BBCC37A0504B95B246E2EDE3B04EB7CA929C1A8A33D5F61FE58401BBB12D32D5E61071B",
+                                           "downloadUrl":  "https://pbookspro-api-staging.onrender.com/api/app-info/releases/download/PBooks%20Pro%20(Staging)%20Setup%201.2.10.exe"
+                                       }
+                                   ],
+                         "changelog":  ""
+                     },
+                     {
+                         "version":  "1.2.10",
+                         "date":  "2026-02-20T19:06:41.3348123Z",
+                         "environment":  "production",
+                         "files":  [
+                                       {
+                                           "name":  "PBooks.Pro.Setup.1.2.10.exe",
+                                           "type":  "installer",
+                                           "size":  112325590,
+                                           "sha512":  "D95EFBEB1A9D07BA6D5B977C9ECF78C9D351A55D7AACE48A9AEE9D43E64DE03E17986CB6FED233EB1FC0A45D34733F3311D0E57A29BACAC6C8F75A3F23EBF0BC",
+                                           "downloadUrl":  "https://github.com/rafikhanmanyar-star/PBooksPro/releases/download/V1.2.10/PBooks.Pro.Setup.1.2.10.exe"
+                                       }
+                                   ],
+                         "changelog":  ""
+                     },
+                     {
+                         "date":  "2026-02-20T19:19:52.1930086Z",
                          "environment":  "staging",
                          "files":  [
                                        {
@@ -64,29 +87,7 @@
                                            "name":  "PBooks Pro (Staging) Setup 1.1.6.exe"
                                        }
                                    ],
-                         "version":  "1.2.10",
-                         "changelog":  ""
-                     },
-                     {
-                         "date":  "2026-02-20T19:06:41.3348123Z",
-                         "environment":  "production",
-                         "files":  [
-                                       {
-                                           "downloadUrl":  "https://api.pbookspro.com/api/app-info/releases/download/PBooks%20Pro%20Setup%201.1.0.exe",
-                                           "type":  "installer",
-                                           "size":  112319287,
-                                           "sha512":  "F8AECD542D5F26A72FC289016EB970B628297D4C4E7B31EADFDCC766EE629695839AFD6CBC8EA3991AF15BD75929ED01989D94ADFBA2690199B32E3237AC4C95",
-                                           "name":  "PBooks Pro Setup 1.1.0.exe"
-                                       },
-                                       {
-                                           "downloadUrl":  "https://api.pbookspro.com/api/app-info/releases/download/PBooks%20Pro%201.1.6.exe",
-                                           "type":  "portable",
-                                           "size":  111329844,
-                                           "sha512":  "D95EFBEB1A9D07BA6D5B977C9ECF78C9D351A55D7AACE48A9AEE9D43E64DE03E17986CB6FED233EB1FC0A45D34733F3311D0E57A29BACAC6C8F75A3F23EBF0BC",
-                                           "name":  "PBooks Pro 1.1.6.exe"
-                                       }
-                                   ],
-                         "version":  "1.2.10",
+                         "version":  "1.2.11",
                          "changelog":  ""
                      }
                  ]

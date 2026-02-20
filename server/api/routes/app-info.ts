@@ -112,7 +112,7 @@ router.get('/updates/:filename', async (req, res) => {
       const version = getLatestVersion();
       if (version) {
         const env = getCurrentEnvironment();
-        const tag = env === 'staging' ? `v${version}-staging` : `v${version}`;
+        const tag = env === 'staging' ? `V${version}-staging` : `V${version}`;
         const githubUrl = `${githubRepo}/releases/download/${tag}/${encodeURIComponent(safeName)}`;
         return res.redirect(302, githubUrl);
       }
@@ -166,7 +166,7 @@ router.get('/releases/latest', async (req, res) => {
   }
 });
 
-// Download a release file directly from this server (fallback if files are hosted locally)
+// Download a release file. Serves locally if available, otherwise redirects to GitHub Releases.
 router.get('/releases/download/:filename', async (req, res) => {
   try {
     const filename = decodeURIComponent(req.params.filename);
@@ -176,17 +176,27 @@ router.get('/releases/download/:filename', async (req, res) => {
     }
 
     const filePath = resolve(process.cwd(), 'releases', safeName);
-    if (!existsSync(filePath)) {
-      return res.status(404).json({ error: 'Release file not found. It may be hosted externally.' });
+    if (existsSync(filePath)) {
+      const stat = statSync(filePath);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return createReadStream(filePath).pipe(res);
     }
 
-    const stat = statSync(filePath);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const githubRepo = process.env.GITHUB_REPO_URL;
+    if (githubRepo) {
+      const version = getLatestVersion();
+      if (version) {
+        const env = getCurrentEnvironment();
+        const tag = env === 'staging' ? `V${version}-staging` : `V${version}`;
+        const githubUrl = `${githubRepo}/releases/download/${tag}/${encodeURIComponent(safeName)}`;
+        return res.redirect(302, githubUrl);
+      }
+    }
 
-    createReadStream(filePath).pipe(res);
+    return res.status(404).json({ error: 'Release file not found. It may be hosted externally.' });
   } catch (error) {
     console.error('Error serving release file:', error);
     res.status(500).json({ error: 'Failed to serve release file' });

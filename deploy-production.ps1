@@ -89,7 +89,7 @@ try {
     if ($LASTEXITCODE -eq 0) { $ghAvailable = $true }
 } catch { }
 
-$ghTag = "v$version"
+$ghTag = "V$version"
 
 if ($ghAvailable -and ($setupExe -or $portableExe)) {
     Write-Host "       Uploading to GitHub Releases (tag: $ghTag)..." -ForegroundColor Yellow
