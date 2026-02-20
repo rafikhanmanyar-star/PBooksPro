@@ -580,6 +580,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     });
   }, [state.contracts, state.projects, type, billAllocationType, projectId, vendorId, contractId]);
 
+  // Auto-link contract when exactly one active contract matches vendor + project
+  useEffect(() => {
+    if (type !== 'bill' || contractId || !vendorId || !projectId || itemToEdit) return;
+    if (availableContracts.length === 1) {
+      setContractId(availableContracts[0].id);
+    }
+  }, [availableContracts, type, contractId, vendorId, projectId, itemToEdit]);
+
   const incomeCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.INCOME), [state.categories]);
   const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
 
@@ -1359,7 +1367,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             </div>
 
             {/* Contract Linking - Inline */}
-            {contactId && (
+            {(vendorId || contactId) && (
               <div className="flex flex-col">
                 <ComboBox
                   label="Contract (Optional)"
@@ -1370,14 +1378,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                     if (selectedContractId) {
                       const contract = state.contracts.find(c => c.id === selectedContractId);
                       if (contract) {
-                        // Validate: bill and contract must have the same projectId
-                        // If either has a projectId, they must match exactly
                         if ((projectId || contract.projectId) && projectId !== contract.projectId) {
                           showAlert('This contract belongs to a different project. A bill can only be linked to a contract with the same project.');
                           return;
                         }
                         setContractId(selectedContractId);
-                        // Auto-set projectId from contract if not already set
                         if (contract.projectId && !projectId) {
                           setProjectId(contract.projectId);
                         }
@@ -1465,7 +1470,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   </div>
 
                   {/* Contract Linking */}
-                  {contactId && (
+                  {(vendorId || contactId) && (
                     <div className="flex flex-col">
                       <ComboBox
                         label="Contract (Optional)"
@@ -1476,14 +1481,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                           if (selectedContractId) {
                             const contract = state.contracts.find(c => c.id === selectedContractId);
                             if (contract) {
-                              // Validate: bill and contract must have the same projectId
-                              // If either has a projectId, they must match exactly
                               if ((projectId || contract.projectId) && projectId !== contract.projectId) {
                                 showAlert('This contract belongs to a different project. A bill can only be linked to a contract with the same project.');
                                 return;
                               }
                               setContractId(selectedContractId);
-                              // Auto-set projectId from contract if not already set
                               if (contract.projectId && !projectId) {
                                 setProjectId(contract.projectId);
                               }
