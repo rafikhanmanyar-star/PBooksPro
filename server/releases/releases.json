@@ -89,6 +89,28 @@
                                    ],
                          "version":  "1.2.11",
                          "changelog":  ""
+                     },
+                     {
+                         "date":  "2026-02-20T19:23:53.0528305Z",
+                         "environment":  "production",
+                         "files":  [
+                                       {
+                                           "downloadUrl":  "https://api.pbookspro.com/api/app-info/releases/download/PBooks%20Pro%20Setup%201.1.0.exe",
+                                           "type":  "installer",
+                                           "size":  112319287,
+                                           "sha512":  "F8AECD542D5F26A72FC289016EB970B628297D4C4E7B31EADFDCC766EE629695839AFD6CBC8EA3991AF15BD75929ED01989D94ADFBA2690199B32E3237AC4C95",
+                                           "name":  "PBooks Pro Setup 1.1.0.exe"
+                                       },
+                                       {
+                                           "downloadUrl":  "https://api.pbookspro.com/api/app-info/releases/download/PBooks%20Pro%201.1.6.exe",
+                                           "type":  "portable",
+                                           "size":  111329844,
+                                           "sha512":  "D95EFBEB1A9D07BA6D5B977C9ECF78C9D351A55D7AACE48A9AEE9D43E64DE03E17986CB6FED233EB1FC0A45D34733F3311D0E57A29BACAC6C8F75A3F23EBF0BC",
+                                           "name":  "PBooks Pro 1.1.6.exe"
+                                       }
+                                   ],
+                         "version":  "1.2.11",
+                         "changelog":  ""
                      }
                  ]
 }
