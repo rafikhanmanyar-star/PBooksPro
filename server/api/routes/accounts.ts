@@ -77,6 +77,13 @@ router.post('/', async (req: TenantRequest, res) => {
       );
 
       if (existing.rows.length > 0) {
+        // If the account was soft-deleted, don't resurrect it via sync/upsert.
+        // Return success so the sync client marks the operation as completed.
+        if (existing.rows[0].deleted_at) {
+          console.log('⏭️ POST /accounts - Account is soft-deleted, skipping upsert:', accountId);
+          return { ...existing.rows[0], _softDeleted: true };
+        }
+
         // Update existing account
         console.log('🔄 POST /accounts - Updating existing account:', accountId);
         isUpdate = true;
@@ -95,8 +102,7 @@ router.post('/', async (req: TenantRequest, res) => {
           `UPDATE accounts 
            SET name = $1, type = $2, balance = $3, description = $4, 
                parent_account_id = $5, user_id = $6, updated_at = NOW(),
-               version = COALESCE(version, 1) + 1,
-               deleted_at = NULL
+               version = COALESCE(version, 1) + 1
            WHERE id = $7 AND tenant_id = $8 AND (version = $9 OR version IS NULL)
            RETURNING *`,
           [

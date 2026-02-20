@@ -448,7 +448,12 @@ export abstract class BaseRepository<T> {
         const values = keys.map(k => dbData[k]);
         const primaryKeyColumn = camelToSnake(this.primaryKey);
 
-        let sql = `UPDATE ${this.tableName} SET ${setClause}, updated_at = datetime('now') WHERE ${primaryKeyColumn} = ?`;
+        let sql: string;
+        if (columnsSet.has('updated_at')) {
+            sql = `UPDATE ${this.tableName} SET ${setClause}, updated_at = datetime('now') WHERE ${primaryKeyColumn} = ?`;
+        } else {
+            sql = `UPDATE ${this.tableName} SET ${setClause} WHERE ${primaryKeyColumn} = ?`;
+        }
         values.push(id);
 
         // Add tenant_id filter if tenant is logged in
@@ -490,8 +495,9 @@ export abstract class BaseRepository<T> {
         const tenantId = tenantFilter ? getCurrentTenantId() : null;
 
         if (this.tableSupportsSoftDelete()) {
-            // Soft delete: set deleted_at timestamp
-            let sql = `UPDATE ${this.tableName} SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE ${primaryKeyColumn} = ?`;
+            const columnsSet = this.ensureTableColumns();
+            const updatedAtClause = columnsSet.has('updated_at') ? ", updated_at = datetime('now')" : '';
+            let sql = `UPDATE ${this.tableName} SET deleted_at = datetime('now')${updatedAtClause} WHERE ${primaryKeyColumn} = ?`;
             const params: any[] = [id];
             if (tenantId) {
                 sql += ` AND tenant_id = ?`;
@@ -689,6 +695,45 @@ export abstract class BaseRepository<T> {
                             throw insertError; // Re-throw to stop the process and rollback transaction
                         }
                     });
+
+                    // Clean up orphaned records: remove rows for this tenant that are
+                    // no longer in the state array. Without this, deleted entities
+                    // (e.g. accounts) persist in local SQLite and reappear on reload.
+                    if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                        const tenantId = getCurrentTenantId();
+                        if (tenantId) {
+                            const primaryKeyColumn = camelToSnake(this.primaryKey);
+                            const idsToKeep = new Set(
+                                records.map(r => {
+                                    const rec = r as Record<string, any>;
+                                    return rec[this.primaryKey] || rec.id;
+                                }).filter(Boolean)
+                            );
+
+                            const existing = this.db.query<Record<string, any>>(
+                                `SELECT ${primaryKeyColumn} as _pk FROM ${this.tableName} WHERE ${this.tenantColumn} = ?`,
+                                [tenantId]
+                            );
+
+                            const idsToDelete = existing
+                                .map(row => row._pk as string)
+                                .filter(id => !idsToKeep.has(id));
+
+                            if (idsToDelete.length > 0) {
+                                const BATCH = 500;
+                                for (let i = 0; i < idsToDelete.length; i += BATCH) {
+                                    const batch = idsToDelete.slice(i, i + BATCH);
+                                    const placeholders = batch.map(() => '?').join(',');
+                                    this.db.execute(
+                                        `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} IN (${placeholders})`,
+                                        batch
+                                    );
+                                }
+                                console.log(`🧹 Cleaned up ${idsToDelete.length} orphaned record(s) from ${this.tableName}`);
+                            }
+                        }
+                    }
+
                     console.log(`✅ Completed inserting/replacing ${records.length} records to ${this.tableName}`);
                 } else {
                     // When saving 0 records, delete to match desired state. FKs are disabled during

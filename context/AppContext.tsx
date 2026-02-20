@@ -1662,6 +1662,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             const getDeleteSyncTarget = (action: AppAction): { type: SyncOperationType; id: string } | null => {
                 switch (action.type) {
+                    case 'DELETE_ACCOUNT':
+                        return { type: 'account', id: action.payload as string };
                     case 'DELETE_INVOICE':
                         return { type: 'invoice', id: action.payload as string };
                     case 'DELETE_TRANSACTION':

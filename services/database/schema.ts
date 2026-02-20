@@ -7,7 +7,7 @@
  */
 
 // Aligned with PostgreSQL (postgresql-schema.sql + hardening). PostgreSQL is source of truth.
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const CREATE_SCHEMA_SQL = `
 -- Enable foreign keys

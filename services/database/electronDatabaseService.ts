@@ -277,6 +277,86 @@ export class ElectronDatabaseService {
           this.execute(`UPDATE bills SET status = CASE WHEN paid_amount = 0 THEN 'Unpaid' WHEN paid_amount >= amount THEN 'Paid' WHEN paid_amount > 0 THEN 'Partially Paid' ELSE 'Unpaid' END WHERE status IS NULL`);
         }
       }
+
+      // Ensure missing columns on all entity tables (mirrors databaseService.ensureContractColumnsExist)
+      const tableColumns: Record<string, [string, string][]> = {
+        rental_agreements: [
+          ['broker_fee', 'REAL'],
+          ['owner_id', 'TEXT'],
+          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+        ],
+        accounts: [
+          ['description', 'TEXT'],
+          ['user_id', 'TEXT'],
+          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+        ],
+        projects: [
+          ['description', 'TEXT'],
+          ['color', 'TEXT'],
+          ['pm_config', 'TEXT'],
+          ['installment_config', 'TEXT'],
+          ['user_id', 'TEXT'],
+          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+        ],
+        buildings: [
+          ['description', 'TEXT'],
+          ['color', 'TEXT'],
+          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+        ],
+        properties: [
+          ['description', 'TEXT'],
+          ['monthly_service_charge', 'REAL'],
+          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+        ],
+        units: [
+          ['sale_price', 'REAL'],
+          ['description', 'TEXT'],
+          ['type', 'TEXT'],
+          ['area', 'REAL'],
+          ['floor', 'TEXT'],
+          ['user_id', 'TEXT'],
+          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+        ],
+        project_agreements: [
+          ['unit_ids', 'TEXT'],
+          ['list_price', 'REAL'],
+          ['customer_discount', 'REAL'],
+          ['floor_discount', 'REAL'],
+          ['lump_sum_discount', 'REAL'],
+          ['misc_discount', 'REAL'],
+          ['rebate_amount', 'REAL'],
+          ['rebate_broker_id', 'TEXT'],
+          ['issue_date', 'TEXT'],
+          ['description', 'TEXT'],
+          ['cancellation_details', 'TEXT'],
+          ['list_price_category_id', 'TEXT'],
+          ['customer_discount_category_id', 'TEXT'],
+          ['floor_discount_category_id', 'TEXT'],
+          ['lump_sum_discount_category_id', 'TEXT'],
+          ['misc_discount_category_id', 'TEXT'],
+          ['selling_price_category_id', 'TEXT'],
+          ['rebate_category_id', 'TEXT'],
+          ['user_id', 'TEXT'],
+          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+        ],
+      };
+
+      for (const [tableName, columns] of Object.entries(tableColumns)) {
+        const tableExists = this.query<{ name: string }>(
+          `SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}'`
+        ).length > 0;
+        if (!tableExists) continue;
+
+        const existingCols = new Set(
+          this.query<{ name: string }>(`PRAGMA table_info(${tableName})`).map(c => c.name)
+        );
+
+        for (const [colName, colType] of columns) {
+          if (!existingCols.has(colName)) {
+            try { this.execute(`ALTER TABLE ${tableName} ADD COLUMN ${colName} ${colType}`); } catch (_) { }
+          }
+        }
+      }
     } catch (_) { }
   }
 
