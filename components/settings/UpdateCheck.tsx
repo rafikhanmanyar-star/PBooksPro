@@ -36,14 +36,14 @@ const UpdateCheck: React.FC = () => {
       setStatus('checking');
     } else if (electronUpdateDownloaded) {
       setStatus('downloaded');
-    } else if (electronDownloadProgress) {
-      setStatus('downloading');
-    } else if (electronUpdateAvailable) {
-      setStatus('available');
     } else if (electronError) {
       setStatus('error');
       setError(electronError);
       setErrorDetails(electronError);
+    } else if (electronDownloadProgress) {
+      setStatus('downloading');
+    } else if (electronUpdateAvailable) {
+      setStatus('available');
     }
   }, [isElectronUpdate, electronChecking, electronUpdateAvailable, electronUpdateDownloaded, electronDownloadProgress, electronError]);
 

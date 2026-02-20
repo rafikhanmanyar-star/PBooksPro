@@ -39,6 +39,8 @@ services:
         value: https://api.pbookspro.com
       - key: CLIENT_URL
         value: https://www.pbookspro.com
+      - key: GITHUB_REPO_URL
+        value: https://github.com/rafikhanmanyar-star/PBooksPro
       # Payment Gateway Configuration (Paddle)
       # Add these in Render Dashboard → Environment tab
       # - key: PAYMENT_GATEWAY
@@ -116,6 +118,8 @@ services:
         value: https://pbookspro-api-staging.onrender.com
       - key: CLIENT_URL
         value: https://pbookspro-website-staging.onrender.com
+      - key: GITHUB_REPO_URL
+        value: https://github.com/rafikhanmanyar-star/PBooksPro
       # Payment Gateway Configuration (Paddle - Sandbox for testing)
       # Add these in Render Dashboard → Environment tab
       # - key: PAYMENT_GATEWAY

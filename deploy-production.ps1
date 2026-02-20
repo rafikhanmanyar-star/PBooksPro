@@ -157,7 +157,8 @@ if ($releasesData.releases) {
 $releasesList.Add($newRelease) | Out-Null
 
 $releasesData.releases = $releasesList.ToArray()
-$releasesData | ConvertTo-Json -Depth 10 | Set-Content $releasesJsonPath -Encoding UTF8
+$jsonContent = $releasesData | ConvertTo-Json -Depth 10
+[System.IO.File]::WriteAllText($releasesJsonPath, $jsonContent, [System.Text.UTF8Encoding]::new($false))
 Write-Host "       Release v$version registered in releases.json" -ForegroundColor Green
 
 # Copy installer and blockmap to server/releases/ for auto-update serving

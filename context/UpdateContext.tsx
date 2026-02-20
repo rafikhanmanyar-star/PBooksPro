@@ -78,6 +78,8 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     cleanups.push(updater.onError((message: string) => {
       setIsChecking(false);
+      setUpdateAvailable(false);
+      setDownloadProgress(null);
       setError(message);
     }));
 

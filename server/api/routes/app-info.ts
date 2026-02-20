@@ -37,7 +37,8 @@ function loadReleases(): ReleasesData {
   if (!existsSync(jsonPath)) {
     return { releases: [] };
   }
-  return JSON.parse(readFileSync(jsonPath, 'utf-8'));
+  const raw = readFileSync(jsonPath, 'utf-8').replace(/^\uFEFF/, '');
+  return JSON.parse(raw);
 }
 
 function getCurrentEnvironment(): string {
@@ -79,8 +80,16 @@ router.get('/updates/latest.yml', async (req, res) => {
   }
 });
 
-// Serve installer exe files for electron-updater auto-update downloads.
-// Looks in server/releases/ for the requested file.
+function getLatestVersion(): string | null {
+  const ymlPath = resolve(process.cwd(), 'updates/latest.yml');
+  if (!existsSync(ymlPath)) return null;
+  const content = readFileSync(ymlPath, 'utf-8');
+  const match = content.match(/^version:\s*(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
+// Serve update files for electron-updater auto-update downloads.
+// Serves from server/releases/ if available, otherwise redirects to GitHub Releases.
 router.get('/updates/:filename', async (req, res) => {
   try {
     const filename = decodeURIComponent(req.params.filename);
@@ -89,15 +98,27 @@ router.get('/updates/:filename', async (req, res) => {
       return res.status(400).send('Invalid file type');
     }
     const filePath = resolve(process.cwd(), 'releases', safeName);
-    if (!existsSync(filePath)) {
-      return res.status(404).send('File not found');
+    if (existsSync(filePath)) {
+      const stat = statSync(filePath);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Cache-Control', 'no-cache');
+      return createReadStream(filePath).pipe(res);
     }
-    const stat = statSync(filePath);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Cache-Control', 'no-cache');
-    createReadStream(filePath).pipe(res);
+
+    const githubRepo = process.env.GITHUB_REPO_URL;
+    if (githubRepo) {
+      const version = getLatestVersion();
+      if (version) {
+        const env = getCurrentEnvironment();
+        const tag = env === 'staging' ? `v${version}-staging` : `v${version}`;
+        const githubUrl = `${githubRepo}/releases/download/${tag}/${encodeURIComponent(safeName)}`;
+        return res.redirect(302, githubUrl);
+      }
+    }
+
+    return res.status(404).send('File not found');
   } catch (error) {
     console.error('Error serving update file:', error);
     res.status(500).send('Failed to serve update file');
