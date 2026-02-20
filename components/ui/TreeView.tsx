@@ -19,6 +19,7 @@ interface TreeViewProps {
     showLines?: boolean;
     defaultExpanded?: boolean;
     selectedId?: string | null; // Currently selected node ID
+    selectedParentId?: string | null; // Parent of the selected node (for scoped selection)
     onSelect?: (id: string, type?: string, parentId?: string | null) => void; // Selection callback
 }
 
@@ -27,12 +28,14 @@ const TreeNodeItem: React.FC<{
     level: number;
     showLines: boolean;
     selectedId?: string | null;
+    selectedParentId?: string | null;
     onSelect?: (id: string, type?: string, parentId?: string | null) => void;
     parentId?: string | null;
-}> = ({ node, level, showLines, selectedId, onSelect, parentId }) => {
+}> = ({ node, level, showLines, selectedId, selectedParentId, onSelect, parentId }) => {
     const [isExpanded, setIsExpanded] = useState(node.isExpanded ?? true);
     const hasChildren = node.children && node.children.length > 0;
-    const isSelected = selectedId === node.id;
+    const isSelected = selectedId === node.id && 
+        (selectedParentId === undefined || selectedParentId === parentId);
 
     const handleClick = () => {
         if (onSelect) {
@@ -88,6 +91,7 @@ const TreeNodeItem: React.FC<{
                             level={level + 1}
                             showLines={showLines}
                             selectedId={selectedId}
+                            selectedParentId={selectedParentId}
                             onSelect={onSelect}
                             parentId={node.id}
                         />
@@ -105,6 +109,7 @@ const TreeView: React.FC<TreeViewProps> = ({
     showLines = true,
     defaultExpanded = true,
     selectedId,
+    selectedParentId,
     onSelect,
 }) => {
     // Support both 'nodes' and 'treeData' props for backward compatibility
@@ -128,6 +133,7 @@ const TreeView: React.FC<TreeViewProps> = ({
                     level={0}
                     showLines={showLines}
                     selectedId={selectedId}
+                    selectedParentId={selectedParentId}
                     onSelect={onSelect}
                     parentId={null}
                 />

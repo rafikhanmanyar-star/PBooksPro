@@ -35,16 +35,9 @@ const ProjectProfitLossReport: React.FC = () => {
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
     
-    // Default to 'This Month' or 'Till Today' as preferred
-    const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    });
-    const [endDate, setEndDate] = useState(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-    });
+    const [dateRange, setDateRange] = useState<ReportDateRange>('all');
+    const [startDate, setStartDate] = useState('2000-01-01');
+    const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
     
     const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
     

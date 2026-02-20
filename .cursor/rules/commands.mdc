@@ -1,0 +1,65 @@
+---
+description: Build and deploy commands for staging and production
+alwaysApply: true
+---
+
+# PBooks Pro – Commands
+
+## Deploy to Staging
+
+```powershell
+npm run deploy:staging
+# or: .\deploy-staging.ps1
+```
+
+**What it does (in order):**
+1. Increments patch version (e.g. 1.2.2 → 1.2.3)
+2. Builds electron staging installer → `release-staging/`
+3. Stages and commits all changes
+4. Pushes to remote `staging` branch → triggers Render auto-deploy
+
+**Render staging services redeployed:**
+- `pbookspro-api-staging` (API server)
+- `pbookspro-admin-staging` (Admin portal)
+- `pbookspro-website-staging` (Website)
+
+---
+
+## Deploy to Production
+
+```powershell
+npm run deploy:production
+# or: .\deploy-production.ps1
+```
+
+**What it does (in order):**
+1. Prompts for confirmation before proceeding
+2. Builds electron production installer → `release/`
+3. Stages and commits all changes
+4. Pushes to remote `staging` branch (keeps staging in sync)
+5. Merges into `main` and pushes → triggers Render auto-deploy
+
+**Render production services redeployed:**
+- `pbookspro-api` (API server)
+- `pbookspro-admin` (Admin portal)
+- `pbookspro-website` (Website)
+
+---
+
+## Other Useful Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server |
+| `npm run build` | Build frontend only |
+| `npm run electron:dev` | Run electron app in dev mode |
+| `npm run electron:staging` | Run staging electron app locally |
+| `npm run electron:staging:installer` | Build staging installer only (no deploy) |
+| `npm run electron:production:installer` | Build production installer only (no deploy) |
+
+## Branch → Render Mapping
+
+| Branch | Render Services | Environment |
+|--------|----------------|-------------|
+| `staging` | api-staging, admin-staging, website-staging | Staging |
+| `main` | api, admin, website | Production |

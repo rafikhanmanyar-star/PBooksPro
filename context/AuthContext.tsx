@@ -64,10 +64,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     error: null,
   });
 
+  // Flag to prevent heartbeat from re-creating sessions during logout
+  const loggingOutRef = React.useRef(false);
+
   /**
    * Logout
    */
   const logout = useCallback(async () => {
+    // Set flag FIRST to prevent heartbeat from re-creating sessions
+    loggingOutRef.current = true;
+
     try {
       // Save all data to database before logout
       logger.logCategory('auth', '💾 Saving data before logout...');
@@ -173,24 +179,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!state.isAuthenticated) return;
 
+    // Reset logout flag on fresh login so heartbeat works normally
+    loggingOutRef.current = false;
+
     const HEARTBEAT_INTERVAL = 1 * 60 * 1000; // 1 minute (reduced from 2 minutes to ensure session stays active with 5-minute inactivity threshold)
     const INITIAL_DELAY = 5000; // 5 seconds delay before first heartbeat to avoid race condition
     let heartbeatInterval: NodeJS.Timeout | null = null;
     let initialTimeout: NodeJS.Timeout | null = null;
 
     const sendHeartbeat = async () => {
+      if (loggingOutRef.current) return;
       try {
         await apiClient.post('/auth/heartbeat', {});
       } catch (error: any) {
-        // If heartbeat fails with SESSION_NOT_FOUND, it might be a race condition
-        // Don't trigger logout immediately - wait for next heartbeat
         if (error?.code === 'SESSION_NOT_FOUND') {
           logger.logCategory('auth', 'Heartbeat: Session not found (may be race condition), will retry on next interval');
         } else if (error?.status === 401) {
-          // Only log, don't trigger logout - let middleware handle it on actual API calls
           logger.logCategory('auth', 'Heartbeat failed (session may be invalid)');
         } else {
-          // Other errors (network, etc.) - just log
           logger.logCategory('auth', 'Heartbeat error:', error?.message || error);
         }
       }

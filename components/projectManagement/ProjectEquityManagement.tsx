@@ -212,6 +212,11 @@ const ProjectEquityManagement: React.FC = () => {
     }, [state.transactions, equityAccounts, state.projects]);
 
 
+    const investorAccounts = useMemo(() => 
+        equityAccounts.filter(a => a.name !== 'Owner Equity'), 
+        [equityAccounts]
+    );
+
     // --- Data ---
     const treeData = useMemo<TreeNode[]>(() => {
         const nodes: TreeNode[] = [];
@@ -220,7 +225,7 @@ const ProjectEquityManagement: React.FC = () => {
         let allInvestorsTotal = 0;
         const allInvestorsChildren: TreeNode[] = [];
         
-        equityAccounts.forEach(acc => {
+        investorAccounts.forEach(acc => {
             const balance = balances.invTotalBal[acc.id] || 0;
             allInvestorsChildren.push({
                 id: acc.id,
@@ -256,7 +261,7 @@ const ProjectEquityManagement: React.FC = () => {
             const projInvestors = balances.invProjBal[p.id] || {};
             
             Object.entries(projInvestors).forEach(([invId, amount]) => {
-                const inv = equityAccounts.find(a => a.id === invId);
+                const inv = investorAccounts.find(a => a.id === invId);
                 if (inv) {
                     projectChildren.push({
                         id: inv.id,
@@ -286,7 +291,7 @@ const ProjectEquityManagement: React.FC = () => {
         nodes.push(...projectNodes);
 
         return nodes;
-    }, [state.projects, equityAccounts, balances]);
+    }, [state.projects, investorAccounts, balances]);
 
     const ledgerData = useMemo(() => {
         if (!selectedTreeId) return [];
@@ -952,7 +957,7 @@ const ProjectEquityManagement: React.FC = () => {
                                 {selectedTreeId && <button onClick={() => { setSelectedTreeId(null); setSelectedTreeType(null); setSelectedParentId(null); }} className="text-xs text-accent hover:underline">Clear</button>}
                             </div>
                             <div className="flex-grow overflow-y-auto p-2">
-                                <TreeView treeData={treeData} selectedId={selectedTreeId} onSelect={(id, type, parentId) => { setSelectedTreeId(id); setSelectedTreeType(type as any); setSelectedParentId(parentId || null); }} />
+                                <TreeView treeData={treeData} selectedId={selectedTreeId} selectedParentId={selectedParentId} onSelect={(id, type, parentId) => { setSelectedTreeId(id); setSelectedTreeType(type as any); setSelectedParentId(parentId || null); }} />
                             </div>
                         </div>
                         <div className="hidden md:block h-full">

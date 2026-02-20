@@ -203,7 +203,20 @@ export function tenantMiddleware(pool: Pool) {
           }
 
           try {
-            // Create session record (recover missing session)
+            // Check if user deliberately logged out — if so, don't recreate the session
+            const loginCheck = await pool.query(
+              'SELECT login_status FROM users WHERE id = $1',
+              [decoded.userId]
+            );
+            if (loginCheck.rows.length > 0 && loginCheck.rows[0].login_status === false) {
+              return res.status(401).json({
+                error: 'Session ended',
+                message: 'You have been logged out. Please login again.',
+                code: 'SESSION_INVALID'
+              });
+            }
+
+            // login_status is TRUE but session missing — race condition after login, recreate
             const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const expiresAt = new Date();
             expiresAt.setDate(expiresAt.getDate() + 30);
@@ -229,7 +242,6 @@ export function tenantMiddleware(pool: Pool) {
               ]
             );
 
-            // Update login_status to true (fire-and-forget)
             pool.query('UPDATE users SET login_status = TRUE WHERE id = $1', [decoded.userId])
               .catch(err => console.warn('Failed to update login_status:', err));
 

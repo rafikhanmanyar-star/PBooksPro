@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "type": "module",
@@ -25,6 +25,8 @@
     "mcp:dev": "cd mcp-server && npm run dev",
     "mcp:install": "cd mcp-server && npm install",
     "clear-local-transactions": "node tools/clear-local-transactions.cjs",
+    "deploy:staging": "powershell -ExecutionPolicy Bypass -File deploy-staging.ps1",
+    "deploy:production": "powershell -ExecutionPolicy Bypass -File deploy-production.ps1",
     "postinstall": "electron-rebuild"
   },
   "dependencies": {

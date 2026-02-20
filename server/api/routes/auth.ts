@@ -1020,9 +1020,20 @@ router.post('/logout', async (req, res) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
 
+      // Use jwt.decode (no verification) as fallback so we can always
+      // extract userId/tenantId and clean up the session, even if the
+      // token is expired or the secret has rotated.
+      let decoded: any = null;
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+        decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+      } catch (jwtError) {
+        decoded = jwt.decode(token) as any;
+        if (decoded) {
+          console.log('⚠️ Token verification failed during logout, using decoded payload to clean up session');
+        }
+      }
 
+      if (decoded?.userId) {
         // Delete session by token or by user_id + tenant_id (more reliable)
         await db.query(
           'DELETE FROM user_sessions WHERE token = $1 OR (user_id = $2 AND tenant_id = $3)',
@@ -1030,19 +1041,19 @@ router.post('/logout', async (req, res) => {
         );
 
         // Set login_status = FALSE to allow user to login again immediately
-        // This is critical for allowing re-login after logout
         await db.query(
           'UPDATE users SET login_status = FALSE WHERE id = $1',
           [decoded.userId]
         );
 
         console.log(`✅ User ${decoded.userId} logged out, login_status set to FALSE`);
-        res.json({ success: true, message: 'Logged out successfully' });
-      } catch (jwtError) {
-        // Token invalid, but still return success (user is logged out locally anyway)
-        console.log('⚠️ Invalid token during logout, but allowing logout to proceed');
-        res.json({ success: true, message: 'Logged out successfully' });
+      } else {
+        // Token completely undecodable - delete session by token only
+        await db.query('DELETE FROM user_sessions WHERE token = $1', [token]);
+        console.log('⚠️ Could not decode token during logout, deleted session by token match');
       }
+
+      res.json({ success: true, message: 'Logged out successfully' });
     } else {
       // No auth header - user already logged out locally
       res.json({ success: true, message: 'Logged out successfully' });
@@ -1075,11 +1086,24 @@ router.post('/heartbeat', async (req, res) => {
         [token, decoded.userId, decoded.tenantId]
       );
 
-      // If session doesn't exist, try to create it (might be a race condition after login)
       if (!sessionCheck || sessionCheck.length === 0) {
-        // Try to create the session if it doesn't exist (handles race condition after login)
+        // Session not found. Check if user deliberately logged out (login_status = FALSE).
+        // If so, do NOT re-create the session — the absence is intentional.
+        const userStatus = await db.query(
+          'SELECT login_status FROM users WHERE id = $1',
+          [decoded.userId]
+        );
+
+        if (userStatus.length > 0 && userStatus[0].login_status === false) {
+          return res.status(401).json({
+            error: 'Session ended - user logged out',
+            code: 'SESSION_NOT_FOUND'
+          });
+        }
+
+        // login_status is TRUE but session missing — race condition after login, recreate
         const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
+        expiresAt.setDate(expiresAt.getDate() + 30);
 
         const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -1103,15 +1127,12 @@ router.post('/heartbeat', async (req, res) => {
             ]
           );
         } catch (insertError) {
-          // If insert fails, session might have been created by another request
-          // Try to update it one more time
           const retryCheck = await db.query(
             'SELECT id FROM user_sessions WHERE token = $1 AND user_id = $2 AND tenant_id = $3',
             [token, decoded.userId, decoded.tenantId]
           );
 
           if (!retryCheck || retryCheck.length === 0) {
-            // Session truly doesn't exist - return error
             return res.status(401).json({
               error: 'Session not found',
               code: 'SESSION_NOT_FOUND'
