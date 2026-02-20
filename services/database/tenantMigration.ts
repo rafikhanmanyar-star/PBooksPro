@@ -217,10 +217,18 @@ function addUserIdColumn(tableName: string): void {
     }
 }
 
+let _tenantMigrationCompleted = false;
+
 /**
- * Run tenant migration - adds tenant_id and user_id columns to all relevant tables
+ * Run tenant migration - adds tenant_id and user_id columns to all relevant tables.
+ * Skips if already verified this session (idempotent but expensive due to PRAGMA queries).
+ * Pass force=true to bypass the session cache (e.g. after schema changes).
  */
-export function migrateTenantColumns(): void {
+export function migrateTenantColumns(force = false): void {
+    if (_tenantMigrationCompleted && !force) {
+        return;
+    }
+
     const db = getDatabaseService();
 
     if (!db.isReady()) {
@@ -236,10 +244,18 @@ export function migrateTenantColumns(): void {
             addUserIdColumn(tableName);
         });
 
+        _tenantMigrationCompleted = true;
         console.log('✅ Tenant and user migration completed');
     } catch (error) {
         console.error('❌ Error during tenant migration:', error);
         // Don't throw - allow app to continue
     }
+}
+
+/**
+ * Reset the migration-completed flag (e.g. after DB reset/import).
+ */
+export function resetTenantMigrationFlag(): void {
+    _tenantMigrationCompleted = false;
 }
 

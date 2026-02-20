@@ -677,6 +677,8 @@ class RealtimeSyncHandler {
   private dispatchCallback: ((action: AppAction) => void) | null = null;
   private currentUserId: string | null = null;
   private currentTenantId: string | null = null;
+  private ownEventSkipCount = 0;
+  private ownEventSkipTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Set the dispatch callback from AppContext
@@ -755,11 +757,18 @@ class RealtimeSyncHandler {
         return;
       }
 
-      // Check if this event is from the current user (skip to prevent duplicates)
-      // This is critical for preventing the creator from seeing their own record twice
       const eventUserId = data?.userId || data?.user_id;
       if (eventUserId && this.currentUserId && eventUserId === this.currentUserId) {
-        console.log(`[RealtimeSyncHandler] ⏭️ Skipping own event: ${eventName} (userId: ${eventUserId})`);
+        this.ownEventSkipCount++;
+        if (!this.ownEventSkipTimer) {
+          this.ownEventSkipTimer = setTimeout(() => {
+            if (this.ownEventSkipCount > 0) {
+              console.log(`[RealtimeSyncHandler] ⏭️ Skipped ${this.ownEventSkipCount} own event(s)`);
+              this.ownEventSkipCount = 0;
+            }
+            this.ownEventSkipTimer = null;
+          }, 2000);
+        }
         return;
       }
 
@@ -787,11 +796,9 @@ class RealtimeSyncHandler {
         };
         const aliases = entityAliases[entity];
         if (aliases) {
-          console.log(`[RealtimeSyncHandler] 🔍 Trying aliases for ${entity}:`, aliases, 'data keys:', Object.keys(data));
           for (const alias of aliases) {
             if (data[alias]) {
               entityData = data[alias];
-              console.log(`[RealtimeSyncHandler] ✅ Found entity data using alias '${alias}'`);
               break;
             }
           }
@@ -824,7 +831,6 @@ class RealtimeSyncHandler {
         for (const field of possibleIdFields) {
           if (data[field]) {
             entityId = data[field];
-            console.log(`[RealtimeSyncHandler] 🔍 Found entity ID using field '${field}': ${entityId}`);
             break;
           }
         }
@@ -862,14 +868,8 @@ class RealtimeSyncHandler {
       const normalizer = getEntityNormalizer(entity);
       const normalizedData = normalizer ? normalizer(entityData) : entityData;
 
-      if (normalizer) {
-        console.log(`[RealtimeSyncHandler] 🔄 Normalized ${entity} data:`, {
-          original: entityData?.id,
-          normalized: normalizedData?.id,
-          hasNormalizer: true
-        });
-      } else {
-        console.log(`[RealtimeSyncHandler] ⚠️ No normalizer found for ${entity}, using raw data`);
+      if (!normalizer) {
+        console.warn(`[RealtimeSyncHandler] No normalizer for ${entity}, using raw data`);
       }
 
       switch (action) {
@@ -1100,10 +1100,15 @@ class RealtimeSyncHandler {
    * Cleanup
    */
   destroy(): void {
-    // WebSocket listeners are managed by the WebSocket client
     this.isInitialized = false;
     this.dispatchCallback = null;
     this.currentUserId = null;
+    this.currentTenantId = null;
+    if (this.ownEventSkipTimer) {
+      clearTimeout(this.ownEventSkipTimer);
+      this.ownEventSkipTimer = null;
+    }
+    this.ownEventSkipCount = 0;
   }
 }
 

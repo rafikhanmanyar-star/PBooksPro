@@ -1738,15 +1738,21 @@ class DatabaseService {
      */
     async restoreBackup(data: Uint8Array): Promise<void> {
         this.import(data);
+
+        // Reset tenant migration flag so it re-runs on the imported data
+        try {
+            const { resetTenantMigrationFlag, migrateTenantColumns } = await import('./tenantMigration');
+            resetTenantMigrationFlag();
+            migrateTenantColumns(true);
+        } catch (_) { }
+
         // After importing, ensure schema is up to date
-        // This adds missing columns like expense_category_items
         this.ensureAllTablesExist();
         this.ensureContractColumnsExist();
         this.ensureVendorIdColumnsExist();
         this.ensureRecurringTemplateColumnsExist();
 
         // Clear repository column caches so they pick up the new columns
-        // This is critical - otherwise repositories will filter out new columns when saving
         await this.clearRepositoryColumnCaches();
     }
 

@@ -19,7 +19,6 @@ import {
     SalesReturnsRepository, VendorsRepository
 } from './index';
 
-import { migrateTenantColumns } from '../tenantMigration';
 import { BaseRepository } from './baseRepository';
 import { getSyncOutboxService } from '../../sync/syncOutboxService';
 import { getCurrentTenantId } from '../tenantUtils';
@@ -93,16 +92,9 @@ export class AppStateRepository {
             }
         }
 
-        // CRITICAL: Ensure all schema columns exist BEFORE loading data
-        console.log('[CloudSync] loadState: ensuring tables exist...');
-        this.db.ensureAllTablesExist();
-        this.db.ensureContractColumnsExist();
-        // Ensure tenant_id columns exist on all relevant tables (idempotent)
-        try {
-            migrateTenantColumns();
-        } catch (err) {
-            console.warn('⚠️ Tenant column migration failed during loadState (continuing):', err);
-        }
+        // Schema columns are ensured during DB initialization.
+        // Only re-check if DB was just initialized in this call (first load).
+        console.log('[CloudSync] loadState: loading data...');
 
         // Run rental_agreements tenant_id → contact_id migration if needed
         try {
@@ -624,19 +616,7 @@ export class AppStateRepository {
                     await this.db.initialize();
                 }
 
-                // Ensure all tables exist (safety check for existing databases)
-                try {
-                    this.db.ensureAllTablesExist();
-                } catch (tableCheckError) {
-                    console.warn('[CloudSync] Could not verify tables exist, continuing anyway:', tableCheckError);
-                }
-
-                // Ensure tenant_id columns exist before saving (idempotent)
-                try {
-                    migrateTenantColumns();
-                } catch (tenantError) {
-                    console.warn('⚠️ Tenant column migration failed during saveState (continuing):', tenantError);
-                }
+                // Schema and tenant columns are ensured during DB initialization — no need to re-run on every save.
 
                 // Migrate budgets if they're in old format (for in-memory data being saved)
                 try {

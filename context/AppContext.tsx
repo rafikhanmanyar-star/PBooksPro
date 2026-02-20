@@ -3344,9 +3344,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     } as any);
                 }));
 
-                // Contact events - immediate updates for real-time sync (including creator's own events)
+                // Contact events - immediate updates for real-time sync
                 unsubSpecific.push(ws.on('contact:created', (data: any) => {
-                    // DO NOT skip creator's events - they need to see their own contacts
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadContact = data?.contact ?? data;
                     if (!payloadContact || !payloadContact.id) return;
 
@@ -3376,7 +3376,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }));
 
                 unsubSpecific.push(ws.on('contact:updated', (data: any) => {
-                    // DO NOT skip creator's events
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadContact = data?.contact ?? data;
                     if (!payloadContact || !payloadContact.id) return;
 
@@ -3406,7 +3406,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }));
 
                 unsubSpecific.push(ws.on('contact:deleted', (data: any) => {
-                    // DO NOT skip creator's events
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.contactId ?? data?.id;
                     if (!id) return;
 
@@ -3419,6 +3419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                 // Vendor events - immediate updates for real-time sync
                 unsubSpecific.push(ws.on('vendor:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadVendor = data?.vendor ?? data;
                     if (!payloadVendor || !payloadVendor.id) return;
 
@@ -3447,6 +3448,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }));
 
                 unsubSpecific.push(ws.on('vendor:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadVendor = data?.vendor ?? data;
                     if (!payloadVendor || !payloadVendor.id) return;
 
@@ -3475,6 +3477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }));
 
                 unsubSpecific.push(ws.on('vendor:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.vendorId ?? data?.id;
                     if (!id) return;
 
@@ -3598,7 +3601,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 if (!useFallback && saveNow) {
                     const doSave = async () => {
                         try {
-                            await saveNow(state);
+                            await saveNow(state, { disableSyncQueueing: true });
                         } catch (error) {
                             console.error('❌ Failed to save state after data change:', error);
                             const { getErrorLogger } = await import('../services/errorLogger');
@@ -3649,7 +3652,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isInitializing && state.currentUser && !useFallback && saveNow) {
             const saveTimer = setTimeout(async () => {
                 try {
-                    await saveNow(state);
+                    await saveNow(state, { disableSyncQueueing: true });
                 } catch (error) {
                     console.error('Failed to save state after login:', error);
                     // Check if it's a missing table error
