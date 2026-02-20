@@ -1,8 +1,8 @@
 version: 1.2.9
 files:
-  - url: PBooks Pro (Staging) Setup 1.2.9.exe
-    sha512: T/qbtzfpxctP58RjVAIo/iRrwCT6GYJL87EeKA4hR9Fs0hUIFhfxmKi2lKpy+CsvUKFARBf/C5lOYm/q5AtU7w==
-    size: 112326011
-path: PBooks Pro (Staging) Setup 1.2.9.exe
-sha512: T/qbtzfpxctP58RjVAIo/iRrwCT6GYJL87EeKA4hR9Fs0hUIFhfxmKi2lKpy+CsvUKFARBf/C5lOYm/q5AtU7w==
-releaseDate: '2026-02-20T18:23:40.261Z'
+  - url: PBooks Pro Setup 1.2.9.exe
+    sha512: 9b/xmBqZaYQIEZKNab0azzyMFOExjmqiHfJSw53eoVxoAP8EUdVbNzvvZ79gPzVWsWhfayJRI/0wC0kiD/z6yw==
+    size: 112325444
+path: PBooks Pro Setup 1.2.9.exe
+sha512: 9b/xmBqZaYQIEZKNab0azzyMFOExjmqiHfJSw53eoVxoAP8EUdVbNzvvZ79gPzVWsWhfayJRI/0wC0kiD/z6yw==
+releaseDate: '2026-02-20T18:26:47.652Z'
