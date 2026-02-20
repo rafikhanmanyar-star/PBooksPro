@@ -176,7 +176,20 @@ export class ApiClient {
         logger.warnCategory('auth', '⚠️ Token is expired, clearing auth before request');
       }
       this.clearAuth();
-      // Don't dispatch event here - let the 401 response handle it
+    }
+
+    // Guard: reject data endpoint requests when there is no token.
+    // Auth endpoints (login, register, lookup) don't require a token.
+    const isPublicEndpoint = endpoint.includes('/auth/') ||
+                             endpoint.includes('/register-tenant') ||
+                             endpoint.includes('/health') ||
+                             endpoint.includes('/schema/version');
+    if (!this.token && !isPublicEndpoint) {
+      throw {
+        error: 'No authentication token',
+        message: 'Not authenticated. Please login.',
+        status: 401
+      } as ApiError;
     }
     
     const url = `${this.baseUrl}${endpoint}`;

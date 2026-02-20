@@ -99,7 +99,15 @@ router.post('/', async (req: TenantRequest, res) => {
     const isUpdate = existing.length > 0;
 
     // Immutability: reject updates to paid bills (financial data safety)
+    // Allow idempotent re-sync when client also reports "Paid" status
     if (isUpdate && existing[0].status === 'Paid') {
+      if (bill.status === 'Paid') {
+        const existingFull = await db.query(
+          'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2',
+          [billId, req.tenantId]
+        );
+        return res.status(200).json(existingFull[0]);
+      }
       return res.status(403).json({
         error: 'Immutable record',
         message: 'Cannot modify a paid bill. Posted financial records are immutable.',
@@ -241,11 +249,19 @@ router.put('/:id', async (req: TenantRequest, res) => {
     const bill = req.body;
 
     // Immutability: reject updates to paid bills
+    // Allow idempotent re-sync when client also reports "Paid" status
     const current = await db.query(
       'SELECT status, version FROM bills WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenantId]
     );
     if (current.length > 0 && current[0].status === 'Paid') {
+      if (bill.status === 'Paid') {
+        const existingFull = await db.query(
+          'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2',
+          [req.params.id, req.tenantId]
+        );
+        return res.status(200).json(existingFull[0]);
+      }
       return res.status(403).json({
         error: 'Immutable record',
         message: 'Cannot modify a paid bill. Posted financial records are immutable.',

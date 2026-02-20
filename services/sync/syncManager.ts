@@ -386,8 +386,10 @@ class SyncManager {
             const errMsg = (error?.message || error?.error || '').toLowerCase();
             const isNonRetriable =
               error?.code === 'TRANSACTION_IMMUTABLE' ||
+              error?.code === 'BILL_PAID_IMMUTABLE' ||
               error?.code === 'PAYMENT_OVERPAYMENT' ||
               errMsg.includes('cannot modify a payment transaction linked to a paid') ||
+              errMsg.includes('cannot modify a paid bill') ||
               (error?.status === 409 && (errMsg.includes('duplicate') || errMsg.includes('already exists')));
             if (isNonRetriable) {
               console.log(`[SyncManager] ⏭️ Non-retriable error for ${operation.entity}:${operation.entityId}, marking completed:`, errMsg);
@@ -524,6 +526,15 @@ class SyncManager {
         throw new Error('Authentication required'); // Don't retry
       }
 
+      // Handle 403 BILL_PAID_IMMUTABLE — server already has the paid bill, no need to retry
+      if (error?.status === 403) {
+        const code = (error as any)?.code;
+        const errorMessage = (error?.message || error?.error || '').toLowerCase();
+        if (code === 'BILL_PAID_IMMUTABLE' || errorMessage.includes('cannot modify a paid bill')) {
+          return;
+        }
+      }
+
       // Handle 409 Conflict: duplicate = success; version conflict = accept server, remove from queue
       if (error?.status === 409) {
         const errorMessage = (error?.message || error?.error || String(error)).toLowerCase();
@@ -543,13 +554,11 @@ class SyncManager {
       }
 
       // Handle 400 PAYMENT_OVERPAYMENT for transaction sync - non-retriable
-      // Invoice/bill is already fully paid on server (likely from invoice sync or prior sync).
-      // Retrying will never succeed. Treat as success and remove from queue to stop error spam.
       if (error?.status === 400 && (operation.entity === 'transaction' || operation.entity === 'transactions')) {
         const msg = String(error?.message || error?.error || '');
         const code = (error as any)?.code;
         if (code === 'PAYMENT_OVERPAYMENT' || msg.includes('Overpayment') || msg.includes('would exceed')) {
-          return; // Success - payment already reflected, no need to retry
+          return;
         }
       }
 
@@ -558,7 +567,7 @@ class SyncManager {
         const msg = String(error?.message || error?.error || '');
         const code = (error as any)?.code;
         if (code === 'TRANSACTION_IMMUTABLE' || /cannot modify a payment transaction linked to a paid/i.test(msg)) {
-          return; // Server already has the correct state, no need to retry
+          return;
         }
       }
 

@@ -4,8 +4,6 @@
 # Usage:  .\deploy-staging.ps1
 #   or:   npm run deploy:staging
 
-$ErrorActionPreference = "Stop"
-
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "  PBooks Pro - Deploy to STAGING"        -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
@@ -47,15 +45,14 @@ if ($LASTEXITCODE -ne 0) {
 # ── Step 5: Push to staging branch ───────────────────────────────────────────
 Write-Host "`n[5/5] Pushing to staging branch..." -ForegroundColor Yellow
 
-git push origin "${currentBranch}:staging" --force-with-lease
+git push origin "${currentBranch}:staging" --force-with-lease 2>&1 | Write-Host
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n  PUSH FAILED!" -ForegroundColor Red
     exit 1
 }
 
-# Also push to current branch remote so it stays in sync
 if ($currentBranch -ne "staging") {
-    git push origin $currentBranch 2>$null
+    git push origin $currentBranch 2>&1 | Write-Host
 }
 
 # ── Done ─────────────────────────────────────────────────────────────────────

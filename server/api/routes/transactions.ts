@@ -446,30 +446,29 @@ router.post('/', async (req: TenantRequest, res) => {
       if (existing.rows.length > 0) {
         wasUpdate = true;
         // Immutability: block updates to payment transactions linked to paid invoices/bills
+        // But allow idempotent re-sync (return existing record instead of error)
         const extxn = existing.rows[0];
+        let linkedToPaid = false;
         if (extxn.invoice_id) {
           const inv = await client.query(
             'SELECT status FROM invoices WHERE id = $1 AND tenant_id = $2',
             [extxn.invoice_id, req.tenantId]
           );
           if (inv.rows.length > 0 && inv.rows[0].status === 'Paid') {
-            throw {
-              code: 'TRANSACTION_IMMUTABLE',
-              message: 'Cannot modify a payment transaction linked to a paid invoice.',
-            };
+            linkedToPaid = true;
           }
         }
-        if (extxn.bill_id) {
+        if (!linkedToPaid && extxn.bill_id) {
           const bill = await client.query(
             'SELECT status FROM bills WHERE id = $1 AND tenant_id = $2',
             [extxn.bill_id, req.tenantId]
           );
           if (bill.rows.length > 0 && bill.rows[0].status === 'Paid') {
-            throw {
-              code: 'TRANSACTION_IMMUTABLE',
-              message: 'Cannot modify a payment transaction linked to a paid bill.',
-            };
+            linkedToPaid = true;
           }
+        }
+        if (linkedToPaid) {
+          return extxn;
         }
       }
 

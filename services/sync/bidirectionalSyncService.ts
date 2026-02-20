@@ -116,6 +116,7 @@ class BidirectionalSyncService {
     const monitor = getConnectionMonitor();
     this.connectionUnsubscribe = monitor.subscribe((status) => {
       if (status !== 'online' || !tenantId || this.isRunning) return;
+      if (!apiClient.isAuthenticated()) return;
       const now = Date.now();
       if (now - this.lastConnectionTriggeredSyncAt < SYNC_COOLDOWN_MS) {
         logger.logCategory('sync', 'Skipping connection-triggered sync (cooldown)');
@@ -141,6 +142,11 @@ class BidirectionalSyncService {
    */
   async runSync(tenantId: string): Promise<BidirectionalSyncResult> {
     if (isMobileDevice()) {
+      return { upstream: { pushed: 0, failed: 0 }, downstream: { applied: 0, skipped: 0, conflicts: 0 }, success: true };
+    }
+
+    if (!apiClient.isAuthenticated()) {
+      logger.logCategory('sync', 'Skipping sync: not authenticated');
       return { upstream: { pushed: 0, failed: 0 }, downstream: { applied: 0, skipped: 0, conflicts: 0 }, success: true };
     }
 
@@ -268,6 +274,18 @@ class BidirectionalSyncService {
         const msg = error instanceof Error ? error.message : String(err?.message || err?.error || error);
         const status = err?.status;
 
+        // Handle 403 BILL_PAID_IMMUTABLE — bill is already paid on server, treat as success
+        if (status === 403) {
+          const errCode = err?.code || '';
+          if (errCode === 'BILL_PAID_IMMUTABLE' || /cannot modify a paid bill/i.test(msg || '')) {
+            logger.logCategory('sync', `⏭️ BILL_PAID_IMMUTABLE for ${item.entity_type}:${item.entity_id} - server has paid bill, marking ALL entries synced`);
+            outbox.markAllSyncedForEntity(tenantId, item.entity_type, item.entity_id);
+            pushed++;
+            await syncManager.removeByEntity(item.entity_type, item.entity_id);
+            continue;
+          }
+        }
+
         // Handle 400 PAYMENT_OVERPAYMENT for transactions - treat as success (invoice/bill already paid)
         if (status === 400 && (item.entity_type === 'transactions' || item.entity_type === 'transaction')) {
           const code = err?.code;
@@ -328,6 +346,14 @@ class BidirectionalSyncService {
             await syncManager.removeByEntity(item.entity_type, item.entity_id);
             continue;
           }
+        }
+
+        // 401 Unauthorized: stop processing immediately — user is logged out or token expired
+        if (status === 401) {
+          logger.warnCategory('sync', `🔒 Upstream sync aborted: 401 Unauthorized for ${item.entity_type}:${item.entity_id}. Marking item pending for retry after login.`);
+          outbox.markFailed(item.id, 'Authentication required');
+          failed++;
+          break;
         }
 
         outbox.markFailed(item.id, msg);
