@@ -94,15 +94,15 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
     # Delete existing release with same tag if it exists
     gh release delete $ghTag --yes 2>&1 | Out-Null
 
-    # Build asset arguments
+    # Build asset arguments (blockmap files only; .exe files are uploaded manually due to size)
     $assets = @()
-    if ($setupExe)    { $assets += $setupExe.FullName }
-    if ($portableExe) { $assets += $portableExe.FullName }
+    $blockmapAssets = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -ErrorAction SilentlyContinue
+    foreach ($bm in $blockmapAssets) { $assets += $bm.FullName }
 
     gh release create $ghTag @assets --title "v$version (Staging)" --notes "Staging release v$version" --prerelease 2>&1 | Write-Host
 
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "       GitHub Release created." -ForegroundColor Green
+        Write-Host "       GitHub Release created (blockmap uploaded)." -ForegroundColor Green
 
         # Get the repo info for download URLs
         $repoUrl = (gh repo view --json url -q ".url" 2>&1).Trim()
@@ -111,8 +111,14 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
             $encodedName = [Uri]::EscapeDataString($f.name)
             $f.downloadUrl = "$repoUrl/releases/download/$ghTag/$encodedName"
         }
+
+        Write-Host ""
+        Write-Host "       REMINDER: Manually upload .exe files to GitHub Release ($ghTag):" -ForegroundColor Yellow
+        if ($setupExe)    { Write-Host "         - $($setupExe.Name)" -ForegroundColor Yellow }
+        if ($portableExe) { Write-Host "         - $($portableExe.Name)" -ForegroundColor Yellow }
+        Write-Host "         URL: $repoUrl/releases/tag/$ghTag" -ForegroundColor Gray
     } else {
-        Write-Host "       WARNING: GitHub Release upload failed. Setting local API download URLs." -ForegroundColor Red
+        Write-Host "       WARNING: GitHub Release creation failed. Setting local API download URLs." -ForegroundColor Red
         $apiBase = "https://pbookspro-api-staging.onrender.com/api/app-info"
         foreach ($f in $newFiles) {
             $encodedName = [Uri]::EscapeDataString($f.name)
