@@ -346,92 +346,31 @@ router.post('/', async (req: TenantRequest, res) => {
     const result = await db.transaction(async (client) => {
       console.log('✅ POST /transactions - Transaction client acquired');
 
-      // Validate and ensure account exists
-      const accountCheck = await client.query(
-        'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
-        [transaction.accountId, req.tenantId]
+      // Batch-validate all referenced account IDs in a single query
+      const accountIdsToValidate = [transaction.accountId, transaction.fromAccountId, transaction.toAccountId].filter(Boolean) as string[];
+      const accountPlaceholders = accountIdsToValidate.map((_, i) => `$${i + 1}`).join(', ');
+      const existingAccounts = await client.query(
+        `SELECT id FROM accounts WHERE id IN (${accountPlaceholders}) AND (tenant_id = $${accountIdsToValidate.length + 1} OR tenant_id IS NULL)`,
+        [...accountIdsToValidate, req.tenantId]
       );
+      const existingAccountIds = new Set(existingAccounts.rows.map((r: any) => r.id));
 
-      if (accountCheck.rows.length === 0) {
-        // Check if it's a system account that should be auto-created
-        const systemAccount = SYSTEM_ACCOUNTS[transaction.accountId];
-        if (systemAccount) {
-          // Auto-create global system account
-          console.log(`🔧 POST /transactions - Auto-creating missing global system account: ${transaction.accountId}`);
-          await client.query(
-            `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-             VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
-             ON CONFLICT (id) DO NOTHING`,
-            [transaction.accountId, systemAccount.name, systemAccount.type, systemAccount.description]
-          );
-          console.log(`✅ POST /transactions - Global system account created: ${transaction.accountId}`);
-        } else {
-          // Not a system account - return error
-          throw {
-            code: 'ACCOUNT_NOT_FOUND',
-            message: `Account with ID "${transaction.accountId}" does not exist. Please select a valid account.`,
-            accountId: transaction.accountId
-          };
-        }
-      }
-
-      // Validate from_account_id if provided (for transfers)
-      if (transaction.fromAccountId) {
-        const fromAccountCheck = await client.query(
-          'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
-          [transaction.fromAccountId, req.tenantId]
-        );
-
-        if (fromAccountCheck.rows.length === 0) {
-          // Check if it's a system account that should be auto-created
-          const systemAccount = SYSTEM_ACCOUNTS[transaction.fromAccountId];
+      for (const accId of accountIdsToValidate) {
+        if (!existingAccountIds.has(accId)) {
+          const systemAccount = SYSTEM_ACCOUNTS[accId];
           if (systemAccount) {
-            // Auto-create global system account
-            console.log(`🔧 POST /transactions - Auto-creating missing global system account (fromAccount): ${transaction.fromAccountId}`);
             await client.query(
               `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
                VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
                ON CONFLICT (id) DO NOTHING`,
-              [transaction.fromAccountId, systemAccount.name, systemAccount.type, systemAccount.description]
+              [accId, systemAccount.name, systemAccount.type, systemAccount.description]
             );
-            console.log(`✅ POST /transactions - Global system account created (fromAccount): ${transaction.fromAccountId}`);
           } else {
-            // Not a system account - return error
+            const label = accId === transaction.fromAccountId ? 'From account' : accId === transaction.toAccountId ? 'To account' : 'Account';
             throw {
               code: 'ACCOUNT_NOT_FOUND',
-              message: `From account with ID "${transaction.fromAccountId}" does not exist. Please select a valid account.`,
-              accountId: transaction.fromAccountId
-            };
-          }
-        }
-      }
-
-      // Validate to_account_id if provided (for transfers)
-      if (transaction.toAccountId) {
-        const toAccountCheck = await client.query(
-          'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
-          [transaction.toAccountId, req.tenantId]
-        );
-
-        if (toAccountCheck.rows.length === 0) {
-          // Check if it's a system account that should be auto-created
-          const systemAccount = SYSTEM_ACCOUNTS[transaction.toAccountId];
-          if (systemAccount) {
-            // Auto-create global system account
-            console.log(`🔧 POST /transactions - Auto-creating missing global system account (toAccount): ${transaction.toAccountId}`);
-            await client.query(
-              `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-               VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
-               ON CONFLICT (id) DO NOTHING`,
-              [transaction.toAccountId, systemAccount.name, systemAccount.type, systemAccount.description]
-            );
-            console.log(`✅ POST /transactions - Global system account created (toAccount): ${transaction.toAccountId}`);
-          } else {
-            // Not a system account - return error
-            throw {
-              code: 'ACCOUNT_NOT_FOUND',
-              message: `To account with ID "${transaction.toAccountId}" does not exist. Please select a valid account.`,
-              accountId: transaction.toAccountId
+              message: `${label} with ID "${accId}" does not exist. Please select a valid account.`,
+              accountId: accId
             };
           }
         }
@@ -439,34 +378,19 @@ router.post('/', async (req: TenantRequest, res) => {
 
       // Check if transaction with this ID already exists (BEFORE overpayment checks)
       // Idempotent: if transaction exists, we update - no need to validate overpayment again
+      // Single query with LEFT JOINs to avoid N+1 for invoice/bill status checks
       const existing = await client.query(
-        'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
+        `SELECT t.*, i.status AS linked_invoice_status, b.status AS linked_bill_status
+         FROM transactions t
+         LEFT JOIN invoices i ON i.id = t.invoice_id AND i.tenant_id = t.tenant_id
+         LEFT JOIN bills b ON b.id = t.bill_id AND b.tenant_id = t.tenant_id
+         WHERE t.id = $1 AND t.tenant_id = $2`,
         [transactionId, req.tenantId]
       );
       if (existing.rows.length > 0) {
         wasUpdate = true;
-        // Immutability: block updates to payment transactions linked to paid invoices/bills
-        // But allow idempotent re-sync (return existing record instead of error)
         const extxn = existing.rows[0];
-        let linkedToPaid = false;
-        if (extxn.invoice_id) {
-          const inv = await client.query(
-            'SELECT status FROM invoices WHERE id = $1 AND tenant_id = $2',
-            [extxn.invoice_id, req.tenantId]
-          );
-          if (inv.rows.length > 0 && inv.rows[0].status === 'Paid') {
-            linkedToPaid = true;
-          }
-        }
-        if (!linkedToPaid && extxn.bill_id) {
-          const bill = await client.query(
-            'SELECT status FROM bills WHERE id = $1 AND tenant_id = $2',
-            [extxn.bill_id, req.tenantId]
-          );
-          if (bill.rows.length > 0 && bill.rows[0].status === 'Paid') {
-            linkedToPaid = true;
-          }
-        }
+        const linkedToPaid = extxn.linked_invoice_status === 'Paid' || extxn.linked_bill_status === 'Paid';
         if (linkedToPaid) {
           return extxn;
         }
@@ -677,21 +601,19 @@ router.post('/', async (req: TenantRequest, res) => {
 
         // If bill is locked, update it within the same transaction
         if (billLocked && transaction.billId) {
-          // Recalculate total paid amount from all transactions for this bill
-          const billTransactions = await client.query(
-            'SELECT SUM(amount) as total_paid FROM transactions WHERE bill_id = $1 AND tenant_id = $2',
+          // Single query: get bill amount + sum of payments in one round-trip
+          const billPaymentInfo = await client.query(
+            `SELECT b.amount AS bill_amount, COALESCE(SUM(t.amount), 0) AS total_paid
+             FROM bills b
+             LEFT JOIN transactions t ON t.bill_id = b.id AND t.tenant_id = b.tenant_id
+             WHERE b.id = $1 AND b.tenant_id = $2
+             GROUP BY b.id, b.amount`,
             [transaction.billId, req.tenantId]
           );
-          const totalPaid = parseFloat(billTransactions.rows[0]?.total_paid || '0');
+          const totalPaid = parseFloat(billPaymentInfo.rows[0]?.total_paid || '0');
 
-          // Get bill amount to calculate status
-          const billData = await client.query(
-            'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
-            [transaction.billId, req.tenantId]
-          );
-
-          if (billData.rows.length > 0) {
-            const billAmount = parseFloat(billData.rows[0].amount);
+          if (billPaymentInfo.rows.length > 0) {
+            const billAmount = parseFloat(billPaymentInfo.rows[0].bill_amount);
             let newStatus = 'Unpaid';
             if (totalPaid >= billAmount - 0.01) {
               newStatus = 'Paid';

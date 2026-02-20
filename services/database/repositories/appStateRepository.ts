@@ -115,7 +115,7 @@ export class AppStateRepository {
             console.error('⚠️ Budget migration failed, continuing anyway:', migrationError);
         }
 
-        // Load all entities
+        // Phase 1: Load reference/lightweight entities first (fast — enables UI)
         const users = this.usersRepo.findAll();
         const accounts = this.accountsRepo.findAll();
         const contacts = this.contactsRepo.findAll();
@@ -124,23 +124,25 @@ export class AppStateRepository {
         const buildings = this.buildingsRepo.findAll();
         const properties = this.propertiesRepo.findAll();
         const units = this.unitsRepo.findAll();
-        const transactions = this.transactionsRepo.findAll();
-        const invoices = this.invoicesRepo.findAll();
-        const bills = this.billsRepo.findAll();
+        const vendors = this.vendorsRepo.findAll();
         const budgets = this.budgetsRepo.findAll();
         const rentalAgreements = this.rentalAgreementsRepo.findAll();
         const projectAgreements = this.projectAgreementsRepo.findAll();
-        const contracts = this.contractsRepo.findAll();
         const recurringTemplates = this.recurringTemplatesRepo.findAll();
-        const transactionLog = this.transactionLogRepo.findAll();
-        const errorLog = this.errorLogRepo.findAll();
-        const quotations = this.quotationsRepo.findAll();
-        const documents = this.documentsRepo.findAll();
+        const planAmenities = this.planAmenitiesRepo.findAll();
+
+        // Phase 2: Load heavier entities (excludeHeavyColumns where possible)
+        const transactions = this.transactionsRepo.findAll();
+        const invoices = this.invoicesRepo.findAll();
+        const bills = this.billsRepo.findAll({ excludeHeavyColumns: true });
+        const contracts = this.contractsRepo.findAll({ excludeHeavyColumns: true });
+        const quotations = this.quotationsRepo.findAll({ excludeHeavyColumns: true });
+        const documents = this.documentsRepo.findAll({ excludeHeavyColumns: true });
         const pmCycleAllocations = this.pmCycleAllocationsRepo.findAll();
         const installmentPlans = this.installmentPlansRepo.findAll();
-        const planAmenities = this.planAmenitiesRepo.findAll();
         const salesReturns = this.salesReturnsRepo.findAll();
-        const vendors = this.vendorsRepo.findAll();
+        const transactionLog = this.transactionLogRepo.findAll({ limit: 500, orderBy: 'timestamp', orderDir: 'DESC' });
+        const errorLog = this.errorLogRepo.findAll({ limit: 200, orderBy: 'timestamp', orderDir: 'DESC' });
 
 
         // Load settings - try cloud first, then fallback to local

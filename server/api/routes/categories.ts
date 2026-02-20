@@ -21,10 +21,15 @@ router.get('/', async (req: TenantRequest, res) => {
       console.warn('Warning: Failed to ensure system categories:', initError);
     }
 
-    const categories = await db.query(
-      'SELECT * FROM categories WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name',
-      [req.tenantId]
-    );
+    const { limit, offset } = req.query;
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 10000);
+    let catQuery = 'SELECT * FROM categories WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name LIMIT $2';
+    const catParams: any[] = [req.tenantId, effectiveLimit];
+    if (offset) {
+      catQuery += ' OFFSET $3';
+      catParams.push(parseInt(offset as string) || 0);
+    }
+    const categories = await db.query(catQuery, catParams);
     res.json(categories);
   } catch (error) {
     console.error('Error fetching categories:', error);

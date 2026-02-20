@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Transaction, TransactionType } from '../../types';
 import { CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -26,17 +27,18 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
     onTransactionUpdated
 }) => {
     const { state, dispatch } = useAppContext();
+    const lookups = useLookupMaps();
     const { print: triggerPrint } = usePrintContext();
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
 
     if (!isOpen || !transaction) return null;
 
-    const getAccountName = (id?: string) => state.accounts.find(a => a.id === id)?.name || '-';
-    const getCategoryName = (id?: string) => state.categories.find(c => c.id === id)?.name || '-';
-    const getContactName = (id?: string) => state.contacts.find(c => c.id === id)?.name || '-';
-    const getProjectName = (id?: string) => state.projects.find(p => p.id === id)?.name || '-';
-    const getBuildingName = (id?: string) => state.buildings.find(b => b.id === id)?.name || '-';
+    const getAccountName = (id?: string) => (id && lookups.accounts.get(id)?.name) || '-';
+    const getCategoryName = (id?: string) => (id && lookups.categories.get(id)?.name) || '-';
+    const getContactName = (id?: string) => (id && lookups.contacts.get(id)?.name) || '-';
+    const getProjectName = (id?: string) => (id && lookups.projects.get(id)?.name) || '-';
+    const getBuildingName = (id?: string) => (id && lookups.buildings.get(id)?.name) || '-';
 
     const typeConfig = {
         [TransactionType.INCOME]: {
@@ -423,5 +425,5 @@ const DetailRow: React.FC<{
     </div>
 );
 
-export default TransactionDetailDrawer;
+export default React.memo(TransactionDetailDrawer);
 

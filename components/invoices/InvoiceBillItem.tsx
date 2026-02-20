@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Invoice, Bill, InvoiceStatus, InvoiceType, TransactionType, ProjectAgreementStatus } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { useAppContext } from '../../context/AppContext';
+import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { useNotification } from '../../context/NotificationContext'; 
 import Modal from '../ui/Modal';
 import InvoiceBillForm from './InvoiceBillForm';
@@ -26,6 +27,7 @@ interface InvoiceBillItemProps {
 
 const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordPayment, onItemClick, isSelected, onToggleSelect, selectionMode }) => {
   const { state, dispatch } = useAppContext();
+  const lookups = useLookupMaps();
   const { showConfirm, showToast, showAlert } = useNotification();
   const { openChat } = useWhatsApp();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -42,7 +44,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   const staffId = type === 'bill' ? (item as Bill).staffId : undefined;
   
   const contact = state.contacts.find(c => c.id === contactId);
-  const contactName = contact?.name || 'N/A';
+  const contactName = (contactId && lookups.contacts.get(contactId)?.name) || 'N/A';
   const contactLabel = type === 'invoice' ? (invoiceType === InvoiceType.RENTAL ? 'Tenant' : 'Owner') : 'Supplier';
   const balance = amount - paidAmount;
 
@@ -360,4 +362,4 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   );
 };
 
-export default InvoiceBillItem;
+export default React.memo(InvoiceBillItem);

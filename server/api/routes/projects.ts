@@ -10,10 +10,15 @@ const getDb = () => getDatabaseService();
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const projects = await db.query(
-      'SELECT * FROM projects WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name',
-      [req.tenantId]
-    );
+    const { limit, offset } = req.query;
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 10000);
+    let projQuery = 'SELECT * FROM projects WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name LIMIT $2';
+    const projParams: any[] = [req.tenantId, effectiveLimit];
+    if (offset) {
+      projQuery += ' OFFSET $3';
+      projParams.push(parseInt(offset as string) || 0);
+    }
+    const projects = await db.query(projQuery, projParams);
     res.json(projects);
   } catch (error) {
     console.error('Error fetching projects:', error);

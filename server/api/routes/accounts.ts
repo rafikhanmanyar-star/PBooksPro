@@ -21,10 +21,15 @@ router.get('/', async (req: TenantRequest, res) => {
       console.warn('Warning: Failed to ensure system accounts:', initError);
     }
 
-    const accounts = await db.query(
-      'SELECT * FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND deleted_at IS NULL ORDER BY name',
-      [req.tenantId]
-    );
+    const { limit, offset } = req.query;
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 10000);
+    let accountQuery = 'SELECT * FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND deleted_at IS NULL ORDER BY name LIMIT $2';
+    const accountParams: any[] = [req.tenantId, effectiveLimit];
+    if (offset) {
+      accountQuery += ' OFFSET $3';
+      accountParams.push(parseInt(offset as string) || 0);
+    }
+    const accounts = await db.query(accountQuery, accountParams);
 
     // Transform snake_case column names to camelCase and ensure balance is a number
     const transformedAccounts = accounts.map((account: any) => ({

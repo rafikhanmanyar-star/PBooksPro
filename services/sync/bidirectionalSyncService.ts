@@ -219,7 +219,12 @@ class BidirectionalSyncService {
         (UPSTREAM_ENTITY_ORDER[b.entity_type] ?? UPSTREAM_DEFAULT_ORDER)
     );
 
-    for (const item of outboxPending) {
+    for (let idx = 0; idx < outboxPending.length; idx++) {
+      const item = outboxPending[idx];
+      // Yield to main thread every 10 items to keep UI responsive
+      if (idx > 0 && idx % 10 === 0) {
+        await this.yieldToMain();
+      }
       // SECURITY: Verify outbox item belongs to the current tenant before pushing
       if (item.tenant_id !== tenantId) {
         logger.errorCategory('sync', `SECURITY: Outbox item ${item.id} belongs to tenant ${item.tenant_id}, active tenant is ${tenantId}. Skipping.`);
@@ -384,17 +389,28 @@ class BidirectionalSyncService {
     return { pushed, failed };
   }
 
-  /** Yield to main thread so UI stays responsive during long sync */
+  /**
+   * Yield to main thread so UI stays responsive during long sync.
+   * Uses scheduler.yield() > requestIdleCallback > setTimeout chain for best responsiveness.
+   */
   private yieldToMain(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 0));
+    return new Promise((resolve) => {
+      if (typeof (globalThis as any).scheduler?.yield === 'function') {
+        (globalThis as any).scheduler.yield().then(resolve);
+      } else if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => resolve(), { timeout: 50 });
+      } else {
+        setTimeout(resolve, 4);
+      }
+    });
   }
 
   /**
    * Downstream: pull incremental changes from cloud and apply to local with tiered conflict resolution.
    * Processes in chunks and yields to the main thread between chunks to keep UI responsive.
-   * Chunk size increased from 80 to 200 to reduce iteration count for large datasets while maintaining responsiveness.
+   * Chunk size kept at 100 to balance throughput vs UI responsiveness.
    */
-  private static readonly DOWNSTREAM_CHUNK_SIZE = 200;
+  private static readonly DOWNSTREAM_CHUNK_SIZE = 100;
 
   private async runDownstream(tenantId: string): Promise<{ applied: number; skipped: number; conflicts: number }> {
     // Ensure local database is ready before applying downstream (writes to SQLite)

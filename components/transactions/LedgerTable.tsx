@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useCallback, CSSProperties } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Transaction, TransactionType, LedgerSortKey as SortKey, SortDirection } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -28,32 +29,33 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
     showGrouping
 }) => {
     const { state } = useAppContext();
+    const lookups = useLookupMaps();
     const tableRef = useRef<HTMLDivElement>(null);
 
     const getAccountName = useCallback((id?: string) =>
-        state.accounts.find(a => a.id === id)?.name || '-',
-        [state.accounts]
+        (id && lookups.accounts.get(id)?.name) || '-',
+        [lookups.accounts]
     );
 
     const getCategoryName = useCallback((id?: string) =>
-        state.categories.find(c => c.id === id)?.name || '-',
-        [state.categories]
+        (id && lookups.categories.get(id)?.name) || '-',
+        [lookups.categories]
     );
 
     const getContactName = useCallback((id?: string) =>
-        state.contacts.find(c => c.id === id)?.name || '-',
-        [state.contacts]
+        (id && lookups.contacts.get(id)?.name) || '-',
+        [lookups.contacts]
     );
 
     const getContext = useCallback((tx: Transaction) => {
         if (tx.projectId) {
-            return { type: 'Project', name: state.projects.find(p => p.id === tx.projectId)?.name || '' };
+            return { type: 'Project', name: lookups.projects.get(tx.projectId)?.name || '' };
         }
         if (tx.buildingId) {
-            return { type: 'Building', name: state.buildings.find(b => b.id === tx.buildingId)?.name || '' };
+            return { type: 'Building', name: lookups.buildings.get(tx.buildingId)?.name || '' };
         }
         return null;
-    }, [state.projects, state.buildings]);
+    }, [lookups.projects, lookups.buildings]);
 
     const SortIcon = ({ column }: { column: SortKey }) => {
         if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
@@ -383,5 +385,5 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
     );
 };
 
-export default LedgerTable;
+export default React.memo(LedgerTable);
 

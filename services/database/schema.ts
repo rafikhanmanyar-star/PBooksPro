@@ -1175,6 +1175,30 @@ CREATE TABLE IF NOT EXISTS whatsapp_menu_sessions (
 CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_tenant_phone ON whatsapp_menu_sessions(tenant_id, phone_number);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_last_interaction ON whatsapp_menu_sessions(tenant_id, last_interaction_at);
 
+-- Composite indexes for tenant + soft-delete filtering (covers WHERE tenant_id = ? AND deleted_at IS NULL)
+CREATE INDEX IF NOT EXISTS idx_accounts_tenant_deleted ON accounts(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_tenant_deleted ON contacts(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_vendors_tenant_deleted ON vendors(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_categories_tenant_deleted ON categories(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_projects_tenant_deleted ON projects(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_buildings_tenant_deleted ON buildings(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_properties_tenant_deleted ON properties(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_units_tenant_deleted ON units(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_tenant_deleted ON transactions(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_deleted ON invoices(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_bills_tenant_deleted ON bills(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_budgets_tenant_deleted ON budgets(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_quotations_tenant_deleted ON quotations(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_deleted ON documents(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_contracts_tenant_deleted ON contracts(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_deleted ON rental_agreements(org_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_deleted ON project_agreements(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_installment_plans_tenant_deleted ON installment_plans(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_recurring_templates_tenant_deleted ON recurring_invoice_templates(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_deleted ON pm_cycle_allocations(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_deleted ON sales_returns(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_plan_amenities_tenant_deleted ON plan_amenities(tenant_id, deleted_at);
+
 -- Composite indexes for efficient tenant-scoped lookups (tenant_id, id)
 CREATE INDEX IF NOT EXISTS idx_accounts_tenant_pk ON accounts(tenant_id, id);
 CREATE INDEX IF NOT EXISTS idx_contacts_tenant_pk ON contacts(tenant_id, id);

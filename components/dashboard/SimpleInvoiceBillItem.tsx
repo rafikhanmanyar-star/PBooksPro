@@ -2,7 +2,7 @@
 import React from 'react';
 import { Invoice, Bill } from '../../types';
 import { CURRENCY } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
+import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { formatDate } from '../../utils/dateUtils';
 import { formatCurrency } from '../../utils/numberUtils';
 
@@ -12,10 +12,10 @@ interface SimpleInvoiceBillItemProps {
 }
 
 const SimpleInvoiceBillItem: React.FC<SimpleInvoiceBillItemProps> = ({ item, type }) => {
-  const { state } = useAppContext();
+  const lookups = useLookupMaps();
   const { contactId, amount, paidAmount, issueDate } = item;
   const number = type === 'invoice' ? (item as Invoice).invoiceNumber : (item as Bill).billNumber;
-  const contactName = state.contacts.find(c => c.id === contactId)?.name || 'N/A';
+  const contactName = (contactId && lookups.contacts.get(contactId)?.name) || 'N/A';
   const balance = amount - paidAmount;
   const contactLabel = type === 'invoice' ? 'Owner' : 'Supplier';
 
@@ -38,4 +38,4 @@ const SimpleInvoiceBillItem: React.FC<SimpleInvoiceBillItemProps> = ({ item, typ
   );
 };
 
-export default SimpleInvoiceBillItem;
+export default React.memo(SimpleInvoiceBillItem);

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Transaction, TransactionType, LoanSubtype, AppState } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { useAppContext } from '../../context/AppContext';
+import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { formatCurrency } from '../../utils/numberUtils';
 
 interface TransactionItemProps {
@@ -52,14 +53,15 @@ const getTimeString = (transaction: Transaction) => {
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }) => {
   const { state } = useAppContext();
+  const lookups = useLookupMaps();
   const [isExpanded, setIsExpanded] = useState(false);
   const { type, amount, description, accountId, fromAccountId, toAccountId, projectId, buildingId, contactId, children, categoryId } = transaction;
 
-  const getAccountName = (id: string | undefined) => state.accounts.find(a => a.id === id)?.name || 'N/A';
-  const getProjectName = (id: string | undefined) => state.projects.find(p => p.id === id)?.name || '';
-  const getBuildingName = (id: string | undefined) => state.buildings.find(b => b.id === id)?.name || '';
-  const getCategoryName = (id: string | undefined) => state.categories.find(c => c.id === id)?.name || 'Uncategorized';
-  const getContactName = (id: string | undefined) => state.contacts.find(c => c.id === id)?.name || '-';
+  const getAccountName = (id: string | undefined) => (id && lookups.accounts.get(id)?.name) || 'N/A';
+  const getProjectName = (id: string | undefined) => (id && lookups.projects.get(id)?.name) || '';
+  const getBuildingName = (id: string | undefined) => (id && lookups.buildings.get(id)?.name) || '';
+  const getCategoryName = (id: string | undefined) => (id && lookups.categories.get(id)?.name) || 'Uncategorized';
+  const getContactName = (id: string | undefined) => (id && lookups.contacts.get(id)?.name) || '-';
 
   const getTransactionDetails = () => {
     const isPositive = type === TransactionType.INCOME || (type === TransactionType.LOAN && transaction.subtype === LoanSubtype.RECEIVE);
@@ -163,4 +165,4 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }
   );
 };
 
-export default TransactionItem;
+export default React.memo(TransactionItem);

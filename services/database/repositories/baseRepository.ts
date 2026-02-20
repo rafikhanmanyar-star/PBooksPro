@@ -109,10 +109,34 @@ export abstract class BaseRepository<T> {
         return { sql: ' AND (deleted_at IS NULL OR deleted_at = \'\')', params: [] };
     }
 
+    /** Large columns excluded from list queries by default to reduce memory and speed up reads. */
+    private static readonly HEAVY_COLUMNS = new Set([
+        'file_data', 'items', 'expense_category_items', 'payload_json',
+        'salary', 'adjustments', 'projects',
+    ]);
+
+    /** Safety cap to prevent unbounded queries from loading entire tables. */
+    private static readonly DEFAULT_LIMIT = 50_000;
+
+    /**
+     * Build a column-selection clause, excluding heavy columns when requested.
+     * Falls back to `*` when column introspection is unavailable.
+     */
+    private buildSelectColumns(excludeHeavy: boolean): string {
+        if (!excludeHeavy) return '*';
+        const columnsSet = this.ensureTableColumns();
+        if (columnsSet.size === 0) return '*';
+        const selected = Array.from(columnsSet).filter(c => !BaseRepository.HEAVY_COLUMNS.has(c));
+        return selected.length > 0 ? selected.join(', ') : '*';
+    }
+
     /**
      * Find all records with options
      * Tenant isolation: if table is tenant-scoped but no tenant in context, return empty (never return other tenants' data).
      * When soft delete is supported, excludes deleted records.
+     *
+     * @param options.excludeHeavyColumns  When true, omits large blob/JSON columns (file_data, items, etc.) from the SELECT.
+     *                                     Defaults to false for backward compatibility.
      */
     findAll(options: {
         limit?: number;
@@ -121,8 +145,9 @@ export abstract class BaseRepository<T> {
         orderDir?: 'ASC' | 'DESC';
         condition?: string;
         params?: any[];
+        excludeHeavyColumns?: boolean;
     } = {}): T[] {
-        const { limit, offset, orderBy, orderDir = 'DESC', condition, params = [] } = options;
+        const { limit, offset, orderBy, orderDir = 'DESC', condition, params = [], excludeHeavyColumns = false } = options;
 
         if (this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -131,7 +156,8 @@ export abstract class BaseRepository<T> {
             }
         }
 
-        let sql = `SELECT * FROM ${this.tableName}`;
+        const cols = this.buildSelectColumns(excludeHeavyColumns);
+        let sql = `SELECT ${cols} FROM ${this.tableName}`;
         const whereConditions: string[] = [];
         const whereParams: any[] = [];
 
@@ -164,9 +190,10 @@ export abstract class BaseRepository<T> {
         if (orderBy) {
             sql += ` ORDER BY ${camelToSnake(orderBy)} ${orderDir}`;
         }
-        if (limit !== undefined) {
-            sql += ` LIMIT ${limit}`;
-        }
+
+        const effectiveLimit = limit ?? BaseRepository.DEFAULT_LIMIT;
+        sql += ` LIMIT ${effectiveLimit}`;
+
         if (offset !== undefined) {
             sql += ` OFFSET ${offset}`;
         }

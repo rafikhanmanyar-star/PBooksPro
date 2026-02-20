@@ -10,7 +10,7 @@ const getDb = () => getDatabaseService();
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const { status, invoiceType, projectId } = req.query;
+    const { status, invoiceType, projectId, limit, offset } = req.query;
 
     let query = 'SELECT * FROM invoices WHERE tenant_id = $1 AND deleted_at IS NULL';
     const params: any[] = [req.tenantId];
@@ -30,6 +30,14 @@ router.get('/', async (req: TenantRequest, res) => {
     }
 
     query += ' ORDER BY issue_date DESC';
+
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 10000);
+    query += ` LIMIT $${paramIndex++}`;
+    params.push(effectiveLimit);
+    if (offset) {
+      query += ` OFFSET $${paramIndex++}`;
+      params.push(parseInt(offset as string) || 0);
+    }
 
     const invoices = await db.query(query, params);
     res.json(invoices);

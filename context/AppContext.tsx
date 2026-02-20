@@ -444,28 +444,34 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, ...action.payload };
         case 'BATCH_UPSERT_ENTITIES': {
             const entities = action.payload;
-            let newState = { ...state };
+            let anyChanged = false;
+            const patches: Record<string, any[]> = {};
 
             for (const [entityKey, items] of Object.entries(entities)) {
-                if (!Array.isArray(items)) continue;
+                if (!Array.isArray(items) || items.length === 0) continue;
 
-                // Get the current array from state
-                const currentArray = (newState as any)[entityKey];
+                const currentArray = (state as any)[entityKey];
                 if (!Array.isArray(currentArray)) continue;
 
-                // Create a map for fast lookup
-                const itemMap = new Map(currentArray.map(item => [item.id, item]));
+                const itemMap = new Map(currentArray.map((item: any) => [item.id, item]));
+                let sliceChanged = false;
 
-                // Upsert items from payload
-                items.forEach(item => {
-                    itemMap.set(item.id, { ...(itemMap.get(item.id) || {}), ...item });
+                items.forEach((item: any) => {
+                    const existing = itemMap.get(item.id);
+                    const merged = existing ? { ...existing, ...item } : item;
+                    if (merged !== existing) {
+                        itemMap.set(item.id, merged);
+                        sliceChanged = true;
+                    }
                 });
 
-                // Update state with new array
-                (newState as any)[entityKey] = Array.from(itemMap.values());
+                if (sliceChanged) {
+                    patches[entityKey] = Array.from(itemMap.values());
+                    anyChanged = true;
+                }
             }
 
-            return newState;
+            return anyChanged ? { ...state, ...patches } : state;
         }
         case 'SET_PAGE':
             return { ...state, currentPage: action.payload };
@@ -3743,19 +3749,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state, useFallback, saveNow]);
 
-    // Listen for incremental sync updates
+    // Listen for incremental sync updates — accumulate chunks and dispatch once via requestIdleCallback
     useEffect(() => {
+        let pendingEntities: Record<string, any[]> = {};
+        let flushScheduled = false;
+
+        const flushPending = () => {
+            flushScheduled = false;
+            if (Object.keys(pendingEntities).length === 0) return;
+            dispatch({ type: 'BATCH_UPSERT_ENTITIES', payload: pendingEntities });
+            pendingEntities = {};
+        };
+
+        const scheduleFlush = () => {
+            if (flushScheduled) return;
+            flushScheduled = true;
+            if (typeof requestIdleCallback === 'function') {
+                requestIdleCallback(flushPending, { timeout: 300 });
+            } else {
+                setTimeout(flushPending, 150);
+            }
+        };
+
         const handleChunkApplied = (event: CustomEvent) => {
             const { entities } = event.detail;
-            if (entities && Object.keys(entities).length > 0) {
-                dispatch({ type: 'BATCH_UPSERT_ENTITIES', payload: entities });
+            if (!entities) return;
+            for (const [key, items] of Object.entries(entities)) {
+                if (!Array.isArray(items) || items.length === 0) continue;
+                if (!pendingEntities[key]) pendingEntities[key] = [];
+                pendingEntities[key].push(...items);
             }
+            scheduleFlush();
         };
 
         if (typeof window !== 'undefined') {
             window.addEventListener('sync:chunk-applied', handleChunkApplied as EventListener);
             return () => {
                 window.removeEventListener('sync:chunk-applied', handleChunkApplied as EventListener);
+                if (Object.keys(pendingEntities).length > 0) flushPending();
             };
         }
     }, [dispatch]);

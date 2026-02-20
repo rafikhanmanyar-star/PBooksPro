@@ -81,6 +81,40 @@ const CRITICAL_ENTITIES = BULK_ENTITIES.filter(
     ['accounts', 'contacts', 'categories', 'projects', 'buildings', 'properties', 'units'].indexOf(e.responseKey) >= 0
 );
 
+// Tables with heavy JSONB/text columns that should be excluded from bulk/sync payloads.
+// These columns are only needed when viewing individual records, not for list/sync operations.
+const HEAVY_COLUMN_EXCLUSIONS: Record<string, string[]> = {
+  documents: ['file_data'],
+  bills: ['expense_category_items'],
+  contracts: ['expense_category_items'],
+  quotations: ['items'],
+  payroll_employees: ['salary', 'adjustments', 'projects'],
+};
+
+/** Build SELECT clause excluding heavy columns for a table. Falls back to * if no exclusions. */
+function selectColumnsFor(table: string): string {
+  const exclusions = HEAVY_COLUMN_EXCLUSIONS[table];
+  if (!exclusions || exclusions.length === 0) return '*';
+  const excludeSet = new Set(exclusions);
+  // We can't dynamically introspect columns at runtime without a schema query,
+  // so for tables with exclusions we just exclude with a sub-select pattern.
+  // The approach: use * but strip heavy columns via JSON in rowToCamel.
+  // Actually the safest approach for PostgreSQL is to just return * and strip in JS.
+  return '*';
+}
+
+/** Remove heavy columns from a row object before sending to client */
+function stripHeavyColumns(row: Record<string, unknown>, table: string): Record<string, unknown> {
+  const exclusions = HEAVY_COLUMN_EXCLUSIONS[table];
+  if (!exclusions) return row;
+  const result = { ...row };
+  for (const col of exclusions) {
+    delete result[col];
+    delete result[snakeToCamel(col)];
+  }
+  return result;
+}
+
 function snakeToCamel(str: string): string {
   return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
@@ -114,22 +148,25 @@ router.get('/changes', async (req: TenantRequest, res) => {
     // Run all entity queries in PARALLEL instead of sequentially.
     // This reduces initial load from ~750ms (25 sequential queries x 30ms each)
     // to ~30-50ms (limited by the slowest single query).
+    const stripHeavy = req.query.full !== 'true';
     const queryPromises = ENTITY_QUERIES.map(async ({ key, table, tenantColumn }) => {
       try {
-        // Fetch limit + 1 to detect if there are more records
         const rows = await db.query(
           `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 AND updated_at > $2 ORDER BY updated_at ASC LIMIT $3`,
           [tenantId, since, limit + 1]
         );
 
         const rowArray = rows as any[];
+        const transform = (row: any) => {
+          const camel = rowToCamel(row);
+          return stripHeavy ? stripHeavyColumns(camel, table) : camel;
+        };
         if (rowArray.length > limit) {
-          return { key, rows: rowArray.slice(0, limit).map((row) => rowToCamel(row)), hasMore: true };
+          return { key, rows: rowArray.slice(0, limit).map(transform), hasMore: true };
         } else {
-          return { key, rows: rowArray.map((row) => rowToCamel(row)), hasMore: false };
+          return { key, rows: rowArray.map(transform), hasMore: false };
         }
       } catch (err) {
-        // Table might not exist in older DBs — try fallback for rental_agreements.org_id
         if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
           try {
             const fallbackRows = await db.query(
@@ -137,10 +174,14 @@ router.get('/changes', async (req: TenantRequest, res) => {
               [tenantId, since, limit + 1]
             );
             const rowArray = fallbackRows as any[];
+            const transform = (row: any) => {
+              const camel = rowToCamel(row);
+              return stripHeavy ? stripHeavyColumns(camel, table) : camel;
+            };
             if (rowArray.length > limit) {
-              return { key, rows: rowArray.slice(0, limit).map((row) => rowToCamel(row)), hasMore: true };
+              return { key, rows: rowArray.slice(0, limit).map(transform), hasMore: true };
             } else {
-              return { key, rows: rowArray.map((row) => rowToCamel(row)), hasMore: false };
+              return { key, rows: rowArray.map(transform), hasMore: false };
             }
           } catch {
             console.warn(`[stateChanges] Skip ${table} (both tenant_id and org_id failed)`);
@@ -194,14 +235,18 @@ async function fetchTable(
   db: ReturnType<typeof getDb>,
   tenantId: string,
   table: string,
-  tenantColumn: string
+  tenantColumn: string,
+  excludeHeavy: boolean = true
 ): Promise<Record<string, unknown>[]> {
   try {
     const rows = await db.query(
       `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 AND deleted_at IS NULL`,
       [tenantId]
     );
-    return (rows as any[]).map((row) => rowToCamel(row));
+    return (rows as any[]).map((row) => {
+      const camel = rowToCamel(row);
+      return excludeHeavy ? stripHeavyColumns(camel, table) : camel;
+    });
   } catch (err) {
     // Fallback: tables may lack deleted_at if sync metadata migration not yet applied
     if (isMissingColumnError(err)) {

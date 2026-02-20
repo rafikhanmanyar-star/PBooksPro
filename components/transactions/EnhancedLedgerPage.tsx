@@ -658,7 +658,7 @@ const EnhancedLedgerPage: React.FC = () => {
                     </div>
                 ) : (
                     <div className="flex-1 overflow-auto p-1 custom-scrollbar">
-                        {useVirtualization && sortedTransactions.length > 200 ? (
+                        {useVirtualization && sortedTransactions.length > 50 ? (
                             <VirtualizedLedgerTable
                                 groups={groupedTransactions}
                                 sortConfig={sortConfig}

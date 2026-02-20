@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { Transaction, TransactionType } from '../../types';
 import { useAppContext } from '../../context/AppContext';
+import { useLookupMaps } from '../../hooks/useLookupMaps';
 import TransactionItem from '../transactions/TransactionItem';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
@@ -24,6 +25,7 @@ interface ProjectTransactionModalProps {
 
 const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({ isOpen, onClose, data }) => {
   const { state } = useAppContext();
+  const lookups = useLookupMaps();
 
   const filteredTransactions = useMemo(() => {
     if (!data) return [];
@@ -37,29 +39,23 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({ isOpe
         let projectId = tx.projectId;
         let categoryId = tx.categoryId;
 
-        // Resolve details from linked Bill if missing
         if (tx.billId) {
-            const bill = state.bills.find(b => b.id === tx.billId);
+            const bill = lookups.bills.get(tx.billId);
             if (bill) {
                 if (!projectId) projectId = bill.projectId;
-                if (!categoryId) categoryId = bill.categoryId;
             }
         }
 
-        // Resolve details from linked Invoice if missing
         if (tx.invoiceId) {
-             const inv = state.invoices.find(i => i.id === tx.invoiceId);
+             const inv = lookups.invoices.get(tx.invoiceId);
              if (inv) {
                  if (!projectId) projectId = inv.projectId;
-                 if (!categoryId) categoryId = inv.categoryId;
              }
         }
 
-        // Exclude Rental Categories
-        const category = state.categories.find(c => c.id === categoryId);
+        const category = categoryId ? lookups.categories.get(categoryId) : undefined;
         if (category?.isRental) return false;
 
-        // Must be a project transaction
         if (!projectId) return false;
 
         const txDate = new Date(tx.date);
@@ -79,7 +75,7 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({ isOpe
                txDate <= end;
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  }, [data, state.transactions, state.categories, state.bills, state.invoices]);
+  }, [data, state.transactions, lookups.categories, lookups.bills, lookups.invoices]);
   
   const totalAmount = useMemo(() => {
       return filteredTransactions.reduce((sum, tx) => sum + tx.amount, 0);
@@ -129,4 +125,4 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({ isOpe
   );
 };
 
-export default ProjectTransactionModal;
+export default React.memo(ProjectTransactionModal);
