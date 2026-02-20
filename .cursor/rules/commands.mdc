@@ -15,8 +15,10 @@ npm run deploy:staging
 **What it does (in order):**
 1. Increments patch version (e.g. 1.2.2 → 1.2.3)
 2. Builds electron staging installer → `release-staging/`
-3. Stages and commits all changes
-4. Pushes to remote `staging` branch → triggers Render auto-deploy
+3. Copies `latest.yml` to `server/updates/` and `website/Website/updates/` (for auto-update)
+4. Registers release in `server/releases/releases.json` and uploads to GitHub Releases (if `gh` CLI available)
+5. Stages and commits all changes
+6. Pushes to remote `staging` branch ONLY → triggers Render staging auto-deploy
 
 **Render staging services redeployed:**
 - `pbookspro-api-staging` (API server)
@@ -35,9 +37,11 @@ npm run deploy:production
 **What it does (in order):**
 1. Prompts for confirmation before proceeding
 2. Builds electron production installer → `release/`
-3. Stages and commits all changes
-4. Pushes to remote `staging` branch (keeps staging in sync)
-5. Merges into `main` and pushes → triggers Render auto-deploy
+3. Copies `latest.yml` to `server/updates/` and `website/Website/updates/` (for auto-update)
+4. Registers release in `server/releases/releases.json` and uploads to GitHub Releases (if `gh` CLI available)
+5. Stages and commits all changes
+6. Pushes to remote `staging` branch (keeps staging in sync)
+7. Merges into `main` and pushes → triggers Render production auto-deploy
 
 **Render production services redeployed:**
 - `pbookspro-api` (API server)

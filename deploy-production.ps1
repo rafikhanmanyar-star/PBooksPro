@@ -1,5 +1,5 @@
 # PBooks Pro - Deploy to Production
-# 1) Build electron production installer  2) Push to staging  3) Merge into main
+# 1) Build electron production installer  2) Register release  3) Push to staging  4) Merge into main
 #
 # Usage:  .\deploy-production.ps1
 #   or:   npm run deploy:production
@@ -23,7 +23,7 @@ if ($confirm -ne "y" -and $confirm -ne "Y") {
 }
 
 # ── Step 1: Build electron production installer ──────────────────────────────
-Write-Host "`n[1/4] Building production electron installer..." -ForegroundColor Yellow
+Write-Host "`n[1/6] Building production electron installer..." -ForegroundColor Yellow
 Write-Host "       Output: release/" -ForegroundColor Gray
 
 npm run electron:production:installer
@@ -34,16 +34,147 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "       Build complete." -ForegroundColor Green
 
-# ── Step 2: Stage & commit ───────────────────────────────────────────────────
-Write-Host "`n[2/4] Committing changes..." -ForegroundColor Yellow
+# ── Step 2: Copy latest.yml for auto-update ──────────────────────────────────
+Write-Host "`n[2/6] Copying latest.yml for auto-update..." -ForegroundColor Yellow
+
+$latestYml = "release\latest.yml"
+if (Test-Path $latestYml) {
+    Copy-Item $latestYml "server\updates\latest.yml" -Force
+    Copy-Item $latestYml "website\Website\updates\latest.yml" -Force
+    Write-Host "       Copied to server/updates/ and website/Website/updates/" -ForegroundColor Green
+} else {
+    Write-Host "       WARNING: latest.yml not found in release/" -ForegroundColor Red
+}
+
+# ── Step 3: Register release and upload to GitHub Releases ───────────────────
+Write-Host "`n[3/6] Registering release in releases.json..." -ForegroundColor Yellow
+
+$releaseDir = "release"
+$setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -like "*Setup*" } | Select-Object -First 1
+$portableExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -notlike "*Setup*" } | Select-Object -First 1
+
+$releasesJsonPath = "server\releases\releases.json"
+$releasesData = Get-Content $releasesJsonPath -Raw | ConvertFrom-Json
+
+$newFiles = @()
+
+# Build file entries
+if ($setupExe) {
+    $hash = (Get-FileHash -Path $setupExe.FullName -Algorithm SHA512).Hash
+    $newFiles += @{
+        name = $setupExe.Name
+        type = "installer"
+        size = $setupExe.Length
+        sha512 = $hash
+        downloadUrl = ""
+    }
+    Write-Host "       Setup:    $($setupExe.Name) ($([math]::Round($setupExe.Length / 1MB, 1)) MB)" -ForegroundColor Gray
+}
+if ($portableExe) {
+    $hash = (Get-FileHash -Path $portableExe.FullName -Algorithm SHA512).Hash
+    $newFiles += @{
+        name = $portableExe.Name
+        type = "portable"
+        size = $portableExe.Length
+        sha512 = $hash
+        downloadUrl = ""
+    }
+    Write-Host "       Portable: $($portableExe.Name) ($([math]::Round($portableExe.Length / 1MB, 1)) MB)" -ForegroundColor Gray
+}
+
+# Upload to GitHub Releases if gh CLI is available
+$ghAvailable = $false
+try {
+    $null = gh --version 2>&1
+    if ($LASTEXITCODE -eq 0) { $ghAvailable = $true }
+} catch { }
+
+$ghTag = "v$version"
+
+if ($ghAvailable -and ($setupExe -or $portableExe)) {
+    Write-Host "       Uploading to GitHub Releases (tag: $ghTag)..." -ForegroundColor Yellow
+
+    # Delete existing release with same tag if it exists
+    gh release delete $ghTag --yes 2>&1 | Out-Null
+
+    # Build asset arguments
+    $assets = @()
+    if ($setupExe)    { $assets += $setupExe.FullName }
+    if ($portableExe) { $assets += $portableExe.FullName }
+
+    gh release create $ghTag @assets --title "v$version" --notes "Production release v$version" --latest 2>&1 | Write-Host
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "       GitHub Release created." -ForegroundColor Green
+
+        # Get the repo info for download URLs
+        $repoUrl = (gh repo view --json url -q ".url" 2>&1).Trim()
+
+        foreach ($f in $newFiles) {
+            $encodedName = [Uri]::EscapeDataString($f.name)
+            $f.downloadUrl = "$repoUrl/releases/download/$ghTag/$encodedName"
+        }
+    } else {
+        Write-Host "       WARNING: GitHub Release upload failed. Setting local API download URLs." -ForegroundColor Red
+        $apiBase = "https://api.pbookspro.com/api/app-info"
+        foreach ($f in $newFiles) {
+            $encodedName = [Uri]::EscapeDataString($f.name)
+            $f.downloadUrl = "$apiBase/releases/download/$encodedName"
+        }
+    }
+} else {
+    if (-not $ghAvailable) {
+        Write-Host "       gh CLI not found. Skipping GitHub Release upload." -ForegroundColor Yellow
+        Write-Host "       Install: https://cli.github.com/ then run: gh auth login" -ForegroundColor Gray
+    }
+    $apiBase = "https://api.pbookspro.com/api/app-info"
+    foreach ($f in $newFiles) {
+        $encodedName = [Uri]::EscapeDataString($f.name)
+        $f.downloadUrl = "$apiBase/releases/download/$encodedName"
+    }
+}
+
+# Add new release entry to releases.json
+$newRelease = @{
+    version = $version
+    date = (Get-Date).ToUniversalTime().ToString("o")
+    environment = "production"
+    files = $newFiles
+    changelog = ""
+}
+
+# Append to releases array
+$releasesList = [System.Collections.ArrayList]@()
+if ($releasesData.releases) {
+    foreach ($r in $releasesData.releases) { $releasesList.Add($r) | Out-Null }
+}
+$releasesList.Add($newRelease) | Out-Null
+
+$releasesData.releases = $releasesList.ToArray()
+$releasesData | ConvertTo-Json -Depth 10 | Set-Content $releasesJsonPath -Encoding UTF8
+Write-Host "       Release v$version registered in releases.json" -ForegroundColor Green
+
+# Copy installer and blockmap to server/releases/ for auto-update serving
+if ($setupExe) {
+    Copy-Item $setupExe.FullName "server\releases\" -Force
+    Write-Host "       Copied installer to server/releases/" -ForegroundColor Gray
+}
+$blockmapFiles = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -ErrorAction SilentlyContinue
+foreach ($bm in $blockmapFiles) {
+    Copy-Item $bm.FullName "server\releases\" -Force
+    Write-Host "       Copied $($bm.Name) to server/releases/ (differential updates)" -ForegroundColor Gray
+}
+
+# ── Step 4: Stage & commit ───────────────────────────────────────────────────
+Write-Host "`n[4/6] Committing changes..." -ForegroundColor Yellow
 git add -A
 git commit -m "v$version - production deploy"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "       Nothing new to commit, continuing..." -ForegroundColor Yellow
 }
 
-# ── Step 3: Push to staging branch ───────────────────────────────────────────
-Write-Host "`n[3/4] Pushing to staging branch..." -ForegroundColor Yellow
+# ── Step 5: Push to staging branch ───────────────────────────────────────────
+Write-Host "`n[5/6] Pushing to staging branch..." -ForegroundColor Yellow
 
 git push origin "${currentBranch}:staging" --force-with-lease 2>&1 | Write-Host
 if ($LASTEXITCODE -ne 0) {
@@ -52,8 +183,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "       Staging branch updated." -ForegroundColor Green
 
-# ── Step 4: Merge into main and push ─────────────────────────────────────────
-Write-Host "`n[4/4] Merging into main branch..." -ForegroundColor Yellow
+# ── Step 6: Merge into main and push ─────────────────────────────────────────
+Write-Host "`n[6/6] Merging into main branch..." -ForegroundColor Yellow
 
 if ($currentBranch -eq "main") {
     git push origin main 2>&1 | Write-Host

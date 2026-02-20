@@ -81,6 +81,9 @@ services:
       - type: rewrite
         source: /license/payment-cancel
         destination: /license/payment-cancel.html
+      - type: rewrite
+        source: /releases
+        destination: /releases.html
 
   # Staging API Server - STAGING (deploys from staging branch only)
   - type: web
@@ -155,3 +158,6 @@ services:
       - type: rewrite
         source: /license/payment-cancel
         destination: /license/payment-cancel.html
+      - type: rewrite
+        source: /releases
+        destination: /releases.html

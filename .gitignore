@@ -21,6 +21,8 @@ linux-unpacked
 
 # Installer exe files (hosted on GitHub Releases, not in git)
 website/Website/updates/*.exe
+server/releases/*.exe
+server/releases/*.blockmap
 
 # Code signing certificates (NEVER commit these!)
 *.pfx
