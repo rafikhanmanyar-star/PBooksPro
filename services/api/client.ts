@@ -256,6 +256,11 @@ export class ApiClient {
         headers,
       });
 
+      // Diagnostic: always log state endpoint responses
+      if (endpoint.includes('/state/')) {
+        console.log(`[DIAG-HTTP] ${options.method || 'GET'} ${url} → ${response.status} ${response.statusText}`);
+      }
+
       // Only log API responses during login/transaction operations
       if (shouldLogThisRequest) {
         logger.logCategory('api', `📥 API Response: ${response.status} ${response.statusText} for ${endpoint}`);

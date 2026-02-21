@@ -2855,10 +2855,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         const handleLoginSuccess = () => {
             logger.logCategory('sync', '📡 Login success: loading data from cloud...');
+            console.log('[DIAG] auth:login-success event received, scheduling refreshFromApi');
             // Brief delay so localStorage/auth state and API client are fully updated before first request
             setTimeout(() => {
+                console.log('[DIAG] auth:login-success: calling refreshFromApi now');
                 refreshFromApiRef.current(undefined);
-            }, 100);
+            }, 500);
+
+            // Safety net: retry data load if state is still empty 5s after login
+            setTimeout(() => {
+                const s = stateRef.current;
+                const dataLoaded = (s.contacts?.length ?? 0) > 0 || (s.transactions?.length ?? 0) > 0 || (s.accounts?.length ?? 0) > 0;
+                if (!dataLoaded) {
+                    console.warn('[DIAG] Safety retry: state still empty 5s after login, retrying refreshFromApi');
+                    refreshFromApiRef.current(undefined);
+                }
+            }, 5000);
         };
         window.addEventListener('auth:login-success', handleLoginSuccess);
         return () => window.removeEventListener('auth:login-success', handleLoginSuccess);
