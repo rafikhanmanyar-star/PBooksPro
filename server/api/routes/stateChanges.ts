@@ -284,6 +284,7 @@ async function fetchTable(
 router.get('/bulk', cacheMiddleware(120, (req) => `__bulk__${(req as TenantRequest).tenantId}`), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
+    console.log('[DIAG-SERVER] /state/bulk called, tenantId=', tenantId, 'entities=', req.query.entities);
     if (!tenantId) {
       return res.status(401).json({ error: 'Tenant required' });
     }
@@ -324,9 +325,15 @@ router.get('/bulk', cacheMiddleware(120, (req) => `__bulk__${(req as TenantReque
       result.transactionLog = transactionLog;
     }
 
+    const counts: Record<string, number> = {};
+    for (const [key, arr] of Object.entries(result)) {
+      counts[key] = Array.isArray(arr) ? arr.length : 0;
+    }
+    console.log('[DIAG-SERVER] /state/bulk response:', JSON.stringify(counts));
+
     res.json(result);
   } catch (error) {
-    console.error('Error fetching state bulk:', error);
+    console.error('[DIAG-SERVER] /state/bulk ERROR:', error);
     res.status(500).json({ error: 'Failed to fetch state' });
   }
 });
@@ -464,6 +471,40 @@ router.get('/critical', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error fetching state critical:', error);
     res.status(500).json({ error: 'Failed to fetch state' });
+  }
+});
+
+// GET /api/state/diag — Diagnostic: shows tenant ID and record counts per table
+router.get('/diag', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant required' });
+    }
+
+    const db = getDb();
+    const counts: Record<string, number> = {};
+
+    for (const { responseKey, table, tenantColumn } of BULK_ENTITIES) {
+      try {
+        const result = await db.query(
+          `SELECT COUNT(*) as count FROM ${table} WHERE ${tenantColumn} = $1`,
+          [tenantId]
+        );
+        counts[responseKey] = parseInt((result as any[])[0]?.count || '0');
+      } catch (err) {
+        counts[responseKey] = -1; // indicates query failure
+      }
+    }
+
+    res.json({
+      tenantId,
+      counts,
+      totalRecords: Object.values(counts).filter(c => c >= 0).reduce((a, b) => a + b, 0),
+    });
+  } catch (error) {
+    console.error('Error in state diag:', error);
+    res.status(500).json({ error: 'Diag failed', message: (error as Error).message });
   }
 });
 

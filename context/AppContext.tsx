@@ -1272,6 +1272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     setInitProgress(50);
 
                     // Check if user is authenticated (cloud mode)
+                    console.log('[DIAG] Init: isAuthenticated =', isAuthenticated);
                     if (isAuthenticated) {
                         // OFFLINE-FIRST: Load from local DB first, show UI, then sync with cloud in background
                         try {
@@ -2676,7 +2677,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state]);
 
     const refreshFromApi = useCallback(async (onCriticalLoaded?: () => void) => {
-        if (!isAuthenticated) return;
+        if (!isAuthenticated) {
+            console.warn('[DIAG] refreshFromApi skipped: isAuthenticated=false');
+            return;
+        }
+        console.log('[DIAG] refreshFromApi STARTING, isAuthenticated=true');
         const apiService = getAppStateApiService();
 
         const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
@@ -2766,11 +2771,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             // FULL LOAD: No recent baseline — load everything (initial login or stale data)
             logger.logCategory('sync', '📡 refreshFromApi: performing full data load');
+            console.log('[DIAG] refreshFromApi: FULL LOAD starting, tenantId=', currentTenantId);
 
             // STEP 1: Load critical entities FIRST (accounts, contacts, categories, projects, buildings, properties, units)
             setInitMessage('Loading critical data...');
             try {
                 const critical = await apiService.loadStateBulk('accounts,contacts,categories,projects,buildings,properties,units,vendors');
+                console.log('[DIAG] refreshFromApi: critical load result =', {
+                    keys: Object.keys(critical || {}),
+                    contacts: (critical?.contacts as any[])?.length ?? 0,
+                    accounts: (critical?.accounts as any[])?.length ?? 0,
+                    transactions: (critical?.transactions as any[])?.length ?? 0,
+                });
                 if (critical && Object.keys(critical).length > 0) {
                     const mergedCritical = applyApiState(critical);
                     if (mergedCritical) persistLoadedStateToDb(mergedCritical);
@@ -2828,7 +2840,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
             onCriticalLoaded?.();
         } catch (err) {
-            console.error('⚠️ Failed to refresh data from API:', err);
+            console.error('[DIAG] refreshFromApi FAILED:', err);
             onCriticalLoaded?.();
         }
     }, [dispatch, isAuthenticated, setStoredState, setInitMessage, setInitProgress, setLoadProgress, saveNow]);
@@ -3979,7 +3991,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isAuthenticated && !isInitializing && !sessionRestoreRefreshDoneRef.current) {
             const hasData = (state.contacts?.length ?? 0) > 0 || (state.transactions?.length ?? 0) > 0 ||
                 (state.invoices?.length ?? 0) > 0 || (state.accounts?.length ?? 0) > 0;
+            console.log('[DIAG] SessionRestore: hasData =', hasData, '| contacts=', state.contacts?.length, 'txns=', state.transactions?.length, 'accounts=', state.accounts?.length);
             if (!hasData) {
+                console.log('[DIAG] SessionRestore: calling refreshFromApi (no data detected)');
                 sessionRestoreRefreshDoneRef.current = true;
                 refreshFromApiRef.current(undefined);
             }

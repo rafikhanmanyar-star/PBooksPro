@@ -194,7 +194,9 @@ export class AppStateApiService {
     try {
       logger.logCategory('sync', '📡 Loading state from API (bulk)...');
       const endpoint = entities ? `/state/bulk?entities=${encodeURIComponent(entities)}` : '/state/bulk';
+      console.log('[DIAG] loadStateBulk: baseUrl=', apiClient.getBaseUrl(), 'tenantId=', apiClient.getTenantId(), 'hasToken=', !!apiClient.getToken(), 'endpoint=', endpoint);
       const raw = await apiClient.get<Record<string, any[]>>(endpoint);
+      console.log('[DIAG] loadStateBulk: response keys=', Object.keys(raw || {}), 'contacts=', (raw?.contacts || []).length, 'accounts=', (raw?.accounts || []).length, 'transactions=', (raw?.transactions || []).length);
       const state = this.normalizeLoadedState(raw);
       logger.logCategory('sync', '✅ Loaded from API (bulk):', {
         accounts: (raw.accounts || []).length,
@@ -203,6 +205,7 @@ export class AppStateApiService {
       });
       return state;
     } catch (error) {
+      console.error('[DIAG] loadStateBulk FAILED:', error);
       logger.errorCategory('sync', '❌ Error loading state from API (bulk):', error);
       throw error;
     }
