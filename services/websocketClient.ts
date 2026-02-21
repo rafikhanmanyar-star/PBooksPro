@@ -340,6 +340,32 @@ export class WebSocketClient {
       this.handleEvent('unit:deleted', data);
     });
 
+    // Vendor events
+    this.socket.on('vendor:created', (data: any) => {
+      this.handleEvent('vendor:created', data);
+    });
+
+    this.socket.on('vendor:updated', (data: any) => {
+      this.handleEvent('vendor:updated', data);
+    });
+
+    this.socket.on('vendor:deleted', (data: any) => {
+      this.handleEvent('vendor:deleted', data);
+    });
+
+    // Warehouse events
+    this.socket.on('warehouse:created', (data: any) => {
+      this.handleEvent('warehouse:created', data);
+    });
+
+    this.socket.on('warehouse:updated', (data: any) => {
+      this.handleEvent('warehouse:updated', data);
+    });
+
+    this.socket.on('warehouse:deleted', (data: any) => {
+      this.handleEvent('warehouse:deleted', data);
+    });
+
     // User connection events
     this.socket.on('user:connected', (data: any) => {
       logger.logCategory('websocket', 'User connected:', data);
