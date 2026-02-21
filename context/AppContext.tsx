@@ -2750,9 +2750,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const { apiClient } = await import('../services/api/client');
             const currentTenantId = apiClient.getTenantId();
             const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
+            // Require contacts OR transactions as baseline (accounts alone are just defaults)
             const hasBaseline = (stateRef.current.contacts?.length ?? 0) > 0 ||
-                (stateRef.current.transactions?.length ?? 0) > 0 ||
-                (stateRef.current.accounts?.length ?? 0) > 0;
+                (stateRef.current.transactions?.length ?? 0) > 0;
+            console.log('[DIAG] refreshFromApi: lastSync=', lastSync, 'hasBaseline=', hasBaseline, 'contacts=', stateRef.current.contacts?.length, 'txns=', stateRef.current.transactions?.length);
 
             if (currentTenantId && lastSync && hasBaseline && isLastSyncRecent(currentTenantId)) {
                 logger.logCategory('sync', `📡 refreshFromApi: using incremental sync (since ${lastSync})`);
@@ -2856,6 +2857,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const handleLoginSuccess = () => {
             logger.logCategory('sync', '📡 Login success: loading data from cloud...');
             console.log('[DIAG] auth:login-success event received, scheduling refreshFromApi');
+
+            // Clear stale sync timestamps so we always do a FULL load after fresh login.
+            // Auto-login is disabled, so every app launch clears auth → user must re-login.
+            // Without this, a stale lastSyncTimestamp causes incremental sync (delta only),
+            // which misses data that existed before the timestamp.
+            try {
+                const keysToRemove: string[] = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key?.startsWith('pbookspro_lastSync_')) keysToRemove.push(key);
+                }
+                keysToRemove.forEach(k => localStorage.removeItem(k));
+                if (keysToRemove.length > 0) {
+                    console.log('[DIAG] Cleared', keysToRemove.length, 'stale sync timestamps for fresh login');
+                }
+            } catch (e) { /* ignore */ }
+
             // Brief delay so localStorage/auth state and API client are fully updated before first request
             setTimeout(() => {
                 console.log('[DIAG] auth:login-success: calling refreshFromApi now');
