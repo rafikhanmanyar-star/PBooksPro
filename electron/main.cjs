@@ -85,11 +85,15 @@ autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.logger = console;
 
-// Always set the feed URL explicitly at runtime to ensure the correct update server
-// is used regardless of what was baked in at build time
+// Detect staging vs production from the app's product name set by electron-builder
+const isStaging = app.getName().toLowerCase().includes('staging');
+const updateUrl = isStaging
+  ? 'https://pbookspro-api-staging.onrender.com/api/app-info/updates'
+  : 'https://api.pbookspro.com/api/app-info/updates';
+
 autoUpdater.setFeedURL({
   provider: 'generic',
-  url: 'https://api.pbookspro.com/api/app-info/updates',
+  url: updateUrl,
 });
 
 function setupAutoUpdater() {

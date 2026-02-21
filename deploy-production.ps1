@@ -92,6 +92,13 @@ if ($portableExe) {
 
 # Upload to GitHub Releases if gh CLI is available
 $ghAvailable = $false
+# Ensure gh CLI is on PATH (common install locations)
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    $ghPaths = @("C:\Program Files\GitHub CLI", "C:\Program Files (x86)\GitHub CLI", "$env:LOCALAPPDATA\Programs\GitHub CLI")
+    foreach ($p in $ghPaths) {
+        if (Test-Path "$p\gh.exe") { $env:PATH = "$p;$env:PATH"; break }
+    }
+}
 try {
     $null = gh --version 2>&1
     if ($LASTEXITCODE -eq 0) { $ghAvailable = $true }

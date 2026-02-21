@@ -3,6 +3,7 @@
   "productName": "PBooks Pro (Staging)",
   "directories": { "output": "release-staging" },
   "forceCodeSigning": false,
+  "artifactName": "PBooksProStaging-Setup-${version}.${ext}",
   "files": [
     "package.json",
     "dist/**/*",
@@ -18,6 +19,9 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
+  },
+  "portable": {
+    "artifactName": "PBooksProStaging-${version}-portable.${ext}"
   },
   "publish": {
     "provider": "generic",
