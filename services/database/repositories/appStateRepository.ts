@@ -304,11 +304,12 @@ export class AppStateRepository {
                 };
 
                 // Debug: Log bills that seem to be missing critical data
-                if (!normalizedBill.billNumber || !normalizedBill.contactId) {
+                if (!normalizedBill.billNumber || (!normalizedBill.contactId && !normalizedBill.vendorId)) {
                     console.warn('⚠️ Bill normalization warning - missing critical fields:', {
                         id: normalizedBill.id,
                         billNumber: normalizedBill.billNumber,
                         contactId: normalizedBill.contactId,
+                        vendorId: normalizedBill.vendorId,
                         projectId: normalizedBill.projectId,
                         rawBill: b
                     });

@@ -177,6 +177,9 @@ function normalizeBill(bill: any): Bill {
         projectAgreementId: bill.projectAgreementId || bill.project_agreement_id || bill.agreementId || bill.agreement_id || undefined,
         contractId: bill.contractId || bill.contract_id || undefined,
         staffId: bill.staffId || bill.staff_id || undefined,
+        vendorId: bill.vendorId || bill.vendor_id || undefined,
+        documentPath: bill.documentPath || bill.document_path || undefined,
+        documentId: bill.documentId || bill.document_id || undefined,
         expenseCategoryItems: expenseCategoryItems,
     };
 }

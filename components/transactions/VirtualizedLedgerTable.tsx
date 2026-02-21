@@ -306,6 +306,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                     rowCount={flatRows.length}
                     rowHeight={(index: number) => flatRows[index]?.type === 'group-header' ? GROUP_HEADER_HEIGHT : ROW_HEIGHT}
                     rowComponent={Row}
+                    rowProps={{}}
                     style={{ height: dimensions.height, width: dimensions.width }}
                     className="scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300 scrollbar-track-transparent"
                     onRowsRendered={handleRowsRendered}
