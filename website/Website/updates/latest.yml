@@ -1,8 +1,8 @@
 version: 1.2.14
 files:
-  - url: PBooks Pro (Staging) Setup 1.2.14.exe
-    sha512: VpeOvUS0hUcRsiAn/iOYRvQ3QyK0mPZ9EYnM6HqybxQxAYJJE0IPsFbbNnqelt7ctV7yPne1FDxSJ3VULrkAJA==
-    size: 112331630
-path: PBooks Pro (Staging) Setup 1.2.14.exe
-sha512: VpeOvUS0hUcRsiAn/iOYRvQ3QyK0mPZ9EYnM6HqybxQxAYJJE0IPsFbbNnqelt7ctV7yPne1FDxSJ3VULrkAJA==
-releaseDate: '2026-02-21T14:43:53.407Z'
+  - url: PBooks Pro Setup 1.2.14.exe
+    sha512: 3AoZWyEk13QpkXcEfiVz16vCKFJYhx/gS31uI/Aw8XLrboot5CGob3e5n8Otdqefb/KD7silOh3HkPGS23uPaQ==
+    size: 112331711
+path: PBooks Pro Setup 1.2.14.exe
+sha512: 3AoZWyEk13QpkXcEfiVz16vCKFJYhx/gS31uI/Aw8XLrboot5CGob3e5n8Otdqefb/KD7silOh3HkPGS23uPaQ==
+releaseDate: '2026-02-21T14:50:54.818Z'
