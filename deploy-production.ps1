@@ -50,8 +50,16 @@ if (Test-Path $latestYml) {
 Write-Host "`n[3/6] Registering release in releases.json..." -ForegroundColor Yellow
 
 $releaseDir = "release"
-$setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -like "*Setup*" } | Select-Object -First 1
-$portableExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -notlike "*Setup*" } | Select-Object -First 1
+$setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -like "*Setup*$version*" } | Select-Object -First 1
+$portableExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -notlike "*Setup*" -and $_.Name -like "*$version*" } | Select-Object -First 1
+if (-not $setupExe) {
+    $setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -like "*Setup*" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($setupExe) { Write-Host "       WARNING: No Setup exe matched version $version, using latest: $($setupExe.Name)" -ForegroundColor Yellow }
+}
+if (-not $portableExe) {
+    $portableExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -notlike "*Setup*" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($portableExe) { Write-Host "       WARNING: No portable exe matched version $version, using latest: $($portableExe.Name)" -ForegroundColor Yellow }
+}
 
 $releasesJsonPath = "server\releases\releases.json"
 $releasesData = Get-Content $releasesJsonPath -Raw | ConvertFrom-Json
