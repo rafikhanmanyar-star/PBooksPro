@@ -64,8 +64,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }
   const getContactName = (id: string | undefined) => (id && lookups.contacts.get(id)?.name) || '-';
 
   const getTransactionDetails = () => {
-    const isPositive = type === TransactionType.INCOME || (type === TransactionType.LOAN && transaction.subtype === LoanSubtype.RECEIVE);
-    const isNegative = type === TransactionType.EXPENSE || (type === TransactionType.LOAN && transaction.subtype === LoanSubtype.REPAY);
+    const isPositive = type === TransactionType.INCOME || (type === TransactionType.LOAN && (transaction.subtype === LoanSubtype.RECEIVE || transaction.subtype === LoanSubtype.COLLECT));
+    const isNegative = type === TransactionType.EXPENSE || (type === TransactionType.LOAN && (transaction.subtype === LoanSubtype.GIVE || transaction.subtype === LoanSubtype.REPAY));
     
     // Red/Green Logic
     const iconColorClass = isPositive ? "text-green-600" : isNegative ? "text-red-600" : "text-indigo-600";

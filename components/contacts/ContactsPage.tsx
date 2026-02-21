@@ -147,8 +147,8 @@ const ContactsPage: React.FC = () => {
             if (tx.type === TransactionType.INCOME) amount = tx.amount; // They paid us (positive)
             else if (tx.type === TransactionType.EXPENSE) amount = -tx.amount; // We paid them (negative)
             else if (tx.type === TransactionType.LOAN) {
-                if (tx.subtype === LoanSubtype.RECEIVE) amount = tx.amount; // Money in
-                else amount = -tx.amount; // Money out
+                if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) amount = tx.amount;
+                else amount = -tx.amount;
             }
 
             balances.set(tx.contactId, (balances.get(tx.contactId) || 0) + amount);

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
 import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
+import { clearCache } from '../../middleware/cacheMiddleware.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -150,6 +151,8 @@ router.post('/', async (req: TenantRequest, res) => {
       tenantId: req.tenantId
     });
 
+    clearCache(`__bulk__${req.tenantId}`);
+
     emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.PROJECT_UPDATED : WS_EVENTS.PROJECT_CREATED, {
       project: result,
       userId: req.user?.userId,
@@ -217,6 +220,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
+    clearCache(`__bulk__${req.tenantId}`);
+
     emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_UPDATED, {
       project: result[0],
       userId: req.user?.userId,
@@ -242,6 +247,8 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     if (result.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
+
+    clearCache(`__bulk__${req.tenantId}`);
 
     emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_DELETED, {
       projectId: req.params.id,

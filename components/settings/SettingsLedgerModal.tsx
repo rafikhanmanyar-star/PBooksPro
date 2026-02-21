@@ -74,7 +74,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
             if (tx.type === TransactionType.EXPENSE) return sum - amount;
             if (tx.type === TransactionType.INCOME) return sum + amount;
             if (tx.type === TransactionType.LOAN) {
-                 if (tx.subtype === LoanSubtype.RECEIVE) return sum + amount;
+                 if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) return sum + amount;
                  return sum - amount;
             }
             return sum;

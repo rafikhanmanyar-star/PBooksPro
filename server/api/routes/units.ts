@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
 import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
+import { clearCache } from '../../middleware/cacheMiddleware.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -131,6 +132,8 @@ router.post('/', async (req: TenantRequest, res) => {
     );
     const saved = result[0];
 
+    clearCache(`__bulk__${req.tenantId}`);
+
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
       emitToTenant(req.tenantId!, WS_EVENTS.UNIT_UPDATED, {
@@ -194,6 +197,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Unit not found' });
     }
 
+    clearCache(`__bulk__${req.tenantId}`);
+
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, WS_EVENTS.UNIT_UPDATED, {
       unit: result[0],
@@ -220,6 +225,8 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     if (result.length === 0) {
       return res.status(404).json({ error: 'Unit not found' });
     }
+
+    clearCache(`__bulk__${req.tenantId}`);
 
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, WS_EVENTS.UNIT_DELETED, {

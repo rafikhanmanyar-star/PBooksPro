@@ -2380,11 +2380,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const queueOperationForSync = async (action: AppAction) => {
                 try {
                     const syncQueue = getSyncQueue();
-                    const tenantId = user?.tenant?.id;
-                    const userId = user?.id;
+                    const tenantId = localStorage.getItem('tenant_id') || (user as any)?.tenant?.id || (user as any)?.tenantId;
+                    const userId = user?.id || localStorage.getItem('user_id');
 
                     if (!tenantId || !userId) {
-                        logger.warnCategory('sync', '⚠️ Cannot queue operation: missing tenant or user ID');
+                        logger.warnCategory('sync', '⚠️ Cannot queue operation: missing tenant or user ID', { tenantId, userId });
                         return;
                     }
 
@@ -3156,7 +3156,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'rental_agreement:created', 'rental_agreement:updated', 'rental_agreement:deleted',
                     'recurring_invoice_template:created', 'recurring_invoice_template:updated', 'recurring_invoice_template:deleted',
                     'contact:created', 'contact:updated', 'contact:deleted',
-                    'vendor:created', 'vendor:updated', 'vendor:deleted'
+                    'vendor:created', 'vendor:updated', 'vendor:deleted',
+                    'project:created', 'project:updated', 'project:deleted',
+                    'building:created', 'building:updated', 'building:deleted',
+                    'property:created', 'property:updated', 'property:deleted',
+                    'unit:created', 'unit:updated', 'unit:deleted',
                 ]);
                 const fallbackEvents = events.filter(evt => !eventsWithSpecificHandlers.has(evt));
                 const unsubFallback = fallbackEvents.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
@@ -3524,6 +3528,146 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     } as any);
                 }));
 
+                // Project events
+                unsubSpecific.push(ws.on('project:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const p = data?.project ?? data;
+                    if (!p || !p.id) return;
+                    const normalized = {
+                        id: p.id,
+                        name: p.name || '',
+                        description: p.description ?? undefined,
+                        color: p.color ?? undefined,
+                        status: p.status ?? 'Active',
+                        installmentConfig: (() => { const c = p.installment_config ?? p.installmentConfig; if (!c) return undefined; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return undefined; } } return c; })(),
+                        pmConfig: (() => { const c = p.pm_config ?? p.pmConfig; if (!c) return undefined; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return undefined; } } return c; })(),
+                    };
+                    dispatch({ type: 'ADD_PROJECT', payload: normalized, _isRemote: true } as any);
+                }));
+                unsubSpecific.push(ws.on('project:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const p = data?.project ?? data;
+                    if (!p || !p.id) return;
+                    const existing = stateRef.current.projects.find(x => x.id === p.id);
+                    const normalized = {
+                        id: p.id,
+                        name: p.name || '',
+                        description: p.description ?? undefined,
+                        color: p.color ?? undefined,
+                        status: p.status ?? existing?.status ?? 'Active',
+                        installmentConfig: (() => { const c = p.installment_config ?? p.installmentConfig; if (!c) return existing?.installmentConfig; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return existing?.installmentConfig; } } return c; })(),
+                        pmConfig: (() => { const c = p.pm_config ?? p.pmConfig; if (!c) return existing?.pmConfig; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return existing?.pmConfig; } } return c; })(),
+                    };
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    dispatch({ type: existing ? 'UPDATE_PROJECT' : 'ADD_PROJECT', payload: merged, _isRemote: true } as any);
+                }));
+                unsubSpecific.push(ws.on('project:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.projectId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ type: 'DELETE_PROJECT', payload: id, _isRemote: true } as any);
+                }));
+
+                // Building events
+                unsubSpecific.push(ws.on('building:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const b = data?.building ?? data;
+                    if (!b || !b.id) return;
+                    dispatch({ type: 'ADD_BUILDING', payload: { id: b.id, name: b.name || '', description: b.description ?? undefined, color: b.color ?? undefined }, _isRemote: true } as any);
+                }));
+                unsubSpecific.push(ws.on('building:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const b = data?.building ?? data;
+                    if (!b || !b.id) return;
+                    const existing = stateRef.current.buildings.find(x => x.id === b.id);
+                    const normalized = { id: b.id, name: b.name || '', description: b.description ?? undefined, color: b.color ?? undefined };
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    dispatch({ type: existing ? 'UPDATE_BUILDING' : 'ADD_BUILDING', payload: merged, _isRemote: true } as any);
+                }));
+                unsubSpecific.push(ws.on('building:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.buildingId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ type: 'DELETE_BUILDING', payload: id, _isRemote: true } as any);
+                }));
+
+                // Property events
+                unsubSpecific.push(ws.on('property:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const p = data?.property ?? data;
+                    if (!p || !p.id) return;
+                    const normalized = {
+                        id: p.id, name: p.name || '',
+                        ownerId: p.owner_id ?? p.ownerId ?? '',
+                        buildingId: p.building_id ?? p.buildingId ?? '',
+                        description: p.description ?? undefined,
+                        monthlyServiceCharge: (() => { const c = p.monthly_service_charge ?? p.monthlyServiceCharge; if (c == null) return undefined; return typeof c === 'number' ? c : parseFloat(String(c)); })(),
+                    };
+                    dispatch({ type: 'ADD_PROPERTY', payload: normalized, _isRemote: true } as any);
+                }));
+                unsubSpecific.push(ws.on('property:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const p = data?.property ?? data;
+                    if (!p || !p.id) return;
+                    const existing = stateRef.current.properties.find(x => x.id === p.id);
+                    const normalized = {
+                        id: p.id, name: p.name || '',
+                        ownerId: p.owner_id ?? p.ownerId ?? existing?.ownerId ?? '',
+                        buildingId: p.building_id ?? p.buildingId ?? existing?.buildingId ?? '',
+                        description: p.description ?? undefined,
+                        monthlyServiceCharge: (() => { const c = p.monthly_service_charge ?? p.monthlyServiceCharge; if (c == null) return existing?.monthlyServiceCharge; return typeof c === 'number' ? c : parseFloat(String(c)); })(),
+                    };
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    dispatch({ type: existing ? 'UPDATE_PROPERTY' : 'ADD_PROPERTY', payload: merged, _isRemote: true } as any);
+                }));
+                unsubSpecific.push(ws.on('property:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.propertyId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ type: 'DELETE_PROPERTY', payload: id, _isRemote: true } as any);
+                }));
+
+                // Unit events
+                unsubSpecific.push(ws.on('unit:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const u = data?.unit ?? data;
+                    if (!u || !u.id) return;
+                    const normalized = {
+                        id: u.id, name: u.name || '',
+                        projectId: u.project_id ?? u.projectId ?? '',
+                        contactId: u.contact_id ?? u.contactId ?? undefined,
+                        salePrice: (() => { const v = u.sale_price ?? u.salePrice; if (v == null) return undefined; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
+                        description: u.description ?? undefined,
+                        type: u.type ?? undefined,
+                        area: (() => { const v = u.area; if (v == null) return undefined; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
+                        floor: u.floor ?? undefined,
+                    };
+                    dispatch({ type: 'ADD_UNIT', payload: normalized, _isRemote: true } as any);
+                }));
+                unsubSpecific.push(ws.on('unit:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const u = data?.unit ?? data;
+                    if (!u || !u.id) return;
+                    const existing = stateRef.current.units.find(x => x.id === u.id);
+                    const normalized = {
+                        id: u.id, name: u.name || '',
+                        projectId: u.project_id ?? u.projectId ?? existing?.projectId ?? '',
+                        contactId: u.contact_id ?? u.contactId ?? existing?.contactId ?? undefined,
+                        salePrice: (() => { const v = u.sale_price ?? u.salePrice; if (v == null) return existing?.salePrice; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
+                        description: u.description ?? undefined,
+                        type: u.type ?? existing?.type ?? undefined,
+                        area: (() => { const v = u.area; if (v == null) return existing?.area; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
+                        floor: u.floor ?? existing?.floor ?? undefined,
+                    };
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    dispatch({ type: existing ? 'UPDATE_UNIT' : 'ADD_UNIT', payload: merged, _isRemote: true } as any);
+                }));
+                unsubSpecific.push(ws.on('unit:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.unitId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ type: 'DELETE_UNIT', payload: id, _isRemote: true } as any);
+                }));
 
                 cleanup = () => {
                     unsubFallback.forEach(unsub => unsub());
@@ -3537,7 +3681,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         setupWebSocket();
 
+        // Re-check WebSocket connection periodically in case shouldEnableSync
+        // was false initially (e.g., User A logged in first when only 1 user existed,
+        // then User B logged in later making it 2 users).
+        const recheckInterval = setInterval(() => {
+            if (!isAuthenticated || cleanup) return;
+            setupWebSocket();
+        }, 60_000);
+
         return () => {
+            clearInterval(recheckInterval);
             if (cleanup) cleanup();
         };
     }, [isAuthenticated]); // Only depend on isAuthenticated, not refreshFromApi

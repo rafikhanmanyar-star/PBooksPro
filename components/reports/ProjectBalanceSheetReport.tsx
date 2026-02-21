@@ -172,8 +172,8 @@ const ProjectBalanceSheetReport: React.FC = () => {
                 applyBalance(tx.fromAccountId, tx.amount, -1);
                 applyBalance(tx.toAccountId, tx.amount, 1);
             } else if (tx.type === TransactionType.LOAN) {
-                const factor = tx.subtype === LoanSubtype.RECEIVE ? 1 : -1;
-                applyBalance(tx.accountId, tx.amount, factor);
+                const isInflow = tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT;
+                applyBalance(tx.accountId, tx.amount, isInflow ? 1 : -1);
             }
 
             // --- 2. Financial Categorization (P&L vs Liability vs Equity) ---
@@ -181,7 +181,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
             // LOANS
             if (tx.type === TransactionType.LOAN) {
                 if (tx.subtype === LoanSubtype.RECEIVE) outstandingLoans += tx.amount;
-                else if (tx.subtype === LoanSubtype.REPAY) outstandingLoans -= tx.amount;
+                else if (tx.subtype === LoanSubtype.REPAY || tx.subtype === LoanSubtype.COLLECT) outstandingLoans -= tx.amount;
                 return; // Skip further processing
             }
 

@@ -65,13 +65,21 @@ const LoanManagementPage: React.FC = () => {
                 };
             }
 
-            if (tx.subtype === LoanSubtype.RECEIVE) {
+            const sub = tx.subtype as string | undefined;
+            const isInflow = sub === LoanSubtype.RECEIVE || sub === LoanSubtype.COLLECT;
+
+            if (sub === LoanSubtype.RECEIVE) {
                 summary[contactId].received += tx.amount;
-                summary[contactId].netBalance += tx.amount;
+            } else if (sub === LoanSubtype.COLLECT) {
+                summary[contactId].collected += tx.amount;
+            } else if (sub === LoanSubtype.REPAY) {
+                summary[contactId].repaid += tx.amount;
             } else {
                 summary[contactId].given += tx.amount;
-                summary[contactId].netBalance -= tx.amount;
             }
+
+            // Inflow (Receive/Collect) increases liability, outflow (Give/Repay) decreases it
+            summary[contactId].netBalance += isInflow ? tx.amount : -tx.amount;
         });
 
         return Object.values(summary).filter(s => Math.abs(s.netBalance) > 0.01 || s.received > 0 || s.given > 0);

@@ -2639,7 +2639,8 @@ export const runImportProcess = async (
             if (to) to.balance += amount;
         } else if (type === TransactionType.LOAN) {
             const acc = tempState.accounts.find(a => a.id === accountId);
-            if (acc) acc.balance += (tx.subtype === LoanSubtype.RECEIVE ? amount : -amount);
+            const isInflow = tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT;
+            if (acc) acc.balance += (isInflow ? amount : -amount);
         }
     });
 
