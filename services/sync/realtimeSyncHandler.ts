@@ -978,10 +978,23 @@ class RealtimeSyncHandler {
       const { AppStateRepository } = await import('../database/repositories/appStateRepository');
       const appStateRepo = new AppStateRepository();
       BaseRepository.disableSyncQueueing();
+      // Disable FK checks to prevent constraint failures when entities arrive
+      // out of order (e.g., transaction arrives before its referenced contact).
+      // Data integrity is guaranteed by the server; local DB is a cache.
+      try {
+        dbService.execute('PRAGMA foreign_keys = OFF');
+      } catch (fkErr) {
+        console.warn('[RealtimeSyncHandler] Could not disable foreign keys:', fkErr);
+      }
       try {
         appStateRepo.upsertEntity(entityKey, data);
       } finally {
         BaseRepository.enableSyncQueueing();
+        try {
+          dbService.execute('PRAGMA foreign_keys = ON');
+        } catch (fkErr) {
+          console.warn('[RealtimeSyncHandler] Could not re-enable foreign keys:', fkErr);
+        }
       }
       dbService.save();
     } catch (error) {
