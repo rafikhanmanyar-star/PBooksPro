@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { TransactionType, LoanSubtype } from '../../types';
+import { TransactionType, LoanSubtype, Transaction } from '../../types';
 import TransactionForm from '../transactions/TransactionForm';
+import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
@@ -28,7 +29,7 @@ interface LoanSummary {
 type SortDirection = 'asc' | 'desc';
 
 const LoanManagementPage: React.FC = () => {
-    const { state } = useAppContext();
+    const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     const [searchQuery, setSearchQuery] = useState('');
@@ -37,6 +38,7 @@ const LoanManagementPage: React.FC = () => {
     const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
     const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [deleteWarning, setDeleteWarning] = useState<{ isOpen: boolean; transaction: Transaction | null }>({ isOpen: false, transaction: null });
 
     // Sorting State
     const [accountSort, setAccountSort] = useState<{ key: 'name' | 'amount'; direction: SortDirection }>({ key: 'amount', direction: 'desc' });
@@ -192,6 +194,18 @@ const LoanManagementPage: React.FC = () => {
     const handleEditModalClose = () => {
         setIsEditModalOpen(false);
         setSelectedTransactionId(null);
+    };
+
+    const handleShowDeleteWarning = (tx: Transaction) => {
+        setDeleteWarning({ isOpen: true, transaction: tx });
+    };
+
+    const handleConfirmDelete = () => {
+        if (deleteWarning.transaction) {
+            dispatch({ type: 'DELETE_TRANSACTION', payload: deleteWarning.transaction.id });
+            handleEditModalClose();
+        }
+        setDeleteWarning({ isOpen: false, transaction: null });
     };
 
     const handleWhatsApp = async () => {
@@ -441,9 +455,17 @@ const LoanManagementPage: React.FC = () => {
                     onClose={handleEditModalClose}
                     transactionTypeForNew={TransactionType.LOAN}
                     transactionToEdit={selectedTransactionId ? state.transactions.find(t => t.id === selectedTransactionId) : undefined}
-                    onShowDeleteWarning={() => { }}
+                    onShowDeleteWarning={handleShowDeleteWarning}
                 />
             </Modal>
+
+            <LinkedTransactionWarningModal
+                isOpen={deleteWarning.isOpen}
+                onClose={() => setDeleteWarning({ isOpen: false, transaction: null })}
+                onConfirm={handleConfirmDelete}
+                action="delete"
+                linkedItemName="a Loan Transaction"
+            />
         </div>
     );
 };

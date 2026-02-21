@@ -44,9 +44,16 @@ router.get('/', async (req: TenantRequest, res) => {
     // Privacy Logic: 
     // 1. Admins see everything
     // 2. Others see only plans they created, requested approval for, or are assigned to approve
-    let query = 'SELECT * FROM installment_plans WHERE tenant_id = $1 AND deleted_at IS NULL';
-    const params: any[] = [req.tenantId];
-    let paramIndex = 2;
+    let useDeletedAt = true;
+    const buildQuery = () => {
+      let q = useDeletedAt
+        ? 'SELECT * FROM installment_plans WHERE tenant_id = $1 AND deleted_at IS NULL'
+        : 'SELECT * FROM installment_plans WHERE tenant_id = $1';
+      const p: any[] = [req.tenantId];
+      let idx = 2;
+      return { q, p, idx };
+    };
+    let { q: query, p: params, idx: paramIndex } = buildQuery();
 
     if (req.userRole !== 'Admin') {
       if (currentUserId) {
@@ -88,14 +95,38 @@ router.get('/', async (req: TenantRequest, res) => {
 
     query += ' ORDER BY created_at DESC';
 
-    console.log('[PLAN API] Executing query:', {
-      query,
-      params,
-      userRole: req.userRole,
-      isAdmin: req.userRole === 'Admin'
-    });
+    let plans: any[];
+    try {
+      plans = await db.query(query, params);
+    } catch (queryErr: any) {
+      if (queryErr?.message?.includes('deleted_at') || queryErr?.message?.includes('does not exist')) {
+        useDeletedAt = false;
+        const rebuilt = buildQuery();
+        let retryQuery = rebuilt.q;
+        const retryParams = rebuilt.p;
+        let retryIdx = rebuilt.idx;
 
-    const plans = await db.query(query, params);
+        if (req.userRole !== 'Admin') {
+          const matchValues = [currentUserId, currentUsername, currentUserName].filter(Boolean);
+          if (matchValues.length > 0) {
+            const matchClauses = matchValues.map((_, index) => {
+              const param = `$${retryIdx + index}`;
+              return `(user_id = ${param} OR approval_requested_by = ${param} OR approval_requested_to = ${param})`;
+            });
+            retryQuery += ` AND (${matchClauses.join(' OR ')})`;
+            retryParams.push(...matchValues);
+            retryIdx += matchValues.length;
+          }
+        }
+        if (projectId) { retryQuery += ` AND project_id = $${retryIdx++}`; retryParams.push(projectId); }
+        if (leadId) { retryQuery += ` AND lead_id = $${retryIdx++}`; retryParams.push(leadId); }
+        if (unitId) { retryQuery += ` AND unit_id = $${retryIdx++}`; retryParams.push(unitId); }
+        retryQuery += ' ORDER BY created_at DESC';
+        plans = await db.query(retryQuery, retryParams);
+      } else {
+        throw queryErr;
+      }
+    }
 
     console.log('[PLAN API] Query results:', {
       totalPlans: plans.length,
@@ -160,8 +191,8 @@ router.get('/', async (req: TenantRequest, res) => {
     }));
 
     res.json(mapped);
-  } catch (error) {
-    console.error('Error fetching installment plans:', error);
+  } catch (error: any) {
+    console.error('Error fetching installment plans:', error?.message || error);
     res.status(500).json({ error: 'Failed to fetch installment plans' });
   }
 });

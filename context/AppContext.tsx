@@ -2740,15 +2740,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
 
         try {
+            // INCREMENTAL SYNC: If we have a recent baseline, fetch only changes since last sync.
+            // This avoids reloading all data on every WebSocket event or navigation refresh.
+            const { apiClient } = await import('../services/api/client');
+            const currentTenantId = apiClient.getTenantId();
+            const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
+            const hasBaseline = (stateRef.current.contacts?.length ?? 0) > 0 ||
+                (stateRef.current.transactions?.length ?? 0) > 0 ||
+                (stateRef.current.accounts?.length ?? 0) > 0;
+
+            if (currentTenantId && lastSync && hasBaseline && isLastSyncRecent(currentTenantId)) {
+                logger.logCategory('sync', `📡 refreshFromApi: using incremental sync (since ${lastSync})`);
+                try {
+                    const incrementalState = await apiService.loadStateViaIncrementalSync(lastSync, stateRef.current);
+                    const merged = applyApiState(incrementalState);
+                    if (merged) persistLoadedStateToDb(merged);
+                    if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
+                    onCriticalLoaded?.();
+                    return;
+                } catch (incErr) {
+                    logger.warnCategory('sync', '⚠️ Incremental sync failed in refreshFromApi, falling back to full load:', incErr);
+                    if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
+                }
+            }
+
+            // FULL LOAD: No recent baseline — load everything (initial login or stale data)
+            logger.logCategory('sync', '📡 refreshFromApi: performing full data load');
+
             // STEP 1: Load critical entities FIRST (accounts, contacts, categories, projects, buildings, properties, units)
-            // This allows the UI to become interactive in <10 seconds even with large datasets
             setInitMessage('Loading critical data...');
             try {
                 const critical = await apiService.loadStateBulk('accounts,contacts,categories,projects,buildings,properties,units,vendors');
                 if (critical && Object.keys(critical).length > 0) {
                     const mergedCritical = applyApiState(critical);
                     if (mergedCritical) persistLoadedStateToDb(mergedCritical);
-                    onCriticalLoaded?.(); // UI becomes interactive here
+                    onCriticalLoaded?.();
 
                     // STEP 2: Load remaining data in background (chunked, non-blocking)
                     setInitMessage('Loading additional data...');
@@ -2758,24 +2784,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         if (total > 0) {
                             setInitProgress(Math.round((loaded / total) * 100));
                         }
-                    }, 200) // 200 records per chunk
+                    }, 200)
                         .then(full => {
                             const mergedFull = applyApiState(full);
                             if (mergedFull) persistLoadedStateToDb(mergedFull);
                             setLoadProgress(null);
                             setInitMessage('Data loaded');
                             setInitProgress(100);
+                            if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
                             logger.logCategory('sync', '✅ Background data load complete');
                         })
                         .catch(err => {
                             console.error('⚠️ Background chunked load failed:', err);
                             setLoadProgress(null);
-                            // Fallback to regular bulk load if chunked fails
                             logger.logCategory('sync', '⚠️ Chunked load failed, falling back to bulk');
                             apiService.loadStateBulk()
                                 .then(full => {
                                     const merged = applyApiState(full);
                                     if (merged) persistLoadedStateToDb(merged);
+                                    if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
                                 })
                                 .catch(bulkErr => console.error('⚠️ Bulk fallback also failed:', bulkErr));
                         });
@@ -2798,6 +2825,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             const mergedFallback = applyApiState(apiState);
             if (mergedFallback) persistLoadedStateToDb(mergedFallback);
+            if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
             onCriticalLoaded?.();
         } catch (err) {
             console.error('⚠️ Failed to refresh data from API:', err);
@@ -3857,7 +3885,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         try {
                             logger.logCategory('sync', '🔄 Reloading data from API for new tenant...');
                             const apiService = getAppStateApiService();
-                            const apiState = await apiService.loadState();
+                            let apiState: Partial<AppState>;
+                            try {
+                                apiState = await apiService.loadStateBulk();
+                            } catch (bulkErr: any) {
+                                if (bulkErr?.status === 404 || bulkErr?.message?.includes('404')) {
+                                    apiState = await apiService.loadState();
+                                } else {
+                                    throw bulkErr;
+                                }
+                            }
 
                             const prev = storedStateRef.current;
                             const fullState: AppState = {

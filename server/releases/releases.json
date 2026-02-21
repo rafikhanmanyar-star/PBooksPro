@@ -237,6 +237,21 @@
                                    ],
                          "version":  "1.2.15",
                          "changelog":  ""
+                     },
+                     {
+                         "date":  "2026-02-21T15:52:43.5696479Z",
+                         "environment":  "staging",
+                         "files":  [
+                                       {
+                                           "downloadUrl":  "https://pbookspro-api-staging.onrender.com/api/app-info/releases/download/PBooks%20Pro%20(Staging)%20Setup%201.2.16.exe",
+                                           "type":  "installer",
+                                           "size":  112333760,
+                                           "sha512":  "046DB254B645E3821F831A97F4B58A279A928D1CACA64A9702FC1EF307B0A70B49B2C2CFFD0CDA20CE806B5CD3ADC10FC905026A0A3DA9B79103F2D9B4EBF9D9",
+                                           "name":  "PBooks Pro (Staging) Setup 1.2.16.exe"
+                                       }
+                                   ],
+                         "version":  "1.2.16",
+                         "changelog":  ""
                      }
                  ]
 }

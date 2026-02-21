@@ -11,19 +11,25 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { activeOnly } = req.query;
-
-    let query = 'SELECT * FROM plan_amenities WHERE tenant_id = $1 AND deleted_at IS NULL';
     const params: any[] = [req.tenantId];
 
-    if (activeOnly === 'true') {
-      query += ' AND is_active = true';
+    let amenities: any[];
+    try {
+      let query = 'SELECT * FROM plan_amenities WHERE tenant_id = $1 AND deleted_at IS NULL';
+      if (activeOnly === 'true') query += ' AND is_active = true';
+      query += ' ORDER BY name ASC';
+      amenities = await db.query(query, params);
+    } catch (queryErr: any) {
+      if (queryErr?.message?.includes('deleted_at') || queryErr?.message?.includes('does not exist')) {
+        let query = 'SELECT * FROM plan_amenities WHERE tenant_id = $1';
+        if (activeOnly === 'true') query += ' AND is_active = true';
+        query += ' ORDER BY name ASC';
+        amenities = await db.query(query, params);
+      } else {
+        throw queryErr;
+      }
     }
 
-    query += ' ORDER BY name ASC';
-
-    const amenities = await db.query(query, params);
-
-    // Map to camelCase for frontend
     const mapped = amenities.map((a: any) => ({
       id: a.id,
       name: a.name,
@@ -36,8 +42,8 @@ router.get('/', async (req: TenantRequest, res) => {
     }));
 
     res.json(mapped);
-  } catch (error) {
-    console.error('Error fetching plan amenities:', error);
+  } catch (error: any) {
+    console.error('Error fetching plan amenities:', error?.message || error);
     res.status(500).json({ error: 'Failed to fetch plan amenities' });
   }
 });
@@ -46,10 +52,22 @@ router.get('/', async (req: TenantRequest, res) => {
 router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const amenities = await db.query(
-      'SELECT * FROM plan_amenities WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-      [req.params.id, req.tenantId]
-    );
+    let amenities: any[];
+    try {
+      amenities = await db.query(
+        'SELECT * FROM plan_amenities WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+        [req.params.id, req.tenantId]
+      );
+    } catch (queryErr: any) {
+      if (queryErr?.message?.includes('deleted_at') || queryErr?.message?.includes('does not exist')) {
+        amenities = await db.query(
+          'SELECT * FROM plan_amenities WHERE id = $1 AND tenant_id = $2',
+          [req.params.id, req.tenantId]
+        );
+      } else {
+        throw queryErr;
+      }
+    }
 
     if (amenities.length === 0) {
       return res.status(404).json({ error: 'Plan amenity not found' });
@@ -66,8 +84,8 @@ router.get('/:id', async (req: TenantRequest, res) => {
       createdAt: a.created_at,
       updatedAt: a.updated_at,
     });
-  } catch (error) {
-    console.error('Error fetching plan amenity:', error);
+  } catch (error: any) {
+    console.error('Error fetching plan amenity:', error?.message || error);
     res.status(500).json({ error: 'Failed to fetch plan amenity' });
   }
 });

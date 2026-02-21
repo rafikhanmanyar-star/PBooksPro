@@ -337,7 +337,12 @@ const ImportExportWizard: React.FC = () => {
         // Refresh app state to show newly imported data
         try {
           const apiService = getAppStateApiService();
-          const apiState = await apiService.loadState();
+          let apiState: Partial<typeof state>;
+          try {
+            apiState = await apiService.loadStateBulk();
+          } catch {
+            apiState = await apiService.loadState();
+          }
 
           // Merge the new data into the current state
           const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
