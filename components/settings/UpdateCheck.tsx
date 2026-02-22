@@ -44,8 +44,10 @@ const UpdateCheck: React.FC = () => {
       setStatus('downloading');
     } else if (electronUpdateAvailable) {
       setStatus('available');
+    } else if (!electronChecking && !electronUpdateAvailable && status === 'checking') {
+      setStatus('not-available');
     }
-  }, [isElectronUpdate, electronChecking, electronUpdateAvailable, electronUpdateDownloaded, electronDownloadProgress, electronError]);
+  }, [isElectronUpdate, electronChecking, electronUpdateAvailable, electronUpdateDownloaded, electronDownloadProgress, electronError, status]);
 
   // PWA update detection
   useEffect(() => {
@@ -63,11 +65,10 @@ const UpdateCheck: React.FC = () => {
 
     if (isElectronUpdate) {
       electronCheckForUpdates();
-      // Status will be updated via the useEffect above
-      // Set a timeout to reset if no response within 15 seconds
+      // Fallback timeout: Render free tier cold starts can take 30-45s
       setTimeout(() => {
         setStatus((prev) => (prev === 'checking' ? 'not-available' : prev));
-      }, 15000);
+      }, 60000);
     } else {
       try {
         await pwaCheckForUpdates();

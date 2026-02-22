@@ -88,6 +88,13 @@ function getLatestVersion(): string | null {
   return match ? match[1].trim() : null;
 }
 
+function buildGitHubReleaseUrl(githubRepo: string, version: string, filename: string): string {
+  const encodedName = encodeURIComponent(filename);
+  // Use plain V{version} tag — the filename itself distinguishes staging vs production
+  const tag = `V${version}`;
+  return `${githubRepo}/releases/download/${tag}/${encodedName}`;
+}
+
 // Serve update files for electron-updater auto-update downloads.
 // Serves from server/releases/ if available, otherwise redirects to GitHub Releases.
 router.get('/updates/:filename', async (req, res) => {
@@ -111,9 +118,7 @@ router.get('/updates/:filename', async (req, res) => {
     if (githubRepo) {
       const version = getLatestVersion();
       if (version) {
-        const env = getCurrentEnvironment();
-        const tag = env === 'staging' ? `V${version}-staging` : `V${version}`;
-        const githubUrl = `${githubRepo}/releases/download/${tag}/${encodeURIComponent(safeName)}`;
+        const githubUrl = buildGitHubReleaseUrl(githubRepo, version, safeName);
         return res.redirect(302, githubUrl);
       }
     }
@@ -189,9 +194,7 @@ router.get('/releases/download/:filename', async (req, res) => {
     if (githubRepo) {
       const version = getLatestVersion();
       if (version) {
-        const env = getCurrentEnvironment();
-        const tag = env === 'staging' ? `V${version}-staging` : `V${version}`;
-        const githubUrl = `${githubRepo}/releases/download/${tag}/${encodeURIComponent(safeName)}`;
+        const githubUrl = buildGitHubReleaseUrl(githubRepo, version, safeName);
         return res.redirect(302, githubUrl);
       }
     }

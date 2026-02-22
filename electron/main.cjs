@@ -157,10 +157,18 @@ function setupAutoUpdater() {
 app.whenReady().then(() => {
   createWindow();
   setupAutoUpdater();
-  // Check for updates 10 seconds after launch
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
-  }, 10000);
+  // Check for updates after launch, with retry for Render cold starts
+  const checkWithRetry = (attempt = 1) => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.log(`[AutoUpdater] Check attempt ${attempt} failed:`, err?.message);
+      if (attempt < 3) {
+        const delay = attempt * 15000;
+        console.log(`[AutoUpdater] Retrying in ${delay / 1000}s...`);
+        setTimeout(() => checkWithRetry(attempt + 1), delay);
+      }
+    });
+  };
+  setTimeout(() => checkWithRetry(), 10000);
 });
 
 app.on('window-all-closed', () => {
