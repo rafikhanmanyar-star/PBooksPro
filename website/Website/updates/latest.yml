@@ -1,8 +1,8 @@
-version: 1.2.22
+version: 1.2.23
 files:
-  - url: PBooksProStaging-Setup-1.2.22.exe
-    sha512: el2MaLKqQ23rkpQQ6AEka7EhCljGRuIQ05xRsvop5zah4/g5BiPgkUFKVEw/BhU1F3XFA4E9jlyLR1jf6shULA==
-    size: 112344921
-path: PBooksProStaging-Setup-1.2.22.exe
-sha512: el2MaLKqQ23rkpQQ6AEka7EhCljGRuIQ05xRsvop5zah4/g5BiPgkUFKVEw/BhU1F3XFA4E9jlyLR1jf6shULA==
-releaseDate: '2026-02-22T16:38:56.311Z'
+  - url: PBooksProStaging-Setup-1.2.23.exe
+    sha512: XDihZ1iNvBuZh0PhnogmgNcNU6V0RM/MOFnUyPYM7YGQXRhNsXqhAoxz5Zac5Crc6ystNqWkesPPYlvy6Smviw==
+    size: 112345012
+path: PBooksProStaging-Setup-1.2.23.exe
+sha512: XDihZ1iNvBuZh0PhnogmgNcNU6V0RM/MOFnUyPYM7YGQXRhNsXqhAoxz5Zac5Crc6ystNqWkesPPYlvy6Smviw==
+releaseDate: '2026-02-22T17:15:07.319Z'
