@@ -259,7 +259,10 @@ export class AppStateRepository {
 
                 return normalizedUnit;
             }),
-            transactions,
+            transactions: transactions.map((t: any) => ({
+                ...t,
+                amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
+            })),
             invoices,
             bills: bills.map(b => {
                 // Normalize bill to ensure all fields are properly mapped

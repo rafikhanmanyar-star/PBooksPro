@@ -62,12 +62,13 @@ const LoanAnalysisReport: React.FC = () => {
             }
 
             const isInflow = tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT;
+            const amt = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
             if (isInflow) {
-                contactMap[contactId].totalReceived += tx.amount;
-                contactMap[contactId].netBalance += tx.amount;
+                contactMap[contactId].totalReceived += amt;
+                contactMap[contactId].netBalance += amt;
             } else {
-                contactMap[contactId].totalGiven += tx.amount;
-                contactMap[contactId].netBalance -= tx.amount;
+                contactMap[contactId].totalGiven += amt;
+                contactMap[contactId].netBalance -= amt;
             }
         });
 

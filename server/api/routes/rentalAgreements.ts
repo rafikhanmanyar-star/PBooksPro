@@ -320,6 +320,17 @@ router.post('/', async (req: TenantRequest, res) => {
       valuePlaceholders[versionIdx] = `1`;
     }
 
+    // Build version-safe WHERE clause for ON CONFLICT UPDATE:
+    // When serverVersion is null (new agreement or first sync), skip the version check
+    // to avoid SQL NULL comparison issues (NULL = NULL is UNKNOWN, not TRUE)
+    const versionWhereClause = serverVersion != null
+      ? `AND (rental_agreements.version = $${insertValues.length + 1} OR rental_agreements.version IS NULL)`
+      : '';
+
+    const upsertParams = serverVersion != null
+      ? [...insertValues, serverVersion]
+      : insertValues;
+
     const result = await db.query(
       `INSERT INTO rental_agreements (
         ${insertColumns.join(', ')}
@@ -343,11 +354,27 @@ router.post('/', async (req: TenantRequest, res) => {
         updated_at = NOW(),
         version = COALESCE(rental_agreements.version, 1) + 1,
         deleted_at = NULL
-      WHERE (rental_agreements.org_id = $2 OR rental_agreements.tenant_id = $2) AND (rental_agreements.version = $${insertValues.length + 1} OR rental_agreements.version IS NULL)
+      WHERE (rental_agreements.org_id = $2 OR rental_agreements.tenant_id = $2) ${versionWhereClause}
       RETURNING *`,
-      [...insertValues, serverVersion]
+      upsertParams
     );
     const saved = result[0];
+
+    if (!saved) {
+      console.error('❌ POST /rental-agreements - UPSERT returned no rows (version conflict or tenant mismatch):', {
+        agreementId,
+        tenantId: req.tenantId,
+        isUpdate,
+        serverVersion,
+        clientVersion
+      });
+      return res.status(409).json({
+        error: 'Failed to save rental agreement',
+        message: 'The agreement could not be saved due to a version conflict. Please refresh and try again.',
+        serverVersion
+      });
+    }
+
     const transformedSaved = transformRentalAgreement(saved);
 
     console.log('✅ POST /rental-agreements - Agreement saved successfully:', {

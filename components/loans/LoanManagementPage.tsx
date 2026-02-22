@@ -67,19 +67,19 @@ const LoanManagementPage: React.FC = () => {
 
             const sub = tx.subtype as string | undefined;
             const isInflow = sub === LoanSubtype.RECEIVE || sub === LoanSubtype.COLLECT;
+            const amt = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
 
             if (sub === LoanSubtype.RECEIVE) {
-                summary[contactId].received += tx.amount;
+                summary[contactId].received += amt;
             } else if (sub === LoanSubtype.COLLECT) {
-                summary[contactId].collected += tx.amount;
+                summary[contactId].collected += amt;
             } else if (sub === LoanSubtype.REPAY) {
-                summary[contactId].repaid += tx.amount;
+                summary[contactId].repaid += amt;
             } else {
-                summary[contactId].given += tx.amount;
+                summary[contactId].given += amt;
             }
 
-            // Inflow (Receive/Collect) increases liability, outflow (Give/Repay) decreases it
-            summary[contactId].netBalance += isInflow ? tx.amount : -tx.amount;
+            summary[contactId].netBalance += isInflow ? amt : -amt;
         });
 
         return Object.values(summary).filter(s => Math.abs(s.netBalance) > 0.01 || s.received > 0 || s.given > 0);
@@ -127,13 +127,10 @@ const LoanManagementPage: React.FC = () => {
         let runningBalance = 0;
         const rows = rawTxs.map(tx => {
             const isInflow = tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT;
-            // "Give Loan" column = Outflow (Given/Repaid)
-            const give = isInflow ? 0 : tx.amount;
-            // "Receive Loan" column = Inflow (Received/Collected)
-            const receive = isInflow ? tx.amount : 0;
+            const amt = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
+            const give = isInflow ? 0 : amt;
+            const receive = isInflow ? amt : 0;
 
-            // Balance logic: Positive = Liability (We Owe), Negative = Asset (They Owe)
-            // Receive increases Liability (+), Give decreases Liability (-)
             runningBalance += (receive - give);
 
             return {

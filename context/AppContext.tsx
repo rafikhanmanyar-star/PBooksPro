@@ -359,23 +359,24 @@ const updateContractStatus = (state: AppState, contractId: string | undefined): 
 
 const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean): AppState => {
     const factor = isAdd ? 1 : -1;
+    const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
     let newState = { ...state };
 
     // 1. Account Balances
     newState.accounts = newState.accounts.map(acc => {
         let change = 0;
-        if (tx.type === TransactionType.INCOME && acc.id === tx.accountId) change = tx.amount;
-        else if (tx.type === TransactionType.EXPENSE && acc.id === tx.accountId) change = -tx.amount;
+        if (tx.type === TransactionType.INCOME && acc.id === tx.accountId) change = amount;
+        else if (tx.type === TransactionType.EXPENSE && acc.id === tx.accountId) change = -amount;
         else if (tx.type === TransactionType.TRANSFER) {
-            if (acc.id === tx.fromAccountId) change = -tx.amount;
-            if (acc.id === tx.toAccountId) change = tx.amount;
+            if (acc.id === tx.fromAccountId) change = -amount;
+            if (acc.id === tx.toAccountId) change = amount;
         }
         else if (tx.type === TransactionType.LOAN && acc.id === tx.accountId) {
-            if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) change = tx.amount;
-            else change = -tx.amount;
+            if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) change = amount;
+            else change = -amount;
         }
 
-        if (change !== 0) return { ...acc, balance: acc.balance + (change * factor) };
+        if (change !== 0) return { ...acc, balance: (typeof acc.balance === 'number' ? acc.balance : parseFloat(String(acc.balance)) || 0) + (change * factor) };
         return acc;
     });
 
@@ -383,7 +384,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
     if (tx.invoiceId) {
         newState.invoices = newState.invoices.map(inv => {
             if (inv.id === tx.invoiceId) {
-                const newPaid = Math.max(0, (inv.paidAmount || 0) + (tx.amount * factor));
+                const newPaid = Math.max(0, (inv.paidAmount || 0) + (amount * factor));
                 let newStatus = inv.status;
                 if (newPaid >= inv.amount - 0.1) newStatus = InvoiceStatus.PAID;
                 else if (newPaid > 0.1) newStatus = InvoiceStatus.PARTIALLY_PAID;
@@ -398,7 +399,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
     if (tx.billId) {
         newState.bills = newState.bills.map(b => {
             if (b.id === tx.billId) {
-                const newPaid = Math.max(0, (b.paidAmount || 0) + (tx.amount * factor));
+                const newPaid = Math.max(0, (b.paidAmount || 0) + (amount * factor));
                 let newStatus = b.status;
                 // Use consistent threshold of 0.01 for "fully paid" check
                 const threshold = 0.01;
@@ -2176,18 +2177,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
 
                     // Handle rental agreement changes
-                    if (action.type === 'ADD_RENTAL_AGREEMENT') {
+                    if (action.type === 'ADD_RENTAL_AGREEMENT' || action.type === 'UPDATE_RENTAL_AGREEMENT') {
                         const agreement = action.payload;
-                        await apiService.saveRentalAgreement(agreement);
-                        logger.logCategory('sync', '✅ Synced rental agreement to API:', agreement.agreementNumber);
-                    } else if (action.type === 'UPDATE_RENTAL_AGREEMENT') {
-                        const agreement = action.payload;
-                        await apiService.saveRentalAgreement(agreement);
-                        logger.logCategory('sync', '✅ Synced rental agreement update to API:', agreement.agreementNumber);
+                        try {
+                            await apiService.saveRentalAgreement(agreement);
+                            logger.logCategory('sync', `✅ Synced rental agreement ${action.type === 'UPDATE_RENTAL_AGREEMENT' ? 'update' : ''} to API: ${agreement.agreementNumber}`);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync rental agreement ${agreement.agreementNumber} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     } else if (action.type === 'DELETE_RENTAL_AGREEMENT') {
                         const agreementId = action.payload as string;
-                        await apiService.deleteRentalAgreement(agreementId);
-                        logger.logCategory('sync', '✅ Synced rental agreement deletion to API:', agreementId);
+                        try {
+                            await apiService.deleteRentalAgreement(agreementId);
+                            logger.logCategory('sync', '✅ Synced rental agreement deletion to API:', agreementId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync rental agreement deletion ${agreementId} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     }
 
                     // Handle project agreement changes
@@ -3816,18 +3823,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const previousContactsLengthRef = useRef(state.contacts.length);
     const previousTransactionsLengthRef = useRef(state.transactions.length);
     const previousBillsLengthRef = useRef(state.bills.length);
+    const previousInvoicesLengthRef = useRef(state.invoices.length);
+    const previousRentalAgreementsLengthRef = useRef(state.rentalAgreements.length);
 
     useEffect(() => {
         if (!isInitializing) {
-            // Check if contacts, transactions, bills, or inventory items were added (critical data changes)
             const contactsChanged = state.contacts.length !== previousContactsLengthRef.current;
             const transactionsChanged = state.transactions.length !== previousTransactionsLengthRef.current;
             const billsChanged = state.bills.length !== previousBillsLengthRef.current;
+            const invoicesChanged = state.invoices.length !== previousInvoicesLengthRef.current;
+            const rentalAgreementsChanged = state.rentalAgreements.length !== previousRentalAgreementsLengthRef.current;
 
-            if (contactsChanged || transactionsChanged || billsChanged) {
+            if (contactsChanged || transactionsChanged || billsChanged || invoicesChanged || rentalAgreementsChanged) {
                 previousContactsLengthRef.current = state.contacts.length;
                 previousTransactionsLengthRef.current = state.transactions.length;
                 previousBillsLengthRef.current = state.bills.length;
+                previousInvoicesLengthRef.current = state.invoices.length;
+                previousRentalAgreementsLengthRef.current = state.rentalAgreements.length;
 
                 if (!useFallback && saveNow) {
                     const doSave = async () => {
@@ -3842,12 +3854,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 stateSnapshot: {
                                     contacts: state.contacts.length,
                                     transactions: state.transactions.length,
-                                    bills: state.bills.length
+                                    bills: state.bills.length,
+                                    invoices: state.invoices.length,
+                                    rentalAgreements: state.rentalAgreements.length
                                 }
                             });
                         }
                     };
-                    if (transactionsChanged) {
+                    if (transactionsChanged || rentalAgreementsChanged) {
                         doSave();
                     } else {
                         const saveTimer = setTimeout(doSave, 200);
@@ -3856,7 +3870,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             }
         }
-    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, isInitializing, state, useFallback, saveNow]);
+    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, state.rentalAgreements.length, isInitializing, state, useFallback, saveNow]);
 
     // 🔧 FIX: Sync authenticated user from AuthContext to AppContext state
     useEffect(() => {

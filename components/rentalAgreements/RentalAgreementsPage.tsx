@@ -203,28 +203,28 @@ const RentalAgreementsPage: React.FC = () => {
             {/* === KPI Summary Cards - compact (match invoices/bills) === */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 flex-shrink-0">
                 {/* Active Agreements */}
-                <div className="bg-white rounded-lg border border-slate-200 shadow-sm px-2.5 py-1.5 flex flex-col gap-0.5">
+                <div className="bg-white rounded-lg border border-emerald-200 shadow-sm px-2.5 py-1.5 flex flex-col gap-0.5">
                     <div className="flex items-center gap-1.5 text-emerald-600">
-                        <div className="w-3.5 h-3.5">{ICONS.fileText}</div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Active</span>
+                        <div className="w-4 h-4">{ICONS.checkCircle}</div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Active</span>
                     </div>
                     <span className="text-sm font-bold text-slate-800 leading-tight">{kpiData.activeCount}</span>
-                    <span className="text-xs text-slate-500 truncate">Rent: {CURRENCY} {kpiData.totalRent.toLocaleString()}</span>
+                    <span className="text-xs text-slate-500 truncate">Rent, {CURRENCY} {kpiData.totalRent.toLocaleString()}</span>
                 </div>
                 {/* Expiring Soon */}
                 <div className={`bg-white rounded-lg border shadow-sm px-2.5 py-1.5 flex flex-col gap-0.5 ${kpiData.expiringCount > 0 ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200'}`}>
                     <div className="flex items-center gap-1.5 text-amber-600">
-                        <div className="w-3.5 h-3.5">{ICONS.alertTriangle}</div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Expiring Soon</span>
+                        <div className="w-4 h-4">{ICONS.clock}</div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Expiring Soon</span>
                     </div>
                     <span className="text-sm font-bold text-slate-800 leading-tight">{kpiData.expiringCount}</span>
                     <span className="text-xs text-slate-500">Within 30 days</span>
                 </div>
                 {/* Security Deposits */}
-                <div className="bg-white rounded-lg border border-slate-200 shadow-sm px-2.5 py-1.5 flex flex-col gap-0.5">
+                <div className="bg-white rounded-lg border border-blue-200 shadow-sm px-2.5 py-1.5 flex flex-col gap-0.5">
                     <div className="flex items-center gap-1.5 text-blue-600">
-                        <div className="w-3.5 h-3.5">{ICONS.lock}</div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Security Held</span>
+                        <div className="w-4 h-4">{ICONS.shield}</div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Security Held</span>
                     </div>
                     <span className="text-sm font-bold text-slate-800 leading-tight truncate">{CURRENCY} {kpiData.totalSecurity.toLocaleString()}</span>
                     <span className="text-xs text-slate-500">Active agreements</span>

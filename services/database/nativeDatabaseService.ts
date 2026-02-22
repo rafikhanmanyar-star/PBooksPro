@@ -43,7 +43,7 @@ function nativeToTransaction(native: NativeTransaction): Transaction {
     id: native.id,
     type: native.type as any,
     subtype: native.subtype as any,
-    amount: native.amount,
+    amount: typeof native.amount === 'number' ? native.amount : parseFloat(String(native.amount)) || 0,
     date: native.date,
     description: native.description || '',
     accountId: native.account_id,
