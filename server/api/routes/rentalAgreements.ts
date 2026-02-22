@@ -5,7 +5,7 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
-let tenantColumnInfoCache: { hasOrgId: boolean; hasTenantId: boolean } | null = null;
+let tenantColumnInfoCache: { hasOrgId: boolean; hasTenantId: boolean; hasPreviousAgreementId: boolean } | null = null;
 
 async function getTenantColumnInfo() {
   if (tenantColumnInfoCache) return tenantColumnInfoCache;
@@ -14,12 +14,13 @@ async function getTenantColumnInfo() {
     `SELECT column_name
      FROM information_schema.columns
      WHERE table_name = 'rental_agreements'
-       AND column_name IN ('org_id', 'tenant_id')`
+       AND column_name IN ('org_id', 'tenant_id', 'previous_agreement_id')`
   );
   const columnNames = new Set(columns.map((col: any) => col.column_name));
   tenantColumnInfoCache = {
     hasOrgId: columnNames.has('org_id'),
-    hasTenantId: columnNames.has('tenant_id')
+    hasTenantId: columnNames.has('tenant_id'),
+    hasPreviousAgreementId: columnNames.has('previous_agreement_id')
   };
   return tenantColumnInfoCache;
 }
@@ -280,16 +281,12 @@ router.post('/', async (req: TenantRequest, res) => {
       'security_deposit',
       'broker_id',
       'broker_fee',
-      'owner_id',
-      'previous_agreement_id',
-      'created_at',
-      'updated_at',
-      'version'
+      'owner_id'
     );
 
     insertValues.push(
       agreement.agreementNumber,
-      agreement.contactId || null, // Contact ID (the tenant contact person)
+      agreement.contactId || null,
       agreement.propertyId,
       agreement.startDate,
       agreement.endDate,
@@ -300,9 +297,15 @@ router.post('/', async (req: TenantRequest, res) => {
       agreement.securityDeposit || null,
       agreement.brokerId || null,
       agreement.brokerFee || null,
-      agreement.ownerId || null,
-      agreement.previousAgreementId || null
+      agreement.ownerId || null
     );
+
+    if (tenantInfo.hasPreviousAgreementId) {
+      insertColumns.push('previous_agreement_id');
+      insertValues.push(agreement.previousAgreementId || null);
+    }
+
+    insertColumns.push('created_at', 'updated_at', 'version');
 
     const valuePlaceholders = insertColumns.map((_, idx) => `$${idx + 1}`);
     // Indices for special handling
@@ -331,29 +334,37 @@ router.post('/', async (req: TenantRequest, res) => {
       ? [...insertValues, serverVersion]
       : insertValues;
 
+    const updateSetClauses = [
+      'agreement_number = EXCLUDED.agreement_number',
+      'contact_id = EXCLUDED.contact_id',
+      'property_id = EXCLUDED.property_id',
+      'start_date = EXCLUDED.start_date',
+      'end_date = EXCLUDED.end_date',
+      'monthly_rent = EXCLUDED.monthly_rent',
+      'rent_due_date = EXCLUDED.rent_due_date',
+      'status = EXCLUDED.status',
+      'description = EXCLUDED.description',
+      'security_deposit = EXCLUDED.security_deposit',
+      'broker_id = EXCLUDED.broker_id',
+      'broker_fee = EXCLUDED.broker_fee',
+      'owner_id = EXCLUDED.owner_id',
+    ];
+    if (tenantInfo.hasPreviousAgreementId) {
+      updateSetClauses.push('previous_agreement_id = EXCLUDED.previous_agreement_id');
+    }
+    updateSetClauses.push(
+      'updated_at = NOW()',
+      'version = COALESCE(rental_agreements.version, 1) + 1',
+      'deleted_at = NULL'
+    );
+
     const result = await db.query(
       `INSERT INTO rental_agreements (
         ${insertColumns.join(', ')}
       ) VALUES (${valuePlaceholders.join(', ')})
       ON CONFLICT (id) 
       DO UPDATE SET
-        agreement_number = EXCLUDED.agreement_number,
-        contact_id = EXCLUDED.contact_id,
-        property_id = EXCLUDED.property_id,
-        start_date = EXCLUDED.start_date,
-        end_date = EXCLUDED.end_date,
-        monthly_rent = EXCLUDED.monthly_rent,
-        rent_due_date = EXCLUDED.rent_due_date,
-        status = EXCLUDED.status,
-        description = EXCLUDED.description,
-        security_deposit = EXCLUDED.security_deposit,
-        broker_id = EXCLUDED.broker_id,
-        broker_fee = EXCLUDED.broker_fee,
-        owner_id = EXCLUDED.owner_id,
-        previous_agreement_id = EXCLUDED.previous_agreement_id,
-        updated_at = NOW(),
-        version = COALESCE(rental_agreements.version, 1) + 1,
-        deleted_at = NULL
+        ${updateSetClauses.join(',\n        ')}
       WHERE (rental_agreements.org_id = $2 OR rental_agreements.tenant_id = $2) ${versionWhereClause}
       RETURNING *`,
       upsertParams
@@ -636,8 +647,7 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
       'agreement_number', 'contact_id', 'property_id',
       'start_date', 'end_date', 'monthly_rent', 'rent_due_date',
       'status', 'description', 'security_deposit',
-      'broker_id', 'broker_fee', 'owner_id', 'previous_agreement_id',
-      'created_at', 'updated_at', 'version'
+      'broker_id', 'broker_fee', 'owner_id'
     );
     insertVals.push(
       body.agreementNumber,
@@ -652,9 +662,17 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
       body.securityDeposit ?? old.security_deposit ?? null,
       body.brokerId ?? old.broker_id ?? null,
       body.brokerFee ?? old.broker_fee ?? null,
-      body.ownerId ?? old.owner_id ?? null,
-      oldId, // previous_agreement_id
-      'NOW()', // placeholders...
+      body.ownerId ?? old.owner_id ?? null
+    );
+
+    if (tenantInfo.hasPreviousAgreementId) {
+      insertCols.push('previous_agreement_id');
+      insertVals.push(oldId);
+    }
+
+    insertCols.push('created_at', 'updated_at', 'version');
+    insertVals.push(
+      'NOW()',
       'NOW()',
       '1'
     );
