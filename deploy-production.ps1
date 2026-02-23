@@ -50,23 +50,16 @@ if (Test-Path $latestYml) {
 Write-Host "`n[3/6] Registering release in releases.json..." -ForegroundColor Yellow
 
 $releaseDir = "release"
-$setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -like "*Setup*$version*" } | Select-Object -First 1
-$portableExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -notlike "*Setup*" -and $_.Name -like "*$version*" } | Select-Object -First 1
-if (-not $setupExe) {
-    $setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -like "*Setup*" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($setupExe) { Write-Host "       WARNING: No Setup exe matched version $version, using latest: $($setupExe.Name)" -ForegroundColor Yellow }
-}
-if (-not $portableExe) {
-    $portableExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" | Where-Object { $_.Name -notlike "*Setup*" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($portableExe) { Write-Host "       WARNING: No portable exe matched version $version, using latest: $($portableExe.Name)" -ForegroundColor Yellow }
-}
+$setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" -ErrorAction SilentlyContinue |
+    Where-Object { ($_.Name -like "*WebSetup*" -or $_.Name -like "*Setup*") -and $_.Name -notmatch "unpacked|uninstall" } |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$sevenZipParts = Get-ChildItem -Path $releaseDir -Filter "*.7z" -ErrorAction SilentlyContinue
 
 $releasesJsonPath = "server\releases\releases.json"
 $releasesData = Get-Content $releasesJsonPath -Raw | ConvertFrom-Json
 
 $newFiles = @()
 
-# Build file entries
 if ($setupExe) {
     $hash = (Get-FileHash -Path $setupExe.FullName -Algorithm SHA512).Hash
     $newFiles += @{
@@ -78,16 +71,8 @@ if ($setupExe) {
     }
     Write-Host "       Setup:    $($setupExe.Name) ($([math]::Round($setupExe.Length / 1MB, 1)) MB)" -ForegroundColor Gray
 }
-if ($portableExe) {
-    $hash = (Get-FileHash -Path $portableExe.FullName -Algorithm SHA512).Hash
-    $newFiles += @{
-        name = $portableExe.Name
-        type = "portable"
-        size = $portableExe.Length
-        sha512 = $hash
-        downloadUrl = ""
-    }
-    Write-Host "       Portable: $($portableExe.Name) ($([math]::Round($portableExe.Length / 1MB, 1)) MB)" -ForegroundColor Gray
+foreach ($part in $sevenZipParts) {
+    Write-Host "       Resource: $($part.Name) ($([math]::Round($part.Length / 1MB, 1)) MB)" -ForegroundColor Gray
 }
 
 # Upload to GitHub Releases if gh CLI is available
@@ -112,17 +97,13 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
     # Delete existing release with same tag if it exists
     gh release delete $ghTag --yes 2>&1 | Out-Null
 
-    # Build asset arguments: latest.yml + blockmap (required for electron-updater GitHub provider)
-    # .exe files uploaded manually due to GitHub's 100 MB per-asset limit
+    # Build asset arguments: web setup exe + .7z resource packs + latest.yml + blockmaps
     $assets = @()
     if (Test-Path $latestYml) { $assets += (Resolve-Path $latestYml).Path }
+    if ($setupExe) { $assets += $setupExe.FullName }
+    foreach ($part in $sevenZipParts) { $assets += $part.FullName }
     $blockmapAssets = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -ErrorAction SilentlyContinue
     foreach ($bm in $blockmapAssets) { $assets += $bm.FullName }
-
-    # Upload .exe if under 95 MB
-    $maxSizeMB = 95
-    if ($setupExe -and ($setupExe.Length / 1MB) -le $maxSizeMB) { $assets += $setupExe.FullName }
-    if ($portableExe -and ($portableExe.Length / 1MB) -le $maxSizeMB) { $assets += $portableExe.FullName }
 
     gh release create $ghTag @assets --title "v$version" --notes "Production release v$version" --latest 2>&1 | Write-Host
 
@@ -133,17 +114,6 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
         foreach ($f in $newFiles) {
             $encodedName = [Uri]::EscapeDataString($f.name)
             $f.downloadUrl = "$repoUrl/releases/download/$ghTag/$encodedName"
-        }
-
-        # Warn about manually uploading large .exe files
-        $largeExes = @()
-        if ($setupExe -and ($setupExe.Length / 1MB) -gt $maxSizeMB) { $largeExes += $setupExe.Name }
-        if ($portableExe -and ($portableExe.Length / 1MB) -gt $maxSizeMB) { $largeExes += $portableExe.Name }
-        if ($largeExes.Count -gt 0) {
-            Write-Host ""
-            Write-Host "       REMINDER: Manually upload large .exe files to GitHub Release ($ghTag):" -ForegroundColor Yellow
-            foreach ($exe in $largeExes) { Write-Host "         - $exe" -ForegroundColor Yellow }
-            Write-Host "         URL: $repoUrl/releases/tag/$ghTag" -ForegroundColor Gray
         }
     } else {
         Write-Host "       WARNING: GitHub Release creation failed. Setting local API download URLs." -ForegroundColor Red

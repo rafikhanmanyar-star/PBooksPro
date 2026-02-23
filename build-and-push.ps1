@@ -111,70 +111,40 @@ if (-not $SkipRelease) {
         Write-Host "  Skipping GitHub Release creation." -ForegroundColor Yellow
     } else {
         $tagName = "v$newVersion"
-        $installerName = "PBooks Pro-Setup-$newVersion.exe"
-        $installerPath = "$ProjectRoot\release\$installerName"
         $latestYmlPath = "$ProjectRoot\release\latest.yml"
-        $blockmapPath = "$installerPath.blockmap"
 
-        # Fallback: find any matching .exe if exact name differs
-        if (-not (Test-Path $installerPath)) {
-            $fallback = Get-ChildItem "$ProjectRoot\release" -Filter "*.exe" -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -like "*Setup*" -and $_.Name -notmatch "unpacked" } |
-                Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($fallback) {
-                $installerPath = $fallback.FullName
-                $installerName = $fallback.Name
-                $blockmapPath = "$($fallback.FullName).blockmap"
-            }
-        }
-
-        if (-not (Test-Path $installerPath)) {
-            Write-Host "  Installer not found! Skipping release." -ForegroundColor Red
-        } elseif (-not (Test-Path $latestYmlPath)) {
+        if (-not (Test-Path $latestYmlPath)) {
             Write-Host "  latest.yml not found! Skipping release." -ForegroundColor Red
         } else {
-            # Delete existing release with same tag if it exists
-            gh release delete $tagName --yes 2>&1 | Out-Null
+            # Delete existing release with same tag if it exists (ignore if not found)
+            try { gh release delete $tagName --yes 2>&1 | Out-Null } catch {}
 
-            # Handle large installers (>100 MB)
-            $maxSizeMB = 95
-            $installerSizeMB = (Get-Item $installerPath).Length / 1MB
+            # Collect all release assets: web setup exe, .7z resource packs, latest.yml, blockmaps
+            $releaseAssets = @($latestYmlPath)
 
-            if ($installerSizeMB -gt $maxSizeMB) {
-                Write-Host "  Installer is $([math]::Round($installerSizeMB,1)) MB (exceeds $maxSizeMB MB)." -ForegroundColor Yellow
-
-                # Check for nsis-web artifacts
-                $webSetupParts = Get-ChildItem "$ProjectRoot\release" -Filter "*.7z" -ErrorAction SilentlyContinue
-                if ($webSetupParts) {
-                    Write-Host "  nsis-web artifacts detected. Uploading all parts..." -ForegroundColor Cyan
-                    $releaseAssets = @($installerPath, $latestYmlPath)
-                    foreach ($part in $webSetupParts) { $releaseAssets += $part.FullName }
-                    if (Test-Path $blockmapPath) { $releaseAssets += $blockmapPath }
-                } else {
-                    Write-Host "  WARNING: Installer exceeds GitHub Release size limit." -ForegroundColor Yellow
-                    Write-Host "  Uploading latest.yml and blockmap only. Upload .exe manually." -ForegroundColor Yellow
-                    $releaseAssets = @($latestYmlPath)
-                    if (Test-Path $blockmapPath) { $releaseAssets += $blockmapPath }
-                }
-            } else {
-                $releaseAssets = @($installerPath, $latestYmlPath)
-                if (Test-Path $blockmapPath) { $releaseAssets += $blockmapPath }
+            $webSetupExe = Get-ChildItem "$ProjectRoot\release" -Filter "*.exe" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like "*WebSetup*" -or $_.Name -like "*Setup*" } |
+                Where-Object { $_.Name -notmatch "unpacked|uninstall" } |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($webSetupExe) {
+                $releaseAssets += $webSetupExe.FullName
+                Write-Host "  Web installer: $($webSetupExe.Name) ($([math]::Round($webSetupExe.Length / 1MB, 1)) MB)" -ForegroundColor Cyan
             }
+
+            $sevenZipParts = Get-ChildItem "$ProjectRoot\release" -Filter "*.7z" -ErrorAction SilentlyContinue
+            foreach ($part in $sevenZipParts) {
+                $releaseAssets += $part.FullName
+                Write-Host "  Resource pack: $($part.Name) ($([math]::Round($part.Length / 1MB, 1)) MB)" -ForegroundColor Cyan
+            }
+
+            $blockmaps = Get-ChildItem "$ProjectRoot\release" -Filter "*.blockmap" -ErrorAction SilentlyContinue
+            foreach ($bm in $blockmaps) { $releaseAssets += $bm.FullName }
 
             Push-Location $ProjectRoot
             try {
                 gh release create $tagName $releaseAssets --title $tagName --notes "PBooks Pro v$newVersion"
                 if ($LASTEXITCODE -ne 0) { throw "gh release create failed!" }
                 Write-Host "  Release $tagName created!" -ForegroundColor Green
-
-                # Remind about manual upload if installer was too large
-                if ($installerSizeMB -gt $maxSizeMB -and -not $webSetupParts) {
-                    $repoUrl = (gh repo view --json url -q ".url" 2>&1).Trim()
-                    Write-Host ""
-                    Write-Host "  REMINDER: Manually upload .exe to GitHub Release:" -ForegroundColor Yellow
-                    Write-Host "    $installerName" -ForegroundColor Yellow
-                    Write-Host "    URL: $repoUrl/releases/tag/$tagName" -ForegroundColor Gray
-                }
             } finally { Pop-Location }
         }
     }

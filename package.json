@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.25",
+  "version": "1.2.26",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -19,9 +19,9 @@
     "electron:dev": "cross-env VITE_ELECTRON_BUILD=true vite build && electron . --enable-logging",
     "electron:pack": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true npm run build && electron-builder --dir",
     "electron:production": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://api.pbookspro.com/api npm run build && electron-builder --win",
-    "electron:production:installer": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://api.pbookspro.com/api npm run build && electron-builder --win nsis",
+    "electron:production:installer": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://api.pbookspro.com/api npm run build && electron-builder --win nsis-web",
     "electron:staging": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://pbookspro-api-staging.onrender.com/api npm run build && electron . --enable-logging",
-    "electron:staging:installer": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://pbookspro-api-staging.onrender.com/api npm run build && electron-builder --win nsis --config electron-builder.staging.json",
+    "electron:staging:installer": "npm run electron:extract-schema && cross-env VITE_ELECTRON_BUILD=true VITE_API_URL=https://pbookspro-api-staging.onrender.com/api npm run build && electron-builder --win nsis-web --config electron-builder.staging.json",
     "electron:dist": "npm run electron:production",
     "electron:installer": "npm run electron:production:installer",
     "update-server": "node update-server/server.cjs",
@@ -80,19 +80,18 @@
     ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis-web"
       ],
       "icon": "electron/assets/icon.ico",
       "signAndEditExecutable": false
     },
-    "nsis": {
+    "nsisWeb": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "PBooks Pro",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-WebSetup-${version}.${ext}"
     },
     "publish": {
       "provider": "github"

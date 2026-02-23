@@ -4,25 +4,22 @@
   "compression": "maximum",
   "directories": { "output": "release-staging" },
   "forceCodeSigning": false,
-  "artifactName": "PBooksProStaging-Setup-${version}.${ext}",
   "files": [
     "package.json",
     "dist/**/*",
     "electron/**/*"
   ],
   "win": {
-    "target": ["nsis", "portable"],
+    "target": ["nsis-web"],
     "icon": "electron/assets/icon.ico",
     "signAndEditExecutable": false
   },
-  "nsis": {
+  "nsisWeb": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
-    "createStartMenuShortcut": true
-  },
-  "portable": {
-    "artifactName": "PBooksProStaging-${version}-portable.${ext}"
+    "createStartMenuShortcut": true,
+    "artifactName": "PBooksProStaging-WebSetup-${version}.${ext}"
   },
   "publish": {
     "provider": "github"
