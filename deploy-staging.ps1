@@ -109,17 +109,22 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
     # Delete existing release with same tag if it exists
     gh release delete $ghTag --yes 2>&1 | Out-Null
 
-    # Build asset arguments (blockmap files only; .exe files are uploaded manually due to size)
+    # Build asset arguments: latest.yml + blockmap (required for electron-updater GitHub provider)
+    # .exe files uploaded manually due to GitHub's 100 MB per-asset limit
     $assets = @()
+    if (Test-Path $latestYml) { $assets += (Resolve-Path $latestYml).Path }
     $blockmapAssets = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -ErrorAction SilentlyContinue
     foreach ($bm in $blockmapAssets) { $assets += $bm.FullName }
+
+    # Upload .exe if under 95 MB
+    $maxSizeMB = 95
+    if ($setupExe -and ($setupExe.Length / 1MB) -le $maxSizeMB) { $assets += $setupExe.FullName }
+    if ($portableExe -and ($portableExe.Length / 1MB) -le $maxSizeMB) { $assets += $portableExe.FullName }
 
     gh release create $ghTag @assets --title "v$version (Staging)" --notes "Staging release v$version" --prerelease 2>&1 | Write-Host
 
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "       GitHub Release created (blockmap uploaded)." -ForegroundColor Green
-
-        # Get the repo info for download URLs
+        Write-Host "       GitHub Release created." -ForegroundColor Green
         $repoUrl = (gh repo view --json url -q ".url" 2>&1).Trim()
 
         foreach ($f in $newFiles) {
@@ -127,11 +132,16 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
             $f.downloadUrl = "$repoUrl/releases/download/$ghTag/$encodedName"
         }
 
-        Write-Host ""
-        Write-Host "       REMINDER: Manually upload .exe files to GitHub Release ($ghTag):" -ForegroundColor Yellow
-        if ($setupExe)    { Write-Host "         - $($setupExe.Name)" -ForegroundColor Yellow }
-        if ($portableExe) { Write-Host "         - $($portableExe.Name)" -ForegroundColor Yellow }
-        Write-Host "         URL: $repoUrl/releases/tag/$ghTag" -ForegroundColor Gray
+        # Warn about manually uploading large .exe files
+        $largeExes = @()
+        if ($setupExe -and ($setupExe.Length / 1MB) -gt $maxSizeMB) { $largeExes += $setupExe.Name }
+        if ($portableExe -and ($portableExe.Length / 1MB) -gt $maxSizeMB) { $largeExes += $portableExe.Name }
+        if ($largeExes.Count -gt 0) {
+            Write-Host ""
+            Write-Host "       REMINDER: Manually upload large .exe files to GitHub Release ($ghTag):" -ForegroundColor Yellow
+            foreach ($exe in $largeExes) { Write-Host "         - $exe" -ForegroundColor Yellow }
+            Write-Host "         URL: $repoUrl/releases/tag/$ghTag" -ForegroundColor Gray
+        }
     } else {
         Write-Host "       WARNING: GitHub Release creation failed. Setting local API download URLs." -ForegroundColor Red
         $apiBase = "https://pbookspro-api-staging.onrender.com/api/app-info"

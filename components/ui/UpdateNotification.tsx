@@ -2,14 +2,6 @@ import React, { useState } from 'react';
 import { useUpdate } from '../../context/UpdateContext';
 import { Download, CheckCircle, RefreshCw, X, AlertCircle } from 'lucide-react';
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
 const UpdateNotification: React.FC = () => {
   const {
     updateAvailable,
@@ -18,6 +10,7 @@ const UpdateNotification: React.FC = () => {
     downloadProgress,
     error,
     checkForUpdates,
+    startDownload,
     installUpdate,
     isElectronUpdate,
   } = useUpdate();
@@ -95,10 +88,6 @@ const UpdateNotification: React.FC = () => {
           {!isMinimized && (
             <div className="px-4 py-3">
               <div className="space-y-1">
-                <div className="flex justify-between text-xs text-slate-600">
-                  <span>{formatBytes(downloadProgress.transferred)} / {formatBytes(downloadProgress.total)}</span>
-                  <span>{formatBytes(downloadProgress.bytesPerSecond)}/s</span>
-                </div>
                 <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300 ease-out"
@@ -134,17 +123,24 @@ const UpdateNotification: React.FC = () => {
           </div>
 
           <div className="px-4 py-3">
-            <p className="text-sm text-slate-700 mb-2">
+            <p className="text-sm text-slate-700 mb-4">
               Version <span className="font-semibold">{updateInfo.version}</span> is available.
             </p>
-            {updateInfo.releaseNotes && (
-              <p className="text-xs text-slate-500 mb-4 line-clamp-2">
-                {typeof updateInfo.releaseNotes === 'string' ? updateInfo.releaseNotes : ''}
-              </p>
-            )}
-            <p className="text-xs text-slate-500 mb-4">
-              Downloading in background...
-            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => startDownload()}
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Download & Install
+              </button>
+              <button
+                onClick={() => setIsDismissed(true)}
+                className="px-4 py-2 text-slate-600 hover:text-slate-800 text-sm font-medium transition-colors"
+              >
+                Later
+              </button>
+            </div>
           </div>
         </div>
       </div>

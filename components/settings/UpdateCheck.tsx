@@ -11,6 +11,7 @@ type UpdateStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downl
 const UpdateCheck: React.FC = () => {
   const { isUpdateAvailable, checkForUpdates: pwaCheckForUpdates, applyUpdate } = usePWA();
   const {
+    appVersion,
     isChecking: electronChecking,
     updateAvailable: electronUpdateAvailable,
     updateDownloaded: electronUpdateDownloaded,
@@ -18,6 +19,7 @@ const UpdateCheck: React.FC = () => {
     downloadProgress: electronDownloadProgress,
     error: electronError,
     checkForUpdates: electronCheckForUpdates,
+    startDownload: electronStartDownload,
     installUpdate: electronInstallUpdate,
     isElectronUpdate,
   } = useUpdate();
@@ -26,9 +28,8 @@ const UpdateCheck: React.FC = () => {
   const [status, setStatus] = useState<UpdateStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
-  const currentVersion = packageJson.version;
+  const currentVersion = appVersion || packageJson.version;
 
-  // Sync Electron update state into local status
   useEffect(() => {
     if (!isElectronUpdate) return;
 
@@ -49,7 +50,6 @@ const UpdateCheck: React.FC = () => {
     }
   }, [isElectronUpdate, electronChecking, electronUpdateAvailable, electronUpdateDownloaded, electronDownloadProgress, electronError, status]);
 
-  // PWA update detection
   useEffect(() => {
     if (isElectronUpdate) return;
     if (isUpdateAvailable && status === 'idle') {
@@ -65,7 +65,6 @@ const UpdateCheck: React.FC = () => {
 
     if (isElectronUpdate) {
       electronCheckForUpdates();
-      // Fallback timeout: Render free tier cold starts can take 30-45s
       setTimeout(() => {
         setStatus((prev) => (prev === 'checking' ? 'not-available' : prev));
       }, 60000);
@@ -88,6 +87,11 @@ const UpdateCheck: React.FC = () => {
       }
     }
   }, [isElectronUpdate, electronCheckForUpdates, pwaCheckForUpdates, isUpdateAvailable, showToast]);
+
+  const handleDownload = useCallback(() => {
+    if (!isElectronUpdate) return;
+    electronStartDownload();
+  }, [isElectronUpdate, electronStartDownload]);
 
   const handleInstall = useCallback(async () => {
     if (isElectronUpdate) {
@@ -175,7 +179,10 @@ const UpdateCheck: React.FC = () => {
               </span>
             </div>
             {isElectronUpdate ? (
-              <p className="text-xs text-slate-500">Downloading in background...</p>
+              <Button onClick={handleDownload} className="w-full sm:w-auto">
+                <Download className="w-4 h-4 mr-2" />
+                Download and Install
+              </Button>
             ) : (
               <Button onClick={handleInstall} className="w-full sm:w-auto">
                 <RefreshCw className="w-4 h-4 mr-2" />

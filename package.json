@@ -1,9 +1,13 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.24",
+  "version": "1.2.25",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rafikhanmanyar-star/PBooksPro.git"
+  },
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -27,6 +31,9 @@
     "clear-local-transactions": "node tools/clear-local-transactions.cjs",
     "deploy:staging": "powershell -ExecutionPolicy Bypass -File deploy-staging.ps1",
     "deploy:production": "powershell -ExecutionPolicy Bypass -File deploy-production.ps1",
+    "release": "powershell -ExecutionPolicy Bypass -File ./build-and-push.ps1",
+    "release:minor": "powershell -ExecutionPolicy Bypass -File ./build-and-push.ps1 -BumpType minor",
+    "release:major": "powershell -ExecutionPolicy Bypass -File ./build-and-push.ps1 -BumpType major",
     "postinstall": "electron-rebuild"
   },
   "dependencies": {
@@ -62,6 +69,7 @@
   "build": {
     "appId": "com.pbookspro.app",
     "productName": "PBooks Pro",
+    "compression": "maximum",
     "directories": {
       "output": "release"
     },
@@ -82,11 +90,12 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "shortcutName": "PBooks Pro",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://api.pbookspro.com/api/app-info/updates"
+      "provider": "github"
     }
   }
 }

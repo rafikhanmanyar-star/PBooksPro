@@ -3,8 +3,7 @@
  * Desktop wrapper for the PBooks Pro web application.
  */
 
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
-const { autoUpdater } = require('electron-updater');
+const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const sqliteBridge = require('./sqliteBridge.cjs');
@@ -12,19 +11,24 @@ const sqliteBridge = require('./sqliteBridge.cjs');
 const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--enable-logging');
 
 let mainWindow = null;
+let autoUpdater = null;
+let updateCheckIntervalId = null;
+let lastNotifiedUpdateVersion = null;
 
-// Reduce cache/service-worker errors when loading from file:// (Electron on Windows)
+if (app.isPackaged) {
+  try {
+    autoUpdater = require('electron-updater').autoUpdater;
+  } catch (_) {}
+}
+
 app.commandLine.appendSwitch('disable-features', 'TranslateUI');
 app.commandLine.appendSwitch('disable-background-networking');
 app.commandLine.appendSwitch('disable-sync');
-// Avoid "Unable to create cache" / "Database IO error" when loading from file:// on Windows
 app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData'), 'Cache'));
 
-// Initialize SQLite bridge (native DB for desktop app)
 sqliteBridge.setupHandlers();
 
 function createWindow() {
-  // Use custom app icon if present (electron/assets/icon.ico on Windows, icon.icns on macOS)
   const iconName = process.platform === 'darwin' ? 'icon.icns' : 'icon.ico';
   const iconPath = path.join(__dirname, 'assets', iconName);
   const iconOption = fs.existsSync(iconPath) ? { icon: iconPath } : {};
@@ -41,7 +45,6 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      // Reduce cache errors when loading from file:// on Windows
       backgroundThrottling: false,
     },
     show: false,
@@ -58,7 +61,6 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // Open external links (e.g. payment gateways, docs) in system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       shell.openExternal(url);
@@ -67,8 +69,6 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  // Load the built app
-  // Use app.getAppPath() for reliable path resolution in dev and packaged builds (avoids file:///F:/ on Windows)
   const appPath = app.getAppPath();
   const indexHtml = path.join(appPath, 'dist', 'index.html');
 
@@ -79,99 +79,121 @@ function createWindow() {
   }
 }
 
-// --- Auto-updater setup ---
+function sendUpdateStatus(...args) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', ...args);
+  }
+}
 
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.logger = console;
+function setupUpdaterIPC() {
+  ipcMain.handle('get-app-version', () => app.getVersion());
 
-// Detect staging vs production from the app's product name set by electron-builder
-const isStaging = app.getName().toLowerCase().includes('staging');
-const updateUrl = isStaging
-  ? 'https://pbookspro-api-staging.onrender.com/api/app-info/updates'
-  : 'https://api.pbookspro.com/api/app-info/updates';
-
-autoUpdater.setFeedURL({
-  provider: 'generic',
-  url: updateUrl,
-});
-
-function setupAutoUpdater() {
-  autoUpdater.on('checking-for-update', () => {
-    console.log('[AutoUpdater] Checking for update...');
-    mainWindow?.webContents.send('update-checking');
+  ipcMain.handle('check-for-updates', async () => {
+    if (!app.isPackaged || !autoUpdater) {
+      sendUpdateStatus({
+        status: 'unavailable',
+        message: 'Updates only work in the installed app.',
+      });
+      return;
+    }
+    try {
+      sendUpdateStatus({ status: 'checking' });
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      sendUpdateStatus({
+        status: 'error',
+        message: err && err.message ? err.message : String(err),
+      });
+    }
   });
 
-  autoUpdater.on('update-available', (info) => {
-    console.log('[AutoUpdater] Update available:', info.version);
-    mainWindow?.webContents.send('update-available', {
-      version: info.version,
-      releaseDate: info.releaseDate,
-      releaseNotes: info.releaseNotes,
+  ipcMain.handle('start-update-download', () => {
+    if (autoUpdater) return autoUpdater.downloadUpdate();
+  });
+
+  ipcMain.handle('quit-and-install', () => {
+    if (autoUpdater) autoUpdater.quitAndInstall(false, true);
+  });
+
+  if (autoUpdater) {
+    autoUpdater.autoDownload = false;
+    autoUpdater.logger = console;
+
+    autoUpdater.on('update-available', (info) => {
+      console.log('[AutoUpdater] Update available:', info.version);
+      sendUpdateStatus({ status: 'available', version: info.version });
+
+      if (info.version && info.version !== lastNotifiedUpdateVersion) {
+        lastNotifiedUpdateVersion = info.version;
+        const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+        dialog
+          .showMessageBox(win, {
+            type: 'info',
+            title: 'Update available',
+            message: `PBooks Pro ${info.version} is available.`,
+            detail: 'Would you like to download and install it now?',
+            buttons: ['Download and install', 'Later'],
+            defaultId: 0,
+            cancelId: 1,
+          })
+          .then(({ response }) => {
+            if (response === 0) autoUpdater.downloadUpdate();
+          });
+      }
     });
-  });
 
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('[AutoUpdater] No update available. Current:', info.version);
-    mainWindow?.webContents.send('update-not-available');
-  });
-
-  autoUpdater.on('download-progress', (progress) => {
-    console.log(`[AutoUpdater] Download progress: ${progress.percent.toFixed(1)}% (${progress.transferred}/${progress.total})`);
-    mainWindow?.webContents.send('update-download-progress', {
-      bytesPerSecond: progress.bytesPerSecond,
-      percent: progress.percent,
-      transferred: progress.transferred,
-      total: progress.total,
+    autoUpdater.on('update-not-available', () => {
+      console.log('[AutoUpdater] No update available.');
+      sendUpdateStatus({ status: 'not-available' });
     });
-  });
 
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('[AutoUpdater] Update downloaded:', info.version);
-    mainWindow?.webContents.send('update-downloaded', {
-      version: info.version,
-      releaseDate: info.releaseDate,
-      releaseNotes: info.releaseNotes,
+    autoUpdater.on('download-progress', (p) => {
+      console.log(`[AutoUpdater] Download progress: ${p.percent.toFixed(1)}%`);
+      sendUpdateStatus({ status: 'downloading', percent: p.percent });
     });
-  });
 
-  autoUpdater.on('error', (err) => {
-    console.error('[AutoUpdater] Error:', err);
-    mainWindow?.webContents.send('update-error', err?.message || 'Unknown update error');
-  });
-
-  ipcMain.on('install-update', () => {
-    console.log('[AutoUpdater] Installing update and restarting...');
-    autoUpdater.quitAndInstall(false, true);
-  });
-
-  ipcMain.on('check-for-updates', () => {
-    console.log('[AutoUpdater] Manual check triggered');
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error('[AutoUpdater] Manual check error:', err);
-      mainWindow?.webContents.send('update-error', err?.message || 'Failed to check for updates');
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('[AutoUpdater] Update downloaded:', info.version);
+      sendUpdateStatus({ status: 'downloaded' });
     });
-  });
+
+    autoUpdater.on('error', (err) => {
+      console.error('[AutoUpdater] Error:', err);
+      sendUpdateStatus({
+        status: 'error',
+        message: err && err.message ? err.message : String(err),
+      });
+    });
+  }
 }
 
 app.whenReady().then(() => {
   createWindow();
-  setupAutoUpdater();
-  // Check for updates after launch, with retry for Render cold starts
-  const checkWithRetry = (attempt = 1) => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.log(`[AutoUpdater] Check attempt ${attempt} failed:`, err?.message);
-      if (attempt < 3) {
-        const delay = attempt * 15000;
-        console.log(`[AutoUpdater] Retrying in ${delay / 1000}s...`);
-        setTimeout(() => checkWithRetry(attempt + 1), delay);
+  setupUpdaterIPC();
+
+  if (autoUpdater && app.isPackaged) {
+    // Initial check after a short delay (allows Render cold starts)
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((err) => {
+        console.log('[AutoUpdater] Initial check failed:', err?.message);
+      });
+    }, 10000);
+
+    // Periodic check every 60 seconds
+    const oneMinuteMs = 60 * 1000;
+    updateCheckIntervalId = setInterval(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        autoUpdater.checkForUpdates().catch(() => {});
       }
-    });
-  };
-  setTimeout(() => checkWithRetry(), 10000);
+    }, oneMinuteMs);
+  }
 });
 
 app.on('window-all-closed', () => {
+  if (updateCheckIntervalId) {
+    clearInterval(updateCheckIntervalId);
+    updateCheckIntervalId = null;
+  }
   if (process.platform !== 'darwin') {
     sqliteBridge.close();
     app.quit();

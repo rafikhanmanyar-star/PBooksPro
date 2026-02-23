@@ -7,13 +7,18 @@ interface UpdateInfo {
 }
 
 interface DownloadProgress {
-  bytesPerSecond: number;
   percent: number;
-  transferred: number;
-  total: number;
+}
+
+interface UpdateStatusPayload {
+  status: string;
+  message?: string;
+  version?: string;
+  percent?: number;
 }
 
 interface UpdateContextType {
+  appVersion: string | null;
   isChecking: boolean;
   updateAvailable: boolean;
   updateDownloaded: boolean;
@@ -21,20 +26,30 @@ interface UpdateContextType {
   downloadProgress: DownloadProgress | null;
   error: string | null;
   checkForUpdates: () => void;
+  startDownload: () => void;
   installUpdate: () => void;
   isElectronUpdate: boolean;
 }
 
-const UpdateContext = createContext<UpdateContextType | undefined>(undefined);
-
-function getElectronUpdater() {
-  if (typeof window !== 'undefined') {
-    return (window as any).electronAPI?.updater ?? null;
+declare global {
+  interface Window {
+    electronAPI?: {
+      isElectron: boolean;
+      platform: string;
+      versions: { electron: string; chrome: string; node: string };
+      getAppVersion: () => Promise<string>;
+      checkForUpdates: () => Promise<void>;
+      onUpdateStatus: (cb: (payload: UpdateStatusPayload) => void) => () => void;
+      startUpdateDownload: () => Promise<void>;
+      quitAndInstall: () => Promise<void>;
+    };
   }
-  return null;
 }
 
+const UpdateContext = createContext<UpdateContextType | undefined>(undefined);
+
 export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
@@ -42,66 +57,74 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const updater = getElectronUpdater();
-  const isElectronUpdate = !!updater;
+  const isElectronUpdate = typeof window !== 'undefined' && !!window.electronAPI;
 
   useEffect(() => {
-    if (!updater) return;
+    if (!isElectronUpdate || !window.electronAPI) return;
+    window.electronAPI.getAppVersion().then(setAppVersion);
+  }, [isElectronUpdate]);
 
-    const cleanups: (() => void)[] = [];
+  useEffect(() => {
+    if (!isElectronUpdate || !window.electronAPI) return;
 
-    cleanups.push(updater.onChecking(() => {
-      setIsChecking(true);
-      setError(null);
-    }));
+    const unsub = window.electronAPI.onUpdateStatus((payload: UpdateStatusPayload) => {
+      switch (payload.status) {
+        case 'checking':
+          setIsChecking(true);
+          setError(null);
+          break;
+        case 'available':
+          setIsChecking(false);
+          setUpdateAvailable(true);
+          if (payload.version) {
+            setUpdateInfo({ version: payload.version });
+          }
+          break;
+        case 'not-available':
+          setIsChecking(false);
+          setUpdateAvailable(false);
+          break;
+        case 'downloading':
+          setIsChecking(false);
+          setDownloadProgress({ percent: payload.percent ?? 0 });
+          break;
+        case 'downloaded':
+          setUpdateDownloaded(true);
+          setDownloadProgress(null);
+          break;
+        case 'error':
+        case 'unavailable':
+          setIsChecking(false);
+          setUpdateAvailable(false);
+          setDownloadProgress(null);
+          setError(payload.message || 'Unknown update error');
+          break;
+      }
+    });
 
-    cleanups.push(updater.onUpdateAvailable((info: UpdateInfo) => {
-      setIsChecking(false);
-      setUpdateAvailable(true);
-      setUpdateInfo(info);
-    }));
-
-    cleanups.push(updater.onUpdateNotAvailable(() => {
-      setIsChecking(false);
-      setUpdateAvailable(false);
-    }));
-
-    cleanups.push(updater.onDownloadProgress((progress: DownloadProgress) => {
-      setDownloadProgress(progress);
-    }));
-
-    cleanups.push(updater.onUpdateDownloaded((info: UpdateInfo) => {
-      setUpdateDownloaded(true);
-      setUpdateInfo(info);
-      setDownloadProgress(null);
-    }));
-
-    cleanups.push(updater.onError((message: string) => {
-      setIsChecking(false);
-      setUpdateAvailable(false);
-      setDownloadProgress(null);
-      setError(message);
-    }));
-
-    return () => {
-      cleanups.forEach((cleanup) => cleanup());
-    };
-  }, [updater]);
+    return unsub;
+  }, [isElectronUpdate]);
 
   const checkForUpdates = useCallback(() => {
-    if (!updater) return;
+    if (!window.electronAPI) return;
     setError(null);
-    updater.checkForUpdates();
-  }, [updater]);
+    window.electronAPI.checkForUpdates();
+  }, []);
+
+  const startDownload = useCallback(() => {
+    if (!window.electronAPI) return;
+    window.electronAPI.startUpdateDownload();
+  }, []);
 
   const installUpdate = useCallback(() => {
-    if (!updater) return;
-    updater.installUpdate();
-  }, [updater]);
+    if (!window.electronAPI) return;
+    window.electronAPI.quitAndInstall();
+  }, []);
 
   return (
     <UpdateContext.Provider
       value={{
+        appVersion,
         isChecking,
         updateAvailable,
         updateDownloaded,
@@ -109,6 +132,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         downloadProgress,
         error,
         checkForUpdates,
+        startDownload,
         installUpdate,
         isElectronUpdate,
       }}

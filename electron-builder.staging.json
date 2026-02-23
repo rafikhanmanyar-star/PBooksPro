@@ -1,6 +1,7 @@
 {
   "appId": "com.pbookspro.app.staging",
   "productName": "PBooks Pro (Staging)",
+  "compression": "maximum",
   "directories": { "output": "release-staging" },
   "forceCodeSigning": false,
   "artifactName": "PBooksProStaging-Setup-${version}.${ext}",
@@ -24,7 +25,6 @@
     "artifactName": "PBooksProStaging-${version}-portable.${ext}"
   },
   "publish": {
-    "provider": "generic",
-    "url": "https://pbookspro-api-staging.onrender.com/api/app-info/updates"
+    "provider": "github"
   }
 }
