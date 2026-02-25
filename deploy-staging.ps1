@@ -128,6 +128,21 @@ if ($ghAvailable) {
             $encodedName = [Uri]::EscapeDataString($f.name)
             $f.downloadUrl = "$repoUrl/releases/download/$ghTag/$encodedName"
         }
+
+        # Delete all other GitHub releases so only the latest (this one) remains
+        try {
+            $listJson = gh release list --limit 500 --json tagName 2>&1
+            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($listJson)) {
+                $releases = $listJson | ConvertFrom-Json
+                $deleted = 0
+                foreach ($r in $releases) {
+                    if ($r.tagName -ne $ghTag) {
+                        try { gh release delete $r.tagName --yes 2>&1 | Out-Null; $deleted++ } catch {}
+                    }
+                }
+                if ($deleted -gt 0) { Write-Host "       Removed $deleted older release(s) from GitHub (kept $ghTag only)." -ForegroundColor Gray }
+            }
+        } catch { }
     } else {
         Write-Host "       GitHub Release creation failed. Run: gh auth login" -ForegroundColor Red
         Write-Host "       If the tag exists, delete it: gh release delete $ghTag --yes" -ForegroundColor Yellow

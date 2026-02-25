@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.33",
+  "version": "1.2.34",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -94,7 +94,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "PBooks Pro",
-      "artifactName": "${productName}-WebSetup-${version}.${ext}"
+      "artifactName": "PBooks-Pro-WebSetup-${version}.${ext}"
     },
     "publish": {
       "provider": "github"
