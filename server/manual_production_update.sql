@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS tenant_modules (
 
 CREATE INDEX IF NOT EXISTS idx_tenant_modules_tenant_id ON tenant_modules(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tenant_modules_module_key ON tenant_modules(module_key);
-COMMENT ON COLUMN tenant_modules.module_key IS 'Keys: real_estate, rental, tasks, biz_planet';
+COMMENT ON COLUMN tenant_modules.module_key IS 'Keys: real_estate, rental';
 
 
 -- ==========================================

@@ -2373,7 +2373,7 @@ const MarketingPage: React.FC = () => {
                                 {state.currentUser?.role === 'Admin' && approvalTasks.length > 0 && (
                                     <Card className="p-4 bg-white border border-slate-200">
                                         <div className="flex items-center justify-between mb-3">
-                                            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Approval Tasks</h2>
+                                            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Pending Plan Approvals</h2>
                                             <span className="text-xs text-slate-500">{approvalTasks.length} total</span>
                                         </div>
                                         <div className="overflow-x-auto">

@@ -35,24 +35,6 @@ const OFFERS = [
     yearlyPrice: 30000,
     icon: '🏠'
   },
-  {
-    key: 'tasks',
-    label: 'Tasks (Workforce Management)',
-    description: 'Optimize your team productivity with advanced task assignments and real-time field tracking.',
-    features: ['Team Assignments', 'Performance KPIs', 'Field Tracking', 'Workflow Automation'],
-    monthlyPrice: 2000,
-    yearlyPrice: 20000,
-    icon: '⚙️'
-  },
-  {
-    key: 'biz_planet',
-    label: 'Biz Planet (B2B Marketplace)',
-    description: 'Connect with a world of suppliers and streamline your procurement process.',
-    features: ['Supplier Directory', 'Tender Management', 'Bulk Procurement', 'Direct Messaging'],
-    monthlyPrice: 2000,
-    yearlyPrice: 20000,
-    icon: '🌐'
-  },
 ];
 
 const LicenseManagement: React.FC = () => {

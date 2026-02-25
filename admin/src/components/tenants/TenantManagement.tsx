@@ -291,8 +291,6 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
   const MODULES = [
     { key: 'real_estate', label: 'Real Estate Developer & Constructor' },
     { key: 'rental', label: 'Real Estate Rental Management' },
-    { key: 'tasks', label: 'Tasks (Task Management Suite)' },
-    { key: 'biz_planet', label: 'Biz Planet (B2B Marketplace)' },
     { key: 'shop', label: 'My Shop (POS, Inventory, Multi-store)' },
   ];
 

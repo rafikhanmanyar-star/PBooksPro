@@ -13,7 +13,6 @@ These run automatically when the API starts (see `scripts/run-migrations-on-star
 - `make-audit-log-user-id-nullable.sql`
 - `add-org-id-to-rental-agreements.sql`
 - `add-contact-id-to-rental-agreements.sql`
-- `add-tasks-schema.sql`
 - `add-is-supplier-to-tenants.sql`
 - `add-whatsapp-integration.sql`
 - `increase-max-users-to-20.sql`
@@ -38,7 +37,6 @@ These migrations **drop tables**, **delete data**, or **recreate schemas**.
 | `remove-payroll-tables.sql` | DROPs payroll tables |
 | `remove-payroll-departments-table.sql` | DROPs payroll_departments |
 | `remove-payroll-test-data.sql` | DELETEs payroll data |
-| `recreate-tasks-schema.sql` | DROPs tasks tables and recreates |
 | `debug-whatsapp-verify-token.sql` | DELETE FROM whatsapp_configs |
 
 They are **not** run by the startup migration runner.

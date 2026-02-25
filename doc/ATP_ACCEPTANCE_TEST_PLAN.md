@@ -21,8 +21,7 @@
 12. [Vendor Directory](#vendor-directory)
 13. [Contacts](#contacts)
 14. [Budget Planner](#budget-planner)
-15. [Tasks](#tasks)
-16. [Settings & Configuration](#settings--configuration)
+15. [Settings & Configuration](#settings--configuration)
 17. [Import/Export](#importexport)
 18. [Reports](#reports)
 19. [Backup & Restore](#backup--restore)
@@ -1483,96 +1482,6 @@
 - [ ] Actual amounts are accurate
 - [ ] Variance is calculated correctly
 - [ ] Visual indicators work (if applicable)
-
-**Actual Result:**  
-**Issues Found:**  
-**Status:** [ ] Pass [ ] Fail [ ] Blocked
-
----
-
-## Tasks
-
-### Test Case 14.1: View Tasks
-**Steps:**
-1. Navigate to "Tasks"
-2. View task list
-
-**Expected Result:**
-- [ ] Tasks page loads
-- [ ] All tasks are listed
-- [ ] Task status is visible
-
-**Actual Result:**  
-**Issues Found:**  
-**Status:** [ ] Pass [ ] Fail [ ] Blocked
-
----
-
-### Test Case 14.2: Create Task
-**Steps:**
-1. Navigate to Tasks
-2. Click "New Task" or "+"
-3. Enter task text
-4. Set priority (low/medium/high)
-5. Save
-
-**Expected Result:**
-- [ ] Task is created
-- [ ] Task appears in list
-- [ ] Task status is "Incomplete"
-
-**Actual Result:**  
-**Issues Found:**  
-**Status:** [ ] Pass [ ] Fail [ ] Blocked
-
----
-
-### Test Case 14.3: Complete Task
-**Steps:**
-1. Navigate to Tasks
-2. Select a task
-3. Mark as complete (check box or button)
-
-**Expected Result:**
-- [ ] Task is marked as complete
-- [ ] Task moves to completed section (if applicable)
-- [ ] Task status updates
-
-**Actual Result:**  
-**Issues Found:**  
-**Status:** [ ] Pass [ ] Fail [ ] Blocked
-
----
-
-### Test Case 14.4: Edit Task
-**Steps:**
-1. Navigate to Tasks
-2. Select a task
-3. Click "Edit"
-4. Modify task text or priority
-5. Save
-
-**Expected Result:**
-- [ ] Task is updated
-- [ ] Changes are saved
-- [ ] Updated task appears in list
-
-**Actual Result:**  
-**Issues Found:**  
-**Status:** [ ] Pass [ ] Fail [ ] Blocked
-
----
-
-### Test Case 14.5: Delete Task
-**Steps:**
-1. Navigate to Tasks
-2. Select a task
-3. Click "Delete"
-4. Confirm deletion
-
-**Expected Result:**
-- [ ] Task is deleted
-- [ ] Task removed from list
 
 **Actual Result:**  
 **Issues Found:**  

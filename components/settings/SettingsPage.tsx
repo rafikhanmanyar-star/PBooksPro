@@ -36,8 +36,6 @@ import { getDatabaseService } from '../../services/database/databaseService';
 import { apiClient } from '../../services/api/client';
 import ContactsManagement from './ContactsManagement';
 import AssetsManagement from './AssetsManagement';
-import TaskRolesPage from '../tasks/TaskRolesPage';
-
 interface TableRowData {
     id: string;
     [key: string]: any;
@@ -139,7 +137,6 @@ const SettingsPage: React.FC = () => {
                 { id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' },
                 ...(isAdmin ? [
                     { id: 'users', label: 'Users & Access', icon: ICONS.users },
-                    { id: 'taskRoles', label: 'Task Roles', icon: ICONS.userCheck || '✅' }
                 ] : []),
                 { id: 'backup', label: 'Backup & Restore', icon: ICONS.download },
                 { id: 'data', label: 'Data Management', icon: ICONS.trash }, // Changed Icon
@@ -149,7 +146,7 @@ const SettingsPage: React.FC = () => {
         {
             title: 'Operations',
             items: [
-                { id: 'projects', label: 'Projects & Tasks', icon: ICONS.briefcase },
+                { id: 'projects', label: 'Projects', icon: ICONS.briefcase },
             ]
         },
         {
@@ -974,7 +971,6 @@ const SettingsPage: React.FC = () => {
                         )}
                         {isTableViewCategory ? renderTable() : null}
                         {activeCategory === 'users' && <UserManagement />}
-                        {activeCategory === 'taskRoles' && <TaskRolesPage />}
                         {activeCategory === 'preferences' && renderPreferences()}
                         {activeCategory === 'license' && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">

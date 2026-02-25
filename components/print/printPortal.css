@@ -1,7 +1,7 @@
 /**
  * Print Portal - Visibility toggle and portal-specific print styles.
  * Only when body has .print-portal-active (context-based print): hide #root, show #print-portal.
- * When printing via usePrintForm (Biz Planet PO, Project Invoices), content is inside #root
+ * When printing via usePrintForm (Project Invoices), content is inside #root
  * so we must NOT hide #root — otherwise print preview would be blank.
  */
 

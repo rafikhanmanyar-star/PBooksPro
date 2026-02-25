@@ -131,7 +131,6 @@ To use `npm ci` for faster builds:
 - `add-tenant-supplier-metadata` - Tenant supplier metadata
 - `add-org-id-to-rental-agreements` - Org ID to rental agreements
 - `add-contact-id-to-rental-agreements` - Contact ID to rental agreements
-- `add-tasks-schema` - Tasks management schema
 - `add-is-supplier-to-tenants` - Is supplier column
 - `add-whatsapp-integration` - WhatsApp integration
 - `increase-max-users-to-20` - Max users increase

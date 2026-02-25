@@ -68,25 +68,7 @@ DO $$ BEGIN
     END IF;
 END $$;
 
--- 6. Missing FK/join indexes
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'tasks') THEN
-        CREATE INDEX IF NOT EXISTS idx_tasks_owner_id ON tasks(owner_id);
-        CREATE INDEX IF NOT EXISTS idx_tasks_initiative_id ON tasks(initiative_id);
-    END IF;
-END $$;
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'purchase_orders') THEN
-        CREATE INDEX IF NOT EXISTS idx_purchase_orders_project_id ON purchase_orders(project_id);
-    END IF;
-END $$;
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'p2p_invoices') THEN
-        CREATE INDEX IF NOT EXISTS idx_p2p_invoices_po_id_idx ON p2p_invoices(po_id);
-    END IF;
-END $$;
-
--- 7. Payroll joining date (used in payroll queries)
+-- 6. Payroll joining date (used in payroll queries)
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payroll_employees') THEN
         CREATE INDEX IF NOT EXISTS idx_payroll_employees_joining_date ON payroll_employees(tenant_id, joining_date);

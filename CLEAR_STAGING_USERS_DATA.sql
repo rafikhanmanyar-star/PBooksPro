@@ -19,7 +19,6 @@ TRUNCATE TABLE
     bills,
     quotations,
     user_sessions,
-    tasks,
     shop_sales,
     investments
 CASCADE;
@@ -36,9 +35,7 @@ TRUNCATE TABLE
     projects,
     contacts,
     vendors,
-    inventory_batches,
-    purchase_orders,
-    p2p_invoices
+    inventory_batches
 CASCADE;
 
 -- 3. CLEAR PAYROLL DATA

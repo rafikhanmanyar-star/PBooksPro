@@ -477,51 +477,11 @@ CREATE TABLE IF NOT EXISTS investments (
 );
 
 -- ============================================================================
--- 7. PROCUREMENT & P2P
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS purchase_orders (
-    id TEXT PRIMARY KEY,
-    po_number TEXT NOT NULL UNIQUE,
-    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    buyer_tenant_id TEXT NOT NULL REFERENCES tenants(id),
-    supplier_tenant_id TEXT NOT NULL REFERENCES tenants(id),
-    total_amount DECIMAL(15, 2) NOT NULL,
-    status TEXT NOT NULL DEFAULT 'DRAFT',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS p2p_invoices (
-    id TEXT PRIMARY KEY,
-    invoice_number TEXT NOT NULL UNIQUE,
-    po_id TEXT NOT NULL REFERENCES purchase_orders(id),
-    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    amount DECIMAL(15, 2) NOT NULL,
-    status TEXT NOT NULL DEFAULT 'PENDING',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- ============================================================================
--- 8. TASKS MODULE
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS tasks (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    title TEXT NOT NULL DEFAULT '',
-    description TEXT,
-    status TEXT NOT NULL DEFAULT 'Not Started',
-    assigned_to_id TEXT REFERENCES users(id),
-    user_id TEXT REFERENCES users(id),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- ============================================================================
--- 9. SHOP MODULE (Removed - moved to standalone MyShop application)
+-- 7. SHOP MODULE (Removed - moved to standalone MyShop application)
 -- ============================================================================
 
 -- ============================================================================
--- 10. PAYROLL MODULE
+-- 8. PAYROLL MODULE
 -- ============================================================================
 
 -- Payroll Departments table

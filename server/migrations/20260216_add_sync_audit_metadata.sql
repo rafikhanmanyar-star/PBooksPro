@@ -11,8 +11,7 @@ DECLARE
         'budgets', 'plan_amenities', 'rental_agreements', 'project_agreements',
         'installment_plans', 'contracts', 'sales_returns', 'quotations', 
         'documents', 'recurring_invoice_templates', 'pm_cycle_allocations',
-        'payroll_employees', 'payroll_runs', 'task_items', 'task_initiatives',
-        'task_objectives', 'task_key_results'
+        'payroll_employees', 'payroll_runs'
     ];
 BEGIN
     FOREACH table_name_text IN ARRAY target_tables
@@ -54,8 +53,7 @@ DECLARE
         'budgets', 'plan_amenities', 'rental_agreements', 'project_agreements',
         'installment_plans', 'contracts', 'sales_returns', 'quotations', 
         'documents', 'recurring_invoice_templates', 'pm_cycle_allocations',
-        'payroll_employees', 'payroll_runs', 'task_items', 'task_initiatives',
-        'task_objectives', 'task_key_results'
+        'payroll_employees', 'payroll_runs'
     ];
 BEGIN
     FOREACH table_name_text IN ARRAY target_tables

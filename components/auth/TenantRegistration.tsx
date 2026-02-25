@@ -182,29 +182,6 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
               />
             </div>
 
-            <div className="md:col-span-2">
-              <div className="flex items-start">
-                <div className="flex items-center h-5">
-                  <input
-                    id="isSupplier"
-                    name="isSupplier"
-                    type="checkbox"
-                    checked={formData.isSupplier}
-                    onChange={e => handleChange('isSupplier', e.target.checked)}
-                    className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                  />
-                </div>
-                <div className="ml-3 text-sm">
-                  <label htmlFor="isSupplier" className="font-medium text-gray-700 cursor-pointer">
-                    Supplier
-                  </label>
-                  <p className="text-gray-500 mt-0.5">
-                    Check this if your organization also works as a supplier (will be used in Biz Planet section)
-                  </p>
-                </div>
-              </div>
-            </div>
-
             <div className="md:col-span-2 border-t pt-4 mt-4">
               <h3 className="text-lg font-semibold text-slate-700 mb-4">Admin Account</h3>
             </div>

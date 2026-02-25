@@ -43,8 +43,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const modulePricing: Record<string, { PKR: number, USD: number }> = {
     real_estate: { PKR: 5000, USD: 18 },
     rental: { PKR: 3000, USD: 11 },
-    tasks: { PKR: 2000, USD: 7 },
-    biz_planet: { PKR: 2000, USD: 7 },
   };
 
   const isModulePayment = !!moduleKey;

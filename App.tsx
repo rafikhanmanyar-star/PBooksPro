@@ -63,11 +63,7 @@ const ContactsPage = lazyWithRetry(() => import('./components/contacts/ContactsP
 const BudgetManagement = lazyWithRetry(() => import('./components/settings/BudgetManagement'));
 const MobilePaymentsPage = lazyWithRetry(() => import('./components/mobile/MobilePaymentsPage'));
 
-const BizPlanetPage = lazyWithRetry(() => import('./components/bizPlanet/BizPlanetPage'));
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
-
-// Task Management Modules
-const TaskModuleRouter = lazyWithRetry(() => import('./components/tasks/TaskModuleRouter'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -83,17 +79,9 @@ const PAGE_GROUPS = {
   PROJECT_SELLING: ['projectSelling', 'projectInvoices'],
   INVESTMENT: ['investmentManagement'],
   PM_CONFIG: ['pmConfig'],
-  TASKS: [
-    'tasks', 'tasksCalendar', 'teamRanking',
-    'taskCreation', 'taskAssignment', 'taskWorkflow', 'taskExecution',
-    'taskDashboards', 'taskKPIs', 'taskNotifications', 'taskAutomation',
-    'taskReports', 'taskConfiguration', 'taskAudit',
-    'taskOKR', 'taskInitiatives', 'taskRoles', 'taskManagement'
-  ],
 
   SETTINGS: ['settings'],
   IMPORT: ['import'],
-  BIZ_PLANET: ['bizPlanet'],
   PAYROLL: ['payroll'],
 };
 
@@ -432,27 +420,7 @@ const App: React.FC = () => {
       case 'contacts': return 'Contacts';
       case 'budgets': return 'Budget Planner';
 
-      case 'bizPlanet': return 'Biz Planet';
       case 'payroll': return 'Payroll Management';
-      // Task Modules
-      case 'tasks': return 'My Tasks';
-      case 'tasksCalendar': return 'Task Calendar';
-      case 'teamRanking': return 'Team Ranking';
-      case 'taskCreation': return 'Create Task';
-      case 'taskAssignment': return 'Task Assignment';
-      case 'taskWorkflow': return 'Workflow & Status';
-      case 'taskExecution': return 'Task Execution';
-      case 'taskDashboards': return 'Task Dashboards';
-      case 'taskKPIs': return 'Task KPIs & SLAs';
-      case 'taskNotifications': return 'Notifications';
-      case 'taskAutomation': return 'Automation Rules';
-      case 'taskReports': return 'Task Reports';
-      case 'taskConfiguration': return 'Task Configuration';
-      case 'taskAudit': return 'Task Audit Trail';
-      case 'taskOKR': return 'OKRs & Strategy';
-      case 'taskInitiatives': return 'Initiatives';
-      case 'taskRoles': return 'Roles & Access';
-      case 'taskManagement': return 'Tasks';
 
       default: return 'PBooks Pro';
     }
@@ -587,8 +555,6 @@ const App: React.FC = () => {
               {renderPersistentPage('PROJECT_SELLING', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
-              {renderPersistentPage('TASKS', <TaskModuleRouter currentPage={currentPage} />)}
-              {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}

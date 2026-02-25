@@ -6,8 +6,7 @@ DO $$
 DECLARE
     table_name_text TEXT;
     target_tables TEXT[] := ARRAY[
-        'payroll_employees', 'payroll_runs', 'task_items', 'task_initiatives',
-        'task_objectives', 'task_key_results'
+        'payroll_employees', 'payroll_runs'
     ];
 BEGIN
     FOREACH table_name_text IN ARRAY target_tables
@@ -43,8 +42,7 @@ DO $$
 DECLARE
     table_name_text TEXT;
     target_tables TEXT[] := ARRAY[
-        'payroll_employees', 'payroll_runs', 'task_items', 'task_initiatives',
-        'task_objectives', 'task_key_results'
+        'payroll_employees', 'payroll_runs'
     ];
 BEGIN
     FOREACH table_name_text IN ARRAY target_tables

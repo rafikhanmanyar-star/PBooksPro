@@ -99,14 +99,6 @@ import dataImportExportRouter from './routes/data-import-export.js';
 import appInfoRouter from './routes/app-info.js';
 import whatsappRouter from './routes/whatsapp.js';
 import whatsappWebhookRouter from './routes/whatsapp-webhook.js';
-import tasksRouter from './routes/tasks.js';
-
-import suppliersRouter from './routes/suppliers.js';
-import purchaseOrdersRouter from './routes/purchaseOrders.js';
-import p2pInvoicesRouter from './routes/p2pInvoices.js';
-import p2pBillsRouter from './routes/p2pBills.js';
-import supplierRegistrationsRouter from './routes/supplierRegistrations.js';
-import marketplaceRouter from './routes/marketplace.js';
 import payrollRouter from './routes/payroll.js';
 import stateChangesRouter from './routes/stateChanges.js';
 import vendorsRouter from './routes/vendors.js';
@@ -720,14 +712,7 @@ app.use('/api/data-management', dataManagementRouter); // Data Management (Admin
 app.use('/api/data-import-export', dataImportExportRouter); // Data Import/Export
 app.use('/api/whatsapp', whatsappRouter); // WhatsApp API (requires authentication)
 
-app.use('/api/suppliers', suppliersRouter); // Supplier Management (requires authentication)
-app.use('/api/purchase-orders', purchaseOrdersRouter); // Purchase Orders (requires authentication)
-app.use('/api/p2p-invoices', p2pInvoicesRouter); // P2P Invoices (requires authentication)
-app.use('/api/p2p-bills', p2pBillsRouter); // P2P Bills (requires authentication)
-app.use('/api/supplier-registrations', supplierRegistrationsRouter); // Supplier Registration Requests (requires authentication)
-app.use('/api/marketplace', marketplaceRouter); // Biz Planet Marketplace (browse ads, post ads – 2/day per supplier)
 app.use('/api/payroll', payrollRouter); // Payroll Management (requires authentication)
-app.use('/api/tasks', tasksRouter);
 app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/changes?since=ISO8601 
 
 // Error handling middleware

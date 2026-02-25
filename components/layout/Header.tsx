@@ -11,14 +11,6 @@ import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
 import { getWebSocketClient } from '../../services/websocketClient';
 import { isStagingEnvironment } from '../../config/apiUrl';
-import {
-  BizPlanetNotification,
-  BIZ_PLANET_NOTIFICATIONS_EVENT,
-  dispatchBizPlanetNotificationAction,
-  getBizPlanetNotifications,
-  setPendingBizPlanetAction
-} from '../../utils/bizPlanetNotifications';
-
 interface HeaderProps {
   title: string;
   isNavigating?: boolean;
@@ -36,7 +28,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
   const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
-  const [bizPlanetNotifications, setBizPlanetNotifications] = useState<BizPlanetNotification[]>([]);
   const [whatsappNotifications, setWhatsappNotifications] = useState<{
     id: string;
     messageId?: string;
@@ -66,7 +57,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     };
     action:
     | { type: 'installment_plan'; planId: string }
-    | { type: 'bizPlanet'; target: BizPlanetNotification['target']; focus: BizPlanetNotification['focus'] }
     | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string };
   };
 
@@ -298,28 +288,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return results;
     });
 
-    const bizPlanetItems: NotificationItem[] = (bizPlanetNotifications || []).map(item => ({
-      id: item.id,
-      title: item.title,
-      message: item.message,
-      time: item.time,
-      badge: {
-        label: item.target === 'supplier' ? 'Supplier Portal' : 'Buyer Dashboard',
-        tone: 'slate'
-      },
-      action: {
-        type: 'bizPlanet',
-        target: item.target,
-        focus: item.focus
-      }
-    }));
-
     // Filter out dismissed notifications - ensure they never reappear
     // Note: WhatsApp notifications are excluded from bell icon - they use the dedicated WhatsApp icon
-    const activeNotifications = [...items, ...bizPlanetItems].filter(item => !dismissedNotifications.has(item.id));
+    const activeNotifications = items.filter(item => !dismissedNotifications.has(item.id));
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
-  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, bizPlanetNotifications]);
+  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications]);
 
   const handleNotificationClick = useCallback((notification: NotificationItem) => {
     console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
@@ -354,16 +328,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }, 0);
       return;
     }
-
-    const action = { target: notification.action.target, focus: notification.action.focus };
-    if (state.currentPage !== 'bizPlanet') {
-      setPendingBizPlanetAction(action);
-    }
-    dispatch({ type: 'SET_PAGE', payload: 'bizPlanet' });
-    setTimeout(() => {
-      dispatchBizPlanetNotificationAction(action);
-    }, 150);
-  }, [dispatch, dismissNotification, state.currentPage, openChat, state.contacts, findContactByPhone]);
+  }, [dispatch, dismissNotification, openChat, state.contacts, findContactByPhone]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -378,22 +343,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isNotificationsOpen, isWhatsappDropdownOpen]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const loadNotifications = () => setBizPlanetNotifications(getBizPlanetNotifications());
-    loadNotifications();
-    const handleNotificationsUpdate = (event: Event) => {
-      const detail = (event as CustomEvent).detail as BizPlanetNotification[] | undefined;
-      if (Array.isArray(detail)) {
-        setBizPlanetNotifications(detail);
-      } else {
-        loadNotifications();
-      }
-    };
-    window.addEventListener(BIZ_PLANET_NOTIFICATIONS_EVENT, handleNotificationsUpdate);
-    return () => window.removeEventListener(BIZ_PLANET_NOTIFICATIONS_EVENT, handleNotificationsUpdate);
-  }, []);
 
   useEffect(() => {
     const loadOrgUsers = async () => {

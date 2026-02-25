@@ -232,27 +232,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     { page: 'payroll', label: 'Payroll', icon: ICONS.users },
                 ]
             },
-            {
-                title: 'Tasks',
-                items: [
-                    { page: 'tasks', label: 'Overview', icon: ICONS.home },
-                    { page: 'taskOKR', label: 'OKRs & Strategy', icon: ICONS.target },
-                    { page: 'taskInitiatives', label: 'Initiatives', icon: ICONS.briefcase },
-                    { page: 'taskManagement', label: 'Tasks', icon: ICONS.checkSquare },
-                    { page: 'taskAssignment', label: 'Assignments', icon: ICONS.users },
-                    { page: 'taskWorkflow', label: 'Workflow', icon: ICONS.trendingUp },
-                    { page: 'taskExecution', label: 'Execution', icon: ICONS.activity },
-                    { page: 'taskKPIs', label: 'KPIs & Progress', icon: ICONS.barChart },
-                    { page: 'taskNotifications', label: 'Notifications', icon: ICONS.bell },
-                    { page: 'taskRoles', label: 'Roles & Access', icon: ICONS.shield },
-                ]
-            },
-            {
-                title: 'B2B',
-                items: [
-                    { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
-                ]
-            },
         ];
 
         // Add Settings for non-Accounts users
@@ -285,12 +264,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 return hasRental;
             }
 
-            if (group.title === 'Tasks') {
-                return hasModule('tasks');
-            }
-            if (group.title === 'B2B') {
-                return hasModule('biz_planet');
-            }
             return true; // Always show Overview, Financials, People, System
         });
     }, [isAdmin, isAccountsOnly, hasModule]);

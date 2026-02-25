@@ -70,14 +70,6 @@ export const MODULE_PRICING: Record<string, LicensePricing> = {
     monthly: { PKR: 3000, USD: 11 },
     yearly: { PKR: 30000, USD: 110 }
   },
-  tasks: {
-    monthly: { PKR: 2000, USD: 7 },
-    yearly: { PKR: 20000, USD: 70 }
-  },
-  biz_planet: {
-    monthly: { PKR: 2000, USD: 7 },
-    yearly: { PKR: 20000, USD: 70 }
-  },
   shop: {
     monthly: { PKR: 4000, USD: 14 },
     yearly: { PKR: 40000, USD: 140 }

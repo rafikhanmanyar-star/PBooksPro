@@ -713,7 +713,9 @@ const ProjectPMManager: React.FC = () => {
             dispatch({ type: 'ADD_CATEGORY', payload: pmCostCategory });
         }
 
-        // Resolve vendor for bills: use configured vendor from PM config, else fallback to PM contact
+        // Resolve vendor for bills: use configured vendor from PM config, else fallback to PM contact.
+        // DB: bills.contact_id REFERENCES contacts(id), bills.vendor_id REFERENCES vendors(id).
+        // So for vendor-directory vendors set only vendorId; for fallback PM contact set only contactId.
         const configuredVendor = project.pmConfig?.vendorId
             ? state.vendors?.find(v => v.id === project.pmConfig!.vendorId)
             : null;
@@ -732,8 +734,6 @@ const ProjectPMManager: React.FC = () => {
             };
             dispatch({ type: 'ADD_CONTACT', payload: pmContact });
         }
-        const billVendorId = configuredVendor?.id ?? pmContact?.id;
-        const billContactId = configuredVendor?.id ?? pmContact?.id;
 
         // Generate bill number helper
         const generateBillNumber = () => {
@@ -764,12 +764,15 @@ const ProjectPMManager: React.FC = () => {
                 const startDateStr = start.toISOString().split('T')[0];
                 const endDateStr = end.toISOString().split('T')[0];
 
-                // Create a bill for this allocation (accounts payable)
+                // Create a bill for this allocation (accounts payable).
+                // Use vendorId only when vendor is from directory (contact_id must stay NULL); use contactId only for fallback PM contact.
                 const bill: Bill = {
                     id: `pm-bill-${cycleId}-${Date.now()}`,
                     billNumber: generateBillNumber(),
-                    contactId: billContactId,
-                    vendorId: configuredVendor?.id,
+                    ...(configuredVendor
+                        ? { vendorId: configuredVendor.id }
+                        : { contactId: pmContact!.id }
+                    ),
                     amount: feeAmount,
                     paidAmount: 0,
                     status: InvoiceStatus.UNPAID,
