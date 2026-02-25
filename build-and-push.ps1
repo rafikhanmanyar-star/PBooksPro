@@ -44,6 +44,13 @@ Update-PackageVersion -FilePath "$ProjectRoot\package.json" -NewVersion $newVers
 
 # --- Step 2: Build ---
 Write-Host "`n[2/5] Building..." -ForegroundColor Yellow
+
+# Clean output directory to prevent stale artifacts
+if (Test-Path "$ProjectRoot\release") {
+    Remove-Item "$ProjectRoot\release\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "  Cleaned release/" -ForegroundColor Gray
+}
+
 Push-Location $ProjectRoot
 try {
     npm run build

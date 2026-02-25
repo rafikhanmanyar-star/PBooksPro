@@ -26,6 +26,12 @@ if ($confirm -ne "y" -and $confirm -ne "Y") {
 Write-Host "`n[1/6] Building production electron installer..." -ForegroundColor Yellow
 Write-Host "       Output: release/" -ForegroundColor Gray
 
+# Clean output directory to prevent stale artifacts
+if (Test-Path "release") {
+    Remove-Item "release\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "       Cleaned release/" -ForegroundColor Gray
+}
+
 npm run electron:production:installer
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n  BUILD FAILED! Aborting deploy." -ForegroundColor Red
@@ -39,6 +45,13 @@ Write-Host "`n[2/6] Copying latest.yml for auto-update..." -ForegroundColor Yell
 
 $latestYml = "release\latest.yml"
 if (Test-Path $latestYml) {
+    $ymlContent = Get-Content $latestYml -Raw
+    if ($ymlContent -match "version:\s*$version") {
+        Write-Host "       latest.yml version verified: $version" -ForegroundColor Green
+    } else {
+        Write-Host "       WARNING: latest.yml version does NOT match $version!" -ForegroundColor Red
+        Write-Host "       Contents: $($ymlContent.Substring(0, [Math]::Min(200, $ymlContent.Length)))" -ForegroundColor Yellow
+    }
     Copy-Item $latestYml "server\updates\latest.yml" -Force
     Copy-Item $latestYml "website\Website\updates\latest.yml" -Force
     Write-Host "       Copied to server/updates/ and website/Website/updates/" -ForegroundColor Green
@@ -89,13 +102,13 @@ try {
     if ($LASTEXITCODE -eq 0) { $ghAvailable = $true }
 } catch { }
 
-$ghTag = "V$version"
+$ghTag = "v$version"
 
 if ($ghAvailable -and ($setupExe -or $portableExe)) {
     Write-Host "       Uploading to GitHub Releases (tag: $ghTag)..." -ForegroundColor Yellow
 
     # Delete existing release with same tag if it exists
-    gh release delete $ghTag --yes 2>&1 | Out-Null
+    try { gh release delete $ghTag --yes 2>&1 | Out-Null } catch {}
 
     # Build asset arguments: web setup exe + .7z resource packs + latest.yml + blockmaps
     $assets = @()

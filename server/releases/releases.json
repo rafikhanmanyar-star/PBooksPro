@@ -402,6 +402,15 @@
                                    ],
                          "version":  "1.2.29",
                          "changelog":  ""
+                     },
+                     {
+                         "date":  "2026-02-25T15:38:01.6042654Z",
+                         "environment":  "staging",
+                         "files":  [
+
+                                   ],
+                         "version":  "1.2.30",
+                         "changelog":  ""
                      }
                  ]
 }

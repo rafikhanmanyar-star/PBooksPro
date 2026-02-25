@@ -123,6 +123,11 @@ function setupUpdaterIPC() {
     autoUpdater.autoDownload = false;
     autoUpdater.logger = console;
 
+    const isStaging = app.getName().toLowerCase().includes('staging');
+    if (isStaging) {
+      autoUpdater.allowPrerelease = true;
+    }
+
     autoUpdater.on('update-available', (info) => {
       console.log('[AutoUpdater] Update available:', info.version);
       sendUpdateStatus({ status: 'available', version: info.version });

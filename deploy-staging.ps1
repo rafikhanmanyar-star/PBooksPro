@@ -23,6 +23,12 @@ Write-Host "       New version: v$version" -ForegroundColor Green
 Write-Host "`n[2/7] Building staging electron installer..." -ForegroundColor Yellow
 Write-Host "       Output: release-staging/" -ForegroundColor Gray
 
+# Clean output directory to prevent stale artifacts
+if (Test-Path "release-staging") {
+    Remove-Item "release-staging\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "       Cleaned release-staging/" -ForegroundColor Gray
+}
+
 npm run electron:staging:installer
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n  BUILD FAILED! Aborting deploy." -ForegroundColor Red
@@ -36,6 +42,13 @@ Write-Host "`n[3/7] Copying latest.yml for auto-update..." -ForegroundColor Yell
 
 $latestYml = "release-staging\latest.yml"
 if (Test-Path $latestYml) {
+    $ymlContent = Get-Content $latestYml -Raw
+    if ($ymlContent -match "version:\s*$version") {
+        Write-Host "       latest.yml version verified: $version" -ForegroundColor Green
+    } else {
+        Write-Host "       WARNING: latest.yml version does NOT match $version!" -ForegroundColor Red
+        Write-Host "       Contents: $($ymlContent.Substring(0, [Math]::Min(200, $ymlContent.Length)))" -ForegroundColor Yellow
+    }
     Copy-Item $latestYml "server\updates\latest.yml" -Force
     Copy-Item $latestYml "website\Website\updates\latest.yml" -Force
     Write-Host "       Copied to server/updates/ and website/Website/updates/" -ForegroundColor Green
@@ -86,13 +99,13 @@ try {
     if ($LASTEXITCODE -eq 0) { $ghAvailable = $true }
 } catch { }
 
-$ghTag = "V$version"
+$ghTag = "v$version"
 
 if ($ghAvailable -and ($setupExe -or $portableExe)) {
     Write-Host "       Uploading to GitHub Releases (tag: $ghTag)..." -ForegroundColor Yellow
 
     # Delete existing release with same tag if it exists
-    gh release delete $ghTag --yes 2>&1 | Out-Null
+    try { gh release delete $ghTag --yes 2>&1 | Out-Null } catch {}
 
     # Build asset arguments: web setup exe + .7z resource packs + latest.yml + blockmaps
     $assets = @()
@@ -102,7 +115,7 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
     $blockmapAssets = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -ErrorAction SilentlyContinue
     foreach ($bm in $blockmapAssets) { $assets += $bm.FullName }
 
-    gh release create $ghTag @assets --title "v$version (Staging)" --notes "Staging release v$version" --prerelease 2>&1 | Write-Host
+    gh release create $ghTag @assets --title "v$version (Staging)" --notes "Staging release v$version" --latest 2>&1 | Write-Host
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "       GitHub Release created." -ForegroundColor Green
