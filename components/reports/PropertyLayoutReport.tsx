@@ -460,7 +460,7 @@ const PropertyLayoutReport: React.FC = () => {
             <div
                 key={unit.id}
                 onClick={() => handleCardClick(unit)}
-                className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all min-h-[12rem] w-64 flex-shrink-0 cursor-pointer hover:shadow-md hover:scale-[1.02]
+                className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all min-h-[12rem] cursor-pointer hover:shadow-md hover:scale-[1.02]
                     ${getColorClasses(unit, mode)}
                 `}
                 style={backgroundColorStyle}
@@ -673,14 +673,14 @@ const PropertyLayoutReport: React.FC = () => {
                                             <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-lg mb-2 md:mb-0">
                                                 {floor.label}
                                             </div>
-                                            <div className="flex-grow flex overflow-x-auto pb-4 gap-3">
+                                            <div className="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                                 {floor.units.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
                                             </div>
                                         </div>
                                     ))}
                                     {group.unconventional.length > 0 && (
                                         <div className="mt-2 pt-2 border-t border-dashed border-slate-300">
-                                            <div className="flex overflow-x-auto pb-4 gap-3 md:pl-14">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:pl-14">
                                                 {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
                                             </div>
                                         </div>

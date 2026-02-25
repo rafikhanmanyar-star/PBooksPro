@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Page } from '../../types';
 import { ICONS, APP_LOGO } from '../../constants';
 import LicenseManagement from '../license/LicenseManagement';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import { useLicense } from '../../context/LicenseContext';
 import { apiClient } from '../../services/api/client';
@@ -21,7 +21,8 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
-    const { state, dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
+    const state = useStateSelector(s => s);
     const { logout, tenant, user } = useAuth();
     const { hasModule } = useLicense();
     const { currentUser } = state;
@@ -149,8 +150,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
         wsClient.on('chat:message', handleChatMessage);
 
-        // Periodically check for unread messages (in case messages arrive when WebSocket is disconnected)
-        const interval = setInterval(checkUnreadMessages, 5000);
+        // Fallback poll for unread messages when WebSocket is disconnected
+        const interval = setInterval(checkUnreadMessages, 30000);
 
         return () => {
             wsClient.off('chat:message', handleChatMessage);

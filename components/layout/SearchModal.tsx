@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { Page, Transaction, Bill, Contract, RentalAgreement, ProjectAgreement, Contact, ContactType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -22,7 +22,8 @@ interface SearchResult {
 }
 
 const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage }) => {
-  const { state, dispatch } = useAppContext();
+  const dispatch = useDispatchOnly();
+  const state = useStateSelector(s => s);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 

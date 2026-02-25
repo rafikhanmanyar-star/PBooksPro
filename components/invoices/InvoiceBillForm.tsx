@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { usePrintContext } from '../../context/PrintContext';
 import type { BillPrintData } from '../print/BillPrintTemplate';
@@ -35,7 +35,8 @@ type BillAllocationType = 'project' | 'building' | 'owner' | 'tenant' | 'staff';
 type RootBillType = 'project' | 'building' | 'staff';
 
 const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemToEdit, invoiceTypeForNew, agreementForInvoice, initialContactId, initialVendorId, rentalContext, onDuplicate, initialData, projectContext = false }) => {
-  const { state, dispatch } = useAppContext();
+  const state = useStateSelector(s => s);
+  const dispatch = useDispatchOnly();
   const { showToast, showAlert, showConfirm } = useNotification();
   const { print: triggerPrint } = usePrintContext();
   const { rentalInvoiceSettings, projectInvoiceSettings } = state;

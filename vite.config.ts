@@ -39,6 +39,13 @@ const base = process.env.VITE_ELECTRON_BUILD === 'true' ? './' : process.env.VIT
 // https://vitejs.dev/config/
 export default defineConfig({
   base,
+  esbuild: {
+    // Strip console.log/warn/debug/info from production builds.
+    // Keeps console.error for real error reporting.
+    pure: process.env.NODE_ENV === 'production'
+      ? ['console.log', 'console.warn', 'console.debug', 'console.info']
+      : [],
+  },
   define: {
     // Expose environment variables to the client
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || process.env.VITE_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || ''),

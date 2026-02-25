@@ -16,6 +16,22 @@ import { getSyncManager } from '../services/sync/syncManager';
 import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
 import { getLastSyncTimestamp, setLastSyncTimestamp, isLastSyncRecent, clearLastSyncTimestamp } from '../utils/lastSyncStorage';
+// --- Module-level state store for selective subscriptions via useSyncExternalStore ---
+// Components using useStateSelector() only re-render when their selected slice changes,
+// unlike useAppContext() which re-renders ALL 155+ consumers on every state change.
+let _appState: AppState | null = null;
+let _appDispatch: React.Dispatch<AppAction> | null = null;
+const _stateListeners = new Set<() => void>();
+export function _getAppState(): AppState { return _appState!; }
+export function _getAppDispatch(): React.Dispatch<AppAction> { return _appDispatch!; }
+export function _subscribeAppState(listener: () => void): () => void {
+    _stateListeners.add(listener);
+    return () => { _stateListeners.delete(listener); };
+}
+function _notifyStateListeners() {
+    _stateListeners.forEach(l => l());
+}
+
 // PERFORMANCE: Module-level constant set of action types that trigger API sync.
 // Previously this 60+ entry Set was re-created on EVERY dispatch call inside useCallback.
 const SYNC_TO_API_ACTIONS = new Set<string>([
@@ -473,6 +489,58 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             }
 
             return anyChanged ? { ...state, ...patches } : state;
+        }
+        case 'BATCH_WS_SYNC': {
+            const { upserts, deletes } = action.payload as {
+                upserts: Record<string, any[]>;
+                deletes: Record<string, string[]>;
+            };
+            let newState = state;
+            let anyChanged = false;
+
+            if (upserts) {
+                const patches: Record<string, any[]> = {};
+                for (const [entityKey, items] of Object.entries(upserts)) {
+                    if (!Array.isArray(items) || items.length === 0) continue;
+                    const currentArray = (newState as any)[entityKey];
+                    if (!Array.isArray(currentArray)) continue;
+                    const itemMap = new Map(currentArray.map((item: any) => [item.id, item]));
+                    let sliceChanged = false;
+                    items.forEach((item: any) => {
+                        const existing = itemMap.get(item.id);
+                        const merged = existing ? { ...existing, ...item } : item;
+                        if (merged !== existing) {
+                            itemMap.set(item.id, merged);
+                            sliceChanged = true;
+                        }
+                    });
+                    if (sliceChanged) {
+                        patches[entityKey] = Array.from(itemMap.values());
+                        anyChanged = true;
+                    }
+                }
+                if (anyChanged) newState = { ...newState, ...patches };
+            }
+
+            if (deletes) {
+                const deletePatches: Record<string, any[]> = {};
+                for (const [entityKey, ids] of Object.entries(deletes)) {
+                    if (!Array.isArray(ids) || ids.length === 0) continue;
+                    const currentArray = (newState as any)[entityKey];
+                    if (!Array.isArray(currentArray)) continue;
+                    const idSet = new Set(ids);
+                    const filtered = currentArray.filter((item: any) => !idSet.has(item.id));
+                    if (filtered.length !== currentArray.length) {
+                        deletePatches[entityKey] = filtered;
+                        anyChanged = true;
+                    }
+                }
+                if (Object.keys(deletePatches).length > 0) {
+                    newState = { ...newState, ...deletePatches };
+                }
+            }
+
+            return anyChanged ? newState : state;
         }
         case 'SET_PAGE':
             return { ...state, currentPage: action.payload };
@@ -1273,7 +1341,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     setInitProgress(50);
 
                     // Check if user is authenticated (cloud mode)
-                    console.log('[DIAG] Init: isAuthenticated =', isAuthenticated);
                     if (isAuthenticated) {
                         // OFFLINE-FIRST: Load from local DB first, show UI, then sync with cloud in background
                         try {
@@ -2685,10 +2752,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const refreshFromApi = useCallback(async (onCriticalLoaded?: () => void) => {
         if (!isAuthenticated) {
-            console.warn('[DIAG] refreshFromApi skipped: isAuthenticated=false');
             return;
         }
-        console.log('[DIAG] refreshFromApi STARTING, isAuthenticated=true');
         const apiService = getAppStateApiService();
 
         const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
@@ -2760,7 +2825,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Require contacts OR transactions as baseline (accounts alone are just defaults)
             const hasBaseline = (stateRef.current.contacts?.length ?? 0) > 0 ||
                 (stateRef.current.transactions?.length ?? 0) > 0;
-            console.log('[DIAG] refreshFromApi: lastSync=', lastSync, 'hasBaseline=', hasBaseline, 'contacts=', stateRef.current.contacts?.length, 'txns=', stateRef.current.transactions?.length);
 
             if (currentTenantId && lastSync && hasBaseline && isLastSyncRecent(currentTenantId)) {
                 logger.logCategory('sync', `📡 refreshFromApi: using incremental sync (since ${lastSync})`);
@@ -2779,18 +2843,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             // FULL LOAD: No recent baseline — load everything (initial login or stale data)
             logger.logCategory('sync', '📡 refreshFromApi: performing full data load');
-            console.log('[DIAG] refreshFromApi: FULL LOAD starting, tenantId=', currentTenantId);
 
             // STEP 1: Load critical entities FIRST (accounts, contacts, categories, projects, buildings, properties, units)
             setInitMessage('Loading critical data...');
             try {
                 const critical = await apiService.loadStateBulk('accounts,contacts,categories,projects,buildings,properties,units,vendors');
-                console.log('[DIAG] refreshFromApi: critical load result =', {
-                    keys: Object.keys(critical || {}),
-                    contacts: (critical?.contacts as any[])?.length ?? 0,
-                    accounts: (critical?.accounts as any[])?.length ?? 0,
-                    transactions: (critical?.transactions as any[])?.length ?? 0,
-                });
                 if (critical && Object.keys(critical).length > 0) {
                     const mergedCritical = applyApiState(critical);
                     if (mergedCritical) persistLoadedStateToDb(mergedCritical);
@@ -2863,7 +2920,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         const handleLoginSuccess = () => {
             logger.logCategory('sync', '📡 Login success: loading data from cloud...');
-            console.log('[DIAG] auth:login-success event received, scheduling refreshFromApi');
 
             // Clear stale sync timestamps so we always do a FULL load after fresh login.
             // Auto-login is disabled, so every app launch clears auth → user must re-login.
@@ -2876,14 +2932,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (key?.startsWith('pbookspro_lastSync_')) keysToRemove.push(key);
                 }
                 keysToRemove.forEach(k => localStorage.removeItem(k));
-                if (keysToRemove.length > 0) {
-                    console.log('[DIAG] Cleared', keysToRemove.length, 'stale sync timestamps for fresh login');
-                }
             } catch (e) { /* ignore */ }
 
             // Brief delay so localStorage/auth state and API client are fully updated before first request
             setTimeout(() => {
-                console.log('[DIAG] auth:login-success: calling refreshFromApi now');
                 refreshFromApiRef.current(undefined);
             }, 500);
 
@@ -2892,7 +2944,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const s = stateRef.current;
                 const dataLoaded = (s.contacts?.length ?? 0) > 0 || (s.transactions?.length ?? 0) > 0 || (s.accounts?.length ?? 0) > 0;
                 if (!dataLoaded) {
-                    console.warn('[DIAG] Safety retry: state still empty 5s after login, retrying refreshFromApi');
                     refreshFromApiRef.current(undefined);
                 }
             }, 5000);
@@ -3214,9 +3265,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const fallbackEvents = events.filter(evt => !eventsWithSpecificHandlers.has(evt));
                 const unsubFallback = fallbackEvents.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
 
-                // Direct, immediate handlers to reflect payments across users without waiting for refresh
+                // --- Batched WebSocket dispatch ---
+                // Instead of dispatching immediately per event, accumulate into a buffer
+                // and flush once per 150ms window to minimize re-render cascades on other users.
                 const currentUserId = stateRef.current.currentUser?.id;
                 const unsubSpecific: Array<() => void> = [];
+
+                const wsBatchBuffer = {
+                    upserts: {} as Record<string, any[]>,
+                    deletes: {} as Record<string, string[]>,
+                    flushTimer: null as ReturnType<typeof setTimeout> | null,
+                };
+
+                const enqueueUpsert = (entityKey: string, item: any) => {
+                    if (!wsBatchBuffer.upserts[entityKey]) wsBatchBuffer.upserts[entityKey] = [];
+                    wsBatchBuffer.upserts[entityKey].push(item);
+                    scheduleBatchFlush();
+                };
+
+                const enqueueDelete = (entityKey: string, id: string) => {
+                    if (!wsBatchBuffer.deletes[entityKey]) wsBatchBuffer.deletes[entityKey] = [];
+                    wsBatchBuffer.deletes[entityKey].push(id);
+                    scheduleBatchFlush();
+                };
+
+                const scheduleBatchFlush = () => {
+                    if (wsBatchBuffer.flushTimer) return;
+                    wsBatchBuffer.flushTimer = setTimeout(flushWsBatch, 150);
+                };
+
+                const flushWsBatch = () => {
+                    wsBatchBuffer.flushTimer = null;
+                    const upserts = wsBatchBuffer.upserts;
+                    const deletes = wsBatchBuffer.deletes;
+                    wsBatchBuffer.upserts = {};
+                    wsBatchBuffer.deletes = {};
+
+                    const hasUpserts = Object.keys(upserts).some(k => upserts[k].length > 0);
+                    const hasDeletes = Object.keys(deletes).some(k => deletes[k].length > 0);
+                    if (hasUpserts || hasDeletes) {
+                        dispatch({
+                            type: 'BATCH_WS_SYNC',
+                            payload: { upserts, deletes },
+                            _isRemote: true
+                        } as any);
+                    }
+                };
 
                 // Bill events
                 unsubSpecific.push(ws.on('bill:updated', (data: any) => {
@@ -3224,33 +3318,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const payloadBill = data?.bill ?? data;
                     const normalized = normalizeBillFromEvent(payloadBill);
                     if (!normalized) return;
+                    enqueueUpsert('bills', normalized);
+
                     const existing = stateRef.current.bills.find(b => b.id === normalized.id);
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-
-                    // Mark as remote to prevent sync loop
-                    dispatch({
-                        type: existing ? 'UPDATE_BILL' : 'ADD_BILL',
-                        payload: merged,
-                        _isRemote: true
-                    } as any);
-
-                    // Update related PM cycle allocation when bill payment status changes
-                    if (existing && (existing.paidAmount !== merged.paidAmount || existing.status !== merged.status)) {
+                    if (existing && (existing.paidAmount !== normalized.paidAmount || existing.status !== normalized.status)) {
                         const relatedAllocation = stateRef.current.pmCycleAllocations?.find(
-                            (a: any) => a.billId === merged.id
+                            (a: any) => a.billId === normalized.id
                         );
                         if (relatedAllocation) {
-                            const updatedAllocation = {
+                            enqueueUpsert('pmCycleAllocations', {
                                 ...relatedAllocation,
-                                paidAmount: merged.paidAmount || 0,
-                                status: merged.status === 'Paid' ? 'paid' :
-                                    merged.status === 'Partially Paid' ? 'partially_paid' : 'unpaid'
-                            };
-                            dispatch({
-                                type: 'UPDATE_PM_CYCLE_ALLOCATION',
-                                payload: updatedAllocation,
-                                _isRemote: true
-                            } as any);
+                                paidAmount: normalized.paidAmount || 0,
+                                status: normalized.status === 'Paid' ? 'paid' :
+                                    normalized.status === 'Partially Paid' ? 'partially_paid' : 'unpaid'
+                            });
                         }
                     }
                 }));
@@ -3259,191 +3340,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const payloadBill = data?.bill ?? data;
                     const normalized = normalizeBillFromEvent(payloadBill);
                     if (!normalized) return;
-                    const exists = stateRef.current.bills.some(b => b.id === normalized.id);
-                    if (!exists) {
-                        dispatch({
-                            type: 'ADD_BILL',
-                            payload: normalized,
-                            _isRemote: true
-                        } as any);
-                    }
+                    enqueueUpsert('bills', normalized);
                 }));
                 unsubSpecific.push(ws.on('bill:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.billId ?? data?.id;
                     if (!id) return;
-                    dispatch({
-                        type: 'DELETE_BILL',
-                        payload: id,
-                        _isRemote: true
-                    } as any);
+                    enqueueDelete('bills', id);
                 }));
 
-                // Transaction events (so payments appear immediately)
+                // Transaction events
                 unsubSpecific.push(ws.on('transaction:created', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadTx = data?.transaction ?? data;
                     const normalizedTx = normalizeTransactionFromEvent(payloadTx);
                     if (!normalizedTx) return;
-                    const exists = stateRef.current.transactions.some(t => t.id === normalizedTx.id);
-                    if (!exists) {
-                        dispatch({
-                            type: 'ADD_TRANSACTION',
-                            payload: normalizedTx,
-                            _isRemote: true
-                        } as any);
-                    }
+                    enqueueUpsert('transactions', normalizedTx);
                 }));
                 unsubSpecific.push(ws.on('transaction:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadTx = data?.transaction ?? data;
                     const normalizedTx = normalizeTransactionFromEvent(payloadTx);
                     if (!normalizedTx) return;
-                    dispatch({
-                        type: 'UPDATE_TRANSACTION',
-                        payload: normalizedTx,
-                        _isRemote: true
-                    } as any);
+                    enqueueUpsert('transactions', normalizedTx);
                 }));
                 unsubSpecific.push(ws.on('transaction:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.transactionId ?? data?.id;
                     if (!id) return;
-                    dispatch({
-                        type: 'DELETE_TRANSACTION',
-                        payload: id,
-                        _isRemote: true
-                    } as any);
+                    enqueueDelete('transactions', id);
                 }));
 
-                // Invoice events (so invoice status updates appear immediately)
+                // Invoice events
                 unsubSpecific.push(ws.on('invoice:created', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadInv = data?.invoice ?? data;
                     const normalized = normalizeInvoiceFromEvent(payloadInv);
                     if (!normalized) return;
-                    const exists = stateRef.current.invoices.some(i => i.id === normalized.id);
-                    if (!exists) {
-                        dispatch({
-                            type: 'ADD_INVOICE',
-                            payload: normalized,
-                            _isRemote: true
-                        } as any);
-                    }
+                    enqueueUpsert('invoices', normalized);
                 }));
                 unsubSpecific.push(ws.on('invoice:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadInv = data?.invoice ?? data;
                     const normalized = normalizeInvoiceFromEvent(payloadInv);
                     if (!normalized) return;
-                    const existing = stateRef.current.invoices.find(i => i.id === normalized.id);
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({
-                        type: existing ? 'UPDATE_INVOICE' : 'ADD_INVOICE',
-                        payload: merged,
-                        _isRemote: true
-                    } as any);
+                    enqueueUpsert('invoices', normalized);
                 }));
                 unsubSpecific.push(ws.on('invoice:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.invoiceId ?? data?.id;
                     if (!id) return;
-                    dispatch({
-                        type: 'DELETE_INVOICE',
-                        payload: id,
-                        _isRemote: true
-                    } as any);
+                    enqueueDelete('invoices', id);
                 }));
 
-                // Rental Agreement events (so agreements appear immediately)
+                // Rental Agreement events
                 unsubSpecific.push(ws.on('rental_agreement:created', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadAgreement = data?.agreement ?? data?.rentalAgreement ?? data?.rental_agreement ?? data;
                     const normalized = normalizeRentalAgreementFromEvent(payloadAgreement);
                     if (!normalized) return;
-                    const exists = stateRef.current.rentalAgreements.some(r => r.id === normalized.id);
-                    if (!exists) {
-                        dispatch({
-                            type: 'ADD_RENTAL_AGREEMENT',
-                            payload: normalized,
-                            _isRemote: true
-                        } as any);
-                    }
+                    enqueueUpsert('rentalAgreements', normalized);
                 }));
                 unsubSpecific.push(ws.on('rental_agreement:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadAgreement = data?.agreement ?? data?.rentalAgreement ?? data?.rental_agreement ?? data;
                     const normalized = normalizeRentalAgreementFromEvent(payloadAgreement);
                     if (!normalized) return;
-                    const existing = stateRef.current.rentalAgreements.find(r => r.id === normalized.id);
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({
-                        type: existing ? 'UPDATE_RENTAL_AGREEMENT' : 'ADD_RENTAL_AGREEMENT',
-                        payload: merged,
-                        _isRemote: true
-                    } as any);
+                    enqueueUpsert('rentalAgreements', normalized);
                 }));
                 unsubSpecific.push(ws.on('rental_agreement:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.agreementId ?? data?.id;
                     if (!id) return;
-                    dispatch({
-                        type: 'DELETE_RENTAL_AGREEMENT',
-                        payload: id,
-                        _isRemote: true
-                    } as any);
+                    enqueueDelete('rentalAgreements', id);
                 }));
 
-                // Recurring Invoice Template events (so schedules sync immediately across devices)
+                // Recurring Invoice Template events
                 unsubSpecific.push(ws.on('recurring_invoice_template:created', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadTemplate = data?.template ?? data;
                     const normalized = normalizeRecurringTemplateFromEvent(payloadTemplate);
                     if (!normalized) return;
-                    const exists = stateRef.current.recurringInvoiceTemplates.some(t => t.id === normalized.id);
-                    if (!exists) {
-                        dispatch({
-                            type: 'ADD_RECURRING_TEMPLATE',
-                            payload: normalized,
-                            _isRemote: true
-                        } as any);
-                    }
+                    enqueueUpsert('recurringInvoiceTemplates', normalized);
                 }));
                 unsubSpecific.push(ws.on('recurring_invoice_template:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadTemplate = data?.template ?? data;
                     const normalized = normalizeRecurringTemplateFromEvent(payloadTemplate);
                     if (!normalized) return;
-                    const existing = stateRef.current.recurringInvoiceTemplates.find(t => t.id === normalized.id);
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({
-                        type: existing ? 'UPDATE_RECURRING_TEMPLATE' : 'ADD_RECURRING_TEMPLATE',
-                        payload: merged,
-                        _isRemote: true
-                    } as any);
+                    enqueueUpsert('recurringInvoiceTemplates', normalized);
                 }));
                 unsubSpecific.push(ws.on('recurring_invoice_template:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.templateId ?? data?.id;
                     if (!id) return;
-                    dispatch({
-                        type: 'DELETE_RECURRING_TEMPLATE',
-                        payload: id,
-                        _isRemote: true
-                    } as any);
+                    enqueueDelete('recurringInvoiceTemplates', id);
                 }));
 
-                // Contact events - immediate updates for real-time sync
+                // Contact events
                 unsubSpecific.push(ws.on('contact:created', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadContact = data?.contact ?? data;
                     if (!payloadContact || !payloadContact.id) return;
-
-                    // Check if contact already exists (prevent duplicates)
-                    const exists = stateRef.current.contacts.some(c => c.id === payloadContact.id);
-                    if (exists) return;
-
-                    // Normalize contact data (snake_case -> camelCase)
                     const normalized = {
                         id: payloadContact.id,
                         name: payloadContact.name,
@@ -3456,22 +3454,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         createdAt: payloadContact.created_at ?? payloadContact.createdAt ?? new Date().toISOString(),
                         updatedAt: payloadContact.updated_at ?? payloadContact.updatedAt ?? new Date().toISOString()
                     };
-
-                    dispatch({
-                        type: 'ADD_CONTACT',
-                        payload: normalized,
-                        _isRemote: true
-                    } as any);
+                    enqueueUpsert('contacts', normalized);
                 }));
-
                 unsubSpecific.push(ws.on('contact:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadContact = data?.contact ?? data;
                     if (!payloadContact || !payloadContact.id) return;
-
-                    const existing = stateRef.current.contacts.find(c => c.id === payloadContact.id);
-
-                    // Normalize and merge with existing data (snake_case -> camelCase)
                     const normalized = {
                         id: payloadContact.id,
                         name: payloadContact.name,
@@ -3481,42 +3469,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         address: payloadContact.address ?? undefined,
                         description: payloadContact.description ?? undefined,
                         userId: payloadContact.user_id ?? payloadContact.userId ?? undefined,
-                        createdAt: payloadContact.created_at ?? payloadContact.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
+                        createdAt: payloadContact.created_at ?? payloadContact.createdAt ?? undefined,
                         updatedAt: payloadContact.updated_at ?? payloadContact.updatedAt ?? new Date().toISOString()
                     };
-
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-
-                    dispatch({
-                        type: existing ? 'UPDATE_CONTACT' : 'ADD_CONTACT',
-                        payload: merged,
-                        _isRemote: true
-                    } as any);
+                    enqueueUpsert('contacts', normalized);
                 }));
-
                 unsubSpecific.push(ws.on('contact:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.contactId ?? data?.id;
                     if (!id) return;
-
-                    dispatch({
-                        type: 'DELETE_CONTACT',
-                        payload: id,
-                        _isRemote: true
-                    } as any);
+                    enqueueDelete('contacts', id);
                 }));
 
-                // Vendor events - immediate updates for real-time sync
+                // Vendor events
                 unsubSpecific.push(ws.on('vendor:created', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadVendor = data?.vendor ?? data;
                     if (!payloadVendor || !payloadVendor.id) return;
-
-                    // Check if vendor already exists (prevent duplicates)
-                    const exists = stateRef.current.vendors.some(v => v.id === payloadVendor.id);
-                    if (exists) return;
-
-                    // Normalize vendor data (snake_case -> camelCase)
                     const normalized = {
                         id: payloadVendor.id,
                         name: payloadVendor.name,
@@ -3528,22 +3497,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         createdAt: payloadVendor.created_at ?? payloadVendor.createdAt ?? new Date().toISOString(),
                         updatedAt: payloadVendor.updated_at ?? payloadVendor.updatedAt ?? new Date().toISOString()
                     };
-
-                    dispatch({
-                        type: 'ADD_VENDOR',
-                        payload: normalized,
-                        _isRemote: true
-                    } as any);
+                    enqueueUpsert('vendors', normalized);
                 }));
-
                 unsubSpecific.push(ws.on('vendor:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadVendor = data?.vendor ?? data;
                     if (!payloadVendor || !payloadVendor.id) return;
-
-                    const existing = stateRef.current.vendors.find(v => v.id === payloadVendor.id);
-
-                    // Normalize and merge with existing data
                     const normalized = {
                         id: payloadVendor.id,
                         name: payloadVendor.name,
@@ -3552,29 +3511,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         companyName: payloadVendor.company_name ?? payloadVendor.companyName ?? undefined,
                         address: payloadVendor.address ?? undefined,
                         userId: payloadVendor.user_id ?? payloadVendor.userId ?? undefined,
-                        createdAt: payloadVendor.created_at ?? payloadVendor.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
+                        createdAt: payloadVendor.created_at ?? payloadVendor.createdAt ?? undefined,
                         updatedAt: payloadVendor.updated_at ?? payloadVendor.updatedAt ?? new Date().toISOString()
                     };
-
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-
-                    dispatch({
-                        type: existing ? 'UPDATE_VENDOR' : 'ADD_VENDOR',
-                        payload: merged,
-                        _isRemote: true
-                    } as any);
+                    enqueueUpsert('vendors', normalized);
                 }));
-
                 unsubSpecific.push(ws.on('vendor:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.vendorId ?? data?.id;
                     if (!id) return;
-
-                    dispatch({
-                        type: 'DELETE_VENDOR',
-                        payload: id,
-                        _isRemote: true
-                    } as any);
+                    enqueueDelete('vendors', id);
                 }));
 
                 // Project events
@@ -3583,15 +3529,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const p = data?.project ?? data;
                     if (!p || !p.id) return;
                     const normalized = {
-                        id: p.id,
-                        name: p.name || '',
+                        id: p.id, name: p.name || '',
                         description: p.description ?? undefined,
                         color: p.color ?? undefined,
                         status: p.status ?? 'Active',
                         installmentConfig: (() => { const c = p.installment_config ?? p.installmentConfig; if (!c) return undefined; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return undefined; } } return c; })(),
                         pmConfig: (() => { const c = p.pm_config ?? p.pmConfig; if (!c) return undefined; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return undefined; } } return c; })(),
                     };
-                    dispatch({ type: 'ADD_PROJECT', payload: normalized, _isRemote: true } as any);
+                    enqueueUpsert('projects', normalized);
                 }));
                 unsubSpecific.push(ws.on('project:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
@@ -3599,22 +3544,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!p || !p.id) return;
                     const existing = stateRef.current.projects.find(x => x.id === p.id);
                     const normalized = {
-                        id: p.id,
-                        name: p.name || '',
+                        id: p.id, name: p.name || '',
                         description: p.description ?? undefined,
                         color: p.color ?? undefined,
                         status: p.status ?? existing?.status ?? 'Active',
                         installmentConfig: (() => { const c = p.installment_config ?? p.installmentConfig; if (!c) return existing?.installmentConfig; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return existing?.installmentConfig; } } return c; })(),
                         pmConfig: (() => { const c = p.pm_config ?? p.pmConfig; if (!c) return existing?.pmConfig; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return existing?.pmConfig; } } return c; })(),
                     };
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({ type: existing ? 'UPDATE_PROJECT' : 'ADD_PROJECT', payload: merged, _isRemote: true } as any);
+                    enqueueUpsert('projects', normalized);
                 }));
                 unsubSpecific.push(ws.on('project:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.projectId ?? data?.id;
                     if (!id) return;
-                    dispatch({ type: 'DELETE_PROJECT', payload: id, _isRemote: true } as any);
+                    enqueueDelete('projects', id);
                 }));
 
                 // Building events
@@ -3622,22 +3565,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const b = data?.building ?? data;
                     if (!b || !b.id) return;
-                    dispatch({ type: 'ADD_BUILDING', payload: { id: b.id, name: b.name || '', description: b.description ?? undefined, color: b.color ?? undefined }, _isRemote: true } as any);
+                    enqueueUpsert('buildings', { id: b.id, name: b.name || '', description: b.description ?? undefined, color: b.color ?? undefined });
                 }));
                 unsubSpecific.push(ws.on('building:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const b = data?.building ?? data;
                     if (!b || !b.id) return;
-                    const existing = stateRef.current.buildings.find(x => x.id === b.id);
-                    const normalized = { id: b.id, name: b.name || '', description: b.description ?? undefined, color: b.color ?? undefined };
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({ type: existing ? 'UPDATE_BUILDING' : 'ADD_BUILDING', payload: merged, _isRemote: true } as any);
+                    enqueueUpsert('buildings', { id: b.id, name: b.name || '', description: b.description ?? undefined, color: b.color ?? undefined });
                 }));
                 unsubSpecific.push(ws.on('building:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.buildingId ?? data?.id;
                     if (!id) return;
-                    dispatch({ type: 'DELETE_BUILDING', payload: id, _isRemote: true } as any);
+                    enqueueDelete('buildings', id);
                 }));
 
                 // Property events
@@ -3652,7 +3592,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         description: p.description ?? undefined,
                         monthlyServiceCharge: (() => { const c = p.monthly_service_charge ?? p.monthlyServiceCharge; if (c == null) return undefined; return typeof c === 'number' ? c : parseFloat(String(c)); })(),
                     };
-                    dispatch({ type: 'ADD_PROPERTY', payload: normalized, _isRemote: true } as any);
+                    enqueueUpsert('properties', normalized);
                 }));
                 unsubSpecific.push(ws.on('property:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
@@ -3666,14 +3606,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         description: p.description ?? undefined,
                         monthlyServiceCharge: (() => { const c = p.monthly_service_charge ?? p.monthlyServiceCharge; if (c == null) return existing?.monthlyServiceCharge; return typeof c === 'number' ? c : parseFloat(String(c)); })(),
                     };
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({ type: existing ? 'UPDATE_PROPERTY' : 'ADD_PROPERTY', payload: merged, _isRemote: true } as any);
+                    enqueueUpsert('properties', normalized);
                 }));
                 unsubSpecific.push(ws.on('property:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.propertyId ?? data?.id;
                     if (!id) return;
-                    dispatch({ type: 'DELETE_PROPERTY', payload: id, _isRemote: true } as any);
+                    enqueueDelete('properties', id);
                 }));
 
                 // Unit events
@@ -3691,7 +3630,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         area: (() => { const v = u.area; if (v == null) return undefined; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
                         floor: u.floor ?? undefined,
                     };
-                    dispatch({ type: 'ADD_UNIT', payload: normalized, _isRemote: true } as any);
+                    enqueueUpsert('units', normalized);
                 }));
                 unsubSpecific.push(ws.on('unit:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
@@ -3708,17 +3647,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         area: (() => { const v = u.area; if (v == null) return existing?.area; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
                         floor: u.floor ?? existing?.floor ?? undefined,
                     };
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({ type: existing ? 'UPDATE_UNIT' : 'ADD_UNIT', payload: merged, _isRemote: true } as any);
+                    enqueueUpsert('units', normalized);
                 }));
                 unsubSpecific.push(ws.on('unit:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.unitId ?? data?.id;
                     if (!id) return;
-                    dispatch({ type: 'DELETE_UNIT', payload: id, _isRemote: true } as any);
+                    enqueueDelete('units', id);
                 }));
 
                 cleanup = () => {
+                    if (wsBatchBuffer.flushTimer) {
+                        clearTimeout(wsBatchBuffer.flushTimer);
+                        flushWsBatch();
+                    }
                     unsubFallback.forEach(unsub => unsub());
                     unsubSpecific.forEach(unsub => unsub());
                     ws.disconnect();
@@ -4050,9 +3992,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isAuthenticated && !isInitializing && !sessionRestoreRefreshDoneRef.current) {
             const hasData = (state.contacts?.length ?? 0) > 0 || (state.transactions?.length ?? 0) > 0 ||
                 (state.invoices?.length ?? 0) > 0 || (state.accounts?.length ?? 0) > 0;
-            console.log('[DIAG] SessionRestore: hasData =', hasData, '| contacts=', state.contacts?.length, 'txns=', state.transactions?.length, 'accounts=', state.accounts?.length);
             if (!hasData) {
-                console.log('[DIAG] SessionRestore: calling refreshFromApi (no data detected)');
                 sessionRestoreRefreshDoneRef.current = true;
                 refreshFromApiRef.current(undefined);
             }
@@ -4183,6 +4123,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Update previous tenant ID
         prevTenantIdRef.current = currentTenantId;
     }, [auth.tenant?.id, isAuthenticated, isInitializing, setStoredState, saveNow]);
+
+    // Keep module-level store in sync for useSyncExternalStore-based selective hooks.
+    // State is set synchronously during render to avoid stale snapshots.
+    // Dispatch is stable (from useReducer) so only needs to be set once.
+    _appState = state;
+    _appDispatch = dispatch;
+    useEffect(() => {
+        _notifyStateListeners();
+    });
 
     // PERFORMANCE: Memoize the context value to prevent cascading re-renders.
     // Without this, every render of AppProvider creates a new { state, dispatch } object,

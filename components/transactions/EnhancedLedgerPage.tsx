@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, memo, useRef, useTransition } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import { useDebounce } from '../../hooks/useDebounce';
 import { Transaction, TransactionType, InvoiceType, Account, Category, Contact, LedgerSortKey as SortKey, SortDirection, FilterCriteria, ImportType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
@@ -43,7 +43,8 @@ const initialFilters: FilterCriteria = {
 
 
 const EnhancedLedgerPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
+    const state = useStateSelector(s => s);
     const progress = useProgress();
     const { print: triggerPrint } = usePrintContext();
 

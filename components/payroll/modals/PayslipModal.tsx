@@ -52,59 +52,18 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
 
   // Get bank and cash accounts - try AppContext first, then fetch from API if needed
   const paymentAccounts = React.useMemo(() => {
-    // Use fetched accounts if AppContext doesn't have accounts
     const accountsToUse = state.accounts.length > 0 ? state.accounts : fetchedAccounts;
+    if (!accountsToUse || accountsToUse.length === 0) return [];
 
-    if (!accountsToUse || accountsToUse.length === 0) {
-      console.warn('⚠️ PayslipModal - No accounts found in state.accounts or fetchedAccounts');
-      return [];
-    }
-
-    console.log('🔍 PayslipModal - Total accounts available:', accountsToUse.length);
-    console.log('🔍 PayslipModal - Source:', state.accounts.length > 0 ? 'AppContext' : 'API');
-    console.log('🔍 PayslipModal - AccountType.BANK value:', AccountType.BANK);
-    console.log('🔍 PayslipModal - AccountType.CASH value:', AccountType.CASH);
-
-    // More flexible filtering - check multiple possible type values
     const filtered = accountsToUse.filter(a => {
-      if (!a || !a.type) {
-        console.warn('⚠️ Account missing type:', a);
-        return false;
-      }
-
-      // Check for Bank type (case-insensitive)
+      if (!a || !a.type) return false;
       const typeLower = a.type.toLowerCase().trim();
       const isBank = typeLower === 'bank' || (a.type as string) === AccountType.BANK || a.type === 'Bank';
-
-      // Check for Cash type (case-insensitive)
       const isCash = typeLower === 'cash' || (a.type as string) === AccountType.CASH || a.type === 'Cash';
-
-      // Exclude Internal Clearing
-      const isNotInternalClearing = a.name !== 'Internal Clearing';
-
-      const matches = (isBank || isCash) && isNotInternalClearing;
-
-      console.log(`Account: "${a.name}", Type: "${a.type}" (${typeLower}), IsBank: ${isBank}, IsCash: ${isCash}, NotClearing: ${isNotInternalClearing}, Matches: ${matches}`);
-
-      return matches;
+      return (isBank || isCash) && a.name !== 'Internal Clearing';
     });
 
-    console.log('✅ PayslipModal - Filtered payment accounts count:', filtered.length);
-    console.log('✅ PayslipModal - Filtered accounts with IDs:', filtered.map(a => ({
-      id: a.id,
-      idType: typeof a.id,
-      name: a.name,
-      type: a.type,
-      balance: a.balance
-    })));
-
-    if (filtered.length === 0 && accountsToUse.length > 0) {
-      console.error('❌ PayslipModal - No payment accounts found after filtering!');
-      console.error('Available account types:', [...new Set(accountsToUse.map(a => a.type))]);
-      console.error('All accounts:', accountsToUse.map(a => ({ name: a.name, type: a.type })));
-    }
-
-    return filtered.sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
+    return filtered.sort((a, b) => b.balance - a.balance);
   }, [state.accounts, fetchedAccounts]);
 
   // Get expense categories

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { Transaction, TransactionType, LoanSubtype, ContactType, Account, InvoiceStatus, AccountType, ContractStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -24,7 +24,8 @@ interface TransactionFormProps {
 type CostCenterType = 'project' | 'building' | 'general';
 
 const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionToEdit, transactionTypeForNew, onShowDeleteWarning }) => {
-    const { state, dispatch } = useAppContext();
+    const state = useStateSelector(s => s);
+    const dispatch = useDispatchOnly();
     const { showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();
     const entityFormModal = useEntityFormModal();

@@ -30,7 +30,7 @@ const TreeItem: React.FC<{
     onContextMenu?: (node: TreeNode, event: React.MouseEvent) => void;
     level?: number;
     colWidths: { count: number; balance: number };
-}> = ({ node, selectedNodeId, onNodeSelect, onContextMenu, level = 0, colWidths }) => {
+}> = React.memo(({ node, selectedNodeId, onNodeSelect, onContextMenu, level = 0, colWidths }) => {
     const [isExpanded, setIsExpanded] = useState(true); // Default expanded for better visibility
     const isSelected = selectedNodeId === node.id;
     const hasChildren = node.children.length > 0 || node.invoices.length > 0;
@@ -122,7 +122,7 @@ const TreeItem: React.FC<{
             )}
         </div>
     );
-};
+});
 
 const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNodeId, onNodeSelect, onContextMenu }) => {
     // Sorting State

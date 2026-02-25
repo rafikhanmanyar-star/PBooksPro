@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect, useCallback, memo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Page, Project, TransactionType, InvoiceStatus, RentalAgreementStatus } from '../../types';
 import { useKpis } from '../../context/KPIContext';
@@ -21,7 +21,8 @@ import { formatDate } from '../../utils/dateUtils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 
 const DashboardPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
+    const state = useStateSelector(s => s);
     const lookupMaps = useLookupMaps();
     const { allKpis, openDrilldown } = useKpis();
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);

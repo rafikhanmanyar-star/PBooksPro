@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { Invoice, InvoiceStatus, InvoiceType, ProjectAgreementStatus, RecurringInvoiceTemplate } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
 import Card from '../ui/Card';
@@ -31,7 +31,8 @@ const DetailRow: React.FC<{ label: string; value: string | React.ReactNode; clas
 
 
 const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecordPayment, onEdit, onDelete }) => {
-    const { state, dispatch } = useAppContext();
+    const state = useStateSelector(s => s);
+    const dispatch = useDispatchOnly();
     const { showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
     const { contactId, amount, paidAmount, issueDate, status, description, invoiceNumber, dueDate, invoiceType, propertyId, projectId, unitId, agreementId } = invoice;

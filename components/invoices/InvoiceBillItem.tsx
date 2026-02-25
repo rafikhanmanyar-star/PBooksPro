@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Invoice, Bill, InvoiceStatus, InvoiceType, TransactionType, ProjectAgreementStatus } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { useNotification } from '../../context/NotificationContext'; 
 import Modal from '../ui/Modal';
@@ -26,7 +26,8 @@ interface InvoiceBillItemProps {
 }
 
 const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordPayment, onItemClick, isSelected, onToggleSelect, selectionMode }) => {
-  const { state, dispatch } = useAppContext();
+  const state = useStateSelector(s => s);
+  const dispatch = useDispatchOnly();
   const lookups = useLookupMaps();
   const { showConfirm, showToast, showAlert } = useNotification();
   const { openChat } = useWhatsApp();

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -188,7 +188,8 @@ const BillTreeSidebar: React.FC<{
 };
 
 const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
-    const { state, dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
+    const state = useStateSelector(s => s);
     const { showToast, showAlert } = useNotification();
     const { openChat } = useWhatsApp();
 

@@ -97,7 +97,6 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
 
     const allowedConstructionViews = [
         'Contracts', 'Bills', 'Sales Returns', 'PM Payouts',
-        'Visual Layout', 'Tabular View',
         'Project Summary', 'Budget vs Actual', 'Contract Report',
         'PM Cost Report', 'Material Report', 'Vendor Ledger',
         'Owner Ledger', 'Income by Category', 'Expense by Category',
@@ -163,6 +162,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     };
 
     const isReportActive = [
+        'Visual Layout', 'Tabular View',
         'Project Summary', 'Marketing Activity', 'Profit & Loss', 'Balance Sheet', 'Investor Distribution', 'Revenue Analysis', 'Owner Ledger', 'Broker Report',
         'Income by Category', 'Expense by Category', 'Material Report', 'Vendor Ledger', 'PM Cost Report', 'Contract Report', 'Budget vs Actual', 'Cash Flows'
     ].includes(activeView);
@@ -269,7 +269,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                         <div className="bg-slate-50 px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-t border-b border-slate-100 mt-1">Operational Reports</div>
                                         {[
                                             'Project Summary',
-                                            ...(isSellingMode ? ['Marketing Activity', 'Revenue Analysis', 'Broker Report'] : []),
+                                            ...(isSellingMode ? ['Visual Layout', 'Tabular View', 'Marketing Activity', 'Revenue Analysis', 'Broker Report'] : []),
                                             ...(!isSellingMode ? ['Budget vs Actual', 'Contract Report', 'PM Cost Report', 'Material Report', 'Vendor Ledger'] : []),
                                             'Owner Ledger',
                                             'Income by Category',
@@ -293,8 +293,8 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     </div>
                 </div>
 
-                {/* Right Side: Segmented Control for Layouts - Only shown in Construction mode */}
-                {!isSellingMode && (
+                {/* Right Side: Segmented Control for Visual/Units - Only shown in Selling mode */}
+                {isSellingMode && (
                     <div className="flex items-center bg-slate-100 rounded-lg p-1 flex-shrink-0">
                         <button
                             onClick={() => setActiveView('Visual Layout')}

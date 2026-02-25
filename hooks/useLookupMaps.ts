@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from 'react';
-import { useAppContext } from '../context/AppContext';
+import { useStateSelector } from './useSelectiveState';
 
 export interface LookupMaps {
   accounts: Map<string, { name: string; type: string }>;
@@ -24,7 +24,7 @@ export interface LookupMaps {
  * Use these maps instead of state.accounts.find() for better performance
  */
 export function useLookupMaps(): LookupMaps {
-  const { state } = useAppContext();
+  const state = useStateSelector(s => s);
 
   return useMemo(() => {
     // Early return if state is not available (during initialization)

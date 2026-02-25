@@ -2,79 +2,132 @@
  * Selective State Subscription Hooks
  * 
  * These hooks let components subscribe to specific slices of AppState,
- * avoiding re-renders when unrelated state changes. Components using
- * useAppContext() re-render on EVERY state change (155+ consumers).
- * These hooks only trigger re-renders when the selected slice changes.
+ * avoiding re-renders when unrelated state changes.
+ * 
+ * Components using useAppContext() re-render on EVERY state change (155+ consumers).
+ * These hooks use useSyncExternalStore to only trigger re-renders when the
+ * selected slice actually changes (by reference).
  */
 
-import { useRef, useMemo } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { AppState } from '../types';
+import { _getAppState, _getAppDispatch, _subscribeAppState } from '../context/AppContext';
+import { AppState, AppAction } from '../types';
 
 /**
  * Subscribe to a specific slice of AppState.
  * Only triggers a re-render when the selected value changes (by reference).
  * 
+ * IMPORTANT: The selector should return a value with a stable reference when
+ * the underlying data hasn't changed. Selecting a single array (e.g. s => s.bills)
+ * works perfectly. Avoid creating new objects/arrays in the selector.
+ * 
  * Usage:
- *   const transactions = useStateSlice(s => s.transactions);
- *   const { accounts, categories } = useStateSlice(s => ({ accounts: s.accounts, categories: s.categories }));
+ *   const transactions = useStateSelector(s => s.transactions);
+ *   const bills = useStateSelector(s => s.bills);
+ */
+export function useStateSelector<T>(selector: (state: AppState) => T): T {
+    const getSnapshot = useCallback(() => selector(_getAppState()), [selector]);
+    return useSyncExternalStore(_subscribeAppState, getSnapshot);
+}
+
+/**
+ * @deprecated Use useStateSelector instead for true selective re-rendering.
+ * This wrapper exists for backward compatibility.
  */
 export function useStateSlice<T>(selector: (state: AppState) => T): T {
-    const { state } = useAppContext();
-    const selectedRef = useRef<T>();
-    const selected = selector(state);
-
-    if (selectedRef.current !== selected) {
-        selectedRef.current = selected;
-    }
-    return selectedRef.current as T;
+    return useStateSelector(selector);
 }
 
 /**
- * Get only the accounts array with stable reference.
+ * Get only the accounts array. Only re-renders when accounts change.
  */
 export function useAccounts() {
-    const { state } = useAppContext();
-    return useMemo(() => state.accounts, [state.accounts]);
+    return useStateSelector(s => s.accounts);
 }
 
 /**
- * Get only the transactions array with stable reference.
+ * Get only the transactions array. Only re-renders when transactions change.
  */
 export function useTransactions() {
-    const { state } = useAppContext();
-    return useMemo(() => state.transactions, [state.transactions]);
+    return useStateSelector(s => s.transactions);
 }
 
 /**
- * Get only the contacts array with stable reference.
+ * Get only the contacts array. Only re-renders when contacts change.
  */
 export function useContacts() {
-    const { state } = useAppContext();
-    return useMemo(() => state.contacts, [state.contacts]);
+    return useStateSelector(s => s.contacts);
 }
 
 /**
- * Get only the invoices array with stable reference.
+ * Get only the invoices array. Only re-renders when invoices change.
  */
 export function useInvoices() {
-    const { state } = useAppContext();
-    return useMemo(() => state.invoices, [state.invoices]);
+    return useStateSelector(s => s.invoices);
 }
 
 /**
- * Get only the bills array with stable reference.
+ * Get only the bills array. Only re-renders when bills change.
  */
 export function useBills() {
-    const { state } = useAppContext();
-    return useMemo(() => state.bills, [state.bills]);
+    return useStateSelector(s => s.bills);
+}
+
+/**
+ * Get only the categories array. Only re-renders when categories change.
+ */
+export function useCategories() {
+    return useStateSelector(s => s.categories);
+}
+
+/**
+ * Get only the projects array. Only re-renders when projects change.
+ */
+export function useProjects() {
+    return useStateSelector(s => s.projects);
+}
+
+/**
+ * Get only the buildings array. Only re-renders when buildings change.
+ */
+export function useBuildings() {
+    return useStateSelector(s => s.buildings);
+}
+
+/**
+ * Get only the properties array. Only re-renders when properties change.
+ */
+export function useProperties() {
+    return useStateSelector(s => s.properties);
+}
+
+/**
+ * Get only the units array. Only re-renders when units change.
+ */
+export function useUnits() {
+    return useStateSelector(s => s.units);
+}
+
+/**
+ * Get only the rentalAgreements array. Only re-renders when rentalAgreements change.
+ */
+export function useRentalAgreements() {
+    return useStateSelector(s => s.rentalAgreements);
+}
+
+/**
+ * Get only the vendors array. Only re-renders when vendors change.
+ */
+export function useVendors() {
+    return useStateSelector(s => s.vendors);
 }
 
 /**
  * Get dispatch without subscribing to state changes.
- * Use when a component only dispatches actions and doesn't read state.
+ * Uses module-level dispatch ref, so this hook never causes re-renders.
  */
-export function useDispatchOnly() {
-    const { dispatch } = useAppContext();
-    return dispatch;
+export function useDispatchOnly(): React.Dispatch<AppAction> {
+    const dispatchRef = useRef(_getAppDispatch());
+    return dispatchRef.current;
 }

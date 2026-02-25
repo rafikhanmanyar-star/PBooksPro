@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import { Invoice, InvoiceType, InvoiceStatus, Transaction, TransactionType, Bill, RecurringInvoiceTemplate } from '../../types';
 import InvoiceBillForm from './InvoiceBillForm';
 import BulkPaymentModal from './BulkPaymentModal';
@@ -168,7 +168,17 @@ const InvoiceTreeSidebar: React.FC<{
 };
 
 const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitleAndGoBack, showCreateButton = true, onTreeSelectionChange }) => {
-    const { state, dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
+    const invoices = useStateSelector(s => s.invoices);
+    const contacts = useStateSelector(s => s.contacts);
+    const accounts = useStateSelector(s => s.accounts);
+    const transactions = useStateSelector(s => s.transactions);
+    const properties = useStateSelector(s => s.properties);
+    const units = useStateSelector(s => s.units);
+    const buildings = useStateSelector(s => s.buildings);
+    const projects = useStateSelector(s => s.projects);
+    const projectAgreements = useStateSelector(s => s.projectAgreements);
+    const defaultProjectId = useStateSelector(s => s.defaultProjectId);
     const { showConfirm, showToast, showAlert } = useNotification();
 
     // Persistent View Settings
@@ -177,7 +187,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const [statusFilter, setStatusFilter] = useLocalStorage<string>(`${storageKeyPrefix}_statusFilter`, 'All');
     const [groupBy, setGroupBy] = useLocalStorage<'tenant' | 'owner' | 'property'>(`${storageKeyPrefix}_groupBy`, invoiceTypeFilter === InvoiceType.RENTAL ? 'tenant' : 'owner');
     const [buildingFilter, setBuildingFilter] = useState<string>('all');
-    const [projectFilter, setProjectFilter] = useState<string>(state.defaultProjectId || 'all');
+    const [projectFilter, setProjectFilter] = useState<string>(defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
 
     // Sidebar: search filter for tree
@@ -284,72 +294,72 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         setIsResizingSidebar(true);
     }, []);
 
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
-    const projects = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
+    const buildingOptions = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...buildings], [buildings]);
+    const projectOptions = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
     // --- Base Data Filtering (For Tree Structure) ---
     const baseInvoices = useMemo(() => {
         try {
-            let invoices = state.invoices;
+            let filtered = invoices;
 
             if (invoiceTypeFilter) {
-                invoices = invoices.filter(inv => inv.invoiceType === invoiceTypeFilter);
+                filtered = filtered.filter(inv => inv.invoiceType === invoiceTypeFilter);
             }
 
             if (statusFilter !== 'All') {
-                invoices = invoices.filter(inv => inv.status === statusFilter);
+                filtered = filtered.filter(inv => inv.status === statusFilter);
             }
 
             if (invoiceTypeFilter === InvoiceType.RENTAL && buildingFilter !== 'all') {
-                invoices = invoices.filter(inv => {
+                filtered = filtered.filter(inv => {
                     if (inv.buildingId === buildingFilter) return true;
                     if (inv.propertyId) {
-                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        const prop = properties.find(p => p.id === inv.propertyId);
                         return prop && prop.buildingId === buildingFilter;
                     }
                     return false;
                 });
             } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT && projectFilter !== 'all') {
-                invoices = invoices.filter(inv => inv.projectId === projectFilter);
+                filtered = filtered.filter(inv => inv.projectId === projectFilter);
             }
 
             if (searchQuery) {
                 const query = searchQuery.toLowerCase();
-                invoices = invoices.filter(inv => {
+                filtered = filtered.filter(inv => {
                     if (inv.invoiceNumber.toLowerCase().includes(query)) return true;
-                    if (state.contacts.find(c => c.id === inv.contactId)?.name.toLowerCase().includes(query)) return true;
+                    if (contacts.find(c => c.id === inv.contactId)?.name.toLowerCase().includes(query)) return true;
                     if (inv.description && inv.description.toLowerCase().includes(query)) return true;
                     if (inv.propertyId) {
-                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        const prop = properties.find(p => p.id === inv.propertyId);
                         if (prop?.name.toLowerCase().includes(query)) return true;
                     }
                     if (inv.unitId) {
-                        const unit = state.units.find(u => u.id === inv.unitId);
+                        const unit = units.find(u => u.id === inv.unitId);
                         if (unit?.name.toLowerCase().includes(query)) return true;
                     }
                     return false;
                 });
             }
 
-            return invoices;
+            return filtered;
         } catch (error) {
             console.error("Error filtering invoices:", error);
             return [];
         }
-    }, [state.invoices, state.contacts, state.properties, state.units, invoiceTypeFilter, searchQuery, statusFilter, buildingFilter, projectFilter]);
+    }, [invoices, contacts, properties, units, invoiceTypeFilter, searchQuery, statusFilter, buildingFilter, projectFilter]);
 
     // --- Final Data Filtering (For List View) ---
     const filteredInvoices = useMemo(() => {
-        let invoices = baseInvoices;
+        let filtered = baseInvoices;
 
         if (treeFilter) {
             if (treeFilter.type === 'group') {
-                invoices = invoices.filter(inv => {
+                filtered = filtered.filter(inv => {
                     if (inv.projectId === treeFilter.id) return true;
                     if (inv.buildingId === treeFilter.id) return true;
-                    if (inv.agreementId && state.projectAgreements.find(pa => pa.id === inv.agreementId)?.projectId === treeFilter.id) return true;
+                    if (inv.agreementId && projectAgreements.find(pa => pa.id === inv.agreementId)?.projectId === treeFilter.id) return true;
                     if (inv.propertyId) {
-                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        const prop = properties.find(p => p.id === inv.propertyId);
                         if (prop && prop.buildingId === treeFilter.id) return true;
                     }
                     return false;
@@ -357,20 +367,20 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             } else if (treeFilter.type === 'subgroup') {
                 const parentId = treeFilter.parentId ?? null;
                 if (invoiceTypeFilter === InvoiceType.RENTAL) {
-                    invoices = invoices.filter(inv => {
-                        const invBuildingId = inv.buildingId || (inv.propertyId ? state.properties.find(p => p.id === inv.propertyId)?.buildingId : undefined) || 'Unassigned';
+                    filtered = filtered.filter(inv => {
+                        const invBuildingId = inv.buildingId || (inv.propertyId ? properties.find(p => p.id === inv.propertyId)?.buildingId : undefined) || 'Unassigned';
                         const matchParent = parentId === null || invBuildingId === parentId;
                         if (!matchParent) return false;
                         if (groupBy === 'tenant') return inv.contactId === treeFilter.id;
                         if (groupBy === 'owner') {
-                            const prop = state.properties.find(p => p.id === inv.propertyId);
+                            const prop = properties.find(p => p.id === inv.propertyId);
                             return prop && prop.ownerId === treeFilter.id;
                         }
                         if (groupBy === 'property') return inv.propertyId === treeFilter.id;
                         return false;
                     });
                 } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT) {
-                    invoices = invoices.filter(inv => {
+                    filtered = filtered.filter(inv => {
                         const matchParent = parentId === null || inv.projectId === parentId;
                         if (!matchParent) return false;
                         if (groupBy === 'owner') return inv.contactId === treeFilter.id;
@@ -379,12 +389,12 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                     });
                 }
             } else if (treeFilter.type === 'invoice') {
-                invoices = invoices.filter(inv => inv.id === treeFilter.id);
+                filtered = filtered.filter(inv => inv.id === treeFilter.id);
             }
         }
 
-        return invoices.sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
-    }, [baseInvoices, treeFilter, invoiceTypeFilter, groupBy, state.properties, state.projectAgreements]);
+        return filtered.sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
+    }, [baseInvoices, treeFilter, invoiceTypeFilter, groupBy, properties, projectAgreements]);
 
     // --- Tree Data Construction ---
     const treeData = useMemo<TreeNode[]>(() => {
@@ -402,28 +412,28 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 sourceInvoices.forEach(inv => {
                     let buildingId = inv.buildingId;
                     if (!buildingId && inv.propertyId) {
-                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        const prop = properties.find(p => p.id === inv.propertyId);
                         if (prop) buildingId = prop.buildingId;
                     }
                     if (!buildingId) buildingId = 'Unassigned';
 
                     const buildingName = buildingId === 'Unassigned'
                         ? 'Unassigned'
-                        : state.buildings.find(b => b.id === buildingId)?.name || 'Unknown Building';
+                        : buildings.find(b => b.id === buildingId)?.name || 'Unknown Building';
 
                     let subgroupId = 'Unassigned';
                     let subgroupName = 'Unassigned';
 
                     if (groupBy === 'tenant') {
                         subgroupId = inv.contactId || 'No-Contact';
-                        subgroupName = state.contacts.find(c => c.id === subgroupId)?.name || 'Unknown Tenant';
+                        subgroupName = contacts.find(c => c.id === subgroupId)?.name || 'Unknown Tenant';
                     } else if (groupBy === 'owner') {
-                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        const prop = properties.find(p => p.id === inv.propertyId);
                         subgroupId = prop?.ownerId || 'No-Owner';
-                        subgroupName = state.contacts.find(c => c.id === subgroupId)?.name || 'Unknown Owner';
+                        subgroupName = contacts.find(c => c.id === subgroupId)?.name || 'Unknown Owner';
                     } else if (groupBy === 'property') {
                         subgroupId = inv.propertyId || 'No-Property';
-                        subgroupName = state.properties.find(p => p.id === subgroupId)?.name || 'Unknown Unit';
+                        subgroupName = properties.find(p => p.id === subgroupId)?.name || 'Unknown Unit';
                     }
 
                     const due = Math.max(0, inv.amount - inv.paidAmount);
@@ -469,7 +479,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
                 sourceInvoices.forEach(inv => {
                     const projectId = inv.projectId || 'Unassigned';
-                    const projectName = projectId === 'Unassigned' ? 'Unassigned' : state.projects.find(p => p.id === projectId)?.name || 'Unknown Project';
+                    const projectName = projectId === 'Unassigned' ? 'Unassigned' : projects.find(p => p.id === projectId)?.name || 'Unknown Project';
                     const due = Math.max(0, inv.amount - inv.paidAmount);
 
                     let subgroupId = 'Unassigned';
@@ -477,13 +487,13 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
                     if (groupBy === 'owner') {
                         subgroupId = inv.contactId || 'No-Client';
-                        subgroupName = state.contacts.find(c => c.id === subgroupId)?.name || 'Unknown Client';
+                        subgroupName = contacts.find(c => c.id === subgroupId)?.name || 'Unknown Client';
                     } else if (groupBy === 'property') {
                         subgroupId = inv.unitId || 'No-Unit';
-                        subgroupName = state.units.find(u => u.id === subgroupId)?.name || 'General Project Invoice';
+                        subgroupName = units.find(u => u.id === subgroupId)?.name || 'General Project Invoice';
                     } else {
                         subgroupId = inv.contactId || 'No-Client';
-                        subgroupName = state.contacts.find(c => c.id === subgroupId)?.name || 'Unknown Client';
+                        subgroupName = contacts.find(c => c.id === subgroupId)?.name || 'Unknown Client';
                     }
 
                     if (!hierarchy[projectId]) {
@@ -529,7 +539,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             return [];
         }
 
-    }, [baseInvoices, invoiceTypeFilter, state.projects, state.buildings, state.properties, state.units, state.contacts, groupBy]);
+    }, [baseInvoices, invoiceTypeFilter, projects, buildings, properties, units, contacts, groupBy]);
 
     // Filter tree by sidebar search (keeps node if name or any descendant matches)
     const filterInvoiceTree = useCallback((nodes: TreeNode[], q: string): TreeNode[] => {
@@ -555,39 +565,39 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     // This ensures payments remain visible even if invoice status changes after payment
     const invoicesWithoutStatusFilter = useMemo(() => {
         try {
-            let invoices = state.invoices;
+            let filtered = invoices;
 
             if (invoiceTypeFilter) {
-                invoices = invoices.filter(inv => inv.invoiceType === invoiceTypeFilter);
+                filtered = filtered.filter(inv => inv.invoiceType === invoiceTypeFilter);
             }
 
             // NOTE: Skip status filter here - we want to include all statuses for payment matching
 
             if (invoiceTypeFilter === InvoiceType.RENTAL && buildingFilter !== 'all') {
-                invoices = invoices.filter(inv => {
+                filtered = filtered.filter(inv => {
                     if (inv.buildingId === buildingFilter) return true;
                     if (inv.propertyId) {
-                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        const prop = properties.find(p => p.id === inv.propertyId);
                         return prop && prop.buildingId === buildingFilter;
                     }
                     return false;
                 });
             } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT && projectFilter !== 'all') {
-                invoices = invoices.filter(inv => inv.projectId === projectFilter);
+                filtered = filtered.filter(inv => inv.projectId === projectFilter);
             }
 
             if (searchQuery) {
                 const query = searchQuery.toLowerCase();
-                invoices = invoices.filter(inv => {
+                filtered = filtered.filter(inv => {
                     if (inv.invoiceNumber.toLowerCase().includes(query)) return true;
-                    if (state.contacts.find(c => c.id === inv.contactId)?.name.toLowerCase().includes(query)) return true;
+                    if (contacts.find(c => c.id === inv.contactId)?.name.toLowerCase().includes(query)) return true;
                     if (inv.description && inv.description.toLowerCase().includes(query)) return true;
                     if (inv.propertyId) {
-                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        const prop = properties.find(p => p.id === inv.propertyId);
                         if (prop?.name.toLowerCase().includes(query)) return true;
                     }
                     if (inv.unitId) {
-                        const unit = state.units.find(u => u.id === inv.unitId);
+                        const unit = units.find(u => u.id === inv.unitId);
                         if (unit?.name.toLowerCase().includes(query)) return true;
                     }
                     return false;
@@ -596,12 +606,12 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
             if (treeFilter) {
                 if (treeFilter.type === 'group') {
-                    invoices = invoices.filter(inv => {
+                    filtered = filtered.filter(inv => {
                         if (inv.projectId === treeFilter.id) return true;
                         if (inv.buildingId === treeFilter.id) return true;
-                        if (inv.agreementId && state.projectAgreements.find(pa => pa.id === inv.agreementId)?.projectId === treeFilter.id) return true;
+                        if (inv.agreementId && projectAgreements.find(pa => pa.id === inv.agreementId)?.projectId === treeFilter.id) return true;
                         if (inv.propertyId) {
-                            const prop = state.properties.find(p => p.id === inv.propertyId);
+                            const prop = properties.find(p => p.id === inv.propertyId);
                             if (prop && prop.buildingId === treeFilter.id) return true;
                         }
                         return false;
@@ -609,20 +619,20 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 } else if (treeFilter.type === 'subgroup') {
                     const parentId = treeFilter.parentId ?? null;
                     if (invoiceTypeFilter === InvoiceType.RENTAL) {
-                        invoices = invoices.filter(inv => {
-                            const invBuildingId = inv.buildingId || (inv.propertyId ? state.properties.find(p => p.id === inv.propertyId)?.buildingId : undefined) || 'Unassigned';
+                        filtered = filtered.filter(inv => {
+                            const invBuildingId = inv.buildingId || (inv.propertyId ? properties.find(p => p.id === inv.propertyId)?.buildingId : undefined) || 'Unassigned';
                             const matchParent = parentId === null || invBuildingId === parentId;
                             if (!matchParent) return false;
                             if (groupBy === 'tenant') return inv.contactId === treeFilter.id;
                             if (groupBy === 'owner') {
-                                const prop = state.properties.find(p => p.id === inv.propertyId);
+                                const prop = properties.find(p => p.id === inv.propertyId);
                                 return prop && prop.ownerId === treeFilter.id;
                             }
                             if (groupBy === 'property') return inv.propertyId === treeFilter.id;
                             return false;
                         });
                     } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT) {
-                        invoices = invoices.filter(inv => {
+                        filtered = filtered.filter(inv => {
                             const matchParent = parentId === null || inv.projectId === parentId;
                             if (!matchParent) return false;
                             if (groupBy === 'owner') return inv.contactId === treeFilter.id;
@@ -631,16 +641,16 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                         });
                     }
                 } else if (treeFilter.type === 'invoice') {
-                    invoices = invoices.filter(inv => inv.id === treeFilter.id);
+                    filtered = filtered.filter(inv => inv.id === treeFilter.id);
                 }
             }
 
-            return invoices;
+            return filtered;
         } catch (error) {
             console.error("Error filtering invoices without status filter:", error);
             return [];
         }
-    }, [state.invoices, state.contacts, state.properties, state.units, state.projectAgreements, invoiceTypeFilter, searchQuery, buildingFilter, projectFilter, treeFilter, groupBy]);
+    }, [invoices, contacts, properties, units, projectAgreements, invoiceTypeFilter, searchQuery, buildingFilter, projectFilter, treeFilter, groupBy]);
 
     // --- Combined Financial Records for Grid View ---
     const financialRecords = useMemo<FinancialRecord[]>(() => {
@@ -652,7 +662,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
         // 1. Invoices
         relevantInvoices.forEach(inv => {
-            const contact = state.contacts.find(c => c.id === inv.contactId);
+            const contact = contacts.find(c => c.id === inv.contactId);
             records.push({
                 id: inv.id,
                 type: 'Invoice',
@@ -669,7 +679,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         // 2. Payments (Transactions linked to these invoices)
         const processedBatchIds = new Set<string>();
 
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             if (tx.type !== TransactionType.INCOME) return;
 
             // If it's an invoice payment, check if it's relevant to current view
@@ -681,9 +691,9 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 if (processedBatchIds.has(tx.batchId)) return;
 
                 // Get entire batch to aggregate
-                const batchTxs = state.transactions.filter(t => t.batchId === tx.batchId);
+                const batchTxs = transactions.filter(t => t.batchId === tx.batchId);
                 const totalAmount = batchTxs.reduce((sum, t) => sum + t.amount, 0);
-                const account = state.accounts.find(a => a.id === tx.accountId);
+                const account = accounts.find(a => a.id === tx.accountId);
 
                 records.push({
                     id: `batch-${tx.batchId}`,
@@ -704,8 +714,8 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
                 processedBatchIds.add(tx.batchId);
             } else {
-                const inv = state.invoices.find(i => i.id === tx.invoiceId);
-                const account = state.accounts.find(a => a.id === tx.accountId);
+                const inv = invoices.find(i => i.id === tx.invoiceId);
+                const account = accounts.find(a => a.id === tx.accountId);
 
                 records.push({
                     id: tx.id,
@@ -722,7 +732,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         });
 
         return records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [filteredInvoices, state.transactions, state.accounts, state.contacts, state.invoices]);
+    }, [filteredInvoices, transactions, accounts, contacts, invoices]);
 
 
     const toggleSelection = (id: string) => {
@@ -815,15 +825,15 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
         // Start with all invoices of the current type (don't use baseInvoices as it may have status filter applied)
         let candidateInvoices = invoiceTypeFilter
-            ? state.invoices.filter(inv => inv.invoiceType === invoiceTypeFilter)
-            : state.invoices;
+            ? invoices.filter(inv => inv.invoiceType === invoiceTypeFilter)
+            : invoices;
 
         // Apply building/project filter if applicable
         if (invoiceTypeFilter === InvoiceType.RENTAL && buildingFilter !== 'all') {
             candidateInvoices = candidateInvoices.filter(inv => {
                 if (inv.buildingId === buildingFilter) return true;
                 if (inv.propertyId) {
-                    const prop = state.properties.find(p => p.id === inv.propertyId);
+                    const prop = properties.find(p => p.id === inv.propertyId);
                     return prop && prop.buildingId === buildingFilter;
                 }
                 return false;
@@ -844,7 +854,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 );
             } else if (groupBy === 'owner') {
                 openInvoices = candidateInvoices.filter(inv => {
-                    const prop = state.properties.find(p => p.id === inv.propertyId);
+                    const prop = properties.find(p => p.id === inv.propertyId);
                     return prop && prop.ownerId === node.id &&
                         (inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.PARTIALLY_PAID || inv.status === InvoiceStatus.OVERDUE) &&
                         (inv.amount - inv.paidAmount) > 0;
@@ -882,7 +892,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         setBulkPaymentInvoices(openInvoices);
         setIsBulkPayModalOpen(true);
         setContextMenu(null);
-    }, [contextMenu, state.invoices, invoiceTypeFilter, groupBy, state.properties, buildingFilter, projectFilter, showAlert]);
+    }, [contextMenu, invoices, invoiceTypeFilter, groupBy, properties, buildingFilter, projectFilter, showAlert]);
 
     const handleCreateInvoice = useCallback(() => {
         if (!contextMenu) return;
@@ -898,8 +908,8 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const [prepopulatedContactId, setPrepopulatedContactId] = useState<string | undefined>(undefined);
 
     const selectedInvoicesList = useMemo(() =>
-        state.invoices.filter(inv => selectedInvoiceIds.has(inv.id)),
-        [state.invoices, selectedInvoiceIds]);
+        invoices.filter(inv => selectedInvoiceIds.has(inv.id)),
+        [invoices, selectedInvoiceIds]);
 
     const supportsTreeView = invoiceTypeFilter === InvoiceType.INSTALLMENT || invoiceTypeFilter === InvoiceType.RENTAL;
     const isRental = invoiceTypeFilter === InvoiceType.RENTAL;
@@ -951,7 +961,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                                     hideIcon={true}
                                 >
                                     <option value="all">All Buildings</option>
-                                    {buildings.map(b => (
+                                    {buildingOptions.map(b => (
                                         <option key={b.id} value={b.id}>{b.name}</option>
                                     ))}
                                 </Select>
@@ -965,7 +975,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                                     hideIcon={true}
                                 >
                                     <option value="all">All Projects</option>
-                                    {projects.map(p => (
+                                    {projectOptions.map(p => (
                                         <option key={p.id} value={p.id}>{p.name}</option>
                                     ))}
                                 </Select>

@@ -1,5 +1,5 @@
 import React, { useState, memo, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import SearchModal from './SearchModal';
 import HelpModal from './HelpModal';
@@ -25,7 +25,8 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
-  const { dispatch, state } = useAppContext();
+  const dispatch = useDispatchOnly();
+  const state = useStateSelector(s => s);
   const { isAuthenticated } = useAuth();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
@@ -433,8 +434,8 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     }
 
     loadWhatsAppUnreadData();
-    // Refresh every 30 seconds
-    const interval = setInterval(loadWhatsAppUnreadData, 30000);
+    // Fallback poll: WebSocket handles real-time updates, this is just a safety net
+    const interval = setInterval(loadWhatsAppUnreadData, 60000);
 
     // Listen for real-time WhatsApp message events to update unread count immediately
     const wsClient = getWebSocketClient();

@@ -29,7 +29,7 @@ const TreeItem: React.FC<{
     onNodeSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void;
     parentId?: string;
     level?: number
-}> = ({ node, selectedNodeId, selectedParentId, onNodeSelect, parentId, level = 0 }) => {
+}> = React.memo(({ node, selectedNodeId, selectedParentId, onNodeSelect, parentId, level = 0 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     // Only select if ID matches AND (it's a group OR the parent context matches)
@@ -107,7 +107,7 @@ const TreeItem: React.FC<{
             )}
         </li>
     );
-};
+});
 
 const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, selectedParentId, onNodeSelect }) => {
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'balance', direction: 'desc' });

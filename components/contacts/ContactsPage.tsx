@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import { Contact, Vendor, ContactType, TransactionType, LoanSubtype } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import Button from '../ui/Button';
@@ -32,7 +32,7 @@ const ContactTreeSidebar: React.FC<{
     selectedId: string | null;
     selectedType: 'type' | 'contact' | null;
     onSelect: (id: string, type: 'type' | 'contact') => void;
-}> = ({ nodes, selectedId, selectedType, onSelect }) => {
+}> = React.memo(({ nodes, selectedId, selectedType, onSelect }) => {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
 
     useEffect(() => {
@@ -103,10 +103,11 @@ const ContactTreeSidebar: React.FC<{
             {nodes.map(node => renderNode(node, 0))}
         </div>
     );
-};
+});
 
 const ContactsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
+    const state = useStateSelector(s => s);
     const { showConfirm, showAlert } = useNotification();
     const { openChat } = useWhatsApp();
 

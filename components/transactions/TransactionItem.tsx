@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Transaction, TransactionType, LoanSubtype, AppState } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector } from '../../hooks/useSelectiveState';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { formatCurrency } from '../../utils/numberUtils';
 
@@ -52,7 +52,7 @@ const getTimeString = (transaction: Transaction) => {
 };
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }) => {
-  const { state } = useAppContext();
+  const state = useStateSelector(s => s);
   const lookups = useLookupMaps();
   const [isExpanded, setIsExpanded] = useState(false);
   const { type, amount, description, accountId, fromAccountId, toAccountId, projectId, buildingId, contactId, children, categoryId } = transaction;

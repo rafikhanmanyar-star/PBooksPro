@@ -2,7 +2,7 @@
 import React, { memo, useCallback } from 'react';
 import { Page } from '../../types';
 import { ICONS } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 
 interface FooterProps {
   isPanelOpen: boolean;
@@ -10,7 +10,8 @@ interface FooterProps {
 }
 
 const Footer: React.FC<FooterProps> = ({ isPanelOpen, onNavigate }) => {
-  const { state, dispatch } = useAppContext();
+  const dispatch = useDispatchOnly();
+  const state = useStateSelector(s => s);
   const { currentPage } = state;
   
   // Use optimized navigation handler if provided, otherwise fallback to direct dispatch
