@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { ICONS } from '../../constants';
@@ -16,7 +18,8 @@ import { ImportType } from '../../services/importService';
 
 const ProjectSettingsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const { showConfirm } = useNotification();
+    const { isAuthenticated } = useAuth();
+    const { showConfirm, showToast } = useNotification();
     const [activeCategory, setActiveCategory] = useState('projects');
     const [searchQuery, setSearchQuery] = useState('');
     
@@ -71,14 +74,38 @@ const ProjectSettingsPage: React.FC = () => {
     const handleDelete = async () => {
         if (!editingItem?.item) return;
         const confirmed = await showConfirm('Are you sure you want to delete this item?');
-        if (confirmed) {
-            switch (editingItem.type) {
-                case 'projects': dispatch({ type: 'DELETE_PROJECT', payload: editingItem.item.id }); break;
-                case 'units': dispatch({ type: 'DELETE_UNIT', payload: editingItem.item.id }); break;
-                case 'clients': dispatch({ type: 'DELETE_CONTACT', payload: editingItem.item.id }); break;
+        if (!confirmed) return;
+
+        const itemId = editingItem.item.id;
+        if (isAuthenticated && (editingItem.type === 'projects' || editingItem.type === 'units')) {
+            try {
+                const api = getAppStateApiService();
+                if (editingItem.type === 'projects') await api.deleteProject(itemId);
+                else if (editingItem.type === 'units') await api.deleteUnit(itemId);
+            } catch (err: any) {
+                if (err?.status !== 404) {
+                    showToast(err?.message || err?.error || 'Could not delete from cloud.', 'error');
+                    return;
+                }
             }
-            setEditingItem(null);
         }
+        if (isAuthenticated && editingItem.type === 'clients') {
+            try {
+                await getAppStateApiService().deleteContact(itemId);
+            } catch (err: any) {
+                if (err?.status !== 404) {
+                    showToast(err?.message || err?.error || 'Could not delete from cloud.', 'error');
+                    return;
+                }
+            }
+        }
+
+        switch (editingItem.type) {
+            case 'projects': dispatch({ type: 'DELETE_PROJECT', payload: itemId }); break;
+            case 'units': dispatch({ type: 'DELETE_UNIT', payload: itemId }); break;
+            case 'clients': dispatch({ type: 'DELETE_CONTACT', payload: itemId }); break;
+        }
+        setEditingItem(null);
     };
     
     const handleConfigSave = (project: any) => {

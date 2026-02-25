@@ -16,13 +16,23 @@ function isStaging() {
   if (_isStaging !== null) return _isStaging;
   try {
     const { app } = require('electron');
+    // 1) Env var (e.g. test:local sets ELECTRON_USE_STAGING_DB=1 so staging app uses staging DB)
+    if (process.env.ELECTRON_USE_STAGING_DB === '1' || process.env.ELECTRON_USE_STAGING_DB === 'true') {
+      _isStaging = true;
+      return _isStaging;
+    }
+    // 2) env-config.json from build (staging installer build sets isStaging: true)
     const configPath = path.join(app.getAppPath(), 'dist', 'env-config.json');
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      _isStaging = !!config.isStaging;
-    } else {
-      _isStaging = false;
+      if (!!config.isStaging) {
+        _isStaging = true;
+        return _isStaging;
+      }
     }
+    // 3) Fallback: app name (installed "PBooks Pro (Staging)" has productName with "Staging")
+    const appName = typeof app.getName === 'function' ? app.getName() : '';
+    _isStaging = String(appName).toLowerCase().includes('staging');
   } catch {
     _isStaging = false;
   }
@@ -37,11 +47,20 @@ function getSqlJsBlobName() {
   return isStaging() ? 'PBooksPro-Staging_sqljs.bin' : 'PBooksPro_sqljs.bin';
 }
 
+/**
+ * Base directory for local DB: same for staging and production.
+ * Staging: .../pbooks-pro/pbookspro/PBooksPro-Staging.db
+ * Production: .../pbooks-pro/pbookspro/PBooksPro.db
+ */
+function getDbBaseDir() {
+  const { app } = require('electron');
+  const appData = app.getPath('appData'); // e.g. C:\Users\<user>\AppData\Roaming
+  return path.join(appData, 'pbooks-pro', 'pbookspro');
+}
+
 function getDbPath() {
   if (dbPath) return dbPath;
-  const { app } = require('electron');
-  const userData = app.getPath('userData');
-  const dbDir = path.join(userData, 'pbookspro');
+  const dbDir = getDbBaseDir();
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }
@@ -52,9 +71,7 @@ function getDbPath() {
 
 /** Get path for sql.js blob storage (same dir, different file for migration period) */
 function getSqlJsBlobPath() {
-  const { app } = require('electron');
-  const userData = app.getPath('userData');
-  const dbDir = path.join(userData, 'pbookspro');
+  const dbDir = getDbBaseDir();
   return path.join(dbDir, getSqlJsBlobName());
 }
 

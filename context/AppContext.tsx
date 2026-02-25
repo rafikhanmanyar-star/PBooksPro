@@ -3819,12 +3819,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state, setStoredState, isInitializing]);
 
-    // 4. Force immediate save for critical operations (LOGIN, LOGOUT, ADD_CONTACT, etc.)
+    // 4. Force immediate save for critical operations (LOGIN, LOGOUT, ADD_CONTACT, assets, etc.)
     const previousContactsLengthRef = useRef(state.contacts.length);
     const previousTransactionsLengthRef = useRef(state.transactions.length);
     const previousBillsLengthRef = useRef(state.bills.length);
     const previousInvoicesLengthRef = useRef(state.invoices.length);
     const previousRentalAgreementsLengthRef = useRef(state.rentalAgreements.length);
+    const previousProjectsLengthRef = useRef(state.projects.length);
+    const previousBuildingsLengthRef = useRef(state.buildings.length);
+    const previousPropertiesLengthRef = useRef(state.properties.length);
+    const previousUnitsLengthRef = useRef(state.units.length);
 
     useEffect(() => {
         if (!isInitializing) {
@@ -3833,13 +3837,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const billsChanged = state.bills.length !== previousBillsLengthRef.current;
             const invoicesChanged = state.invoices.length !== previousInvoicesLengthRef.current;
             const rentalAgreementsChanged = state.rentalAgreements.length !== previousRentalAgreementsLengthRef.current;
+            const projectsChanged = state.projects.length !== previousProjectsLengthRef.current;
+            const buildingsChanged = state.buildings.length !== previousBuildingsLengthRef.current;
+            const propertiesChanged = state.properties.length !== previousPropertiesLengthRef.current;
+            const unitsChanged = state.units.length !== previousUnitsLengthRef.current;
 
-            if (contactsChanged || transactionsChanged || billsChanged || invoicesChanged || rentalAgreementsChanged) {
+            if (contactsChanged || transactionsChanged || billsChanged || invoicesChanged || rentalAgreementsChanged ||
+                projectsChanged || buildingsChanged || propertiesChanged || unitsChanged) {
                 previousContactsLengthRef.current = state.contacts.length;
                 previousTransactionsLengthRef.current = state.transactions.length;
                 previousBillsLengthRef.current = state.bills.length;
                 previousInvoicesLengthRef.current = state.invoices.length;
                 previousRentalAgreementsLengthRef.current = state.rentalAgreements.length;
+                previousProjectsLengthRef.current = state.projects.length;
+                previousBuildingsLengthRef.current = state.buildings.length;
+                previousPropertiesLengthRef.current = state.properties.length;
+                previousUnitsLengthRef.current = state.units.length;
 
                 if (!useFallback && saveNow) {
                     const doSave = async () => {
@@ -3856,12 +3869,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     transactions: state.transactions.length,
                                     bills: state.bills.length,
                                     invoices: state.invoices.length,
-                                    rentalAgreements: state.rentalAgreements.length
+                                    rentalAgreements: state.rentalAgreements.length,
+                                    projects: state.projects.length,
+                                    buildings: state.buildings.length
                                 }
                             });
                         }
                     };
-                    if (transactionsChanged || rentalAgreementsChanged) {
+                    if (transactionsChanged || rentalAgreementsChanged || projectsChanged || buildingsChanged || propertiesChanged || unitsChanged) {
                         doSave();
                     } else {
                         const saveTimer = setTimeout(doSave, 200);
@@ -3870,7 +3885,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             }
         }
-    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, state.rentalAgreements.length, isInitializing, state, useFallback, saveNow]);
+    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, state.rentalAgreements.length, state.projects.length, state.buildings.length, state.properties.length, state.units.length, isInitializing, state, useFallback, saveNow]);
 
     // 🔧 FIX: Sync authenticated user from AuthContext to AppContext state
     useEffect(() => {

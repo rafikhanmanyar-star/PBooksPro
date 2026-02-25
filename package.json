@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.27",
+  "version": "1.2.28",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -29,6 +29,9 @@
     "mcp:dev": "cd mcp-server && npm run dev",
     "mcp:install": "cd mcp-server && npm install",
     "clear-local-transactions": "node tools/clear-local-transactions.cjs",
+    "test:local": "powershell -ExecutionPolicy Bypass -File test-local.ps1",
+    "test:server": "powershell -ExecutionPolicy Bypass -File test-local.ps1 -ServerOnly",
+    "test:electron": "powershell -ExecutionPolicy Bypass -File test-local.ps1 -ElectronOnly",
     "deploy:staging": "powershell -ExecutionPolicy Bypass -File deploy-staging.ps1",
     "deploy:production": "powershell -ExecutionPolicy Bypass -File deploy-production.ps1",
     "release": "powershell -ExecutionPolicy Bypass -File ./build-and-push.ps1",

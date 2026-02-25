@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { ICONS } from '../../constants';
@@ -14,7 +16,8 @@ import { ContactType } from '../../types';
 
 const RentalSettingsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const { showConfirm } = useNotification();
+    const { isAuthenticated } = useAuth();
+    const { showConfirm, showToast } = useNotification();
     const [activeCategory, setActiveCategory] = useState('buildings');
     const [searchQuery, setSearchQuery] = useState('');
     
@@ -71,15 +74,39 @@ const RentalSettingsPage: React.FC = () => {
     const handleDelete = async () => {
         if (!editingItem?.item) return;
         const confirmed = await showConfirm('Are you sure you want to delete this item?');
-        if (confirmed) {
-            switch (editingItem.type) {
-                case 'buildings': dispatch({ type: 'DELETE_BUILDING', payload: editingItem.item.id }); break;
-                case 'properties': dispatch({ type: 'DELETE_PROPERTY', payload: editingItem.item.id }); break;
-                case 'tenants':
-                case 'owners': dispatch({ type: 'DELETE_CONTACT', payload: editingItem.item.id }); break;
+        if (!confirmed) return;
+
+        const itemId = editingItem.item.id;
+        if (isAuthenticated && (editingItem.type === 'buildings' || editingItem.type === 'properties')) {
+            try {
+                const api = getAppStateApiService();
+                if (editingItem.type === 'buildings') await api.deleteBuilding(itemId);
+                else if (editingItem.type === 'properties') await api.deleteProperty(itemId);
+            } catch (err: any) {
+                if (err?.status !== 404) {
+                    showToast(err?.message || err?.error || 'Could not delete from cloud.', 'error');
+                    return;
+                }
             }
-            setEditingItem(null);
         }
+        if (isAuthenticated && (editingItem.type === 'tenants' || editingItem.type === 'owners')) {
+            try {
+                await getAppStateApiService().deleteContact(itemId);
+            } catch (err: any) {
+                if (err?.status !== 404) {
+                    showToast(err?.message || err?.error || 'Could not delete from cloud.', 'error');
+                    return;
+                }
+            }
+        }
+
+        switch (editingItem.type) {
+            case 'buildings': dispatch({ type: 'DELETE_BUILDING', payload: itemId }); break;
+            case 'properties': dispatch({ type: 'DELETE_PROPERTY', payload: itemId }); break;
+            case 'tenants':
+            case 'owners': dispatch({ type: 'DELETE_CONTACT', payload: itemId }); break;
+        }
+        setEditingItem(null);
     };
 
     const addLabel = `Add ${settingCategories.find(c => c.id === activeCategory)?.label.slice(0, -1)}`;

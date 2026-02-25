@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 import { Project, Building, Property, Unit, ContactType, TransactionType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
@@ -21,6 +23,7 @@ type AssetType = 'project' | 'building' | 'property' | 'unit';
 
 const AssetsManagement: React.FC = () => {
     const { state: appState, dispatch: appDispatch } = useAppContext();
+    const { isAuthenticated } = useAuth();
     const { showConfirm, showToast } = useNotification();
     
     // Form state
@@ -427,27 +430,59 @@ const AssetsManagement: React.FC = () => {
         const confirmed = await showConfirm(
             `Are you sure you want to delete "${entity.name}"? This action cannot be undone.`
         );
-        if (confirmed) {
-            // Determine entity type from entity data
-            const entityType = entity.entityType || selectedType;
-            switch (entityType) {
-                case 'project':
-                    appDispatch({ type: 'DELETE_PROJECT', payload: entity.id });
-                    break;
-                case 'building':
-                    appDispatch({ type: 'DELETE_BUILDING', payload: entity.id });
-                    break;
-                case 'property':
-                    appDispatch({ type: 'DELETE_PROPERTY', payload: entity.id });
-                    break;
-                case 'unit':
-                    appDispatch({ type: 'DELETE_UNIT', payload: entity.id });
-                    break;
+        if (!confirmed) return;
+
+        const entityType = (entity.entityType || selectedType) as AssetType;
+        const typeLabel = getTypeConfig(entityType).label;
+
+        // Delete from cloud when we have a token (so it's removed on re-login). Use token so we don't skip due to isAuthenticated timing.
+        const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
+        if (isAuthenticated || hasToken) {
+            try {
+                const api = getAppStateApiService();
+                switch (entityType) {
+                    case 'project':
+                        await api.deleteProject(entity.id);
+                        break;
+                    case 'building':
+                        await api.deleteBuilding(entity.id);
+                        break;
+                    case 'property':
+                        await api.deleteProperty(entity.id);
+                        break;
+                    case 'unit':
+                        await api.deleteUnit(entity.id);
+                        break;
+                }
+            } catch (err: any) {
+                // 404 = already deleted on server, treat as success
+                if (err?.status === 404) {
+                    // Fall through to dispatch local delete
+                } else {
+                    const msg = err?.message || err?.error || 'Could not delete from cloud.';
+                    showToast(`${typeLabel} could not be removed from cloud: ${msg}`, 'error');
+                    return;
+                }
             }
-            showToast(`${getTypeConfig(entityType as AssetType).label} deleted successfully`, 'success');
-            if (editingEntity?.id === entity.id) {
-                handleResetForm();
-            }
+        }
+
+        switch (entityType) {
+            case 'project':
+                appDispatch({ type: 'DELETE_PROJECT', payload: entity.id });
+                break;
+            case 'building':
+                appDispatch({ type: 'DELETE_BUILDING', payload: entity.id });
+                break;
+            case 'property':
+                appDispatch({ type: 'DELETE_PROPERTY', payload: entity.id });
+                break;
+            case 'unit':
+                appDispatch({ type: 'DELETE_UNIT', payload: entity.id });
+                break;
+        }
+        showToast(`${typeLabel} deleted successfully`, 'success');
+        if (editingEntity?.id === entity.id) {
+            handleResetForm();
         }
     };
 

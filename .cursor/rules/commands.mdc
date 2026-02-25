@@ -67,3 +67,15 @@ npm run deploy:production
 |--------|----------------|-------------|
 | `staging` | api-staging, admin-staging, website-staging | Staging |
 | `main` | api, admin, website | Production |
+
+
+How It Works
+API server runs locally at http://localhost:3000 using tsx --watch (hot-reload on server file changes) and connects to the staging PostgreSQL database via the DATABASE_URL in server/.env
+Electron app is built with Vite (no VITE_API_URL set, so it defaults to http://localhost:3000/api) and launched directly — no installer, no electron-builder, no git push
+server/.env is already in .gitignore so your credentials won't be committed
+Typical workflow
+Make your code changes
+Run npm run test:local
+Test in the Electron app
+If you only changed server code, the tsx --watch will auto-reload — no restart needed
+If you changed frontend code, stop and re-run npm run test:local (or run npm run test:server in one terminal and npm run test:electron in another so you only rebuild the frontend)

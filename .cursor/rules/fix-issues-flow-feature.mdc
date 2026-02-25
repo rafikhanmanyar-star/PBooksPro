@@ -1,0 +1,52 @@
+---
+description: How to fix issues in existing flow/feature and sample prompts to use
+alwaysApply: false
+---
+
+# Fixing Issues in Existing Flow/Feature
+
+Use this rule when debugging or fixing bugs in current behavior (not when adding new features).
+
+## Approach for Fixes
+
+1. **Gather context** – Reproduce or understand the issue (symptoms, steps, env).
+2. **Locate the flow** – Find the code paths involved (UI, API, DB, tenant context).
+3. **Identify root cause** – Don’t only fix symptoms; find why it fails.
+4. **Minimal change** – Prefer the smallest change that fixes the bug and keeps existing behavior.
+5. **Respect conventions** – Follow project-conventions (tenant_id, imports, migrations, etc.).
+
+---
+
+## Sample Prompts (copy and customize)
+
+**Generic fix**
+- *"Fix the issue where [describe what goes wrong]. Steps: [how to reproduce]. Expected: [what should happen]."*
+
+**Flow/feature broken**
+- *"The [feature name] flow is broken: when I [action], [actual result]. It should [expected result]. Please find the cause and fix with minimal changes."*
+
+**After a recent change**
+- *"After [recent change], [specific behavior] no longer works. Please fix the regression in the [area/flow]."*
+
+**Vague symptom**
+- *"Something is wrong with [feature/flow]. [Error message or symptom]. Help me locate the cause and fix it."*
+
+**With file/area hint**
+- *"Fix the bug in [file or area]: [what’s wrong]. Keep the rest of the flow unchanged."*
+
+**Multi-step flow**
+- *"The flow from [step A] to [step B] fails because [symptom]. Trace the code path and fix the issue."*
+
+**API/backend**
+- *"The [endpoint/action] returns [wrong response/error] when [conditions]. Fix the server-side logic."*
+
+**Tenant/data**
+- *"Data is wrong when [scenario]: [what’s wrong]. Check tenant context and queries; fix with minimal change."*
+
+---
+
+## When Asking
+
+- Mention **where** it fails (screen, API, DB) if you know.
+- Include **repro steps** and **expected vs actual** when possible.
+- Reference **files or components** if you’ve already narrowed it down.

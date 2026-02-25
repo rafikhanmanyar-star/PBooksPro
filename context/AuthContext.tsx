@@ -69,108 +69,96 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /**
    * Logout
+   * Shows login page immediately so the user can type credentials while save/API/cleanup run in the background.
    */
   const logout = useCallback(async () => {
     // Set flag FIRST to prevent heartbeat from re-creating sessions
     loggingOutRef.current = true;
 
-    try {
-      // Save all data to database before logout
-      logger.logCategory('auth', '💾 Saving data before logout...');
+    // Capture before clearing so background cleanup can use them
+    const currentTenantId = apiClient.getTenantId();
 
-      // Dispatch event to trigger state save and wait for completion
-      const savePromise = new Promise<void>((resolve) => {
-        const handleSaveComplete = () => {
-          window.removeEventListener('state-saved-for-logout', handleSaveComplete);
-          resolve();
-        };
-        window.addEventListener('state-saved-for-logout', handleSaveComplete);
+    // Show login page immediately so username/password fields are usable without delay
+    setState({
+      isAuthenticated: false,
+      user: null,
+      tenant: null,
+      isLoading: false,
+      error: null,
+    });
 
-        // Dispatch event to trigger save
-        window.dispatchEvent(new CustomEvent('save-state-before-logout'));
-
-        // Timeout after 5 seconds to prevent hanging
-        setTimeout(() => {
-          window.removeEventListener('state-saved-for-logout', handleSaveComplete);
-          logger.warnCategory('auth', '⚠️ State save timeout, proceeding with logout');
-          resolve();
-        }, 5000);
-      });
-
-      await savePromise;
-      logger.logCategory('auth', '✅ Data saved, proceeding with logout');
-
-      // Call logout API to clear session on server and update login_status = FALSE
-      await apiClient.post('/auth/logout', {});
-      logger.logCategory('auth', '✅ Logout API call completed, user status updated in cloud DB');
-    } catch (error) {
-      logger.errorCategory('auth', 'Logout API error:', error);
-      // Continue with local logout even if API fails
-    } finally {
-      // SECURITY: Clear all sync queues BEFORE clearing auth to prevent cross-tenant data bleed.
-      // If queues are not cleared, stale operations from this user/tenant could sync
-      // when a different user/tenant logs in on the same device.
-      const currentTenantId = apiClient.getTenantId();
+    // Run save, API logout, and cleanup in background (no blocking)
+    (async () => {
       try {
-        // 1. Clear the persistent SyncOutbox (SQLite sync_outbox table)
-        if (currentTenantId) {
-          const { getDatabaseService } = await import('../services/database/databaseService');
-          const db = getDatabaseService();
-          if (db.isReady()) {
-            db.execute(
-              "DELETE FROM sync_outbox WHERE tenant_id = ? AND status IN ('pending', 'failed')",
-              [currentTenantId]
-            );
-            db.save();
-            logger.logCategory('auth', 'Cleared sync_outbox for tenant on logout');
+        logger.logCategory('auth', '💾 Saving data before logout...');
+        const savePromise = new Promise<void>((resolve) => {
+          const handleSaveComplete = () => {
+            window.removeEventListener('state-saved-for-logout', handleSaveComplete);
+            resolve();
+          };
+          window.addEventListener('state-saved-for-logout', handleSaveComplete);
+          window.dispatchEvent(new CustomEvent('save-state-before-logout'));
+          setTimeout(() => {
+            window.removeEventListener('state-saved-for-logout', handleSaveComplete);
+            logger.warnCategory('auth', '⚠️ State save timeout, proceeding with logout');
+            resolve();
+          }, 5000);
+        });
+        await savePromise;
+        logger.logCategory('auth', '✅ Data saved, proceeding with logout');
+
+        await apiClient.post('/auth/logout', {});
+        logger.logCategory('auth', '✅ Logout API call completed, user status updated in cloud DB');
+      } catch (error) {
+        logger.errorCategory('auth', 'Logout API error:', error);
+      } finally {
+        // SECURITY: Clear all sync queues BEFORE clearing auth to prevent cross-tenant data bleed
+        try {
+          if (currentTenantId) {
+            const { getDatabaseService } = await import('../services/database/databaseService');
+            const db = getDatabaseService();
+            if (db.isReady()) {
+              db.execute(
+                "DELETE FROM sync_outbox WHERE tenant_id = ? AND status IN ('pending', 'failed')",
+                [currentTenantId]
+              );
+              db.save();
+              logger.logCategory('auth', 'Cleared sync_outbox for tenant on logout');
+            }
           }
+        } catch (e) {
+          logger.warnCategory('auth', 'Failed to clear sync_outbox on logout:', e);
         }
-      } catch (e) {
-        logger.warnCategory('auth', 'Failed to clear sync_outbox on logout:', e);
-      }
 
-      try {
-        // 2. Clear the IndexedDB SyncQueue for the current tenant
-        if (currentTenantId) {
-          const { getSyncQueue } = await import('../services/syncQueue');
-          const syncQueue = getSyncQueue();
-          await syncQueue.clearAll(currentTenantId);
-          logger.logCategory('auth', 'Cleared IndexedDB sync queue for tenant on logout');
+        try {
+          if (currentTenantId) {
+            const { getSyncQueue } = await import('../services/syncQueue');
+            const syncQueue = getSyncQueue();
+            await syncQueue.clearAll(currentTenantId);
+            logger.logCategory('auth', 'Cleared IndexedDB sync queue for tenant on logout');
+          }
+        } catch (e) {
+          logger.warnCategory('auth', 'Failed to clear IndexedDB sync queue on logout:', e);
         }
-      } catch (e) {
-        logger.warnCategory('auth', 'Failed to clear IndexedDB sync queue on logout:', e);
+
+        try {
+          const { getSyncManager } = await import('../services/sync/syncManager');
+          await getSyncManager().clearAll();
+          logger.logCategory('auth', 'Cleared SyncManager queue on logout');
+        } catch (e) {
+          logger.warnCategory('auth', 'Failed to clear SyncManager queue on logout:', e);
+        }
+
+        localStorage.removeItem('sync_queue');
+        apiClient.clearAuth();
+        localStorage.removeItem('user_id');
+
+        try {
+          const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
+          getBidirectionalSyncService().stop();
+        } catch (_) { }
       }
-
-      try {
-        // 3. Clear the SyncManager in-memory/SQLite/localStorage queue
-        const { getSyncManager } = await import('../services/sync/syncManager');
-        await getSyncManager().clearAll();
-        logger.logCategory('auth', 'Cleared SyncManager queue on logout');
-      } catch (e) {
-        logger.warnCategory('auth', 'Failed to clear SyncManager queue on logout:', e);
-      }
-
-      // 4. Also clear any legacy localStorage sync_queue key directly
-      localStorage.removeItem('sync_queue');
-
-      // Clear local auth
-      apiClient.clearAuth();
-
-      // Clear user_id from localStorage on logout
-      localStorage.removeItem('user_id');
-
-      try {
-        const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
-        getBidirectionalSyncService().stop();
-      } catch (_) { }
-      setState({
-        isAuthenticated: false,
-        user: null,
-        tenant: null,
-        isLoading: false,
-        error: null,
-      });
-    }
+    })();
   }, []);
 
   /**
