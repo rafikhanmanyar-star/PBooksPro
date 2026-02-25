@@ -102,14 +102,17 @@ const SettingsPage: React.FC = () => {
         fetchSupplierStatus();
     }, [isOffline]);
 
-    // Close dropdown when navigating away from accounts view
+    // Close dropdown and reset filter when navigating away from accounts view
     useEffect(() => {
         if (activeCategory !== 'accounts') {
             setIsAddNewMenuOpen(false);
+            setAccountsTypeFilter('all');
         }
     }, [activeCategory]);
 
     const [searchQuery, setSearchQuery] = useState('');
+    type AccountsFilterType = 'all' | 'bank' | 'expense' | 'income' | 'equity';
+    const [accountsTypeFilter, setAccountsTypeFilter] = useState<AccountsFilterType>('all');
     const [isErrorLogOpen, setIsErrorLogOpen] = useState(false);
     const [isTransactionLogOpen, setIsTransactionLogOpen] = useState(false);
     const [activePreferenceModal, setActivePreferenceModal] = useState<'messaging' | 'print' | 'whatsapp' | 'whatsapp-menu' | null>(null);
@@ -296,9 +299,19 @@ const SettingsPage: React.FC = () => {
             };
             flatten(rootItems);
             let finalData = flattened;
+            if (accountsTypeFilter !== 'all') {
+                finalData = finalData.filter(item => {
+                    const type = item.type;
+                    if (accountsTypeFilter === 'bank') return type === AccountType.BANK || type === AccountType.CASH;
+                    if (accountsTypeFilter === 'expense') return type === TransactionType.EXPENSE;
+                    if (accountsTypeFilter === 'income') return type === TransactionType.INCOME;
+                    if (accountsTypeFilter === 'equity') return type === AccountType.EQUITY;
+                    return true;
+                });
+            }
             if (searchQuery) {
                 const q = searchQuery.toLowerCase();
-                finalData = flattened.filter(item => item.name.toLowerCase().includes(q));
+                finalData = finalData.filter(item => item.name.toLowerCase().includes(q));
             }
             if (sortConfig.key !== 'default') {
                 finalData.sort((a, b) => {
@@ -353,7 +366,7 @@ const SettingsPage: React.FC = () => {
                 return 0;
             });
         }
-    }, [state, activeCategory, searchQuery, sortConfig]);
+    }, [state, activeCategory, searchQuery, sortConfig, accountsTypeFilter]);
 
     const handleSort = (key: string) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
@@ -936,6 +949,29 @@ const SettingsPage: React.FC = () => {
                 {/* Content Body */}
                 <div className={`flex-1 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'overflow-hidden' : 'overflow-y-auto'} px-8 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'pb-0' : 'pb-10'}`}>
                     <div className={`w-full ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'h-full' : 'max-w-7xl'} mx-auto animate-in fade-in duration-500`}>
+                        {activeCategory === 'accounts' && (
+                            <div className="flex flex-wrap gap-2 mb-4">
+                                {([
+                                    { id: 'all' as const, label: 'All' },
+                                    { id: 'bank' as const, label: 'Bank Accounts' },
+                                    { id: 'expense' as const, label: 'Expense' },
+                                    { id: 'income' as const, label: 'Income' },
+                                    { id: 'equity' as const, label: 'Equity' },
+                                ]).map(({ id, label }) => (
+                                    <button
+                                        key={id}
+                                        onClick={() => setAccountsTypeFilter(id)}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                            accountsTypeFilter === id
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         {isTableViewCategory ? renderTable() : null}
                         {activeCategory === 'users' && <UserManagement />}
                         {activeCategory === 'taskRoles' && <TaskRolesPage />}

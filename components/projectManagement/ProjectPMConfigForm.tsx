@@ -5,6 +5,7 @@ import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
+import ComboBox from '../ui/ComboBox';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { ICONS } from '../../constants';
@@ -22,6 +23,7 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
     const [rate, setRate] = useState(project.pmConfig?.rate?.toString() || '0');
     const [frequency, setFrequency] = useState<'Monthly' | 'Weekly' | 'Yearly'>(project.pmConfig?.frequency || 'Monthly');
     const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set(project.pmConfig?.excludedCategoryIds || []));
+    const [vendorId, setVendorId] = useState<string>(project.pmConfig?.vendorId || '');
     const [searchQuery, setSearchQuery] = useState('');
 
     // Check if there are existing PM allocations or payments for this project
@@ -57,6 +59,24 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
             .filter(c => c.type === TransactionType.EXPENSE)
             .sort((a, b) => a.name.localeCompare(b.name));
     }, [state.categories]);
+
+    // Vendors from vendor directory (for PM bill vendor)
+    const vendorOptions = useMemo(() => {
+        return (state.vendors || [])
+            .filter(v => v.isActive !== false || v.id === vendorId)
+            .map(v => ({ id: v.id, name: v.companyName ? `${v.name} (${v.companyName})` : v.name }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [state.vendors, vendorId]);
+
+    // Sync form when project or modal opens
+    useEffect(() => {
+        if (isOpen) {
+            setRate(project.pmConfig?.rate?.toString() || '0');
+            setFrequency(project.pmConfig?.frequency || 'Monthly');
+            setExcludedIds(new Set(project.pmConfig?.excludedCategoryIds || []));
+            setVendorId(project.pmConfig?.vendorId || '');
+        }
+    }, [isOpen, project.id, project.pmConfig?.rate, project.pmConfig?.frequency, project.pmConfig?.excludedCategoryIds, project.pmConfig?.vendorId]);
 
     // Initialize defaults if not set (Legacy behavior migration)
     useEffect(() => {
@@ -97,9 +117,10 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
         const frequencyChanged = project.pmConfig?.frequency !== frequency;
         const excludedChanged = JSON.stringify(Array.from(excludedIds).sort()) !== 
                                 JSON.stringify((project.pmConfig?.excludedCategoryIds || []).sort());
+        const vendorChanged = (project.pmConfig?.vendorId || '') !== (vendorId || '');
 
         // If there's existing data and config changed, show warning
-        if (hasExistingData && (rateChanged || frequencyChanged || excludedChanged)) {
+        if (hasExistingData && (rateChanged || frequencyChanged || excludedChanged || vendorChanged)) {
             const message = `Data has been recorded in the past using the current configuration.\n\n` +
                           `Changing the configuration will:\n` +
                           `• Affect future calculations\n` +
@@ -127,7 +148,8 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
             pmConfig: {
                 rate: numRate,
                 frequency,
-                excludedCategoryIds: Array.from(excludedIds)
+                excludedCategoryIds: Array.from(excludedIds),
+                vendorId: vendorId || undefined
             }
         };
         onSave(updatedProject);
@@ -168,6 +190,17 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
                                 <option value="Yearly">Yearly</option>
                             </Select>
                         </div>
+                    </div>
+                    <div className="mt-4">
+                        <ComboBox
+                            label="Vendor (for PM bills)"
+                            items={vendorOptions}
+                            selectedId={vendorId}
+                            onSelect={(item) => setVendorId(item?.id || '')}
+                            placeholder="Select vendor from directory (optional)"
+                            allowAddNew={false}
+                        />
+                        <p className="text-xs text-slate-500 mt-1">When the cycle runs, new bills will use this vendor. Leave empty to use the default PM contact.</p>
                     </div>
                 </div>
 

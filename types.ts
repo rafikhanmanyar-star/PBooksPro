@@ -329,6 +329,8 @@ export interface PMConfig {
   frequency: 'Monthly' | 'Weekly' | 'Yearly';
   lastCalculationDate?: string;
   excludedCategoryIds?: string[];
+  /** Vendor ID from vendor directory; used as vendor on bills created when PM cycle runs */
+  vendorId?: string;
 }
 
 export interface PMCycleAllocation {

@@ -634,14 +634,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       const updated = { ...item, ...updates };
 
       if (isNetValueDirectEdit) {
-        // Reverse calculation: if net value is edited directly, calculate price per unit
+        // Reverse calculation: if net value is edited directly, calculate price per unit (rounded to 2 decimals)
+        const round2 = (n: number) => Math.round(n * 100) / 100;
         const netValue = updated.netValue || 0;
         const quantity = updated.quantity || 0;
         if (quantity > 0) {
-          updated.pricePerUnit = netValue / quantity;
+          updated.pricePerUnit = round2(netValue / quantity);
         } else {
           // If quantity is 0, set price per unit to net value (treat as single item)
-          updated.pricePerUnit = netValue;
+          updated.pricePerUnit = round2(netValue);
           updated.quantity = 1; // Auto-set quantity to 1 if it was 0
         }
       } else {

@@ -713,13 +713,15 @@ const ProjectPMManager: React.FC = () => {
             dispatch({ type: 'ADD_CATEGORY', payload: pmCostCategory });
         }
 
-        // Find or create Project Management contact
+        // Resolve vendor for bills: use configured vendor from PM config, else fallback to PM contact
+        const configuredVendor = project.pmConfig?.vendorId
+            ? state.vendors?.find(v => v.id === project.pmConfig!.vendorId)
+            : null;
         let pmContact = state.contacts.find(c =>
             c.name.toLowerCase().includes('project management') ||
             c.name.toLowerCase().includes('pm team')
         );
-        if (!pmContact) {
-            // Create PM contact if it doesn't exist
+        if (!pmContact && !configuredVendor) {
             pmContact = {
                 id: `pm-contact-${Date.now()}`,
                 name: 'Project Management Team',
@@ -730,6 +732,8 @@ const ProjectPMManager: React.FC = () => {
             };
             dispatch({ type: 'ADD_CONTACT', payload: pmContact });
         }
+        const billVendorId = configuredVendor?.id ?? pmContact?.id;
+        const billContactId = configuredVendor?.id ?? pmContact?.id;
 
         // Generate bill number helper
         const generateBillNumber = () => {
@@ -764,7 +768,8 @@ const ProjectPMManager: React.FC = () => {
                 const bill: Bill = {
                     id: `pm-bill-${cycleId}-${Date.now()}`,
                     billNumber: generateBillNumber(),
-                    contactId: pmContact.id,
+                    contactId: billContactId,
+                    vendorId: configuredVendor?.id,
                     amount: feeAmount,
                     paidAmount: 0,
                     status: InvoiceStatus.UNPAID,
