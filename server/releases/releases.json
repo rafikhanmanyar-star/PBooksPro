@@ -387,6 +387,21 @@
                                    ],
                          "version":  "1.2.28",
                          "changelog":  ""
+                     },
+                     {
+                         "date":  "2026-02-25T15:20:44.0010734Z",
+                         "environment":  "staging",
+                         "files":  [
+                                       {
+                                           "downloadUrl":  "https://github.com/rafikhanmanyar-star/PBooksPro/releases/download/V1.2.29/PBooksProStaging-Setup-1.2.24.exe",
+                                           "type":  "installer",
+                                           "size":  112345259,
+                                           "sha512":  "8DD47219C8259C8F9F9E003585B22C55891CEA986321CAD48EB81750E3FCE4A05CCCC33FECE6CB35264AB4AB4305A05822DFCA3CCED2981731C1AEBE9798AB73",
+                                           "name":  "PBooksProStaging-Setup-1.2.24.exe"
+                                       }
+                                   ],
+                         "version":  "1.2.29",
+                         "changelog":  ""
                      }
                  ]
 }

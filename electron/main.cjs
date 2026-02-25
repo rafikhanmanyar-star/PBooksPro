@@ -14,6 +14,7 @@ let mainWindow = null;
 let autoUpdater = null;
 let updateCheckIntervalId = null;
 let lastNotifiedUpdateVersion = null;
+let isManualCheck = false;
 
 if (app.isPackaged) {
   try {
@@ -97,6 +98,7 @@ function setupUpdaterIPC() {
       return;
     }
     try {
+      isManualCheck = true;
       sendUpdateStatus({ status: 'checking' });
       await autoUpdater.checkForUpdates();
     } catch (err) {
@@ -104,6 +106,8 @@ function setupUpdaterIPC() {
         status: 'error',
         message: err && err.message ? err.message : String(err),
       });
+    } finally {
+      isManualCheck = false;
     }
   });
 
@@ -159,10 +163,12 @@ function setupUpdaterIPC() {
 
     autoUpdater.on('error', (err) => {
       console.error('[AutoUpdater] Error:', err);
-      sendUpdateStatus({
-        status: 'error',
-        message: err && err.message ? err.message : String(err),
-      });
+      if (isManualCheck) {
+        sendUpdateStatus({
+          status: 'error',
+          message: err && err.message ? err.message : String(err),
+        });
+      }
     });
   }
 }
@@ -179,13 +185,13 @@ app.whenReady().then(() => {
       });
     }, 10000);
 
-    // Periodic check every 60 seconds
-    const oneMinuteMs = 60 * 1000;
+    // Periodic check every 4 hours
+    const fourHoursMs = 4 * 60 * 60 * 1000;
     updateCheckIntervalId = setInterval(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         autoUpdater.checkForUpdates().catch(() => {});
       }
-    }, oneMinuteMs);
+    }, fourHoursMs);
   }
 });
 
