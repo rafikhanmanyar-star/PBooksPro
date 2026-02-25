@@ -438,6 +438,21 @@
                                    ],
                          "version":  "1.2.31",
                          "changelog":  ""
+                     },
+                     {
+                         "date":  "2026-02-25T20:42:51.0208452Z",
+                         "environment":  "staging",
+                         "files":  [
+                                       {
+                                           "downloadUrl":  "https://github.com/rafikhanmanyar-star/PBooksPro/releases/download/v1.2.33/PBooksProStaging-WebSetup-1.2.33.exe",
+                                           "type":  "installer",
+                                           "size":  887230,
+                                           "sha512":  "F966010729721C3D359911282CD7646C43D81EB553BD6B0C4F3B87F2D44BA2E4F9148147E3179555678655D1CE6AB6E785F9CEC46529016D298D193CB1059AC9",
+                                           "name":  "PBooksProStaging-WebSetup-1.2.33.exe"
+                                       }
+                                   ],
+                         "version":  "1.2.33",
+                         "changelog":  ""
                      }
                  ]
 }

@@ -40,7 +40,8 @@ Write-Host "       Build complete." -ForegroundColor Green
 # ── Step 3: Copy latest.yml for auto-update ──────────────────────────────────
 Write-Host "`n[3/7] Copying latest.yml for auto-update..." -ForegroundColor Yellow
 
-$latestYml = "release-staging\latest.yml"
+$latestYmlFound = Get-ChildItem -Path "release-staging" -Filter "latest.yml" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+$latestYml = if ($latestYmlFound) { $latestYmlFound.FullName } else { "release-staging\latest.yml" }
 if (Test-Path $latestYml) {
     $ymlContent = Get-Content $latestYml -Raw
     if ($ymlContent -match "version:\s*$version") {
@@ -60,27 +61,29 @@ if (Test-Path $latestYml) {
 Write-Host "`n[4/7] Registering release in releases.json..." -ForegroundColor Yellow
 
 $releaseDir = "release-staging"
-$setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" -ErrorAction SilentlyContinue |
+$setupExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue |
     Where-Object { ($_.Name -like "*WebSetup*" -or $_.Name -like "*Setup*") -and $_.Name -notmatch "unpacked|uninstall" } |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$sevenZipParts = Get-ChildItem -Path $releaseDir -Filter "*.7z" -ErrorAction SilentlyContinue
+$sevenZipParts = Get-ChildItem -Path $releaseDir -Filter "*.7z" -Recurse -ErrorAction SilentlyContinue
 
 $releasesJsonPath = "server\releases\releases.json"
 $releasesData = Get-Content $releasesJsonPath -Raw | ConvertFrom-Json
 
 $newFiles = @()
 
-if ($setupExe) {
-    $hash = (Get-FileHash -Path $setupExe.FullName -Algorithm SHA512).Hash
-    $newFiles += @{
-        name = $setupExe.Name
-        type = "installer"
-        size = $setupExe.Length
-        sha512 = $hash
-        downloadUrl = ""
-    }
-    Write-Host "       Setup:    $($setupExe.Name) ($([math]::Round($setupExe.Length / 1MB, 1)) MB)" -ForegroundColor Gray
+if (-not $setupExe) {
+    Write-Host "       No installer .exe found in $releaseDir (expected *WebSetup* or *Setup*). Aborting." -ForegroundColor Red
+    exit 1
 }
+$hash = (Get-FileHash -Path $setupExe.FullName -Algorithm SHA512).Hash
+$newFiles += @{
+    name = $setupExe.Name
+    type = "installer"
+    size = $setupExe.Length
+    sha512 = $hash
+    downloadUrl = ""
+}
+Write-Host "       Setup:    $($setupExe.Name) ($([math]::Round($setupExe.Length / 1MB, 1)) MB)" -ForegroundColor Gray
 foreach ($part in $sevenZipParts) {
     Write-Host "       Resource: $($part.Name) ($([math]::Round($part.Length / 1MB, 1)) MB)" -ForegroundColor Gray
 }
@@ -101,7 +104,7 @@ try {
 
 $ghTag = "v$version"
 
-if ($ghAvailable -and ($setupExe -or $portableExe)) {
+if ($ghAvailable) {
     Write-Host "       Uploading to GitHub Releases (tag: $ghTag)..." -ForegroundColor Yellow
 
     # Delete existing release with same tag if it exists
@@ -110,9 +113,9 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
     # Build asset arguments: web setup exe + .7z resource packs + latest.yml + blockmaps
     $assets = @()
     if (Test-Path $latestYml) { $assets += (Resolve-Path $latestYml).Path }
-    if ($setupExe) { $assets += $setupExe.FullName }
+    $assets += $setupExe.FullName
     foreach ($part in $sevenZipParts) { $assets += $part.FullName }
-    $blockmapAssets = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -ErrorAction SilentlyContinue
+    $blockmapAssets = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -Recurse -ErrorAction SilentlyContinue
     foreach ($bm in $blockmapAssets) { $assets += $bm.FullName }
 
     gh release create $ghTag @assets --title "v$version (Staging)" --notes "Staging release v$version" --latest 2>&1 | Write-Host
@@ -126,12 +129,9 @@ if ($ghAvailable -and ($setupExe -or $portableExe)) {
             $f.downloadUrl = "$repoUrl/releases/download/$ghTag/$encodedName"
         }
     } else {
-        Write-Host "       WARNING: GitHub Release creation failed. Setting local API download URLs." -ForegroundColor Red
-        $apiBase = "https://pbookspro-api-staging.onrender.com/api/app-info"
-        foreach ($f in $newFiles) {
-            $encodedName = [Uri]::EscapeDataString($f.name)
-            $f.downloadUrl = "$apiBase/releases/download/$encodedName"
-        }
+        Write-Host "       GitHub Release creation failed. Run: gh auth login" -ForegroundColor Red
+        Write-Host "       If the tag exists, delete it: gh release delete $ghTag --yes" -ForegroundColor Yellow
+        exit 1
     }
 } else {
     if (-not $ghAvailable) {
@@ -171,7 +171,7 @@ if ($setupExe) {
     Copy-Item $setupExe.FullName "server\releases\" -Force
     Write-Host "       Copied installer to server/releases/" -ForegroundColor Gray
 }
-$blockmapFiles = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -ErrorAction SilentlyContinue
+$blockmapFiles = Get-ChildItem -Path $releaseDir -Filter "*.blockmap" -Recurse -ErrorAction SilentlyContinue
 foreach ($bm in $blockmapFiles) {
     Copy-Item $bm.FullName "server\releases\" -Force
     Write-Host "       Copied $($bm.Name) to server/releases/ (differential updates)" -ForegroundColor Gray
