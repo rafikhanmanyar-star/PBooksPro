@@ -9,18 +9,21 @@ import RentalAgreementForm from './RentalAgreementForm';
 import RentalAgreementTerminationModal from './RentalAgreementTerminationModal';
 import RentalAgreementRenewalModal from './RentalAgreementRenewalModal';
 import RentalAgreementDetailPanel from './RentalAgreementDetailPanel';
+import RentalAgreementsDashboard from './RentalAgreementsDashboard';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import { formatDate } from '../../utils/dateUtils';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { ImportType } from '../../services/importService';
 
+type ViewMode = 'summary' | 'list';
 type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
 type SortKey = 'agreementNumber' | 'tenant' | 'owner' | 'property' | 'rent' | 'security' | 'startDate' | 'endDate' | 'status';
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
 const RentalAgreementsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const [viewMode, setViewMode] = useLocalStorage<ViewMode>('agreements_view_mode', 'summary');
 
     // --- Modals / Panels ---
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -198,8 +201,31 @@ const RentalAgreementsPage: React.FC = () => {
         }
     }, [state.rentalAgreements]);
 
+    if (viewMode === 'summary') {
+        return (
+            <div className="flex flex-col h-full">
+                <div className="flex items-center justify-end px-3 py-1.5 bg-white border-b border-slate-200 flex-shrink-0">
+                    <div className="flex items-center bg-slate-100 rounded-md p-0.5">
+                        <button onClick={() => setViewMode('summary')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'summary' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Summary</button>
+                        <button onClick={() => setViewMode('list')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>List</button>
+                    </div>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                    <RentalAgreementsDashboard />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-full min-h-0 pt-2 px-3 sm:pt-3 sm:px-4 pb-1 gap-2">
+            {/* View mode toggle */}
+            <div className="flex justify-end flex-shrink-0">
+                <div className="flex items-center bg-slate-100 rounded-md p-0.5">
+                    <button onClick={() => setViewMode('summary')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'summary' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Summary</button>
+                    <button onClick={() => setViewMode('list')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>List</button>
+                </div>
+            </div>
             {/* === KPI Summary Cards - compact (match invoices/bills) === */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 flex-shrink-0">
                 {/* Active Agreements */}

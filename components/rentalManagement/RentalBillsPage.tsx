@@ -14,6 +14,7 @@ import useLocalStorage from '../../hooks/useLocalStorage';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { ImportType } from '../../services/importService';
 import BillBulkPaymentModal from '../bills/BillBulkPaymentModal';
+import RentalBillsDashboard from './RentalBillsDashboard';
 
 /** Derive expense bearer type from bill data (for bills without expenseBearerType) */
 function getExpenseBearerType(bill: Bill, state: { rentalAgreements: { id: string }[] }): ExpenseBearerType {
@@ -25,6 +26,7 @@ function getExpenseBearerType(bill: Bill, state: { rentalAgreements: { id: strin
   return 'building';
 }
 
+type BillsViewMode = 'summary' | 'list';
 type ExpenseBearerFilter = 'all' | ExpenseBearerType;
 type SortKey = 'issueDate' | 'billNumber' | 'vendorName' | 'expenseBearer' | 'propertyName' | 'buildingName' | 'amount' | 'balance' | 'status' | 'dueDate';
 
@@ -32,6 +34,7 @@ const RentalBillsPage: React.FC = () => {
   const { state, dispatch } = useAppContext();
   const { showToast, showAlert } = useNotification();
   const { openChat } = useWhatsApp();
+  const [billsViewMode, setBillsViewMode] = useLocalStorage<BillsViewMode>('bills_view_mode', 'summary');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -291,8 +294,31 @@ const RentalBillsPage: React.FC = () => {
   const filterInputClass =
     'w-full pl-2.5 py-1.5 text-sm border border-slate-300 rounded-md shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white';
 
+  if (billsViewMode === 'summary') {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-end px-3 py-1.5 bg-white border-b border-slate-200 flex-shrink-0">
+          <div className="flex items-center bg-slate-100 rounded-md p-0.5">
+            <button onClick={() => setBillsViewMode('summary')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${billsViewMode === 'summary' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Summary</button>
+            <button onClick={() => setBillsViewMode('list')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${billsViewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>List</button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <RentalBillsDashboard />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-slate-50/50 pt-2 px-3 sm:pt-3 sm:px-4 pb-1 gap-2">
+      {/* View mode toggle */}
+      <div className="flex justify-end flex-shrink-0">
+        <div className="flex items-center bg-slate-100 rounded-md p-0.5">
+          <button onClick={() => setBillsViewMode('summary')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${billsViewMode === 'summary' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Summary</button>
+          <button onClick={() => setBillsViewMode('list')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${billsViewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>List</button>
+        </div>
+      </div>
       {/* Action Bar */}
       <div className="flex flex-wrap items-center gap-1.5">
         <Button onClick={() => { setDuplicateBillData(null); setBillToEdit(null); setIsCreateModalOpen(true); }} size="sm">
@@ -490,7 +516,7 @@ const RentalBillsPage: React.FC = () => {
                       </td>
                       <td className="px-3 py-1.5 whitespace-nowrap text-xs text-slate-500 overflow-hidden text-ellipsis">
                         <div className="flex items-center gap-1">
-                          {hasPayments && <button onClick={(e) => toggleExpand(e, bill.id)} className={`p-0.5 rounded hover:bg-slate-200 text-slate-400 inline-flex ${isExpanded ? 'rotate-90' : ''}`}><span className="w-3 h-3">{ICONS.chevronRight}</span></button>}
+                          {hasPayments && <button onClick={(e) => toggleExpand(e, bill.id)} className={`p-0.5 rounded hover:bg-slate-200 text-slate-400 inline-flex transition-transform ${isExpanded ? 'rotate-90' : ''}`}><svg className="w-2.5 h-2.5" viewBox="0 0 6 10" fill="currentColor"><path d="M1 1l4 4-4 4" /></svg></button>}
                           {formatDate(bill.issueDate)}
                         </div>
                       </td>
