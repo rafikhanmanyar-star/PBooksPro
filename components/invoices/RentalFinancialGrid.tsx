@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { List } from 'react-window';
 import { Invoice, Transaction, InvoiceType, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -55,9 +56,9 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-    // Pagination State
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 50;
+    const listContainerRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<any>(null);
+    const [listHeight, setListHeight] = useState(400);
 
     // Filter State (internal when not controlled)
     const [internalTypeFilter, setInternalTypeFilter] = useState<string>('All');
@@ -211,12 +212,18 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         return sorted;
     }, [filteredRecords, sortConfig]);
 
-    const paginatedRecords = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        return sortedRecords.slice(startIndex, startIndex + itemsPerPage);
-    }, [sortedRecords, currentPage]);
+    useEffect(() => {
+        if (!listContainerRef.current) return;
+        const ro = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                setListHeight(entry.contentRect.height);
+            }
+        });
+        ro.observe(listContainerRef.current);
+        return () => ro.disconnect();
+    }, []);
 
-    const totalPages = Math.ceil(sortedRecords.length / itemsPerPage);
+    const ROW_HEIGHT = 34;
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -344,29 +351,45 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
             </div>
             )}
 
-            {/* Table Area */}
-            <div className="overflow-auto flex-grow min-h-0 bg-white">
-                <table className="min-w-full divide-y divide-slate-100 border-separate border-spacing-0" style={{ tableLayout: 'fixed' }}>
-                    <thead className="bg-slate-50 sticky top-0 z-20">
-                        <tr>
-                            <th className="px-3 py-1.5 w-10 text-center border-b border-slate-200 bg-slate-50">
-                                {/* Optional: Master checkbox could go here */}
-                            </th>
-                            <th style={thStyle('type')} onClick={() => handleSort('type')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Type <SortIcon column="type" /><Resizer col="type" /></th>
-                            <th style={thStyle('reference')} onClick={() => handleSort('reference')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Reference <SortIcon column="reference" /><Resizer col="reference" /></th>
-                            <th style={thStyle('description')} onClick={() => handleSort('description')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Description <SortIcon column="description" /><Resizer col="description" /></th>
-                            <th style={thStyle('date')} onClick={() => handleSort('date')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Date <SortIcon column="date" /><Resizer col="date" /></th>
-                            <th style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Account <SortIcon column="accountName" /><Resizer col="accountName" /></th>
-                            <th style={thStyle('amount')} onClick={() => handleSort('amount')} className="group px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Amount <SortIcon column="amount" /><Resizer col="amount" /></th>
-                            <th style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="group px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Due <SortIcon column="remainingAmount" /><Resizer col="remainingAmount" /></th>
-                            <th className="px-3 py-1.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50 w-24">Status</th>
-                            <th className="px-3 py-1.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50 w-20">
-                                Actions
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {paginatedRecords.map((record, index) => {
+            {/* Table Header */}
+            <div className="bg-slate-50 border-b border-slate-200 flex-shrink-0">
+                <div className="flex items-center" style={{ minWidth: 'max-content' }}>
+                    <div className="px-3 py-1.5 w-10 text-center flex-shrink-0" />
+                    <div style={thStyle('type')} onClick={() => handleSort('type')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Type <SortIcon column="type" /><Resizer col="type" /></div>
+                    <div style={thStyle('reference')} onClick={() => handleSort('reference')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Reference <SortIcon column="reference" /><Resizer col="reference" /></div>
+                    <div style={{ ...thStyle('description'), flex: 1, minWidth: colWidths.description }} onClick={() => handleSort('description')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors">Description <SortIcon column="description" /><Resizer col="description" /></div>
+                    <div style={thStyle('date')} onClick={() => handleSort('date')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Date <SortIcon column="date" /><Resizer col="date" /></div>
+                    <div style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Account <SortIcon column="accountName" /><Resizer col="accountName" /></div>
+                    <div style={thStyle('amount')} onClick={() => handleSort('amount')} className="group px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Amount <SortIcon column="amount" /><Resizer col="amount" /></div>
+                    <div style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="group px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Due <SortIcon column="remainingAmount" /><Resizer col="remainingAmount" /></div>
+                    <div className="px-3 py-1.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 w-24 flex-shrink-0">Status</div>
+                    <div className="px-3 py-1.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 w-20 flex-shrink-0">Actions</div>
+                </div>
+            </div>
+
+            {/* Virtualized Table Body */}
+            <div className="flex-grow min-h-0 bg-white" ref={listContainerRef}>
+                {sortedRecords.length === 0 ? (
+                    <div className="text-center py-16 text-slate-400">
+                        <div className="flex flex-col items-center justify-center opacity-60">
+                            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
+                                <div className="w-6 h-6 text-slate-400">{ICONS.search}</div>
+                            </div>
+                            <p className="text-sm font-medium">No records found</p>
+                            <p className="text-xs text-slate-400 mt-1">Try changing your filters</p>
+                        </div>
+                    </div>
+                ) : (
+                    <List
+                        ref={listRef}
+                        height={listHeight}
+                        itemCount={sortedRecords.length}
+                        itemSize={ROW_HEIGHT}
+                        width="100%"
+                        overscanCount={15}
+                    >
+                        {({ index, style }) => {
+                            const record = sortedRecords[index];
                             const isPayment = record.type.includes('Payment');
                             const isBulk = record.type.includes('Bulk');
                             const isPaid = record.remainingAmount !== undefined && record.remainingAmount <= 0.01;
@@ -377,7 +400,6 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                             const isExpanded = expandedIds.has(record.id);
                             const description = record.raw.description || '-';
 
-                            // Calculate Status for Invoice
                             let statusBadge = null;
                             if (record.type === 'Invoice') {
                                 const inv = record.raw as Invoice;
@@ -414,196 +436,93 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                                 }
                             } else if (isPayment) {
                                 const descLower = description.toLowerCase();
-                                if (descLower.includes('security')) {
-                                    displayType = 'Sec Pmt';
-                                    typeStyle = 'bg-amber-50 text-amber-700 border-amber-100/50';
-                                } else if (descLower.includes('rent') || descLower.includes('rental')) {
-                                    displayType = 'Rent Pmt';
-                                    typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50';
-                                } else if (isBulk) {
-                                    displayType = 'Bulk Pmt';
-                                    typeStyle = 'bg-purple-50 text-purple-700 border-purple-100/50';
-                                } else {
-                                    displayType = 'Payment';
-                                    typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50';
-                                }
+                                if (descLower.includes('security')) { displayType = 'Sec Pmt'; typeStyle = 'bg-amber-50 text-amber-700 border-amber-100/50'; }
+                                else if (descLower.includes('rent') || descLower.includes('rental')) { displayType = 'Rent Pmt'; typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50'; }
+                                else if (isBulk) { displayType = 'Bulk Pmt'; typeStyle = 'bg-purple-50 text-purple-700 border-purple-100/50'; }
+                                else { displayType = 'Payment'; typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50'; }
                             }
 
                             return (
-                                <React.Fragment key={`${record.type}-${record.id}`}>
-                                    <tr
-                                        onClick={() => {
-                                            if (hasChildren) toggleExpand({ stopPropagation: () => { } } as any, record.id);
-                                            else if (record.type === 'Invoice') onInvoiceClick(record.raw as Invoice);
-                                            else onPaymentClick(record.raw as Transaction);
-                                        }}
-                                        className={`cursor-pointer transition-colors group border-b border-slate-50 last:border-0 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100 ${isExpanded ? '!bg-indigo-50/30' : ''}`}
-                                    >
-                                        <td className="px-3 py-1.5 text-center w-10 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                                            {hasChildren ? (
-                                                <button onClick={(e) => toggleExpand(e, record.id)} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 transition-colors">
-                                                    <div className={`w-3 h-3 transform transition-transform duration-200 ${isExpanded ? 'rotate-90 text-indigo-500' : ''}`}>{ICONS.chevronRight}</div>
-                                                </button>
-                                            ) : canSelect && onToggleSelect ? (
-                                                <input
-                                                    type="checkbox"
-                                                    className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 cursor-pointer transition-all"
-                                                    checked={selectedIds?.has(record.id)}
-                                                    onChange={() => onToggleSelect(record.id)}
-                                                />
-                                            ) : null}
-                                        </td>
-                                        <td className="px-3 py-1.5 whitespace-nowrap">
-                                            <span className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${typeStyle}`}>
-                                                {displayType}
-                                            </span>
-                                        </td>
-                                        <td className="px-3 py-1.5 font-mono text-xs font-medium text-slate-700 group-hover:text-indigo-600 whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors">{record.reference}</td>
-                                        <td className="px-3 py-1.5 text-xs text-slate-600 truncate max-w-xs overflow-hidden text-ellipsis" title={description}>{description}</td>
-                                        <td className="px-3 py-1.5 text-xs text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis">{formatDate(record.date)}</td>
-                                        <td className="px-3 py-1.5 text-xs text-slate-700 font-medium truncate overflow-hidden text-ellipsis" title={record.accountName}>{record.accountName}</td>
-                                        <td className={`px-3 py-1.5 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums ${isPayment ? 'text-emerald-600' : 'text-slate-700'}`}>
-                                            {CURRENCY} {record.amount.toLocaleString()}
-                                        </td>
-                                        <td className="px-3 py-1.5 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium">
-                                            {record.remainingAmount !== undefined && record.remainingAmount > 0.01 ? (
-                                                <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
-                                            ) : (
-                                                <span className="text-slate-300 font-normal">-</span>
-                                            )}
-                                        </td>
-                                        <td className="px-3 py-1.5 text-center whitespace-nowrap">
-                                            {statusBadge}
-                                        </td>
-                                        <td className="px-3 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                                            {record.type === 'Invoice' && (() => {
-                                                const inv = record.raw as Invoice;
-                                                const contact = state.contacts.find(c => c.id === inv.contactId);
-                                                const isFullyPaid = inv.status === 'Paid' || (inv.amount - inv.paidAmount) <= 0.01;
-
-                                                return (
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        {/* Receive Payment Button (Only if not fully paid) */}
-                                                        {!isFullyPaid && onReceivePayment && (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onReceivePayment(inv);
-                                                                }}
-                                                                className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
-                                                                title="Receive Payment"
-                                                            >
-                                                                <div className="w-4 h-4">{ICONS.handDollar}</div>
-                                                            </button>
-                                                        )}
-
-                                                        {/* WhatsApp Button - Always show, alert if no contact */}
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                if (!contact?.contactNo) {
-                                                                    showAlert("Contact does not have a phone number saved.");
-                                                                    return;
-                                                                }
-                                                                await handleSendWhatsApp(inv, contact);
-                                                            }}
-                                                            className={`p-1.5 rounded-md transition-colors ${contact?.contactNo
-                                                                    ? 'text-green-600 hover:bg-green-50 hover:text-green-700'
-                                                                    : 'text-slate-300 hover:bg-slate-50 hover:text-slate-400'
-                                                                }`}
-                                                            title={contact?.contactNo ? "Send invoice via WhatsApp" : "No contact number available"}
-                                                        >
-                                                            <div className="w-4 h-4">{ICONS.whatsapp}</div>
-                                                        </button>
-
-                                                        {/* Edit Button */}
-                                                        {onEditInvoice && (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onEditInvoice(inv);
-                                                                }}
-                                                                className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors"
-                                                                title="Edit Invoice"
-                                                            >
-                                                                <div className="w-4 h-4">{ICONS.edit}</div>
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })()}
-                                            {record.type === 'Payment' && !isBulk && onEditPayment && (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onEditPayment(record.raw as Transaction);
-                                                    }}
-                                                    className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors"
-                                                    title="Edit Payment"
-                                                >
-                                                    <div className="w-4 h-4">{ICONS.edit}</div>
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                    {isExpanded && hasChildren && (
-                                        <tr className="bg-slate-50/50 shadow-inner">
-                                            <td colSpan={9} className="p-0">
-                                                <div className="border-l-2 border-indigo-200 ml-8 my-1 pl-4 py-1 space-y-1">
-                                                    {rawTx.children!.map((child, idx) => (
-                                                        <div key={child.id} className="flex items-center text-[11px] text-slate-500 hover:bg-white hover:shadow-sm p-1.5 rounded-md cursor-pointer transition-all border border-transparent hover:border-slate-100" onClick={() => onPaymentClick(child)}>
-                                                            <div className="w-20 sm:w-24 flex-shrink-0">{formatDate(child.date)}</div>
-                                                            <div className="flex-grow truncate font-medium text-slate-700">{child.description}</div>
-                                                            <div className="w-24 sm:w-32 text-right font-mono text-emerald-600 tabular-nums">{CURRENCY} {child.amount.toLocaleString()}</div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            );
-                        })}
-                        {sortedRecords.length === 0 && (
-                            <tr>
-                                <td colSpan={9} className="text-center py-16 text-slate-400">
-                                    <div className="flex flex-col items-center justify-center opacity-60">
-                                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
-                                            <div className="w-6 h-6 text-slate-400">{ICONS.search}</div>
-                                        </div>
-                                        <p className="text-sm font-medium">No records found</p>
-                                        <p className="text-xs text-slate-400 mt-1">Try changing your filters</p>
+                                <div
+                                    style={style}
+                                    className={`flex items-center cursor-pointer transition-colors group border-b border-slate-50 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100 ${isExpanded ? '!bg-indigo-50/30' : ''}`}
+                                    onClick={() => {
+                                        if (hasChildren) toggleExpand({ stopPropagation: () => {} } as any, record.id);
+                                        else if (record.type === 'Invoice') onInvoiceClick(record.raw as Invoice);
+                                        else onPaymentClick(record.raw as Transaction);
+                                    }}
+                                >
+                                    <div className="px-3 py-1.5 text-center w-10 flex-shrink-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                        {hasChildren ? (
+                                            <button onClick={(e) => toggleExpand(e, record.id)} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 transition-colors">
+                                                <div className={`w-3 h-3 transform transition-transform duration-200 ${isExpanded ? 'rotate-90 text-indigo-500' : ''}`}>{ICONS.chevronRight}</div>
+                                            </button>
+                                        ) : canSelect && onToggleSelect ? (
+                                            <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 cursor-pointer transition-all" checked={selectedIds?.has(record.id)} onChange={() => onToggleSelect(record.id)} />
+                                        ) : null}
                                     </div>
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                                    <div className="px-3 py-1.5 whitespace-nowrap flex-shrink-0" style={{ width: colWidths.type }}>
+                                        <span className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${typeStyle}`}>{displayType}</span>
+                                    </div>
+                                    <div className="px-3 py-1.5 font-mono text-xs font-medium text-slate-700 group-hover:text-indigo-600 whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors flex-shrink-0" style={{ width: colWidths.reference }}>{record.reference}</div>
+                                    <div className="px-3 py-1.5 text-xs text-slate-600 truncate overflow-hidden text-ellipsis" style={{ flex: 1, minWidth: colWidths.description }} title={description}>{description}</div>
+                                    <div className="px-3 py-1.5 text-xs text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.date }}>{formatDate(record.date)}</div>
+                                    <div className="px-3 py-1.5 text-xs text-slate-700 font-medium truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.accountName }} title={record.accountName}>{record.accountName}</div>
+                                    <div className={`px-3 py-1.5 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums flex-shrink-0 ${isPayment ? 'text-emerald-600' : 'text-slate-700'}`} style={{ width: colWidths.amount }}>
+                                        {CURRENCY} {record.amount.toLocaleString()}
+                                    </div>
+                                    <div className="px-3 py-1.5 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium flex-shrink-0" style={{ width: colWidths.remainingAmount }}>
+                                        {record.remainingAmount !== undefined && record.remainingAmount > 0.01 ? (
+                                            <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
+                                        ) : (
+                                            <span className="text-slate-300 font-normal">-</span>
+                                        )}
+                                    </div>
+                                    <div className="px-3 py-1.5 text-center whitespace-nowrap w-24 flex-shrink-0">{statusBadge}</div>
+                                    <div className="px-3 py-1.5 text-center w-20 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                        {record.type === 'Invoice' && (() => {
+                                            const inv = record.raw as Invoice;
+                                            const contact = state.contacts.find(c => c.id === inv.contactId);
+                                            const isFullyPaid = inv.status === 'Paid' || (inv.amount - inv.paidAmount) <= 0.01;
+                                            return (
+                                                <div className="flex items-center justify-center gap-1">
+                                                    {!isFullyPaid && onReceivePayment && (
+                                                        <button onClick={(e) => { e.stopPropagation(); onReceivePayment(inv); }} className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors" title="Receive Payment">
+                                                            <div className="w-4 h-4">{ICONS.handDollar}</div>
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={async (e) => { e.stopPropagation(); if (!contact?.contactNo) { showAlert("Contact does not have a phone number saved."); return; } await handleSendWhatsApp(inv, contact); }}
+                                                        className={`p-1.5 rounded-md transition-colors ${contact?.contactNo ? 'text-green-600 hover:bg-green-50 hover:text-green-700' : 'text-slate-300 hover:bg-slate-50 hover:text-slate-400'}`}
+                                                        title={contact?.contactNo ? "Send invoice via WhatsApp" : "No contact number available"}
+                                                    >
+                                                        <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                                                    </button>
+                                                    {onEditInvoice && (
+                                                        <button onClick={(e) => { e.stopPropagation(); onEditInvoice(inv); }} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors" title="Edit Invoice">
+                                                            <div className="w-4 h-4">{ICONS.edit}</div>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+                                        {record.type === 'Payment' && !isBulk && onEditPayment && (
+                                            <button onClick={(e) => { e.stopPropagation(); onEditPayment(record.raw as Transaction); }} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors" title="Edit Payment">
+                                                <div className="w-4 h-4">{ICONS.edit}</div>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }}
+                    </List>
+                )}
             </div>
 
-            {/* Pagination Footer - pinned to bottom of grid, one row down */}
+            {/* Footer */}
             <div className="flex-shrink-0 px-3 py-1.5 border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm flex items-center justify-between">
                 <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                    Showing {paginatedRecords.length} of {sortedRecords.length} records
-                </div>
-                <div className="flex items-center gap-1">
-                    <button
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="p-1 rounded-md hover:bg-white hover:shadow-sm text-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                    >
-                        <div className="w-4 h-4">{ICONS.chevronLeft}</div>
-                    </button>
-                    <span className="text-xs font-semibold text-slate-700 min-w-[20px] text-center">
-                        {currentPage}
-                    </span>
-                    <button
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages || totalPages === 0}
-                        className="p-1 rounded-md hover:bg-white hover:shadow-sm text-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                    >
-                        <div className="w-4 h-4">{ICONS.chevronRight}</div>
-                    </button>
+                    {sortedRecords.length} records
                 </div>
             </div>
         </div>

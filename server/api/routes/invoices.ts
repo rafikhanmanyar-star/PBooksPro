@@ -2,9 +2,14 @@ import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
 import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
+import { clearCache } from '../../middleware/cacheMiddleware.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+
+function invalidateARCache(tenantId: string) {
+  clearCache(`__ar__${tenantId}`);
+}
 
 // GET all invoices
 router.get('/', async (req: TenantRequest, res) => {
@@ -246,6 +251,7 @@ router.post('/', async (req: TenantRequest, res) => {
       });
     }
 
+    invalidateARCache(req.tenantId!);
     res.status(isActualUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
     console.error('Error creating/updating invoice:', error);
@@ -331,6 +337,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
       username: req.user?.username,
     });
 
+    invalidateARCache(req.tenantId!);
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating invoice:', error);
@@ -371,6 +378,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       username: req.user?.username,
     });
 
+    invalidateARCache(req.tenantId!);
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting invoice:', error);

@@ -11,10 +11,15 @@ const getDb = () => getDatabaseService();
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const buildings = await db.query(
-      'SELECT * FROM buildings WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name',
-      [req.tenantId]
-    );
+    const { limit, offset } = req.query;
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 50000);
+    let query = 'SELECT * FROM buildings WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name LIMIT $2';
+    const params: any[] = [req.tenantId, effectiveLimit];
+    if (offset) {
+      query += ' OFFSET $3';
+      params.push(parseInt(offset as string));
+    }
+    const buildings = await db.query(query, params);
     res.json(buildings);
   } catch (error) {
     console.error('Error fetching buildings:', error);

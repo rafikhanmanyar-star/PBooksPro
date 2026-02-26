@@ -31,6 +31,15 @@ router.get('/', async (req: TenantRequest, res) => {
 
     query += ' ORDER BY start_date DESC';
 
+    const { limit, offset } = req.query;
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 50000);
+    query += ` LIMIT $${paramIndex++}`;
+    params.push(effectiveLimit);
+    if (offset) {
+      query += ` OFFSET $${paramIndex++}`;
+      params.push(parseInt(offset as string));
+    }
+
     const contracts = await db.query(query, params);
     res.json(contracts);
   } catch (error) {

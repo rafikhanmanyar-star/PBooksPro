@@ -213,6 +213,44 @@ export abstract class BaseRepository<T> {
     }
 
     /**
+     * Find records changed since a given timestamp.
+     * Uses (tenant_id, updated_at) index for efficient delta queries.
+     */
+    findChangedSince(since: string, options: { limit?: number } = {}): T[] {
+        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
+            return [];
+        }
+
+        const cols = this.buildSelectColumns(false);
+        let sql = `SELECT ${cols} FROM ${this.tableName}`;
+        const whereConditions: string[] = [];
+        const whereParams: any[] = [];
+
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                whereConditions.push(`${this.tenantColumn} = ?`);
+                whereParams.push(tenantId);
+            }
+        }
+
+        whereConditions.push(`updated_at > ?`);
+        whereParams.push(since);
+
+        if (whereConditions.length > 0) {
+            sql += ` WHERE ${whereConditions.join(' AND ')}`;
+        }
+
+        sql += ` ORDER BY updated_at ASC`;
+
+        const effectiveLimit = options.limit ?? 50000;
+        sql += ` LIMIT ${effectiveLimit}`;
+
+        const results = this.db.query<Record<string, any>>(sql, whereParams);
+        return results.map(row => dbToObjectFormat<T>(row));
+    }
+
+    /**
      * Find by primary key
      * Tenant isolation: if table is tenant-scoped but no tenant in context, return null.
      */

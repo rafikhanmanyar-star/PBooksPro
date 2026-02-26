@@ -281,15 +281,11 @@ export class AppStateApiService {
    */
   private async normalizeLoadedStateOffThread(raw: Record<string, any>): Promise<Partial<AppState>> {
     return new Promise((resolve) => {
+      const run = () => resolve(this.normalizeLoadedState(raw));
       if ('requestIdleCallback' in window) {
-        requestIdleCallback(() => {
-          resolve(this.normalizeLoadedState(raw));
-        }, { timeout: 5000 });
+        requestIdleCallback(run, { timeout: 5000 });
       } else {
-        // Fallback: use setTimeout to at least yield to  main thread
-        setTimeout(() => {
-          resolve(this.normalizeLoadedState(raw));
-        }, 0);
+        setTimeout(run, 0);
       }
     });
   }

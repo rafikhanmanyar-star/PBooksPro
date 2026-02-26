@@ -634,6 +634,59 @@ export class AppStateRepository {
     }
 
     /**
+     * Load only records changed since a given timestamp.
+     * Uses the new (tenant_id, updated_at) indexes for efficient delta queries.
+     * Returns a partial AppState containing only changed entities.
+     */
+    loadDelta(since: string): Partial<AppState> {
+        console.log(`[DeltaSync] Loading changes since ${since}`);
+
+        const accounts = this.accountsRepo.findChangedSince(since);
+        const contacts = this.contactsRepo.findChangedSince(since);
+        const categories = this.categoriesRepo.findChangedSince(since);
+        const transactions = this.transactionsRepo.findChangedSince(since);
+        const invoices = this.invoicesRepo.findChangedSince(since);
+        const bills = this.billsRepo.findChangedSince(since);
+        const projects = this.projectsRepo.findChangedSince(since);
+        const buildings = this.buildingsRepo.findChangedSince(since);
+        const properties = this.propertiesRepo.findChangedSince(since);
+        const units = this.unitsRepo.findChangedSince(since);
+        const vendors = this.vendorsRepo.findChangedSince(since);
+        const budgets = this.budgetsRepo.findChangedSince(since);
+        const rentalAgreements = this.rentalAgreementsRepo.findChangedSince(since);
+        const projectAgreements = this.projectAgreementsRepo.findChangedSince(since);
+        const contracts = this.contractsRepo.findChangedSince(since);
+        const installmentPlans = this.installmentPlansRepo.findChangedSince(since);
+        const salesReturns = this.salesReturnsRepo.findChangedSince(since);
+
+        const totalChanged = accounts.length + contacts.length + categories.length +
+            transactions.length + invoices.length + bills.length + projects.length +
+            buildings.length + properties.length + units.length + vendors.length;
+
+        console.log(`[DeltaSync] Found ${totalChanged} changed records since ${since}`);
+
+        return {
+            accounts,
+            contacts,
+            categories,
+            transactions,
+            invoices,
+            bills,
+            projects,
+            buildings,
+            properties,
+            units,
+            vendors,
+            budgets,
+            rentalAgreements,
+            projectAgreements,
+            contracts,
+            installmentPlans,
+            salesReturns,
+        } as Partial<AppState>;
+    }
+
+    /**
      * Save complete application state to database (serialized to avoid overlapping transactions)
      * @param state - The application state to save
      * @param disableSyncQueueing - If true, disables sync queueing (used when syncing FROM cloud TO local)

@@ -13,18 +13,24 @@ router.get('/', async (req: TenantRequest, res) => {
     const { activeOnly } = req.query;
     const params: any[] = [req.tenantId];
 
+    const { limit, offset } = req.query;
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 50000);
     let amenities: any[];
     try {
       let query = 'SELECT * FROM plan_amenities WHERE tenant_id = $1 AND deleted_at IS NULL';
       if (activeOnly === 'true') query += ' AND is_active = true';
-      query += ' ORDER BY name ASC';
-      amenities = await db.query(query, params);
+      query += ` ORDER BY name ASC LIMIT $2`;
+      const qParams = [...params, effectiveLimit];
+      if (offset) { query += ` OFFSET $3`; qParams.push(parseInt(offset as string)); }
+      amenities = await db.query(query, qParams);
     } catch (queryErr: any) {
       if (queryErr?.message?.includes('deleted_at') || queryErr?.message?.includes('does not exist')) {
         let query = 'SELECT * FROM plan_amenities WHERE tenant_id = $1';
         if (activeOnly === 'true') query += ' AND is_active = true';
-        query += ' ORDER BY name ASC';
-        amenities = await db.query(query, params);
+        query += ` ORDER BY name ASC LIMIT $2`;
+        const qParams = [...params, effectiveLimit];
+        if (offset) { query += ` OFFSET $3`; qParams.push(parseInt(offset as string)); }
+        amenities = await db.query(query, qParams);
       } else {
         throw queryErr;
       }

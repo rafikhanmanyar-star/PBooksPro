@@ -103,6 +103,8 @@ import whatsappWebhookRouter from './routes/whatsapp-webhook.js';
 import payrollRouter from './routes/payroll.js';
 import stateChangesRouter from './routes/stateChanges.js';
 import vendorsRouter from './routes/vendors.js';
+import jobsRouter from './routes/jobs.js';
+import { cleanupOldJobs } from '../services/jobQueue.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 import { trackRequestMetrics } from './routes/admin/system-metrics.js';
@@ -716,6 +718,10 @@ app.use('/api/whatsapp', whatsappRouter); // WhatsApp API (requires authenticati
 
 app.use('/api/payroll', payrollRouter); // Payroll Management (requires authentication)
 app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/changes?since=ISO8601 
+app.use('/api/jobs', jobsRouter); // Background job queue
+
+// Cleanup completed jobs every 10 minutes
+setInterval(() => cleanupOldJobs(30 * 60 * 1000), 10 * 60 * 1000);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

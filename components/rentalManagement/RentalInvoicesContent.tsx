@@ -14,6 +14,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { ImportType } from '../../services/importService';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useGenerateDueInvoices } from '../../hooks/useGenerateDueInvoices';
+import { useDebounce } from '../../hooks/useDebounce';
 
 interface RentalInvoicesContentProps {
   onCreateRentalClick?: () => void;
@@ -43,6 +44,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     setEntityFilterId('all');
   }, [setGroupBy]);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [typeFilter, setTypeFilter] = useState<string>('All');
   const [dateFilter, setDateFilter] = useState<string>('All');
 
@@ -102,8 +104,8 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       });
     }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
       invoices = invoices.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
         const contact = state.contacts.find(c => c.id === inv.contactId);
@@ -142,7 +144,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     state.invoices,
     state.contacts,
     state.properties,
-    searchQuery,
+    debouncedSearch,
     statusFilter,
     groupBy,
     entityFilterId,
@@ -162,8 +164,8 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         return false;
       });
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
       invoices = invoices.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
         const contact = state.contacts.find(c => c.id === inv.contactId);
@@ -189,7 +191,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       }
     }
     return invoices;
-  }, [state.invoices, state.contacts, state.properties, searchQuery, groupBy, entityFilterId]);
+  }, [state.invoices, state.contacts, state.properties, debouncedSearch, groupBy, entityFilterId]);
 
   const financialRecords = useMemo<FinancialRecord[]>(() => {
     const records: FinancialRecord[] = [];

@@ -46,8 +46,9 @@ router.delete('/clear-transactions', async (req: TenantRequest, res) => {
 
       // Delete from each table
       for (const table of tablesToClear) {
+        const column = table === 'rental_agreements' ? 'org_id' : 'tenant_id';
         const deleteResult = await client.query(
-          `DELETE FROM ${table} WHERE tenant_id = $1`,
+          `DELETE FROM ${table} WHERE ${column} = $1`,
           [tenantId]
         );
         const deletedCount = deleteResult.rowCount || 0;

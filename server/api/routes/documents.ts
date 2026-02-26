@@ -23,19 +23,30 @@ router.get('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const { entity_type, entity_id } = req.query;
 
+    const { limit, offset } = req.query as { limit?: string; offset?: string };
+
     let query = 'SELECT * FROM documents WHERE tenant_id = $1 AND deleted_at IS NULL';
     const params: any[] = [req.tenantId];
+    let paramIndex = 2;
 
     if (entity_type) {
-      query += ' AND entity_type = $2';
+      query += ` AND entity_type = $${paramIndex++}`;
       params.push(entity_type);
       if (entity_id) {
-        query += ' AND entity_id = $3';
+        query += ` AND entity_id = $${paramIndex++}`;
         params.push(entity_id);
       }
     }
 
     query += ' ORDER BY uploaded_at DESC';
+
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 50000);
+    query += ` LIMIT $${paramIndex++}`;
+    params.push(effectiveLimit);
+    if (offset) {
+      query += ` OFFSET $${paramIndex++}`;
+      params.push(parseInt(offset as string));
+    }
 
     const documents = await db.query(query, params);
     res.json(documents);

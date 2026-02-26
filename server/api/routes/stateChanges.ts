@@ -127,7 +127,7 @@ function rowToCamel(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 // GET /api/state/changes?since=ISO8601&limit=500
-router.get('/changes', async (req: TenantRequest, res) => {
+router.get('/changes', cacheMiddleware(15, (req) => `__changes__${(req as TenantRequest).tenantId}__${req.originalUrl}`), async (req: TenantRequest, res) => {
   try {
     const since = (req.query.since as string) || '1970-01-01T00:00:00.000Z';
     const tenantId = req.tenantId;
@@ -446,6 +446,111 @@ router.get('/diag', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error in state diag:', error);
     res.status(500).json({ error: 'Diag failed', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/state/batch
+ * Batch upload endpoint: accepts multiple entity upserts in a single request.
+ * Replaces N individual API calls with one batched request for sync efficiency.
+ *
+ * Body: { operations: [{ entity: string, type: 'upsert'|'delete', data: object }] }
+ * Each operation specifies the entity table and the data to upsert or soft-delete.
+ */
+const ALLOWED_BATCH_ENTITIES = new Map(
+  ENTITY_QUERIES.map(e => [e.key, { table: e.table, tenantColumn: e.tenantColumn }])
+);
+const MAX_BATCH_SIZE = 500;
+
+router.post('/batch', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant required' });
+    }
+
+    const { operations } = req.body as {
+      operations: Array<{
+        entity: string;
+        type: 'upsert' | 'delete';
+        data: Record<string, any>;
+      }>;
+    };
+
+    if (!Array.isArray(operations) || operations.length === 0) {
+      return res.status(400).json({ error: 'operations array is required' });
+    }
+
+    if (operations.length > MAX_BATCH_SIZE) {
+      return res.status(400).json({ error: `Batch size exceeds maximum of ${MAX_BATCH_SIZE}` });
+    }
+
+    const db = getDb();
+    const results: Array<{ entity: string; id: string; status: 'ok' | 'error'; error?: string }> = [];
+
+    await db.transaction(async (client) => {
+      for (const op of operations) {
+        const entityConfig = ALLOWED_BATCH_ENTITIES.get(op.entity);
+        if (!entityConfig) {
+          results.push({ entity: op.entity, id: op.data?.id || '', status: 'error', error: `Unknown entity: ${op.entity}` });
+          continue;
+        }
+
+        const { table, tenantColumn } = entityConfig;
+
+        try {
+          if (op.type === 'delete') {
+            await client.query(
+              `UPDATE ${table} SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND ${tenantColumn} = $2`,
+              [op.data.id, tenantId]
+            );
+            results.push({ entity: op.entity, id: op.data.id, status: 'ok' });
+          } else {
+            const data = { ...op.data };
+            data[tenantColumn] = tenantId;
+            if (!data.updated_at) data.updated_at = new Date().toISOString();
+
+            const columns = Object.keys(data);
+            const values = Object.values(data);
+            const placeholders = columns.map((_, i) => `$${i + 1}`);
+
+            const updateCols = columns
+              .filter(c => c !== 'id' && c !== tenantColumn)
+              .map(c => `${c} = EXCLUDED.${c}`);
+
+            const query = `
+              INSERT INTO ${table} (${columns.join(', ')})
+              VALUES (${placeholders.join(', ')})
+              ON CONFLICT (id) DO UPDATE SET ${updateCols.join(', ')}
+            `;
+
+            await client.query(query, values);
+            results.push({ entity: op.entity, id: data.id, status: 'ok' });
+          }
+        } catch (opError: any) {
+          results.push({
+            entity: op.entity,
+            id: op.data?.id || '',
+            status: 'error',
+            error: opError.message || 'Unknown error',
+          });
+        }
+      }
+    });
+
+    const succeeded = results.filter(r => r.status === 'ok').length;
+    const failed = results.filter(r => r.status === 'error').length;
+
+    res.json({
+      success: true,
+      total: operations.length,
+      succeeded,
+      failed,
+      results,
+    });
+  } catch (error: any) {
+    console.error('Error in batch upload:', error);
+    res.status(500).json({ error: 'Batch upload failed', message: error.message });
   }
 });
 

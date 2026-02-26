@@ -1,9 +1,15 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { cacheMiddleware } from '../../middleware/cacheMiddleware.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+
+function arCacheKey(req: any) {
+  const t = (req as TenantRequest).tenantId;
+  return `__ar__${t}__${req.originalUrl}`;
+}
 
 const RENTAL_TYPES = `('Rental', 'Security Deposit')`;
 
@@ -36,7 +42,7 @@ function buildSearchCondition(search: string, paramIndex: number): { clause: str
 }
 
 // GET /api/rental/ar-tree-summary
-router.get('/ar-tree-summary', async (req: TenantRequest, res) => {
+router.get('/ar-tree-summary', cacheMiddleware(60, arCacheKey), async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { groupBy = 'building', aging = 'all', search = '' } = req.query as {
@@ -162,7 +168,7 @@ router.get('/ar-tree-summary', async (req: TenantRequest, res) => {
 });
 
 // GET /api/rental/ar-tree-children
-router.get('/ar-tree-children', async (req: TenantRequest, res) => {
+router.get('/ar-tree-children', cacheMiddleware(60, arCacheKey), async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { parentId, parentType, groupBy = 'building', aging = 'all' } = req.query as {
@@ -253,7 +259,7 @@ router.get('/ar-tree-children', async (req: TenantRequest, res) => {
 });
 
 // GET /api/rental/ar-node-invoices
-router.get('/ar-node-invoices', async (req: TenantRequest, res) => {
+router.get('/ar-node-invoices', cacheMiddleware(60, arCacheKey), async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { nodeId, nodeType, aging = 'all', limit = '200', offset = '0' } = req.query as {

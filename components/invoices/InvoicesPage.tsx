@@ -19,6 +19,7 @@ import RentalFinancialGrid, { FinancialRecord } from './RentalFinancialGrid';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import InvoiceDetailView from './InvoiceDetailView';
 import { ImportType } from '../../services/importService';
+import { useDebounce } from '../../hooks/useDebounce';
 
 interface InvoicesPageProps {
     invoiceTypeFilter?: InvoiceType;
@@ -189,6 +190,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const [buildingFilter, setBuildingFilter] = useState<string>('all');
     const [projectFilter, setProjectFilter] = useState<string>(defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearch = useDebounce(searchQuery, 300);
 
     // Sidebar: search filter for tree
     const [treeSearchQuery, setTreeSearchQuery] = useState('');
@@ -323,8 +325,8 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 filtered = filtered.filter(inv => inv.projectId === projectFilter);
             }
 
-            if (searchQuery) {
-                const query = searchQuery.toLowerCase();
+            if (debouncedSearch) {
+                const query = debouncedSearch.toLowerCase();
                 filtered = filtered.filter(inv => {
                     if (inv.invoiceNumber.toLowerCase().includes(query)) return true;
                     if (contacts.find(c => c.id === inv.contactId)?.name.toLowerCase().includes(query)) return true;
@@ -346,7 +348,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             console.error("Error filtering invoices:", error);
             return [];
         }
-    }, [invoices, contacts, properties, units, invoiceTypeFilter, searchQuery, statusFilter, buildingFilter, projectFilter]);
+    }, [invoices, contacts, properties, units, invoiceTypeFilter, debouncedSearch, statusFilter, buildingFilter, projectFilter]);
 
     // --- Final Data Filtering (For List View) ---
     const filteredInvoices = useMemo(() => {
@@ -586,8 +588,8 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 filtered = filtered.filter(inv => inv.projectId === projectFilter);
             }
 
-            if (searchQuery) {
-                const query = searchQuery.toLowerCase();
+            if (debouncedSearch) {
+                const query = debouncedSearch.toLowerCase();
                 filtered = filtered.filter(inv => {
                     if (inv.invoiceNumber.toLowerCase().includes(query)) return true;
                     if (contacts.find(c => c.id === inv.contactId)?.name.toLowerCase().includes(query)) return true;
@@ -650,7 +652,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             console.error("Error filtering invoices without status filter:", error);
             return [];
         }
-    }, [invoices, contacts, properties, units, projectAgreements, invoiceTypeFilter, searchQuery, buildingFilter, projectFilter, treeFilter, groupBy]);
+    }, [invoices, contacts, properties, units, projectAgreements, invoiceTypeFilter, debouncedSearch, buildingFilter, projectFilter, treeFilter, groupBy]);
 
     // --- Combined Financial Records for Grid View ---
     const financialRecords = useMemo<FinancialRecord[]>(() => {

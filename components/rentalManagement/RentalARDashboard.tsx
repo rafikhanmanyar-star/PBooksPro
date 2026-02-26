@@ -13,6 +13,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import { useDebounce } from '../../hooks/useDebounce';
 
 const RENTAL_INVOICE_TYPES = [InvoiceType.RENTAL, InvoiceType.SECURITY_DEPOSIT];
 
@@ -52,6 +53,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   const [viewBy, setViewBy] = useLocalStorage<ViewBy>('ar_dashboard_viewBy', 'building');
   const [agingFilter, setAgingFilter] = useLocalStorage<AgingFilter>('ar_dashboard_aging', 'all');
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   // Selection
   const [selectedNode, setSelectedNode] = useState<ARTreeNode | null>(null);
@@ -91,8 +93,8 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
       });
     }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
       result = result.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
         const contact = state.contacts.find(c => c.id === inv.contactId);
@@ -115,7 +117,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     }
 
     return result;
-  }, [rentalInvoices, agingFilter, searchQuery, state.contacts, state.properties, state.buildings]);
+  }, [rentalInvoices, agingFilter, debouncedSearch, state.contacts, state.properties, state.buildings]);
 
   // Build tree from filtered invoices
   const treeData = useMemo((): ARTreeNode[] => {

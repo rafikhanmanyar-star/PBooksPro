@@ -1220,4 +1220,34 @@ CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_pk ON project_agreement
 CREATE INDEX IF NOT EXISTS idx_installment_plans_tenant_pk ON installment_plans(tenant_id, id);
 CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant_pk ON recurring_invoice_templates(tenant_id, id);
 CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_pk ON pm_cycle_allocations(tenant_id, id);
+
+-- Composite indexes for delta sync queries (tenant_id, updated_at)
+CREATE INDEX IF NOT EXISTS idx_transactions_tenant_updated ON transactions(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_updated ON invoices(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_bills_tenant_updated ON bills(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_tenant_updated ON contacts(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_accounts_tenant_updated ON accounts(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_categories_tenant_updated ON categories(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_vendors_tenant_updated ON vendors(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_buildings_tenant_updated ON buildings(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_properties_tenant_updated ON properties(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_units_tenant_updated ON units(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_budgets_tenant_updated ON budgets(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_contracts_tenant_updated ON contracts(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_updated ON rental_agreements(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_updated ON project_agreements(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_installment_plans_tenant_updated ON installment_plans(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_quotations_tenant_updated ON quotations(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_updated ON documents(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_updated ON sales_returns(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_recurring_templates_tenant_updated ON recurring_invoice_templates(tenant_id, updated_at);
+
+-- Invoice aging / AR indexes for local queries
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_due_status ON invoices(tenant_id, due_date, status);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_property_type ON invoices(tenant_id, property_id, invoice_type);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_contact_type ON invoices(tenant_id, contact_id, invoice_type);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_agreement ON invoices(tenant_id, agreement_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_tenant_date ON transactions(tenant_id, date);
+CREATE INDEX IF NOT EXISTS idx_properties_tenant_building ON properties(tenant_id, building_id);
+CREATE INDEX IF NOT EXISTS idx_properties_tenant_owner ON properties(tenant_id, owner_id);
 `;

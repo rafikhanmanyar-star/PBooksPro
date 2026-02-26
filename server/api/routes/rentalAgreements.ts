@@ -79,6 +79,15 @@ router.get('/', async (req: TenantRequest, res) => {
 
     query += ' ORDER BY start_date DESC';
 
+    const { limit, offset } = req.query;
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 50000);
+    query += ` LIMIT $${paramIndex++}`;
+    params.push(effectiveLimit);
+    if (offset) {
+      query += ` OFFSET $${paramIndex++}`;
+      params.push(parseInt(offset as string));
+    }
+
     // Log query for debugging (remove in production)
     if (process.env.NODE_ENV !== 'production') {
       console.log('[Rental Agreements] Query:', query);

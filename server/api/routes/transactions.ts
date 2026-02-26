@@ -2,9 +2,14 @@ import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
 import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
+import { clearCache } from '../../middleware/cacheMiddleware.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+
+function invalidateARCache(tenantId: string) {
+  clearCache(`__ar__${tenantId}`);
+}
 
 // System accounts that can be auto-created if missing
 const SYSTEM_ACCOUNTS: { [key: string]: { name: string; type: string; description: string } } = {
@@ -172,10 +177,9 @@ router.get('/', async (req: TenantRequest, res) => {
 
     query += ' ORDER BY date DESC';
 
-    if (limit) {
-      query += ` LIMIT $${paramIndex++}`;
-      params.push(parseInt(limit as string));
-    }
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 50000);
+    query += ` LIMIT $${paramIndex++}`;
+    params.push(effectiveLimit);
     if (offset) {
       query += ` OFFSET $${paramIndex++}`;
       params.push(parseInt(offset as string));
@@ -862,6 +866,7 @@ router.post('/', async (req: TenantRequest, res) => {
       userId: req.user?.userId,
       username: req.user?.username,
     });
+    invalidateARCache(req.tenantId!);
 
     res.status(201).json(result);
   } catch (error: any) {
@@ -1172,6 +1177,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
       userId: req.user?.userId,
       username: req.user?.username,
     });
+    invalidateARCache(req.tenantId!);
 
     res.json(result);
   } catch (error: any) {
@@ -1357,6 +1363,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       userId: req.user?.userId,
       username: req.user?.username,
     });
+    invalidateARCache(req.tenantId!);
 
     res.json({ success: true, id: result?.id || req.params.id });
   } catch (error) {

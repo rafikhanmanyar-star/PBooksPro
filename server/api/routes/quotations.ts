@@ -10,10 +10,15 @@ const getDb = () => getDatabaseService();
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const quotations = await db.query(
-      'SELECT * FROM quotations WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY date DESC, created_at DESC',
-      [req.tenantId]
-    );
+    const { limit, offset } = req.query;
+    const effectiveLimit = Math.min(parseInt(limit as string) || 10000, 50000);
+    let query = 'SELECT * FROM quotations WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY date DESC, created_at DESC LIMIT $2';
+    const params: any[] = [req.tenantId, effectiveLimit];
+    if (offset) {
+      query += ' OFFSET $3';
+      params.push(parseInt(offset as string));
+    }
+    const quotations = await db.query(query, params);
     res.json(quotations);
   } catch (error) {
     console.error('Error fetching quotations:', error);
