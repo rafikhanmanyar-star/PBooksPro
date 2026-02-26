@@ -166,6 +166,10 @@ export async function importData(
     projectSellingAgreements: any[];
     rentalInvoices: any[];
     loanTransactions: any[];
+    inventoryItems: any[];
+    vendors: any[];
+    purchaseBills: any[];
+    purchaseBillItems: any[];
   } = {
     contacts: [],
     projects: [],
