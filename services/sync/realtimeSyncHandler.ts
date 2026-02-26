@@ -732,7 +732,49 @@ class RealtimeSyncHandler {
       });
     });
 
-    console.log(`[RealtimeSyncHandler] 📡 Listening to ${Object.keys(EVENT_MAP).length} WebSocket events`);
+    // Listen for bulk import completion to refresh data for other users
+    this.wsClient.on('bulk_import:completed', (data: any) => {
+      this.handleBulkImportCompleted(data);
+    });
+
+    console.log(`[RealtimeSyncHandler] 📡 Listening to ${Object.keys(EVENT_MAP).length + 1} WebSocket events`);
+  }
+
+  /**
+   * Handle bulk import completion by re-fetching all data from the API.
+   * Skips if the event was triggered by the current user (they already refreshed locally).
+   */
+  private async handleBulkImportCompleted(data: any): Promise<void> {
+    const eventUserId = data?.userId || data?.user_id;
+    if (eventUserId && this.currentUserId && eventUserId === this.currentUserId) {
+      console.log('[RealtimeSyncHandler] Skipping bulk_import:completed from self');
+      return;
+    }
+
+    console.log('[RealtimeSyncHandler] Bulk import completed by another user, refreshing data...',
+      data?.importedEntities);
+
+    try {
+      const { getAppStateApiService } = await import('../api/appStateApi');
+      const apiService = getAppStateApiService();
+      let apiState: any;
+      try {
+        apiState = await apiService.loadStateBulk();
+      } catch {
+        apiState = await apiService.loadState();
+      }
+
+      if (apiState && this.dispatchCallback) {
+        this.dispatchCallback({
+          type: 'SET_STATE',
+          payload: apiState,
+          _isRemote: true,
+        } as any);
+        console.log('[RealtimeSyncHandler] Data refreshed after bulk import');
+      }
+    } catch (error) {
+      console.error('[RealtimeSyncHandler] Failed to refresh data after bulk import:', error);
+    }
   }
 
   /**

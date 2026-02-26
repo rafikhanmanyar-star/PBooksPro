@@ -5,34 +5,22 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
-let tenantColumnInfoCache: { hasOrgId: boolean; hasTenantId: boolean; hasPreviousAgreementId: boolean } | null = null;
+let columnInfoCache: { hasPreviousAgreementId: boolean } | null = null;
 
-async function getTenantColumnInfo() {
-  if (tenantColumnInfoCache) return tenantColumnInfoCache;
+async function getColumnInfo() {
+  if (columnInfoCache) return columnInfoCache;
   const db = getDb();
   const columns = await db.query(
     `SELECT column_name
      FROM information_schema.columns
      WHERE table_name = 'rental_agreements'
-       AND column_name IN ('org_id', 'tenant_id', 'previous_agreement_id')`
+       AND column_name = 'previous_agreement_id'`
   );
   const columnNames = new Set(columns.map((col: any) => col.column_name));
-  tenantColumnInfoCache = {
-    hasOrgId: columnNames.has('org_id'),
-    hasTenantId: columnNames.has('tenant_id'),
+  columnInfoCache = {
     hasPreviousAgreementId: columnNames.has('previous_agreement_id')
   };
-  return tenantColumnInfoCache;
-}
-
-function buildTenantClause(info: { hasOrgId: boolean; hasTenantId: boolean }, index: number) {
-  if (info.hasOrgId && info.hasTenantId) {
-    return `(org_id = $${index} OR tenant_id = $${index})`;
-  }
-  if (info.hasOrgId) {
-    return `org_id = $${index}`;
-  }
-  return `tenant_id = $${index}`;
+  return columnInfoCache;
 }
 
 /**
@@ -70,8 +58,7 @@ router.get('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const { status, propertyId } = req.query;
 
-    const tenantInfo = await getTenantColumnInfo();
-    let query = `SELECT * FROM rental_agreements WHERE ${buildTenantClause(tenantInfo, 1)} AND deleted_at IS NULL`;
+    let query = `SELECT * FROM rental_agreements WHERE org_id = $1 AND deleted_at IS NULL`;
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
@@ -117,9 +104,8 @@ router.get('/', async (req: TenantRequest, res) => {
 router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const tenantInfo = await getTenantColumnInfo();
     const agreements = await db.query(
-      `SELECT * FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
+      `SELECT * FROM rental_agreements WHERE id = $1 AND org_id = $2`,
       [req.params.id, req.tenantId]
     );
 
@@ -140,7 +126,7 @@ router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreement = req.body;
-    const tenantInfo = await getTenantColumnInfo();
+    const colInfo = await getColumnInfo();
 
     console.log('📝 POST /rental-agreements - Received request:', {
       tenantId: req.tenantId,
@@ -172,19 +158,12 @@ router.post('/', async (req: TenantRequest, res) => {
 
     // Check if agreement with this ID already exists and belongs to a different tenant
     if (agreement.id) {
-      const tenantColumns = [
-        tenantInfo.hasOrgId ? 'org_id' : null,
-        tenantInfo.hasTenantId ? 'tenant_id' : null
-      ].filter(Boolean);
-      const selectTenantColumns = tenantColumns.length > 0 ? `, ${tenantColumns.join(', ')}` : '';
       const existingAgreement = await db.query(
-        `SELECT id${selectTenantColumns} FROM rental_agreements WHERE id = $1`,
+        `SELECT id, org_id FROM rental_agreements WHERE id = $1`,
         [agreementId]
       );
 
-      const existingRow = existingAgreement[0];
-      const existingTenantId = existingRow?.org_id ?? existingRow?.tenant_id;
-      if (existingAgreement.length > 0 && existingTenantId !== req.tenantId) {
+      if (existingAgreement.length > 0 && existingAgreement[0].org_id !== req.tenantId) {
         return res.status(403).json({
           error: 'Forbidden',
           message: 'A rental agreement with this ID already exists in another organization'
@@ -194,7 +173,7 @@ router.post('/', async (req: TenantRequest, res) => {
 
     // Check if agreement exists to determine if this is a create or update
     const existing = await db.query(
-      `SELECT id, status, version FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
+      `SELECT id, status, version FROM rental_agreements WHERE id = $1 AND org_id = $2`,
       [agreementId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
@@ -229,7 +208,7 @@ router.post('/', async (req: TenantRequest, res) => {
             `UPDATE rental_agreements 
              SET status = $1, updated_at = NOW(),
                  version = COALESCE(version, 1) + 1
-             WHERE id = $2 AND ${buildTenantClause(tenantInfo, 3)}
+             WHERE id = $2 AND org_id = $3
              RETURNING *`,
             ['Renewed', agreementId, req.tenantId]
           );
@@ -256,17 +235,8 @@ router.post('/', async (req: TenantRequest, res) => {
     }
 
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
-    const insertColumns = ['id'];
-    const insertValues: any[] = [agreementId];
-
-    if (tenantInfo.hasOrgId) {
-      insertColumns.push('org_id');
-      insertValues.push(req.tenantId);
-    }
-    if (tenantInfo.hasTenantId) {
-      insertColumns.push('tenant_id');
-      insertValues.push(req.tenantId);
-    }
+    const insertColumns = ['id', 'org_id'];
+    const insertValues: any[] = [agreementId, req.tenantId];
 
     insertColumns.push(
       'agreement_number',
@@ -300,7 +270,7 @@ router.post('/', async (req: TenantRequest, res) => {
       agreement.ownerId || null
     );
 
-    if (tenantInfo.hasPreviousAgreementId) {
+    if (colInfo.hasPreviousAgreementId) {
       insertColumns.push('previous_agreement_id');
       insertValues.push(agreement.previousAgreementId || null);
     }
@@ -349,7 +319,7 @@ router.post('/', async (req: TenantRequest, res) => {
       'broker_fee = EXCLUDED.broker_fee',
       'owner_id = EXCLUDED.owner_id',
     ];
-    if (tenantInfo.hasPreviousAgreementId) {
+    if (colInfo.hasPreviousAgreementId) {
       updateSetClauses.push('previous_agreement_id = EXCLUDED.previous_agreement_id');
     }
     updateSetClauses.push(
@@ -365,7 +335,7 @@ router.post('/', async (req: TenantRequest, res) => {
       ON CONFLICT (id) 
       DO UPDATE SET
         ${updateSetClauses.join(',\n        ')}
-      WHERE (rental_agreements.org_id = $2 OR rental_agreements.tenant_id = $2) ${versionWhereClause}
+      WHERE rental_agreements.org_id = $2 ${versionWhereClause}
       RETURNING *`,
       upsertParams
     );
@@ -590,14 +560,14 @@ router.get('/:id/invoices', async (req: TenantRequest, res) => {
 router.post('/:id/renew', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const tenantInfo = await getTenantColumnInfo();
+    const colInfo = await getColumnInfo();
     const oldId = req.params.id;
     const body = req.body;
     // body: { newAgreementId, agreementNumber, startDate, endDate, monthlyRent, rentDueDate, securityDeposit, brokerId, brokerFee, description, ownerId, generateInvoices, invoiceSettings? }
 
     // 1. Fetch old agreement
     const oldRows = await db.query(
-      `SELECT * FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
+      `SELECT * FROM rental_agreements WHERE id = $1 AND org_id = $2`,
       [oldId, req.tenantId]
     );
     if (oldRows.length === 0) {
@@ -625,7 +595,7 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
 
     // 4. Mark old agreement as Renewed
     await db.query(
-      `UPDATE rental_agreements SET status = 'Renewed', updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
+      `UPDATE rental_agreements SET status = 'Renewed', updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND org_id = $2`,
       [oldId, req.tenantId]
     );
 
@@ -637,11 +607,8 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
 
     // 6. Create new agreement
     const newId = body.newAgreementId || `ra_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const insertCols = ['id'];
-    const insertVals: any[] = [newId];
-
-    if (tenantInfo.hasOrgId) { insertCols.push('org_id'); insertVals.push(req.tenantId); }
-    if (tenantInfo.hasTenantId) { insertCols.push('tenant_id'); insertVals.push(req.tenantId); }
+    const insertCols = ['id', 'org_id'];
+    const insertVals: any[] = [newId, req.tenantId];
 
     insertCols.push(
       'agreement_number', 'contact_id', 'property_id',
@@ -665,7 +632,7 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
       body.ownerId ?? old.owner_id ?? null
     );
 
-    if (tenantInfo.hasPreviousAgreementId) {
+    if (colInfo.hasPreviousAgreementId) {
       insertCols.push('previous_agreement_id');
       insertVals.push(oldId);
     }
@@ -812,14 +779,14 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
 router.post('/:id/terminate', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const tenantInfo = await getTenantColumnInfo();
+    const colInfo = await getColumnInfo();
     const agreementId = req.params.id;
     const body = req.body;
     // body: { endDate, status ('Terminated'|'Expired'), refundAction ('COMPANY_REFUND'|'OWNER_DIRECT'|'NONE'), refundAmount?, refundAccountId?, notes? }
 
     // 1. Fetch agreement
     const rows = await db.query(
-      `SELECT * FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
+      `SELECT * FROM rental_agreements WHERE id = $1 AND org_id = $2`,
       [agreementId, req.tenantId]
     );
     if (rows.length === 0) {
@@ -883,7 +850,7 @@ router.post('/:id/terminate', async (req: TenantRequest, res) => {
 
     const updateResult = await db.query(
       `UPDATE rental_agreements SET status = $1, end_date = $2, description = $3, updated_at = NOW(), version = COALESCE(version, 1) + 1
-       WHERE id = $4 AND ${buildTenantClause(tenantInfo, 5)}
+       WHERE id = $4 AND org_id = $5
        RETURNING *`,
       [body.status || 'Terminated', body.endDate, description, agreementId, req.tenantId]
     );
@@ -914,9 +881,8 @@ router.post('/:id/terminate', async (req: TenantRequest, res) => {
 router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const tenantInfo = await getTenantColumnInfo();
     const result = await db.query(
-      `UPDATE rental_agreements SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)} RETURNING id`,
+      `UPDATE rental_agreements SET deleted_at = NOW(), updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND org_id = $2 RETURNING id`,
       [req.params.id, req.tenantId]
     );
 

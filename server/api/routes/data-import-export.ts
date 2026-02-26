@@ -3,6 +3,7 @@ import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { generateTemplate } from '../../services/templateService.js';
 import { exportData } from '../../services/dataExportService.js';
 import { importData } from '../../services/dataImportService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 
@@ -125,6 +126,20 @@ router.post('/import', async (req: TenantRequest, res) => {
       req.user.userId,
       sheetName
     );
+
+    if (result.success && result.imported) {
+      const importedEntities = Object.entries(result.imported)
+        .filter(([, v]) => v.count > 0)
+        .map(([key]) => key);
+
+      if (importedEntities.length > 0) {
+        emitToTenant(req.tenantId, WS_EVENTS.BULK_IMPORT_COMPLETED, {
+          importedEntities,
+          userId: req.user.userId,
+          username: req.user.username,
+        });
+      }
+    }
 
     res.json(result);
   } catch (error: any) {

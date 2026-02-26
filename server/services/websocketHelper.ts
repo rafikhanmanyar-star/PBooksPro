@@ -144,6 +144,7 @@ export const WS_EVENTS = {
 
 
   DATA_UPDATED: 'data:updated', // Generic event for any data update
+  BULK_IMPORT_COMPLETED: 'bulk_import:completed', // Emitted after a successful bulk import so other clients refresh
 
   // Plan Amenities
   PLAN_AMENITY_CREATED: 'plan_amenity:created',

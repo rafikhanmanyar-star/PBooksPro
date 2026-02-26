@@ -42,8 +42,7 @@ const ENTITY_QUERIES: { key: string; table: string; tenantColumn: string }[] = [
   { key: 'documents', table: 'documents', tenantColumn: 'tenant_id' },
   { key: 'recurring_invoice_templates', table: 'recurring_invoice_templates', tenantColumn: 'tenant_id' },
   { key: 'pm_cycle_allocations', table: 'pm_cycle_allocations', tenantColumn: 'tenant_id' },
-  // NOTE: rental_agreements.org_id was renamed to tenant_id in schema v7
-  { key: 'rental_agreements', table: 'rental_agreements', tenantColumn: 'tenant_id' },
+  { key: 'rental_agreements', table: 'rental_agreements', tenantColumn: 'org_id' },
   { key: 'project_agreements', table: 'project_agreements', tenantColumn: 'tenant_id' },
   { key: 'installment_plans', table: 'installment_plans', tenantColumn: 'tenant_id' },
   { key: 'vendors', table: 'vendors', tenantColumn: 'tenant_id' },
@@ -64,7 +63,7 @@ const BULK_ENTITIES: { responseKey: string; table: string; tenantColumn: string 
   { responseKey: 'budgets', table: 'budgets', tenantColumn: 'tenant_id' },
   { responseKey: 'planAmenities', table: 'plan_amenities', tenantColumn: 'tenant_id' },
   { responseKey: 'installmentPlans', table: 'installment_plans', tenantColumn: 'tenant_id' },
-  { responseKey: 'rentalAgreements', table: 'rental_agreements', tenantColumn: 'tenant_id' },
+  { responseKey: 'rentalAgreements', table: 'rental_agreements', tenantColumn: 'org_id' },
   { responseKey: 'projectAgreements', table: 'project_agreements', tenantColumn: 'tenant_id' },
   { responseKey: 'contracts', table: 'contracts', tenantColumn: 'tenant_id' },
   { responseKey: 'salesReturns', table: 'sales_returns', tenantColumn: 'tenant_id' },
@@ -167,30 +166,8 @@ router.get('/changes', async (req: TenantRequest, res) => {
           return { key, rows: rowArray.map(transform), hasMore: false };
         }
       } catch (err) {
-        if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
-          try {
-            const fallbackRows = await db.query(
-              `SELECT * FROM ${table} WHERE org_id = $1 AND updated_at > $2 ORDER BY updated_at ASC LIMIT $3`,
-              [tenantId, since, limit + 1]
-            );
-            const rowArray = fallbackRows as any[];
-            const transform = (row: any) => {
-              const camel = rowToCamel(row);
-              return stripHeavy ? stripHeavyColumns(camel, table) : camel;
-            };
-            if (rowArray.length > limit) {
-              return { key, rows: rowArray.slice(0, limit).map(transform), hasMore: true };
-            } else {
-              return { key, rows: rowArray.map(transform), hasMore: false };
-            }
-          } catch {
-            console.warn(`[stateChanges] Skip ${table} (both tenant_id and org_id failed)`);
-            return { key, rows: [], hasMore: false };
-          }
-        } else {
-          console.warn(`[stateChanges] Skip ${table}:`, (err as Error).message);
-          return { key, rows: [], hasMore: false };
-        }
+        console.warn(`[stateChanges] Skip ${table}:`, (err as Error).message);
+        return { key, rows: [], hasMore: false };
       }
     });
 
@@ -255,18 +232,6 @@ async function fetchTable(
         return (rows as any[]).map((row) => rowToCamel(row));
       } catch (fallbackErr) {
         console.warn(`[state/bulk] Skip ${table} (no deleted_at and base query failed):`, (fallbackErr as Error).message);
-        return [];
-      }
-    }
-    if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
-      try {
-        const fallbackRows = await db.query(
-          `SELECT * FROM ${table} WHERE org_id = $1`,
-          [tenantId]
-        );
-        return (fallbackRows as any[]).map((row) => rowToCamel(row));
-      } catch {
-        console.warn(`[state/bulk] Skip ${table} (both tenant_id and org_id failed)`);
         return [];
       }
     }
@@ -393,30 +358,6 @@ router.get('/bulk-chunked', async (req: TenantRequest, res) => {
             return { responseKey, rows: camelRows, total };
           } catch (fallbackErr) {
             console.warn(`[bulk-chunked] Skip ${table}:`, (fallbackErr as Error).message);
-            return { responseKey, rows: [], total: 0 };
-          }
-        }
-        // Fallback for rental_agreements with org_id
-        if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
-          try {
-            const countResult = await db.query(
-              `SELECT COUNT(*) as count FROM ${table} WHERE org_id = $1`,
-              [tenantId]
-            );
-            const total = parseInt((countResult as any[])[0]?.count || '0');
-
-            const fallbackRows = await db.query(
-              `SELECT * FROM ${table} WHERE org_id = $1 ORDER BY id LIMIT $2 OFFSET $3`,
-              [tenantId, limit, offset]
-            );
-            const camelRows = (fallbackRows as any[]).map(row => rowToCamel(row));
-
-            const entityHasMore = offset + camelRows.length < total;
-            if (entityHasMore) hasMore = true;
-
-            return { responseKey, rows: camelRows, total };
-          } catch {
-            console.warn(`[bulk-chunked] Skip ${table} (both tenant_id and org_id failed)`);
             return { responseKey, rows: [], total: 0 };
           }
         }
