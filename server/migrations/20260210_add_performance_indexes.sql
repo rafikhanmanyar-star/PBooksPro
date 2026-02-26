@@ -57,7 +57,12 @@ CREATE INDEX IF NOT EXISTS idx_invoices_contact ON invoices(contact_id) WHERE co
 CREATE INDEX IF NOT EXISTS idx_bills_vendor ON bills(vendor_id) WHERE vendor_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_bills_contact ON bills(contact_id) WHERE contact_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_properties_building ON properties(building_id) WHERE building_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_units_property ON units(property_id) WHERE property_id IS NOT NULL;
+-- units.property_id may not exist in older schemas (added later); create index only if column exists
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'units' AND column_name = 'property_id') THEN
+        CREATE INDEX IF NOT EXISTS idx_units_property ON units(property_id) WHERE property_id IS NOT NULL;
+    END IF;
+END $$;
 
 -- ============================================================
 -- 4. Session and auth indexes (speeds up middleware lookups)

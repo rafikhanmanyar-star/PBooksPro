@@ -3,6 +3,7 @@ import { useAppContext } from '../../context/AppContext';
 import { Invoice, InvoiceStatus, InvoiceType, Transaction, TransactionType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import RentalFinancialGrid, { FinancialRecord } from '../invoices/RentalFinancialGrid';
+import RentalARTreeView from './RentalARTreeView';
 import InvoiceDetailView from '../invoices/InvoiceDetailView';
 import RentalPaymentModal from '../invoices/RentalPaymentModal';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
@@ -14,6 +15,8 @@ import { useNotification } from '../../context/NotificationContext';
 import { ImportType } from '../../services/importService';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useGenerateDueInvoices } from '../../hooks/useGenerateDueInvoices';
+import { InvoicesApiRepository } from '../../services/api/repositories/invoicesApi';
+import type { ViewBy, AgingFilter } from '../../services/api/rentalArApi';
 
 interface RentalInvoicesContentProps {
   onCreateRentalClick?: () => void;
@@ -45,6 +48,13 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('All');
   const [dateFilter, setDateFilter] = useState<string>('All');
+
+  // AR Tree view (Summary vs Invoice)
+  const [viewMode, setViewMode] = useLocalStorage<'summary' | 'invoice'>('rental_invoices_viewMode', 'summary');
+  const [arViewBy, setArViewBy] = useLocalStorage<ViewBy>('rental_invoices_arViewBy', 'tenant');
+  const [arAging, setArAging] = useLocalStorage<AgingFilter>('rental_invoices_arAging', 'all');
+
+  const invoicesApi = useMemo(() => new InvoicesApiRepository(), []);
 
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
   const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
@@ -294,6 +304,23 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     }
   }, []);
 
+  const handleARTreeInvoiceClick = useCallback(
+    async (invoiceId: string) => {
+      const fromState = state.invoices.find(i => i.id === invoiceId);
+      if (fromState) {
+        setViewInvoice(fromState);
+        return;
+      }
+      try {
+        const inv = await invoicesApi.findById(invoiceId);
+        if (inv) setViewInvoice(inv);
+      } catch {
+        // already handled by API
+      }
+    },
+    [state.invoices, invoicesApi]
+  );
+
   const handleEditInvoice = useCallback((invoice: Invoice) => {
     setInvoiceToEdit(invoice);
     setViewInvoice(null);
@@ -413,105 +440,188 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-2 flex-wrap">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {['All', InvoiceStatus.UNPAID, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE].map(
-            s => (
+      {/* View mode toggle: Summary (AR Tree) vs Invoice (flat table) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-slate-500 uppercase">View:</span>
+        <button
+          type="button"
+          onClick={() => setViewMode('summary')}
+          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            viewMode === 'summary' ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          Summary View
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('invoice')}
+          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            viewMode === 'invoice' ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          Invoice View
+        </button>
+      </div>
+
+      {/* Filter Bar - different for Summary vs Invoice view */}
+      {viewMode === 'summary' ? (
+        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-semibold text-slate-500 uppercase">Group by:</span>
+            {(['tenant', 'property', 'owner', 'unit'] as const).map(g => (
               <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                  statusFilter === s
+                key={g}
+                type="button"
+                onClick={() => setArViewBy(g)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize ${
+                  arViewBy === g ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-semibold text-slate-500 uppercase">Aging:</span>
+            <select
+              value={arAging}
+              onChange={e => setArAging(e.target.value as AgingFilter)}
+              className={filterInputClass}
+              style={{ width: '140px' }}
+            >
+              <option value="all">All</option>
+              <option value="overdue">Only Overdue</option>
+              <option value="0-30">0–30 days</option>
+              <option value="31-60">31–60 days</option>
+              <option value="61-90">61–90 days</option>
+              <option value="90+">90+ days</option>
+            </select>
+          </div>
+          <div className="relative flex-1 min-w-[200px]">
+            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+              <div className="w-4 h-4">{ICONS.search}</div>
+            </div>
+            <input
+              type="text"
+              placeholder="Search tenant, property, unit..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 pr-3 py-1.5 w-full text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-accent/50 focus:border-accent"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {['All', InvoiceStatus.UNPAID, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE].map(
+              s => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                    statusFilter === s
+                      ? 'bg-accent text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {s}
+                </button>
+              )
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-semibold text-slate-500 uppercase">View by:</span>
+            {['tenant', 'owner', 'property', 'building'].map(g => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => handleSetGroupBy(g as typeof groupBy)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize ${
+                  groupBy === g
                     ? 'bg-accent text-white'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                {s}
+                {g}
               </button>
-            )
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-semibold text-slate-500 uppercase">View by:</span>
-          {['tenant', 'owner', 'property', 'building'].map(g => (
-            <button
-              key={g}
-              type="button"
-              onClick={() => handleSetGroupBy(g as typeof groupBy)}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize ${
-                groupBy === g
-                  ? 'bg-accent text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {g}
-            </button>
-          ))}
-        </div>
-        <select
-          value={entityFilterId}
-          onChange={e => setEntityFilterId(e.target.value)}
-          className={filterInputClass}
-          style={{ width: '180px' }}
-        >
-          <option value="all">
-            All {groupBy === 'tenant' ? 'Tenants' : groupBy === 'owner' ? 'Owners' : groupBy === 'property' ? 'Properties' : 'Buildings'}
-          </option>
-          {groupBy === 'tenant' &&
-            tenantsWithInvoices.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
             ))}
-          {groupBy === 'owner' &&
-            ownersWithInvoices.map(o => (
-              <option key={o.id} value={o.id}>{o.name}</option>
-            ))}
-          {groupBy === 'property' &&
-            propertiesWithInvoices.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          {groupBy === 'building' &&
-            state.buildings.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-        </select>
-        <select
-          value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          className={filterInputClass}
-          style={{ width: '130px' }}
-        >
-          {availableTypeOptions.map(t => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
-        <select
-          value={dateFilter}
-          onChange={e => setDateFilter(e.target.value)}
-          className={filterInputClass}
-          style={{ width: '130px' }}
-        >
-          <option value="All">All Dates</option>
-          <option value="This Month">This Month</option>
-          <option value="Last Month">Last Month</option>
-        </select>
-        <div className="relative flex-1 min-w-[200px]">
-          <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
-            <div className="w-4 h-4">{ICONS.search}</div>
           </div>
-          <input
-            type="text"
-            placeholder="Search invoice #, tenant, property..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9 pr-3 py-1.5 w-full text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-accent/50 focus:border-accent"
-          />
+          <select
+            value={entityFilterId}
+            onChange={e => setEntityFilterId(e.target.value)}
+            className={filterInputClass}
+            style={{ width: '180px' }}
+          >
+            <option value="all">
+              All {groupBy === 'tenant' ? 'Tenants' : groupBy === 'owner' ? 'Owners' : groupBy === 'property' ? 'Properties' : 'Buildings'}
+            </option>
+            {groupBy === 'tenant' &&
+              tenantsWithInvoices.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            {groupBy === 'owner' &&
+              ownersWithInvoices.map(o => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            {groupBy === 'property' &&
+              propertiesWithInvoices.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            {groupBy === 'building' &&
+              state.buildings.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+          </select>
+          <select
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+            className={filterInputClass}
+            style={{ width: '130px' }}
+          >
+            {availableTypeOptions.map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            className={filterInputClass}
+            style={{ width: '130px' }}
+          >
+            <option value="All">All Dates</option>
+            <option value="This Month">This Month</option>
+            <option value="Last Month">Last Month</option>
+          </select>
+          <div className="relative flex-1 min-w-[200px]">
+            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+              <div className="w-4 h-4">{ICONS.search}</div>
+            </div>
+            <input
+              type="text"
+              placeholder="Search invoice #, tenant, property..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 pr-3 py-1.5 w-full text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-accent/50 focus:border-accent"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Invoice Grid - fills remaining space so footer sits at bottom */}
+      {/* Content: AR Tree (Summary) or Invoice Grid (Invoice View) */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        <RentalFinancialGrid
+        {viewMode === 'summary' ? (
+          <RentalARTreeView
+            viewBy={arViewBy}
+            aging={arAging}
+            search={searchQuery}
+            onInvoiceClick={handleARTreeInvoiceClick}
+            onRecordPayment={id => {
+              const inv = state.invoices.find(i => i.id === id);
+              if (inv) handleRecordPayment(inv);
+            }}
+          />
+        ) : (
+          <RentalFinancialGrid
           records={financialRecords}
           onInvoiceClick={handleInvoiceClick}
           onPaymentClick={handlePaymentClick}
@@ -534,6 +644,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           onDateFilterChange={setDateFilter}
           hideTypeDateFiltersInToolbar
         />
+        )}
       </div>
 
       {/* Detail Panel Sidebar */}

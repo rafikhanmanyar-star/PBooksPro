@@ -48,12 +48,6 @@ router.put('/me', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Tenant not found' });
     }
 
-    // Emit WebSocket event
-    emitToTenant(req.tenantId!, WS_EVENTS.SUPPLIER_PROMOTED, {
-      tenantId: result[0].id,
-      isSupplier: result[0].is_supplier
-    });
-
     res.json(result[0]);
   } catch (error: any) {
     console.error('Error updating tenant:', error);
