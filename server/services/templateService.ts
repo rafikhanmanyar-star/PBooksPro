@@ -323,7 +323,7 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
             contactName: rows[0].contact_name || ''
           }];
         }
-      }
+      },
       {
         name: 'InventoryItems',
         headers: ['name', 'unitType', 'pricePerUnit', 'parentItemName', 'description'],
