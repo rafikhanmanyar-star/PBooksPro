@@ -40,6 +40,10 @@ export interface ImportResult {
     categories: { count: number; skipped: number };
     accounts: { count: number; skipped: number };
     projectSellingAgreements: { count: number; skipped: number };
+    inventoryItems: { count: number; skipped: number };
+    vendors: { count: number; skipped: number };
+    purchaseBills: { count: number; skipped: number };
+    purchaseBillItems: { count: number; skipped: number };
   };
   summary: {
     totalRows: number;
@@ -86,7 +90,11 @@ export async function importData(
     { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'] },
     { name: 'ProjectSellingAgreements', dependencies: ['Projects', 'Units', 'Contacts'] },
     { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'] },
-    { name: 'LoanTransactions', dependencies: ['Accounts'] }
+    { name: 'LoanTransactions', dependencies: ['Accounts'] },
+    { name: 'InventoryItems', dependencies: [] },
+    { name: 'Vendors', dependencies: [] },
+    { name: 'PurchaseBills', dependencies: ['Vendors'] },
+    { name: 'PurchaseBillItems', dependencies: ['PurchaseBills', 'InventoryItems'] }
   ];
 
   // If single sheet import, filter to that sheet only
@@ -169,7 +177,11 @@ export async function importData(
     rentalAgreements: [],
     projectSellingAgreements: [],
     rentalInvoices: [],
-    loanTransactions: []
+    loanTransactions: [],
+    inventoryItems: [],
+    vendors: [],
+    purchaseBills: [],
+    purchaseBillItems: []
   };
 
   const sheetErrors: { [sheetName: string]: ValidationError[] } = {};
@@ -253,7 +265,11 @@ export async function importData(
     rentalAgreements: { count: 0, skipped: 0 },
     projectSellingAgreements: { count: 0, skipped: 0 },
     rentalInvoices: { count: 0, skipped: 0 },
-    loanTransactions: { count: 0, skipped: 0 }
+    loanTransactions: { count: 0, skipped: 0 },
+    inventoryItems: { count: 0, skipped: 0 },
+    vendors: { count: 0, skipped: 0 },
+    purchaseBills: { count: 0, skipped: 0 },
+    purchaseBillItems: { count: 0, skipped: 0 }
   };
 
   const sheetResults: SheetResult[] = [];
@@ -568,6 +584,99 @@ export async function importData(
               importedRows++;
             }
             break;
+
+          case 'InventoryItems':
+            for (const item of validatedData.inventoryItems) {
+              const existing = await client.query(
+                'SELECT id FROM inventory_items WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+                [tenantId, item.name.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.inventoryItems.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `inv_item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+              let parentId = item.parent_id || null;
+              if (!parentId && item.parentItemName) {
+                const parent = await client.query(
+                  'SELECT id FROM inventory_items WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+                  [tenantId, item.parentItemName.trim()]
+                );
+                if (parent.rows.length > 0) parentId = parent.rows[0].id;
+              }
+
+              await client.query(
+                `INSERT INTO inventory_items (id, tenant_id, user_id, name, parent_id, unit_type, price_per_unit, description, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+                [id, tenantId, userId, item.name.trim(), parentId, item.unit_type, item.price_per_unit, item.description || null]
+              );
+              imported.inventoryItems.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
+
+          case 'Vendors':
+            for (const vendor of validatedData.vendors) {
+              const existing = await client.query(
+                'SELECT id FROM vendors WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+                [tenantId, vendor.name.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.vendors.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `vendor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO vendors (id, tenant_id, name, contact_no, company_name, address, description, is_active, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())`,
+                [id, tenantId, vendor.name.trim(), vendor.contact_no || null, vendor.company_name || null, vendor.address || null, vendor.description || null]
+              );
+              imported.vendors.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
+
+          case 'PurchaseBills':
+            for (const bill of validatedData.purchaseBills) {
+              const existing = await client.query(
+                'SELECT id FROM purchase_bills WHERE tenant_id = $1 AND LOWER(TRIM(bill_number)) = LOWER($2)',
+                [tenantId, bill.bill_number.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.purchaseBills.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `pb_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO purchase_bills (id, tenant_id, user_id, bill_number, vendor_id, issue_date, due_date, total_amount, paid_amount, status, description, items_received, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())`,
+                [id, tenantId, userId, bill.bill_number.trim(), bill.vendor_id, bill.issue_date, bill.due_date || null, bill.total_amount, bill.paid_amount || 0, bill.status || 'Draft', bill.description || null, bill.items_received || false]
+              );
+              imported.purchaseBills.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
+
+          case 'PurchaseBillItems':
+            for (const item of validatedData.purchaseBillItems) {
+              const id = `pbi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO purchase_bill_items (id, tenant_id, purchase_bill_id, inventory_item_id, quantity, price_per_unit, total_amount, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+                [id, tenantId, item.purchase_bill_id, item.inventory_item_id, item.quantity, item.price_per_unit, item.total_amount]
+              );
+              imported.purchaseBillItems.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
         }
 
         // Record sheet result
@@ -678,6 +787,18 @@ async function validateSheet(
         break;
       case 'LoanTransactions':
         await validateLoanTransactionRow(row, excelRow, db, tenantId, validatedData.loanTransactions, validationErrors);
+        break;
+      case 'InventoryItems':
+        await validateInventoryItemRow(row, excelRow, db, tenantId, validatedData.inventoryItems, validationErrors, duplicates);
+        break;
+      case 'Vendors':
+        await validateVendorRow(row, excelRow, db, tenantId, validatedData.vendors, validationErrors, duplicates);
+        break;
+      case 'PurchaseBills':
+        await validatePurchaseBillRow(row, excelRow, db, tenantId, validatedData.purchaseBills, validationErrors, duplicates);
+        break;
+      case 'PurchaseBillItems':
+        await validatePurchaseBillItemRow(row, excelRow, db, tenantId, validatedData.purchaseBillItems, validationErrors);
         break;
     }
   }
@@ -1805,5 +1926,231 @@ async function validateProjectSellingAgreementRow(
     discount_names: (row.discount_names || row.DiscountNames || '').toString().trim(),
     discount_amounts: (row.discount_amounts || row.DiscountAmounts || '').toString().trim(),
     discount_category_names: (row.discount_category_names || row.DiscountCategoryNames || '').toString().trim()
+  });
+}
+
+const VALID_UNIT_TYPES = ['LENGTH_FEET', 'AREA_SQFT', 'VOLUME_CUFT', 'QUANTITY'];
+
+async function validateInventoryItemRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[],
+  duplicates: DuplicateEntry[]
+): Promise<void> {
+  const name = (row.name ?? '').toString().trim();
+  if (!name) {
+    errors.push({ sheet: 'InventoryItems', row: excelRow, field: 'name', value: row.name, message: 'Name is required' });
+    return;
+  }
+
+  const unitType = (row.unitType ?? row.unit_type ?? '').toString().trim();
+  if (!unitType) {
+    errors.push({ sheet: 'InventoryItems', row: excelRow, field: 'unitType', value: row.unitType, message: 'Unit type is required' });
+    return;
+  }
+  if (!VALID_UNIT_TYPES.includes(unitType)) {
+    errors.push({ sheet: 'InventoryItems', row: excelRow, field: 'unitType', value: unitType, message: `Invalid unit type. Use one of: ${VALID_UNIT_TYPES.join(', ')}` });
+    return;
+  }
+
+  const pricePerUnit = parseFloat((row.pricePerUnit ?? row.price_per_unit ?? '').toString());
+  if (isNaN(pricePerUnit) || pricePerUnit < 0) {
+    errors.push({ sheet: 'InventoryItems', row: excelRow, field: 'pricePerUnit', value: row.pricePerUnit, message: 'Price per unit must be a valid non-negative number' });
+    return;
+  }
+
+  const existing = await db.query(
+    'SELECT id FROM inventory_items WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, name]
+  );
+  if (existing.length > 0) {
+    duplicates.push({ sheet: 'InventoryItems', row: excelRow, name, reason: 'Inventory item with this name already exists' });
+    return;
+  }
+
+  const parentItemName = (row.parentItemName ?? row.parent_item_name ?? '').toString().trim();
+  let parent_id: string | null = null;
+  if (parentItemName) {
+    const parent = await db.query(
+      'SELECT id FROM inventory_items WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+      [tenantId, parentItemName]
+    );
+    if (parent.length > 0) {
+      parent_id = parent[0].id;
+    }
+  }
+
+  validatedData.push({
+    name,
+    unit_type: unitType,
+    price_per_unit: pricePerUnit,
+    parent_id,
+    parentItemName: parentItemName || null,
+    description: (row.description ?? '').toString().trim() || null
+  });
+}
+
+async function validateVendorRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[],
+  duplicates: DuplicateEntry[]
+): Promise<void> {
+  const name = (row.name ?? '').toString().trim();
+  if (!name) {
+    errors.push({ sheet: 'Vendors', row: excelRow, field: 'name', value: row.name, message: 'Name is required' });
+    return;
+  }
+
+  const existing = await db.query(
+    'SELECT id FROM vendors WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, name]
+  );
+  if (existing.length > 0) {
+    duplicates.push({ sheet: 'Vendors', row: excelRow, name, reason: 'Vendor with this name already exists' });
+    return;
+  }
+
+  validatedData.push({
+    name,
+    contact_no: (row.contactNo ?? row.contact_no ?? '').toString().trim() || null,
+    company_name: (row.companyName ?? row.company_name ?? '').toString().trim() || null,
+    address: (row.address ?? '').toString().trim() || null,
+    description: (row.description ?? '').toString().trim() || null
+  });
+}
+
+async function validatePurchaseBillRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[],
+  duplicates: DuplicateEntry[]
+): Promise<void> {
+  const billNumber = (row.billNumber ?? row.bill_number ?? '').toString().trim();
+  if (!billNumber) {
+    errors.push({ sheet: 'PurchaseBills', row: excelRow, field: 'billNumber', value: row.billNumber, message: 'Bill number is required' });
+    return;
+  }
+
+  const vendorName = (row.vendorName ?? row.vendor_name ?? '').toString().trim();
+  if (!vendorName) {
+    errors.push({ sheet: 'PurchaseBills', row: excelRow, field: 'vendorName', value: row.vendorName, message: 'Vendor name is required' });
+    return;
+  }
+
+  const vendor = await db.query(
+    'SELECT id FROM vendors WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, vendorName]
+  );
+  if (vendor.length === 0) {
+    errors.push({ sheet: 'PurchaseBills', row: excelRow, field: 'vendorName', value: vendorName, message: `Vendor "${vendorName}" not found` });
+    return;
+  }
+
+  const issueDate = (row.issueDate ?? row.issue_date ?? '').toString().trim();
+  if (!issueDate) {
+    errors.push({ sheet: 'PurchaseBills', row: excelRow, field: 'issueDate', value: row.issueDate, message: 'Issue date is required' });
+    return;
+  }
+
+  const totalAmount = parseFloat((row.totalAmount ?? row.total_amount ?? '').toString());
+  if (isNaN(totalAmount) || totalAmount < 0) {
+    errors.push({ sheet: 'PurchaseBills', row: excelRow, field: 'totalAmount', value: row.totalAmount, message: 'Total amount must be a valid non-negative number' });
+    return;
+  }
+
+  const existing = await db.query(
+    'SELECT id FROM purchase_bills WHERE tenant_id = $1 AND LOWER(TRIM(bill_number)) = LOWER($2)',
+    [tenantId, billNumber]
+  );
+  if (existing.length > 0) {
+    duplicates.push({ sheet: 'PurchaseBills', row: excelRow, name: billNumber, reason: 'Purchase bill with this number already exists' });
+    return;
+  }
+
+  const paidAmount = parseFloat((row.paidAmount ?? row.paid_amount ?? '0').toString()) || 0;
+  const itemsReceivedRaw = (row.itemsReceived ?? row.items_received ?? '').toString().trim().toLowerCase();
+  const itemsReceived = itemsReceivedRaw === 'true' || itemsReceivedRaw === '1' || itemsReceivedRaw === 'yes';
+
+  validatedData.push({
+    bill_number: billNumber,
+    vendor_id: vendor[0].id,
+    issue_date: issueDate,
+    due_date: (row.dueDate ?? row.due_date ?? '').toString().trim() || null,
+    total_amount: totalAmount,
+    paid_amount: paidAmount,
+    status: (row.status ?? '').toString().trim() || 'Draft',
+    description: (row.description ?? '').toString().trim() || null,
+    items_received: itemsReceived
+  });
+}
+
+async function validatePurchaseBillItemRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[]
+): Promise<void> {
+  const billNumber = (row.billNumber ?? row.bill_number ?? '').toString().trim();
+  if (!billNumber) {
+    errors.push({ sheet: 'PurchaseBillItems', row: excelRow, field: 'billNumber', value: row.billNumber, message: 'Bill number is required' });
+    return;
+  }
+
+  const bill = await db.query(
+    'SELECT id FROM purchase_bills WHERE tenant_id = $1 AND LOWER(TRIM(bill_number)) = LOWER($2)',
+    [tenantId, billNumber]
+  );
+  if (bill.length === 0) {
+    errors.push({ sheet: 'PurchaseBillItems', row: excelRow, field: 'billNumber', value: billNumber, message: `Purchase bill "${billNumber}" not found` });
+    return;
+  }
+
+  const inventoryItemName = (row.inventoryItemName ?? row.inventory_item_name ?? '').toString().trim();
+  if (!inventoryItemName) {
+    errors.push({ sheet: 'PurchaseBillItems', row: excelRow, field: 'inventoryItemName', value: row.inventoryItemName, message: 'Inventory item name is required' });
+    return;
+  }
+
+  const invItem = await db.query(
+    'SELECT id FROM inventory_items WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, inventoryItemName]
+  );
+  if (invItem.length === 0) {
+    errors.push({ sheet: 'PurchaseBillItems', row: excelRow, field: 'inventoryItemName', value: inventoryItemName, message: `Inventory item "${inventoryItemName}" not found` });
+    return;
+  }
+
+  const quantity = parseFloat((row.quantity ?? '').toString());
+  if (isNaN(quantity) || quantity <= 0) {
+    errors.push({ sheet: 'PurchaseBillItems', row: excelRow, field: 'quantity', value: row.quantity, message: 'Quantity must be a positive number' });
+    return;
+  }
+
+  const pricePerUnit = parseFloat((row.pricePerUnit ?? row.price_per_unit ?? '').toString());
+  if (isNaN(pricePerUnit) || pricePerUnit < 0) {
+    errors.push({ sheet: 'PurchaseBillItems', row: excelRow, field: 'pricePerUnit', value: row.pricePerUnit, message: 'Price per unit must be a valid non-negative number' });
+    return;
+  }
+
+  const totalAmount = parseFloat((row.totalAmount ?? row.total_amount ?? '').toString()) || (quantity * pricePerUnit);
+
+  validatedData.push({
+    purchase_bill_id: bill[0].id,
+    inventory_item_id: invItem[0].id,
+    quantity,
+    price_per_unit: pricePerUnit,
+    total_amount: totalAmount
   });
 }

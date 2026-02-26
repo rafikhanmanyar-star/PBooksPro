@@ -430,6 +430,42 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'billNumber', 'BillNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
     };
 
+    // InventoryItems
+    schemas.InventoryItems = {
+        sheetName: 'InventoryItems',
+        version: '1.0',
+        requiredFields: ['name', 'unitType', 'pricePerUnit'],
+        optionalFields: ['parentItemName', 'description'],
+        allowedFields: new Set(['name', 'unitType', 'pricePerUnit', 'parentItemName', 'description'])
+    };
+
+    // Vendors
+    schemas.Vendors = {
+        sheetName: 'Vendors',
+        version: '1.0',
+        requiredFields: ['name'],
+        optionalFields: ['contactNo', 'companyName', 'address', 'description'],
+        allowedFields: new Set(['name', 'contactNo', 'companyName', 'address', 'description'])
+    };
+
+    // PurchaseBills
+    schemas.PurchaseBills = {
+        sheetName: 'PurchaseBills',
+        version: '1.0',
+        requiredFields: ['billNumber', 'vendorName', 'issueDate', 'totalAmount'],
+        optionalFields: ['status', 'dueDate', 'paidAmount', 'description', 'itemsReceived'],
+        allowedFields: new Set(['billNumber', 'vendorName', 'issueDate', 'totalAmount', 'status', 'dueDate', 'paidAmount', 'description', 'itemsReceived'])
+    };
+
+    // PurchaseBillItems
+    schemas.PurchaseBillItems = {
+        sheetName: 'PurchaseBillItems',
+        version: '1.0',
+        requiredFields: ['billNumber', 'inventoryItemName', 'quantity', 'pricePerUnit'],
+        optionalFields: ['totalAmount'],
+        allowedFields: new Set(['billNumber', 'inventoryItemName', 'quantity', 'pricePerUnit', 'totalAmount'])
+    };
+
     // LoanTransactions (bank account required; use Bank-type account name)
     schemas.LoanTransactions = {
         sheetName: 'LoanTransactions',

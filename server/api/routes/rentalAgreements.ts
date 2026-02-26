@@ -40,9 +40,15 @@ function transformRentalAgreement(dbResult: any): any {
     rentDueDate: dbResult.rent_due_date !== undefined ? dbResult.rent_due_date : dbResult.rentDueDate,
     status: dbResult.status,
     description: dbResult.description,
-    securityDeposit: dbResult.security_deposit !== undefined ? dbResult.security_deposit : dbResult.securityDeposit,
+    securityDeposit: (() => {
+      const val = dbResult.security_deposit ?? dbResult.securityDeposit;
+      return val != null ? Number(val) : undefined;
+    })(),
     brokerId: dbResult.broker_id || dbResult.brokerId,
-    brokerFee: dbResult.broker_fee !== undefined ? dbResult.broker_fee : dbResult.brokerFee,
+    brokerFee: (() => {
+      const val = dbResult.broker_fee ?? dbResult.brokerFee;
+      return val != null ? Number(val) : undefined;
+    })(),
     ownerId: dbResult.owner_id || dbResult.ownerId,
     previousAgreementId: dbResult.previous_agreement_id || dbResult.previousAgreementId || null,
     orgId: dbResult.org_id || dbResult.orgId,

@@ -49,6 +49,29 @@ function sortByParentOrder<T>(
 export class AppStateRepository {
     private db = getDatabaseService();
     private static saveQueue: Promise<void> = Promise.resolve();
+    private static upstreamSyncTimer: ReturnType<typeof setTimeout> | null = null;
+    private static readonly UPSTREAM_SYNC_DEBOUNCE_MS = 3000;
+
+    /**
+     * Debounced upstream sync trigger.
+     * After outbox operations are enqueued, schedule a background upstream push
+     * so other online org users receive changes promptly (not just on login/reconnection).
+     */
+    static scheduleUpstreamSync(tenantId: string): void {
+        if (AppStateRepository.upstreamSyncTimer) {
+            clearTimeout(AppStateRepository.upstreamSyncTimer);
+        }
+        AppStateRepository.upstreamSyncTimer = setTimeout(async () => {
+            AppStateRepository.upstreamSyncTimer = null;
+            try {
+                const { getBidirectionalSyncService } = await import('../../sync/bidirectionalSyncService');
+                const bidir = getBidirectionalSyncService();
+                await bidir.runSync(tenantId);
+            } catch (err) {
+                console.warn('[AppStateRepository] Background upstream sync failed (non-critical):', err);
+            }
+        }, AppStateRepository.UPSTREAM_SYNC_DEBOUNCE_MS);
+    }
 
     // Initialize all repositories
     private usersRepo = new UsersRepository();
@@ -360,13 +383,17 @@ export class AppStateRepository {
                     rentDueDate: typeof ra.rentDueDate === 'number' ? ra.rentDueDate : (typeof ra.rent_due_date === 'number' ? ra.rent_due_date : parseInt(ra.rent_due_date || ra.rentDueDate || '1')),
                     status: ra.status || 'Active',
                     description: (ra.description) || undefined,
-                    securityDeposit: ra.securityDeposit !== undefined && ra.securityDeposit !== null
-                        ? (typeof ra.securityDeposit === 'number' ? ra.securityDeposit : parseFloat(String(ra.securityDeposit)))
-                        : (ra.security_deposit !== undefined && ra.security_deposit !== null ? (typeof ra.security_deposit === 'number' ? ra.security_deposit : parseFloat(String(ra.security_deposit))) : undefined),
+                    securityDeposit: (() => {
+                        const deposit = ra.securityDeposit ?? ra.security_deposit;
+                        if (deposit == null) return undefined;
+                        return typeof deposit === 'number' ? deposit : parseFloat(String(deposit));
+                    })(),
                     brokerId: (ra.brokerId ?? ra.broker_id) || undefined,
-                    brokerFee: ra.brokerFee !== undefined && ra.brokerFee !== null
-                        ? (typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee)))
-                        : (ra.broker_fee !== undefined && ra.broker_fee !== null ? (typeof ra.broker_fee === 'number' ? ra.broker_fee : parseFloat(String(ra.broker_fee))) : undefined),
+                    brokerFee: (() => {
+                        const fee = ra.brokerFee ?? ra.broker_fee;
+                        if (fee == null) return undefined;
+                        return typeof fee === 'number' ? fee : parseFloat(String(fee));
+                    })(),
                     ownerId: (ra.ownerId ?? ra.owner_id) || undefined
                 };
 
@@ -674,6 +701,8 @@ export class AppStateRepository {
                                     if (syncErrors > 1) {
                                         console.error(`❌ ${syncErrors} total sync queue failures (suppressed repeated logs)`);
                                     }
+
+                                    AppStateRepository.scheduleUpstreamSync(tenantId);
                                 } else {
                                     console.warn(`[AppStateRepository] No tenant context, skipping ${pendingOps.length} sync operations`);
                                 }

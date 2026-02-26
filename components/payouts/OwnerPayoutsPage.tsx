@@ -242,9 +242,10 @@ const OwnerPayoutsPage: React.FC = () => {
 
         // From Rental Agreements
         state.rentalAgreements.forEach(ra => {
-            if (ra.brokerId && (ra.brokerFee || 0) > 0) {
+            const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
+            if (ra.brokerId && !isNaN(fee) && fee > 0) {
                 if (!brokerData[ra.brokerId]) brokerData[ra.brokerId] = { earned: 0, paid: 0 };
-                brokerData[ra.brokerId].earned += (ra.brokerFee || 0);
+                brokerData[ra.brokerId].earned += fee;
             }
         });
 
@@ -262,7 +263,8 @@ const OwnerPayoutsPage: React.FC = () => {
             })
             .forEach(tx => {
                 if (tx.contactId && brokerData[tx.contactId]) {
-                    brokerData[tx.contactId].paid += tx.amount;
+                    const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount ?? 0));
+                    if (!isNaN(amount)) brokerData[tx.contactId].paid += amount;
                 }
             });
 

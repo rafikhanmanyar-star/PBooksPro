@@ -1705,13 +1705,17 @@ export class AppStateApiService {
       rentDueDate: typeof ra.rent_due_date === 'number' ? ra.rent_due_date : (typeof ra.rentDueDate === 'number' ? ra.rentDueDate : parseInt(ra.rent_due_date || ra.rentDueDate || '1')),
       status: ra.status || 'Active',
       description: ra.description || undefined,
-      securityDeposit: ra.security_deposit !== undefined && ra.security_deposit !== null
-        ? (typeof ra.security_deposit === 'number' ? ra.security_deposit : parseFloat(String(ra.security_deposit)))
-        : (ra.securityDeposit !== undefined && ra.securityDeposit !== null ? ra.securityDeposit : undefined),
+      securityDeposit: (() => {
+        const deposit = ra.security_deposit ?? ra.securityDeposit;
+        if (deposit == null) return undefined;
+        return typeof deposit === 'number' ? deposit : parseFloat(String(deposit));
+      })(),
       brokerId: ra.broker_id || ra.brokerId || undefined,
-      brokerFee: ra.broker_fee !== undefined && ra.broker_fee !== null
-        ? (typeof ra.broker_fee === 'number' ? ra.broker_fee : parseFloat(String(ra.broker_fee)))
-        : (ra.brokerFee !== undefined && ra.brokerFee !== null ? ra.brokerFee : undefined),
+      brokerFee: (() => {
+        const fee = ra.broker_fee ?? ra.brokerFee;
+        if (fee == null) return undefined;
+        return typeof fee === 'number' ? fee : parseFloat(String(fee));
+      })(),
       ownerId: ra.owner_id || ra.ownerId || undefined
     };
   }

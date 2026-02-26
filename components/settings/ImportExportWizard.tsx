@@ -46,6 +46,10 @@ interface ImportResult {
     units: { count: number; skipped: number };
     categories: { count: number; skipped: number };
     accounts: { count: number; skipped: number };
+    inventoryItems?: { count: number; skipped: number };
+    vendors?: { count: number; skipped: number };
+    purchaseBills?: { count: number; skipped: number };
+    purchaseBillItems?: { count: number; skipped: number };
   };
   summary: {
     totalRows: number;
@@ -71,7 +75,11 @@ const IMPORT_ORDER = [
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
   { name: 'ProjectSellingAgreements', dependencies: ['Projects', 'Units', 'Contacts'], description: 'Import project selling agreements / installment plans (depends on Projects, Units, and Contacts)' },
   { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
-  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to your cloud account and will appear on refresh or next login.' }
+  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to your cloud account and will appear on refresh or next login.' },
+  { name: 'InventoryItems', dependencies: [], description: 'Import inventory items (name, unit type, price per unit). Supports parent-child hierarchy via parentItemName.' },
+  { name: 'Vendors', dependencies: [], description: 'Import vendors (name, contact info, address)' },
+  { name: 'PurchaseBills', dependencies: ['Vendors'], description: 'Import purchase bills (depends on Vendors)' },
+  { name: 'PurchaseBillItems', dependencies: ['PurchaseBills', 'InventoryItems'], description: 'Import purchase bill line items (depends on Purchase Bills and Inventory Items)' }
 ];
 
 const ImportExportWizard: React.FC = () => {
@@ -910,6 +918,38 @@ const ImportExportWizard: React.FC = () => {
                         </div>
                         <div className="text-sm text-slate-600">Accounts</div>
                       </div>
+                      {importResult.imported.inventoryItems && importResult.imported.inventoryItems.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.inventoryItems.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Inventory Items</div>
+                        </div>
+                      )}
+                      {importResult.imported.vendors && importResult.imported.vendors.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.vendors.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Vendors</div>
+                        </div>
+                      )}
+                      {importResult.imported.purchaseBills && importResult.imported.purchaseBills.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.purchaseBills.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Purchase Bills</div>
+                        </div>
+                      )}
+                      {importResult.imported.purchaseBillItems && importResult.imported.purchaseBillItems.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.purchaseBillItems.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Purchase Bill Items</div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

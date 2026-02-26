@@ -13,7 +13,6 @@ import { shouldSyncAction } from '../services/sync/dataFilter';
 import InitializationScreen from '../components/InitializationScreen';
 import { getSyncQueue } from '../services/syncQueue';
 import { getSyncManager } from '../services/sync/syncManager';
-import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
 import { getLastSyncTimestamp, setLastSyncTimestamp, isLastSyncRecent, clearLastSyncTimestamp } from '../utils/lastSyncStorage';
 // --- Module-level state store for selective subscriptions via useSyncExternalStore ---
@@ -464,9 +463,21 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             let anyChanged = false;
             const patches: Record<string, any[]> = {};
 
-            for (const [entityKey, items] of Object.entries(entities)) {
+            const snakeToCamelKey: Record<string, string> = {
+                rental_agreements: 'rentalAgreements',
+                project_agreements: 'projectAgreements',
+                plan_amenities: 'planAmenities',
+                installment_plans: 'installmentPlans',
+                recurring_invoice_templates: 'recurringInvoiceTemplates',
+                pm_cycle_allocations: 'pmCycleAllocations',
+                sales_returns: 'salesReturns',
+                inventory_items: 'inventoryItems',
+            };
+
+            for (const [rawKey, items] of Object.entries(entities)) {
                 if (!Array.isArray(items) || items.length === 0) continue;
 
+                const entityKey = snakeToCamelKey[rawKey] || rawKey;
                 const currentArray = (state as any)[entityKey];
                 if (!Array.isArray(currentArray)) continue;
 
@@ -1801,10 +1812,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return;
                     }
 
-                    // Check online status - queue operation if offline
-                    const connectionMonitor = getConnectionMonitor();
-                    if (!connectionMonitor.isOnline()) {
-                        logger.logCategory('sync', '📴 Device is offline, queuing operation for later sync');
+                    // Fast-path: if the browser is definitely offline, queue immediately
+                    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                        logger.logCategory('sync', '📴 Browser reports offline, queuing operation for later sync');
                         await queueOperationForSync(action);
                         return;
                     }
@@ -3799,7 +3809,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 if (!useFallback && saveNow) {
                     const doSave = async () => {
                         try {
-                            await saveNow(state, { disableSyncQueueing: true });
+                            await saveNow(state);
                         } catch (error) {
                             console.error('❌ Failed to save state after data change:', error);
                             const { getErrorLogger } = await import('../services/errorLogger');
@@ -3854,7 +3864,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isInitializing && state.currentUser && !useFallback && saveNow) {
             const saveTimer = setTimeout(async () => {
                 try {
-                    await saveNow(state, { disableSyncQueueing: true });
+                    await saveNow(state);
                 } catch (error) {
                     console.error('Failed to save state after login:', error);
                     // Check if it's a missing table error

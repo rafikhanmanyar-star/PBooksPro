@@ -19,7 +19,11 @@ export const IMPORT_ORDER = [
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
   { name: 'ProjectSellingAgreements', dependencies: ['Projects', 'Units', 'Contacts'], description: 'Import project selling agreements / installment plans (depends on Projects, Units, and Contacts)' },
   { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
-  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name)' }
+  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name)' },
+  { name: 'InventoryItems', dependencies: [], description: 'Import inventory items (name, unit type, price per unit)' },
+  { name: 'Vendors', dependencies: [], description: 'Import vendors (name, contact info, address)' },
+  { name: 'PurchaseBills', dependencies: ['Vendors'], description: 'Import purchase bills (depends on Vendors)' },
+  { name: 'PurchaseBillItems', dependencies: ['PurchaseBills', 'InventoryItems'], description: 'Import purchase bill line items (depends on Purchase Bills and Inventory Items)' }
 ];
 
 /**
@@ -318,6 +322,116 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
             bankAccountName: rows[0].bank_account_name || '',
             contactName: rows[0].contact_name || ''
           }];
+        }
+      }
+      {
+        name: 'InventoryItems',
+        headers: ['name', 'unitType', 'pricePerUnit', 'parentItemName', 'description'],
+        required: ['name', 'unitType', 'pricePerUnit'],
+        getSampleData: async () => {
+          if (!options.includeSampleData) return [];
+          try {
+            const items = await db.query(
+              `SELECT 
+                i.name, 
+                i.unit_type as "unitType", 
+                i.price_per_unit as "pricePerUnit",
+                p.name as "parentItemName",
+                i.description
+              FROM inventory_items i
+              LEFT JOIN inventory_items p ON i.parent_id = p.id
+              WHERE i.tenant_id = $1 LIMIT 1`,
+              [options.tenantId]
+            );
+            return items.length > 0 ? [items[0]] : [{
+              name: 'Cement',
+              unitType: 'QUANTITY',
+              pricePerUnit: 500,
+              parentItemName: '',
+              description: 'Portland cement'
+            }];
+          } catch {
+            return [{
+              name: 'Cement',
+              unitType: 'QUANTITY',
+              pricePerUnit: 500,
+              parentItemName: '',
+              description: 'Portland cement'
+            }];
+          }
+        }
+      },
+      {
+        name: 'Vendors',
+        headers: ['name', 'contactNo', 'companyName', 'address', 'description'],
+        required: ['name'],
+        getSampleData: async () => {
+          if (!options.includeSampleData) return [];
+          try {
+            const vendors = await db.query(
+              `SELECT name, contact_no as "contactNo", company_name as "companyName", address, description
+              FROM vendors WHERE tenant_id = $1 LIMIT 1`,
+              [options.tenantId]
+            );
+            return vendors.length > 0 ? [vendors[0]] : [];
+          } catch {
+            return [];
+          }
+        }
+      },
+      {
+        name: 'PurchaseBills',
+        headers: ['billNumber', 'vendorName', 'issueDate', 'totalAmount', 'status', 'dueDate', 'paidAmount', 'description', 'itemsReceived'],
+        required: ['billNumber', 'vendorName', 'issueDate', 'totalAmount'],
+        getSampleData: async () => {
+          if (!options.includeSampleData) return [];
+          try {
+            const bills = await db.query(
+              `SELECT 
+                pb.bill_number as "billNumber",
+                v.name as "vendorName",
+                pb.issue_date as "issueDate",
+                pb.total_amount as "totalAmount",
+                pb.status,
+                pb.due_date as "dueDate",
+                pb.paid_amount as "paidAmount",
+                pb.description,
+                pb.items_received as "itemsReceived"
+              FROM purchase_bills pb
+              LEFT JOIN vendors v ON pb.vendor_id = v.id
+              WHERE pb.tenant_id = $1 LIMIT 1`,
+              [options.tenantId]
+            );
+            return bills.length > 0 ? [bills[0]] : [];
+          } catch {
+            return [];
+          }
+        }
+      },
+      {
+        name: 'PurchaseBillItems',
+        headers: ['billNumber', 'inventoryItemName', 'quantity', 'pricePerUnit', 'totalAmount'],
+        required: ['billNumber', 'inventoryItemName', 'quantity', 'pricePerUnit'],
+        getSampleData: async () => {
+          if (!options.includeSampleData) return [];
+          try {
+            const items = await db.query(
+              `SELECT 
+                pb.bill_number as "billNumber",
+                ii.name as "inventoryItemName",
+                pbi.quantity,
+                pbi.price_per_unit as "pricePerUnit",
+                pbi.total_amount as "totalAmount"
+              FROM purchase_bill_items pbi
+              JOIN purchase_bills pb ON pbi.purchase_bill_id = pb.id
+              JOIN inventory_items ii ON pbi.inventory_item_id = ii.id
+              WHERE pb.tenant_id = $1 LIMIT 1`,
+              [options.tenantId]
+            );
+            return items.length > 0 ? [items[0]] : [];
+          } catch {
+            return [];
+          }
         }
       }
     ];

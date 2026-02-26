@@ -5,8 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getConnectionMonitor } from '../services/connectionMonitor';
-import { ConnectionStatus } from '../types/sync';
+import { getConnectionMonitor, ConnectionStatus } from '../services/connection/connectionMonitor';
 
 export const useOnlineStatus = (): {
   isOnline: boolean;

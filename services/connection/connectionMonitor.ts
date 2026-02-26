@@ -16,9 +16,12 @@ export interface ConnectionMonitorCallbacks {
   onOffline?: () => void;
 }
 
+type ConnectionChangeListener = (status: ConnectionStatus) => void;
+
 class ConnectionMonitor {
   private status: ConnectionStatus = 'checking';
   private callbacks: ConnectionMonitorCallbacks = {};
+  private listeners: Set<ConnectionChangeListener> = new Set();
   private checkInterval: number | null = null;
   private isMonitoring = false;
   private lastCheckTime: number = 0;
@@ -150,10 +153,16 @@ class ConnectionMonitor {
   }
 
   /**
-   * Check if currently online
+   * Check if currently online.
+   * When status is 'checking' (initial load or mid-health-check), trust the
+   * browser's navigator.onLine so sync operations are not silently queued.
    */
   isOnline(): boolean {
-    return this.status === 'online';
+    if (this.status === 'online') return true;
+    if (this.status === 'checking' && typeof navigator !== 'undefined' && navigator.onLine) {
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -184,7 +193,31 @@ class ConnectionMonitor {
   };
 
   /**
-   * Notify callbacks of status change
+   * Subscribe to connection status changes.
+   * Returns an unsubscribe function.
+   */
+  subscribe(listener: ConnectionChangeListener): () => void {
+    this.listeners.add(listener);
+
+    if (!this.isMonitoring) {
+      this.startMonitoring();
+    }
+
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  /**
+   * Force a connection check (alias for checkStatus with cache bypass)
+   */
+  async forceCheck(): Promise<ConnectionStatus> {
+    this.lastCheckTime = 0;
+    return this.checkStatus();
+  }
+
+  /**
+   * Notify callbacks and subscribers of status change
    */
   private notifyStatusChange(status: ConnectionStatus): void {
     if (this.callbacks.onStatusChange) {
@@ -198,6 +231,14 @@ class ConnectionMonitor {
     if (status === 'offline' && this.callbacks.onOffline) {
       this.callbacks.onOffline();
     }
+
+    this.listeners.forEach(listener => {
+      try {
+        listener(status);
+      } catch (error) {
+        console.error('Error in connection change listener:', error);
+      }
+    });
   }
 
   /**

@@ -223,7 +223,7 @@ export function useDatabaseState<T extends AppState>(
                     }
 
                     const appStateRepo = await getAppStateRepository();
-                    await appStateRepo.saveState(valueToSave as AppState, true);
+                    await appStateRepo.saveState(valueToSave as AppState, false);
                     if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
                     pendingSaveRef.current = null;
                 } catch (error) {

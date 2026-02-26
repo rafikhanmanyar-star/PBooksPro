@@ -6,10 +6,10 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { getConnectionMonitor } from '../services/connectionMonitor';
+import { getConnectionMonitor, ConnectionStatus } from '../services/connection/connectionMonitor';
 import { getSyncQueue } from '../services/syncQueue';
 import { getSyncEngine } from '../services/syncEngine';
-import { ConnectionStatus, SyncProgress } from '../types/sync';
+import { SyncProgress } from '../types/sync';
 import { useAuth } from './AuthContext';
 
 interface OfflineContextType {
@@ -72,14 +72,18 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [monitor]);
 
   /**
-   * Start sync process
+   * Start sync process.
+   * Accepts an optional statusOverride so callers from the connection
+   * subscriber can pass the freshly-received status instead of relying
+   * on React state (which may be stale in the same tick).
    */
-  const startSync = useCallback(async () => {
+  const startSync = useCallback(async (statusOverride?: ConnectionStatus) => {
     if (!isAuthenticated || !user?.tenant?.id) {
       return;
     }
 
-    if (connectionStatus !== 'online') {
+    const effectiveStatus = statusOverride ?? connectionStatus;
+    if (effectiveStatus !== 'online') {
       return;
     }
 
@@ -115,9 +119,10 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
     const unsubscribe = monitor.subscribe((status) => {
       setConnectionStatus(status);
 
-      // Auto-sync when connection is restored
+      // Auto-sync when connection is restored — pass status directly
+      // to avoid the stale-closure problem (React state hasn't updated yet)
       if (status === 'online') {
-        startSync();
+        startSync('online');
       }
     });
 
@@ -175,15 +180,16 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [loadQueueCounts]);
 
   /**
-   * Sync is now handled by SyncManager on login/reconnection only
-   * This effect is kept for UI updates only
+   * When connection comes online, process any queued operations from the
+   * IndexedDB sync queue (queueOperationForSync in AppContext) in addition
+   * to the SyncManager outbox handled by BidirectionalSyncService.
    */
   useEffect(() => {
     if (connectionStatus === 'online' && isAuthenticated && user?.tenant?.id) {
-      // Just update queue counts - sync is handled by SyncManager
       loadQueueCounts();
+      startSync('online');
     }
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, loadQueueCounts]);
+  }, [connectionStatus, isAuthenticated, user?.tenant?.id, loadQueueCounts, startSync]);
 
   /**
    * Heartbeat: Update queue counts periodically (but don't sync)
