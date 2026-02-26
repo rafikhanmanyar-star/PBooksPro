@@ -81,14 +81,17 @@ const RentalAgreementsDashboard: React.FC = () => {
 
   const treeData = useMemo((): ARTreeNode[] => {
     const calcStats = (agreements: RentalAgreement[]) => {
-      let totalRent = 0;
+      let activeRent = 0;
+      let activeSecurity = 0;
       let expiringRent = 0;
       for (const ra of agreements) {
-        const rent = parseFloat(String(ra.monthlyRent)) || 0;
-        totalRent += rent;
-        if (isExpiringSoon(ra)) expiringRent += rent;
+        if (ra.status === RentalAgreementStatus.ACTIVE) {
+          activeRent += parseFloat(String(ra.monthlyRent)) || 0;
+          activeSecurity += parseFloat(String(ra.securityDeposit)) || 0;
+        }
+        if (isExpiringSoon(ra)) expiringRent += parseFloat(String(ra.monthlyRent)) || 0;
       }
-      return { outstanding: totalRent, overdue: expiringRent, invoiceCount: agreements.length };
+      return { outstanding: activeRent, overdue: expiringRent, invoiceCount: agreements.length, secondary: activeSecurity };
     };
 
     const getPropertyDetails = (propertyId: string) => {
@@ -287,6 +290,7 @@ const RentalAgreementsDashboard: React.FC = () => {
           cmp = pA.localeCompare(pB); break;
         }
         case 'rent': cmp = (parseFloat(String(a.monthlyRent)) || 0) - (parseFloat(String(b.monthlyRent)) || 0); break;
+        case 'security': cmp = (parseFloat(String(a.securityDeposit)) || 0) - (parseFloat(String(b.securityDeposit)) || 0); break;
         case 'startDate': cmp = new Date(a.startDate).getTime() - new Date(b.startDate).getTime(); break;
         case 'endDate': cmp = new Date(a.endDate).getTime() - new Date(b.endDate).getTime(); break;
         case 'status': cmp = a.status.localeCompare(b.status); break;
@@ -423,6 +427,7 @@ const RentalAgreementsDashboard: React.FC = () => {
               onNodeSelect={setSelectedNode}
               searchQuery={searchQuery}
               amountLabel="Rent"
+              secondaryLabel="Security"
               overdueLabel="expiring"
               emptyText="No agreements found"
             />
@@ -435,108 +440,114 @@ const RentalAgreementsDashboard: React.FC = () => {
           onMouseDown={e => { e.preventDefault(); setIsResizing(true); }}
         />
 
-        {/* Right Panel: Agreement List */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-xs font-semibold text-slate-700 truncate">
-                {selectedNode ? selectedNode.name : 'All Agreements'}
+        {/* Right Panel: Agreement List + Detail */}
+        <div className="flex-1 min-w-0 flex overflow-hidden">
+          {/* Agreement Table */}
+          <div className={`flex-1 min-w-0 flex flex-col overflow-hidden transition-all ${selectedAgreement ? 'border-r-0' : ''}`}>
+            <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-semibold text-slate-700 truncate">
+                  {selectedNode ? selectedNode.name : 'All Agreements'}
+                </span>
+                {selectedNode && (
+                  <button onClick={() => setSelectedNode(null)} className="text-[10px] text-slate-400 hover:text-slate-600 px-1.5 py-0.5 rounded hover:bg-slate-200">Clear</button>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-400 tabular-nums flex-shrink-0">
+                {sortedAgreements.length} agreement{sortedAgreements.length !== 1 ? 's' : ''}
               </span>
-              {selectedNode && (
-                <button onClick={() => setSelectedNode(null)} className="text-[10px] text-slate-400 hover:text-slate-600 px-1.5 py-0.5 rounded hover:bg-slate-200">Clear</button>
-              )}
             </div>
-            <span className="text-[10px] text-slate-400 tabular-nums flex-shrink-0">
-              {sortedAgreements.length} agreement{sortedAgreements.length !== 1 ? 's' : ''}
-            </span>
+
+            {/* Mobile dropdown */}
+            <div className="md:hidden px-3 py-2 bg-white border-b border-slate-200">
+              <select
+                value={selectedNode?.id || ''}
+                onChange={e => {
+                  const id = e.target.value;
+                  if (!id) { setSelectedNode(null); return; }
+                  const findNode = (nodes: ARTreeNode[]): ARTreeNode | null => {
+                    for (const n of nodes) { if (n.id === id) return n; if (n.children) { const f = findNode(n.children); if (f) return f; } } return null;
+                  };
+                  setSelectedNode(findNode(treeData));
+                }}
+                className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md"
+              >
+                <option value="">All Agreements</option>
+                {treeData.map(n => <option key={n.id} value={n.id}>{n.name} ({CURRENCY} {n.outstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })})</option>)}
+              </select>
+            </div>
+
+            {/* Table */}
+            <div className="flex-1 min-h-0 overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-slate-100 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('agreementNumber')}>ID <SortArrow column="agreementNumber" /></th>
+                    <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('tenant')}>Tenant <SortArrow column="tenant" /></th>
+                    <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('property')}>Property <SortArrow column="property" /></th>
+                    <th className="px-2 py-1.5 text-right cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('rent')}>Rent <SortArrow column="rent" /></th>
+                    <th className="px-2 py-1.5 text-right cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('security')}>Security <SortArrow column="security" /></th>
+                    <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('startDate')}>Start <SortArrow column="startDate" /></th>
+                    <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('endDate')}>End <SortArrow column="endDate" /></th>
+                    <th className="px-2 py-1.5 text-center cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('status')}>Status <SortArrow column="status" /></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedAgreements.length === 0 ? (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400 italic">No agreements found</td></tr>
+                  ) : sortedAgreements.map(ra => {
+                    const tenant = state.contacts.find(c => c.id === ra.contactId);
+                    const prop = state.properties.find(p => p.id === ra.propertyId);
+                    const building = prop ? state.buildings.find(b => b.id === prop.buildingId) : null;
+
+                    return (
+                      <tr
+                        key={ra.id}
+                        onClick={() => setSelectedAgreement(ra)}
+                        className={`border-b border-slate-100 cursor-pointer transition-colors ${
+                          selectedAgreement?.id === ra.id ? 'bg-indigo-50' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <td className="px-2 py-1.5 font-mono text-xs text-slate-600">{ra.agreementNumber}</td>
+                        <td className="px-2 py-1.5 font-medium text-slate-800 truncate max-w-[140px]" title={tenant?.name}>{tenant?.name || '—'}</td>
+                        <td className="px-2 py-1.5 text-slate-600 truncate max-w-[140px]" title={prop?.name}>
+                          {prop?.name || '—'}
+                          {building && <span className="text-slate-400 text-[10px] ml-1">({building.name})</span>}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums font-medium text-slate-700">{CURRENCY} {(parseFloat(String(ra.monthlyRent)) || 0).toLocaleString()}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{ra.securityDeposit ? `${CURRENCY} ${(parseFloat(String(ra.securityDeposit)) || 0).toLocaleString()}` : '—'}</td>
+                        <td className="px-2 py-1.5 text-slate-600 text-xs tabular-nums">{formatDate(ra.startDate)}</td>
+                        <td className="px-2 py-1.5 text-slate-600 text-xs tabular-nums">{formatDate(ra.endDate)}</td>
+                        <td className="px-2 py-1.5 text-center">{getStatusBadge(ra)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
+              <span>{sortedAgreements.length} agreements</span>
+              <div className="flex gap-4 tabular-nums">
+                <span>Rent: <strong className="text-slate-700">{CURRENCY} {sortedAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).reduce((s, a) => s + (parseFloat(String(a.monthlyRent)) || 0), 0).toLocaleString()}</strong></span>
+                <span>Security: <strong className="text-slate-700">{CURRENCY} {sortedAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).reduce((s, a) => s + (parseFloat(String(a.securityDeposit)) || 0), 0).toLocaleString()}</strong></span>
+              </div>
+            </div>
           </div>
 
-          {/* Mobile dropdown */}
-          <div className="md:hidden px-3 py-2 bg-white border-b border-slate-200">
-            <select
-              value={selectedNode?.id || ''}
-              onChange={e => {
-                const id = e.target.value;
-                if (!id) { setSelectedNode(null); return; }
-                const findNode = (nodes: ARTreeNode[]): ARTreeNode | null => {
-                  for (const n of nodes) { if (n.id === id) return n; if (n.children) { const f = findNode(n.children); if (f) return f; } } return null;
-                };
-                setSelectedNode(findNode(treeData));
-              }}
-              className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md"
-            >
-              <option value="">All Agreements</option>
-              {treeData.map(n => <option key={n.id} value={n.id}>{n.name} ({CURRENCY} {n.outstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })})</option>)}
-            </select>
-          </div>
-
-          {/* Table */}
-          <div className="flex-1 min-h-0 overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-100 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                  <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('agreementNumber')}>ID <SortArrow column="agreementNumber" /></th>
-                  <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('tenant')}>Tenant <SortArrow column="tenant" /></th>
-                  <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('property')}>Property <SortArrow column="property" /></th>
-                  <th className="px-2 py-1.5 text-right cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('rent')}>Rent <SortArrow column="rent" /></th>
-                  <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('startDate')}>Start <SortArrow column="startDate" /></th>
-                  <th className="px-2 py-1.5 text-left cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('endDate')}>End <SortArrow column="endDate" /></th>
-                  <th className="px-2 py-1.5 text-center cursor-pointer hover:bg-slate-200" onClick={() => handleSortClick('status')}>Status <SortArrow column="status" /></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedAgreements.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400 italic">No agreements found</td></tr>
-                ) : sortedAgreements.map(ra => {
-                  const tenant = state.contacts.find(c => c.id === ra.contactId);
-                  const prop = state.properties.find(p => p.id === ra.propertyId);
-                  const building = prop ? state.buildings.find(b => b.id === prop.buildingId) : null;
-
-                  return (
-                    <tr
-                      key={ra.id}
-                      onClick={() => setSelectedAgreement(ra)}
-                      className={`border-b border-slate-100 cursor-pointer transition-colors ${
-                        selectedAgreement?.id === ra.id ? 'bg-indigo-50' : 'hover:bg-slate-50'
-                      }`}
-                    >
-                      <td className="px-2 py-1.5 font-mono text-xs text-slate-600">{ra.agreementNumber}</td>
-                      <td className="px-2 py-1.5 font-medium text-slate-800 truncate max-w-[140px]" title={tenant?.name}>{tenant?.name || '—'}</td>
-                      <td className="px-2 py-1.5 text-slate-600 truncate max-w-[140px]" title={prop?.name}>
-                        {prop?.name || '—'}
-                        {building && <span className="text-slate-400 text-[10px] ml-1">({building.name})</span>}
-                      </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums font-medium text-slate-700">{CURRENCY} {(parseFloat(String(ra.monthlyRent)) || 0).toLocaleString()}</td>
-                      <td className="px-2 py-1.5 text-slate-600 text-xs tabular-nums">{formatDate(ra.startDate)}</td>
-                      <td className="px-2 py-1.5 text-slate-600 text-xs tabular-nums">{formatDate(ra.endDate)}</td>
-                      <td className="px-2 py-1.5 text-center">{getStatusBadge(ra)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Footer */}
-          <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
-            <span>{sortedAgreements.length} agreements</span>
-            <span className="tabular-nums">
-              Total Rent: <strong className="text-slate-700">{CURRENCY} {sortedAgreements.reduce((s, a) => s + (parseFloat(String(a.monthlyRent)) || 0), 0).toLocaleString()}</strong>
-            </span>
-          </div>
+          {/* Detail Panel - inline on the right */}
+          {selectedAgreement && (
+            <RentalAgreementDetailPanel
+              agreement={selectedAgreement}
+              onClose={() => setSelectedAgreement(null)}
+              onEdit={(a) => { setEditingAgreement(a); setSelectedAgreement(null); }}
+              onRenew={(a) => setRenewalAgreement(a)}
+              onTerminate={(a) => setTerminationAgreement(a)}
+            />
+          )}
         </div>
       </div>
-
-      {/* Detail Panel */}
-      {selectedAgreement && (
-        <RentalAgreementDetailPanel
-          agreement={selectedAgreement}
-          onClose={() => setSelectedAgreement(null)}
-          onEdit={(a) => { setEditingAgreement(a); setSelectedAgreement(null); }}
-          onRenew={(a) => setRenewalAgreement(a)}
-          onTerminate={(a) => setTerminationAgreement(a)}
-        />
-      )}
 
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create New Rental Agreement" size="xl" disableScroll>
         <div className="h-full min-h-0 flex flex-col p-4">

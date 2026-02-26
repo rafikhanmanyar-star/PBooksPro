@@ -99,7 +99,7 @@ router.post('/', async (req: TenantRequest, res) => {
       }
     }
 
-    // Check if invoice exists to determine if this is a create or update
+    // Check if invoice exists by ID to determine if this is a create or update
     const existing = await db.query(
       'SELECT id, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
       [invoiceId, req.tenantId]
@@ -115,9 +115,44 @@ router.post('/', async (req: TenantRequest, res) => {
       });
     }
 
+    // Handle duplicate invoice_number: if another invoice with the same number exists
+    // (e.g. soft-deleted or orphaned), clear it so the new one can be created
+    if (!isUpdate && invoice.invoiceNumber) {
+      const duplicateByNumber = await db.query(
+        'SELECT id, deleted_at FROM invoices WHERE tenant_id = $1 AND invoice_number = $2 AND id != $3',
+        [req.tenantId, invoice.invoiceNumber, invoiceId]
+      );
+      if (duplicateByNumber.length > 0) {
+        const dup = duplicateByNumber[0];
+        if (dup.deleted_at) {
+          // Permanently remove soft-deleted invoice with the same number
+          await db.query('DELETE FROM invoices WHERE id = $1 AND tenant_id = $2', [dup.id, req.tenantId]);
+        } else {
+          // Active invoice with same number but different ID — update its ID to match the new one
+          // This handles cases where the client lost track of the original ID
+          await db.query(
+            'UPDATE invoices SET id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+            [invoiceId, dup.id, req.tenantId]
+          );
+          // Re-check as the record now has the new ID
+          const refreshed = await db.query(
+            'SELECT id, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
+            [invoiceId, req.tenantId]
+          );
+          if (refreshed.length > 0) {
+            // Proceed as an update
+            existing.length = 0;
+            existing.push(refreshed[0]);
+          }
+        }
+      }
+    }
+
+    const isActualUpdate = existing.length > 0;
+
     // Optimistic locking check for POST update
     const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
-    const serverVersion = isUpdate ? existing[0].version : null;
+    const serverVersion = isActualUpdate ? existing[0].version : null;
     if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
       return res.status(409).json({
         error: 'Version conflict',
@@ -188,8 +223,16 @@ router.post('/', async (req: TenantRequest, res) => {
     );
     const saved = result[0];
 
+    if (!saved) {
+      // Version mismatch on update — the WHERE clause filtered it out
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: 'Invoice was modified by another session. Please refresh and try again.',
+      });
+    }
+
     // Emit WebSocket event for real-time sync
-    if (isUpdate) {
+    if (isActualUpdate) {
       emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
         invoice: saved,
         userId: req.user?.userId,
@@ -203,7 +246,7 @@ router.post('/', async (req: TenantRequest, res) => {
       });
     }
 
-    res.status(isUpdate ? 200 : 201).json(saved);
+    res.status(isActualUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
     console.error('Error creating/updating invoice:', error);
     if (error.code === '23505') { // Unique violation

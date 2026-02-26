@@ -102,20 +102,13 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         }
     }, [initialTabs, dispatch, setActiveView]);
 
-    const renderContent = () => {
-        switch (activeView) {
-            // Operations
-            case 'Agreements': return <RentalAgreementsPage />;
-            case 'Invoices': return <RentalInvoicesPage />;
-            case 'Bills': return <RentalBillsPage />;
-            case 'Payment': return <RentalPaymentSearch />;
-            case 'Payouts': return <OwnerPayoutsPage />;
+    const OPERATIONAL_VIEWS: RentalView[] = ['Agreements', 'Invoices', 'Bills', 'Payment', 'Payouts'];
+    const isOperationalView = OPERATIONAL_VIEWS.includes(activeView);
 
-            // Primary Reports (Views)
+    const renderReportContent = () => {
+        switch (activeView) {
             case 'Visual Layout': return <PropertyLayoutReport />;
             case 'Tabular Layout': return <UnitStatusReport />;
-
-            // Secondary Reports (From Dropdown)
             case 'Agreement Expiry': return <AgreementExpiryReport />;
             case 'Building Analysis': return <BuildingAccountsReport />;
             case 'BM Analysis': return <BMAnalysisReport />;
@@ -127,7 +120,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             case 'Vendor Ledger': return <VendorLedgerReport context="Rental" />;
             case 'Owner Security Deposit': return <OwnerSecurityDepositReport />;
             case 'Broker Fees': return <BrokerFeeReport />;
-
             default: return null;
         }
     };
@@ -258,7 +250,13 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             </div>
 
             <div className="flex-grow overflow-hidden">
-                {renderContent()}
+                {/* Operational tabs stay mounted to preserve state (hidden via CSS) */}
+                <div className={`h-full ${activeView === 'Agreements' ? '' : 'hidden'}`}><RentalAgreementsPage /></div>
+                <div className={`h-full ${activeView === 'Invoices' ? '' : 'hidden'}`}><RentalInvoicesPage /></div>
+                <div className={`h-full ${activeView === 'Bills' ? '' : 'hidden'}`}><RentalBillsPage /></div>
+                <div className={`h-full ${activeView === 'Payment' ? '' : 'hidden'}`}><RentalPaymentSearch /></div>
+                <div className={`h-full ${activeView === 'Payouts' ? '' : 'hidden'}`}><OwnerPayoutsPage /></div>
+                {!isOperationalView && renderReportContent()}
             </div>
         </div>
     );

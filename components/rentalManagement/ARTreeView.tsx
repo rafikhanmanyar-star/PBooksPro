@@ -8,6 +8,7 @@ export interface ARTreeNode {
   outstanding: number;
   overdue: number;
   invoiceCount: number;
+  secondary?: number;
   children?: ARTreeNode[];
 }
 
@@ -18,6 +19,8 @@ interface ARTreeViewProps {
   searchQuery?: string;
   /** Column header for the amount column (default: "A/R") */
   amountLabel?: string;
+  /** Column header for the secondary amount column. When set, shows a second column. */
+  secondaryLabel?: string;
   /** Label shown after overdue amount (default: "overdue") */
   overdueLabel?: string;
   /** Empty state text (default: "No receivables found") */
@@ -43,7 +46,8 @@ const TreeItem: React.FC<{
   onToggleExpand: (id: string) => void;
   searchQuery?: string;
   overdueLabel: string;
-}> = React.memo(({ node, selectedNodeId, onNodeSelect, level, expandedIds, onToggleExpand, searchQuery, overdueLabel }) => {
+  showSecondary: boolean;
+}> = React.memo(({ node, selectedNodeId, onNodeSelect, level, expandedIds, onToggleExpand, searchQuery, overdueLabel, showSecondary }) => {
   const isSelected = selectedNodeId === node.id;
   const hasChildren = node.children && node.children.length > 0;
   const isExpanded = expandedIds.has(node.id);
@@ -108,6 +112,14 @@ const TreeItem: React.FC<{
           </span>
         </div>
 
+        {showSecondary && (
+          <div className={`w-16 flex-shrink-0 text-right text-xs tabular-nums ${
+            isSelected ? 'text-white/70' : 'text-slate-500'
+          }`}>
+            {(node.secondary || 0) > 0 ? formatAmount(node.secondary!) : '—'}
+          </div>
+        )}
+
         <div className="flex-shrink-0 text-right ml-2">
           <div className={`text-xs font-semibold tabular-nums ${
             isSelected ? 'text-white' : 'text-slate-800'
@@ -136,6 +148,7 @@ const TreeItem: React.FC<{
             onToggleExpand={onToggleExpand}
             searchQuery={searchQuery}
             overdueLabel={overdueLabel}
+            showSecondary={showSecondary}
           />
         ))
       )}
@@ -149,9 +162,11 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
   onNodeSelect,
   searchQuery,
   amountLabel = 'A/R',
+  secondaryLabel,
   overdueLabel = 'overdue',
   emptyText = 'No receivables found',
 }) => {
+  const showSecondary = !!secondaryLabel;
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({
     key: 'outstanding',
     direction: 'desc',
@@ -221,6 +236,10 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
     () => treeData.reduce((sum, n) => sum + n.overdue, 0),
     [treeData]
   );
+  const totalSecondary = useMemo(
+    () => treeData.reduce((sum, n) => sum + (n.secondary || 0), 0),
+    [treeData]
+  );
 
   const SortIcon = ({ column }: { column: SortKey }) => (
     <span className="ml-0.5 text-[9px] text-slate-400">
@@ -238,6 +257,11 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
         >
           Entity <SortIcon column="name" />
         </div>
+        {showSecondary && (
+          <div className="w-16 px-2 py-1.5 text-right select-none">
+            {secondaryLabel}
+          </div>
+        )}
         <div
           className="w-24 px-2 py-1.5 text-right cursor-pointer hover:bg-slate-100 select-none"
           onClick={() => handleSort('outstanding')}
@@ -264,6 +288,7 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
               onToggleExpand={onToggleExpand}
               searchQuery={searchQuery}
               overdueLabel={overdueLabel}
+              showSecondary={showSecondary}
             />
           ))
         )}
@@ -272,7 +297,12 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
       {/* Footer Total */}
       <div className="flex items-center border-t border-slate-200 bg-slate-50 px-2 py-1.5 flex-shrink-0">
         <div className="flex-1 text-xs font-bold text-slate-700">Total</div>
-        <div className="text-right">
+        {showSecondary && (
+          <div className="w-16 text-right text-xs font-bold text-slate-600 tabular-nums">
+            {formatAmount(totalSecondary)}
+          </div>
+        )}
+        <div className="text-right ml-2">
           <div className="text-xs font-bold text-slate-800 tabular-nums">
             {CURRENCY} {totalOutstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
