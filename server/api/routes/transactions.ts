@@ -11,6 +11,16 @@ function invalidateARCache(tenantId: string) {
   clearCache(`__ar__${tenantId}`);
 }
 
+/**
+ * Compute payment status based on total paid vs entity amount.
+ * Uses 0.01 tolerance for bills, 0.1 for invoices (matching existing behavior).
+ */
+function computePaymentStatus(totalPaid: number, entityAmount: number, tolerance: number = 0.01): string {
+  if (totalPaid >= entityAmount - tolerance) return 'Paid';
+  if (totalPaid > tolerance) return 'Partially Paid';
+  return 'Unpaid';
+}
+
 // System accounts that can be auto-created if missing
 const SYSTEM_ACCOUNTS: { [key: string]: { name: string; type: string; description: string } } = {
   'sys-acc-cash': { name: 'Cash', type: 'Bank', description: 'Default cash account' },
@@ -618,14 +628,8 @@ router.post('/', async (req: TenantRequest, res) => {
 
           if (billPaymentInfo.rows.length > 0) {
             const billAmount = parseFloat(billPaymentInfo.rows[0].bill_amount);
-            let newStatus = 'Unpaid';
-            if (totalPaid >= billAmount - 0.01) {
-              newStatus = 'Paid';
-            } else if (totalPaid > 0.01) {
-              newStatus = 'Partially Paid';
-            }
+            const newStatus = computePaymentStatus(totalPaid, billAmount, 0.01);
 
-            // Update bill (row is already locked via FOR UPDATE NOWAIT)
             const updatedBill = await client.query(
               `UPDATE bills 
                SET paid_amount = $1, status = $2, updated_at = NOW() 
@@ -657,19 +661,12 @@ router.post('/', async (req: TenantRequest, res) => {
 
           if (invoiceData.rows.length > 0) {
             const invoiceAmount = parseFloat(invoiceData.rows[0].amount);
-            let newStatus = 'Unpaid';
-            if (totalPaid >= invoiceAmount - 0.1) {
-              newStatus = 'Paid';
-            } else if (totalPaid > 0.1) {
-              newStatus = 'Partially Paid';
-            }
+            const newStatus = computePaymentStatus(totalPaid, invoiceAmount, 0.1);
 
             await client.query(
               'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
               [totalPaid, newStatus, transaction.invoiceId, req.tenantId]
             );
-
-            console.log('✅ POST /transactions - Updated invoice within transaction');
           }
         }
 
@@ -730,26 +727,13 @@ router.post('/', async (req: TenantRequest, res) => {
 
         if (billData.length > 0) {
           const billAmount = parseFloat(billData[0].amount);
-          let newStatus = 'Unpaid';
-          if (totalPaid >= billAmount - 0.01) {
-            newStatus = 'Paid';
-          } else if (totalPaid > 0.01) {
-            newStatus = 'Partially Paid';
-          }
+          const newStatus = computePaymentStatus(totalPaid, billAmount, 0.01);
 
-          // Update bill's paid_amount and status
           const updatedBill = await db.query(
             'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
             [totalPaid, newStatus, result.bill_id, req.tenantId]
           );
 
-          console.log('✅ POST /transactions - Updated bill paid_amount:', {
-            billId: result.bill_id,
-            totalPaid,
-            status: newStatus
-          });
-
-          // Emit WebSocket event to notify other users of bill update
           if (updatedBill.length > 0) {
             emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
               bill: updatedBill[0],
@@ -800,51 +784,22 @@ router.post('/', async (req: TenantRequest, res) => {
 
         if (invoiceData.length > 0) {
           const invoiceAmount = parseFloat(invoiceData[0].amount);
-          let newStatus = 'Unpaid';
-          if (totalPaid >= invoiceAmount - 0.1) {
-            newStatus = 'Paid';
-          } else if (totalPaid > 0.1) {
-            newStatus = 'Partially Paid';
-          }
+          const newStatus = computePaymentStatus(totalPaid, invoiceAmount, 0.1);
 
-          // Get full invoice data to ensure we have all required fields for upsert
-          const fullInvoiceData = await db.query(
-            'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
-            [result.invoice_id, req.tenantId]
+          const updatedInvoice = await db.query(
+            `UPDATE invoices 
+             SET paid_amount = $1, status = $2, updated_at = NOW() 
+             WHERE id = $3 AND tenant_id = $4 
+             RETURNING *`,
+            [totalPaid, newStatus, result.invoice_id, req.tenantId]
           );
 
-          if (fullInvoiceData.length > 0) {
-            // Invoice exists - update it
-            const invoice = fullInvoiceData[0];
-            const updatedInvoice = await db.query(
-              `UPDATE invoices 
-               SET paid_amount = $1, status = $2, updated_at = NOW() 
-               WHERE id = $3 AND tenant_id = $4 
-               RETURNING *`,
-              [totalPaid, newStatus, result.invoice_id, req.tenantId]
-            );
-
-            console.log('✅ POST /transactions - Updated invoice paid_amount:', {
-              invoiceId: result.invoice_id,
-              totalPaid,
-              status: newStatus
+          if (updatedInvoice.length > 0) {
+            emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+              invoice: updatedInvoice[0],
+              userId: req.user?.userId,
+              username: req.user?.username,
             });
-
-            // Emit WebSocket event to notify other users of invoice update
-            if (updatedInvoice.length > 0) {
-              emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
-                invoice: updatedInvoice[0],
-                userId: req.user?.userId,
-                username: req.user?.username,
-              });
-            }
-          } else {
-            // Invoice doesn't exist in cloud DB yet - this shouldn't happen but log it
-            console.warn('⚠️ POST /transactions - Invoice not found in cloud DB for paid_amount update:', {
-              invoiceId: result.invoice_id,
-              tenantId: req.tenantId
-            });
-            // The invoice will be synced when the frontend syncs it
           }
         }
       } catch (invoiceUpdateError) {
@@ -1091,12 +1046,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
 
         if (billData.length > 0) {
           const billAmount = parseFloat(billData[0].amount);
-          let newStatus = 'Unpaid';
-          if (totalPaid >= billAmount - 0.01) {
-            newStatus = 'Paid';
-          } else if (totalPaid > 0.01) {
-            newStatus = 'Partially Paid';
-          }
+          const newStatus = computePaymentStatus(totalPaid, billAmount, 0.01);
 
           const updatedBill = await db.query(
             'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
@@ -1133,14 +1083,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
 
         if (invoiceData.length > 0) {
           const invoiceAmount = parseFloat(invoiceData[0].amount);
-          let newStatus = 'Unpaid';
-          if (totalPaid >= invoiceAmount - 0.1) {
-            newStatus = 'Paid';
-          } else if (totalPaid > 0.1) {
-            newStatus = 'Partially Paid';
-          }
+          const newStatus = computePaymentStatus(totalPaid, invoiceAmount, 0.1);
 
-          // Check if invoice exists before updating
           const fullInvoiceData = await db.query(
             'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
             [invoiceIdToUpdate, req.tenantId]
@@ -1262,12 +1206,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
 
         if (billData.length > 0) {
           const billAmount = parseFloat(billData[0].amount);
-          let newStatus = 'Unpaid';
-          if (totalPaid >= billAmount - 0.01) {
-            newStatus = 'Paid';
-          } else if (totalPaid > 0.01) {
-            newStatus = 'Partially Paid';
-          }
+          const newStatus = computePaymentStatus(totalPaid, billAmount, 0.01);
 
           const updatedBill = await db.query(
             'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
@@ -1303,14 +1242,8 @@ router.delete('/:id', async (req: TenantRequest, res) => {
 
         if (invoiceData.length > 0) {
           const invoiceAmount = parseFloat(invoiceData[0].amount);
-          let newStatus = 'Unpaid';
-          if (totalPaid >= invoiceAmount - 0.1) {
-            newStatus = 'Paid';
-          } else if (totalPaid > 0.1) {
-            newStatus = 'Partially Paid';
-          }
+          const newStatus = computePaymentStatus(totalPaid, invoiceAmount, 0.1);
 
-          // Check if invoice exists before updating
           const fullInvoiceData = await db.query(
             'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
             [oldTransaction[0].invoice_id, req.tenantId]
@@ -1621,14 +1554,8 @@ router.post('/batch', async (req: TenantRequest, res) => {
 
               if (billData.rows.length > 0) {
                 const billAmount = parseFloat(billData.rows[0].amount);
-                let newStatus = 'Unpaid';
-                if (totalPaid >= billAmount - 0.01) {
-                  newStatus = 'Paid';
-                } else if (totalPaid > 0.01) {
-                  newStatus = 'Partially Paid';
-                }
+                const newStatus = computePaymentStatus(totalPaid, billAmount, 0.01);
 
-                // Update bill (row is already locked via FOR UPDATE NOWAIT)
                 const updatedBill = await client.query(
                   `UPDATE bills 
                    SET paid_amount = $1, status = $2, updated_at = NOW() 

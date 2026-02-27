@@ -77,6 +77,9 @@ async function generatePayslipsForRun(
   let newTotalAmount = 0;
   let newPayslipsCount = 0;
 
+  // Pre-compute all payslip rows, then batch-insert in a single transaction
+  const payslipRows: any[][] = [];
+
   for (const emp of employees) {
     const salary = parseJsonField(emp.salary, { basic: 0, allowances: [], deductions: [] });
     const joiningDate = new Date(emp.joining_date);
@@ -125,19 +128,45 @@ async function generatePayslipsForRun(
     newTotalAmount += netPay;
     newPayslipsCount++;
 
-    const payslipId = `ps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    await getDb().query(
-      `INSERT INTO payslips 
-       (id, tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
-        total_deductions, total_adjustments, gross_pay, net_pay,
-        allowance_details, deduction_details, adjustment_details)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-      [payslipId, tenantId, runId, emp.id, basic, totalAllowances, totalDeductions,
-        earningAdj - deductionAdj, grossPay, netPay,
-        JSON.stringify(salary.allowances || []),
-        JSON.stringify(salary.deductions || []),
-        JSON.stringify(adjustments)]
-    );
+    const payslipId = `ps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${newPayslipsCount}`;
+    payslipRows.push([
+      payslipId, tenantId, runId, emp.id, basic, totalAllowances, totalDeductions,
+      earningAdj - deductionAdj, grossPay, netPay,
+      JSON.stringify(salary.allowances || []),
+      JSON.stringify(salary.deductions || []),
+      JSON.stringify(adjustments)
+    ]);
+  }
+
+  // Batch insert all payslips in a single transaction to ensure atomicity
+  if (payslipRows.length > 0) {
+    const COLS_PER_ROW = 13;
+    const db = getDb();
+    await db.transaction(async (client) => {
+      // Insert in batches of 50 to stay within PostgreSQL parameter limits
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < payslipRows.length; i += BATCH_SIZE) {
+        const batch = payslipRows.slice(i, i + BATCH_SIZE);
+        const valueClauses: string[] = [];
+        const allParams: any[] = [];
+
+        batch.forEach((row, rowIdx) => {
+          const offset = rowIdx * COLS_PER_ROW;
+          const placeholders = row.map((_, colIdx) => `$${offset + colIdx + 1}`);
+          valueClauses.push(`(${placeholders.join(', ')})`);
+          allParams.push(...row);
+        });
+
+        await client.query(
+          `INSERT INTO payslips
+           (id, tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances,
+            total_deductions, total_adjustments, gross_pay, net_pay,
+            allowance_details, deduction_details, adjustment_details)
+           VALUES ${valueClauses.join(', ')}`,
+          allParams
+        );
+      }
+    });
   }
 
   const combinedTotalAmount = existingTotalAmount + newTotalAmount;
@@ -2291,42 +2320,25 @@ router.post('/generate-missing-payslips', async (req: TenantRequest, res) => {
         continue;
       }
 
-      // Temporarily set status to PROCESSING
-      await getDb().query(
-        `UPDATE payroll_runs SET status = 'PROCESSING' WHERE id = $1 AND tenant_id = $2`,
-        [run.id, tenantId]
-      );
-
       try {
-        // Use the existing process endpoint logic by calling it
-        const processResponse = await fetch(`http://localhost:${process.env.PORT || 3000}/api/payroll/runs/${run.id}/process`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-tenant-id': tenantId,
-            'x-user-id': userId
-          }
-        });
+        const summary = await generatePayslipsForRun(tenantId, run.id, { month: run.month, year: run.year });
 
-        if (processResponse.ok) {
-          const processResult = await processResponse.json() as any;
-          generatedCount += processResult.processing_summary?.new_payslips_generated || 0;
-          results.push({
-            run_id: run.id,
-            month: run.month,
-            year: run.year,
-            status: 'success',
-            new_payslips: processResult.processing_summary?.new_payslips_generated || 0
-          });
-        } else {
-          results.push({
-            run_id: run.id,
-            month: run.month,
-            year: run.year,
-            status: 'error',
-            error: 'Failed to process run'
-          });
-        }
+        // Update run status after successful generation
+        const newStatus = summary.newPayslipsCount > 0 ? 'APPROVED' : run.status;
+        await getDb().query(
+          `UPDATE payroll_runs SET status = $1, total_amount = $2, employee_count = $3, updated_by = $4, updated_at = NOW()
+           WHERE id = $5 AND tenant_id = $6`,
+          [newStatus, summary.combinedTotalAmount, summary.totalEmployeeCount, userId, run.id, tenantId]
+        );
+
+        generatedCount += summary.newPayslipsCount;
+        results.push({
+          run_id: run.id,
+          month: run.month,
+          year: run.year,
+          status: 'success',
+          new_payslips: summary.newPayslipsCount
+        });
       } catch (error) {
         console.error(`Error processing run ${run.id}:`, error);
         results.push({

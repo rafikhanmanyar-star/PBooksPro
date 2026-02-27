@@ -22,7 +22,12 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 
 const DashboardPage: React.FC = () => {
     const dispatch = useDispatchOnly();
-    const state = useStateSelector(s => s);
+    const transactions = useStateSelector(s => s.transactions);
+    const invoices = useStateSelector(s => s.invoices);
+    const categories = useStateSelector(s => s.categories);
+    const currentUser = useStateSelector(s => s.currentUser);
+    const dashboardConfig = useStateSelector(s => s.dashboardConfig);
+    const rentalAgreements = useStateSelector(s => s.rentalAgreements);
     const lookupMaps = useLookupMaps();
     const { allKpis, openDrilldown } = useKpis();
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -37,7 +42,7 @@ const DashboardPage: React.FC = () => {
         endDate: Date;
     }>({ isOpen: false, project: null, startDate: new Date(), endDate: new Date() });
 
-    const isAdmin = state.currentUser?.role === 'Admin';
+    const isAdmin = currentUser?.role === 'Admin';
 
     useEffect(() => {
         const h = new Date().getHours();
@@ -46,22 +51,24 @@ const DashboardPage: React.FC = () => {
 
     const navigate = (page: Page) => dispatch({ type: 'SET_PAGE', payload: page });
 
+    // Build a lightweight state proxy for KPI getData calls (KPI definitions expect the full state shape)
+    const kpiState = useStateSelector(s => s);
+
     const kpisToDisplay = useMemo(() => {
-        const visibleKpiIds = Array.isArray(state.dashboardConfig?.visibleKpis) ? state.dashboardConfig.visibleKpis : [];
-        // Default KPI ids must match kpiDefinitions.ts (camelCase). Wrong ids (e.g. total_income) result in no KPIs showing.
+        const visibleKpiIds = Array.isArray(dashboardConfig?.visibleKpis) ? dashboardConfig.visibleKpis : [];
         const defaultKpiIds = ['totalBalance', 'totalIncome', 'totalExpense', 'netIncome'];
         const idsToShow = visibleKpiIds.length > 0 ? visibleKpiIds : defaultKpiIds;
 
         return idsToShow.map(id => {
             const kpiDef = allKpis.find(k => k.id === id);
             if (!kpiDef) return null;
-            const amount = kpiDef.getData ? kpiDef.getData(state) : 0;
+            const amount = kpiDef.getData ? kpiDef.getData(kpiState) : 0;
             return { ...kpiDef, amount, onClick: () => openDrilldown(kpiDef) };
         }).filter((k): k is Exclude<typeof k, null> => k !== null);
-    }, [state.dashboardConfig, state, allKpis, openDrilldown]);
+    }, [dashboardConfig, kpiState, allKpis, openDrilldown]);
 
     // --- Chart Data ---
-    const excludedCategoryIds = useMemo(() => state.categories.filter(c => c.name === 'Owner Equity' || c.name === 'Owner Withdrawn').map(c => c.id), [state.categories]);
+    const excludedCategoryIds = useMemo(() => categories.filter(c => c.name === 'Owner Equity' || c.name === 'Owner Withdrawn').map(c => c.id), [categories]);
 
     const cashFlowData = useMemo(() => {
         if (!isAdmin) return [];
@@ -72,7 +79,7 @@ const DashboardPage: React.FC = () => {
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             months[key] = { income: 0, expense: 0, name: d.toLocaleString('default', { month: 'short' }) };
         }
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             if (tx.categoryId && excludedCategoryIds.includes(tx.categoryId)) return;
             const key = tx.date.slice(0, 7);
             if (months[key]) {
@@ -81,18 +88,17 @@ const DashboardPage: React.FC = () => {
             }
         });
         return Object.values(months);
-    }, [state.transactions, excludedCategoryIds, isAdmin]);
+    }, [transactions, excludedCategoryIds, isAdmin]);
 
     const recentActivity = useMemo(() => {
-        // Combine recent invoices and payments
-        const invoices = state.invoices.slice(-3).map(i => ({
+        const recentInvoices = [...invoices].sort((a, b) => new Date(b.issueDate || b.dueDate).getTime() - new Date(a.issueDate || a.dueDate).getTime()).slice(0, 3).map(i => ({
             id: i.id, type: 'Invoice', title: `Invoice #${i.invoiceNumber}`, amount: i.amount, date: i.issueDate || i.dueDate, status: i.status
         }));
-        const txs = state.transactions.slice(-3).map(t => ({
+        const recentTxs = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 3).map(t => ({
             id: t.id, type: t.type === TransactionType.INCOME ? 'Income' : 'Expense', title: t.description || 'Transaction', amount: t.amount, date: t.date, status: 'Completed'
         }));
-        return [...invoices, ...txs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-    }, [state.invoices, state.transactions]);
+        return [...recentInvoices, ...recentTxs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+    }, [invoices, transactions]);
 
     return (
         <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
@@ -100,7 +106,7 @@ const DashboardPage: React.FC = () => {
             {/* Welcome Banner */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
                 <div>
-                    <h1 className="text-xl md:text-2xl font-bold text-slate-900">{greeting}, {state.currentUser?.name?.split(' ')[0]}</h1>
+                    <h1 className="text-xl md:text-2xl font-bold text-slate-900">{greeting}, {currentUser?.name?.split(' ')[0]}</h1>
                     <p className="text-slate-500 text-xs md:text-sm mt-1">Here's what's happening with your projects today.</p>
                 </div>
                 <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto">

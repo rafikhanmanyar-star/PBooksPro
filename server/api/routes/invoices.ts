@@ -122,113 +122,108 @@ router.post('/', async (req: TenantRequest, res) => {
       });
     }
 
-    // Handle duplicate invoice_number: if another invoice with the same number exists
-    // (e.g. soft-deleted or orphaned), clear it so the new one can be created
-    if (!isUpdate && invoice.invoiceNumber) {
-      const duplicateByNumber = await db.query(
-        'SELECT id, deleted_at FROM invoices WHERE tenant_id = $1 AND invoice_number = $2 AND id != $3',
-        [req.tenantId, invoice.invoiceNumber, invoiceId]
-      );
-      if (duplicateByNumber.length > 0) {
-        const dup = duplicateByNumber[0];
-        if (dup.deleted_at) {
-          // Permanently remove soft-deleted invoice with the same number
-          await db.query('DELETE FROM invoices WHERE id = $1 AND tenant_id = $2', [dup.id, req.tenantId]);
-        } else {
-          // Active invoice with same number but different ID — update its ID to match the new one
-          // This handles cases where the client lost track of the original ID
-          await db.query(
-            'UPDATE invoices SET id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
-            [invoiceId, dup.id, req.tenantId]
-          );
-          // Re-check as the record now has the new ID
-          const refreshed = await db.query(
-            'SELECT id, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
-            [invoiceId, req.tenantId]
-          );
-          if (refreshed.length > 0) {
-            // Proceed as an update
-            existing.length = 0;
-            existing.push(refreshed[0]);
+    // Wrap duplicate cleanup + upsert in a transaction to prevent race conditions
+    const { saved, isActualUpdate } = await db.transaction(async (client) => {
+      const cq = async (text: string, params?: any[]) => (await client.query(text, params)).rows;
+
+      // Handle duplicate invoice_number: if another invoice with the same number exists
+      // (e.g. soft-deleted or orphaned), clear it so the new one can be created
+      if (!isUpdate && invoice.invoiceNumber) {
+        const duplicateByNumber = await cq(
+          'SELECT id, deleted_at FROM invoices WHERE tenant_id = $1 AND invoice_number = $2 AND id != $3',
+          [req.tenantId, invoice.invoiceNumber, invoiceId]
+        );
+        if (duplicateByNumber.length > 0) {
+          const dup = duplicateByNumber[0];
+          if (dup.deleted_at) {
+            await cq('DELETE FROM invoices WHERE id = $1 AND tenant_id = $2', [dup.id, req.tenantId]);
+          } else {
+            await cq(
+              'UPDATE invoices SET id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+              [invoiceId, dup.id, req.tenantId]
+            );
+            const refreshed = await cq(
+              'SELECT id, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
+              [invoiceId, req.tenantId]
+            );
+            if (refreshed.length > 0) {
+              existing.length = 0;
+              existing.push(refreshed[0]);
+            }
           }
         }
       }
-    }
 
-    const isActualUpdate = existing.length > 0;
+      const txIsActualUpdate = existing.length > 0;
 
-    // Optimistic locking check for POST update
-    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
-    const serverVersion = isActualUpdate ? existing[0].version : null;
-    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
-      return res.status(409).json({
-        error: 'Version conflict',
-        message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
-        serverVersion,
-      });
-    }
+      // Optimistic locking check for POST update
+      const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+      const serverVersion = txIsActualUpdate ? existing[0].version : null;
+      if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+        throw { code: 'VERSION_CONFLICT', clientVersion, serverVersion };
+      }
 
-    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
-    const result = await db.query(
-      `INSERT INTO invoices (
-        id, tenant_id, invoice_number, contact_id, amount, paid_amount, status,
-        issue_date, due_date, invoice_type, description, project_id, building_id,
-        property_id, unit_id, category_id, agreement_id, security_deposit_charge,
-        service_charges, rental_month, user_id, created_at, updated_at, version
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
-                COALESCE((SELECT created_at FROM invoices WHERE id = $1), NOW()), NOW(), 1)
-      ON CONFLICT (id) 
-      DO UPDATE SET
-        invoice_number = EXCLUDED.invoice_number,
-        contact_id = EXCLUDED.contact_id,
-        amount = EXCLUDED.amount,
-        paid_amount = EXCLUDED.paid_amount,
-        status = EXCLUDED.status,
-        issue_date = EXCLUDED.issue_date,
-        due_date = EXCLUDED.due_date,
-        invoice_type = EXCLUDED.invoice_type,
-        description = EXCLUDED.description,
-        project_id = EXCLUDED.project_id,
-        building_id = EXCLUDED.building_id,
-        property_id = EXCLUDED.property_id,
-        unit_id = EXCLUDED.unit_id,
-        category_id = EXCLUDED.category_id,
-        agreement_id = EXCLUDED.agreement_id,
-        security_deposit_charge = EXCLUDED.security_deposit_charge,
-        service_charges = EXCLUDED.service_charges,
-        rental_month = EXCLUDED.rental_month,
-        user_id = EXCLUDED.user_id,
-        updated_at = NOW(),
-        version = COALESCE(invoices.version, 1) + 1,
-        deleted_at = NULL
-      WHERE invoices.tenant_id = $2 AND (invoices.version = $22 OR invoices.version IS NULL)
-      RETURNING *`,
-      [
-        invoiceId,
-        req.tenantId,
-        invoice.invoiceNumber,
-        invoice.contactId,
-        invoice.amount,
-        invoice.paidAmount || 0,
-        invoice.status,
-        invoice.issueDate,
-        invoice.dueDate,
-        invoice.invoiceType,
-        invoice.description || null,
-        invoice.projectId || null,
-        invoice.buildingId || null,
-        invoice.propertyId || null,
-        invoice.unitId || null,
-        invoice.categoryId || null,
-        invoice.agreementId || null,
-        invoice.securityDepositCharge || null,
-        invoice.serviceCharges || null,
-        invoice.rentalMonth || null,
-        req.user?.userId || null,
-        serverVersion
-      ]
-    );
-    const saved = result[0];
+      const result = await cq(
+        `INSERT INTO invoices (
+          id, tenant_id, invoice_number, contact_id, amount, paid_amount, status,
+          issue_date, due_date, invoice_type, description, project_id, building_id,
+          property_id, unit_id, category_id, agreement_id, security_deposit_charge,
+          service_charges, rental_month, user_id, created_at, updated_at, version
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
+                  COALESCE((SELECT created_at FROM invoices WHERE id = $1), NOW()), NOW(), 1)
+        ON CONFLICT (id) 
+        DO UPDATE SET
+          invoice_number = EXCLUDED.invoice_number,
+          contact_id = EXCLUDED.contact_id,
+          amount = EXCLUDED.amount,
+          paid_amount = EXCLUDED.paid_amount,
+          status = EXCLUDED.status,
+          issue_date = EXCLUDED.issue_date,
+          due_date = EXCLUDED.due_date,
+          invoice_type = EXCLUDED.invoice_type,
+          description = EXCLUDED.description,
+          project_id = EXCLUDED.project_id,
+          building_id = EXCLUDED.building_id,
+          property_id = EXCLUDED.property_id,
+          unit_id = EXCLUDED.unit_id,
+          category_id = EXCLUDED.category_id,
+          agreement_id = EXCLUDED.agreement_id,
+          security_deposit_charge = EXCLUDED.security_deposit_charge,
+          service_charges = EXCLUDED.service_charges,
+          rental_month = EXCLUDED.rental_month,
+          user_id = EXCLUDED.user_id,
+          updated_at = NOW(),
+          version = COALESCE(invoices.version, 1) + 1,
+          deleted_at = NULL
+        WHERE invoices.tenant_id = $2 AND (invoices.version = $22 OR invoices.version IS NULL)
+        RETURNING *`,
+        [
+          invoiceId,
+          req.tenantId,
+          invoice.invoiceNumber,
+          invoice.contactId,
+          invoice.amount,
+          invoice.paidAmount || 0,
+          invoice.status,
+          invoice.issueDate,
+          invoice.dueDate,
+          invoice.invoiceType,
+          invoice.description || null,
+          invoice.projectId || null,
+          invoice.buildingId || null,
+          invoice.propertyId || null,
+          invoice.unitId || null,
+          invoice.categoryId || null,
+          invoice.agreementId || null,
+          invoice.securityDepositCharge || null,
+          invoice.serviceCharges || null,
+          invoice.rentalMonth || null,
+          req.user?.userId || null,
+          serverVersion
+        ]
+      );
+      return { saved: result[0], isActualUpdate: txIsActualUpdate };
+    });
 
     if (!saved) {
       // Version mismatch on update — the WHERE clause filtered it out
@@ -256,6 +251,13 @@ router.post('/', async (req: TenantRequest, res) => {
     invalidateARCache(req.tenantId!);
     res.status(isActualUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
+    if (error.code === 'VERSION_CONFLICT') {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${error.clientVersion} but server has version ${error.serverVersion}.`,
+        serverVersion: error.serverVersion,
+      });
+    }
     console.error('Error creating/updating invoice:', error);
     if (error.code === '23505') { // Unique violation
       return res.status(400).json({ error: 'Invoice number already exists' });

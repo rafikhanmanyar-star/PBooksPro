@@ -24,32 +24,24 @@ export interface LookupMaps {
  * Use these maps instead of state.accounts.find() for better performance
  */
 export function useLookupMaps(): LookupMaps {
-  const state = useStateSelector(s => s);
+  const accounts = useStateSelector(s => s.accounts);
+  const categories = useStateSelector(s => s.categories);
+  const contacts = useStateSelector(s => s.contacts);
+  const vendors = useStateSelector(s => s.vendors);
+  const projects = useStateSelector(s => s.projects);
+  const buildings = useStateSelector(s => s.buildings);
+  const properties = useStateSelector(s => s.properties);
+  const invoices = useStateSelector(s => s.invoices);
+  const bills = useStateSelector(s => s.bills);
 
   return useMemo(() => {
-    // Early return if state is not available (during initialization)
-    if (!state) {
-      return {
-        accounts: new Map(),
-        categories: new Map(),
-        contacts: new Map(),
-        projects: new Map(),
-        buildings: new Map(),
-        properties: new Map(),
-        invoices: new Map(),
-        bills: new Map(),
-      };
-    }
-
-    // Create Maps for O(1) lookups instead of O(n) .find() calls
-    // Add defensive checks to handle undefined/null arrays during initialization
     const accountsMap = new Map<string, { name: string; type: string }>();
-    (state.accounts || []).forEach(acc => {
+    (accounts || []).forEach(acc => {
       accountsMap.set(acc.id, { name: acc.name, type: acc.type });
     });
 
     const categoriesMap = new Map<string, { name: string; type: string; isRental?: boolean }>();
-    (state.categories || []).forEach(cat => {
+    (categories || []).forEach(cat => {
       categoriesMap.set(cat.id, {
         name: cat.name,
         type: cat.type,
@@ -58,26 +50,25 @@ export function useLookupMaps(): LookupMaps {
     });
 
     const contactsMap = new Map<string, { name: string }>();
-    (state.contacts || []).forEach(contact => {
+    (contacts || []).forEach(contact => {
       contactsMap.set(contact.id, { name: contact.name });
     });
-    // Add vendors to the same map for unified lookup
-    (state.vendors || []).forEach(vendor => {
+    (vendors || []).forEach(vendor => {
       contactsMap.set(vendor.id, { name: vendor.name });
     });
 
     const projectsMap = new Map<string, { name: string }>();
-    (state.projects || []).forEach(project => {
+    (projects || []).forEach(project => {
       projectsMap.set(project.id, { name: project.name });
     });
 
     const buildingsMap = new Map<string, { name: string }>();
-    (state.buildings || []).forEach(building => {
+    (buildings || []).forEach(building => {
       buildingsMap.set(building.id, { name: building.name });
     });
 
     const propertiesMap = new Map<string, { name: string; buildingId?: string }>();
-    (state.properties || []).forEach(property => {
+    (properties || []).forEach(property => {
       propertiesMap.set(property.id, {
         name: property.name,
         buildingId: property.buildingId
@@ -85,7 +76,7 @@ export function useLookupMaps(): LookupMaps {
     });
 
     const invoicesMap = new Map<string, { invoiceType?: string; status?: string; projectId?: string }>();
-    (state.invoices || []).forEach(invoice => {
+    (invoices || []).forEach(invoice => {
       invoicesMap.set(invoice.id, {
         invoiceType: invoice.invoiceType,
         status: invoice.status,
@@ -94,7 +85,7 @@ export function useLookupMaps(): LookupMaps {
     });
 
     const billsMap = new Map<string, { status?: string; projectId?: string }>();
-    (state.bills || []).forEach(bill => {
+    (bills || []).forEach(bill => {
       billsMap.set(bill.id, {
         status: bill.status,
         projectId: bill.projectId
@@ -111,17 +102,7 @@ export function useLookupMaps(): LookupMaps {
       invoices: invoicesMap,
       bills: billsMap,
     };
-  }, [
-    state?.accounts,
-    state?.categories,
-    state?.contacts,
-    state?.vendors,
-    state?.projects,
-    state?.buildings,
-    state?.properties,
-    state?.invoices,
-    state?.bills,
-  ]);
+  }, [accounts, categories, contacts, vendors, projects, buildings, properties, invoices, bills]);
 }
 
 

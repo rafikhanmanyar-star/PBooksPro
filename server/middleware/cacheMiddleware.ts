@@ -21,10 +21,10 @@ export function cacheMiddleware(
             return next();
         }
 
-        // Generate cache key
+        // Generate cache key — always scope by tenantId to prevent cross-tenant data leakage
         const key = keyGenerator
             ? keyGenerator(req)
-            : `__express__${req.originalUrl || req.url}`;
+            : `__express__${req.tenantId || 'anon'}:${req.originalUrl || req.url}`;
 
         // Check cache
         const cachedResponse = cache.get(key);

@@ -578,9 +578,8 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
     const colInfo = await getColumnInfo();
     const oldId = req.params.id;
     const body = req.body;
-    // body: { newAgreementId, agreementNumber, startDate, endDate, monthlyRent, rentDueDate, securityDeposit, brokerId, brokerFee, description, ownerId, generateInvoices, invoiceSettings? }
 
-    // 1. Fetch old agreement
+    // 1. Pre-validate outside transaction (read-only checks)
     const oldRows = await db.query(
       `SELECT * FROM rental_agreements WHERE id = $1 AND org_id = $2`,
       [oldId, req.tenantId]
@@ -590,12 +589,10 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
     }
     const old = oldRows[0];
 
-    // 2. Check old is Active
     if (old.status !== 'Active') {
       return res.status(400).json({ error: 'Only active agreements can be renewed' });
     }
 
-    // 3. Check for open invoices
     const openInvRows = await db.query(
       `SELECT COUNT(*) as count FROM invoices WHERE agreement_id = $1 AND tenant_id = $2 AND status != 'Paid'`,
       [oldId, req.tenantId]
@@ -608,188 +605,188 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
       });
     }
 
-    // 4. Mark old agreement as Renewed
-    await db.query(
-      `UPDATE rental_agreements SET status = 'Renewed', updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND org_id = $2`,
-      [oldId, req.tenantId]
-    );
-
-    // 5. Deactivate old recurring templates
-    await db.query(
-      `UPDATE recurring_invoice_templates SET active = false WHERE agreement_id = $1 AND tenant_id = $2 AND active = true`,
-      [oldId, req.tenantId]
-    );
-
-    // 6. Create new agreement
-    const newId = body.newAgreementId || `ra_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const insertCols = ['id', 'org_id'];
-    const insertVals: any[] = [newId, req.tenantId];
-
-    insertCols.push(
-      'agreement_number', 'contact_id', 'property_id',
-      'start_date', 'end_date', 'monthly_rent', 'rent_due_date',
-      'status', 'description', 'security_deposit',
-      'broker_id', 'broker_fee', 'owner_id'
-    );
-    insertVals.push(
-      body.agreementNumber,
-      old.contact_id,
-      old.property_id,
-      body.startDate,
-      body.endDate,
-      body.monthlyRent,
-      body.rentDueDate ?? old.rent_due_date,
-      'Active',
-      body.description || old.description || null,
-      body.securityDeposit ?? old.security_deposit ?? null,
-      body.brokerId ?? old.broker_id ?? null,
-      body.brokerFee ?? old.broker_fee ?? null,
-      body.ownerId ?? old.owner_id ?? null
-    );
-
-    if (colInfo.hasPreviousAgreementId) {
-      insertCols.push('previous_agreement_id');
-      insertVals.push(oldId);
-    }
-
-    insertCols.push('created_at', 'updated_at', 'version');
-    insertVals.push(
-      'NOW()',
-      'NOW()',
-      '1'
-    );
-
-    // Build placeholders (last two are NOW())
-    const placeholders = insertCols.map((_, i) => {
-      if (i === insertCols.length - 2 || i === insertCols.length - 1) return 'NOW()';
-      return `$${i + 1}`;
-    });
-    // Remove the last two vals since we use literal NOW()
-    insertVals.splice(insertVals.length - 2, 2);
-
-    const newResult = await db.query(
-      `INSERT INTO rental_agreements (${insertCols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
-      insertVals
-    );
-    const newAgreement = transformRentalAgreement(newResult[0]);
-
-    // 7. Optionally generate invoices
-    const generatedInvoices: any[] = [];
-    if (body.generateInvoices) {
-      const settings = body.invoiceSettings || {};
-      const prefix = settings.prefix || 'INV-';
-      const padding = settings.padding || 5;
-      let nextNum = settings.nextNumber || 1;
-
-      // Helper to get next invoice number
-      const getNextNum = async () => {
-        const maxRow = await db.query(
-          `SELECT invoice_number FROM invoices WHERE tenant_id = $1 AND invoice_number LIKE $2 ORDER BY invoice_number DESC LIMIT 1`,
-          [req.tenantId, `${prefix}%`]
-        );
-        if (maxRow.length > 0) {
-          const numPart = parseInt(maxRow[0].invoice_number.slice(prefix.length), 10);
-          if (!isNaN(numPart) && numPart >= nextNum) nextNum = numPart + 1;
-        }
-        const num = `${prefix}${String(nextNum).padStart(padding, '0')}`;
-        nextNum++;
-        return num;
+    // 2. Execute all mutations atomically within a transaction
+    const txResult = await db.transaction(async (client) => {
+      // Helper: query via client (returns rows array like db.query)
+      const cq = async (text: string, params?: any[]) => {
+        const r = await client.query(text, params);
+        return r.rows;
       };
 
-      const oldSec = parseFloat(old.security_deposit) || 0;
-      const newSec = parseFloat(body.securityDeposit) || 0;
-      const increment = Math.max(0, newSec - oldSec);
-      const rentAmt = parseFloat(body.monthlyRent) || 0;
+      // Mark old agreement as Renewed
+      await cq(
+        `UPDATE rental_agreements SET status = 'Renewed', updated_at = NOW(), version = COALESCE(version, 1) + 1 WHERE id = $1 AND org_id = $2`,
+        [oldId, req.tenantId]
+      );
 
-      // a. Incremental Security Deposit Invoice
-      if (increment > 0) {
-        const invNum = await getNextNum();
-        const secCatRow = await db.query(`SELECT id FROM categories WHERE tenant_id = $1 AND name = 'Security Deposit' LIMIT 1`, [req.tenantId]);
-        const secCatId = secCatRow[0]?.id || null;
+      // Deactivate old recurring templates
+      await cq(
+        `UPDATE recurring_invoice_templates SET active = false WHERE agreement_id = $1 AND tenant_id = $2 AND active = true`,
+        [oldId, req.tenantId]
+      );
 
-        const secInv = await db.query(
-          `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, invoice_type, amount, paid_amount, status, issue_date, due_date, description, property_id, building_id, category_id, agreement_id, security_deposit_charge, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,0,'Unpaid',$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW()) RETURNING *`,
-          [
-            `inv-sec-ren-${Date.now()}`, req.tenantId, invNum, old.contact_id, 'Rental',
-            increment, body.startDate, body.startDate,
-            'Incremental Security Deposit (Renewal) [Security]',
-            old.property_id, old.building_id || null, secCatId, newId, increment
-          ]
-        );
-        generatedInvoices.push(secInv[0]);
+      // Create new agreement
+      const newId = body.newAgreementId || `ra_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const insertCols = ['id', 'org_id'];
+      const insertVals: any[] = [newId, req.tenantId];
+
+      insertCols.push(
+        'agreement_number', 'contact_id', 'property_id',
+        'start_date', 'end_date', 'monthly_rent', 'rent_due_date',
+        'status', 'description', 'security_deposit',
+        'broker_id', 'broker_fee', 'owner_id'
+      );
+      insertVals.push(
+        body.agreementNumber,
+        old.contact_id,
+        old.property_id,
+        body.startDate,
+        body.endDate,
+        body.monthlyRent,
+        body.rentDueDate ?? old.rent_due_date,
+        'Active',
+        body.description || old.description || null,
+        body.securityDeposit ?? old.security_deposit ?? null,
+        body.brokerId ?? old.broker_id ?? null,
+        body.brokerFee ?? old.broker_fee ?? null,
+        body.ownerId ?? old.owner_id ?? null
+      );
+
+      if (colInfo.hasPreviousAgreementId) {
+        insertCols.push('previous_agreement_id');
+        insertVals.push(oldId);
       }
 
-      // b. First Month Rent Invoice (pro-rated if mid-month)
-      if (rentAmt > 0) {
-        const rnDateObj = new Date(body.startDate);
-        const rnYear = rnDateObj.getFullYear();
-        const rnMonth = rnDateObj.getMonth();
-        const rnDay = rnDateObj.getDate();
-        const rnDaysInMonth = new Date(rnYear, rnMonth + 1, 0).getDate();
-        const rnRemainingDays = rnDaysInMonth - rnDay + 1;
-        const rnIsProrated = rnRemainingDays < rnDaysInMonth;
-        const rnProRatedRent = rnIsProrated ? Math.ceil((rentAmt / rnDaysInMonth) * rnRemainingDays / 100) * 100 : rentAmt;
+      insertCols.push('created_at', 'updated_at', 'version');
+      insertVals.push('NOW()', 'NOW()', '1');
 
-        const invNum = await getNextNum();
-        const rentCatRow = await db.query(`SELECT id FROM categories WHERE tenant_id = $1 AND name = 'Rental Income' LIMIT 1`, [req.tenantId]);
-        const rentCatId = rentCatRow[0]?.id || null;
-        const monthName = new Date(body.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
+      const placeholders = insertCols.map((_, i) => {
+        if (i === insertCols.length - 2 || i === insertCols.length - 1) return 'NOW()';
+        return `$${i + 1}`;
+      });
+      insertVals.splice(insertVals.length - 2, 2);
 
-        const rentInv = await db.query(
-          `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, invoice_type, amount, paid_amount, status, issue_date, due_date, description, property_id, building_id, category_id, agreement_id, rental_month, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,0,'Unpaid',$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW()) RETURNING *`,
-          [
-            `inv-rent-ren-${Date.now()}`, req.tenantId, invNum, old.contact_id, 'Rental',
-            rnProRatedRent, body.startDate, body.startDate,
-            `Rent for ${monthName}${rnIsProrated ? ` (Pro-rata: ${rnRemainingDays} days)` : ''} (Renewal) [Rental]`,
-            old.property_id, old.building_id || null, rentCatId, newId,
-            body.startDate.slice(0, 7)
-          ]
-        );
-        generatedInvoices.push(rentInv[0]);
+      const newResult = await cq(
+        `INSERT INTO rental_agreements (${insertCols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
+        insertVals
+      );
+      const newAgreement = transformRentalAgreement(newResult[0]);
 
-        // c. Create new recurring template (next invoice on 1st of next month)
-        const nextMonth = new Date(rnYear, rnMonth + 1, 1);
-        await db.query(
-          `INSERT INTO recurring_invoice_templates (id, tenant_id, contact_id, property_id, building_id, amount, description_template, day_of_month, next_due_date, active, agreement_id, invoice_type, auto_generate, frequency, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,true,'Monthly',NOW(),NOW())`,
-          [
-            `rec-ren-${Date.now()}`, req.tenantId, old.contact_id, old.property_id,
-            old.building_id || '', rentAmt, 'Rent for {Month} [Rental]',
-            1,
-            nextMonth.toISOString().split('T')[0],
-            newId, 'Rental'
-          ]
-        );
+      // Optionally generate invoices
+      const generatedInvoices: any[] = [];
+      if (body.generateInvoices) {
+        const settings = body.invoiceSettings || {};
+        const prefix = settings.prefix || 'INV-';
+        const padding = settings.padding || 5;
+        let nextNum = settings.nextNumber || 1;
+
+        const getNextNum = async () => {
+          const maxRow = await cq(
+            `SELECT invoice_number FROM invoices WHERE tenant_id = $1 AND invoice_number LIKE $2 ORDER BY invoice_number DESC LIMIT 1`,
+            [req.tenantId, `${prefix}%`]
+          );
+          if (maxRow.length > 0) {
+            const numPart = parseInt(maxRow[0].invoice_number.slice(prefix.length), 10);
+            if (!isNaN(numPart) && numPart >= nextNum) nextNum = numPart + 1;
+          }
+          const num = `${prefix}${String(nextNum).padStart(padding, '0')}`;
+          nextNum++;
+          return num;
+        };
+
+        const oldSec = parseFloat(old.security_deposit) || 0;
+        const newSec = parseFloat(body.securityDeposit) || 0;
+        const increment = Math.max(0, newSec - oldSec);
+        const rentAmt = parseFloat(body.monthlyRent) || 0;
+
+        if (increment > 0) {
+          const invNum = await getNextNum();
+          const secCatRow = await cq(`SELECT id FROM categories WHERE tenant_id = $1 AND name = 'Security Deposit' LIMIT 1`, [req.tenantId]);
+          const secCatId = secCatRow[0]?.id || null;
+
+          const secInv = await cq(
+            `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, invoice_type, amount, paid_amount, status, issue_date, due_date, description, property_id, building_id, category_id, agreement_id, security_deposit_charge, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,0,'Unpaid',$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW()) RETURNING *`,
+            [
+              `inv-sec-ren-${Date.now()}`, req.tenantId, invNum, old.contact_id, 'Rental',
+              increment, body.startDate, body.startDate,
+              'Incremental Security Deposit (Renewal) [Security]',
+              old.property_id, old.building_id || null, secCatId, newId, increment
+            ]
+          );
+          generatedInvoices.push(secInv[0]);
+        }
+
+        if (rentAmt > 0) {
+          const rnDateObj = new Date(body.startDate);
+          const rnYear = rnDateObj.getFullYear();
+          const rnMonth = rnDateObj.getMonth();
+          const rnDay = rnDateObj.getDate();
+          const rnDaysInMonth = new Date(rnYear, rnMonth + 1, 0).getDate();
+          const rnRemainingDays = rnDaysInMonth - rnDay + 1;
+          const rnIsProrated = rnRemainingDays < rnDaysInMonth;
+          const rnProRatedRent = rnIsProrated ? Math.ceil((rentAmt / rnDaysInMonth) * rnRemainingDays / 100) * 100 : rentAmt;
+
+          const invNum = await getNextNum();
+          const rentCatRow = await cq(`SELECT id FROM categories WHERE tenant_id = $1 AND name = 'Rental Income' LIMIT 1`, [req.tenantId]);
+          const rentCatId = rentCatRow[0]?.id || null;
+          const monthName = new Date(body.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+          const rentInv = await cq(
+            `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, invoice_type, amount, paid_amount, status, issue_date, due_date, description, property_id, building_id, category_id, agreement_id, rental_month, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,0,'Unpaid',$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW()) RETURNING *`,
+            [
+              `inv-rent-ren-${Date.now()}`, req.tenantId, invNum, old.contact_id, 'Rental',
+              rnProRatedRent, body.startDate, body.startDate,
+              `Rent for ${monthName}${rnIsProrated ? ` (Pro-rata: ${rnRemainingDays} days)` : ''} (Renewal) [Rental]`,
+              old.property_id, old.building_id || null, rentCatId, newId,
+              body.startDate.slice(0, 7)
+            ]
+          );
+          generatedInvoices.push(rentInv[0]);
+
+          const nextMonth = new Date(rnYear, rnMonth + 1, 1);
+          await cq(
+            `INSERT INTO recurring_invoice_templates (id, tenant_id, contact_id, property_id, building_id, amount, description_template, day_of_month, next_due_date, active, agreement_id, invoice_type, auto_generate, frequency, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,true,'Monthly',NOW(),NOW())`,
+            [
+              `rec-ren-${Date.now()}`, req.tenantId, old.contact_id, old.property_id,
+              old.building_id || '', rentAmt, 'Rent for {Month} [Rental]',
+              1,
+              nextMonth.toISOString().split('T')[0],
+              newId, 'Rental'
+            ]
+          );
+        }
+
+        if (body.invoiceSettings) {
+          body.invoiceSettings.nextNumber = nextNum;
+        }
       }
 
-      // Update invoice settings nextNumber
-      if (body.invoiceSettings) {
-        body.invoiceSettings.nextNumber = nextNum;
-      }
-    }
+      // Fetch the updated old agreement within the transaction
+      const updatedOldRows = await cq(`SELECT * FROM rental_agreements WHERE id = $1 AND org_id = $2`, [oldId, req.tenantId]);
+      const updatedOld = transformRentalAgreement(updatedOldRows[0]);
 
-    // 8. Emit WebSocket events
-    // Old agreement updated
-    const updatedOldRows = await db.query(`SELECT * FROM rental_agreements WHERE id = $1`, [oldId]);
-    const updatedOld = transformRentalAgreement(updatedOldRows[0]);
+      return { updatedOld, newAgreement, generatedInvoices };
+    });
+
+    // 3. Emit WebSocket events (after transaction committed)
     emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
-      agreement: updatedOld,
+      agreement: txResult.updatedOld,
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    // New agreement created
     emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_CREATED, {
-      agreement: newAgreement,
+      agreement: txResult.newAgreement,
       userId: req.user?.userId,
       username: req.user?.username,
     });
 
     res.status(201).json({
-      oldAgreement: updatedOld,
-      newAgreement,
-      generatedInvoices,
+      oldAgreement: txResult.updatedOld,
+      newAgreement: txResult.newAgreement,
+      generatedInvoices: txResult.generatedInvoices,
       nextInvoiceNumber: body.generateInvoices ? body.invoiceSettings?.nextNumber : undefined
     });
   } catch (error: any) {

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo, Suspense } from 'react';
 import InvoicesPage from '../invoices/InvoicesPage';
 import BillsPage from '../bills/BillsPage';
 import ProjectAgreementsPage from './ProjectAgreementsPage';
@@ -12,26 +12,28 @@ import { useAuth } from '../../context/AuthContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { ICONS } from '../../constants';
 
-// Direct Report Imports
-import ProjectLayoutReport from '../reports/ProjectLayoutReport';
-import ProjectUnitReport from '../reports/ProjectUnitReport';
-import ProjectSummaryReport from '../reports/ProjectSummaryReport';
-import RevenueAnalysisReport from '../reports/RevenueAnalysisReport';
-import ClientLedgerReport from '../reports/ClientLedgerReport';
-import ProjectBrokerReport from '../reports/ProjectBrokerReport';
-import ProjectCategoryReport from '../reports/ProjectCategoryReport';
-import VendorLedgerReport from '../reports/VendorLedgerReport';
-import ProjectPMCostReport from '../reports/ProjectPMCostReport';
+// Non-report page imports (not lazy since they're operational)
 import ProjectPMPayouts from './ProjectPMPayouts';
-import ProjectProfitLossReport from '../reports/ProjectProfitLossReport';
-import ProjectBalanceSheetReport from '../reports/ProjectBalanceSheetReport';
-import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 import ProjectContractsPage from './ProjectContractsPage';
-import ProjectContractReport from '../reports/ProjectContractReport';
-import ProjectBudgetReport from '../reports/ProjectBudgetReport';
-import ProjectMaterialReport from '../reports/ProjectMaterialReport';
-import ProjectCashFlowReport from '../reports/ProjectCashFlowReport';
-import MarketingActivityReport from '../reports/MarketingActivityReport';
+
+// Lazy-loaded report imports to reduce initial bundle size
+const ProjectLayoutReport = React.lazy(() => import('../reports/ProjectLayoutReport'));
+const ProjectUnitReport = React.lazy(() => import('../reports/ProjectUnitReport'));
+const ProjectSummaryReport = React.lazy(() => import('../reports/ProjectSummaryReport'));
+const RevenueAnalysisReport = React.lazy(() => import('../reports/RevenueAnalysisReport'));
+const ClientLedgerReport = React.lazy(() => import('../reports/ClientLedgerReport'));
+const ProjectBrokerReport = React.lazy(() => import('../reports/ProjectBrokerReport'));
+const ProjectCategoryReport = React.lazy(() => import('../reports/ProjectCategoryReport'));
+const VendorLedgerReport = React.lazy(() => import('../reports/VendorLedgerReport'));
+const ProjectPMCostReport = React.lazy(() => import('../reports/ProjectPMCostReport'));
+const ProjectProfitLossReport = React.lazy(() => import('../reports/ProjectProfitLossReport'));
+const ProjectBalanceSheetReport = React.lazy(() => import('../reports/ProjectBalanceSheetReport'));
+const ProjectInvestorReport = React.lazy(() => import('../reports/ProjectInvestorReport'));
+const ProjectContractReport = React.lazy(() => import('../reports/ProjectContractReport'));
+const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetReport'));
+const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
+const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
+const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
 
 interface ProjectManagementPageProps {
     initialPage: Page;
@@ -313,7 +315,9 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             </div>
 
             <div className="flex-grow overflow-hidden px-4 md:px-0">
-                {renderContent()}
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-400">Loading...</div>}>
+                    {renderContent()}
+                </Suspense>
             </div>
         </div>
     );

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import Button from '../ui/Button';
 import { ICONS, CURRENCY } from '../../constants';
 import Modal from '../ui/Modal';
@@ -22,7 +22,11 @@ type SortKey = 'agreementNumber' | 'tenant' | 'owner' | 'property' | 'rent' | 's
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
 const RentalAgreementsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
+    const rentalAgreements = useStateSelector(s => s.rentalAgreements);
+    const properties = useStateSelector(s => s.properties);
+    const contacts = useStateSelector(s => s.contacts);
+    const buildings = useStateSelector(s => s.buildings);
     const [viewMode, setViewMode] = useLocalStorage<ViewMode>('agreements_view_mode', 'summary');
 
     // --- Modals / Panels ---
@@ -45,12 +49,17 @@ const RentalAgreementsPage: React.FC = () => {
     const today = useMemo(() => new Date(), []);
     const thirtyDaysLater = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; }, []);
 
+    // Build O(1) lookup maps to avoid repeated .find() calls
+    const propertyMap = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
+    const contactMap = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
+    const buildingMap = useMemo(() => new Map(buildings.map(b => [b.id, b])), [buildings]);
+
     const getAgreementDetails = (ra: RentalAgreement) => {
-        const property = state.properties.find(p => p.id === ra.propertyId);
-        const tenant = state.contacts.find(c => c.id === ra.contactId);
+        const property = propertyMap.get(ra.propertyId);
+        const tenant = contactMap.get(ra.contactId);
         const ownerId = ra.ownerId || property?.ownerId;
-        const owner = ownerId ? state.contacts.find(c => c.id === ownerId) : null;
-        const building = property ? state.buildings.find(b => b.id === property.buildingId) : null;
+        const owner = ownerId ? contactMap.get(ownerId) : null;
+        const building = property ? buildingMap.get(property.buildingId || '') : null;
         return {
             ...ra,
             propertyName: property?.name || 'Unknown',
@@ -69,8 +78,8 @@ const RentalAgreementsPage: React.FC = () => {
 
     // --- KPI Calculations ---
     const kpiData = useMemo(() => {
-        const active = state.rentalAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE);
-        const expiring = state.rentalAgreements.filter(isExpiringSoon);
+        const active = rentalAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE);
+        const expiring = rentalAgreements.filter(isExpiringSoon);
         const totalRent = active.reduce((sum, a) => sum + (parseFloat(String(a.monthlyRent)) || 0), 0);
         const totalSecurity = active.reduce((sum, a) => sum + (parseFloat(String(a.securityDeposit)) || 0), 0);
         return {
@@ -79,7 +88,7 @@ const RentalAgreementsPage: React.FC = () => {
             expiringCount: expiring.length,
             totalSecurity,
         };
-    }, [state.rentalAgreements, today, thirtyDaysLater]);
+    }, [rentalAgreements, today, thirtyDaysLater]);
 
     // --- Date Handling ---
     const handleRangeChange = (option: DateRangeOption) => {
@@ -104,14 +113,14 @@ const RentalAgreementsPage: React.FC = () => {
         const agreementId = sessionStorage.getItem('openRentalAgreementId');
         if (agreementId) {
             sessionStorage.removeItem('openRentalAgreementId');
-            const agreement = state.rentalAgreements.find(a => a.id === agreementId);
+            const agreement = rentalAgreements.find(a => a.id === agreementId);
             if (agreement) setSelectedAgreement(agreement);
         }
-    }, [state.rentalAgreements]);
+    }, [rentalAgreements]);
 
     // --- Filtered & Sorted Data ---
     const filteredAgreements = useMemo(() => {
-        let agreements = state.rentalAgreements.map(getAgreementDetails);
+        let agreements = rentalAgreements.map(getAgreementDetails);
 
         // Date range
         if (startDate && endDate) {
@@ -160,7 +169,7 @@ const RentalAgreementsPage: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [state.rentalAgreements, state.properties, state.contacts, state.buildings, searchQuery, statusFilter, buildingFilter, startDate, endDate, sortConfig, today, thirtyDaysLater]);
+    }, [rentalAgreements, properties, contacts, buildings, searchQuery, statusFilter, buildingFilter, startDate, endDate, sortConfig, today, thirtyDaysLater]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(c => ({ key, direction: c.key === key && c.direction === 'asc' ? 'desc' : 'asc' }));
@@ -184,22 +193,28 @@ const RentalAgreementsPage: React.FC = () => {
 
     // --- Status tab counts ---
     const statusCounts = useMemo(() => {
-        const all = state.rentalAgreements.length;
-        const active = state.rentalAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).length;
-        const expiring = state.rentalAgreements.filter(isExpiringSoon).length;
-        const renewed = state.rentalAgreements.filter(a => a.status === RentalAgreementStatus.RENEWED).length;
-        const terminated = state.rentalAgreements.filter(a => a.status === RentalAgreementStatus.TERMINATED || a.status === RentalAgreementStatus.EXPIRED).length;
-        return { all, active, expiring, renewed, terminated };
-    }, [state.rentalAgreements, today, thirtyDaysLater]);
+        let active = 0, expiring = 0, renewed = 0, terminated = 0;
+        rentalAgreements.forEach(a => {
+            if (a.status === RentalAgreementStatus.ACTIVE) {
+                active++;
+                if (isExpiringSoon(a)) expiring++;
+            } else if (a.status === RentalAgreementStatus.RENEWED) {
+                renewed++;
+            } else if (a.status === RentalAgreementStatus.TERMINATED || a.status === RentalAgreementStatus.EXPIRED) {
+                terminated++;
+            }
+        });
+        return { all: rentalAgreements.length, active, expiring, renewed, terminated };
+    }, [rentalAgreements, today, thirtyDaysLater]);
 
     // Keep selected agreement in sync with state
     useEffect(() => {
         if (selectedAgreement) {
-            const updated = state.rentalAgreements.find(a => a.id === selectedAgreement.id);
+            const updated = rentalAgreements.find(a => a.id === selectedAgreement.id);
             if (updated) setSelectedAgreement(updated);
             else setSelectedAgreement(null);
         }
-    }, [state.rentalAgreements]);
+    }, [rentalAgreements]);
 
     if (viewMode === 'summary') {
         return (
@@ -345,7 +360,7 @@ const RentalAgreementsPage: React.FC = () => {
                         className="px-2.5 py-1.5 text-xs border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 min-w-[130px]"
                     >
                         <option value="">All Buildings</option>
-                        {state.buildings.map(b => (
+                        {buildings.map(b => (
                             <option key={b.id} value={b.id}>{b.name}</option>
                         ))}
                     </select>
@@ -426,7 +441,7 @@ const RentalAgreementsPage: React.FC = () => {
                         </table>
                     </div>
                     <div className="flex-shrink-0 px-3 py-1.5 border-t border-slate-200 bg-slate-50/80 text-xs font-medium text-slate-600 flex items-center justify-between">
-                        <span>Showing {filteredAgreements.length} of {state.rentalAgreements.length} agreements</span>
+                        <span>Showing {filteredAgreements.length} of {rentalAgreements.length} agreements</span>
                         <span className="tabular-nums">Total Rent: {CURRENCY} {filteredAgreements.reduce((s, a) => s + (parseFloat(String(a.monthlyRent)) || 0), 0).toLocaleString()}</span>
                     </div>
                 </div>

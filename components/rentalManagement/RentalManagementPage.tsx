@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useRef, memo, Suspense } from 'react';
 import RentalAgreementsPage from '../rentalAgreements/RentalAgreementsPage';
 import OwnerPayoutsPage from '../payouts/OwnerPayoutsPage';
 import { Page } from '../../types';
@@ -9,21 +9,20 @@ import RentalBillsPage from './RentalBillsPage';
 import { useAppContext } from '../../context/AppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 
-// Direct Report Imports
-// Direct Report Imports
-import PropertyLayoutReport from '../reports/PropertyLayoutReport';
-import UnitStatusReport from '../reports/UnitStatusReport';
-import AgreementExpiryReport from '../reports/AgreementExpiryReport';
-import BuildingAccountsReport from '../reports/BuildingAccountsReport';
-import BMAnalysisReport from '../reports/BMAnalysisReport';
-import OwnerPayoutsReport from '../reports/OwnerPayoutsReport';
-import ServiceChargesDeductionReport from '../reports/ServiceChargesDeductionReport';
-import TenantLedgerReport from '../reports/TenantLedgerReport';
-import VendorLedgerReport from '../reports/VendorLedgerReport';
-import OwnerSecurityDepositReport from '../reports/OwnerSecurityDepositReport';
-import BrokerFeeReport from '../reports/BrokerFeeReport';
-import InvoicePaymentAnalysisReport from '../reports/InvoicePaymentAnalysisReport';
-import OwnerIncomeSummaryReport from '../reports/OwnerIncomeSummaryReport';
+// Lazy-loaded report imports to reduce initial bundle size
+const PropertyLayoutReport = React.lazy(() => import('../reports/PropertyLayoutReport'));
+const UnitStatusReport = React.lazy(() => import('../reports/UnitStatusReport'));
+const AgreementExpiryReport = React.lazy(() => import('../reports/AgreementExpiryReport'));
+const BuildingAccountsReport = React.lazy(() => import('../reports/BuildingAccountsReport'));
+const BMAnalysisReport = React.lazy(() => import('../reports/BMAnalysisReport'));
+const OwnerPayoutsReport = React.lazy(() => import('../reports/OwnerPayoutsReport'));
+const ServiceChargesDeductionReport = React.lazy(() => import('../reports/ServiceChargesDeductionReport'));
+const TenantLedgerReport = React.lazy(() => import('../reports/TenantLedgerReport'));
+const VendorLedgerReport = React.lazy(() => import('../reports/VendorLedgerReport'));
+const OwnerSecurityDepositReport = React.lazy(() => import('../reports/OwnerSecurityDepositReport'));
+const BrokerFeeReport = React.lazy(() => import('../reports/BrokerFeeReport'));
+const InvoicePaymentAnalysisReport = React.lazy(() => import('../reports/InvoicePaymentAnalysisReport'));
+const OwnerIncomeSummaryReport = React.lazy(() => import('../reports/OwnerIncomeSummaryReport'));
 
 interface RentalManagementPageProps {
     initialPage: Page;
@@ -250,13 +249,16 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             </div>
 
             <div className="flex-grow overflow-hidden">
-                {/* Operational tabs stay mounted to preserve state (hidden via CSS) */}
-                <div className={`h-full ${activeView === 'Agreements' ? '' : 'hidden'}`}><RentalAgreementsPage /></div>
-                <div className={`h-full ${activeView === 'Invoices' ? '' : 'hidden'}`}><RentalInvoicesPage /></div>
-                <div className={`h-full ${activeView === 'Bills' ? '' : 'hidden'}`}><RentalBillsPage /></div>
-                <div className={`h-full ${activeView === 'Payment' ? '' : 'hidden'}`}><RentalPaymentSearch /></div>
-                <div className={`h-full ${activeView === 'Payouts' ? '' : 'hidden'}`}><OwnerPayoutsPage /></div>
-                {!isOperationalView && renderReportContent()}
+                {activeView === 'Agreements' && <RentalAgreementsPage />}
+                {activeView === 'Invoices' && <RentalInvoicesPage />}
+                {activeView === 'Bills' && <RentalBillsPage />}
+                {activeView === 'Payment' && <RentalPaymentSearch />}
+                {activeView === 'Payouts' && <OwnerPayoutsPage />}
+                {!isOperationalView && (
+                    <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-400">Loading report...</div>}>
+                        {renderReportContent()}
+                    </Suspense>
+                )}
             </div>
         </div>
     );

@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Transaction } from '../types';
 import { TransactionsRepository } from '../services/database/repositories';
-import { useAppContext } from '../context/AppContext';
+import { useStateSelector } from './useSelectiveState';
 import { getDatabaseService } from '../services/database/databaseService';
 import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
 import { isMobileDevice } from '../utils/platformDetection';
@@ -36,7 +36,7 @@ interface UsePaginatedTransactionsResult {
 export function usePaginatedTransactions(
   options: UsePaginatedTransactionsOptions = {}
 ): UsePaginatedTransactionsResult {
-  const { state } = useAppContext();
+  const stateTransactions = useStateSelector(s => s.transactions);
   const { projectId, pageSize = 200, enabled = true } = options;
   const [nativeTransactions, setNativeTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -89,7 +89,7 @@ export function usePaginatedTransactions(
             // Database not ready yet, will retry on next render or when database becomes ready
             // For now, use state transactions length as fallback
             if (!shouldUseNative) {
-              setTotalCount(state.transactions.length);
+              setTotalCount(stateTransactions.length);
             }
           }
         }
@@ -126,7 +126,7 @@ export function usePaginatedTransactions(
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, projectId, pageSize, repo, shouldUseNative, totalCount, state.transactions.length, state]);
+  }, [enabled, projectId, pageSize, repo, shouldUseNative, totalCount, stateTransactions.length]);
 
   const loadMore = useCallback(async () => {
     if (!hasMore || isLoading || !shouldUseNative) return;
@@ -148,22 +148,22 @@ export function usePaginatedTransactions(
         setIsUsingNative(false);
         setNativeTransactions([]);
         // When not using native, we'll use state transactions, so we can set total count
-        setTotalCount(state.transactions.length);
+        setTotalCount(stateTransactions.length);
       }
     } else {
       setNativeTransactions([]);
       setIsUsingNative(false);
       setTotalCount(null); // Clear total count if disabled
     }
-  }, [enabled, projectId, shouldUseNative, loadPage, state.transactions.length]);
+  }, [enabled, projectId, shouldUseNative, loadPage, stateTransactions.length]);
 
   // Get transactions (native or fallback)
   const transactions = useMemo(() => {
     if (isUsingNative && nativeTransactions.length > 0) {
       return nativeTransactions;
     }
-    return state.transactions;
-  }, [isUsingNative, nativeTransactions, state.transactions]);
+    return stateTransactions;
+  }, [isUsingNative, nativeTransactions, stateTransactions]);
 
   return {
     transactions,

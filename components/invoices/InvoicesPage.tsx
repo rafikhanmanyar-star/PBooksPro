@@ -299,6 +299,10 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const buildingOptions = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...buildings], [buildings]);
     const projectOptions = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
+    // O(1) lookup maps for filtering — avoids repeated .find() calls
+    const propertyMap = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
+    const unitMap = useMemo(() => new Map(units.map(u => [u.id, u])), [units]);
+
     // --- Base Data Filtering (For Tree Structure) ---
     const baseInvoices = useMemo(() => {
         try {
@@ -316,7 +320,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 filtered = filtered.filter(inv => {
                     if (inv.buildingId === buildingFilter) return true;
                     if (inv.propertyId) {
-                        const prop = properties.find(p => p.id === inv.propertyId);
+                        const prop = propertyMap.get(inv.propertyId);
                         return prop && prop.buildingId === buildingFilter;
                     }
                     return false;
@@ -329,14 +333,14 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 const query = debouncedSearch.toLowerCase();
                 filtered = filtered.filter(inv => {
                     if (inv.invoiceNumber.toLowerCase().includes(query)) return true;
-                    if (contacts.find(c => c.id === inv.contactId)?.name.toLowerCase().includes(query)) return true;
+                    if (contactMap.get(inv.contactId)?.name.toLowerCase().includes(query)) return true;
                     if (inv.description && inv.description.toLowerCase().includes(query)) return true;
                     if (inv.propertyId) {
-                        const prop = properties.find(p => p.id === inv.propertyId);
+                        const prop = propertyMap.get(inv.propertyId);
                         if (prop?.name.toLowerCase().includes(query)) return true;
                     }
                     if (inv.unitId) {
-                        const unit = units.find(u => u.id === inv.unitId);
+                        const unit = unitMap.get(inv.unitId);
                         if (unit?.name.toLowerCase().includes(query)) return true;
                     }
                     return false;
@@ -348,7 +352,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             console.error("Error filtering invoices:", error);
             return [];
         }
-    }, [invoices, contacts, properties, units, invoiceTypeFilter, debouncedSearch, statusFilter, buildingFilter, projectFilter]);
+    }, [invoices, contactMap, propertyMap, unitMap, invoiceTypeFilter, debouncedSearch, statusFilter, buildingFilter, projectFilter]);
 
     // --- Final Data Filtering (For List View) ---
     const filteredInvoices = useMemo(() => {
@@ -654,17 +658,32 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         }
     }, [invoices, contacts, properties, units, projectAgreements, invoiceTypeFilter, debouncedSearch, buildingFilter, projectFilter, treeFilter, groupBy]);
 
+    // O(1) lookup maps for entity names — avoids repeated .find() calls (O(n) each)
+    const contactMap = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
+    const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts]);
+    const invoiceMap = useMemo(() => new Map(invoices.map(i => [i.id, i])), [invoices]);
+
+    // Pre-group transactions by batchId to avoid O(n^2) filter-inside-forEach
+    const batchGroupMap = useMemo(() => {
+        const map = new Map<string, Transaction[]>();
+        transactions.forEach(tx => {
+            if (tx.batchId) {
+                let group = map.get(tx.batchId);
+                if (!group) { group = []; map.set(tx.batchId, group); }
+                group.push(tx);
+            }
+        });
+        return map;
+    }, [transactions]);
+
     // --- Combined Financial Records for Grid View ---
     const financialRecords = useMemo<FinancialRecord[]>(() => {
         const records: FinancialRecord[] = [];
-        const relevantInvoices = filteredInvoices; // Use already filtered list
-        // Build invoiceIdSet from invoicesWithoutStatusFilter (not baseInvoices) to include payments even if invoice status changes after payment
-        // This ensures payments remain visible even if their linked invoice changes status (e.g., Unpaid -> Paid)
+        const relevantInvoices = filteredInvoices;
         const invoiceIdSet = new Set(invoicesWithoutStatusFilter.map(i => i.id));
 
-        // 1. Invoices
         relevantInvoices.forEach(inv => {
-            const contact = contacts.find(c => c.id === inv.contactId);
+            const contact = contactMap.get(inv.contactId);
             records.push({
                 id: inv.id,
                 type: 'Invoice',
@@ -678,24 +697,18 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             });
         });
 
-        // 2. Payments (Transactions linked to these invoices)
         const processedBatchIds = new Set<string>();
 
         transactions.forEach(tx => {
             if (tx.type !== TransactionType.INCOME) return;
-
-            // If it's an invoice payment, check if it's relevant to current view
-            const isInvoicePayment = tx.invoiceId && invoiceIdSet.has(tx.invoiceId);
-
-            if (!isInvoicePayment) return;
+            if (!tx.invoiceId || !invoiceIdSet.has(tx.invoiceId)) return;
 
             if (tx.batchId) {
                 if (processedBatchIds.has(tx.batchId)) return;
 
-                // Get entire batch to aggregate
-                const batchTxs = transactions.filter(t => t.batchId === tx.batchId);
+                const batchTxs = batchGroupMap.get(tx.batchId) || [tx];
                 const totalAmount = batchTxs.reduce((sum, t) => sum + t.amount, 0);
-                const account = accounts.find(a => a.id === tx.accountId);
+                const account = accountMap.get(tx.accountId || '');
 
                 records.push({
                     id: `batch-${tx.batchId}`,
@@ -709,15 +722,15 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                         ...tx,
                         amount: totalAmount,
                         description: `Bulk Payment (${batchTxs.length})`,
-                        children: batchTxs // Pass children for expansion
+                        children: batchTxs
                     } as Transaction,
                     status: 'Paid'
                 });
 
                 processedBatchIds.add(tx.batchId);
             } else {
-                const inv = invoices.find(i => i.id === tx.invoiceId);
-                const account = accounts.find(a => a.id === tx.accountId);
+                const inv = invoiceMap.get(tx.invoiceId || '');
+                const account = accountMap.get(tx.accountId || '');
 
                 records.push({
                     id: tx.id,
@@ -734,7 +747,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         });
 
         return records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [filteredInvoices, transactions, accounts, contacts, invoices]);
+    }, [filteredInvoices, transactions, contactMap, accountMap, invoiceMap, batchGroupMap, invoicesWithoutStatusFilter]);
 
 
     const toggleSelection = (id: string) => {

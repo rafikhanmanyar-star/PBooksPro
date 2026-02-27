@@ -44,6 +44,8 @@ npm run dev
 - `npm run build` - Build TypeScript to JavaScript
 - `npm start` - Start production server
 - `npm run migrate` - Run database migration
+- `npm run seed-demo` - Seed the demo organization (Demo@pbookspro.com, tenant_1772214936191_179a9196) with ~20 records per area: contacts, vendors, projects, rentals, invoices, bills, transactions, etc. Set DATABASE_URL in .env (e.g. staging).
+- `npm run seed-demo:production` - Same as seed-demo but for **production**: uses `server/.env.production` for DATABASE_URL. Create `.env.production` from `.env.production.example` with your production DB URL, then run from the server folder. Only seeds tenant `tenant_1772214936191_179a9196`.
 
 ## API Endpoints
 

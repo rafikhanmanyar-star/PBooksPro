@@ -90,17 +90,45 @@ const HEAVY_COLUMN_EXCLUSIONS: Record<string, string[]> = {
   payroll_employees: ['salary', 'adjustments', 'projects'],
 };
 
-/** Build SELECT clause excluding heavy columns for a table. Falls back to * if no exclusions. */
+// Cache of column lists per table so we only introspect once
+const _columnCache = new Map<string, string[]>();
+
+/** Build SELECT clause excluding heavy columns for a table. Uses schema introspection (cached). */
 function selectColumnsFor(table: string): string {
   const exclusions = HEAVY_COLUMN_EXCLUSIONS[table];
   if (!exclusions || exclusions.length === 0) return '*';
-  const excludeSet = new Set(exclusions);
-  // We can't dynamically introspect columns at runtime without a schema query,
-  // so for tables with exclusions we just exclude with a sub-select pattern.
-  // The approach: use * but strip heavy columns via JSON in rowToCamel.
-  // Actually the safest approach for PostgreSQL is to just return * and strip in JS.
+
+  // If we have a cached column list, build the SELECT without excluded columns
+  const cached = _columnCache.get(table);
+  if (cached) {
+    const excludeSet = new Set(exclusions);
+    const cols = cached.filter(c => !excludeSet.has(c));
+    return cols.length > 0 ? cols.join(', ') : '*';
+  }
+
+  // First call: introspect asynchronously and fall back to * (will be cached for next call)
   return '*';
 }
+
+/** Pre-populate the column cache for tables with exclusions. Call once at startup. */
+async function warmColumnCache(): Promise<void> {
+  const { getDatabaseService } = await import('../../services/databaseService.js');
+  const db = getDatabaseService();
+  for (const table of Object.keys(HEAVY_COLUMN_EXCLUSIONS)) {
+    try {
+      const cols = await db.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+        [table]
+      );
+      _columnCache.set(table, cols.map((r: any) => r.column_name));
+    } catch {
+      // Table may not exist yet; skip
+    }
+  }
+}
+
+// Warm cache on module load (non-blocking)
+warmColumnCache().catch(() => {});
 
 /** Remove heavy columns from a row object before sending to client */
 function stripHeavyColumns(row: Record<string, unknown>, table: string): Record<string, unknown> {

@@ -16,6 +16,8 @@
     "test-admin": "tsx scripts/test-admin-login.ts",
     "test-whatsapp": "tsx scripts/test-whatsapp-api.ts",
     "verify-rental-migration": "tsx scripts/verify-rental-agreements-migration.ts",
+    "seed-demo": "tsx scripts/seed-demo-organization.ts",
+    "seed-demo:production": "tsx scripts/seed-demo-organization.ts",
     "verify-schema-parity": "tsx scripts/verify-schema-parity.ts",
     "generate-production-upgrade": "tsx scripts/generate-production-upgrade-from-staging.ts",
     "drop-production-only-tables": "tsx scripts/drop-production-only-tables.ts",
