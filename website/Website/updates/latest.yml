@@ -1,14 +1,14 @@
 version: 1.2.52
 files:
-  - url: PBooksProStaging-WebSetup-1.2.52.exe
-    sha512: G/nXoIS+DQLZd+OTQXGWjD4HEE2ri7lhK4JAg0rd/3KSBm6iPh+CBnFFhcx0ijwo/lOYcdSlnCSGqcIag887dA==
-path: PBooksProStaging-WebSetup-1.2.52.exe
-sha512: G/nXoIS+DQLZd+OTQXGWjD4HEE2ri7lhK4JAg0rd/3KSBm6iPh+CBnFFhcx0ijwo/lOYcdSlnCSGqcIag887dA==
+  - url: PBooks-Pro-WebSetup-1.2.52.exe
+    sha512: +emHdwNzBoZTt+swfHA5HZKVS7lkkIB+Cc+P882L0NnG+NQ5yYK9hlaiHAhr3Mc/PERaNxlnnR+rxTNAc34zWg==
+path: PBooks-Pro-WebSetup-1.2.52.exe
+sha512: +emHdwNzBoZTt+swfHA5HZKVS7lkkIB+Cc+P882L0NnG+NQ5yYK9hlaiHAhr3Mc/PERaNxlnnR+rxTNAc34zWg==
 packages:
   x64:
-    size: 111515466
-    sha512: mIOD6HJCCQ3hA8k7Wn6pqeqKcZJCxL/5vsCTaTjvplfXLzyBx1vn3E+TIEDoBPGlWq7lmTIwNHPI1H2uJoAngA==
-    blockMapSize: 114789
+    size: 111515665
+    sha512: 7RAaNsMHUZEFagFaXrVpkQruSFWr5MzwoG7qVeikAPPJX4X0r/fiSuojA6ItOu0DkXGH0M2+D6g/FxIRuDRqyw==
+    blockMapSize: 114885
     path: pbooks-pro-1.2.52-x64.nsis.7z
     file: pbooks-pro-1.2.52-x64.nsis.7z
-releaseDate: '2026-02-27T18:36:27.055Z'
+releaseDate: '2026-02-27T18:41:16.221Z'
