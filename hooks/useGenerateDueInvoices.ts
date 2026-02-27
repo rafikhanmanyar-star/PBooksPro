@@ -97,6 +97,8 @@ export function useGenerateDueInvoices() {
     let totalCreated = 0;
     let { maxNum, prefix, padding } = getNextInvoiceNumber();
 
+    const rentalAgreements = state.rentalAgreements || [];
+
     for (const template of dueTemplates) {
       let currentTemplate = { ...template };
       let loopDate = new Date(currentTemplate.nextDueDate);
@@ -104,8 +106,25 @@ export function useGenerateDueInvoices() {
       const SAFE_LIMIT = 60;
       let count = 0;
 
+      // Get agreement end date when template is linked to a rental agreement
+      const agreement = currentTemplate.agreementId
+        ? rentalAgreements.find((ra) => ra.id === currentTemplate.agreementId)
+        : undefined;
+      const agreementEndDate = agreement?.endDate
+        ? (() => {
+            const d = new Date(agreement.endDate);
+            d.setHours(0, 0, 0, 0);
+            return d;
+          })()
+        : undefined;
+
       while (loopDate <= today && count < SAFE_LIMIT) {
         if (currentTemplate.maxOccurrences && (currentTemplate.generatedCount || 0) >= currentTemplate.maxOccurrences) {
+          currentTemplate.active = false;
+          break;
+        }
+        // Do not generate invoices beyond the agreement end date
+        if (agreementEndDate && loopDate > agreementEndDate) {
           currentTemplate.active = false;
           break;
         }
@@ -130,7 +149,7 @@ export function useGenerateDueInvoices() {
       showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
     }
     setIsGenerating(false);
-  }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, showConfirm, showToast]);
+  }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, state.rentalAgreements, showConfirm, showToast]);
 
   return { overdueCount: overdueTemplates.length, handleGenerateAllDue, isGenerating };
 }

@@ -203,6 +203,8 @@ const RecurringInvoicesList: React.FC = () => {
         let totalCreated = 0;
         let { maxNum, prefix, padding } = getNextInvoiceNumber();
 
+        const rentalAgreements = state.rentalAgreements || [];
+
         for (const template of dueTemplates) {
             let currentTemplate = { ...template };
             let loopDate = new Date(currentTemplate.nextDueDate);
@@ -210,8 +212,25 @@ const RecurringInvoicesList: React.FC = () => {
             const SAFE_LIMIT = 60;
             let count = 0;
 
+            // Get agreement end date when template is linked to a rental agreement
+            const agreement = currentTemplate.agreementId
+                ? rentalAgreements.find((ra) => ra.id === currentTemplate.agreementId)
+                : undefined;
+            const agreementEndDate = agreement?.endDate
+                ? (() => {
+                    const d = new Date(agreement.endDate);
+                    d.setHours(0, 0, 0, 0);
+                    return d;
+                })()
+                : undefined;
+
             while (loopDate <= today && count < SAFE_LIMIT) {
                 if (currentTemplate.maxOccurrences && (currentTemplate.generatedCount || 0) >= currentTemplate.maxOccurrences) {
+                    currentTemplate.active = false;
+                    break;
+                }
+                // Do not generate invoices beyond the agreement end date
+                if (agreementEndDate && loopDate > agreementEndDate) {
                     currentTemplate.active = false;
                     break;
                 }
@@ -240,10 +259,25 @@ const RecurringInvoicesList: React.FC = () => {
             showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
         }
         setIsGenerating(false);
-    }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, showConfirm, showToast]);
+    }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, state.rentalAgreements, showConfirm, showToast]);
 
     // --- Generate for a single template (from row or modal) ---
     const handleGenerateSingle = useCallback(async (template: RecurringInvoiceTemplate) => {
+        // Do not generate if invoice date would exceed agreement end date
+        if (template.agreementId) {
+            const agreement = state.rentalAgreements?.find((ra) => ra.id === template.agreementId);
+            if (agreement?.endDate) {
+                const nextDue = new Date(template.nextDueDate);
+                nextDue.setHours(0, 0, 0, 0);
+                const endDate = new Date(agreement.endDate);
+                endDate.setHours(0, 0, 0, 0);
+                if (nextDue > endDate) {
+                    showToast(`Cannot generate: invoice date ${formatDate(template.nextDueDate)} is after agreement end date ${formatDate(agreement.endDate)}.`, 'error');
+                    return;
+                }
+            }
+        }
+
         const confirmed = await showConfirm(
             `Generate invoice for ${CURRENCY} ${template.amount.toLocaleString()} due on ${formatDate(template.nextDueDate)}?`,
             { title: 'Generate Invoice', confirmLabel: 'Generate' }
@@ -264,6 +298,17 @@ const RecurringInvoicesList: React.FC = () => {
         if (template.maxOccurrences && newCount >= template.maxOccurrences) {
             isActive = false;
         }
+        // Deactivate when next date would exceed agreement end
+        if (template.agreementId && isActive) {
+            const agreement = state.rentalAgreements?.find((ra) => ra.id === template.agreementId);
+            if (agreement?.endDate) {
+                const endDate = new Date(agreement.endDate);
+                endDate.setHours(0, 0, 0, 0);
+                if (nextDate > endDate) {
+                    isActive = false;
+                }
+            }
+        }
 
         const updatedTemplate: RecurringInvoiceTemplate = {
             ...template,
@@ -275,7 +320,7 @@ const RecurringInvoicesList: React.FC = () => {
         dispatch({ type: 'UPDATE_RECURRING_TEMPLATE', payload: updatedTemplate });
         showToast(`Invoice #${invoice.invoiceNumber} created.`, 'success');
         setIsEditModalOpen(false);
-    }, [getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, showConfirm, showToast]);
+    }, [getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, state.rentalAgreements, showConfirm, showToast]);
 
     // --- Toggle active/paused inline ---
     const handleToggleActive = useCallback((template: RecurringInvoiceTemplate, e: React.MouseEvent) => {

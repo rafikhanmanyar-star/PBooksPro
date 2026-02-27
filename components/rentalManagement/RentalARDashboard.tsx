@@ -124,16 +124,19 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const toNum = (v: unknown): number => (typeof v === 'number' && !isNaN(v)) ? v : (parseFloat(String(v ?? 0)) || 0);
     const calcStats = (invoices: Invoice[]) => {
       let outstanding = 0;
       let overdue = 0;
       let count = 0;
       for (const inv of invoices) {
         count++;
-        const remaining = Math.max(0, inv.amount - inv.paidAmount);
+        const amt = toNum(inv.amount);
+        const paid = toNum(inv.paidAmount);
+        const remaining = Math.max(0, amt - paid);
         if (inv.status !== InvoiceStatus.PAID) {
           outstanding += remaining;
-          if (new Date(inv.dueDate) < today && inv.status !== InvoiceStatus.PAID) {
+          if (new Date(inv.dueDate) < today) {
             overdue += remaining;
           }
         }
@@ -758,7 +761,9 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
                   sortedInvoices.map(inv => {
                     const contact = state.contacts.find(c => c.id === inv.contactId);
                     const prop = inv.propertyId ? state.properties.find(p => p.id === inv.propertyId) : null;
-                    const remaining = Math.max(0, inv.amount - inv.paidAmount);
+                    const amt = Number(inv.amount) || 0;
+                    const paid = Number(inv.paidAmount) ?? 0;
+                    const remaining = Math.max(0, amt - paid);
                     const isChecked = selectedInvoiceIds.has(inv.id);
 
                     return (
@@ -790,7 +795,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
                           {prop?.name || '—'}
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums text-slate-700">
-                          {inv.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {amt.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>
                         <td className={`px-2 py-1.5 text-right tabular-nums font-medium ${
                           remaining > 0 ? 'text-rose-600' : 'text-emerald-600'
@@ -812,18 +817,42 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
 
           {/* Footer summary */}
           <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
-            <span>{sortedInvoices.length} invoices</span>
+            <span>{sortedInvoices.length} invoice{sortedInvoices.length !== 1 ? 's' : ''}</span>
             <div className="flex gap-4 tabular-nums">
               <span>
                 Total: <strong className="text-slate-700">
-                  {CURRENCY} {sortedInvoices.reduce((s, i) => s + i.amount, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  {CURRENCY} {sortedInvoices.reduce((s, i) => s + (Number(i.amount) || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </strong>
               </span>
               <span>
                 Outstanding: <strong className="text-rose-600">
-                  {CURRENCY} {sortedInvoices.reduce((s, i) => s + Math.max(0, i.amount - i.paidAmount), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  {CURRENCY} {sortedInvoices.reduce((s, i) => {
+                    const amt = Number(i.amount) || 0;
+                    const paid = Number(i.paidAmount) ?? 0;
+                    return s + Math.max(0, amt - paid);
+                  }, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </strong>
               </span>
+              {(() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const overdueSum = sortedInvoices.reduce((s, i) => {
+                  if (i.status === InvoiceStatus.PAID) return s;
+                  const due = new Date(i.dueDate);
+                  if (due >= today) return s;
+                  const amt = Number(i.amount) || 0;
+                  const paid = Number(i.paidAmount) ?? 0;
+                  return s + Math.max(0, amt - paid);
+                }, 0);
+                if (overdueSum <= 0) return null;
+                return (
+                  <span>
+                    Overdue: <strong className="text-rose-600">
+                      {CURRENCY} {overdueSum.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </strong>
+                  </span>
+                );
+              })()}
             </div>
           </div>
         </div>
