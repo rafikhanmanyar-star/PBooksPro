@@ -127,7 +127,8 @@ function rowToCamel(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 // GET /api/state/changes?since=ISO8601&limit=500
-router.get('/changes', cacheMiddleware(15, (req) => `__changes__${(req as TenantRequest).tenantId}__${req.originalUrl}`), async (req: TenantRequest, res) => {
+// No caching — sync endpoint must always return fresh data for optimistic locking
+router.get('/changes', async (req: TenantRequest, res) => {
   try {
     const since = (req.query.since as string) || '1970-01-01T00:00:00.000Z';
     const tenantId = req.tenantId;
@@ -516,7 +517,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
 
             const updateCols = columns
               .filter(c => c !== 'id' && c !== tenantColumn)
-              .map(c => `${c} = EXCLUDED.${c}`);
+              .map(c => c === 'version' ? `version = COALESCE(${table}.version, 0) + 1` : `${c} = EXCLUDED.${c}`);
 
             const query = `
               INSERT INTO ${table} (${columns.join(', ')})
