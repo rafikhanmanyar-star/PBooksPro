@@ -59,6 +59,13 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
 
   const { overdueCount, handleGenerateAllDue, isGenerating } = useGenerateDueInvoices();
 
+  // Shared lookup Maps — O(1) lookups replace repeated .find() calls across all memos
+  const contactsById = useMemo(() => new Map(state.contacts.map(c => [c.id, c])), [state.contacts]);
+  const propertiesById = useMemo(() => new Map(state.properties.map(p => [p.id, p])), [state.properties]);
+  const buildingsById = useMemo(() => new Map(state.buildings.map(b => [b.id, b])), [state.buildings]);
+  const accountsById = useMemo(() => new Map(state.accounts.map(a => [a.id, a])), [state.accounts]);
+  const invoicesById = useMemo(() => new Map(state.invoices.map(i => [i.id, i])), [state.invoices]);
+
   const tenantsWithInvoices = useMemo(() => {
     const contactIds = new Set(
       state.invoices
@@ -69,14 +76,14 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   }, [state.invoices, state.contacts]);
 
   const ownersWithInvoices = useMemo(() => {
-    const ownerIds = new Set(
-      state.invoices
-        .filter(inv => RENTAL_INVOICE_TYPES.includes(inv.invoiceType) && inv.propertyId)
-        .map(inv => state.properties.find(p => p.id === inv.propertyId)?.ownerId)
-        .filter(Boolean) as string[]
-    );
+    const ownerIds = new Set<string>();
+    for (const inv of state.invoices) {
+      if (!RENTAL_INVOICE_TYPES.includes(inv.invoiceType) || !inv.propertyId) continue;
+      const ownerId = propertiesById.get(inv.propertyId)?.ownerId;
+      if (ownerId) ownerIds.add(ownerId);
+    }
     return state.contacts.filter(c => ownerIds.has(c.id));
-  }, [state.invoices, state.properties, state.contacts]);
+  }, [state.invoices, propertiesById, state.contacts]);
 
   const propertiesWithInvoices = useMemo(() => {
     const propIds = new Set(
@@ -97,8 +104,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       invoices = invoices.filter(inv => {
         if (inv.buildingId === entityFilterId) return true;
         if (inv.propertyId) {
-          const prop = state.properties.find(p => p.id === inv.propertyId);
-          return prop && prop.buildingId === entityFilterId;
+          return propertiesById.get(inv.propertyId)?.buildingId === entityFilterId;
         }
         return false;
       });
@@ -108,16 +114,15 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       const q = debouncedSearch.toLowerCase();
       invoices = invoices.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
-        const contact = state.contacts.find(c => c.id === inv.contactId);
-        if (contact?.name?.toLowerCase().includes(q)) return true;
+        if (contactsById.get(inv.contactId)?.name?.toLowerCase().includes(q)) return true;
         if (inv.description?.toLowerCase().includes(q)) return true;
         if (inv.propertyId) {
-          const prop = state.properties.find(p => p.id === inv.propertyId);
+          const prop = propertiesById.get(inv.propertyId);
           if (prop?.name?.toLowerCase().includes(q)) return true;
+          if (prop?.buildingId) {
+            if (buildingsById.get(prop.buildingId)?.name?.toLowerCase().includes(q)) return true;
+          }
         }
-        const prop = inv.propertyId ? state.properties.find(p => p.id === inv.propertyId) : null;
-        const bld = prop ? state.buildings.find(b => b.id === prop.buildingId) : null;
-        if (bld?.name?.toLowerCase().includes(q)) return true;
         return false;
       });
     }
@@ -131,8 +136,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         invoices = invoices.filter(inv => inv.contactId === entityFilterId);
       } else if (groupBy === 'owner') {
         invoices = invoices.filter(inv => {
-          const prop = inv.propertyId ? state.properties.find(p => p.id === inv.propertyId) : null;
-          return prop?.ownerId === entityFilterId;
+          return propertiesById.get(inv.propertyId!)?.ownerId === entityFilterId;
         });
       } else if (groupBy === 'property') {
         invoices = invoices.filter(inv => inv.propertyId === entityFilterId);
@@ -142,8 +146,9 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     return invoices;
   }, [
     state.invoices,
-    state.contacts,
-    state.properties,
+    contactsById,
+    propertiesById,
+    buildingsById,
     debouncedSearch,
     statusFilter,
     groupBy,
@@ -158,8 +163,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       invoices = invoices.filter(inv => {
         if (inv.buildingId === entityFilterId) return true;
         if (inv.propertyId) {
-          const prop = state.properties.find(p => p.id === inv.propertyId);
-          return prop && prop.buildingId === entityFilterId;
+          return propertiesById.get(inv.propertyId)?.buildingId === entityFilterId;
         }
         return false;
       });
@@ -168,91 +172,93 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       const q = debouncedSearch.toLowerCase();
       invoices = invoices.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
-        const contact = state.contacts.find(c => c.id === inv.contactId);
-        if (contact?.name?.toLowerCase().includes(q)) return true;
+        if (contactsById.get(inv.contactId)?.name?.toLowerCase().includes(q)) return true;
         if (inv.description?.toLowerCase().includes(q)) return true;
         if (inv.propertyId) {
-          const prop = state.properties.find(p => p.id === inv.propertyId);
-          if (prop?.name?.toLowerCase().includes(q)) return true;
+          if (propertiesById.get(inv.propertyId)?.name?.toLowerCase().includes(q)) return true;
         }
         return false;
       });
     }
     if (entityFilterId && entityFilterId !== 'all') {
       if (groupBy === 'tenant') invoices = invoices.filter(inv => inv.contactId === entityFilterId);
-      else if (groupBy === 'owner') invoices = invoices.filter(inv => (state.properties.find(p => p.id === inv.propertyId)?.ownerId) === entityFilterId);
+      else if (groupBy === 'owner') invoices = invoices.filter(inv => propertiesById.get(inv.propertyId!)?.ownerId === entityFilterId);
       else if (groupBy === 'property') invoices = invoices.filter(inv => inv.propertyId === entityFilterId);
       else if (groupBy === 'building') {
         invoices = invoices.filter(inv => {
           if (inv.buildingId === entityFilterId) return true;
-          const prop = state.properties.find(p => p.id === inv.propertyId);
-          return prop?.buildingId === entityFilterId;
+          return propertiesById.get(inv.propertyId!)?.buildingId === entityFilterId;
         });
       }
     }
     return invoices;
-  }, [state.invoices, state.contacts, state.properties, debouncedSearch, groupBy, entityFilterId]);
+  }, [state.invoices, contactsById, propertiesById, debouncedSearch, groupBy, entityFilterId]);
 
   const financialRecords = useMemo<FinancialRecord[]>(() => {
     const records: FinancialRecord[] = [];
     const invoiceIdSet = new Set(invoicesWithoutStatusFilter.map(i => i.id));
 
-    baseInvoices.forEach(inv => {
-      const contact = state.contacts.find(c => c.id === inv.contactId);
+    for (const inv of baseInvoices) {
       records.push({
         id: inv.id,
         type: 'Invoice',
         reference: inv.invoiceNumber,
         date: inv.issueDate,
-        accountName: contact?.name || 'Unknown',
+        accountName: contactsById.get(inv.contactId)?.name || 'Unknown',
         amount: inv.amount,
         remainingAmount: inv.amount - inv.paidAmount,
         raw: inv,
         status: inv.status,
       });
-    });
+    }
 
-    const processedBatchIds = new Set<string>();
-    state.transactions.forEach(tx => {
-      if (tx.type !== TransactionType.INCOME) return;
-      if (!tx.invoiceId || !invoiceIdSet.has(tx.invoiceId)) return;
-
+    // Precompute batch groups in a single pass: O(M) instead of O(M^2)
+    const batchGroups = new Map<string, Transaction[]>();
+    const unbatchedTxs: Transaction[] = [];
+    for (const tx of state.transactions) {
+      if (tx.type !== TransactionType.INCOME) continue;
+      if (!tx.invoiceId || !invoiceIdSet.has(tx.invoiceId)) continue;
       if (tx.batchId) {
-        if (processedBatchIds.has(tx.batchId)) return;
-        const batchTxs = state.transactions.filter(t => t.batchId === tx.batchId);
-        const totalAmount = batchTxs.reduce((sum, t) => sum + t.amount, 0);
-        const account = state.accounts.find(a => a.id === tx.accountId);
-        records.push({
-          id: `batch-${tx.batchId}`,
-          type: 'Payment (Bulk)',
-          reference: `${batchTxs.length} Items`,
-          date: tx.date,
-          accountName: account?.name || 'Unknown',
-          amount: totalAmount,
-          remainingAmount: 0,
-          raw: { ...tx, amount: totalAmount, children: batchTxs } as Transaction,
-          status: 'Paid',
-        });
-        processedBatchIds.add(tx.batchId);
+        let group = batchGroups.get(tx.batchId);
+        if (!group) { group = []; batchGroups.set(tx.batchId, group); }
+        group.push(tx);
       } else {
-        const inv = state.invoices.find(i => i.id === tx.invoiceId);
-        const account = state.accounts.find(a => a.id === tx.accountId);
-        records.push({
-          id: tx.id,
-          type: 'Payment',
-          reference: inv?.invoiceNumber || '',
-          date: tx.date,
-          accountName: account?.name || 'Unknown',
-          amount: tx.amount,
-          remainingAmount: 0,
-          raw: tx,
-          status: 'Paid',
-        });
+        unbatchedTxs.push(tx);
       }
-    });
+    }
+
+    for (const [batchId, batchTxs] of batchGroups) {
+      const totalAmount = batchTxs.reduce((sum, t) => sum + t.amount, 0);
+      const firstTx = batchTxs[0];
+      records.push({
+        id: `batch-${batchId}`,
+        type: 'Payment (Bulk)',
+        reference: `${batchTxs.length} Items`,
+        date: firstTx.date,
+        accountName: accountsById.get(firstTx.accountId)?.name || 'Unknown',
+        amount: totalAmount,
+        remainingAmount: 0,
+        raw: { ...firstTx, amount: totalAmount, children: batchTxs } as Transaction,
+        status: 'Paid',
+      });
+    }
+
+    for (const tx of unbatchedTxs) {
+      records.push({
+        id: tx.id,
+        type: 'Payment',
+        reference: invoicesById.get(tx.invoiceId!)?.invoiceNumber || '',
+        date: tx.date,
+        accountName: accountsById.get(tx.accountId)?.name || 'Unknown',
+        amount: tx.amount,
+        remainingAmount: 0,
+        raw: tx,
+        status: 'Paid',
+      });
+    }
 
     return records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [baseInvoices, invoicesWithoutStatusFilter, state.transactions, state.accounts, state.contacts, state.invoices]);
+  }, [baseInvoices, invoicesWithoutStatusFilter, state.transactions, accountsById, contactsById, invoicesById]);
 
   const summaryStats = useMemo(() => {
     const unpaid = baseInvoices.filter(inv => inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.OVERDUE);
@@ -511,9 +517,11 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         </div>
       </div>
 
-      {/* Invoice Grid - fills remaining space so footer sits at bottom */}
+      {/* Invoice Grid + Detail Panel - same height, aligned top */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        <RentalFinancialGrid
+        <div className="flex-1 min-h-0 flex overflow-hidden">
+          <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+            <RentalFinancialGrid
           records={financialRecords}
           onInvoiceClick={handleInvoiceClick}
           onPaymentClick={handlePaymentClick}
@@ -535,25 +543,30 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           onTypeFilterChange={setTypeFilter}
           onDateFilterChange={setDateFilter}
           hideTypeDateFiltersInToolbar
+          hideTypeDateFiltersInToolbar
         />
-      </div>
-
-      {/* Detail Panel Sidebar */}
-      {viewInvoice && (
-        <div className="fixed inset-y-0 right-0 w-full sm:w-[400px] max-w-full bg-white shadow-xl border-l border-slate-200 z-50 overflow-y-auto">
-          <div className="p-4">
-            <InvoiceDetailView
-              invoice={viewInvoice}
-              onRecordPayment={handleRecordPayment}
-              onEdit={handleEditInvoice}
-              onDelete={handleDeleteInvoice}
-            />
-            <Button variant="secondary" onClick={() => setViewInvoice(null)} className="mt-4">
-              Close
-            </Button>
           </div>
+
+          {/* Detail Panel - same height as grid, aligned top */}
+          {viewInvoice && (
+            <div className="flex-shrink-0 w-full sm:w-[380px] lg:w-[400px] h-full flex flex-col bg-white shadow-lg border-l border-slate-200 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                <InvoiceDetailView
+                  invoice={viewInvoice}
+                  onRecordPayment={handleRecordPayment}
+                  onEdit={handleEditInvoice}
+                  onDelete={handleDeleteInvoice}
+                />
+              </div>
+              <div className="flex-shrink-0 p-3 border-t border-slate-200 bg-slate-50/50">
+                <Button variant="secondary" onClick={() => setViewInvoice(null)} className="w-full sm:w-auto">
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Edit Modal */}
       <Modal

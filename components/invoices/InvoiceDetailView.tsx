@@ -330,36 +330,36 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                 </div>
             )}
             
-            <div className="mt-6 flex flex-col gap-3 border-t border-slate-200/60 pt-4">
-                <div className="flex justify-between gap-2">
-                    <div className="flex gap-2">
-                         {contact?.contactNo && (
+            <div className="mt-4 flex flex-col gap-2 border-t border-slate-200/60 pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2">
+                        {contact?.contactNo && (
                             <Button
                                 variant="ghost"
                                 onClick={handleSendWhatsApp}
+                                size="sm"
                                 className="!bg-green-100 !text-green-700 hover:!bg-green-200"
                                 aria-label={hasMadePayment ? 'Send payment receipt via WhatsApp' : 'Send invoice reminder via WhatsApp'}
                             >
-                                <div className="w-5 h-5">{ICONS.whatsapp}</div>
+                                <div className="w-4 h-4">{ICONS.whatsapp}</div>
                                 {hasMadePayment ? 'Receipt' : 'WhatsApp'}
                             </Button>
                         )}
-                         <PrintButton
-                                variant="secondary"
-                                onPrint={onPrint}
-                                className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
-                            />
+                        <PrintButton
+                            variant="secondary"
+                            onPrint={onPrint}
+                            size="sm"
+                            className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
+                        />
                     </div>
-                    
                     {status !== InvoiceStatus.PAID && !isAgreementCancelled && (
-                        <Button variant="primary" onClick={() => onRecordPayment(invoice)}>
+                        <Button variant="primary" onClick={() => onRecordPayment(invoice)} size="sm">
                             Receive Payment
                         </Button>
                     )}
                 </div>
-                
                 {!isAgreementCancelled && (
-                     <div className="flex gap-2 justify-end">
+                    <div className="flex flex-wrap items-center gap-2">
                         <Button variant="secondary" onClick={() => onEdit(invoice)} size="sm">
                             <div className="w-4 h-4 mr-1">{ICONS.edit}</div> Edit
                         </Button>
