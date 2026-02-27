@@ -720,8 +720,17 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
         generatedInvoices.push(secInv[0]);
       }
 
-      // b. First Month Rent Invoice
+      // b. First Month Rent Invoice (pro-rated if mid-month)
       if (rentAmt > 0) {
+        const rnDateObj = new Date(body.startDate);
+        const rnYear = rnDateObj.getFullYear();
+        const rnMonth = rnDateObj.getMonth();
+        const rnDay = rnDateObj.getDate();
+        const rnDaysInMonth = new Date(rnYear, rnMonth + 1, 0).getDate();
+        const rnRemainingDays = rnDaysInMonth - rnDay + 1;
+        const rnIsProrated = rnRemainingDays < rnDaysInMonth;
+        const rnProRatedRent = rnIsProrated ? Math.ceil((rentAmt / rnDaysInMonth) * rnRemainingDays / 100) * 100 : rentAmt;
+
         const invNum = await getNextNum();
         const rentCatRow = await db.query(`SELECT id FROM categories WHERE tenant_id = $1 AND name = 'Rental Income' LIMIT 1`, [req.tenantId]);
         const rentCatId = rentCatRow[0]?.id || null;
@@ -732,24 +741,23 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
            VALUES ($1,$2,$3,$4,$5,$6,0,'Unpaid',$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW()) RETURNING *`,
           [
             `inv-rent-ren-${Date.now()}`, req.tenantId, invNum, old.contact_id, 'Rental',
-            rentAmt, body.startDate, body.startDate,
-            `Rent for ${monthName} (Renewal) [Rental]`,
+            rnProRatedRent, body.startDate, body.startDate,
+            `Rent for ${monthName}${rnIsProrated ? ` (Pro-rata: ${rnRemainingDays} days)` : ''} (Renewal) [Rental]`,
             old.property_id, old.building_id || null, rentCatId, newId,
             body.startDate.slice(0, 7)
           ]
         );
         generatedInvoices.push(rentInv[0]);
 
-        // c. Create new recurring template
-        const nextMonth = new Date(body.startDate);
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
+        // c. Create new recurring template (next invoice on 1st of next month)
+        const nextMonth = new Date(rnYear, rnMonth + 1, 1);
         await db.query(
           `INSERT INTO recurring_invoice_templates (id, tenant_id, contact_id, property_id, building_id, amount, description_template, day_of_month, next_due_date, active, agreement_id, invoice_type, auto_generate, frequency, created_at, updated_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,true,'Monthly',NOW(),NOW())`,
           [
             `rec-ren-${Date.now()}`, req.tenantId, old.contact_id, old.property_id,
             old.building_id || '', rentAmt, 'Rent for {Month} [Rental]',
-            body.rentDueDate ?? old.rent_due_date ?? 1,
+            1,
             nextMonth.toISOString().split('T')[0],
             newId, 'Rental'
           ]

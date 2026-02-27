@@ -6,6 +6,7 @@
  */
 
 import { ConnectionStatus } from '../types/sync';
+import { getApiBaseUrl } from '../config/apiUrl';
 
 type ConnectionChangeListener = (status: ConnectionStatus) => void;
 
@@ -14,6 +15,7 @@ class ConnectionMonitor {
   private currentStatus: ConnectionStatus = 'checking';
   private checkInterval?: number;
   private isInitialized = false;
+  private consecutiveHealthCheckFailures = 0;
 
   constructor() {
     this.initialize();
@@ -48,6 +50,7 @@ class ConnectionMonitor {
    */
   private handleOnline = (): void => {
     console.log('🌐 Browser reports: ONLINE');
+    this.consecutiveHealthCheckFailures = 0;
     this.updateStatus('online');
   };
 
@@ -102,16 +105,23 @@ class ConnectionMonitor {
   }
 
   /**
-   * Start periodic connection check
+   * Start periodic connection check with backoff on consecutive failures
    */
   private startPeriodicCheck(): void {
-    // Check every 30 seconds
-    this.checkInterval = window.setInterval(() => {
-      // Only check if browser reports online (to detect false positives)
-      if (navigator.onLine && this.currentStatus === 'online') {
-        this.performHealthCheck();
-      }
-    }, 30000);
+    const scheduleNext = () => {
+      const baseMs = 30000;
+      const intervalMs = Math.min(
+        baseMs * Math.pow(2, this.consecutiveHealthCheckFailures),
+        5 * 60 * 1000 // cap at 5 minutes
+      );
+      this.checkInterval = window.setTimeout(() => {
+        if (navigator.onLine) {
+          this.performHealthCheck();
+        }
+        scheduleNext();
+      }, intervalMs);
+    };
+    scheduleNext();
   }
 
   /**
@@ -120,26 +130,32 @@ class ConnectionMonitor {
    */
   private async performHealthCheck(): Promise<void> {
     try {
-      // Simple ping to check connectivity
-      // Using a lightweight endpoint or public service
+      const baseUrl = getApiBaseUrl();
+      const healthUrl = baseUrl.replace(/\/api\/?$/, '') + '/health';
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      const response = await fetch('https://www.google.com/favicon.ico', {
-        method: 'HEAD',
-        mode: 'no-cors',
+      const response = await fetch(healthUrl, {
+        method: 'GET',
         cache: 'no-cache',
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
 
-      // If we got here, we have connectivity
-      if (this.currentStatus !== 'online') {
-        this.updateStatus('online');
+      if (response.ok) {
+        this.consecutiveHealthCheckFailures = 0;
+        if (this.currentStatus !== 'online') {
+          this.updateStatus('online');
+        }
+      } else {
+        this.consecutiveHealthCheckFailures++;
+        if (this.currentStatus !== 'offline') {
+          this.updateStatus('offline');
+        }
       }
     } catch (error) {
-      // Network error - we're offline
+      this.consecutiveHealthCheckFailures++;
       if (this.currentStatus !== 'offline') {
         console.warn('Health check failed, marking as offline:', error);
         this.updateStatus('offline');
@@ -208,7 +224,7 @@ class ConnectionMonitor {
     window.removeEventListener('offline', this.handleOffline);
     
     if (this.checkInterval) {
-      clearInterval(this.checkInterval);
+      clearTimeout(this.checkInterval);
     }
     
     this.listeners.clear();

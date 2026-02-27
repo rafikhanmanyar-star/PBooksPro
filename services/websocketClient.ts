@@ -44,8 +44,11 @@ export class WebSocketClient {
   private eventHandlers: Map<string, Set<WebSocketEventHandler>> = new Map();
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
-  private reconnectDelay: number = 1000; // Start with 1 second
+  private reconnectDelay: number = 1000;
   private isRefreshingAuth: boolean = false;
+  private totalReconnectCycles: number = 0;
+  private maxReconnectCycles: number = 3;
+  private lastConnectAttempt: number = 0;
   private debugState: WebSocketDebugState = {
     status: 'disconnected',
     serverUrl: getWsServerUrl(),
@@ -65,6 +68,16 @@ export class WebSocketClient {
       logger.logCategory('websocket', 'WebSocket connection already in progress');
       return;
     }
+
+    const now = Date.now();
+    if (now - this.lastConnectAttempt < 30000 && this.totalReconnectCycles >= this.maxReconnectCycles) {
+      logger.warnCategory('websocket', `WebSocket reconnect cycles exhausted (${this.totalReconnectCycles}/${this.maxReconnectCycles}). Will retry after 5 minutes.`);
+      setTimeout(() => {
+        this.totalReconnectCycles = 0;
+      }, 5 * 60 * 1000);
+      return;
+    }
+    this.lastConnectAttempt = now;
 
     const resolvedToken = token ?? (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null);
     const resolvedTenantId = tenantId ?? (typeof window !== 'undefined' ? localStorage.getItem('tenant_id') : null);
@@ -119,6 +132,7 @@ export class WebSocketClient {
       this.isConnecting = false;
       this.reconnectAttempts = 0;
       this.reconnectDelay = 1000;
+      this.totalReconnectCycles = 0;
       this.debugState = {
         ...this.debugState,
         status: 'connected',
@@ -145,7 +159,6 @@ export class WebSocketClient {
     });
 
     this.socket.on('connect_error', (error) => {
-      logger.errorCategory('websocket', 'WebSocket connection error:', error);
       this.isConnecting = false;
       this.isConnected = false;
       this.debugState = {
@@ -154,6 +167,19 @@ export class WebSocketClient {
         lastStatusAt: new Date().toISOString(),
         lastError: error ? String(error) : undefined,
       };
+      this.reconnectAttempts++;
+      if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+        logger.warnCategory('websocket', `WebSocket connection error (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}):`, error);
+      }
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        this.totalReconnectCycles++;
+        this.reconnectAttempts = 0;
+        if (this.totalReconnectCycles >= this.maxReconnectCycles) {
+          logger.warnCategory('websocket', `WebSocket reconnect cycles exhausted. Stopping reconnection.`);
+          this.socket?.disconnect();
+          return;
+        }
+      }
       this.tryRefreshAuth(error);
     });
 
@@ -567,6 +593,8 @@ export class WebSocketClient {
       this.socket = null;
       this.isConnected = false;
       this.isConnecting = false;
+      this.reconnectAttempts = 0;
+      this.totalReconnectCycles = 0;
       this.eventHandlers.clear();
       this.debugState = {
         ...this.debugState,

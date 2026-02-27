@@ -107,15 +107,13 @@ class ConnectionMonitor {
         try {
           const response = await fetch(healthUrl, {
             method: 'GET',
-            signal: AbortSignal.timeout(10000), // 10 second timeout
+            signal: AbortSignal.timeout(10000),
             cache: 'no-cache',
           });
           isHealthy = response.ok;
         } catch (error) {
           console.warn('[ConnectionMonitor] Health check failed:', error);
-          // If health check fails but browser says online, assume online
-          // This is optimistic - data operations will fail gracefully if actually offline
-          isHealthy = true; // Trust browser's online status
+          isHealthy = false;
         }
       }
 
@@ -130,14 +128,7 @@ class ConnectionMonitor {
       return this.status;
     } catch (error) {
       console.warn('[ConnectionMonitor] Status check failed:', error);
-      // If browser says online, trust it (optimistic approach)
-      // Data operations will fail gracefully if actually offline
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
-        this.status = 'online';
-      } else {
-        this.status = 'offline';
-      }
-      
+      this.status = 'offline';
       if (previousStatus !== this.status) {
         this.notifyStatusChange(this.status);
       }

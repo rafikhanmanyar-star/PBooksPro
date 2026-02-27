@@ -181,29 +181,37 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
                 dispatch({ type: 'ADD_INVOICE', payload: secInvoice });
             }
 
-            // b. First Month Rent
+            // b. First Month Rent (pro-rated if mid-month)
             if (newRent > 0) {
+                const rnDateObj = new Date(startDate);
+                const rnYear = rnDateObj.getFullYear();
+                const rnMonth = rnDateObj.getMonth();
+                const rnDay = rnDateObj.getDate();
+                const rnDaysInMonth = new Date(rnYear, rnMonth + 1, 0).getDate();
+                const rnRemainingDays = rnDaysInMonth - rnDay + 1;
+                const rnIsProrated = rnRemainingDays < rnDaysInMonth;
+                const rnProRatedRent = rnIsProrated ? Math.ceil((newRent / rnDaysInMonth) * rnRemainingDays / 100) * 100 : newRent;
+
                 const invNum = getNextInvNumber(currentNextNum, prefix, padding);
                 currentNextNum = parseInt(invNum.slice(prefix.length)) + 1;
                 const rentCat = state.categories.find(c => c.name === 'Rental Income');
                 const monthName = new Date(startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
                 const rentInvoice: Invoice = {
                     id: `inv-rent-ren-${Date.now()}`, invoiceNumber: invNum, contactId: agreement.contactId,
-                    invoiceType: InvoiceType.RENTAL, amount: newRent, paidAmount: 0,
+                    invoiceType: InvoiceType.RENTAL, amount: rnProRatedRent, paidAmount: 0,
                     status: InvoiceStatus.UNPAID, issueDate: startDate, dueDate: startDate,
-                    description: `Rent for ${monthName} (Renewal) [Rental]`,
+                    description: `Rent for ${monthName}${rnIsProrated ? ` (Pro-rata: ${rnRemainingDays} days)` : ''} (Renewal) [Rental]`,
                     propertyId: agreement.propertyId, buildingId: bId, categoryId: rentCat?.id,
                     agreementId: newAgreementId, rentalMonth: startDate.slice(0, 7)
                 };
                 dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
 
-                // c. Recurring template
-                const nextMonth = new Date(startDate);
-                nextMonth.setMonth(nextMonth.getMonth() + 1);
+                // c. Recurring template (next invoice on 1st of next month)
+                const nextMonth = new Date(rnYear, rnMonth + 1, 1);
                 const recurringTemplate: RecurringInvoiceTemplate = {
                     id: `rec-ren-${Date.now()}`, contactId: agreement.contactId, propertyId: agreement.propertyId,
                     buildingId: bId || '', amount: newRent, descriptionTemplate: "Rent for {Month} [Rental]",
-                    dayOfMonth: parseInt(rentDueDate) || 1, nextDueDate: nextMonth.toISOString().split('T')[0],
+                    dayOfMonth: 1, nextDueDate: nextMonth.toISOString().split('T')[0],
                     active: true, agreementId: newAgreementId, invoiceType: InvoiceType.RENTAL,
                     autoGenerate: true, frequency: 'Monthly',
                 };

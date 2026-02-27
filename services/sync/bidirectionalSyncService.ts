@@ -104,6 +104,7 @@ class BidirectionalSyncService {
   private connectionUnsubscribe: (() => void) | null = null;
   private isRunning = false;
   private lastConnectionTriggeredSyncAt = 0;
+  private consecutiveNetworkFailures = 0;
 
   /**
    * Start listening for connectivity and run sync when online.
@@ -118,8 +119,12 @@ class BidirectionalSyncService {
       if (status !== 'online' || !tenantId || this.isRunning) return;
       if (!apiClient.isAuthenticated()) return;
       const now = Date.now();
-      if (now - this.lastConnectionTriggeredSyncAt < SYNC_COOLDOWN_MS) {
-        logger.logCategory('sync', 'Skipping connection-triggered sync (cooldown)');
+      const backoffMs = Math.min(
+        SYNC_COOLDOWN_MS * Math.pow(2, this.consecutiveNetworkFailures),
+        30 * 60 * 1000 // cap at 30 minutes
+      );
+      if (now - this.lastConnectionTriggeredSyncAt < backoffMs) {
+        logger.logCategory('sync', `Skipping connection-triggered sync (backoff ${Math.round(backoffMs / 1000)}s, failures=${this.consecutiveNetworkFailures})`);
         return;
       }
       this.lastConnectionTriggeredSyncAt = now;
@@ -180,8 +185,14 @@ class BidirectionalSyncService {
       logger.logCategory('sync', 'Downstream result:', result.downstream);
 
       result.success = result.upstream.failed === 0;
+      if (result.success) {
+        this.consecutiveNetworkFailures = 0;
+      }
       logger.logCategory('sync', 'Bi-directional sync completed successfully');
     } catch (error) {
+      if (BidirectionalSyncService.isNetworkError(error)) {
+        this.consecutiveNetworkFailures++;
+      }
       logger.errorCategory('sync', 'Bidirectional sync failed:', error);
       result.success = false;
     } finally {
@@ -189,6 +200,17 @@ class BidirectionalSyncService {
     }
 
     return result;
+  }
+
+  private static isNetworkError(error: unknown): boolean {
+    if (error instanceof TypeError && /failed to fetch|network|load failed/i.test(error.message)) {
+      return true;
+    }
+    const err = error as { status?: number; message?: string };
+    if (!err.status && /failed to fetch|network|econnrefused|enotfound|timeout/i.test(err.message || '')) {
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -374,6 +396,16 @@ class BidirectionalSyncService {
           continue;
         }
 
+        // Network error (server unreachable): abort remaining items immediately.
+        // No point trying 100 items when the first one can't reach the server.
+        if (BidirectionalSyncService.isNetworkError(error)) {
+          logger.warnCategory('sync', `🌐 Upstream sync aborted: server unreachable (${msg}). ${outboxPending.length - idx - 1} items skipped.`);
+          outbox.markFailed(item.id, msg);
+          failed++;
+          this.consecutiveNetworkFailures++;
+          break;
+        }
+
         // 401 Unauthorized: stop processing immediately — user is logged out or token expired
         if (status === 401) {
           logger.warnCategory('sync', `🔒 Upstream sync aborted: 401 Unauthorized for ${item.entity_type}:${item.entity_id}. Marking item pending for retry after login.`);
@@ -468,7 +500,11 @@ class BidirectionalSyncService {
     try {
       response = await api.loadStateChanges(since);
     } catch (error) {
-      logger.errorCategory('sync', 'Downstream fetch failed:', error);
+      // During logout, 401 is expected; avoid noisy error log
+      const is401DuringLogout = (error as { status?: number })?.status === 401 && apiClient.isLoggingOut();
+      if (!is401DuringLogout) {
+        logger.errorCategory('sync', 'Downstream fetch failed:', error);
+      }
       return { applied: 0, skipped: 0, conflicts: 0 };
     }
 

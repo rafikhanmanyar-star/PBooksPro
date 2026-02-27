@@ -20,6 +20,8 @@ export class ApiClient {
   private token: string | null = null;
   private tenantId: string | null = null;
   private shouldLog: boolean = false; // Only log during login/transaction operations
+  /** When true, 401s are expected (logout in progress); suppress error logs and auth:expired. */
+  private loggingOut: boolean = false;
 
   constructor(baseUrl: string = getApiBaseUrl()) {
     this.baseUrl = baseUrl;
@@ -113,6 +115,20 @@ export class ApiClient {
    */
   getTenantId(): string | null {
     return this.tenantId;
+  }
+
+  /**
+   * Set whether logout is in progress (suppresses 401 error logs and auth:expired during logout).
+   */
+  setLoggingOut(value: boolean): void {
+    this.loggingOut = value;
+  }
+
+  /**
+   * Whether logout is in progress.
+   */
+  isLoggingOut(): boolean {
+    return this.loggingOut;
   }
 
   /**
@@ -290,14 +306,15 @@ export class ApiClient {
             logger.logCategory('api', `✅ Success response for ${endpoint}`);
           }
         } else {
-          // Suppress 401 errors for expected endpoints (schema/version before login)
+          // Suppress 401 errors for expected endpoints (schema/version before login) or during logout
           const is401 = response.status === 401;
           const isExpected401Endpoint = endpoint.includes('/schema/version');
+          const isLogoutInProgress = this.loggingOut;
           
-          if (is401 && isExpected401Endpoint) {
-            // Silent - expected 401 before authentication
-          } else {
-            // Log other errors
+          if (is401 && (isExpected401Endpoint || isLogoutInProgress)) {
+            // Silent - expected 401 before authentication or session already ended on logout
+          } else if (!(is401 && isLogoutInProgress)) {
+            // Log other errors (and 401 only when not logging out)
             logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
           }
         }
@@ -321,6 +338,11 @@ export class ApiClient {
           message: data.message || data.error || 'Your session has expired. Please login again.',
           status: 401,
         };
+        
+        // During logout, 401s are expected (session already invalidated). Don't log or dispatch.
+        if (this.loggingOut) {
+          throw error;
+        }
         
         // Only clear auth and dispatch event if we actually had a token
         // This prevents clearing auth on requests that were never authenticated
@@ -421,8 +443,11 @@ export class ApiClient {
 
       return data as T;
     } catch (error) {
-      // Log the error for debugging
-      console.error('API Request Error:', error);
+      // During logout, 401 is expected; avoid noisy console error
+      const is401DuringLogout = error && typeof error === 'object' && (error as ApiError).status === 401 && this.loggingOut;
+      if (!is401DuringLogout) {
+        console.error('API Request Error:', error);
+      }
       
       if (error instanceof Error) {
         // Check if it's a network error

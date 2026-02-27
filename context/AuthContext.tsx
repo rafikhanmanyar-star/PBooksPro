@@ -74,6 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = useCallback(async () => {
     // Set flag FIRST to prevent heartbeat from re-creating sessions
     loggingOutRef.current = true;
+    apiClient.setLoggingOut(true);
 
     // Capture before clearing so background cleanup can use them
     const currentTenantId = apiClient.getTenantId();
@@ -157,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
           getBidirectionalSyncService().stop();
         } catch (_) { }
+        apiClient.setLoggingOut(false);
       }
     })();
   }, []);

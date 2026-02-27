@@ -224,13 +224,23 @@ class SyncManager {
     }
   }
 
+  private lastSyncOnReconnectionAt = 0;
+  private static readonly RECONNECTION_COOLDOWN_MS = 3 * 60 * 1000; // 3 minutes
+
   /**
    * Sync on reconnection - delegates to BidirectionalSyncService (outbox is source of truth).
+   * Cooldown prevents cascading triggers from multiple connection monitors.
    */
   async syncOnReconnection(): Promise<void> {
     if (isMobileDevice()) {
-      return; // No sync needed on mobile
+      return;
     }
+
+    const now = Date.now();
+    if (now - this.lastSyncOnReconnectionAt < SyncManager.RECONNECTION_COOLDOWN_MS) {
+      return;
+    }
+    this.lastSyncOnReconnectionAt = now;
 
     const authenticated = await this.isAuthenticated();
     if (!authenticated) {
@@ -242,7 +252,7 @@ class SyncManager {
       const { getBidirectionalSyncService } = await import('./bidirectionalSyncService');
       await getBidirectionalSyncService().runSync(tenantId);
     } else {
-      await this.syncQueueBatch(); // Fallback for legacy SyncManager queue (if any)
+      await this.syncQueueBatch();
     }
   }
 
