@@ -603,6 +603,7 @@ export interface RecurringInvoiceTemplate {
   maxOccurrences?: number;
   generatedCount?: number;
   lastGeneratedDate?: string;
+  deletedAt?: string | null;
 }
 
 

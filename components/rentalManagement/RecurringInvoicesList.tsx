@@ -36,8 +36,8 @@ const RecurringInvoicesList: React.FC = () => {
     const [editInvoiceType, setEditInvoiceType] = useState<InvoiceType>(InvoiceType.RENTAL);
     const [editActive, setEditActive] = useState(true);
 
-    // --- Data ---
-    const templates = useMemo(() => state.recurringInvoiceTemplates || [], [state.recurringInvoiceTemplates]);
+    // --- Data --- (exclude soft-deleted templates)
+    const templates = useMemo(() => (state.recurringInvoiceTemplates || []).filter(t => !t.deletedAt), [state.recurringInvoiceTemplates]);
 
     const today = useMemo(() => {
         const d = new Date();
@@ -190,7 +190,7 @@ const RecurringInvoicesList: React.FC = () => {
 
     // --- Generate all due invoices (bulk) ---
     const handleGenerateAllDue = useCallback(async () => {
-        const dueTemplates = templates.filter(t => t.active && t.nextDueDate <= todayStr);
+        const dueTemplates = templates.filter(t => t.active && !t.deletedAt && t.nextDueDate <= todayStr);
         if (dueTemplates.length === 0) return;
 
         const confirmed = await showConfirm(

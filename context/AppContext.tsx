@@ -485,6 +485,14 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 let sliceChanged = false;
 
                 items.forEach((item: any) => {
+                    const isSoftDeleted = item.deletedAt || item.deleted_at;
+                    if (isSoftDeleted) {
+                        if (itemMap.has(item.id)) {
+                            itemMap.delete(item.id);
+                            sliceChanged = true;
+                        }
+                        return;
+                    }
                     const existing = itemMap.get(item.id);
                     const merged = existing ? { ...existing, ...item } : item;
                     if (merged !== existing) {
@@ -3238,6 +3246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         maxOccurrences: t.max_occurrences ?? t.maxOccurrences ?? undefined,
                         generatedCount: typeof t.generated_count === 'number' ? t.generated_count : (typeof t.generatedCount === 'number' ? t.generatedCount : parseInt(String(t.generated_count ?? t.generatedCount ?? '0'))),
                         lastGeneratedDate: t.last_generated_date ?? t.lastGeneratedDate ?? undefined,
+                        deletedAt: t.deleted_at ?? t.deletedAt ?? undefined,
                     };
                 };
 

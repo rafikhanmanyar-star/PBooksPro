@@ -158,7 +158,13 @@ export class AppStateApiService {
       }
       for (const row of rows) {
         const id = (row as { id?: string })?.id;
-        if (id) map.set(id, row);
+        if (!id) continue;
+        const deletedAt = (row as any).deletedAt ?? (row as any).deleted_at;
+        if (deletedAt) {
+          map.delete(id);
+        } else {
+          map.set(id, row);
+        }
       }
       (merged as Record<string, unknown>)[stateKey] = Array.from(map.values());
     }
@@ -1029,7 +1035,8 @@ export class AppStateApiService {
         maxOccurrences: t.max_occurrences ?? t.maxOccurrences ?? undefined,
         generatedCount: typeof t.generated_count === 'number' ? t.generated_count : (typeof t.generatedCount === 'number' ? t.generatedCount : parseInt(String(t.generated_count ?? t.generatedCount ?? '0'))),
         lastGeneratedDate: t.last_generated_date ?? t.lastGeneratedDate ?? undefined,
-      })),
+        deletedAt: t.deleted_at ?? t.deletedAt ?? undefined,
+      })).filter((t: any) => !t.deletedAt),
       pmCycleAllocations: pmCycleAllocations || [],
       transactionLog: transactionLog || [],
       vendors: normalizedVendors || [],

@@ -21,7 +21,7 @@ export function useGenerateDueInvoices() {
   }, []);
 
   const overdueTemplates = useMemo(
-    () => templates.filter(t => t.active && t.nextDueDate <= todayStr),
+    () => templates.filter(t => t.active && !t.deletedAt && t.nextDueDate <= todayStr),
     [templates, todayStr]
   );
 
@@ -84,7 +84,7 @@ export function useGenerateDueInvoices() {
   );
 
   const handleGenerateAllDue = useCallback(async () => {
-    const dueTemplates = templates.filter(t => t.active && t.nextDueDate <= todayStr);
+    const dueTemplates = templates.filter(t => t.active && !t.deletedAt && t.nextDueDate <= todayStr);
     if (dueTemplates.length === 0) return;
 
     const confirmed = await showConfirm(
