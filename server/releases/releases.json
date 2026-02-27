@@ -1113,6 +1113,21 @@
                                    ],
                          "version":  "1.2.55",
                          "changelog":  ""
+                     },
+                     {
+                         "date":  "2026-02-27T22:25:59.9416271Z",
+                         "environment":  "production",
+                         "files":  [
+                                       {
+                                           "downloadUrl":  "https://github.com/rafikhanmanyar-star/PBooksPro/releases/download/v1.2.55/PBooks-Pro-WebSetup-1.2.55.exe",
+                                           "type":  "installer",
+                                           "size":  887038,
+                                           "sha512":  "EC2CBEB5B8B5EDEA38139AFCD0B161F08A622F82588DD7C265112A108DC4F612D3131F6ED490ECABDA1B3FE0CB380E664E8F03E223A2FC2E5C2192CECA2BFE34",
+                                           "name":  "PBooks-Pro-WebSetup-1.2.55.exe"
+                                       }
+                                   ],
+                         "version":  "1.2.55",
+                         "changelog":  ""
                      }
                  ]
 }
