@@ -222,6 +222,135 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
 
     const ROW_HEIGHT = 34;
 
+    const Row = ({ index, style }: { index: number; style: React.CSSProperties; ariaAttributes?: any }) => {
+        const record = sortedRecords[index];
+        if (!record) return <div style={style} />;
+        const isPayment = record.type.includes('Payment');
+        const isBulk = record.type.includes('Bulk');
+        const isPaid = record.remainingAmount !== undefined && record.remainingAmount <= 0.01;
+        const canSelect = !isPayment && !isPaid;
+
+        const rawTx = record.raw as Transaction;
+        const hasChildren = isBulk && rawTx.children && rawTx.children.length > 0;
+        const isExpanded = expandedIds.has(record.id);
+        const description = record.raw.description || '-';
+
+        let statusBadge = null;
+        if (record.type === 'Invoice') {
+            const inv = record.raw as Invoice;
+            const remaining = inv.amount - inv.paidAmount;
+            const isFullPaid = remaining <= 0.01;
+            const isPartial = inv.paidAmount > 0.01 && !isFullPaid;
+
+            if (isFullPaid) {
+                statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">PAID</span>;
+            } else if (isPartial) {
+                statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">PARTIAL</span>;
+            } else {
+                const isOverdue = inv.dueDate && new Date(inv.dueDate) < new Date() && remaining > 0;
+                if (isOverdue) statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">OVERDUE</span>;
+                else statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">UNPAID</span>;
+            }
+        }
+
+        let displayType: string = record.type;
+        let typeStyle = 'bg-slate-100 text-slate-600 border-slate-200';
+
+        if (record.type === 'Invoice') {
+            const inv = record.raw as Invoice;
+            const isSecurity = (inv.securityDepositCharge || 0) > 0 || (inv.description || '').toLowerCase().includes('security');
+
+            if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) {
+                displayType = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity) ? 'Security' : 'Rent';
+                typeStyle = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity)
+                    ? 'bg-amber-50 text-amber-700 border-amber-100'
+                    : 'bg-sky-50 text-sky-700 border-sky-100';
+            } else if (inv.invoiceType === InvoiceType.INSTALLMENT) {
+                displayType = 'Installment';
+                typeStyle = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+            }
+        } else if (isPayment) {
+            const descLower = description.toLowerCase();
+            if (descLower.includes('security')) { displayType = 'Sec Pmt'; typeStyle = 'bg-amber-50 text-amber-700 border-amber-100/50'; }
+            else if (descLower.includes('rent') || descLower.includes('rental')) { displayType = 'Rent Pmt'; typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50'; }
+            else if (isBulk) { displayType = 'Bulk Pmt'; typeStyle = 'bg-purple-50 text-purple-700 border-purple-100/50'; }
+            else { displayType = 'Payment'; typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50'; }
+        }
+
+        return (
+            <div
+                style={style}
+                className={`flex items-center cursor-pointer transition-colors group border-b border-slate-50 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100 ${isExpanded ? '!bg-indigo-50/30' : ''}`}
+                onClick={() => {
+                    if (hasChildren) toggleExpand({ stopPropagation: () => {} } as any, record.id);
+                    else if (record.type === 'Invoice') onInvoiceClick(record.raw as Invoice);
+                    else onPaymentClick(record.raw as Transaction);
+                }}
+            >
+                <div className="px-3 py-1.5 text-center w-10 flex-shrink-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    {hasChildren ? (
+                        <button onClick={(e) => toggleExpand(e, record.id)} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 transition-colors">
+                            <div className={`w-3 h-3 transform transition-transform duration-200 ${isExpanded ? 'rotate-90 text-indigo-500' : ''}`}>{ICONS.chevronRight}</div>
+                        </button>
+                    ) : canSelect && onToggleSelect ? (
+                        <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 cursor-pointer transition-all" checked={selectedIds?.has(record.id)} onChange={() => onToggleSelect(record.id)} />
+                    ) : null}
+                </div>
+                <div className="px-3 py-1.5 whitespace-nowrap flex-shrink-0" style={{ width: colWidths.type }}>
+                    <span className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${typeStyle}`}>{displayType}</span>
+                </div>
+                <div className="px-3 py-1.5 font-mono text-xs font-medium text-slate-700 group-hover:text-indigo-600 whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors flex-shrink-0" style={{ width: colWidths.reference }}>{record.reference}</div>
+                <div className="px-3 py-1.5 text-xs text-slate-600 truncate overflow-hidden text-ellipsis" style={{ flex: 1, minWidth: colWidths.description }} title={description}>{description}</div>
+                <div className="px-3 py-1.5 text-xs text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.date }}>{formatDate(record.date)}</div>
+                <div className="px-3 py-1.5 text-xs text-slate-700 font-medium truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.accountName }} title={record.accountName}>{record.accountName}</div>
+                <div className={`px-3 py-1.5 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums flex-shrink-0 ${isPayment ? 'text-emerald-600' : 'text-slate-700'}`} style={{ width: colWidths.amount }}>
+                    {CURRENCY} {record.amount.toLocaleString()}
+                </div>
+                <div className="px-3 py-1.5 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium flex-shrink-0" style={{ width: colWidths.remainingAmount }}>
+                    {record.remainingAmount !== undefined && record.remainingAmount > 0.01 ? (
+                        <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
+                    ) : (
+                        <span className="text-slate-300 font-normal">-</span>
+                    )}
+                </div>
+                <div className="px-3 py-1.5 text-center whitespace-nowrap w-24 flex-shrink-0">{statusBadge}</div>
+                <div className="px-3 py-1.5 text-center w-20 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {record.type === 'Invoice' && (() => {
+                        const inv = record.raw as Invoice;
+                        const contact = state.contacts.find(c => c.id === inv.contactId);
+                        const isFullyPaid = inv.status === 'Paid' || (inv.amount - inv.paidAmount) <= 0.01;
+                        return (
+                            <div className="flex items-center justify-center gap-1">
+                                {!isFullyPaid && onReceivePayment && (
+                                    <button onClick={(e) => { e.stopPropagation(); onReceivePayment(inv); }} className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors" title="Receive Payment">
+                                        <div className="w-4 h-4">{ICONS.handDollar}</div>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={async (e) => { e.stopPropagation(); if (!contact?.contactNo) { showAlert("Contact does not have a phone number saved."); return; } await handleSendWhatsApp(inv, contact); }}
+                                    className={`p-1.5 rounded-md transition-colors ${contact?.contactNo ? 'text-green-600 hover:bg-green-50 hover:text-green-700' : 'text-slate-300 hover:bg-slate-50 hover:text-slate-400'}`}
+                                    title={contact?.contactNo ? "Send invoice via WhatsApp" : "No contact number available"}
+                                >
+                                    <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                                </button>
+                                {onEditInvoice && (
+                                    <button onClick={(e) => { e.stopPropagation(); onEditInvoice(inv); }} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors" title="Edit Invoice">
+                                        <div className="w-4 h-4">{ICONS.edit}</div>
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })()}
+                    {record.type === 'Payment' && !isBulk && onEditPayment && (
+                        <button onClick={(e) => { e.stopPropagation(); onEditPayment(record.raw as Transaction); }} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors" title="Edit Payment">
+                            <div className="w-4 h-4">{ICONS.edit}</div>
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
             key,
@@ -378,141 +507,15 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                     </div>
                 ) : (
                     <List
-                        ref={listRef}
-                        height={listHeight}
-                        itemCount={sortedRecords.length}
-                        itemSize={ROW_HEIGHT}
-                        width="100%"
+                        listRef={listRef as any}
+                        defaultHeight={listHeight}
+                        rowCount={sortedRecords.length}
+                        rowHeight={ROW_HEIGHT}
+                        rowComponent={Row}
+                        rowProps={{}}
+                        style={{ height: listHeight }}
                         overscanCount={15}
-                    >
-                        {({ index, style }) => {
-                            const record = sortedRecords[index];
-                            const isPayment = record.type.includes('Payment');
-                            const isBulk = record.type.includes('Bulk');
-                            const isPaid = record.remainingAmount !== undefined && record.remainingAmount <= 0.01;
-                            const canSelect = !isPayment && !isPaid;
-
-                            const rawTx = record.raw as Transaction;
-                            const hasChildren = isBulk && rawTx.children && rawTx.children.length > 0;
-                            const isExpanded = expandedIds.has(record.id);
-                            const description = record.raw.description || '-';
-
-                            let statusBadge = null;
-                            if (record.type === 'Invoice') {
-                                const inv = record.raw as Invoice;
-                                const remaining = inv.amount - inv.paidAmount;
-                                const isFullPaid = remaining <= 0.01;
-                                const isPartial = inv.paidAmount > 0.01 && !isFullPaid;
-
-                                if (isFullPaid) {
-                                    statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">PAID</span>;
-                                } else if (isPartial) {
-                                    statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">PARTIAL</span>;
-                                } else {
-                                    const isOverdue = inv.dueDate && new Date(inv.dueDate) < new Date() && remaining > 0;
-                                    if (isOverdue) statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">OVERDUE</span>;
-                                    else statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">UNPAID</span>;
-                                }
-                            }
-
-                            let displayType: string = record.type;
-                            let typeStyle = 'bg-slate-100 text-slate-600 border-slate-200';
-
-                            if (record.type === 'Invoice') {
-                                const inv = record.raw as Invoice;
-                                const isSecurity = (inv.securityDepositCharge || 0) > 0 || (inv.description || '').toLowerCase().includes('security');
-
-                                if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) {
-                                    displayType = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity) ? 'Security' : 'Rent';
-                                    typeStyle = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity)
-                                        ? 'bg-amber-50 text-amber-700 border-amber-100'
-                                        : 'bg-sky-50 text-sky-700 border-sky-100';
-                                } else if (inv.invoiceType === InvoiceType.INSTALLMENT) {
-                                    displayType = 'Installment';
-                                    typeStyle = 'bg-indigo-50 text-indigo-700 border-indigo-100';
-                                }
-                            } else if (isPayment) {
-                                const descLower = description.toLowerCase();
-                                if (descLower.includes('security')) { displayType = 'Sec Pmt'; typeStyle = 'bg-amber-50 text-amber-700 border-amber-100/50'; }
-                                else if (descLower.includes('rent') || descLower.includes('rental')) { displayType = 'Rent Pmt'; typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50'; }
-                                else if (isBulk) { displayType = 'Bulk Pmt'; typeStyle = 'bg-purple-50 text-purple-700 border-purple-100/50'; }
-                                else { displayType = 'Payment'; typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50'; }
-                            }
-
-                            return (
-                                <div
-                                    style={style}
-                                    className={`flex items-center cursor-pointer transition-colors group border-b border-slate-50 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100 ${isExpanded ? '!bg-indigo-50/30' : ''}`}
-                                    onClick={() => {
-                                        if (hasChildren) toggleExpand({ stopPropagation: () => {} } as any, record.id);
-                                        else if (record.type === 'Invoice') onInvoiceClick(record.raw as Invoice);
-                                        else onPaymentClick(record.raw as Transaction);
-                                    }}
-                                >
-                                    <div className="px-3 py-1.5 text-center w-10 flex-shrink-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                                        {hasChildren ? (
-                                            <button onClick={(e) => toggleExpand(e, record.id)} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 transition-colors">
-                                                <div className={`w-3 h-3 transform transition-transform duration-200 ${isExpanded ? 'rotate-90 text-indigo-500' : ''}`}>{ICONS.chevronRight}</div>
-                                            </button>
-                                        ) : canSelect && onToggleSelect ? (
-                                            <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 cursor-pointer transition-all" checked={selectedIds?.has(record.id)} onChange={() => onToggleSelect(record.id)} />
-                                        ) : null}
-                                    </div>
-                                    <div className="px-3 py-1.5 whitespace-nowrap flex-shrink-0" style={{ width: colWidths.type }}>
-                                        <span className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${typeStyle}`}>{displayType}</span>
-                                    </div>
-                                    <div className="px-3 py-1.5 font-mono text-xs font-medium text-slate-700 group-hover:text-indigo-600 whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors flex-shrink-0" style={{ width: colWidths.reference }}>{record.reference}</div>
-                                    <div className="px-3 py-1.5 text-xs text-slate-600 truncate overflow-hidden text-ellipsis" style={{ flex: 1, minWidth: colWidths.description }} title={description}>{description}</div>
-                                    <div className="px-3 py-1.5 text-xs text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.date }}>{formatDate(record.date)}</div>
-                                    <div className="px-3 py-1.5 text-xs text-slate-700 font-medium truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.accountName }} title={record.accountName}>{record.accountName}</div>
-                                    <div className={`px-3 py-1.5 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums flex-shrink-0 ${isPayment ? 'text-emerald-600' : 'text-slate-700'}`} style={{ width: colWidths.amount }}>
-                                        {CURRENCY} {record.amount.toLocaleString()}
-                                    </div>
-                                    <div className="px-3 py-1.5 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium flex-shrink-0" style={{ width: colWidths.remainingAmount }}>
-                                        {record.remainingAmount !== undefined && record.remainingAmount > 0.01 ? (
-                                            <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
-                                        ) : (
-                                            <span className="text-slate-300 font-normal">-</span>
-                                        )}
-                                    </div>
-                                    <div className="px-3 py-1.5 text-center whitespace-nowrap w-24 flex-shrink-0">{statusBadge}</div>
-                                    <div className="px-3 py-1.5 text-center w-20 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                                        {record.type === 'Invoice' && (() => {
-                                            const inv = record.raw as Invoice;
-                                            const contact = state.contacts.find(c => c.id === inv.contactId);
-                                            const isFullyPaid = inv.status === 'Paid' || (inv.amount - inv.paidAmount) <= 0.01;
-                                            return (
-                                                <div className="flex items-center justify-center gap-1">
-                                                    {!isFullyPaid && onReceivePayment && (
-                                                        <button onClick={(e) => { e.stopPropagation(); onReceivePayment(inv); }} className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors" title="Receive Payment">
-                                                            <div className="w-4 h-4">{ICONS.handDollar}</div>
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={async (e) => { e.stopPropagation(); if (!contact?.contactNo) { showAlert("Contact does not have a phone number saved."); return; } await handleSendWhatsApp(inv, contact); }}
-                                                        className={`p-1.5 rounded-md transition-colors ${contact?.contactNo ? 'text-green-600 hover:bg-green-50 hover:text-green-700' : 'text-slate-300 hover:bg-slate-50 hover:text-slate-400'}`}
-                                                        title={contact?.contactNo ? "Send invoice via WhatsApp" : "No contact number available"}
-                                                    >
-                                                        <div className="w-4 h-4">{ICONS.whatsapp}</div>
-                                                    </button>
-                                                    {onEditInvoice && (
-                                                        <button onClick={(e) => { e.stopPropagation(); onEditInvoice(inv); }} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors" title="Edit Invoice">
-                                                            <div className="w-4 h-4">{ICONS.edit}</div>
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
-                                        {record.type === 'Payment' && !isBulk && onEditPayment && (
-                                            <button onClick={(e) => { e.stopPropagation(); onEditPayment(record.raw as Transaction); }} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors" title="Edit Payment">
-                                                <div className="w-4 h-4">{ICONS.edit}</div>
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        }}
-                    </List>
+                    />
                 )}
             </div>
 

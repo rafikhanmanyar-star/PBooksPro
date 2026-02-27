@@ -1,12 +1,24 @@
 import { getWebSocketService } from './websocketService.js';
 
+// Events from external sources (webhooks) that must always be delivered,
+// even when only one user is connected.
+const ALWAYS_EMIT_PREFIXES = ['whatsapp:'];
+
 /**
- * Helper function to emit WebSocket events from API routes
- * Ensures WebSocket service is available before emitting
+ * Helper function to emit WebSocket events from API routes.
+ * Skips entity-sync broadcasts when only one unique user is connected
+ * to the tenant (no one else to sync with), improving performance.
+ * External events (e.g. WhatsApp) are always emitted.
  */
 export function emitToTenant(tenantId: string, event: string, data: any): void {
   try {
     const wsService = getWebSocketService();
+
+    const alwaysEmit = ALWAYS_EMIT_PREFIXES.some(prefix => event.startsWith(prefix));
+    if (!alwaysEmit && wsService.getUniqueUserCount(tenantId) <= 1) {
+      return;
+    }
+
     wsService.emitToTenant(tenantId, event, data);
   } catch (error) {
     // Silently fail if WebSocket is not initialized (e.g., during testing)

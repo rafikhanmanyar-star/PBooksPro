@@ -175,10 +175,25 @@ export class WebSocketService {
   }
 
   /**
-   * Get connected clients count for a tenant
+   * Get connected clients count for a tenant (socket count, not unique users)
    */
   getConnectedCount(tenantId: string): number {
     return this.connectedClients.get(tenantId)?.size || 0;
+  }
+
+  /**
+   * Get number of unique users connected to a tenant.
+   * One user with multiple tabs/devices counts as 1.
+   */
+  getUniqueUserCount(tenantId: string): number {
+    const socketIds = this.connectedClients.get(tenantId);
+    if (!socketIds || socketIds.size === 0) return 0;
+    const userIds = new Set<string>();
+    for (const sid of socketIds) {
+      const us = this.userSockets.get(sid);
+      if (us?.userId) userIds.add(us.userId);
+    }
+    return userIds.size;
   }
 
   /**
