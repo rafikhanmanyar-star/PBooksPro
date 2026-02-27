@@ -181,9 +181,6 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
     }, [records, typeFilter, dateFilter]);
 
     const sortedRecords = useMemo(() => {
-        // Reset page on filter/sort change
-        setCurrentPage(1);
-
         const sorted = [...filteredRecords];
         sorted.sort((a, b) => {
             let aVal: any;

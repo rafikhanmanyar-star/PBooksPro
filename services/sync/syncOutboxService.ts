@@ -93,6 +93,11 @@ class SyncOutboxService {
       return id;
     }
     this.ensureTable();
+    // Supersede older pending/failed entries for the same entity to avoid stale version pushes
+    this.db.execute(
+      `DELETE FROM sync_outbox WHERE tenant_id = ? AND entity_type = ? AND entity_id = ? AND status IN ('pending', 'failed')`,
+      [tenantId, entityType, entityId]
+    );
     this.db.execute(
       `INSERT INTO sync_outbox (id, tenant_id, user_id, entity_type, action, entity_id, payload_json, created_at, updated_at, synced_at, status, retry_count, error_message)
        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), NULL, 'pending', 0, NULL)`,

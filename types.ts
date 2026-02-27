@@ -190,6 +190,7 @@ export interface Account {
   description?: string;
   parentAccountId?: string;
   children?: Account[];
+  version?: number;
 }
 
 export interface Contact {

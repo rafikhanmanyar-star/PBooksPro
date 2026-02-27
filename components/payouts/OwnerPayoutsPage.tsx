@@ -13,6 +13,10 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import ReceiveFromOwnerModal from '../rentalManagement/ReceiveFromOwnerModal';
+import Modal from '../ui/Modal';
+import TransactionForm from '../transactions/TransactionForm';
+import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
+import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 
@@ -38,8 +42,9 @@ type SortKey = 'name' | 'category' | 'collected' | 'paid' | 'balance';
 // --- Component ---
 
 const OwnerPayoutsPage: React.FC = () => {
-    const { state } = useAppContext();
+    const { state, dispatch } = useAppContext();
     const { openChat } = useWhatsApp();
+    const { showToast } = useNotification();
 
     // UI state
     const [activeCategory, setActiveCategory] = useState<PayoutCategory>('all');
@@ -71,6 +76,13 @@ const OwnerPayoutsPage: React.FC = () => {
         ownerName: string;
         amount: number;
     } | null>(null);
+
+    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
+    const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | 'update' | null }>({
+        isOpen: false,
+        transaction: null,
+        action: null
+    });
 
     // Reset expanded row when category changes
     useEffect(() => {
@@ -589,6 +601,38 @@ const OwnerPayoutsPage: React.FC = () => {
         }
     };
 
+    const getLinkedItemName = (tx: Transaction | null): string => {
+        if (!tx) return '';
+        if (tx.invoiceId) {
+            const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+            return invoice ? `Invoice #${invoice.invoiceNumber}` : 'an Invoice';
+        }
+        if (tx.billId) {
+            const bill = state.bills.find(b => b.id === tx.billId);
+            return bill ? `Bill #${bill.billNumber}` : 'a Bill';
+        }
+        return 'a linked item';
+    };
+
+    const handleShowDeleteWarning = (tx: Transaction) => {
+        setTransactionToEdit(null);
+        setWarningModalState({ isOpen: true, transaction: tx, action: 'delete' });
+    };
+
+    const handleConfirmWarning = () => {
+        const { transaction, action } = warningModalState;
+        if (transaction && action === 'delete') {
+            const linkedItemName = getLinkedItemName(transaction);
+            dispatch({ type: 'DELETE_TRANSACTION', payload: transaction.id });
+            showToast(`Transaction deleted successfully. ${linkedItemName && linkedItemName !== 'a linked item' ? `The linked ${linkedItemName} has been updated.` : ''}`, 'info');
+        }
+        setWarningModalState({ isOpen: false, transaction: null, action: null });
+    };
+
+    const handleCloseWarning = () => {
+        setWarningModalState({ isOpen: false, transaction: null, action: null });
+    };
+
     // --- Expanded row detail ---
     const renderExpandedDetail = (row: PayeeRow) => {
         const ownerId = row.contact.id;
@@ -619,15 +663,20 @@ const OwnerPayoutsPage: React.FC = () => {
                     ledgerType={ledgerType}
                     buildingId={buildingIdForLedger}
                     propertyId={propertyIdForLedger}
-                    onPayoutClick={(transaction) => {
-                        setOwnerPayoutModal({
-                            isOpen: true,
-                            owner: row.contact,
-                            balanceDue: row.balance,
-                            payoutType: ledgerType === 'Security' ? 'Security' : 'Rent',
-                            buildingId: buildingIdForLedger,
-                            transactionToEdit: transaction,
-                        });
+                    onRecordClick={(item) => {
+                        if (!item.transaction) return;
+                        if (item.type === 'Payout') {
+                            setOwnerPayoutModal({
+                                isOpen: true,
+                                owner: row.contact,
+                                balanceDue: row.balance,
+                                payoutType: ledgerType === 'Security' ? 'Security' : 'Rent',
+                                buildingId: buildingIdForLedger,
+                                transactionToEdit: item.transaction,
+                            });
+                        } else {
+                            setTransactionToEdit(item.transaction);
+                        }
                     }}
                 />
             </div>
@@ -982,6 +1031,24 @@ const OwnerPayoutsPage: React.FC = () => {
                     suggestedAmount={receiveOwner.amount}
                 />
             )}
+
+            <Modal isOpen={!!transactionToEdit} onClose={() => setTransactionToEdit(null)} title="Edit Transaction">
+                {transactionToEdit && (
+                    <TransactionForm
+                        transactionToEdit={transactionToEdit}
+                        onClose={() => setTransactionToEdit(null)}
+                        onShowDeleteWarning={handleShowDeleteWarning}
+                    />
+                )}
+            </Modal>
+
+            <LinkedTransactionWarningModal
+                isOpen={warningModalState.isOpen}
+                onClose={handleCloseWarning}
+                onConfirm={handleConfirmWarning}
+                action={warningModalState.action as 'delete' | 'update'}
+                linkedItemName={getLinkedItemName(warningModalState.transaction)}
+            />
         </div>
     );
 };

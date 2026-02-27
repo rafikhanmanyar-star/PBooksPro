@@ -13,12 +13,13 @@ interface OwnerLedgerProps {
     ledgerType?: 'Rent' | 'Security';
     buildingId?: string;
     propertyId?: string; // When set, ledger shows only this unit (property)
-    onPayoutClick?: (transaction: any) => void; // Callback when payout record is clicked
+    onPayoutClick?: (transaction: any) => void; // Callback when payout record is clicked (legacy)
+    onRecordClick?: (item: { type: string; transaction?: any }) => void; // Callback when any editable record is clicked
 }
 
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
-const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId, propertyId, onPayoutClick }) => {
+const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId, propertyId, onPayoutClick, onRecordClick }) => {
     const { state } = useAppContext();
     const { openChat } = useWhatsApp();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
@@ -69,7 +70,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         particulars: tx.description || `Service Charge: ${property?.name || 'Unit'}`,
                         debit: Math.abs(amount),
                         credit: 0,
-                        type: 'Service Charge'
+                        type: 'Service Charge',
+                        transaction: tx
                     });
                 } else {
                     items.push({
@@ -78,7 +80,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         particulars: `Rent: ${property?.name || 'Unit'}`,
                         debit: 0,
                         credit: amount,
-                        type: 'Rent'
+                        type: 'Rent',
+                        transaction: tx
                     });
                 }
             });
@@ -102,7 +105,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         particulars: tx.description || 'Owner Service Charge Payment',
                         debit: 0,
                         credit: amount,
-                        type: 'Owner Payment'
+                        type: 'Owner Payment',
+                        transaction: tx
                     });
                 });
             }
@@ -164,7 +168,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     particulars: `${category?.name || 'Expense'}: ${property?.name}`,
                     debit: isNaN(amount) ? 0 : amount,
                     credit: 0,
-                    type: 'Expense'
+                    type: 'Expense',
+                    transaction: tx
                 });
             });
 
@@ -188,7 +193,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         particulars: `Deposit: ${property?.name}`,
                         debit: 0,
                         credit: tx.amount,
-                        type: 'Deposit'
+                        type: 'Deposit',
+                        transaction: tx
                     });
                 });
 
@@ -229,7 +235,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                              particulars: `${category.name}: ${property?.name}`,
                              debit: tx.amount,
                              credit: 0,
-                             type: 'Refund/Deduction'
+                             type: 'Refund/Deduction',
+                             transaction: tx
                         });
                     }
                 });
@@ -310,9 +317,13 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         </thead>
                         <tbody className="divide-y divide-slate-200">
                             {ledgerItems.map((item) => {
-                                const isPayoutClickable = item.type === 'Payout' && item.transaction && onPayoutClick;
+                                const hasTransaction = !!item.transaction;
+                                const isClickable = hasTransaction && (onRecordClick || (item.type === 'Payout' && onPayoutClick));
                                 const handleRowClick = () => {
-                                    if (isPayoutClickable) {
+                                    if (!hasTransaction) return;
+                                    if (onRecordClick) {
+                                        onRecordClick({ type: item.type, transaction: item.transaction });
+                                    } else if (item.type === 'Payout' && onPayoutClick) {
                                         onPayoutClick(item.transaction);
                                     }
                                 };
@@ -321,13 +332,13 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                                     <tr 
                                         key={item.id}
                                         onClick={handleRowClick}
-                                        className={isPayoutClickable ? 'cursor-pointer hover:bg-indigo-50 transition-colors group' : ''}
+                                        className={isClickable ? 'cursor-pointer hover:bg-indigo-50 transition-colors group' : ''}
                                     >
                                         <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-700 sm:pl-0">{formatDate(item.date)}</td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 max-w-xs truncate" title={item.particulars}>
                                             <div className="flex items-center gap-2">
                                                 {item.particulars}
-                                                {isPayoutClickable && (
+                                                {isClickable && (
                                                     <span className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
                                                         (Click to edit)
                                                     </span>

@@ -42,10 +42,10 @@ export const ALL_KPIS: KpiDefinition[] = [
         group: 'General',
         icon: ICONS.wallet,
         // Calculated as total of all Bank/Cash accounts (Liquid Assets)
-        // Exclude 'Internal Clearing' to prevent internal distribution logic from affecting visible cash balance
+        // Exclude 'Internal Clearing'. System and tenant accounts with the same name are both included in the sum (one logical balance per account name).
         getData: (state) => state.accounts
             .filter(acc => (acc.type === AccountType.BANK || acc.type === AccountType.CASH) && acc.name !== 'Internal Clearing')
-            .reduce((sum, acc) => sum + acc.balance, 0),
+            .reduce((sum, acc) => sum + (typeof acc.balance === 'number' ? acc.balance : parseFloat(String(acc.balance)) || 0), 0),
     },
     {
         id: 'netIncome',

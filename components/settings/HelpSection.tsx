@@ -182,7 +182,7 @@ const HELP_TOPICS: HelpTopic[] = [
             <div className="space-y-3 text-sm text-slate-600">
                 <p>Accounts represent your financial institutions and cash sources.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Account Types:</strong> Bank (checking/savings), Cash, Credit Card, Equity, Liability, Asset. Only Bank accounts affect Total Balance KPI.</li>
+                    <li><strong>Account Types:</strong> Bank (checking/savings), Cash, Credit Card, Equity, Liability, Asset. Bank and Cash accounts are included in Total Balance KPI.</li>
                     <li><strong>Creating Accounts:</strong> Settings &gt; Accounts &gt; Add Account. Enter name, type, and initial balance.</li>
                     <li><strong>Balance Tracking:</strong> Balances update automatically when transactions are recorded. Manually adjust if needed via "Adjust Balance".</li>
                     <li><strong>Internal Clearing:</strong> Special system account used for internal transfers. Not included in Total Balance calculations.</li>

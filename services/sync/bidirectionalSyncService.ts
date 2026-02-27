@@ -276,8 +276,14 @@ class BidirectionalSyncService {
       const endpoint = ENTITY_TO_ENDPOINT[item.entity_type] || `/${item.entity_type.replace(/_/g, '-')}`;
       const payload = item.payload_json ? JSON.parse(item.payload_json) : null;
 
-      // Extract version from payload for optimistic locking header
-      const entityVersion = payload?.version ?? undefined;
+      // Extract version from payload for optimistic locking header.
+      // Only send when it's a valid positive integer; omitting it lets
+      // the server skip the optimistic lock check so stale/missing
+      // versions don't trigger 409 VERSION_CONFLICT cascades.
+      const rawVersion = payload?.version;
+      const entityVersion = (typeof rawVersion === 'number' && rawVersion > 0 && Number.isInteger(rawVersion))
+        ? rawVersion
+        : undefined;
 
       try {
         // Build request headers with idempotency key and version

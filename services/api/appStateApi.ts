@@ -1070,7 +1070,8 @@ export class AppStateApiService {
       balance: typeof saved.balance === 'number' ? saved.balance : parseFloat(String(saved.balance || '0')),
       isPermanent: (saved as any).is_permanent === true || (saved as any).is_permanent === 1 || saved.isPermanent === true || false,
       description: saved.description || undefined,
-      parentAccountId: (saved as any).parent_account_id || saved.parentAccountId || undefined
+      parentAccountId: (saved as any).parent_account_id || saved.parentAccountId || undefined,
+      version: saved.version ?? undefined
     };
   }
 

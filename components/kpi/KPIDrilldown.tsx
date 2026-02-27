@@ -27,10 +27,29 @@ const KPIDrilldown: React.FC = () => {
         // Single-value KPIs that link to a list
         if (id === 'totalBalance') {
             headers = [{ key: 'name', label: 'Name' }, { key: 'value', label: 'Value', isNumeric: true }];
-            // Include Bank and Cash accounts (Liquid Assets), exclude Internal Clearing
-            items = state.accounts
-                .filter(acc => (acc.type === AccountType.BANK || acc.type === AccountType.CASH) && acc.name !== 'Internal Clearing')
-                .map(acc => ({ id: acc.id, name: acc.name, value: acc.balance, filter: { name: acc.name } }));
+            // Include Bank and Cash accounts (Liquid Assets), exclude Internal Clearing.
+            // Merge by account name so each logical account appears once (system + tenant accounts with same name show as one row with summed balance).
+            const liquidAccounts = state.accounts.filter(
+                acc => (acc.type === AccountType.BANK || acc.type === AccountType.CASH) && acc.name !== 'Internal Clearing'
+            );
+            const byName = new Map<string, { id: string; name: string; value: number }>();
+            liquidAccounts.forEach(acc => {
+                const displayName = acc.name?.trim() || 'Unnamed';
+                const key = displayName.toLowerCase();
+                const balance = typeof acc.balance === 'number' ? acc.balance : parseFloat(String(acc.balance)) || 0;
+                const existing = byName.get(key);
+                if (existing) {
+                    existing.value += balance;
+                } else {
+                    byName.set(key, { id: acc.id, name: displayName, value: balance });
+                }
+            });
+            items = Array.from(byName.values()).map(row => ({
+                id: row.id,
+                name: row.name,
+                value: row.value,
+                filter: { name: row.name }
+            }));
         } else if (id.startsWith('account-balance-')) {
             const accountId = id.replace('account-balance-', '');
 

@@ -31,10 +31,14 @@ export class AccountsApiRepository {
   }
 
   /**
-   * Create a new account
+   * Create a new account (upsert via POST)
    */
   async create(account: Partial<Account>): Promise<Account> {
-    return apiClient.post<Account>('/accounts', account);
+    const headers: Record<string, string> = {};
+    if (account.version != null) {
+      headers['X-Entity-Version'] = String(account.version);
+    }
+    return apiClient.post<Account>('/accounts', account, { headers });
   }
 
   /**

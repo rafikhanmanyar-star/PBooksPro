@@ -40,6 +40,7 @@ router.get('/', async (req: TenantRequest, res) => {
       isPermanent: account.is_permanent || false,
       description: account.description || null,
       parentAccountId: account.parent_account_id || null,
+      version: account.version ?? 1,
       createdAt: account.created_at,
       updatedAt: account.updated_at
     }));
@@ -163,6 +164,7 @@ router.post('/', async (req: TenantRequest, res) => {
       isPermanent: result.is_permanent || false,
       description: result.description || null,
       parentAccountId: result.parent_account_id || null,
+      version: result.version ?? 1,
       createdAt: result.created_at,
       updatedAt: result.updated_at
     };
@@ -262,6 +264,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
       isPermanent: result[0].is_permanent || false,
       description: result[0].description || null,
       parentAccountId: result[0].parent_account_id || null,
+      version: result[0].version ?? 1,
       createdAt: result[0].created_at,
       updatedAt: result[0].updated_at
     };

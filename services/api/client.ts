@@ -313,6 +313,8 @@ export class ApiClient {
           
           if (is401 && (isExpected401Endpoint || isLogoutInProgress)) {
             // Silent - expected 401 before authentication or session already ended on logout
+          } else if (response.status === 409 && data?.code === 'VERSION_CONFLICT') {
+            // Silent - handled by sync layer (accepts server version)
           } else if (!(is401 && isLogoutInProgress)) {
             // Log other errors (and 401 only when not logging out)
             logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
@@ -439,7 +441,12 @@ export class ApiClient {
           ...(data.invoiceId != null && { invoiceId: data.invoiceId }),
           ...(data.invoiceNumber != null && { invoiceNumber: data.invoiceNumber }),
         };
-        console.error('API Error:', error);
+        const isVersionConflict = response.status === 409 && data?.code === 'VERSION_CONFLICT';
+        if (isVersionConflict) {
+          logger.logCategory('sync', `Version conflict for ${endpoint} (server v${data.serverVersion}) - sync will accept server version`);
+        } else {
+          console.error('API Error:', error);
+        }
         throw error;
       }
 
@@ -447,7 +454,8 @@ export class ApiClient {
     } catch (error) {
       // During logout, 401 is expected; avoid noisy console error
       const is401DuringLogout = error && typeof error === 'object' && (error as ApiError).status === 401 && this.loggingOut;
-      if (!is401DuringLogout) {
+      const isVersionConflict = error && typeof error === 'object' && (error as any).status === 409 && (error as any).code === 'VERSION_CONFLICT';
+      if (!is401DuringLogout && !isVersionConflict) {
         console.error('API Request Error:', error);
       }
       
