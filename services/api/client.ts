@@ -436,6 +436,8 @@ export class ApiClient {
           ...(data.existingRunId && { existingRunId: data.existingRunId }),
           ...(data.existingStatus && { existingStatus: data.existingStatus }),
           ...(data.serverVersion != null && { serverVersion: data.serverVersion }),
+          ...(data.invoiceId != null && { invoiceId: data.invoiceId }),
+          ...(data.invoiceNumber != null && { invoiceNumber: data.invoiceNumber }),
         };
         console.error('API Error:', error);
         throw error;

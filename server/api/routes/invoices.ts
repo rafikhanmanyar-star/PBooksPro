@@ -106,7 +106,7 @@ router.post('/', async (req: TenantRequest, res) => {
 
     // Check if invoice exists by ID to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, invoice_number, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
       [invoiceId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
@@ -117,6 +117,8 @@ router.post('/', async (req: TenantRequest, res) => {
         error: 'Immutable record',
         message: 'Cannot modify a paid invoice. Posted financial records are immutable.',
         code: 'INVOICE_PAID_IMMUTABLE',
+        invoiceId: existing[0].id,
+        invoiceNumber: existing[0].invoice_number ?? undefined,
       });
     }
 
@@ -270,7 +272,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
 
     // Immutability: reject updates to paid invoices
     const current = await db.query(
-      'SELECT status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, invoice_number, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenantId]
     );
     if (current.length > 0 && current[0].status === 'Paid') {
@@ -278,6 +280,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
         error: 'Immutable record',
         message: 'Cannot modify a paid invoice. Posted financial records are immutable.',
         code: 'INVOICE_PAID_IMMUTABLE',
+        invoiceId: current[0].id,
+        invoiceNumber: current[0].invoice_number ?? undefined,
       });
     }
 
@@ -352,7 +356,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
 
     // Immutability: reject deletion of paid invoices
     const current = await db.query(
-      'SELECT status FROM invoices WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, invoice_number, status FROM invoices WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenantId]
     );
     if (current.length > 0 && current[0].status === 'Paid') {
@@ -360,6 +364,8 @@ router.delete('/:id', async (req: TenantRequest, res) => {
         error: 'Immutable record',
         message: 'Cannot delete a paid invoice. Posted financial records are immutable.',
         code: 'INVOICE_PAID_IMMUTABLE',
+        invoiceId: current[0].id,
+        invoiceNumber: current[0].invoice_number ?? undefined,
       });
     }
 

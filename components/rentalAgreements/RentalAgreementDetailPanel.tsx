@@ -200,19 +200,25 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
                     </div>
                     {linkedInvoices.length > 0 ? (
                         <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-                            {linkedInvoices.slice(0, 10).map(inv => (
-                                <div key={inv.id} className="flex items-center justify-between text-xs py-1 px-1.5 rounded hover:bg-white/80">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <span className="font-mono text-slate-600 text-[10px]">{inv.invoiceNumber}</span>
-                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                            inv.status === InvoiceStatus.PAID ? 'bg-emerald-100 text-emerald-700' :
-                                            inv.status === InvoiceStatus.UNPAID ? 'bg-amber-100 text-amber-700' :
-                                            'bg-slate-100 text-slate-600'
-                                        }`}>{inv.status}</span>
+                            {linkedInvoices.slice(0, 10).map(inv => {
+                                const isSecurityDeposit = (inv.securityDepositCharge || 0) > 0;
+                                return (
+                                    <div key={inv.id} className="flex items-center justify-between text-xs py-1 px-1.5 rounded hover:bg-white/80">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className="font-mono text-slate-600 text-[10px]">{inv.invoiceNumber}</span>
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                                isSecurityDeposit ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700'
+                                            }`}>{isSecurityDeposit ? 'Security' : 'Rental'}</span>
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                                inv.status === InvoiceStatus.PAID ? 'bg-emerald-100 text-emerald-700' :
+                                                inv.status === InvoiceStatus.UNPAID ? 'bg-amber-100 text-amber-700' :
+                                                'bg-slate-100 text-slate-600'
+                                            }`}>{inv.status}</span>
+                                        </div>
+                                        <span className="font-medium text-slate-700 tabular-nums flex-shrink-0">{CURRENCY} {(inv.amount || 0).toLocaleString()}</span>
                                     </div>
-                                    <span className="font-medium text-slate-700 tabular-nums flex-shrink-0">{CURRENCY} {(inv.amount || 0).toLocaleString()}</span>
-                                </div>
-                            ))}
+                                );
+                            })}
                             {linkedInvoices.length > 10 && (
                                 <div className="text-[10px] text-slate-400 text-center pt-1">...and {linkedInvoices.length - 10} more</div>
                             )}
