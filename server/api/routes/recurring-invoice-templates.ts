@@ -60,10 +60,19 @@ router.post('/', async (req: TenantRequest, res) => {
     }
 
     const existing = await db.query(
-      'SELECT id, version FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, version, deleted_at FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2',
       [templateId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
+
+    // Prevent resurrection of soft-deleted templates via upstream sync
+    if (isUpdate && existing[0].deleted_at) {
+      return res.status(409).json({
+        error: 'Record deleted',
+        message: 'This recurring template has been deleted and cannot be updated.',
+        code: 'RECORD_DELETED',
+      });
+    }
 
     // Optimistic locking check for POST update
     const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;

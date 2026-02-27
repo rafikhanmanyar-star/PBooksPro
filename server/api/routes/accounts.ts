@@ -75,15 +75,6 @@ router.post('/', async (req: TenantRequest, res) => {
     const accountId = account.id || `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /accounts - Using account ID:', accountId);
 
-    // Reject if tenant tries to create an account with a reserved system account name
-    const isSystemId = accountId.startsWith('sys-acc-');
-    if (!isSystemId && account.name && SYSTEM_ACCOUNT_NAMES.has(account.name.toLowerCase().trim())) {
-      return res.status(400).json({
-        error: 'Reserved name',
-        message: `"${account.name}" is a system account name. Please use a different name.`
-      });
-    }
-
     // Track if this is an update operation
     let isUpdate = false;
 
@@ -101,6 +92,12 @@ router.post('/', async (req: TenantRequest, res) => {
         if (existing.rows[0].deleted_at) {
           console.log('⏭️ POST /accounts - Account is soft-deleted, skipping upsert:', accountId);
           return { ...existing.rows[0], _softDeleted: true };
+        }
+
+        // If this is a system account (tenant_id IS NULL, is_permanent), don't allow tenant updates
+        if (existing.rows[0].tenant_id === null && existing.rows[0].is_permanent) {
+          console.log('⏭️ POST /accounts - Skipping update of global system account:', accountId);
+          return existing.rows[0];
         }
 
         // Update existing account
@@ -140,6 +137,16 @@ router.post('/', async (req: TenantRequest, res) => {
         );
         return updateResult.rows[0];
       } else {
+        // Reject if tenant tries to create a NEW account with a reserved system account name
+        const isSystemId = accountId.startsWith('sys-acc-');
+        if (!isSystemId && account.name && SYSTEM_ACCOUNT_NAMES.has(account.name.toLowerCase().trim())) {
+          throw {
+            code: 'RESERVED_NAME',
+            message: `"${account.name}" is a system account name. Please use a different name.`,
+            status: 400,
+          };
+        }
+
         // Create new account
         console.log('➕ POST /accounts - Creating new account:', accountId);
         const insertResult = await client.query(
@@ -205,6 +212,13 @@ router.post('/', async (req: TenantRequest, res) => {
       tenantId: req.tenantId,
       accountId: req.body?.id
     });
+
+    if (error.code === 'RESERVED_NAME') {
+      return res.status(400).json({
+        error: 'Reserved name',
+        message: error.message,
+      });
+    }
 
     if (error.code === '23505') { // Unique violation
       return res.status(409).json({

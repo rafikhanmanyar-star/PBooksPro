@@ -112,10 +112,21 @@ router.post('/', async (req: TenantRequest, res) => {
 
     // Check if invoice exists by ID to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id, invoice_number, status, version FROM invoices WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, invoice_number, status, version, deleted_at FROM invoices WHERE id = $1 AND tenant_id = $2',
       [invoiceId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
+
+    // Prevent resurrection of soft-deleted invoices via upstream sync
+    if (isUpdate && existing[0].deleted_at) {
+      return res.status(409).json({
+        error: 'Record deleted',
+        message: 'This invoice has been deleted and cannot be updated.',
+        code: 'INVOICE_DELETED',
+        invoiceId: existing[0].id,
+        invoiceNumber: existing[0].invoice_number ?? undefined,
+      });
+    }
 
     // Immutability: reject updates to paid invoices (financial data safety)
     if (isUpdate && existing[0].status === 'Paid') {

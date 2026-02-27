@@ -334,8 +334,18 @@ class BidirectionalSyncService {
 
         // Handle 409 Conflict: "Duplicate" / "already exists" = server has it, mark synced; else version conflict
         if (status === 409) {
+          const errCode = err?.code || '';
+
+          // Record was soft-deleted on server — stop pushing local copy
+          if (errCode === 'INVOICE_DELETED' || errCode === 'RECORD_DELETED' || /has been deleted/i.test(msg || '')) {
+            logger.logCategory('sync', `⏭️ ${errCode || 'RECORD_DELETED'} for ${item.entity_type}:${item.entity_id} - deleted on server, marking ALL entries synced`);
+            outbox.markAllSyncedForEntity(tenantId, item.entity_type, item.entity_id);
+            pushed++;
+            await syncManager.removeByEntity(item.entity_type, item.entity_id);
+            continue;
+          }
+
           // TRANSACTION_IMMUTABLE: transaction is linked to a paid invoice/bill — non-retriable
-          const errCode = err?.code || (typeof msg === 'string' && msg.includes('TRANSACTION_IMMUTABLE') ? 'TRANSACTION_IMMUTABLE' : '');
           if (errCode === 'TRANSACTION_IMMUTABLE' || /cannot modify a payment transaction linked to a paid/i.test(msg || '')) {
             logger.logCategory('sync', `⏭️ TRANSACTION_IMMUTABLE for ${item.entity_type}:${item.entity_id} - linked to paid invoice/bill, marking ALL entries synced`);
             outbox.markAllSyncedForEntity(tenantId, item.entity_type, item.entity_id);
