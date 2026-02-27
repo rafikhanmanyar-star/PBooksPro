@@ -6,6 +6,10 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 const router = Router();
 const getDb = () => getDatabaseService();
 
+const SYSTEM_ACCOUNT_NAMES = new Set([
+  'cash', 'accounts receivable', 'accounts payable', 'owner equity', 'internal clearing'
+]);
+
 // GET all accounts
 router.get('/', async (req: TenantRequest, res) => {
   try {
@@ -71,14 +75,23 @@ router.post('/', async (req: TenantRequest, res) => {
     const accountId = account.id || `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /accounts - Using account ID:', accountId);
 
+    // Reject if tenant tries to create an account with a reserved system account name
+    const isSystemId = accountId.startsWith('sys-acc-');
+    if (!isSystemId && account.name && SYSTEM_ACCOUNT_NAMES.has(account.name.toLowerCase().trim())) {
+      return res.status(400).json({
+        error: 'Reserved name',
+        message: `"${account.name}" is a system account name. Please use a different name.`
+      });
+    }
+
     // Track if this is an update operation
     let isUpdate = false;
 
     // Use transaction for data integrity (upsert behavior)
     const result = await db.transaction(async (client) => {
-      // Check if account with this ID already exists
+      // Check if account with this ID already exists (include global system accounts)
       const existing = await client.query(
-        'SELECT * FROM accounts WHERE id = $1 AND tenant_id = $2',
+        'SELECT * FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
         [accountId, req.tenantId]
       );
 
@@ -222,6 +235,16 @@ router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const account = req.body;
+
+    // Prevent renaming a tenant account to a system account name
+    const isSystemId = req.params.id.startsWith('sys-acc-');
+    if (!isSystemId && account.name && SYSTEM_ACCOUNT_NAMES.has(account.name.toLowerCase().trim())) {
+      return res.status(400).json({
+        error: 'Reserved name',
+        message: `"${account.name}" is a system account name. Please use a different name.`
+      });
+    }
+
     // For simple PUT, we still want optimistic locking if version is provided
     const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
 

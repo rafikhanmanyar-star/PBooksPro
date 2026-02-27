@@ -8,6 +8,10 @@ import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
 import { useAppContext } from '../../context/AppContext';
 
+const SYSTEM_ACCOUNT_NAMES = new Set([
+    'cash', 'accounts receivable', 'accounts payable', 'owner equity', 'internal clearing'
+]);
+
 interface AccountFormProps {
     onSubmit: (account: Omit<Account, 'id' | 'balance'> & { initialBalance: number }) => void;
     onCancel: () => void;
@@ -41,9 +45,12 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
         );
     }, [state.accounts, type, accountToEdit]);
 
+    const isReservedName = !accountToEdit?.id?.startsWith('sys-acc-') && 
+        SYSTEM_ACCOUNT_NAMES.has(name.toLowerCase().trim());
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (isPermanent) return;
+        if (isPermanent || isReservedName) return;
         onSubmit({ 
             name, 
             description, 
@@ -61,6 +68,11 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
                 </div>
             )}
             <Input label="Account Name" value={name} onChange={e => setName(e.target.value)} required autoFocus disabled={isPermanent} />
+            {isReservedName && (
+                <p className="text-sm text-red-600 -mt-2">
+                    "{name}" is a reserved system account name. Please use a different name.
+                </p>
+            )}
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Select 
@@ -107,7 +119,7 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
                 </div>
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                    <Button type="submit" disabled={isPermanent}>{accountToEdit ? 'Update' : 'Save'} Account</Button>
+                    <Button type="submit" disabled={isPermanent || isReservedName}>{accountToEdit ? 'Update' : 'Save'} Account</Button>
                 </div>
             </div>
         </form>

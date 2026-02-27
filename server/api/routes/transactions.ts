@@ -1333,20 +1333,18 @@ router.post('/batch', async (req: TenantRequest, res) => {
         const savedTransaction = await db.transaction(async (client) => {
           // Validate and ensure account exists
           const accountCheck = await client.query(
-            'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+            'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
             [transaction.accountId, req.tenantId]
           );
 
           if (accountCheck.rows.length === 0) {
-            // Check if it's a system account that should be auto-created
             const systemAccount = SYSTEM_ACCOUNTS[transaction.accountId];
             if (systemAccount) {
-              // Auto-create system account
               await client.query(
                 `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+                 VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
                  ON CONFLICT (id) DO NOTHING`,
-                [transaction.accountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+                [transaction.accountId, systemAccount.name, systemAccount.type, systemAccount.description]
               );
             } else {
               throw {
@@ -1360,7 +1358,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
           // Validate from_account_id if provided (for transfers)
           if (transaction.fromAccountId) {
             const fromAccountCheck = await client.query(
-              'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+              'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
               [transaction.fromAccountId, req.tenantId]
             );
 
@@ -1369,9 +1367,9 @@ router.post('/batch', async (req: TenantRequest, res) => {
               if (systemAccount) {
                 await client.query(
                   `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+                   VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
                    ON CONFLICT (id) DO NOTHING`,
-                  [transaction.fromAccountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+                  [transaction.fromAccountId, systemAccount.name, systemAccount.type, systemAccount.description]
                 );
               } else {
                 throw {
@@ -1386,7 +1384,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
           // Validate to_account_id if provided (for transfers)
           if (transaction.toAccountId) {
             const toAccountCheck = await client.query(
-              'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+              'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
               [transaction.toAccountId, req.tenantId]
             );
 
@@ -1395,9 +1393,9 @@ router.post('/batch', async (req: TenantRequest, res) => {
               if (systemAccount) {
                 await client.query(
                   `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+                   VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
                    ON CONFLICT (id) DO NOTHING`,
-                  [transaction.toAccountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+                  [transaction.toAccountId, systemAccount.name, systemAccount.type, systemAccount.description]
                 );
               } else {
                 throw {

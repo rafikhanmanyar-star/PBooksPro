@@ -319,7 +319,7 @@ export async function importData(
           case 'Accounts':
             for (const account of validatedData.accounts) {
               const existing = await client.query(
-                'SELECT id FROM accounts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND type = $3',
+                'SELECT id FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND LOWER(TRIM(name)) = LOWER($2) AND type = $3',
                 [tenantId, account.name.trim(), account.type]
               );
               if (existing.rows.length > 0) {
