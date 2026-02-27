@@ -13,6 +13,8 @@ interface BankAccountProjectBalance {
     totalBalance: number;
 }
 
+const UNASSIGNED_PROJECT_ID = '__unassigned__';
+
 const BankAccountsReport: React.FC = () => {
     const { state } = useAppContext();
 
@@ -21,16 +23,10 @@ const BankAccountsReport: React.FC = () => {
         return state.accounts.filter(acc => acc.type === AccountType.BANK);
     }, [state.accounts]);
 
-    // Get all projects
-    const projects = useMemo(() => {
-        return state.projects;
-    }, [state.projects]);
-
-    // Calculate balance per bank account per project
+    // Calculate balance per bank account per project (including Unassigned for tx without projectId)
     const accountProjectBalances = useMemo(() => {
-        // Initialize the structure (only for bank accounts)
         const balances: Record<string, BankAccountProjectBalance> = {};
-        
+
         bankAccounts.forEach(account => {
             balances[account.id] = {
                 accountId: account.id,
@@ -40,75 +36,53 @@ const BankAccountsReport: React.FC = () => {
             };
         });
 
-        // Process all transactions to calculate balances
         state.transactions.forEach(tx => {
-            // Helper function to resolve projectId from transaction
-            const resolveProjectId = (): string | undefined => {
+            const resolveProjectId = (): string => {
                 let projectId = tx.projectId;
-                
-                // Try to resolve from bill
                 if (!projectId && tx.billId) {
                     const bill = state.bills.find(b => b.id === tx.billId);
                     if (bill) projectId = bill.projectId;
                 }
-                
-                // Try to resolve from invoice
                 if (!projectId && tx.invoiceId) {
                     const invoice = state.invoices.find(i => i.id === tx.invoiceId);
                     if (invoice) projectId = invoice.projectId;
                 }
-                
-                return projectId;
+                return projectId ?? UNASSIGNED_PROJECT_ID;
             };
 
             const projectId = resolveProjectId();
 
-            // Process INCOME transactions
             if (tx.type === TransactionType.INCOME && tx.accountId) {
                 const account = balances[tx.accountId];
-                if (account && projectId) {
+                if (account) {
                     const amount = tx.amount;
                     account.projectBalances[projectId] = (account.projectBalances[projectId] || 0) + amount;
                     account.totalBalance += amount;
                 }
-            }
-            
-            // Process EXPENSE transactions
-            else if (tx.type === TransactionType.EXPENSE && tx.accountId) {
+            } else if (tx.type === TransactionType.EXPENSE && tx.accountId) {
                 const account = balances[tx.accountId];
-                if (account && projectId) {
+                if (account) {
                     const amount = tx.amount;
                     account.projectBalances[projectId] = (account.projectBalances[projectId] || 0) - amount;
                     account.totalBalance -= amount;
                 }
-            }
-            
-            // Process TRANSFER transactions
-            else if (tx.type === TransactionType.TRANSFER) {
-                // From account loses money
-                if (tx.fromAccountId && balances[tx.fromAccountId] && projectId) {
+            } else if (tx.type === TransactionType.TRANSFER) {
+                if (tx.fromAccountId && balances[tx.fromAccountId]) {
                     const amount = tx.amount;
-                    balances[tx.fromAccountId].projectBalances[projectId] = 
+                    balances[tx.fromAccountId].projectBalances[projectId] =
                         (balances[tx.fromAccountId].projectBalances[projectId] || 0) - amount;
                     balances[tx.fromAccountId].totalBalance -= amount;
                 }
-                
-                // To account gains money
-                if (tx.toAccountId && balances[tx.toAccountId] && projectId) {
+                if (tx.toAccountId && balances[tx.toAccountId]) {
                     const amount = tx.amount;
-                    balances[tx.toAccountId].projectBalances[projectId] = 
+                    balances[tx.toAccountId].projectBalances[projectId] =
                         (balances[tx.toAccountId].projectBalances[projectId] || 0) + amount;
                     balances[tx.toAccountId].totalBalance += amount;
                 }
-            }
-            
-            // Process LOAN transactions
-            else if (tx.type === TransactionType.LOAN && tx.accountId) {
+            } else if (tx.type === TransactionType.LOAN && tx.accountId) {
                 const account = balances[tx.accountId];
-                if (account && projectId) {
-                    let amount = tx.amount;
-                    // RECEIVE and COLLECT increase account balance (money received)
-                    // GIVE and REPAY decrease account balance (money given)
+                if (account) {
+                    const amount = tx.amount;
                     if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
                         account.projectBalances[projectId] = (account.projectBalances[projectId] || 0) + amount;
                         account.totalBalance += amount;
@@ -120,31 +94,34 @@ const BankAccountsReport: React.FC = () => {
             }
         });
 
-        // Filter out accounts with no transactions (totalBalance is 0 and no project balances)
-        const accountsWithTransactions = Object.values(balances).filter(account => {
-            // Account has transactions if totalBalance is not zero OR has any non-zero project balance
+        // Include all bank accounts that have any balance (total or per-project)
+        return Object.values(balances).filter(account => {
             if (Math.abs(account.totalBalance) > 0.01) return true;
-            return Object.values(account.projectBalances).some(balance => Math.abs(balance) > 0.01);
+            return Object.values(account.projectBalances).some(b => Math.abs(b) > 0.01);
         });
+    }, [state.transactions, state.bills, state.invoices, state.projects, bankAccounts]);
 
-        return accountsWithTransactions;
-    }, [state.transactions, state.bills, state.invoices, bankAccounts, projects]);
-
-    // Get projects that have transactions (appear in accountProjectBalances)
+    // Projects to show as columns: real projects + Unassigned only if there is at least one unassigned balance
     const projectsWithTransactions = useMemo(() => {
         const projectIds = new Set<string>();
-        
+        let hasUnassigned = false;
+
         accountProjectBalances.forEach(account => {
-            Object.keys(account.projectBalances).forEach(projectId => {
-                const balance = account.projectBalances[projectId] || 0;
+            Object.keys(account.projectBalances).forEach(pid => {
+                const balance = account.projectBalances[pid] || 0;
                 if (Math.abs(balance) > 0.01) {
-                    projectIds.add(projectId);
+                    if (pid === UNASSIGNED_PROJECT_ID) hasUnassigned = true;
+                    else projectIds.add(pid);
                 }
             });
         });
-        
-        return projects.filter(project => projectIds.has(project.id));
-    }, [accountProjectBalances, projects]);
+
+        const list = state.projects.filter(p => projectIds.has(p.id));
+        if (hasUnassigned) {
+            list.push({ id: UNASSIGNED_PROJECT_ID, name: 'Unassigned' });
+        }
+        return list;
+    }, [accountProjectBalances, state.projects]);
 
     // Calculate project totals (column totals) - only for projects with transactions
     const projectTotals = useMemo(() => {
@@ -198,13 +175,15 @@ const BankAccountsReport: React.FC = () => {
             </div>
             
             {/* Table */}
-            {projectsWithTransactions.length === 0 || accountProjectBalances.length === 0 ? (
+            {bankAccounts.length === 0 ? (
                 <div className="py-8 text-center text-slate-500 bg-slate-50 rounded-lg">
-                    {projectsWithTransactions.length === 0 && accountProjectBalances.length === 0 
-                        ? 'No transactions found for bank accounts or projects.' 
-                        : projectsWithTransactions.length === 0 
-                        ? 'No projects with transactions found.' 
-                        : 'No bank accounts with transactions found.'}
+                    No bank accounts. Add bank accounts in Settings to see balances here.
+                </div>
+            ) : projectsWithTransactions.length === 0 || accountProjectBalances.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 bg-slate-50 rounded-lg">
+                    {accountProjectBalances.length === 0
+                        ? 'No transactions found for bank accounts.'
+                        : 'No projects with transactions found.'}
                 </div>
             ) : (
             <div className="overflow-x-auto">

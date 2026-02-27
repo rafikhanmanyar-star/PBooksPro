@@ -48,8 +48,9 @@ const DashboardPage: React.FC = () => {
 
     const kpisToDisplay = useMemo(() => {
         const visibleKpiIds = Array.isArray(state.dashboardConfig?.visibleKpis) ? state.dashboardConfig.visibleKpis : [];
-        // If no config, show defaults
-        const idsToShow = visibleKpiIds.length > 0 ? visibleKpiIds : ['total_income', 'total_expenses', 'net_profit', 'total_balance'];
+        // Default KPI ids must match kpiDefinitions.ts (camelCase). Wrong ids (e.g. total_income) result in no KPIs showing.
+        const defaultKpiIds = ['totalBalance', 'totalIncome', 'totalExpense', 'netIncome'];
+        const idsToShow = visibleKpiIds.length > 0 ? visibleKpiIds : defaultKpiIds;
 
         return idsToShow.map(id => {
             const kpiDef = allKpis.find(k => k.id === id);
@@ -85,7 +86,7 @@ const DashboardPage: React.FC = () => {
     const recentActivity = useMemo(() => {
         // Combine recent invoices and payments
         const invoices = state.invoices.slice(-3).map(i => ({
-            id: i.id, type: 'Invoice', title: `Invoice #${i.invoiceNumber}`, amount: i.totalAmount, date: i.date, status: i.status
+            id: i.id, type: 'Invoice', title: `Invoice #${i.invoiceNumber}`, amount: i.amount, date: i.issueDate || i.dueDate, status: i.status
         }));
         const txs = state.transactions.slice(-3).map(t => ({
             id: t.id, type: t.type === TransactionType.INCOME ? 'Income' : 'Expense', title: t.description || 'Transaction', amount: t.amount, date: t.date, status: 'Completed'
