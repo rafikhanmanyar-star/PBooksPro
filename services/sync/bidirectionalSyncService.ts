@@ -353,6 +353,27 @@ class BidirectionalSyncService {
           }
         }
 
+        // Version conflict returned as 500 (e.g. accounts route before fix): "Expected version X but server has version Y"
+        // Accept server wins and mark synced to stop retry loop and console spam
+        const versionConflictMatch = typeof msg === 'string' && /Expected version \d+ but server has version (\d+)\.?/.exec(msg);
+        if ((status === 500 || status === 409) && versionConflictMatch) {
+          const serverVersionFromMsg = parseInt(versionConflictMatch[1], 10);
+          logger.logCategory('sync', `⏭️ Version conflict (${status}) for ${item.entity_type}:${item.entity_id} (local=${entityVersion}, server=${serverVersionFromMsg}). Accepting server version.`);
+          logConflict({
+            tenantId,
+            entityType: item.entity_type,
+            entityId: item.entity_id,
+            localVersion: entityVersion,
+            localData: payload,
+            remoteData: null,
+            resolution: 'server_wins',
+          });
+          outbox.markSynced(item.id);
+          pushed++;
+          await syncManager.removeByEntity(item.entity_type, item.entity_id);
+          continue;
+        }
+
         // 401 Unauthorized: stop processing immediately — user is logged out or token expired
         if (status === 401) {
           logger.warnCategory('sync', `🔒 Upstream sync aborted: 401 Unauthorized for ${item.entity_type}:${item.entity_id}. Marking item pending for retry after login.`);

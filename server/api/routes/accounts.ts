@@ -96,11 +96,13 @@ router.post('/', async (req: TenantRequest, res) => {
         const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
         const serverVersion = existing.rows[0].version;
         if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
-          throw {
+          const err: { code: string; message: string; status: number; serverVersion: number } = {
             code: 'VERSION_CONFLICT',
             message: `Expected version ${clientVersion} but server has version ${serverVersion}.`,
-            status: 409
+            status: 409,
+            serverVersion,
           };
+          throw err;
         }
 
         const updateResult = await client.query(
@@ -193,6 +195,16 @@ router.post('/', async (req: TenantRequest, res) => {
       return res.status(409).json({
         error: 'Duplicate account',
         message: 'An account with this ID already exists'
+      });
+    }
+
+    // Version conflict: client sent stale version; return 409 so client can accept server and stop retrying
+    if (error.code === 'VERSION_CONFLICT' || error.status === 409) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: error.message || 'Account was modified by another client or session.',
+        code: 'VERSION_CONFLICT',
+        serverVersion: (error as { serverVersion?: number }).serverVersion,
       });
     }
 
