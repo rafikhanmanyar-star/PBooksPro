@@ -787,8 +787,15 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 return { ...state, invoices: state.invoices.map(i => i.id === action.payload.id ? action.payload : i) };
             }
             return { ...state, invoices: [...state.invoices, action.payload] };
-        case 'UPDATE_INVOICE':
-            return { ...state, invoices: state.invoices.map(i => i.id === action.payload.id ? action.payload : i) };
+        case 'UPDATE_INVOICE': {
+            const inv = { ...action.payload };
+            const paid = inv.paidAmount || 0;
+            const amt = inv.amount || 0;
+            if (paid >= amt - 0.1) inv.status = InvoiceStatus.PAID;
+            else if (paid > 0.1) inv.status = InvoiceStatus.PARTIALLY_PAID;
+            else if (inv.status !== InvoiceStatus.DRAFT) inv.status = InvoiceStatus.UNPAID;
+            return { ...state, invoices: state.invoices.map(i => i.id === inv.id ? inv : i) };
+        }
         case 'DELETE_INVOICE':
             return { ...state, invoices: state.invoices.filter(i => i.id !== action.payload) };
 

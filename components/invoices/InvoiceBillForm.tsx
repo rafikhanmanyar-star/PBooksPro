@@ -959,12 +959,18 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             ? rentalIncomeCategory!.id
             : (categoryId || undefined);
 
-        const updatedInvoice: Invoice = {
+        const merged: Invoice = {
           ...(itemToEdit as Invoice),
           ...formData,
           categoryId: resolvedCategoryId,
         };
-        dispatch({ type: 'UPDATE_INVOICE', payload: updatedInvoice });
+        const paidAmt = merged.paidAmount || 0;
+        const invAmt = merged.amount || 0;
+        if (paidAmt >= invAmt - 0.1) merged.status = InvoiceStatus.PAID;
+        else if (paidAmt > 0.1) merged.status = InvoiceStatus.PARTIALLY_PAID;
+        else merged.status = InvoiceStatus.UNPAID;
+
+        dispatch({ type: 'UPDATE_INVOICE', payload: merged });
         showToast("Invoice updated successfully");
       } else {
         // Compute expenseBearerType for rental bills

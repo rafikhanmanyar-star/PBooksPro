@@ -261,11 +261,18 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   }, [baseInvoices, invoicesWithoutStatusFilter, state.transactions, accountsById, contactsById, invoicesById]);
 
   const summaryStats = useMemo(() => {
-    const unpaid = baseInvoices.filter(inv => inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.OVERDUE);
-    const paid = baseInvoices.filter(inv => inv.status === InvoiceStatus.PAID);
-    const overdue = baseInvoices.filter(inv => inv.status === InvoiceStatus.OVERDUE);
+    const effectiveStatus = (inv: Invoice) => {
+      const remaining = inv.amount - inv.paidAmount;
+      if (remaining <= 0.01) return InvoiceStatus.PAID;
+      if (inv.paidAmount > 0.01) return InvoiceStatus.PARTIALLY_PAID;
+      if (inv.dueDate && new Date(inv.dueDate) < new Date() && remaining > 0) return InvoiceStatus.OVERDUE;
+      return InvoiceStatus.UNPAID;
+    };
+    const unpaid = baseInvoices.filter(inv => { const s = effectiveStatus(inv); return s === InvoiceStatus.UNPAID || s === InvoiceStatus.OVERDUE; });
+    const paid = baseInvoices.filter(inv => effectiveStatus(inv) === InvoiceStatus.PAID);
+    const overdue = baseInvoices.filter(inv => effectiveStatus(inv) === InvoiceStatus.OVERDUE);
     const totalPending = baseInvoices
-      .filter(inv => inv.status !== InvoiceStatus.PAID)
+      .filter(inv => effectiveStatus(inv) !== InvoiceStatus.PAID)
       .reduce((sum, inv) => sum + Math.max(0, inv.amount - inv.paidAmount), 0);
 
     return {

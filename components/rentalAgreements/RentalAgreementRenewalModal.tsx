@@ -30,12 +30,16 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
     const [brokerFee, setBrokerFee] = useState('');
     const [description, setDescription] = useState('');
 
-    // --- Open Invoices Check ---
+    // --- Open Invoices Check (allow Paid and Partially Paid) ---
     const openInvoices = useMemo(() => {
         if (!agreement) return [];
-        return state.invoices.filter(inv =>
-            inv.agreementId === agreement.id && inv.status !== InvoiceStatus.PAID
-        );
+        return state.invoices.filter(inv => {
+            if (inv.agreementId !== agreement.id) return false;
+            const remaining = inv.amount - (inv.paidAmount || 0);
+            const isFullyPaid = remaining <= 0.1;
+            const isPartiallyPaid = (inv.paidAmount || 0) > 0.1 && !isFullyPaid;
+            return !isFullyPaid && !isPartiallyPaid;
+        });
     }, [agreement, state.invoices]);
     const hasOpenInvoices = openInvoices.length > 0;
 
@@ -114,7 +118,7 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
         if (!agreement) return;
 
         if (hasOpenInvoices) {
-            await showAlert(`Cannot renew. ${openInvoices.length} open invoice(s). Please pay all invoices first.`, { title: 'Open Invoices' });
+            await showAlert(`Cannot renew. ${openInvoices.length} unpaid invoice(s) with no payments. Please make at least a partial payment on all invoices before renewal.`, { title: 'Unpaid Invoices' });
             return;
         }
 
@@ -243,9 +247,9 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
                         <div className="flex items-start gap-2">
                             <div className="text-rose-500 flex-shrink-0 mt-0.5"><div className="w-4 h-4">{ICONS.alertTriangle}</div></div>
                             <div>
-                                <h4 className="text-xs font-bold text-rose-800">Cannot Renew - Open Invoices</h4>
+                                <h4 className="text-xs font-bold text-rose-800">Cannot Renew - Unpaid Invoices</h4>
                                 <p className="text-[10px] text-rose-600 mt-0.5">
-                                    {openInvoices.length} unpaid invoice(s). All must be paid before renewal.
+                                    {openInvoices.length} invoice(s) have no payments. At least a partial payment is required on all invoices before renewal.
                                 </p>
                             </div>
                         </div>

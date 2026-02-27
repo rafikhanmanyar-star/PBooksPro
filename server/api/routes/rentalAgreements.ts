@@ -594,14 +594,14 @@ router.post('/:id/renew', async (req: TenantRequest, res) => {
     }
 
     const openInvRows = await db.query(
-      `SELECT COUNT(*) as count FROM invoices WHERE agreement_id = $1 AND tenant_id = $2 AND status != 'Paid'`,
+      `SELECT COUNT(*) as count FROM invoices WHERE agreement_id = $1 AND tenant_id = $2 AND status NOT IN ('Paid', 'Partially Paid') AND COALESCE(paid_amount, 0) <= 0.1`,
       [oldId, req.tenantId]
     );
     const openCount = parseInt(openInvRows[0]?.count || '0', 10);
     if (openCount > 0) {
       return res.status(400).json({
         error: 'Cannot renew',
-        message: `There are ${openCount} open invoice(s). All invoices must be paid before renewal.`
+        message: `There are ${openCount} unpaid invoice(s) with no payments. At least a partial payment is required on all invoices before renewal.`
       });
     }
 

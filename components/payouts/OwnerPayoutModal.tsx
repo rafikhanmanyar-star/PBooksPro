@@ -117,6 +117,11 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             return;
         }
 
+        if (!buildingId && !preSelectedBuildingId) {
+            await showAlert('Please assign a building to this payout.');
+            return;
+        }
+
         let payoutCategory;
         
         if (payoutType === 'Security') {
@@ -294,12 +299,13 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     />
                 ) : (
                      <ComboBox 
-                        label="Assign to Building (Optional)"
+                        label="Assign to Building"
                         items={buildingsForOwner}
                         selectedId={buildingId}
                         onSelect={(item) => setBuildingId(item?.id || '')}
                         placeholder="Select a building"
                         allowAddNew={false}
+                        required
                     />
                 )}
                 

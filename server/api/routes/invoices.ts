@@ -11,6 +11,12 @@ function invalidateARCache(tenantId: string) {
   clearCache(`__ar__${tenantId}`);
 }
 
+function computeInvoiceStatus(paidAmount: number, invoiceAmount: number): string {
+  if (paidAmount >= invoiceAmount - 0.1) return 'Paid';
+  if (paidAmount > 0.1) return 'Partially Paid';
+  return 'Unpaid';
+}
+
 // GET all invoices
 router.get('/', async (req: TenantRequest, res) => {
   try {
@@ -289,6 +295,10 @@ router.put('/:id', async (req: TenantRequest, res) => {
 
     const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
 
+    const paidAmount = invoice.paidAmount || 0;
+    const invoiceAmount = invoice.amount || 0;
+    const resolvedStatus = computeInvoiceStatus(paidAmount, invoiceAmount);
+
     let putQuery = `
       UPDATE invoices 
       SET invoice_number = $1, contact_id = $2, amount = $3, paid_amount = $4, 
@@ -304,8 +314,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
       invoice.invoiceNumber,
       invoice.contactId,
       invoice.amount,
-      invoice.paidAmount || 0,
-      invoice.status,
+      paidAmount,
+      resolvedStatus,
       invoice.issueDate,
       invoice.dueDate,
       invoice.invoiceType,
