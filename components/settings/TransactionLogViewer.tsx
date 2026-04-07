@@ -6,7 +6,13 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { ICONS } from '../../constants';
-import { formatDate } from '../../utils/dateUtils';
+import {
+    endOfMonthYyyyMmDd,
+    formatDate,
+    fromPickerDateToYyyyMmDd,
+    startOfMonthYyyyMmDd,
+    todayLocalYyyyMmDd,
+} from '../../utils/dateUtils';
 import DatePicker from '../ui/DatePicker';
 import { exportJsonToExcel } from '../../services/exportService';
 import { useNotification } from '../../context/NotificationContext';
@@ -24,8 +30,8 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
     const { currentUser } = state;
     
     const [dateRange, setDateRange] = useState<DateRangeType>('today');
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(todayLocalYyyyMmDd());
+    const [endDate, setEndDate] = useState(todayLocalYyyyMmDd());
     const [searchQuery, setSearchQuery] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof TransactionLogEntry; direction: 'asc' | 'desc' }>({ key: 'timestamp', direction: 'desc' });
 
@@ -33,19 +39,16 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
         setDateRange(type);
         const now = new Date();
         if (type === 'today') {
-            const dateStr = now.toISOString().split('T')[0];
+            const dateStr = todayLocalYyyyMmDd();
             setStartDate(dateStr);
             setEndDate(dateStr);
         } else if (type === 'thisMonth') {
-            const first = new Date(now.getFullYear(), now.getMonth(), 1);
-            const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            setStartDate(first.toISOString().split('T')[0]);
-            setEndDate(last.toISOString().split('T')[0]);
+            setStartDate(startOfMonthYyyyMmDd(now));
+            setEndDate(endOfMonthYyyyMmDd(now));
         } else if (type === 'lastMonth') {
-            const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            const last = new Date(now.getFullYear(), now.getMonth(), 0);
-            setStartDate(first.toISOString().split('T')[0]);
-            setEndDate(last.toISOString().split('T')[0]);
+            const anchor = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+            setStartDate(startOfMonthYyyyMmDd(anchor));
+            setEndDate(endOfMonthYyyyMmDd(anchor));
         }
     };
 
@@ -172,9 +175,9 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                         </div>
                         {dateRange === 'custom' && (
                             <div className="flex items-center gap-2">
-                                <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
+                                <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(fromPickerDateToYyyyMmDd(d), endDate)} />
                                 <span className="text-slate-400">-</span>
-                                <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                                <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, fromPickerDateToYyyyMmDd(d))} />
                             </div>
                         )}
                         <div className="flex-grow min-w-[200px]">

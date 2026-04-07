@@ -9,10 +9,14 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY } from '../../constants';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { getAppStateApiService } from '../../services/api/appStateApi';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { resolveExpenseCategoryForBillPayment } from '../../utils/rentalBillPayments';
+import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../utils/ledgerInvoicePayments';
+import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 
 interface TransactionFormProps {
     onClose: () => void;
@@ -37,19 +41,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
     // Get initial date: use preserved date if option is enabled and creating new transaction
     const getInitialDate = () => {
         if (transactionToEdit) {
-            return new Date(transactionToEdit.date).toISOString().split('T')[0];
+            return parseStoredDateToYyyyMmDdInput(transactionToEdit.date);
         }
         if (state.enableDatePreservation && state.lastPreservedDate) {
             return state.lastPreservedDate;
         }
-        return new Date().toISOString().split('T')[0];
+        return toLocalDateString(new Date());
     };
 
     const [date, setDate] = useState(getInitialDate());
 
     // Save date to preserved date when changed (if option is enabled)
     const handleDateChange = (dateValue: Date) => {
-        const dateStr = dateValue.toISOString().split('T')[0];
+        const dateStr = toLocalDateString(dateValue);
         setDate(dateStr);
         if (state.enableDatePreservation && !transactionToEdit) {
             dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: dateStr });
@@ -72,6 +76,76 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
     // Derived State for Bill Payment
     const billBeingPaid = useMemo(() => state.bills.find(b => b.id === linkedBillId), [state.bills, linkedBillId]);
     const isPayingBill = !!billBeingPaid;
+
+    /**
+     * For a *new* bill payment, max = balance due (amount − paidAmount).
+     * When *editing* an existing payment, paidAmount already includes this transaction, so balance due is too low.
+     * Max for the edited amount = balanceDue + |this payment| (release then re-apply in reducer).
+     */
+    const billPaymentCapInfo = useMemo(() => {
+        if (!billBeingPaid) {
+            return { balanceDue: 0, maxPaymentAmount: 0, isEditingThisBillPayment: false };
+        }
+        const balanceDue = billBeingPaid.amount - (billBeingPaid.paidAmount || 0);
+        const isEditingThisBillPayment =
+            !!transactionToEdit?.id &&
+            transactionToEdit.billId === billBeingPaid.id;
+        const maxPaymentAmount =
+            balanceDue + (isEditingThisBillPayment ? Math.abs(transactionToEdit.amount) : 0);
+        return { balanceDue, maxPaymentAmount, isEditingThisBillPayment };
+    }, [billBeingPaid, transactionToEdit?.id, transactionToEdit?.billId, transactionToEdit?.amount]);
+
+    /** Bill line-item categories often omit bill.categoryId — resolve same as payment save path. */
+    const billPaymentCategoryLabel = useMemo(() => {
+        if (!billBeingPaid) return 'Uncategorized';
+        const cid = resolveExpenseCategoryForBillPayment(billBeingPaid, state.categories, state.rentalAgreements);
+        if (!cid) return 'Uncategorized';
+        return state.categories.find(c => c.id === cid)?.name || 'Uncategorized';
+    }, [billBeingPaid, state.categories, state.rentalAgreements]);
+
+    const billVendorLabel = useMemo(() => {
+        if (!billBeingPaid) return '';
+        if (billBeingPaid.vendorId) {
+            return state.vendors?.find(v => v.id === billBeingPaid.vendorId)?.name || '';
+        }
+        if (billBeingPaid.contactId) {
+            return state.contacts.find(c => c.id === billBeingPaid.contactId)?.name || '';
+        }
+        return '';
+    }, [billBeingPaid, state.vendors, state.contacts]);
+
+    /** Prefill category from bill when editing/creating a payment that has no category stored. */
+    useEffect(() => {
+        if (!billBeingPaid || type !== TransactionType.EXPENSE) return;
+        const resolved = resolveExpenseCategoryForBillPayment(billBeingPaid, state.categories, state.rentalAgreements);
+        if (!resolved) return;
+        const txHasCategory = transactionToEdit?.categoryId != null && String(transactionToEdit.categoryId).trim() !== '';
+        if (!txHasCategory) {
+            setCategoryId(resolved);
+        }
+    }, [billBeingPaid?.id, type, transactionToEdit?.id, transactionToEdit?.categoryId, state.categories, state.rentalAgreements]);
+
+    // Invoice payment context (project/shop selling): balance due for validation and hint
+    const ledgerPaidByInvoiceId = useMemo(
+        () => buildLedgerPaidByInvoiceMap(state.transactions),
+        [state.transactions]
+    );
+
+    const invoiceBeingPaid = useMemo(() => {
+        if (type !== TransactionType.INCOME || !transactionToEdit?.invoiceId || transactionToEdit?.id) return null;
+        return state.invoices.find(i => i.id === transactionToEdit.invoiceId) || null;
+    }, [type, transactionToEdit?.invoiceId, transactionToEdit?.id, state.invoices]);
+
+    const invoiceEffectivePaid = useMemo(() => {
+        if (!invoiceBeingPaid) return 0;
+        return getEffectivePaidForInvoice(
+            invoiceBeingPaid.id,
+            invoiceBeingPaid.paidAmount,
+            ledgerPaidByInvoiceId
+        );
+    }, [invoiceBeingPaid, ledgerPaidByInvoiceId]);
+
+    const invoiceBalanceDue = invoiceBeingPaid ? invoiceBeingPaid.amount - invoiceEffectivePaid : 0;
 
     // Filter for Bank Accounts Only (exclude Internal Clearing)
     const bankAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
@@ -205,25 +279,75 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
             return;
         }
 
+        // Invoice payment: do not allow amount above balance due (project/shop selling invoices)
+        if (type === TransactionType.INCOME && transactionToEdit?.invoiceId && !transactionToEdit?.id) {
+            const invoice = state.invoices.find(i => i.id === transactionToEdit.invoiceId);
+            if (invoice) {
+                const effectivePaid = getEffectivePaidForInvoice(
+                    invoice.id,
+                    invoice.paidAmount,
+                    ledgerPaidByInvoiceId
+                );
+                const balanceDue = invoice.amount - effectivePaid;
+                if (numAmount > balanceDue + 0.01) {
+                    await showAlert(
+                        `Payment amount (${CURRENCY} ${numAmount.toLocaleString()}) cannot exceed the balance due on this invoice (${CURRENCY} ${balanceDue.toLocaleString()}). Please enter an amount up to the balance due.`
+                    );
+                    return;
+                }
+            }
+        }
+
+        // Bill payment: cap by remaining bill capacity (see billPaymentCapInfo when editing)
+        if (linkedBillId && type === TransactionType.EXPENSE && billBeingPaid) {
+            const cap = billPaymentCapInfo.maxPaymentAmount;
+            if (numAmount > cap + 0.01) {
+                await showAlert(
+                    billPaymentCapInfo.isEditingThisBillPayment
+                        ? `Payment amount (${CURRENCY} ${numAmount.toLocaleString()}) cannot exceed the maximum for this bill (${CURRENCY} ${cap.toLocaleString()}). That is the unpaid balance plus the amount of this payment (so you can raise or lower it).`
+                        : `Payment amount (${CURRENCY} ${numAmount.toLocaleString()}) cannot exceed the balance due on this bill (${CURRENCY} ${cap.toLocaleString()}). Please enter an amount up to the balance due.`
+                );
+                return;
+            }
+        }
+
+        // Cost center fields: only include when the matching tab is selected, so switching to General clears project/building
+        const costCenterProjectId = costCenterType === 'project' ? (projectId || undefined) : undefined;
+        const costCenterBuildingId = costCenterType === 'building' ? (buildingId || undefined) : undefined;
+        const costCenterPropertyId = costCenterType === 'building' ? (propertyId || undefined) : undefined;
+        const costCenterUnitId = costCenterType === 'building' ? (unitId || undefined) : undefined;
+        const costCenterContractId = costCenterType === 'project' ? (contractId || undefined) : undefined;
+
+        const expenseCategoryForBill =
+            isPayingBill && billBeingPaid && type === TransactionType.EXPENSE
+                ? resolveExpenseCategoryForBillPayment(billBeingPaid, state.categories, state.rentalAgreements)
+                : undefined;
+        const categoryForTx =
+            type === TransactionType.TRANSFER || type === TransactionType.LOAN
+                ? undefined
+                : expenseCategoryForBill ?? categoryId;
+
+        const dateIso =
+            /^\d{4}-\d{2}-\d{2}$/.test(date) ? `${date}T00:00:00.000Z` : new Date(date).toISOString();
         const baseTx = {
             type,
             subtype: subtype || undefined,
             amount: numAmount,
-            date: new Date(date).toISOString(),
+            date: dateIso,
             description,
             accountId,
             fromAccountId: type === TransactionType.TRANSFER ? accountId : undefined,
             toAccountId: type === TransactionType.TRANSFER ? toAccountId : undefined,
-            categoryId: (type === TransactionType.TRANSFER || type === TransactionType.LOAN) ? undefined : categoryId,
+            categoryId: categoryForTx,
             contactId: contactId || undefined,
-            projectId: projectId || undefined,
-            buildingId: buildingId || undefined,
-            propertyId: propertyId || undefined,
-            unitId: unitId || undefined,
+            projectId: costCenterProjectId,
+            buildingId: costCenterBuildingId,
+            propertyId: costCenterPropertyId,
+            unitId: costCenterUnitId,
             invoiceId: transactionToEdit?.invoiceId,
             billId: linkedBillId || undefined, // Use state linked bill
             agreementId: transactionToEdit?.agreementId,
-            contractId: contractId || undefined,
+            contractId: costCenterContractId,
         };
 
         if (transactionToEdit && transactionToEdit.id) {
@@ -232,14 +356,21 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
             return;
         }
 
-        // --- API-first for bill payment: save to cloud before updating local state ---
+        // --- Bill payment: local-only uses local DB (dispatch); otherwise API-first ---
         const isPayingBillFlow = !!linkedBillId && type === TransactionType.EXPENSE;
         if (isPayingBillFlow) {
             const txId = `txn-bill-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-            const payload = { ...baseTx, id: txId };
+            const payload = { ...baseTx, id: txId } as Transaction;
+
+            if (isLocalOnlyMode()) {
+                // Local-only: persist via dispatch only (reducer + persistence layer write to local DB)
+                dispatch({ type: 'ADD_TRANSACTION', payload });
+                onClose();
+                return;
+            }
+
             try {
-                // Ensure the bill exists on the server before recording payment (fixes "Bill not found"
-                // when the bill was created locally but sync to API was skipped or failed).
+                // Cloud: ensure bill exists on server, then save transaction via API
                 const bill = state.bills.find(b => b.id === linkedBillId);
                 if (bill) {
                     await getAppStateApiService().saveBill(bill);
@@ -291,7 +422,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                         }
                     }
 
-                    const totalPaid = (invoice.paidAmount || 0) + numAmount;
+                    const paidBefore = getEffectivePaidForInvoice(
+                        invoice.id,
+                        invoice.paidAmount,
+                        ledgerPaidByInvoiceId
+                    );
+                    const totalPaid = paidBefore + numAmount;
                     const remainingBalance = Math.max(0, invoice.amount - totalPaid);
 
                     try {
@@ -305,9 +441,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                             subject,
                             unitName
                         );
-
-                        // Open WhatsApp side panel with pre-filled message
-                        openChat(contact, contact.contactNo, message);
+                        sendOrOpenWhatsApp(
+                            { contact, message, phoneNumber: contact.contactNo },
+                            () => state.whatsAppMode,
+                            openChat
+                        );
                     } catch (error) {
                         await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
                     }
@@ -335,7 +473,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                         <div className="flex justify-between items-start mb-2 border-b border-gray-200 pb-2">
                             <div>
                                 <span className="font-semibold text-gray-800 block">Paying Bill #{billBeingPaid.billNumber}</span>
-                                <span className="text-gray-500 text-xs">Vendor: {state.contacts.find(c => c.id === billBeingPaid.contactId)?.name}</span>
+                                <span className="text-gray-500 text-xs">Vendor: {billVendorLabel || '—'}</span>
                             </div>
                             {/* Only allow unlinking if we are not in forced edit/pay mode */}
                             {!transactionToEdit?.billId && (
@@ -345,10 +483,22 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                             )}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-4 text-xs text-gray-600">
-                            <div><span className="font-semibold">Category:</span> {state.categories.find(c => c.id === billBeingPaid.categoryId)?.name || 'Uncategorized'}</div>
+                            <div><span className="font-semibold">Category:</span> {billPaymentCategoryLabel}</div>
                             {billBeingPaid.projectId && <div><span className="font-semibold">Project:</span> {state.projects.find(p => p.id === billBeingPaid.projectId)?.name}</div>}
                             {billBeingPaid.buildingId && <div><span className="font-semibold">Building:</span> {state.buildings.find(b => b.id === billBeingPaid.buildingId)?.name}</div>}
                             {billBeingPaid.propertyId && <div><span className="font-semibold">Property:</span> {state.properties.find(p => p.id === billBeingPaid.propertyId)?.name}</div>}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-200 text-xs font-medium text-amber-800 bg-amber-50 rounded px-2 py-1">
+                            {billPaymentCapInfo.isEditingThisBillPayment ? (
+                                <>
+                                    Maximum for this payment: <strong>{CURRENCY} {billPaymentCapInfo.maxPaymentAmount.toLocaleString()}</strong>
+                                    {' '}(balance due {CURRENCY} {billPaymentCapInfo.balanceDue.toLocaleString()} plus this payment’s amount — you can change the payment up to the maximum).
+                                </>
+                            ) : (
+                                <>
+                                    Balance due: <strong>{CURRENCY} {billPaymentCapInfo.balanceDue.toLocaleString()}</strong> — payment cannot exceed this amount.
+                                </>
+                            )}
                         </div>
                         {billBeingPaid.contractId && (
                             <div className="text-green-600 font-medium mt-1 pt-1 border-t border-gray-200">
@@ -409,7 +559,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     />
                 )}
 
-                {/* Amount */}
                 <Input
                     id="transaction-amount"
                     name="transaction-amount"
@@ -422,6 +571,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     autoFocus={!isPayingBill}
                     className="block w-full px-3 py-3 sm:py-2 border-2 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-base sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors tabular-nums text-lg font-bold"
                 />
+                {invoiceBeingPaid && invoiceBalanceDue >= 0 && (
+                    <p className="text-sm text-slate-500 -mt-2">
+                        Balance due on this invoice: <span className="font-semibold text-slate-700">{CURRENCY} {invoiceBalanceDue.toLocaleString()}</span> — payment cannot exceed this amount.
+                    </p>
+                )}
 
                 {/* Account Selection */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -596,26 +750,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                                                     }
                                                 }
 
+                                                const resolvedCat = resolveExpenseCategoryForBillPayment(bill, state.categories, state.rentalAgreements);
                                                 // For tenant-allocated bills, use tenant contactId; otherwise use vendor contactId
                                                 if (tenantId) {
                                                     setContactId(tenantId);
-                                                    // Update category to include "(Tenant)" suffix if original category exists
-                                                    if (bill.categoryId) {
-                                                        const originalCategory = state.categories.find(c => c.id === bill.categoryId);
-                                                        if (originalCategory) {
-                                                            const tenantCategoryName = `${originalCategory.name} (Tenant)`;
-                                                            const tenantCategory = state.categories.find(c =>
-                                                                c.name === tenantCategoryName && c.type === TransactionType.EXPENSE
-                                                            );
-                                                            setCategoryId(tenantCategory?.id || bill.categoryId);
-                                                        } else {
-                                                            setCategoryId(bill.categoryId);
-                                                        }
-                                                    }
+                                                    if (resolvedCat) setCategoryId(resolvedCat);
                                                 } else {
                                                     // Not a tenant bill - use vendor contactId
                                                     if (bill.contactId) setContactId(bill.contactId);
-                                                    if (bill.categoryId) setCategoryId(bill.categoryId);
+                                                    if (resolvedCat) setCategoryId(resolvedCat);
                                                 }
 
                                                 if (bill.contractId) setContractId(bill.contractId);

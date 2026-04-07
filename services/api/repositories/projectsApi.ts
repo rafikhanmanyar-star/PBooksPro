@@ -17,6 +17,13 @@ export class ProjectsApiRepository {
   }
 
   /**
+   * Alias for findById (explicit API naming)
+   */
+  async getProject(id: string): Promise<Project | null> {
+    return this.findById(id);
+  }
+
+  /**
    * Get project by ID
    */
   async findById(id: string): Promise<Project | null> {

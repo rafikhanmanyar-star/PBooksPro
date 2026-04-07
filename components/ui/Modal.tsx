@@ -13,6 +13,8 @@ interface ModalProps {
   maxContentHeight?: number; // Optional max content height in pixels
   className?: string; // Optional custom classes
   hideHeader?: boolean; // Optional to hide the default header
+  /** Optional backdrop class for solid overlay (e.g. confirm dialogs) to avoid transparency */
+  backdropClassName?: string;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -25,7 +27,8 @@ const Modal: React.FC<ModalProps> = ({
   fullScreen = false,
   maxContentHeight,
   className,
-  hideHeader = false
+  hideHeader = false,
+  backdropClassName
 }) => {
   const [mounted, setMounted] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -165,27 +168,28 @@ const Modal: React.FC<ModalProps> = ({
     setMouseDownPosition(null);
   };
 
+  const overlayClass = backdropClassName ?? 'bg-black/60 dark:bg-black/70 backdrop-blur-sm';
   return createPortal(
     <div
-      className={`fixed inset-0 bg-gray-900/70 z-[9999] flex ${containerClasses} p-0 sm:p-4 backdrop-blur-sm animate-fade-in-fast transition-all`}
+      className={`fixed inset-0 ${overlayClass} z-[9999] flex ${containerClasses} p-0 sm:p-4 animate-fade-in-fast transition-all`}
       onMouseDown={handleBackdropMouseDown}
       onMouseMove={handleBackdropMouseMove}
       onClick={handleBackdropClick}
     >
       <div
         ref={modalContentRef}
-        className={`bg-white ${modalPositionClasses} shadow-2xl ${sizeClasses} ${maxHeightClass} flex flex-col overflow-hidden mx-auto sm:mx-0 transition-transform duration-300 transform translate-y-0 border border-gray-200 ${className || ''}`}
+        className={`bg-app-modal ${modalPositionClasses} shadow-ds-modal ${sizeClasses} ${maxHeightClass} flex flex-col overflow-hidden mx-auto sm:mx-0 transition-transform duration-300 transform translate-y-0 border border-app-border ${className || ''}`}
         style={maxHeightStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
       >
         {!hideHeader && (
-          <div className="flex justify-between items-center p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-white">
-            <h2 id="modal-title" className="text-base sm:text-lg font-bold text-gray-800 truncate pr-2 sm:pr-4">{title}</h2>
+          <div className="flex justify-between items-center p-3 sm:p-4 border-b border-app-border flex-shrink-0 bg-app-modal">
+            <h2 id="modal-title" className="text-base sm:text-lg font-bold text-app-text truncate pr-2 sm:pr-4">{title}</h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-800 p-2 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+              className="text-app-muted hover:text-app-text p-2 rounded-full hover:bg-app-table-hover transition-colors focus:outline-none focus:ring-2 focus:ring-app-border min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
               aria-label="Close modal"
             >
               <span className="text-2xl leading-none">&times;</span>

@@ -19,3 +19,5 @@ export type { LedgerLayoutProps, LedgerPrintData } from './LedgerLayout';
 export { ReportLayout } from './ReportLayout';
 export type { ReportLayoutProps, ReportPrintData } from './ReportLayout';
 export { PrintController } from './PrintController';
+export { PrintPreviewModal } from './PrintPreviewModal';
+export type { PrintPreviewModalProps } from './PrintPreviewModal';

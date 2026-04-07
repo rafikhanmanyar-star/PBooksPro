@@ -1,12 +1,20 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ProjectAgreement, InvoiceStatus, SalesReturn, SalesReturnStatus, SalesReturnReason } from '../../types';
+import {
+    InvoiceStatus,
+    SalesReturn,
+    SalesReturnStatus,
+    SalesReturnReason,
+    ProjectAgreementStatus,
+    normalizeProjectAgreementStatus,
+} from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { CURRENCY } from '../../constants';
 import ComboBox from '../ui/ComboBox';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface SalesReturnModalProps {
     isOpen: boolean;
@@ -30,7 +38,7 @@ const SalesReturnModal: React.FC<SalesReturnModalProps> = ({ isOpen, onClose, ag
     // Get available agreements (only Active ones)
     const availableAgreements = useMemo(() => {
         return state.projectAgreements
-            .filter(pa => pa.status === 'Active')
+            .filter(pa => normalizeProjectAgreementStatus(pa.status) === ProjectAgreementStatus.ACTIVE)
             .map(pa => {
                 const client = state.contacts.find(c => c.id === pa.clientId);
                 return {
@@ -102,7 +110,7 @@ const SalesReturnModal: React.FC<SalesReturnModalProps> = ({ isOpen, onClose, ag
             id: Date.now().toString(),
             returnNumber,
             agreementId: agreement.id,
-            returnDate: new Date().toISOString().split('T')[0],
+            returnDate: toLocalDateString(new Date()),
             reason: returnReason,
             reasonNotes: reasonNotes || undefined,
             penaltyPercentage: parseFloat(penaltyPercentage) || 0,

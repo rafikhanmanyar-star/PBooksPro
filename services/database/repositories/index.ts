@@ -8,6 +8,7 @@ import { BaseRepository } from './baseRepository';
 export { BaseRepository } from './baseRepository';
 import { getNativeDatabaseService } from '../nativeDatabaseService';
 import { getDatabaseService } from '../databaseService';
+import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { dbToObjectFormat, objectToDbFormat } from '../columnMapper';
 
 // Entity repositories will be created below
@@ -46,6 +47,10 @@ export class PropertiesRepository extends BaseRepository<any> {
     constructor() { super('properties'); }
 }
 
+export class PropertyOwnershipHistoryRepository extends BaseRepository<any> {
+    constructor() { super('property_ownership_history'); }
+}
+
 export class UnitsRepository extends BaseRepository<any> {
     constructor() { super('units'); }
 }
@@ -58,6 +63,11 @@ export class TransactionsRepository extends BaseRepository<any> {
 
     constructor() {
         super('transactions');
+        if (typeof window !== 'undefined' && !isLocalOnlyMode()) {
+            this.useNativeBackend = false;
+            this.nativeService = null;
+            return;
+        }
         // Check if native backend is available and enabled
         try {
             this.nativeService = getNativeDatabaseService();
@@ -252,7 +262,7 @@ export class BudgetsRepository extends BaseRepository<any> {
 }
 
 export class RentalAgreementsRepository extends BaseRepository<any> {
-    constructor() { super('rental_agreements', 'id', 'org_id'); }
+    constructor() { super('rental_agreements'); }
 }
 
 export class ProjectAgreementsRepository extends BaseRepository<any> {
@@ -303,6 +313,10 @@ export class SalesReturnsRepository extends BaseRepository<any> {
     constructor() { super('sales_returns'); }
 }
 
+export class ProjectReceivedAssetsRepository extends BaseRepository<any> {
+    constructor() { super('project_received_assets'); }
+}
+
 
 
 
@@ -310,13 +324,6 @@ export class SalesReturnsRepository extends BaseRepository<any> {
 export class ChatMessagesRepository extends BaseRepository<any> {
     constructor() {
         super('chat_messages');
-    }
-
-    /**
-     * Chat messages are local only and should not be filtered by tenant
-     */
-    protected shouldFilterByTenant(): boolean {
-        return false;
     }
 
     /**
@@ -488,6 +495,68 @@ export class ChatMessagesRepository extends BaseRepository<any> {
         return results[0]?.count || 0;
     }
 
+}
+
+export interface PersonalCategoryRow {
+    id: string;
+    tenantId?: string;
+    name: string;
+    type: 'Income' | 'Expense';
+    sortOrder?: number;
+    version?: number;
+    deletedAt?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export class PersonalCategoriesRepository extends BaseRepository<PersonalCategoryRow> {
+    constructor() {
+        super('personal_categories');
+    }
+
+    findByType(type: 'Income' | 'Expense'): PersonalCategoryRow[] {
+        return this.findAll({
+            condition: 'type = ?',
+            params: [type],
+            orderBy: 'sort_order',
+            orderDir: 'ASC',
+        });
+    }
+}
+
+export interface PersonalTransactionRow {
+    id: string;
+    tenantId?: string;
+    accountId: string;
+    personalCategoryId: string;
+    type: 'Income' | 'Expense';
+    amount: number;
+    transactionDate: string;
+    description?: string;
+    version?: number;
+    deletedAt?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export class PersonalTransactionsRepository extends BaseRepository<PersonalTransactionRow> {
+    constructor() {
+        super('personal_transactions');
+    }
+
+    findAllOrderByDate(options: { limit?: number; offset?: number; condition?: string; params?: any[] } = {}): PersonalTransactionRow[] {
+        const { limit = 5000, offset = 0, condition, params = [] } = options;
+        let sql = 'SELECT * FROM personal_transactions';
+        const whereParams: any[] = [];
+        if (condition) {
+            sql += ` WHERE ${condition}`;
+            whereParams.push(...params);
+        }
+        sql += ' ORDER BY transaction_date DESC, created_at DESC LIMIT ? OFFSET ?';
+        whereParams.push(limit, offset);
+        const results = this.db.query<Record<string, any>>(sql, whereParams);
+        return results.map(row => dbToObjectFormat<PersonalTransactionRow>(row));
+    }
 }
 
 export class AppSettingsRepository {

@@ -80,6 +80,10 @@ export class ContactsApiRepository {
       });
       return result;
     } catch (error: any) {
+      if (error?.status === 409 && (error?.code === 'CONFLICT' || error?.code === 'VERSION_CONFLICT')) {
+        const msg = error?.message || 'Record was modified by another user';
+        throw { ...error, message: msg };
+      }
       console.error('❌ ContactsApiRepository.update failed:', {
         error: error,
         errorMessage: error?.message || error?.error || 'Unknown error',

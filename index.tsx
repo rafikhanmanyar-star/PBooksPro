@@ -2,25 +2,33 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import { setupElectronFocusRecovery } from './utils/electronFocusRecovery';
+import { initStabilityLayer } from './services/stability/stabilityLayer';
 
 // Get root element
 const rootElement = document.getElementById('root');
 
-// Set up comprehensive global error handlers
-const setupGlobalErrorHandlers = () => {
-  // Unhandled JavaScript errors
-  window.addEventListener('error', (event) => {
-    console.error('Global Error Detected:', event.error || event.message);
-  });
+initStabilityLayer();
 
-  // Unhandled promise rejections
-  window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled Promise Rejection:', event.reason);
+/**
+ * Repair keyboard focus when the window gains focus (e.g. restore from taskbar).
+ * If the active element is detached from the DOM or invalid, move focus to body
+ * so the next click can focus the correct input. Fixes "keyboard not working"
+ * until minimize/restore in Electron on Windows.
+ */
+const setupFocusRepair = () => {
+  if (typeof document === 'undefined' || !document.body) return;
+  document.body.setAttribute('tabindex', '-1');
+  window.addEventListener('focus', () => {
+    const active = document.activeElement;
+    if (!active || active === document.body || active === document.documentElement) return;
+    if (!document.body.contains(active)) {
+      document.body.focus();
+    }
   });
 };
-
-// Set up error handlers immediately
-setupGlobalErrorHandlers();
+setupFocusRepair();
+setupElectronFocusRecovery();
 
 const showErrorUI = (message: string) => {
   if (rootElement) {
@@ -91,7 +99,11 @@ const initApp = async () => {
     const [
       { default: App },
       { AppProvider },
+      { ThemeProvider },
       { AuthProvider },
+      { CompanyProvider },
+      { CompanyGate },
+      { ViewportProvider },
       { ProgressProvider },
       { KeyboardProvider },
       { KPIProvider },
@@ -103,10 +115,15 @@ const initApp = async () => {
       { default: ErrorBoundary },
       { PayrollProvider },
       { PrintProvider },
+      { SpellCheckerProvider },
     ] = await Promise.all([
       import('./App'),
       import('./context/AppContext'),
+      import('./context/ThemeContext'),
       import('./context/AuthContext'),
+      import('./context/CompanyContext'),
+      import('./components/company/CompanyGate'),
+      import('./context/ViewportContext'),
       import('./context/ProgressContext'),
       import('./context/KeyboardContext'),
       import('./context/KPIContext'),
@@ -118,6 +135,7 @@ const initApp = async () => {
       import('./components/ErrorBoundary'),
       import('./context/PayrollContext'),
       import('./context/PrintContext'),
+      import('./context/SpellCheckerContext'),
     ]);
 
     const root = ReactDOM.createRoot(rootElement);
@@ -129,6 +147,10 @@ const initApp = async () => {
             console.error('Top-level error caught:', error, errorInfo);
           }}
         >
+          <ThemeProvider>
+          <CompanyProvider>
+          <ViewportProvider>
+          <CompanyGate>
           <AuthProvider>
             <AppProvider>
               <PrintProvider>
@@ -141,7 +163,9 @@ const initApp = async () => {
                             <NotificationProvider>
                               <WhatsAppProvider>
                                 <PayrollProvider>
-                                  <App />
+                                  <SpellCheckerProvider>
+                                    <App />
+                                  </SpellCheckerProvider>
                                 </PayrollProvider>
                               </WhatsAppProvider>
                             </NotificationProvider>
@@ -154,6 +178,10 @@ const initApp = async () => {
               </PrintProvider>
             </AppProvider>
           </AuthProvider>
+          </CompanyGate>
+          </ViewportProvider>
+          </CompanyProvider>
+          </ThemeProvider>
         </ErrorBoundary>
       </React.StrictMode>
     );

@@ -3,14 +3,14 @@ import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { Invoice, InvoiceStatus, InvoiceType } from '../../types';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { WhatsAppChatService } from '../../services/whatsappChatService';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import Modal from '../ui/Modal';
 import { CURRENCY } from '../../constants';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 
 export type InvoiceTypeChoice = 'rental' | 'security';
 
@@ -19,6 +19,8 @@ interface CreateRentalInvoiceModalProps {
   onClose: () => void;
   onCreated?: (invoice: Invoice) => void;
   initialInvoiceType?: InvoiceTypeChoice;
+  /** When set, form prefills with this property's agreement; when null/undefined, form opens with no data (user fills all). */
+  initialPreFillPropertyId?: string | null;
 }
 
 const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
@@ -26,6 +28,7 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   onClose,
   onCreated,
   initialInvoiceType = 'rental',
+  initialPreFillPropertyId = null,
 }) => {
   const { state, dispatch } = useAppContext();
   const { showToast, showAlert } = useNotification();
@@ -100,43 +103,76 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setInvoiceTypeChoice(initialInvoiceType);
-    if (activeAgreements.length > 0 && !selectedAgreementId) {
-      setSelectedAgreementId(activeAgreements[0].id);
+    if (initialPreFillPropertyId) {
+      const agreement = activeAgreements.find(a => a.propertyId === initialPreFillPropertyId);
+      setSelectedAgreementId(agreement?.id ?? '');
+    } else {
+      setSelectedAgreementId('');
     }
     setSendWhatsApp(autoSend);
     setWhatsAppMode(autoSend ? 'auto' : 'manual');
-  }, [isOpen, initialInvoiceType, activeAgreements, selectedAgreementId, autoSend]);
+  }, [isOpen, initialInvoiceType, initialPreFillPropertyId, activeAgreements, autoSend]);
 
   useEffect(() => {
     if (selectedAgreement) {
       setRentAmount(String(selectedAgreement.monthlyRent || 0));
       setSecurityAmount(String(selectedAgreement.securityDeposit || 0));
+    } else {
+      setRentAmount('');
+      setSecurityAmount('');
     }
   }, [selectedAgreement]);
 
   useEffect(() => {
     const getFirstOfMonth = () => {
       const now = new Date();
-      return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      return toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
     };
+    if (!selectedAgreement) {
+      setInvoiceDate('');
+      setDueDate('');
+      setDescription('');
+      return;
+    }
     if (invoiceTypeChoice === 'rental') {
       const d = getFirstOfMonth();
       setInvoiceDate(d);
       const due = new Date(d + 'T00:00:00');
       due.setDate(due.getDate() + (selectedAgreement?.rentDueDate || 7));
-      setDueDate(due.toISOString().split('T')[0]);
+      setDueDate(toLocalDateString(due));
       const dateObj = new Date(d + 'T00:00:00');
       const monthYear = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
       setDescription(`Rent for ${property?.name || 'Unknown'} - ${monthYear}`);
     } else {
-      const startDate = selectedAgreement?.startDate || new Date().toISOString().split('T')[0];
+      const startDate = toValidDateString(selectedAgreement?.startDate as string | undefined);
       setInvoiceDate(startDate);
       const due = new Date(startDate + 'T00:00:00');
-      due.setDate(due.getDate() + 7);
-      setDueDate(due.toISOString().split('T')[0]);
+      if (!isNaN(due.getTime())) {
+        due.setDate(due.getDate() + 7);
+        setDueDate(toLocalDateString(due));
+      } else {
+        const fallback = new Date();
+        setDueDate(toLocalDateString(fallback));
+      }
       setDescription(`Security Deposit [Security]`);
     }
-  }, [invoiceTypeChoice, selectedAgreement?.startDate, selectedAgreement?.rentDueDate, property?.name]);
+  }, [invoiceTypeChoice, selectedAgreement, selectedAgreement?.startDate, selectedAgreement?.rentDueDate, property?.name]);
+
+  // Return a valid YYYY-MM-DD string; fallback to today if invalid (avoids RangeError: Invalid time value)
+  function toValidDateString(val: string | undefined | null): string {
+    if (!val || typeof val !== 'string') return toLocalDateString(new Date());
+    const trimmed = String(val).trim();
+    if (!trimmed) return toLocalDateString(new Date());
+    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const [, y, m, d] = match;
+      const date = new Date(parseInt(y!, 10), parseInt(m!, 10) - 1, parseInt(d!, 10));
+      if (!isNaN(date.getTime())) return `${y}-${m}-${d}`;
+    }
+    const parsed = new Date(trimmed + (trimmed.includes('T') ? '' : 'T00:00:00'));
+    if (!isNaN(parsed.getTime())) return toLocalDateString(parsed);
+    return toLocalDateString(new Date());
+  }
 
   const handleSave = async () => {
     if (!selectedAgreement) {
@@ -205,7 +241,10 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
       buildingId: building?.id,
       agreementId: selectedAgreement.id,
       categoryId: invoiceTypeChoice === 'security' ? securityDepositCategory!.id : rentalIncomeCategory.id,
-      rentalMonth: invoiceTypeChoice === 'rental' ? new Date(invoiceDate + 'T00:00:00').toISOString().slice(0, 7) : undefined,
+      rentalMonth:
+        invoiceTypeChoice === 'rental' && /^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)
+          ? invoiceDate.slice(0, 7)
+          : undefined,
       securityDepositCharge: invoiceTypeChoice === 'security' ? amount : undefined,
     };
 
@@ -247,7 +286,11 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
             showToast('Invoice created. Failed to send via WhatsApp.', 'warning');
           }
         } else {
-          openChat(tenant, tenant.contactNo, message);
+          sendOrOpenWhatsApp(
+            { contact: tenant, message, phoneNumber: tenant.contactNo },
+            () => state.whatsAppMode,
+            openChat
+          );
           showToast('Invoice created. WhatsApp opened for review.', 'success');
         }
       } else {
@@ -309,7 +352,9 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
             value={selectedAgreementId}
             onChange={e => setSelectedAgreementId(e.target.value)}
             className="block w-full rounded-lg border border-slate-300 shadow-sm focus:ring-accent focus:border-accent text-sm py-2 px-3 bg-white"
+            aria-label="Select agreement"
           >
+            <option value="">Select agreement...</option>
             {agreementOptions.map(opt => (
               <option key={opt.id} value={opt.id}>
                 {opt.label}
@@ -412,13 +457,13 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
             <DatePicker
               label="Invoice Date"
               value={invoiceDate}
-              onChange={d => setInvoiceDate(d.toISOString().split('T')[0])}
+              onChange={d => setInvoiceDate(toLocalDateString(d))}
               required
             />
             <DatePicker
               label="Due Date"
               value={dueDate}
-              onChange={d => setDueDate(d.toISOString().split('T')[0])}
+              onChange={d => setDueDate(toLocalDateString(d))}
               required
             />
           </div>

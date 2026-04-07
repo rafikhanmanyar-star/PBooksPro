@@ -2,13 +2,17 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { List } from 'react-window';
 import { Invoice, Transaction, InvoiceType, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, parseStoredDateToYyyyMmDdInput, parseYyyyMmDdToLocalDate } from '../../utils/dateUtils';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
-import { useAppContext } from '../../context/AppContext';
-import { WhatsAppService } from '../../services/whatsappService';
+import { usePairColumnResize } from '../../hooks/usePairColumnResize';
+import { useContacts, useProperties, useBuildings, useProjects, useUnits, useRentalAgreements, useStateSelector } from '../../hooks/useSelectiveState';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+
+/** Extended transaction with optional invoice number for bulk payment child rows */
+type TransactionWithInvoiceRef = Transaction & { invoiceNumber?: string };
 
 export interface FinancialRecord {
     id: string;
@@ -20,6 +24,10 @@ export interface FinancialRecord {
     remainingAmount?: number;
     raw: Invoice | Transaction;
     status?: string;
+    /** True when this row is a child of an expanded bulk payment (invoice + amount detail) */
+    isBulkChild?: boolean;
+    /** Parent bulk record id when isBulkChild is true */
+    parentBulkId?: string;
 }
 
 interface RentalFinancialGridProps {
@@ -34,8 +42,10 @@ interface RentalFinancialGridProps {
     onBulkPaymentClick?: () => void;
     selectedCount?: number;
     onEditInvoice?: (invoice: Invoice) => void;
+    onDeleteInvoice?: (invoice: Invoice) => void;
     onReceivePayment?: (invoice: Invoice) => void;
     onEditPayment?: (transaction: Transaction) => void;
+    onDeletePayment?: (transaction: Transaction) => void;
     /** When set, type/date are controlled from parent and the two dropdowns are not shown in the toolbar */
     typeFilter?: string;
     dateFilter?: string;
@@ -44,15 +54,47 @@ interface RentalFinancialGridProps {
     hideTypeDateFiltersInToolbar?: boolean;
 }
 
-type SortKey = 'type' | 'reference' | 'date' | 'accountName' | 'amount' | 'remainingAmount' | 'description';
+type SortKey = 'type' | 'reference' | 'date' | 'accountName' | 'buildingName' | 'propertyName' | 'ownerName' | 'amount' | 'remainingAmount' | 'description';
+
+/** Resizable data columns in visual order (pair-resize transfers width to the neighbor on the right). */
+const RENTAL_FIN_COL_ORDER = [
+    'type', 'reference', 'description', 'date', 'accountName',
+    'building', 'property', 'owner', 'amount', 'remainingAmount',
+] as const;
+type RentalFinColKey = (typeof RENTAL_FIN_COL_ORDER)[number];
+
+const RENTAL_FIN_COL_MIN: Record<RentalFinColKey, number> = {
+    type: 72,
+    reference: 100,
+    description: 80,
+    date: 88,
+    accountName: 56,
+    building: 52,
+    property: 64,
+    owner: 56,
+    amount: 100,
+    remainingAmount: 100,
+};
 
 const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
     records, onInvoiceClick, onPaymentClick, selectedIds, onToggleSelect, onNewClick, onBulkImportClick,
-    showButtons, onBulkPaymentClick, selectedCount, onEditInvoice, onReceivePayment, onEditPayment,
+    showButtons, onBulkPaymentClick, selectedCount, onEditInvoice, onDeleteInvoice, onReceivePayment, onEditPayment, onDeletePayment,
     typeFilter: typeFilterProp, dateFilter: dateFilterProp, onTypeFilterChange, onDateFilterChange, hideTypeDateFiltersInToolbar,
 }) => {
-    const { state } = useAppContext();
+    const contacts = useContacts();
+    const properties = useProperties();
+    const buildings = useBuildings();
+    const projects = useProjects();
+    const units = useUnits();
+    const rentalAgreements = useRentalAgreements();
+    const whatsAppTemplates = useStateSelector(s => s.whatsAppTemplates);
+    const whatsAppMode = useStateSelector(s => s.whatsAppMode);
     const { showToast, showAlert } = useNotification();
+
+    const contactsById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
+    const propertiesById = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
+    const buildingsById = useMemo(() => new Map(buildings.map(b => [b.id, b])), [buildings]);
+    const agreementsById = useMemo(() => new Map(rentalAgreements.map(ra => [ra.id, ra])), [rentalAgreements]);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -68,17 +110,31 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
     const setTypeFilter = onTypeFilterChange ?? setInternalTypeFilter;
     const setDateFilter = onDateFilterChange ?? setInternalDateFilter;
 
-    // Resizable Columns State
-    const [colWidths, setColWidths] = useState({
-        type: 90,
-        reference: 100,
-        description: 200,
-        date: 90,
-        accountName: 130,
-        amount: 100,
-        remainingAmount: 100
+    const [colWidths, setColWidths] = useState<Record<RentalFinColKey, number>>({
+        type: 108,
+        reference: 160,
+        description: 180,
+        date: 92,
+        accountName: 88,
+        building: 80,
+        property: 100,
+        owner: 88,
+        amount: 114,
+        remainingAmount: 114,
     });
-    const resizingCol = useRef<string | null>(null);
+    const { startResize } = usePairColumnResize<RentalFinColKey>(
+        setColWidths,
+        RENTAL_FIN_COL_MIN,
+        RENTAL_FIN_COL_ORDER
+    );
+
+    const tableDataWidth = useMemo(
+        () => RENTAL_FIN_COL_ORDER.reduce((s, k) => s + colWidths[k], 0),
+        [colWidths]
+    );
+    /** Checkbox + Status + Actions (fixed). */
+    const TABLE_FIXED_OUTER = 40 + 80 + 88;
+    const tableMinWidth = TABLE_FIXED_OUTER + tableDataWidth;
 
     const toggleExpand = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -99,10 +155,9 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         }
 
         try {
-            const { whatsAppTemplates } = state;
-            const property = invoice.propertyId ? state.properties.find(p => p.id === invoice.propertyId) : null;
-            const project = invoice.projectId ? state.projects.find(p => p.id === invoice.projectId) : null;
-            const unit = invoice.unitId ? state.units.find(u => u.id === invoice.unitId) : null;
+            const property = invoice.propertyId ? properties.find(p => p.id === invoice.propertyId) : null;
+            const project = invoice.projectId ? projects.find(p => p.id === invoice.projectId) : null;
+            const unit = invoice.unitId ? units.find(u => u.id === invoice.unitId) : null;
 
             let subject = property?.name || project?.name || 'your invoice';
             if (project && unit) {
@@ -112,10 +167,11 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
             const hasMadePayment = invoice.paidAmount > 0;
             const balance = invoice.amount - invoice.paidAmount;
 
+            const templates = whatsAppTemplates || { invoiceReceipt: '', invoiceReminder: '' };
             let message = '';
             if (hasMadePayment) {
                 message = WhatsAppService.generateInvoiceReceipt(
-                    whatsAppTemplates.invoiceReceipt,
+                    templates.invoiceReceipt,
                     contact,
                     invoice.invoiceNumber,
                     invoice.paidAmount,
@@ -125,7 +181,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                 );
             } else {
                 message = WhatsAppService.generateInvoiceReminder(
-                    whatsAppTemplates.invoiceReminder,
+                    templates.invoiceReminder,
                     contact,
                     invoice.invoiceNumber,
                     invoice.amount,
@@ -135,18 +191,45 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                 );
             }
 
-            // Open WhatsApp modal with pre-filled message
-            openChat(contact, contact.contactNo, message);
+            sendOrOpenWhatsApp(
+                { contact, message, phoneNumber: contact.contactNo },
+                () => whatsAppMode,
+                openChat
+            );
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
-    }, [state, showAlert, openChat]);
+    }, [whatsAppTemplates, whatsAppMode, properties, projects, units, showAlert, openChat]);
+
+    const handleSendWhatsAppForPayment = useCallback((tx: Transaction, contact: Contact) => {
+        if (!contact?.contactNo) {
+            showAlert("Contact does not have a phone number saved.");
+            return Promise.resolve();
+        }
+        const amountStr = `${CURRENCY} ${Math.abs(tx.amount).toLocaleString()}`;
+        const dateStr = formatDate(tx.date);
+        const message = `Payment of ${amountStr} received on ${dateStr}. Thank you.`;
+        sendOrOpenWhatsApp(
+            { contact, message, phoneNumber: contact.contactNo },
+            () => whatsAppMode,
+            openChat
+        );
+        return Promise.resolve();
+    }, [showAlert, openChat, whatsAppMode]);
 
     // Available Types for Filter
     const availableTypes = useMemo(() => {
         const types = new Set(records.map(r => r.type));
         return ['All', ...Array.from(types)];
     }, [records]);
+
+    // Total outstanding amount of selected invoice records (for bulk payment)
+    const selectedTotalAmount = useMemo(() => {
+        if (!selectedIds?.size) return 0;
+        return records
+            .filter(r => r.type === 'Invoice' && selectedIds.has(r.id))
+            .reduce((sum, r) => sum + (r.remainingAmount ?? r.amount ?? 0), 0);
+    }, [records, selectedIds]);
 
     const filteredRecords = useMemo(() => {
         let data = records;
@@ -180,6 +263,23 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         return data;
     }, [records, typeFilter, dateFilter]);
 
+    /** Resolve building, property, owner names from an invoice for display/sort */
+    const getInvoiceContextNames = useCallback((inv: Invoice) => {
+        let resolvedPropertyId = inv.propertyId;
+        if (!resolvedPropertyId && inv.agreementId) {
+            const agreement = agreementsById.get(inv.agreementId);
+            if (agreement) resolvedPropertyId = agreement.propertyId;
+        }
+        const prop = resolvedPropertyId ? propertiesById.get(resolvedPropertyId) : null;
+        const building = prop?.buildingId ? buildingsById.get(prop.buildingId) : null;
+        const owner = prop?.ownerId ? contactsById.get(prop.ownerId) : null;
+        return {
+            buildingName: building?.name ?? '',
+            propertyName: prop?.name ?? '',
+            ownerName: owner?.name ?? '',
+        };
+    }, [propertiesById, buildingsById, contactsById, agreementsById]);
+
     const sortedRecords = useMemo(() => {
         const sorted = [...filteredRecords];
         sorted.sort((a, b) => {
@@ -189,6 +289,16 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
             if (sortConfig.key === 'description') {
                 aVal = (a.raw.description || '').toLowerCase();
                 bVal = (b.raw.description || '').toLowerCase();
+            } else if (sortConfig.key === 'buildingName' || sortConfig.key === 'propertyName' || sortConfig.key === 'ownerName') {
+                const key = sortConfig.key;
+                if (a.raw && 'invoiceNumber' in a.raw) {
+                    const aNames = getInvoiceContextNames(a.raw as Invoice);
+                    aVal = (aNames[key as keyof typeof aNames] || '').toLowerCase();
+                } else aVal = '';
+                if (b.raw && 'invoiceNumber' in b.raw) {
+                    const bNames = getInvoiceContextNames(b.raw as Invoice);
+                    bVal = (bNames[key as keyof typeof bNames] || '').toLowerCase();
+                } else bVal = '';
             } else {
                 aVal = a[sortConfig.key];
                 bVal = b[sortConfig.key];
@@ -199,7 +309,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                 bVal = new Date(bVal).getTime();
             } else if (typeof aVal === 'string') {
                 aVal = aVal.toLowerCase();
-                bVal = bVal.toLowerCase();
+                bVal = (typeof bVal === 'string' ? bVal : '').toLowerCase();
             }
 
             if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -207,7 +317,37 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
             return 0;
         });
         return sorted;
-    }, [filteredRecords, sortConfig]);
+    }, [filteredRecords, sortConfig, getInvoiceContextNames]);
+
+    /** Flatten list: when a bulk payment row is expanded, insert child rows (invoice + amount) after it */
+    const effectiveRecords = useMemo(() => {
+        const out: FinancialRecord[] = [];
+        for (const record of sortedRecords) {
+            out.push(record);
+            const isBulk = record.type === 'Payment (Bulk)';
+            const rawTx = record.raw as Transaction & { children?: TransactionWithInvoiceRef[] };
+            const expanded = expandedIds.has(record.id);
+            if (isBulk && expanded && rawTx.children && rawTx.children.length > 0) {
+                for (const child of rawTx.children) {
+                    const childWithRef = child as TransactionWithInvoiceRef;
+                    out.push({
+                        id: `bulk-child-${record.id}-${child.id}`,
+                        type: 'Payment',
+                        reference: childWithRef.invoiceNumber ? `Invoice #${childWithRef.invoiceNumber}` : child.id,
+                        date: record.date,
+                        accountName: record.accountName,
+                        amount: child.amount,
+                        remainingAmount: 0,
+                        raw: child,
+                        status: 'Paid',
+                        isBulkChild: true,
+                        parentBulkId: record.id
+                    });
+                }
+            }
+        }
+        return out;
+    }, [sortedRecords, expandedIds]);
 
     useEffect(() => {
         if (!listContainerRef.current) return;
@@ -220,41 +360,50 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         return () => ro.disconnect();
     }, []);
 
-    const ROW_HEIGHT = 34;
+    const ROW_HEIGHT = 40;
 
     const Row = ({ index, style }: { index: number; style: React.CSSProperties; ariaAttributes?: any }) => {
-        const record = sortedRecords[index];
+        const record = effectiveRecords[index];
         if (!record) return <div style={style} />;
         const isPayment = record.type.includes('Payment');
         const isBulk = record.type.includes('Bulk');
+        const isBulkChild = record.isBulkChild === true;
         const isPaid = record.remainingAmount !== undefined && record.remainingAmount <= 0.01;
-        const canSelect = !isPayment && !isPaid;
+        const canSelect = !isPayment && !isPaid && !isBulkChild;
 
         const rawTx = record.raw as Transaction;
-        const hasChildren = isBulk && rawTx.children && rawTx.children.length > 0;
+        const hasChildren = isBulk && !isBulkChild && rawTx.children && rawTx.children.length > 0;
         const isExpanded = expandedIds.has(record.id);
         const description = record.raw.description || '-';
 
         let statusBadge = null;
         if (record.type === 'Invoice') {
             const inv = record.raw as Invoice;
-            const remaining = inv.amount - inv.paidAmount;
+            const remaining =
+                record.remainingAmount !== undefined
+                    ? Math.max(0, record.remainingAmount)
+                    : inv.amount - (inv.paidAmount || 0);
+            const effectivePaid = inv.amount - remaining;
             const isFullPaid = remaining <= 0.01;
-            const isPartial = inv.paidAmount > 0.01 && !isFullPaid;
+            const isPartial = effectivePaid > 0.01 && !isFullPaid;
 
             if (isFullPaid) {
-                statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">PAID</span>;
+                statusBadge = <span className="ds-badge-paid">Paid</span>;
             } else if (isPartial) {
-                statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">PARTIAL</span>;
+                statusBadge = <span className="ds-badge-partial">Partial</span>;
             } else {
-                const isOverdue = inv.dueDate && new Date(inv.dueDate) < new Date() && remaining > 0;
-                if (isOverdue) statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">OVERDUE</span>;
-                else statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">UNPAID</span>;
+                const dueNorm = inv.dueDate ? parseStoredDateToYyyyMmDdInput(String(inv.dueDate)) : '';
+                const dueDayStart = dueNorm ? parseYyyyMmDdToLocalDate(dueNorm) : null;
+                const startToday = new Date();
+                startToday.setHours(0, 0, 0, 0);
+                const isOverdue = !!dueDayStart && dueDayStart < startToday && remaining > 0;
+                if (isOverdue) statusBadge = <span className="ds-badge-overdue">Overdue</span>;
+                else statusBadge = <span className="ds-badge-unpaid">Unpaid</span>;
             }
         }
 
         let displayType: string = record.type;
-        let typeStyle = 'bg-slate-100 text-slate-600 border-slate-200';
+        let typeClass = 'ds-pill-type';
 
         if (record.type === 'Invoice') {
             const inv = record.raw as Invoice;
@@ -262,90 +411,148 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
 
             if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) {
                 displayType = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity) ? 'Security' : 'Rent';
-                typeStyle = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity)
-                    ? 'bg-amber-50 text-amber-700 border-amber-100'
-                    : 'bg-sky-50 text-sky-700 border-sky-100';
+                typeClass = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity)
+                    ? 'ds-pill-type ds-pill-type-security'
+                    : 'ds-pill-type ds-pill-type-rent';
             } else if (inv.invoiceType === InvoiceType.INSTALLMENT) {
                 displayType = 'Installment';
-                typeStyle = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+                typeClass = 'ds-pill-type ds-pill-type-installment';
             }
         } else if (isPayment) {
             const descLower = description.toLowerCase();
-            if (descLower.includes('security')) { displayType = 'Sec Pmt'; typeStyle = 'bg-amber-50 text-amber-700 border-amber-100/50'; }
-            else if (descLower.includes('rent') || descLower.includes('rental')) { displayType = 'Rent Pmt'; typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50'; }
-            else if (isBulk) { displayType = 'Bulk Pmt'; typeStyle = 'bg-purple-50 text-purple-700 border-purple-100/50'; }
-            else { displayType = 'Payment'; typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50'; }
+            if (descLower.includes('security')) { displayType = 'Sec Pmt'; typeClass = 'ds-pill-type ds-pill-type-security'; }
+            else if (descLower.includes('rent') || descLower.includes('rental')) { displayType = 'Rent Pmt'; typeClass = 'ds-pill-type ds-pill-type-payment'; }
+            else if (isBulk) { displayType = 'Bulk Pmt'; typeClass = 'ds-pill-type ds-pill-type-bulk'; }
+            else { displayType = 'Payment'; typeClass = 'ds-pill-type ds-pill-type-payment'; }
         }
+
+        const handleRowClick = () => {
+            if (isBulkChild) return;
+            if (hasChildren) {
+                toggleExpand({ stopPropagation: () => {} } as any, record.id);
+                return;
+            }
+            if (record.type === 'Invoice') {
+                if (canSelect && onToggleSelect) {
+                    onToggleSelect(record.id);
+                } else {
+                    onInvoiceClick(record.raw as Invoice);
+                }
+            } else {
+                onPaymentClick(record.raw as Transaction);
+            }
+        };
+
+        const handleRowDoubleClick = () => {
+            if (isBulkChild) return;
+            if (record.type === 'Invoice') onInvoiceClick(record.raw as Invoice);
+            else if (!hasChildren) onPaymentClick(record.raw as Transaction);
+        };
+
+        const rowSelected = selectedIds?.has(record.id) === true;
+        const rowStripe = index % 2 === 1;
 
         return (
             <div
                 style={style}
-                className={`flex items-center cursor-pointer transition-colors group border-b border-slate-50 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100 ${isExpanded ? '!bg-indigo-50/30' : ''}`}
-                onClick={() => {
-                    if (hasChildren) toggleExpand({ stopPropagation: () => {} } as any, record.id);
-                    else if (record.type === 'Invoice') onInvoiceClick(record.raw as Invoice);
-                    else onPaymentClick(record.raw as Transaction);
-                }}
+                className={`ds-fin-row flex items-center min-w-0 group duration-ds ${rowStripe ? 'ds-fin-row-stripe' : ''} ${rowSelected ? 'ds-fin-row-selected' : ''} ${isBulkChild ? 'ds-fin-row-child' : 'cursor-pointer'} ${isExpanded && hasChildren ? 'ds-fin-row-expanded' : ''}`}
+                onClick={handleRowClick}
+                onDoubleClick={handleRowDoubleClick}
             >
-                <div className="px-3 py-1.5 text-center w-10 flex-shrink-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="px-3 py-2 sm:px-4 text-center w-10 flex-shrink-0 overflow-hidden" style={isBulkChild ? { paddingLeft: 24 } : undefined} onClick={(e) => e.stopPropagation()}>
                     {hasChildren ? (
-                        <button onClick={(e) => toggleExpand(e, record.id)} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 transition-colors">
-                            <div className={`w-3 h-3 transform transition-transform duration-200 ${isExpanded ? 'rotate-90 text-indigo-500' : ''}`}>{ICONS.chevronRight}</div>
+                        <button type="button" onClick={(e) => toggleExpand(e, record.id)} className="p-0.5 rounded-md hover:bg-app-toolbar text-app-muted transition-colors duration-ds">
+                            <div className={`w-3 h-3 transform transition-transform duration-200 ${isExpanded ? 'rotate-90 text-primary' : ''}`}>{ICONS.chevronRight}</div>
                         </button>
                     ) : canSelect && onToggleSelect ? (
-                        <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 cursor-pointer transition-all" checked={selectedIds?.has(record.id)} onChange={() => onToggleSelect(record.id)} />
+                        <input type="checkbox" aria-label="Select row" className="rounded text-primary focus:ring-primary border-app-border w-3.5 h-3.5 cursor-pointer transition-all" checked={selectedIds?.has(record.id)} onChange={() => onToggleSelect(record.id)} />
+                    ) : isBulkChild ? (
+                        <span className="text-app-muted text-xs">↳</span>
                     ) : null}
                 </div>
-                <div className="px-3 py-1.5 whitespace-nowrap flex-shrink-0" style={{ width: colWidths.type }}>
-                    <span className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${typeStyle}`}>{displayType}</span>
+                <div className="px-3 py-2 sm:px-4 whitespace-nowrap flex-shrink-0" style={{ width: colWidths.type }}>
+                    <span className={typeClass}>{isBulkChild ? 'Pmt' : displayType}</span>
                 </div>
-                <div className="px-3 py-1.5 font-mono text-xs font-medium text-slate-700 group-hover:text-indigo-600 whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors flex-shrink-0" style={{ width: colWidths.reference }}>{record.reference}</div>
-                <div className="px-3 py-1.5 text-xs text-slate-600 truncate overflow-hidden text-ellipsis" style={{ flex: 1, minWidth: colWidths.description }} title={description}>{description}</div>
-                <div className="px-3 py-1.5 text-xs text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.date }}>{formatDate(record.date)}</div>
-                <div className="px-3 py-1.5 text-xs text-slate-700 font-medium truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.accountName }} title={record.accountName}>{record.accountName}</div>
-                <div className={`px-3 py-1.5 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums flex-shrink-0 ${isPayment ? 'text-emerald-600' : 'text-slate-700'}`} style={{ width: colWidths.amount }}>
+                <div className="px-3 py-2 sm:px-4 font-mono text-xs font-medium text-app-text group-hover:text-primary whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors duration-ds flex-shrink-0" style={{ width: colWidths.reference }} title={record.reference}>{record.reference}</div>
+                <div className="px-3 py-2 sm:px-4 text-xs text-app-muted truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.description, minWidth: RENTAL_FIN_COL_MIN.description }} title={description}>{isBulkChild ? '—' : description}</div>
+                <div className="px-3 py-2 sm:px-4 text-xs text-app-muted whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.date }}>{formatDate(record.date)}</div>
+                <div className="px-3 py-2 sm:px-4 text-xs text-app-text font-medium truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.accountName }} title={record.accountName}>{record.accountName}</div>
+                {record.type === 'Invoice' && !isBulkChild ? (() => {
+                    const names = getInvoiceContextNames(record.raw as Invoice);
+                    return (
+                        <>
+                            <div className="px-3 py-2 sm:px-4 text-xs text-app-muted truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.building }} title={names.buildingName}>{names.buildingName || '—'}</div>
+                            <div className="px-3 py-2 sm:px-4 text-xs text-app-muted truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.property }} title={names.propertyName}>{names.propertyName || '—'}</div>
+                            <div className="px-3 py-2 sm:px-4 text-xs text-app-muted truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.owner }} title={names.ownerName}>{names.ownerName || '—'}</div>
+                        </>
+                    );
+                })() : (
+                    <>
+                        <div className="px-3 py-2 sm:px-4 text-xs text-app-muted flex-shrink-0" style={{ width: colWidths.building }}>—</div>
+                        <div className="px-3 py-2 sm:px-4 text-xs text-app-muted flex-shrink-0" style={{ width: colWidths.property }}>—</div>
+                        <div className="px-3 py-2 sm:px-4 text-xs text-app-muted flex-shrink-0" style={{ width: colWidths.owner }}>—</div>
+                    </>
+                )}
+                <div className={`px-3 py-2 sm:px-4 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums flex-shrink-0 ${isPayment ? 'text-ds-success' : 'text-app-text'}`} style={{ width: colWidths.amount }}>
                     {CURRENCY} {record.amount.toLocaleString()}
                 </div>
-                <div className="px-3 py-1.5 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium flex-shrink-0" style={{ width: colWidths.remainingAmount }}>
+                <div className="px-3 py-2 sm:px-4 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium flex-shrink-0" style={{ width: colWidths.remainingAmount }}>
                     {record.remainingAmount !== undefined && record.remainingAmount > 0.01 ? (
-                        <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
+                        <span className="text-ds-danger bg-[color:var(--badge-unpaid-bg)] px-1.5 py-0.5 rounded-md">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
                     ) : (
-                        <span className="text-slate-300 font-normal">-</span>
+                        <span className="text-app-muted font-normal">-</span>
                     )}
                 </div>
-                <div className="px-3 py-1.5 text-center whitespace-nowrap w-24 flex-shrink-0">{statusBadge}</div>
-                <div className="px-3 py-1.5 text-center w-20 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                <div className="px-2 py-2 text-center whitespace-nowrap w-20 flex-shrink-0">{statusBadge}</div>
+                <div className="ds-fin-actions px-2 py-1.5 flex items-center justify-end gap-1.5 flex-shrink-0 w-[88px] bg-transparent" onClick={(e) => e.stopPropagation()}>
                     {record.type === 'Invoice' && (() => {
                         const inv = record.raw as Invoice;
-                        const contact = state.contacts.find(c => c.id === inv.contactId);
-                        const isFullyPaid = inv.status === 'Paid' || (inv.amount - inv.paidAmount) <= 0.01;
+                        const contact = contactsById.get(inv.contactId || '');
+                        const isFullyPaid =
+                            record.remainingAmount !== undefined
+                                ? record.remainingAmount <= 0.01
+                                : inv.status === 'Paid' || (inv.amount - (inv.paidAmount || 0)) <= 0.01;
                         return (
-                            <div className="flex items-center justify-center gap-1">
+                            <span className="inline-flex items-center gap-1.5">
                                 {!isFullyPaid && onReceivePayment && (
-                                    <button onClick={(e) => { e.stopPropagation(); onReceivePayment(inv); }} className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors" title="Receive Payment">
-                                        <div className="w-4 h-4">{ICONS.handDollar}</div>
-                                    </button>
+                                    <button type="button" onClick={(e) => { e.stopPropagation(); onReceivePayment(inv); }} className="p-0.5 text-primary hover:opacity-80 transition-opacity duration-ds" title="Receive Payment">{ICONS.handDollar && <span className="w-4 h-4 block">{ICONS.handDollar}</span>}</button>
                                 )}
-                                <button
-                                    onClick={async (e) => { e.stopPropagation(); if (!contact?.contactNo) { showAlert("Contact does not have a phone number saved."); return; } await handleSendWhatsApp(inv, contact); }}
-                                    className={`p-1.5 rounded-md transition-colors ${contact?.contactNo ? 'text-green-600 hover:bg-green-50 hover:text-green-700' : 'text-slate-300 hover:bg-slate-50 hover:text-slate-400'}`}
-                                    title={contact?.contactNo ? "Send invoice via WhatsApp" : "No contact number available"}
-                                >
-                                    <div className="w-4 h-4">{ICONS.whatsapp}</div>
-                                </button>
-                                {onEditInvoice && (
-                                    <button onClick={(e) => { e.stopPropagation(); onEditInvoice(inv); }} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors" title="Edit Invoice">
-                                        <div className="w-4 h-4">{ICONS.edit}</div>
-                                    </button>
-                                )}
-                            </div>
+                                <button type="button" onClick={async (e) => { e.stopPropagation(); if (!contact?.contactNo) { showAlert("Contact does not have a phone number saved."); return; } await handleSendWhatsApp(inv, contact); }} className={`p-0.5 transition-opacity duration-ds ${contact?.contactNo ? 'text-ds-success hover:opacity-80' : 'text-app-muted cursor-default'}`} title={contact?.contactNo ? "WhatsApp" : "No number"}>{ICONS.whatsapp && <span className="w-4 h-4 block">{ICONS.whatsapp}</span>}</button>
+                                {onEditInvoice && <button type="button" onClick={(e) => { e.stopPropagation(); onEditInvoice(inv); }} className="p-0.5 text-ds-success hover:opacity-80 transition-opacity duration-ds" title="Edit">{ICONS.edit && <span className="w-4 h-4 block">{ICONS.edit}</span>}</button>}
+                                {onDeleteInvoice && <button type="button" onClick={(e) => { e.stopPropagation(); onDeleteInvoice(inv); }} className="p-0.5 text-ds-danger hover:opacity-80 transition-opacity duration-ds" title="Delete">{ICONS.trash && <span className="w-4 h-4 block">{ICONS.trash}</span>}</button>}
+                            </span>
                         );
                     })()}
-                    {record.type === 'Payment' && !isBulk && onEditPayment && (
-                        <button onClick={(e) => { e.stopPropagation(); onEditPayment(record.raw as Transaction); }} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors" title="Edit Payment">
-                            <div className="w-4 h-4">{ICONS.edit}</div>
-                        </button>
-                    )}
+                    {isBulk && !isBulkChild && onDeletePayment && (() => {
+                        const rawTx = record.raw as Transaction & { batchId?: string; children?: Transaction[] };
+                        return (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); onDeletePayment(rawTx); }} className="p-0.5 text-ds-danger hover:opacity-80 transition-opacity duration-ds" title="Reverse bulk payment">
+                                {ICONS.trash && <span className="w-4 h-4 block">{ICONS.trash}</span>}
+                            </button>
+                        );
+                    })()}
+                    {isBulkChild && onEditPayment && onDeletePayment && (() => {
+                        const childTx = record.raw as Transaction;
+                        const paymentContact = contactsById.get(childTx.contactId || '');
+                        return (
+                            <span className="inline-flex items-center gap-1.5">
+                                <button type="button" onClick={async (e) => { e.stopPropagation(); if (!paymentContact?.contactNo) { showAlert("Contact does not have a phone number saved."); return; } await handleSendWhatsAppForPayment(childTx, paymentContact); }} className={`p-0.5 transition-opacity duration-ds ${paymentContact?.contactNo ? 'text-ds-success hover:opacity-80' : 'text-app-muted cursor-default'}`} title="WhatsApp">{ICONS.whatsapp && <span className="w-4 h-4 block">{ICONS.whatsapp}</span>}</button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); onEditPayment(childTx); }} className="p-0.5 text-ds-success hover:opacity-80 transition-opacity duration-ds" title="Edit">{ICONS.edit && <span className="w-4 h-4 block">{ICONS.edit}</span>}</button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); onDeletePayment(childTx); }} className="p-0.5 text-ds-danger hover:opacity-80 transition-opacity duration-ds" title="Delete">{ICONS.trash && <span className="w-4 h-4 block">{ICONS.trash}</span>}</button>
+                            </span>
+                        );
+                    })()}
+                    {record.type === 'Payment' && !isBulk && !isBulkChild && (() => {
+                        const tx = record.raw as Transaction;
+                        const paymentContact = contactsById.get(tx.contactId || '');
+                        return (
+                            <span className="inline-flex items-center gap-1.5">
+                                <button type="button" onClick={async (e) => { e.stopPropagation(); if (!paymentContact?.contactNo) { showAlert("Contact does not have a phone number saved."); return; } await handleSendWhatsAppForPayment(tx, paymentContact); }} className={`p-0.5 transition-opacity duration-ds ${paymentContact?.contactNo ? 'text-ds-success hover:opacity-80' : 'text-app-muted cursor-default'}`} title="WhatsApp">{ICONS.whatsapp && <span className="w-4 h-4 block">{ICONS.whatsapp}</span>}</button>
+                                {onEditPayment && <button type="button" onClick={(e) => { e.stopPropagation(); onEditPayment(tx); }} className="p-0.5 text-ds-success hover:opacity-80 transition-opacity duration-ds" title="Edit">{ICONS.edit && <span className="w-4 h-4 block">{ICONS.edit}</span>}</button>}
+                                {onDeletePayment && <button type="button" onClick={(e) => { e.stopPropagation(); onDeletePayment(tx); }} className="p-0.5 text-ds-danger hover:opacity-80 transition-opacity duration-ds" title="Delete">{ICONS.trash && <span className="w-4 h-4 block">{ICONS.trash}</span>}</button>}
+                            </span>
+                        );
+                    })()}
                 </div>
             </div>
         );
@@ -358,69 +565,49 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         }));
     };
 
-    const startResizing = (key: string) => (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        resizingCol.current = key;
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
+    const sortIcon = (column: SortKey) => {
+        if (sortConfig.key !== column) return <span className="text-app-muted opacity-50 ml-1 text-[9px]">↕</span>;
+        return <span className="text-primary ml-1 text-[9px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
 
-    const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (!resizingCol.current) return;
-        const deltaX = e.movementX;
-        setColWidths(prev => ({
-            ...prev,
-            [resizingCol.current!]: Math.max(50, (prev as any)[resizingCol.current!] + deltaX)
-        }));
-    }, []);
+    const thStyle = (widthKey: RentalFinColKey): React.CSSProperties => ({
+        position: 'relative',
+        width: colWidths[widthKey],
+        minWidth: RENTAL_FIN_COL_MIN[widthKey],
+        flexShrink: 0,
+    });
 
-    const handleMouseUp = useCallback(() => {
-        resizingCol.current = null;
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-    }, [handleMouseMove]);
+    const canPairResize = (k: RentalFinColKey) =>
+        RENTAL_FIN_COL_ORDER.indexOf(k) < RENTAL_FIN_COL_ORDER.length - 1;
 
-
-    const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[9px]">↕</span>;
-        return <span className="text-accent ml-1 text-[9px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
-    };
-
-    // Helper for th style
-    const thStyle = (widthKey: keyof typeof colWidths) => ({ width: colWidths[widthKey], position: 'relative' as const });
-
-    // Reusable resizer
-    const Resizer = ({ col }: { col: string }) => (
-        <div
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 z-10"
-            onMouseDown={startResizing(col)}
-            onClick={e => e.stopPropagation()}
-        ></div>
-    );
-
-    // Reusable Sidebar Styles from InvoicesPage context - applied to Select here
-    const filterInputClass = "w-full pl-3 py-1.5 text-xs sm:text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white";
-
+    const resizer = (col: RentalFinColKey) =>
+        canPairResize(col) ? (
+            <div
+                className="absolute right-0 top-0 bottom-0 w-3 flex justify-end pr-0 cursor-col-resize z-20 select-none group"
+                onMouseDown={startResize(col)}
+                onClick={e => e.stopPropagation()}
+                role="separator"
+                aria-orientation="vertical"
+                title="Drag to resize column"
+            >
+                <div className="w-px h-full bg-transparent group-hover:bg-primary/70" />
+            </div>
+        ) : null;
 
     const toolbarHasContent = !hideTypeDateFiltersInToolbar || (selectedCount > 0 && onBulkPaymentClick) || showButtons;
 
     return (
-        <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex flex-col h-full bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden min-w-0 transition-shadow duration-ds">
             {/* Toolbar - only show when it has content (type/date filters, selected actions, or action buttons) */}
             {toolbarHasContent && (
-            <div className="p-3 bg-slate-50/80 border-b border-slate-100 flex flex-wrap gap-3 items-center justify-between backdrop-blur-sm">
+            <div className="p-3 bg-app-toolbar border-b border-app-border flex flex-wrap gap-3 items-center justify-between">
                 <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
                     {!hideTypeDateFiltersInToolbar && (
                         <>
                             <Select
                                 value={typeFilter}
                                 onChange={(e) => setTypeFilter(e.target.value)}
-                                className="!w-32 !py-1.5 !text-xs !border-slate-200 !shadow-sm !font-medium"
+                                className="!w-32 !py-1.5 !text-xs !border-app-border !bg-app-surface-2 !text-app-text !font-medium"
                                 hideIcon={true}
                             >
                                 {availableTypes.map(t => (
@@ -430,7 +617,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                             <Select
                                 value={dateFilter}
                                 onChange={(e) => setDateFilter(e.target.value)}
-                                className="!w-32 !py-1.5 !text-xs !border-slate-200 !shadow-sm !font-medium"
+                                className="!w-32 !py-1.5 !text-xs !border-app-border !bg-app-surface-2 !text-app-text !font-medium"
                                 hideIcon={true}
                             >
                                 <option value="All">All Dates</option>
@@ -440,12 +627,13 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                         </>
                     )}
                     {selectedCount > 0 && onBulkPaymentClick && (
-                        <div className="flex items-center gap-2 animate-fade-in pl-2 border-l border-slate-200">
-                            <span className="text-xs font-semibold text-slate-600">{selectedCount} selected</span>
+                        <div className="flex items-center gap-2 animate-fade-in pl-2 border-l border-app-border">
+                            <span className="text-xs font-semibold text-app-muted">{selectedCount} selected</span>
+                            <span className="text-xs font-bold text-app-text tabular-nums">{CURRENCY} {selectedTotalAmount.toLocaleString()} total</span>
                             <Button
                                 onClick={onBulkPaymentClick}
                                 size="sm"
-                                className="!py-1 !px-3 !text-xs !bg-indigo-600 hover:!bg-indigo-700 !text-white !rounded-lg"
+                                className="!py-1 !px-3 !text-xs !bg-primary hover:!bg-ds-primary-hover !text-white !rounded-lg"
                             >
                                 Receive Payment
                             </Button>
@@ -460,14 +648,14 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                                 variant="secondary"
                                 onClick={onBulkImportClick}
                                 size="sm"
-                                className="!py-1.5 !px-3 !text-xs !border-slate-200 hover:!border-indigo-300 hover:!text-indigo-600 !bg-white"
+                                className="!py-1.5 !px-3 !text-xs !border-app-border hover:!border-primary hover:!text-primary !bg-app-card"
                             >
                                 <div className="w-3.5 h-3.5 mr-1.5 opacity-70">{ICONS.download}</div> Import
                             </Button>
                             <Button
                                 onClick={onNewClick}
                                 size="sm"
-                                className="!py-1.5 !px-3 !text-xs !bg-slate-900 hover:!bg-slate-800 !text-white !shadow-sm"
+                                className="!py-1.5 !px-3 !text-xs !bg-primary hover:!bg-ds-primary-hover !text-ds-on-primary !shadow-sm"
                             >
                                 <div className="w-3.5 h-3.5 mr-1.5">{ICONS.plus}</div> Create
                             </Button>
@@ -477,39 +665,44 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
             </div>
             )}
 
+            {/* Table Header + Body: scroll horizontally when columns need more space */}
+            <div className="flex-1 min-h-0 flex flex-col overflow-x-auto">
             {/* Table Header */}
-            <div className="bg-slate-50 border-b border-slate-200 flex-shrink-0">
-                <div className="flex items-center" style={{ minWidth: 'max-content' }}>
-                    <div className="px-3 py-1.5 w-10 text-center flex-shrink-0" />
-                    <div style={thStyle('type')} onClick={() => handleSort('type')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Type <SortIcon column="type" /><Resizer col="type" /></div>
-                    <div style={thStyle('reference')} onClick={() => handleSort('reference')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Reference <SortIcon column="reference" /><Resizer col="reference" /></div>
-                    <div style={{ ...thStyle('description'), flex: 1, minWidth: colWidths.description }} onClick={() => handleSort('description')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors">Description <SortIcon column="description" /><Resizer col="description" /></div>
-                    <div style={thStyle('date')} onClick={() => handleSort('date')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Date <SortIcon column="date" /><Resizer col="date" /></div>
-                    <div style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="group px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Account <SortIcon column="accountName" /><Resizer col="accountName" /></div>
-                    <div style={thStyle('amount')} onClick={() => handleSort('amount')} className="group px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Amount <SortIcon column="amount" /><Resizer col="amount" /></div>
-                    <div style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="group px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none hover:bg-slate-100 transition-colors flex-shrink-0">Due <SortIcon column="remainingAmount" /><Resizer col="remainingAmount" /></div>
-                    <div className="px-3 py-1.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 w-24 flex-shrink-0">Status</div>
-                    <div className="px-3 py-1.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 w-20 flex-shrink-0">Actions</div>
+            <div className="sticky top-0 z-10 bg-app-table-header border-b border-app-border flex-shrink-0 w-full" style={{ minWidth: tableMinWidth }}>
+                <div className="flex items-center w-full">
+                    <div className="px-3 py-2 sm:px-4 w-10 text-center flex-shrink-0" />
+                    <div style={thStyle('type')} onClick={() => handleSort('type')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Type {sortIcon('type')}{resizer('type')}</div>
+                    <div style={thStyle('reference')} onClick={() => handleSort('reference')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Reference {sortIcon('reference')}{resizer('reference')}</div>
+                    <div style={thStyle('description')} onClick={() => handleSort('description')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden">Description {sortIcon('description')}{resizer('description')}</div>
+                    <div style={thStyle('date')} onClick={() => handleSort('date')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Date {sortIcon('date')}{resizer('date')}</div>
+                    <div style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Account {sortIcon('accountName')}{resizer('accountName')}</div>
+                    <div style={thStyle('building')} onClick={() => handleSort('buildingName')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Building {sortIcon('buildingName')}{resizer('building')}</div>
+                    <div style={thStyle('property')} onClick={() => handleSort('propertyName')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Property {sortIcon('propertyName')}{resizer('property')}</div>
+                    <div style={thStyle('owner')} onClick={() => handleSort('ownerName')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Owner {sortIcon('ownerName')}{resizer('owner')}</div>
+                    <div style={thStyle('amount')} onClick={() => handleSort('amount')} className="group px-3 py-2 sm:px-4 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Amount {sortIcon('amount')}{resizer('amount')}</div>
+                    <div style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="group px-3 py-2 sm:px-4 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Due {sortIcon('remainingAmount')}</div>
+                    <div className="px-2 py-2 text-center text-[10px] uppercase font-bold tracking-wider text-app-muted w-20 flex-shrink-0">Status</div>
+                    <div className="px-2 py-2 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted w-[88px] flex-shrink-0">Actions</div>
                 </div>
             </div>
 
             {/* Virtualized Table Body */}
-            <div className="flex-grow min-h-0 bg-white" ref={listContainerRef}>
+            <div className="flex-grow min-h-0 bg-app-card overflow-hidden w-full" style={{ minWidth: tableMinWidth }} ref={listContainerRef}>
                 {sortedRecords.length === 0 ? (
-                    <div className="text-center py-16 text-slate-400">
-                        <div className="flex flex-col items-center justify-center opacity-60">
-                            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
-                                <div className="w-6 h-6 text-slate-400">{ICONS.search}</div>
+                    <div className="text-center py-16 text-app-muted">
+                        <div className="flex flex-col items-center justify-center opacity-70">
+                            <div className="w-12 h-12 bg-app-toolbar rounded-full flex items-center justify-center mb-3 border border-app-border">
+                                <div className="w-6 h-6 text-app-muted">{ICONS.search}</div>
                             </div>
-                            <p className="text-sm font-medium">No records found</p>
-                            <p className="text-xs text-slate-400 mt-1">Try changing your filters</p>
+                            <p className="text-sm font-medium text-app-text">No records found</p>
+                            <p className="text-xs text-app-muted mt-1">Try changing your filters</p>
                         </div>
                     </div>
                 ) : (
                     <List
                         listRef={listRef as any}
                         defaultHeight={listHeight}
-                        rowCount={sortedRecords.length}
+                        rowCount={effectiveRecords.length}
                         rowHeight={ROW_HEIGHT}
                         rowComponent={Row}
                         rowProps={{}}
@@ -518,11 +711,12 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                     />
                 )}
             </div>
+            </div>
 
             {/* Footer */}
-            <div className="flex-shrink-0 px-3 py-1.5 border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm flex items-center justify-between">
-                <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                    {sortedRecords.length} records
+            <div className="flex-shrink-0 px-3 py-1.5 border-t border-app-border bg-app-toolbar flex items-center justify-between">
+                <div className="text-[10px] font-medium text-app-muted uppercase tracking-wide">
+                    {effectiveRecords.length} records
                 </div>
             </div>
         </div>

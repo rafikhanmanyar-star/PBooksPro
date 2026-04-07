@@ -291,6 +291,15 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         allowedFields: new Set(['invoiceNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'invoiceType', 'description', 'projectName', 'project', 'buildingName', 'building', 'propertyName', 'property', 'unitName', 'unit', 'categoryName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth'])
     };
 
+    // RentalInvoices (single-sheet template for rental invoices only)
+    schemas.RentalInvoices = {
+        sheetName: 'RentalInvoices',
+        version: '1.0',
+        requiredFields: ['invoiceNumber', 'contactName', 'amount', 'issueDate'],
+        optionalFields: ['dueDate', 'invoiceType', 'description', 'buildingName', 'building', 'propertyName', 'property', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth', 'categoryName', 'projectName', 'unitName'],
+        allowedFields: new Set(['invoiceNumber', 'contactName', 'contact', 'amount', 'issueDate', 'dueDate', 'invoiceType', 'description', 'buildingName', 'building', 'propertyName', 'property', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth', 'categoryName', 'projectName', 'unitName', 'unit'])
+    };
+
     // ProjectBills
     schemas.ProjectBills = {
         sheetName: 'ProjectBills',
@@ -394,13 +403,13 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         ])
     };
 
-    // RentalInvoicePayments
+    // RentalInvoicePayments (single-sheet template: invoiceNumber, accountName, amount, date, description)
     schemas.RentalInvoicePayments = {
         sheetName: 'RentalInvoicePayments',
         version: '1.0',
-        requiredFields: ['amount', 'date', 'invoiceNumber'],
-        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
-        allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'invoiceNumber', 'InvoiceNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
+        requiredFields: ['invoiceNumber', 'accountName', 'amount', 'date'],
+        optionalFields: ['description', 'AccountName', 'InvoiceNumber'],
+        allowedFields: new Set(['invoiceNumber', 'InvoiceNumber', 'accountName', 'AccountName', 'amount', 'date', 'description'])
     };
 
     // ProjectInvoicePayments

@@ -1,10 +1,18 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { SalesReturn, SalesReturnStatus, SalesReturnReason, ProjectAgreementStatus, InvoiceStatus } from '../../types';
+import {
+    SalesReturn,
+    SalesReturnStatus,
+    SalesReturnReason,
+    ProjectAgreementStatus,
+    normalizeProjectAgreementStatus,
+    InvoiceStatus,
+} from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { CURRENCY } from '../../constants';
+import { getSalesReturnRefundCategoryIdSet } from '../../constants/salesReturnSystemCategories';
 import Modal from '../ui/Modal';
 import SalesReturnModal from './SalesReturnModal';
 import ProjectOwnerPayoutModal from './ProjectOwnerPayoutModal';
@@ -27,6 +35,11 @@ const SalesReturnsPage: React.FC = () => {
     const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
 
     // Get all sales returns with related data and refund bill information
+    const refundCategoryIdSet = useMemo(
+        () => getSalesReturnRefundCategoryIdSet(state.categories),
+        [state.categories]
+    );
+
     const salesReturns = useMemo(() => {
         return (state.salesReturns || []).map(sr => {
             const agreement = state.projectAgreements.find(pa => pa.id === sr.agreementId);
@@ -38,11 +51,9 @@ const SalesReturnsPage: React.FC = () => {
             if (sr.status === SalesReturnStatus.REFUNDED) {
                 unpaidRefundAmount = 0; // Already fully refunded
             } else {
-                // Find all refund transactions for this sales return
-                // Refund transactions have Unit Selling Income category and reference this return
-                const unitSellingCategory = state.categories.find(c => c.name === 'Unit Selling Income');
+                // Refund txs: Sales Return Refund (revenue reduction) or legacy Unit Selling Income
                 const refundTransactions = state.transactions.filter(tx => {
-                    if (tx.categoryId !== unitSellingCategory?.id) return false;
+                    if (!tx.categoryId || !refundCategoryIdSet.has(tx.categoryId)) return false;
                     if (!tx.description?.includes(`Sales Return #${sr.returnNumber}`)) return false;
                     if (tx.agreementId !== sr.agreementId) return false;
                     return true;
@@ -59,7 +70,7 @@ const SalesReturnsPage: React.FC = () => {
                 unpaidRefundAmount,
             };
         });
-    }, [state.salesReturns, state.projectAgreements, state.contacts, state.bills, state.transactions]);
+    }, [state.salesReturns, state.projectAgreements, state.contacts, state.bills, state.transactions, refundCategoryIdSet]);
 
     // Filter and sort returns
     const filteredReturns = useMemo(() => {
@@ -184,7 +195,7 @@ const SalesReturnsPage: React.FC = () => {
     // Get available agreements for return (only Active agreements)
     const availableAgreements = useMemo(() => {
         return state.projectAgreements
-            .filter(pa => pa.status === ProjectAgreementStatus.ACTIVE)
+            .filter(pa => normalizeProjectAgreementStatus(pa.status) === ProjectAgreementStatus.ACTIVE)
             .map(pa => {
                 const client = state.contacts.find(c => c.id === pa.clientId);
                 return {

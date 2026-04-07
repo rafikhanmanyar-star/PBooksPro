@@ -5,6 +5,9 @@
  * and TypeScript property names (camelCase).
  */
 
+import { toLocalDateString } from '../../utils/dateUtils';
+import { isDateOnlyFieldName } from '../../utils/dateOnlyKeys';
+
 /**
  * Convert camelCase to snake_case
  */
@@ -40,8 +43,8 @@ export function objectToDbFormat<T extends Record<string, any>>(obj: T): Record<
             // Convert nested objects to JSON strings
             result[dbKey] = JSON.stringify(value);
         } else if (value instanceof Date) {
-            // Convert dates to ISO strings
-            result[dbKey] = value.toISOString();
+            // Calendar date fields: local YYYY-MM-DD (never UTC via toISOString — avoids −1 day in UTC+ zones)
+            result[dbKey] = isDateOnlyFieldName(key) ? toLocalDateString(value) : value.toISOString();
         } else {
             result[dbKey] = value;
         }
@@ -53,32 +56,40 @@ export function objectToDbFormat<T extends Record<string, any>>(obj: T): Record<
  * Convert object keys from snake_case to camelCase
  * Also converts integer values (0/1) back to booleans for fields that look like booleans
  */
+const NUMERIC_COLUMNS = new Set([
+    'amount', 'paid_amount', 'monthly_rent', 'rent_due_date', 'security_deposit',
+    'broker_fee', 'sale_price', 'area', 'monthly_service_charge', 'price',
+    'list_price', 'customer_discount', 'floor_discount', 'lump_sum_discount',
+    'misc_discount', 'selling_price', 'down_payment_percentage', 'down_payment_amount',
+    'installment_amount', 'total_installments', 'duration_years',
+    'amenities_total', 'rebate_amount', 'pm_cost_percentage',
+]);
+
 export function dbToObjectFormat<T extends Record<string, any>>(obj: Record<string, any>): T {
     const result: any = {};
     for (const [key, value] of Object.entries(obj)) {
         const camelKey = snakeToCamel(key);
-        // Convert integer (0/1) to boolean for fields that look like booleans
         if ((key.startsWith('is_') || key.startsWith('has_') || key.endsWith('_flag')) && 
             (value === 0 || value === 1)) {
             result[camelKey] = value === 1;
+        } else if (NUMERIC_COLUMNS.has(key) && value != null) {
+            result[camelKey] = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+        } else if (NUMERIC_COLUMNS.has(key)) {
+            // Ensure numeric columns always have a number (null/undefined → 0) so reports and grids never see missing values
+            result[camelKey] = 0;
         } else if (key === 'expense_category_items' && typeof value === 'string' && value.trim().length > 0) {
-            // Explicitly handle expense_category_items - always try to parse as JSON
             try {
                 result[camelKey] = JSON.parse(value);
             } catch {
-                // If parsing fails, keep the original string value
                 result[camelKey] = value;
             }
         } else if (typeof value === 'string' && value.trim().length > 0) {
-            // Try to parse JSON strings (objects or arrays)
-            // Check if it looks like JSON (starts with { or [ and ends with } or ])
             const trimmed = value.trim();
             if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
                 (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
                 try {
                     result[camelKey] = JSON.parse(value);
                 } catch {
-                    // If parsing fails, keep the original string value
                     result[camelKey] = value;
                 }
             } else {

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Unit, Project, Contact, ContactType } from '../../types';
+import { Unit, Project, Contact, ContactType, UnitOccupancyStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
@@ -25,6 +25,8 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
     const [contactId, setContactId] = useState(unitToEdit?.contactId || '');
     const [salePrice, setSalePrice] = useState(unitToEdit?.salePrice?.toString() || '');
     const [type, setType] = useState(unitToEdit?.type || '');
+    const [status, setStatus] = useState<UnitOccupancyStatus>(unitToEdit?.status || 'available');
+    const [size, setSize] = useState(unitToEdit?.size || '');
     const [area, setArea] = useState(unitToEdit?.area?.toString() || '');
     const [floor, setFloor] = useState(unitToEdit?.floor || '');
     const [nameError, setNameError] = useState('');
@@ -42,13 +44,18 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
             setNameError('Unit name is required.');
             return;
         }
-        const duplicate = state.units.find(u => u.name.toLowerCase().trim() === name.toLowerCase().trim() && u.id !== unitToEdit?.id);
+        const duplicate = state.units.find(
+            u =>
+                u.projectId === projectId &&
+                u.name.toLowerCase().trim() === name.toLowerCase().trim() &&
+                u.id !== unitToEdit?.id
+        );
         if (duplicate) {
             setNameError('A unit with this name already exists.');
         } else {
             setNameError('');
         }
-    }, [name, state.units, unitToEdit]);
+    }, [name, projectId, state.units, unitToEdit]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -102,8 +109,25 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                             }}
                         />
                     </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">Status</label>
+                            <select
+                                value={status}
+                                onChange={(e) => setStatus(e.target.value as UnitOccupancyStatus)}
+                                className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                aria-label="Unit status"
+                            >
+                                <option value="available">Available</option>
+                                <option value="sold">Sold</option>
+                                <option value="rented">Rented</option>
+                                <option value="blocked">Blocked</option>
+                            </select>
+                        </div>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <Input label="Type (e.g., 2BHK, Shop, Office)" value={type} onChange={e => setType(e.target.value)} placeholder="Enter unit type" />
+                        <Input label="Type (e.g., apartment, shop, plot)" value={type} onChange={e => setType(e.target.value)} placeholder="Enter unit type" />
+                        <Input label="Size" value={size} onChange={e => setSize(e.target.value)} placeholder="e.g. 1200 sq ft" />
                         <Input label="Area (sq ft)" type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" value={area} onChange={e => setArea(e.target.value)} placeholder="Enter area" />
                         <Input label="Floor (e.g., Ground floor, 1st floor)" value={floor} onChange={e => setFloor(e.target.value)} placeholder="Enter floor" />
                     </div>

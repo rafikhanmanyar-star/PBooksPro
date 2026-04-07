@@ -43,9 +43,10 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
                 brokerData[broker.id] = { earned: 0, paid: 0 };
             });
 
-        // 1. Calculate Earned Fees (from Rental Agreements)
+        // 1. Calculate Earned Fees (from Rental Agreements). Exclude renewed agreements so broker is not charged again on renewal.
         if (!context || context === 'Rental') {
             state.rentalAgreements.forEach(ra => {
+                if (ra.previousAgreementId) return;
                 if (ra.brokerId && (ra.brokerFee || 0) > 0) {
                     if (!brokerData[ra.brokerId]) brokerData[ra.brokerId] = { earned: 0, paid: 0 };
                     brokerData[ra.brokerId].earned += (ra.brokerFee || 0);
@@ -140,12 +141,12 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
     const selectedBrokerContact = state.contacts.find(c => c.id === selectedBrokerId);
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <Card className="md:col-span-1 h-fit flex flex-col max-h-[calc(100vh-12rem)]">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6 bg-background min-h-0">
+            <Card className="md:col-span-1 h-fit flex flex-col max-h-[calc(100vh-12rem)] p-4">
                 <div className="mb-4">
-                    <h3 className="text-lg font-semibold mb-2">Broker Balances {context ? `(${context})` : ''}</h3>
+                    <h3 className="text-lg font-semibold mb-2 text-app-text">Broker Balances {context ? `(${context})` : ''}</h3>
                     <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <div className="w-4 h-4">{ICONS.search}</div>
                         </div>
                         <Input 
@@ -156,8 +157,9 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
                         />
                         {searchQuery && (
                             <button 
+                                type="button"
                                 onClick={() => setSearchQuery('')} 
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text transition-colors duration-ds"
                             >
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
@@ -166,61 +168,62 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
                 </div>
                 
                 {filteredBrokerBalances.length > 0 ? (
-                    <div className="divide-y divide-slate-100 overflow-y-auto">
+                    <div className="divide-y divide-app-border overflow-y-auto -mx-1 px-1">
                         {filteredBrokerBalances.map(broker => (
                             <button 
+                                type="button"
                                 key={broker.brokerId} 
                                 onClick={() => setSelectedBrokerId(broker.brokerId)} 
-                                className={`w-full text-left p-2 rounded-md flex justify-between items-center gap-2 ${selectedBrokerId === broker.brokerId ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
+                                className={`w-full text-left p-2 rounded-md flex justify-between items-center gap-2 transition-colors duration-ds ${selectedBrokerId === broker.brokerId ? 'bg-nav-active border border-primary/25' : 'hover:bg-app-toolbar/80 border border-transparent'}`}
                             >
-                                <span className={`font-semibold truncate ${selectedBrokerId === broker.brokerId ? 'text-accent' : 'text-slate-800'}`}>
+                                <span className={`font-semibold truncate ${selectedBrokerId === broker.brokerId ? 'text-primary' : 'text-app-text'}`}>
                                     {broker.brokerName}
                                 </span>
-                                <span className="text-sm text-slate-600 whitespace-nowrap">
+                                <span className="text-sm text-app-muted whitespace-nowrap tabular-nums">
                                     {CURRENCY} {broker.balance.toLocaleString()}
                                 </span>
                             </button>
                         ))}
                     </div>
                 ) : (
-                    <p className="text-sm text-slate-500 text-center py-4">
+                    <p className="text-sm text-app-muted text-center py-4">
                         {searchQuery ? 'No brokers found matching search.' : 'No broker fees recorded.'}
                     </p>
                 )}
             </Card>
 
-            <div className="md:col-span-3 space-y-4">
+            <div className="md:col-span-3 space-y-4 min-w-0">
                 {selectedBrokerData && selectedBrokerContact ? (
                     <>
-                        <Card>
-                            <div className="flex justify-between items-center">
-                                <h3 className="text-xl font-bold">{selectedBrokerContact.name}</h3>
-                                {selectedBrokerData.balance > 0 && <Button onClick={() => setIsModalOpen(true)}>Pay Commission</Button>}
+                        <Card className="p-4 md:p-5">
+                            <div className="flex justify-between items-center gap-3 flex-wrap">
+                                <h3 className="text-xl font-bold text-app-text">{selectedBrokerContact.name}</h3>
+                                {selectedBrokerData.balance > 0 && <Button onClick={() => setIsModalOpen(true)} className="!bg-primary hover:!bg-ds-primary-hover !text-ds-on-primary">Pay Commission</Button>}
                             </div>
                             <div className="mt-4 grid grid-cols-3 gap-4 text-center">
                                 <div>
-                                    <p className="text-sm text-slate-500">Total Earned</p>
-                                    <p className="font-semibold text-lg text-success">{CURRENCY} {selectedBrokerData.earned.toLocaleString()}</p>
+                                    <p className="text-sm text-app-muted">Total Earned</p>
+                                    <p className="font-semibold text-lg text-ds-success">{CURRENCY} {selectedBrokerData.earned.toLocaleString()}</p>
                                 </div>
                                 <div>
-                                    <p className="text-sm text-slate-500">Total Paid</p>
-                                    <p className="font-semibold text-lg text-slate-700">{CURRENCY} {selectedBrokerData.paid.toLocaleString()}</p>
+                                    <p className="text-sm text-app-muted">Total Paid</p>
+                                    <p className="font-semibold text-lg text-app-text">{CURRENCY} {selectedBrokerData.paid.toLocaleString()}</p>
                                 </div>
                                 <div>
-                                    <p className="text-sm text-slate-500">Balance Due</p>
-                                    <p className="font-bold text-xl text-danger">{CURRENCY} {selectedBrokerData.balance.toLocaleString()}</p>
+                                    <p className="text-sm text-app-muted">Balance Due</p>
+                                    <p className="font-bold text-xl text-ds-danger">{CURRENCY} {selectedBrokerData.balance.toLocaleString()}</p>
                                 </div>
                             </div>
                         </Card>
-                        <Card>
-                            <h3 className="text-lg font-semibold mb-3">Fee Ledger {context ? `(${context})` : ''}</h3>
+                        <Card className="p-4 md:p-5">
+                            <h3 className="text-lg font-semibold mb-3 text-app-text">Fee Ledger {context ? `(${context})` : ''}</h3>
                             <BrokerLedger brokerId={selectedBrokerId} context={context} />
                         </Card>
                     </>
                 ) : (
-                    <Card>
-                        <div className="text-center py-20">
-                            <p className="text-slate-500">Select a broker to view details and payment history.</p>
+                    <Card className="p-8">
+                        <div className="text-center py-12">
+                            <p className="text-app-muted">Select a broker to view details and payment history.</p>
                         </div>
                     </Card>
                 )}

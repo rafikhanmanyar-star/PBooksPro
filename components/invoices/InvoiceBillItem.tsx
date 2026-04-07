@@ -10,8 +10,7 @@ import InvoiceBillForm from './InvoiceBillForm';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import { formatDate } from '../../utils/dateUtils';
-import { WhatsAppService } from '../../services/whatsappService';
-import { WhatsAppChatService } from '../../services/whatsappChatService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { formatCurrency } from '../../utils/numberUtils';
 
@@ -55,11 +54,12 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
 
   const getStatusClasses = (status: InvoiceStatus) => {
     switch (status) {
-      case InvoiceStatus.PAID: return 'bg-emerald-100 text-emerald-800';
-      case InvoiceStatus.PARTIALLY_PAID: return 'bg-amber-100 text-amber-800';
-      case InvoiceStatus.OVERDUE: return 'bg-rose-100 text-rose-800';
-      case InvoiceStatus.UNPAID: return 'bg-rose-100 text-rose-800';
-      default: return 'bg-slate-100 text-slate-800';
+      case InvoiceStatus.PAID: return 'ds-badge-paid';
+      case InvoiceStatus.PARTIALLY_PAID: return 'ds-badge-partial';
+      case InvoiceStatus.OVERDUE: return 'ds-badge-overdue';
+      case InvoiceStatus.UNPAID: return 'ds-badge-unpaid';
+      case InvoiceStatus.DRAFT: return 'ds-pill-type';
+      default: return 'ds-pill-type';
     }
   };
 
@@ -86,10 +86,30 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   };
 
   const isRental = type === 'invoice' && (item as Invoice).invoiceType === InvoiceType.RENTAL;
-  const property = isRental || propertyId ? state.properties.find(p => p.id === (isRental ? (item as Invoice).propertyId : propertyId)) : null;
+  // Resolve FK fields with fallback recovery from linked agreement
+  let resolvedProjectId = projectId;
+  let resolvedUnitId = unitId;
+  let resolvedPropertyId = propertyId;
+  if (type === 'invoice' && agreementId) {
+      const pa = state.projectAgreements.find(a => a.id === agreementId);
+      if (pa) {
+          if (!resolvedProjectId) resolvedProjectId = pa.projectId;
+          if (!resolvedUnitId && pa.unitIds?.length > 0) resolvedUnitId = pa.unitIds[0];
+      }
+      if (!resolvedPropertyId) {
+          const ra = state.rentalAgreements.find(a => a.id === agreementId);
+          if (ra) resolvedPropertyId = ra.propertyId;
+      }
+  }
+  if (!resolvedProjectId && resolvedUnitId) {
+      const u = state.units.find(u => u.id === resolvedUnitId);
+      if (u?.projectId) resolvedProjectId = u.projectId;
+  }
+
+  const property = isRental || resolvedPropertyId ? state.properties.find(p => p.id === (isRental ? (item as Invoice).propertyId || resolvedPropertyId : resolvedPropertyId)) : null;
   const building = property ? state.buildings.find(b => b.id === property.buildingId) : (buildingId ? state.buildings.find(b => b.id === buildingId) : null);
-  const project = projectId ? state.projects.find(p => p.id === projectId) : null;
-  const unit = unitId ? state.units.find(u => u.id === unitId) : null;
+  const project = resolvedProjectId ? state.projects.find(p => p.id === resolvedProjectId) : null;
+  const unit = resolvedUnitId ? state.units.find(u => u.id === resolvedUnitId) : null;
   const staff = staffId ? state.contacts.find(c => c.id === staffId) : null;
 
   const handleSendWhatsApp = () => {
@@ -140,8 +160,11 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
         );
       }
 
-      // Open WhatsApp modal with pre-filled message
-      openChat(contact, contact.contactNo, message);
+      sendOrOpenWhatsApp(
+        { contact, message, phoneNumber: contact.contactNo },
+        () => state.whatsAppMode,
+        openChat
+      );
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
     }
@@ -237,7 +260,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
                             <span className={`font-bold text-sm ${balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                                 Due: {CURRENCY} {formatCurrency(balance)}
                             </span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${getStatusClasses(status)}`}>
+                            <span className={getStatusClasses(status)}>
                                 {status}
                             </span>
                         </div>
@@ -287,7 +310,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
                             <div>
                                 <div className="flex items-center gap-2">
                                     <p className="font-bold text-lg text-slate-800">#{number}</p>
-                                    <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full sm:hidden ${getStatusClasses(status)}`}>{status}</span>
+                                    <span className={`sm:hidden ${getStatusClasses(status)}`}>{status}</span>
                                     {isAgreementCancelled && <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-50 text-rose-600 border border-rose-200 sm:hidden">Cancelled Agreement</span>}
                                 </div>
                                 <p className="text-sm text-slate-600 font-medium">{contactLabel}: {contactName}</p>
@@ -315,7 +338,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
                                 )}
                             </div>
                             <div className="flex flex-col items-end gap-1">
-                                <span className={`hidden sm:inline-block px-2.5 py-1 text-xs font-semibold rounded-full ${getStatusClasses(status)}`}>{status}</span>
+                                <span className={`hidden sm:inline-block ${getStatusClasses(status)}`}>{status}</span>
                                 {isAgreementCancelled && <span className="hidden sm:inline-block px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-50 text-rose-600 border border-rose-200">Cancelled Agreement</span>}
                             </div>
                         </div>

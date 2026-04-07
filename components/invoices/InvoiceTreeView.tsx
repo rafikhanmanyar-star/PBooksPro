@@ -163,17 +163,6 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
 
     const sortedTreeData = useMemo(() => sortNodes(treeData), [treeData, sortNodes]);
 
-    // Resizing Logic
-    const startResizing = (key: 'count' | 'balance') => (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        resizingCol.current = key;
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-    };
-
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (!resizingCol.current) return;
         const deltaX = e.movementX;
@@ -187,11 +176,25 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
         resizingCol.current = null;
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener('blur', handleMouseUp);
+        document.removeEventListener('visibilitychange', handleMouseUp);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
     }, [handleMouseMove]);
 
-    const SortIcon = ({ column }: { column: SortKey }) => (
+    const startResizing = (key: 'count' | 'balance') => (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizingCol.current = key;
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('blur', handleMouseUp);
+        document.addEventListener('visibilitychange', handleMouseUp);
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    };
+
+    const sortIcon = (column: SortKey) => (
         <span className="ml-1 text-[9px] text-slate-400">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
@@ -212,14 +215,14 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
                     className="p-2 border-r border-slate-300 cursor-pointer hover:bg-slate-200 flex items-center justify-between select-none"
                     onClick={() => handleSort('name')}
                 >
-                    Entity <SortIcon column="name" />
+                    Entity {sortIcon('name')}
                 </div>
 
                 <div
                     className="p-2 text-right cursor-pointer hover:bg-slate-200 flex items-center justify-end relative select-none"
                     onClick={() => handleSort('balance')}
                 >
-                    A/R <SortIcon column="balance" />
+                    A/R {sortIcon('balance')}
                     <div
                         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 z-20"
                         onMouseDown={startResizing('balance')}

@@ -1,19 +1,24 @@
 
 import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Page } from '../../types';
-import { ICONS, APP_LOGO } from '../../constants';
+import { ICONS } from '../../constants';
 import LicenseManagement from '../license/LicenseManagement';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import { useLicense } from '../../context/LicenseContext';
 import { apiClient } from '../../services/api/client';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useCompanyOptional } from '../../context/CompanyContext';
+import { useUpdate } from '../../context/UpdateContext';
 import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
-import { getWebSocketClient } from '../../services/websocketClient';
+import { connectRealtimeSocket } from '../../core/socket';
 import { ChatMessagesRepository } from '../../services/database/repositories';
 import { getDatabaseService } from '../../services/database/databaseService';
+import { getInMemoryUnreadCount, subscribeInMemoryChat } from '../../services/chat/inMemoryChatStore';
 import Modal from '../ui/Modal';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import { useViewport } from '../../context/ViewportContext';
 
 interface SidebarProps {
     currentPage: Page;
@@ -21,10 +26,17 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
+    const { mainNavCollapsed, toggleMainNav } = useViewport();
+
+    const mainNavToggleTitle = mainNavCollapsed ? 'Expand navigation' : 'Collapse navigation to icons';
     const dispatch = useDispatchOnly();
     const state = useStateSelector(s => s);
     const { logout, tenant, user } = useAuth();
     const { hasModule } = useLicense();
+    const companyCtx = useCompanyOptional();
+    const { appVersion, isElectronUpdate } = useUpdate();
+    // In Electron, show installed app version (from main process); otherwise build-time package version
+    const displayVersion = isElectronUpdate ? (appVersion ?? '...') : packageJson.version;
     const { currentUser } = state;
     const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<number | null>(null);
@@ -40,20 +52,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
     // Fallback order: name -> username -> 'User'
     const userName = user?.name || currentUser?.name || user?.username || currentUser?.username || 'User';
-    const userRole = user?.role || currentUser?.role || '';
+    /** Prefer JWT/API user role over AppState (LAN login may not sync currentUser). */
+    const effectiveRole = user?.role || currentUser?.role || '';
     const organizationName = tenant?.companyName || tenant?.name || '';
     const currentUserId = user?.id || currentUser?.id || '';
 
     const chatRepo = new ChatMessagesRepository();
-    const wsClient = getWebSocketClient();
 
-    // Fetch license status
+    // Fetch license status (skip in local-only)
     useEffect(() => {
         const fetchLicenseStatus = async () => {
-            // Check for token before making API call to prevent 401 errors
-            if (!apiClient.getToken()) {
-                return;
-            }
+            if (!apiClient.getToken()) return;
             try {
                 const response = await apiClient.get<{
                     licenseStatus: string;
@@ -63,27 +72,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 setLicenseInfo(response);
             } catch (error) {
                 console.error('Error fetching license status:', error);
-                // Silently fail - don't show error to user
             }
         };
 
-        // Only fetch if user is authenticated
-        if (user || currentUser) {
+        if (!isLocalOnlyMode() && (user || currentUser)) {
             fetchLicenseStatus();
-
-            // Refresh license status every 5 minutes
             const interval = setInterval(fetchLicenseStatus, 300000);
             return () => clearInterval(interval);
         }
     }, [user, currentUser]);
 
-    // Fetch online users count and list (users with active sessions) for the organization
+    // Fetch online users count and list (skip in local-only)
     useEffect(() => {
         const fetchOnlineUsers = async () => {
-            // Check for token before making API call to prevent 401 errors
-            if (!apiClient.getToken()) {
-                return;
-            }
+            if (!apiClient.getToken()) return;
             try {
                 const [countResponse, listResponse] = await Promise.all([
                     apiClient.get<{ onlineUsers: number }>('/tenants/online-users-count'),
@@ -93,15 +95,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 setOnlineUsersList(listResponse || []);
             } catch (error) {
                 console.error('Error fetching online users:', error);
-                // Silently fail - don't show error to user
             }
         };
 
-        // Only fetch if user is authenticated
-        if (user || currentUser) {
+        if (!isLocalOnlyMode() && (user || currentUser)) {
             fetchOnlineUsers();
-
-            // Refresh online users count every 30 seconds to keep it updated
             const interval = setInterval(fetchOnlineUsers, 30000);
             return () => clearInterval(interval);
         }
@@ -109,52 +107,54 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     // Check for unread messages
     const checkUnreadMessages = useCallback(() => {
-        if (currentUserId) {
-            try {
-                // Check if database is ready before querying
-                const dbService = getDatabaseService();
-                if (!dbService.isReady()) {
-                    // Database not ready yet, skip check (will be retried by interval)
-                    return;
-                }
-
-                const count = chatRepo.getUnreadCount(currentUserId);
-                setUnreadMessageCount(count);
-            } catch (error) {
-                console.error('Error checking unread messages:', error);
+        if (!currentUserId) return;
+        try {
+            if (!isLocalOnlyMode()) {
+                setUnreadMessageCount(getInMemoryUnreadCount(currentUserId));
+                return;
             }
+            const dbService = getDatabaseService();
+            if (!dbService.isReady()) {
+                return;
+            }
+            const count = chatRepo.getUnreadCount(currentUserId);
+            setUnreadMessageCount(count);
+        } catch (error) {
+            console.error('Error checking unread messages:', error);
         }
     }, [currentUserId]);
 
-    // Listen for incoming chat messages via WebSocket
     useEffect(() => {
-        if (!currentUserId) return;
+        if (isLocalOnlyMode()) return;
+        return subscribeInMemoryChat(() => {
+            if (currentUserId) {
+                setUnreadMessageCount(getInMemoryUnreadCount(currentUserId));
+            }
+        });
+    }, [currentUserId]);
 
-        // Connect to WebSocket with token and tenantId
+    // Listen for incoming chat messages via Socket.IO (same connection as AppContext entity sync)
+    useEffect(() => {
+        if (isLocalOnlyMode() || !currentUserId) return;
+
         const token = apiClient.getToken();
-        const tenantId = apiClient.getTenantId();
-        if (token && tenantId) {
-            wsClient.connect(token, tenantId);
-        }
+        if (!token) return;
 
-        // Check initial unread count
         checkUnreadMessages();
 
-        // Listen for new chat messages
-        const handleChatMessage = (data: any) => {
-            // Only process messages for current user
+        const socket = connectRealtimeSocket(token);
+        const handleChatMessage = (data: { recipientId?: string }) => {
             if (data.recipientId === currentUserId) {
                 checkUnreadMessages();
             }
         };
 
-        wsClient.on('chat:message', handleChatMessage);
+        socket.on('chat:message', handleChatMessage);
 
-        // Fallback poll for unread messages when WebSocket is disconnected
         const interval = setInterval(checkUnreadMessages, 30000);
 
         return () => {
-            wsClient.off('chat:message', handleChatMessage);
+            socket.off('chat:message', handleChatMessage);
             clearInterval(interval);
         };
     }, [currentUserId, checkUnreadMessages]);
@@ -172,10 +172,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         }
     }, [isChatModalOpen, currentUserId, checkUnreadMessages]);
 
-    // Determine allowed pages based on role
-    const isAccountsOnly = currentUser?.role === 'Accounts';
+    const roleLc = effectiveRole.toLowerCase();
+    const isAccountsOnly = roleLc === 'accounts';
+    const isAdmin = roleLc === 'admin' || roleLc === 'super_admin';
 
-    const isAdmin = userRole === 'Admin' || currentUser?.role === 'Admin';
+    /** Show count below the user card: LAN/API when server count loaded; local-only = single session. */
+    const showLoggedInUsersRow =
+        (isLocalOnlyMode() && !!(user || currentUser)) ||
+        (!isLocalOnlyMode() && onlineUsers !== null);
+    const loggedInUsersCount = isLocalOnlyMode() ? 1 : (onlineUsers ?? 0);
 
     // Persisted state for collapsible groups
     const [collapsedGroups, setCollapsedGroups] = useLocalStorage<Record<string, boolean>>('sidebar_collapsed_groups', {});
@@ -201,15 +206,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 title: 'Financials',
                 items: [
                     { page: 'transactions', label: 'General Ledger', icon: ICONS.trendingUp },
+                    ...(isAdmin ? [{ page: 'personalTransactions', label: 'Personal transactions', icon: ICONS.wallet }] : []),
                     { page: 'budgets', label: 'Budget Planner', icon: ICONS.barChart },
-                    { page: 'loans', label: 'Loan Manager', icon: ICONS.loan },
                 ]
             },
             {
                 title: 'Selling',
                 items: [
                     { page: 'projectSelling', label: 'Project selling', icon: ICONS.trendingUp },
-                    ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv Mgmt', icon: ICONS.dollarSign }] : []),
+                    { page: 'investmentManagement', label: 'Inv Mgmt', icon: ICONS.dollarSign },
                 ]
             },
             {
@@ -217,7 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 items: [
                     { page: 'projectManagement', label: 'Project construction', icon: ICONS.archive },
                     { page: 'vendorDirectory', label: 'Vendor directory', icon: ICONS.briefcase },
-                    { page: 'pmConfig', label: 'PM cycel', icon: ICONS.filter },
+                    { page: 'pmConfig', label: 'PM cycle', icon: ICONS.filter },
                 ]
             },
             {
@@ -266,7 +271,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
             return true; // Always show Overview, Financials, People, System
         });
-    }, [isAdmin, isAccountsOnly, hasModule]);
+    }, [isAccountsOnly, hasModule, isAdmin]);
 
     const isCurrent = (itemPage: Page) => {
         if (currentPage === itemPage) return true;
@@ -280,18 +285,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const handleLogout = async () => {
         if (confirm('Are you sure you want to logout?')) {
             try {
-                // Call logout API to clear session (AuthContext sets isAuthenticated = false)
-                await logout();
-                // Clear local state
-                dispatch({ type: 'LOGOUT' });
-                // Clear localStorage
-                localStorage.removeItem('last_tenant_id');
-                localStorage.removeItem('last_identifier');
-                // Do not use window.location.href = '/' — in Electron (file://) that becomes file:///C:/
-                // and causes "Not allowed to load local resource". App shows CloudLoginPage when !isAuthenticated.
+                if (isLocalOnlyMode() && companyCtx) {
+                    // Local-only: save company DB, close it, then show company select/create screen
+                    await companyCtx.logoutCompany();
+                    dispatch({ type: 'LOGOUT' });
+                    localStorage.removeItem('last_tenant_id');
+                    localStorage.removeItem('last_identifier');
+                } else {
+                    await logout();
+                    dispatch({ type: 'LOGOUT' });
+                    // Keep last_tenant_id / last_identifier so API login can preselect the last organization and username.
+                }
             } catch (error) {
                 console.error('Logout error:', error);
-                // Still clear local state even if API call fails
                 dispatch({ type: 'LOGOUT' });
             }
         }
@@ -321,27 +327,30 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     />
 
                     {/* Mobile drawer */}
-                    <aside className="fixed left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 z-50 md:hidden flex flex-col text-slate-300 animate-slide-in-left">
+                    <aside className="fixed left-0 top-0 h-full w-64 bg-app-sidebar border-r border-app-sidebar-border z-50 md:hidden flex flex-col text-slate-300 animate-slide-in-left">
 
                         {/* Brand Header */}
-                        <div className="h-14 flex items-center justify-between px-5 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-sm">
+                        <div className="h-14 flex items-center justify-between px-5 border-b border-app-sidebar-border/50 bg-app-sidebar/50 backdrop-blur-sm">
                             <div className="flex items-center gap-3">
-                                <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-900/20 text-sm">
+                                <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm">
                                     P
                                 </div>
                                 <div>
                                     <h1 className="text-sm font-bold tracking-wide">
                                         <span className="text-red-500">P</span>
                                         <span className="text-white">Books</span>
-                                        <span className="text-indigo-400">Pro</span>
+                                        <span className="text-primary">Pro</span>
                                     </h1>
-                                    <div className="text-[10px] text-slate-500 font-mono">v{packageJson.version}</div>
+                                    <div className="text-[10px] text-slate-500 font-mono">v{displayVersion}</div>
                                 </div>
                             </div>
                             {/* Close button */}
                             <button
+                                type="button"
                                 onClick={() => setIsMobileMenuOpen(false)}
                                 className="p-2 -mr-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                                aria-label="Close menu"
+                                title="Close menu"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -379,17 +388,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                             setCurrentPage(item.page as Page);
                                                             setIsMobileMenuOpen(false); // Close menu after navigation
                                                         }}
-                                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group touch-manipulation
-                                                ${active
-                                                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
-                                                                : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
+                                                        className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-2.5 rounded-md text-sm font-medium transition-all duration-ds group touch-manipulation border-l-[3px] ${active
+                                                                ? 'border-primary bg-nav-active text-app-text'
+                                                                : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5 active:bg-white/10'
                                                             }`}
                                                     >
-                                                        <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                                                        <div className={`transition-colors duration-ds shrink-0 ${active ? 'text-primary' : 'text-app-muted group-hover:text-app-text'}`}>
                                                             {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
                                                         </div>
                                                         <span className="truncate">{item.label}</span>
-                                                        {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/50"></div>}
                                                     </button>
                                                 );
                                             })}
@@ -400,7 +407,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                         </nav>
 
                         {/* Mobile Footer - Simplified */}
-                        <div className="p-3 border-t border-slate-800 bg-slate-900/50">
+                        <div className="p-3 border-t border-app-sidebar-border bg-app-sidebar/50">
                             {/* License Status Button */}
                             {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                                 <button
@@ -430,6 +437,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </button>
                             )}
 
+                            {/* Switch Company (local-only multi-company) */}
+                            {isLocalOnlyMode() && companyCtx?.activeCompany && (
+                                <button
+                                    onClick={() => companyCtx.switchCompany()}
+                                    className="w-full flex items-center gap-2 p-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/70 border border-slate-700/50 transition-colors text-xs"
+                                    title="Switch to another company"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                                    <span className="truncate">{companyCtx.activeCompany.company_name}</span>
+                                    <span className="text-slate-500 ml-auto text-[10px]">Switch</span>
+                                </button>
+                            )}
+
                             {/* User Info with logout */}
                             <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
@@ -444,9 +464,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                             {organizationName}
                                         </div>
                                     )}
-                                    {userRole && (
+                                    {effectiveRole && (
                                         <div className="text-[10px] text-slate-400 truncate capitalize">
-                                            {userRole}
+                                            {effectiveRole}
                                         </div>
                                     )}
                                 </div>
@@ -459,14 +479,30 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </button>
                             </div>
 
-                            {/* Online Users & Chat - Mobile */}
-                            {onlineUsers !== null && onlineUsers > 1 && (
+                            {/* Users logged in (below login area) */}
+                            {showLoggedInUsersRow && (
+                                <div
+                                    className="mt-2 px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/40"
+                                    title={isLocalOnlyMode() ? 'Active sessions on this device' : 'Users currently signed in'}
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[11px] text-slate-400 font-medium">Users logged in</span>
+                                        <span className="text-sm font-semibold text-emerald-400 tabular-nums">{loggedInUsersCount}</span>
+                                    </div>
+                                    {isLocalOnlyMode() && (
+                                        <div className="text-[10px] text-slate-500 mt-0.5">This device</div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Chat when multiple users online (LAN/API) */}
+                            {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
                                 <button
                                     onClick={() => {
                                         setIsChatModalOpen(true);
                                         setIsMobileMenuOpen(false);
                                     }}
-                                    className={`w-full mt-2 px-3 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 relative touch-manipulation ${unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                    className={`w-full mt-2 px-3 py-2.5 rounded-lg bg-primary hover:bg-ds-primary-hover active:bg-ds-primary-active text-ds-on-primary text-sm font-medium transition-colors duration-ds flex items-center justify-center gap-2 relative touch-manipulation ${unreadMessageCount > 0 ? 'animate-pulse' : ''
                                         }`}
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -486,168 +522,298 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 </>
             )}
 
-            {/* Premium Dark Sidebar - DESKTOP ONLY (UNCHANGED) */}
-            <aside className="hidden md:flex flex-col w-64 bg-slate-900 border-r border-slate-800 fixed left-0 top-0 h-full z-40 text-slate-300">
-
-                {/* Brand Header */}
-                <div className="h-14 flex items-center px-5 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-900/20 text-sm">
-                            P
+            {/* Premium Dark Sidebar — desktop: full width or icon rail (mainNavCollapsed) */}
+            <aside
+                className="hidden md:flex flex-col sidebar-desktop-width bg-app-sidebar border-r border-app-sidebar-border fixed left-0 top-0 h-full z-40 text-slate-300 overflow-x-hidden min-w-0"
+                aria-label={mainNavCollapsed ? 'Main navigation (icons)' : 'Main navigation'}
+            >
+                {mainNavCollapsed ? (
+                    <>
+                        <div className="shrink-0 flex flex-col items-center gap-2 py-3 px-2 border-b border-app-sidebar-border/50 bg-app-sidebar/50 backdrop-blur-sm">
+                            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm" title="PBooks Pro">
+                                P
+                            </div>
+                            <button
+                                type="button"
+                                onClick={toggleMainNav}
+                                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                title={mainNavToggleTitle}
+                                aria-label={mainNavToggleTitle}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                    <polyline points="9 18 15 12 9 6" />
+                                </svg>
+                            </button>
                         </div>
-                        <div>
-                            <h1 className="text-sm font-bold tracking-wide">
-                                <span className="text-red-500">P</span>
-                                <span className="text-white">Books</span>
-                                <span className="text-indigo-400">Pro</span>
-                            </h1>
-                            <div className="text-[10px] text-slate-500 font-mono">v{packageJson.version}</div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Navigation Menu */}
-                <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                    {navGroups.map((group, idx) => {
-                        const isCollapsed = collapsedGroups[group.title] || false;
-
-                        return (
-                            <div key={idx} className="space-y-1">
-                                <button
-                                    onClick={() => handleToggleGroup(group.title)}
-                                    className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors group/header"
-                                >
-                                    <span className="opacity-80 group-hover/header:opacity-100">{group.title}</span>
-                                    <div className="text-slate-600 group-hover/header:text-slate-400">
-                                        {isCollapsed ?
-                                            React.cloneElement(ICONS.chevronRight as any, { width: 14, height: 14 }) :
-                                            React.cloneElement(ICONS.chevronDown as any, { width: 14, height: 14 })
-                                        }
-                                    </div>
-                                </button>
-
-                                <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
+                        <nav className="flex-1 px-1.5 py-3 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent min-h-0">
+                            {navGroups.map((group, gIdx) => (
+                                <div key={group.title} className="space-y-1">
+                                    {gIdx > 0 && <div className="border-t border-slate-700/60 my-2 mx-0.5" aria-hidden />}
                                     {group.items.map((item) => {
                                         const active = isCurrent(item.page as Page);
                                         return (
                                             <button
                                                 key={item.page}
+                                                type="button"
                                                 onClick={() => setCurrentPage(item.page as Page)}
-                                                className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 group
-                                        ${active
-                                                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
-                                                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                                title={item.label}
+                                                aria-label={item.label}
+                                                aria-current={active ? 'page' : undefined}
+                                                className={`w-full flex items-center justify-center p-2.5 rounded-md transition-all duration-ds border-l-[3px] ${active
+                                                    ? 'border-primary bg-nav-active text-primary shadow-none'
+                                                    : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'
                                                     }`}
                                             >
-                                                <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                                                    {/* Clone element to force size if needed, though usually controlled by SVG props */}
-                                                    {React.cloneElement(item.icon as any, { width: 16, height: 16 })}
-                                                </div>
-                                                <span className="truncate">{item.label}</span>
-                                                {active && <div className="ml-auto w-1 h-1 rounded-full bg-white/50"></div>}
+                                                <span className={active ? 'text-primary' : 'text-app-muted'}>
+                                                    {React.cloneElement(item.icon as any, { width: 20, height: 20 })}
+                                                </span>
                                             </button>
                                         );
                                     })}
                                 </div>
-                            </div>
-                        );
-                    })}
-                </nav>
-
-                {/* Footer / User Profile */}
-                <div className="p-3 border-t border-slate-800 bg-slate-900/50">
-
-                    {/* License Status Button */}
-                    {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
-                        <button
-                            onClick={() => setIsLicenseModalOpen(true)}
-                            className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
-                                ? 'bg-gradient-to-r from-rose-500 to-red-600'
-                                : 'bg-gradient-to-r from-amber-500 to-orange-600'
-                                }`}
-                        >
-                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                            <div className="relative flex items-center justify-between">
-                                <div className="text-left">
-                                    <div className="text-[10px] font-bold opacity-90">
-                                        {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
-                                    </div>
-                                    <div className="text-sm font-bold leading-tight">
-                                        {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
-                                    </div>
+                            ))}
+                        </nav>
+                        <div className="shrink-0 p-2 border-t border-slate-800 bg-slate-900/50 space-y-2">
+                            {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsLicenseModalOpen(true)}
+                                    title={licenseInfo.isExpired ? 'License expired — open' : `Renewal in ${licenseInfo.daysRemaining} days`}
+                                    aria-label="License and subscription"
+                                    className={`w-full flex items-center justify-center p-2 rounded-lg ${licenseInfo.isExpired ? 'bg-rose-600' : 'bg-amber-600'} text-white`}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                                </button>
+                            )}
+                            {isLocalOnlyMode() && companyCtx?.activeCompany && (
+                                <button
+                                    type="button"
+                                    onClick={() => companyCtx.switchCompany()}
+                                    className="w-full flex items-center justify-center p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/50"
+                                    title={`Switch company (${companyCtx.activeCompany.company_name})`}
+                                    aria-label="Switch company"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 16h5v5" /></svg>
+                                </button>
+                            )}
+                            <div className="flex flex-col items-center gap-2 p-2 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold" title={userName}>
+                                    {userName.charAt(0).toUpperCase()}
                                 </div>
-                                <div className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
-                                    {licenseInfo.isExpired ? 'Renew' : 'Renew'}
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleLogout}
+                                    className="p-2 rounded-md border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+                                    title="Logout"
+                                    aria-label="Logout"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                                </button>
                             </div>
-                        </button>
-                    )}
-
-                    <div className="space-y-2">
-                        {/* User Info with inline logout */}
-                        <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
-                                {userName.charAt(0).toUpperCase()}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-sm font-semibold text-white truncate leading-tight mb-0.5" title={userName}>
-                                    {userName}
+                            {showLoggedInUsersRow && (
+                                <div className="flex justify-center text-xs font-semibold text-emerald-400 tabular-nums" title="Users logged in">
+                                    {loggedInUsersCount}
                                 </div>
-                                {organizationName && (
-                                    <div className="text-xs font-medium text-indigo-300 truncate mb-0.5" title={organizationName}>
-                                        {organizationName}
-                                    </div>
-                                )}
-                                {userRole && (
-                                    <div className="text-[10px] text-slate-400 truncate capitalize">
-                                        {userRole}
-                                    </div>
-                                )}
+                            )}
+                            {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsChatModalOpen(true)}
+                                    className={`w-full flex items-center justify-center p-2 rounded-lg bg-primary hover:bg-ds-primary-hover text-ds-on-primary relative transition-colors duration-ds ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
+                                    title={`Chat (${onlineUsers} online)`}
+                                    aria-label="Open chat"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                                    {unreadMessageCount > 0 && (
+                                        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-0.5 bg-red-500 rounded text-[9px] font-bold leading-none flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="h-14 shrink-0 flex items-center justify-between gap-2 pl-4 pr-2 border-b border-app-sidebar-border/50 bg-app-sidebar/50 backdrop-blur-sm">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm shrink-0">
+                                    P
+                                </div>
+                                <div className="min-w-0">
+                                    <h1 className="text-sm font-bold tracking-wide truncate">
+                                        <span className="text-red-500">P</span>
+                                        <span className="text-white">Books</span>
+                                        <span className="text-primary">Pro</span>
+                                    </h1>
+                                    <div className="text-[10px] text-slate-500 font-mono">v{displayVersion}</div>
+                                </div>
                             </div>
                             <button
-                                onClick={handleLogout}
-                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-700 text-xs font-medium text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors"
+                                type="button"
+                                onClick={toggleMainNav}
+                                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+                                title={mainNavToggleTitle}
+                                aria-label={mainNavToggleTitle}
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-                                <span>Logout</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                    <polyline points="15 18 9 12 15 6" />
+                                </svg>
                             </button>
                         </div>
 
-                        {/* Online Users Info */}
-                        {onlineUsers !== null && onlineUsers > 1 && (
-                            <div className="space-y-2">
-                                <div className="px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                                    <div className="flex items-center gap-2">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-400">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <circle cx="12" cy="12" r="6"></circle>
-                                            <circle cx="12" cy="12" r="2"></circle>
-                                        </svg>
-                                        <span className="text-[10px] text-slate-400 font-medium">
-                                            Online Users: <span className="text-green-400 font-semibold">{onlineUsers}</span>
-                                        </span>
+                        <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent min-h-0">
+                            {navGroups.map((group, idx) => {
+                                const isCollapsed = collapsedGroups[group.title] || false;
+
+                                return (
+                                    <div key={idx} className="space-y-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleToggleGroup(group.title)}
+                                            className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors group/header"
+                                        >
+                                            <span className="opacity-80 group-hover/header:opacity-100">{group.title}</span>
+                                            <div className="text-slate-600 group-hover/header:text-slate-400">
+                                                {isCollapsed ?
+                                                    React.cloneElement(ICONS.chevronRight as any, { width: 14, height: 14 }) :
+                                                    React.cloneElement(ICONS.chevronDown as any, { width: 14, height: 14 })
+                                                }
+                                            </div>
+                                        </button>
+
+                                        <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
+                                            {group.items.map((item) => {
+                                                const active = isCurrent(item.page as Page);
+                                                return (
+                                                    <button
+                                                        key={item.page}
+                                                        type="button"
+                                                        onClick={() => setCurrentPage(item.page as Page)}
+                                                        className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-1.5 rounded-md text-xs font-medium transition-all duration-ds group border-l-[3px] ${active
+                                                                ? 'border-primary bg-nav-active text-app-text'
+                                                                : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'
+                                                            }`}
+                                                    >
+                                                        <div className={`transition-colors duration-ds shrink-0 ${active ? 'text-primary' : 'text-app-muted group-hover:text-app-text'}`}>
+                                                            {React.cloneElement(item.icon as any, { width: 16, height: 16 })}
+                                                        </div>
+                                                        <span className="truncate">{item.label}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
+                                );
+                            })}
+                        </nav>
+
+                        <div className="p-3 border-t border-slate-800 bg-slate-900/50 shrink-0 overflow-x-hidden">
+                            {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                                 <button
-                                    onClick={() => setIsChatModalOpen(true)}
-                                    className={`w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2 relative ${unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                    type="button"
+                                    onClick={() => setIsLicenseModalOpen(true)}
+                                    className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
+                                        ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                                        : 'bg-gradient-to-r from-amber-500 to-orange-600'
                                         }`}
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                    </svg>
-                                    Chat
-                                    {unreadMessageCount > 0 && (
-                                        <>
-                                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
-                                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-                                        </>
-                                    )}
+                                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                    <div className="relative flex items-center justify-between">
+                                        <div className="text-left">
+                                            <div className="text-[10px] font-bold opacity-90">
+                                                {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
+                                            </div>
+                                            <div className="text-sm font-bold leading-tight">
+                                                {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
+                                            </div>
+                                        </div>
+                                        <div className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
+                                            Renew
+                                        </div>
+                                    </div>
                                 </button>
+                            )}
+
+                            <div className="space-y-2">
+                                {isLocalOnlyMode() && companyCtx?.activeCompany && (
+                                    <button
+                                        type="button"
+                                        onClick={() => companyCtx.switchCompany()}
+                                        className="w-full flex items-center gap-2 p-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/70 border border-slate-700/50 transition-colors text-xs min-w-0"
+                                        title="Switch to another company"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 16h5v5" /></svg>
+                                        <span className="truncate">{companyCtx.activeCompany.company_name}</span>
+                                        <span className="text-slate-500 ml-auto text-[10px] shrink-0">Switch</span>
+                                    </button>
+                                )}
+
+                                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 min-w-0">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
+                                        {userName.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-semibold text-white truncate leading-tight mb-0.5" title={userName}>
+                                            {userName}
+                                        </div>
+                                        {organizationName && (
+                                            <div className="text-xs font-medium text-indigo-300 truncate mb-0.5" title={organizationName}>
+                                                {organizationName}
+                                            </div>
+                                        )}
+                                        {effectiveRole && (
+                                            <div className="text-[10px] text-slate-400 truncate capitalize">
+                                                {effectiveRole}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleLogout}
+                                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-700 text-xs font-medium text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors shrink-0"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                                        <span>Logout</span>
+                                    </button>
+                                </div>
+
+                                {showLoggedInUsersRow && (
+                                    <div
+                                        className="px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/40"
+                                        title={isLocalOnlyMode() ? 'Active sessions on this device' : 'Users currently signed in'}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[11px] text-slate-400 font-medium">Users logged in</span>
+                                            <span className="text-sm font-semibold text-emerald-400 tabular-nums">{loggedInUsersCount}</span>
+                                        </div>
+                                        {isLocalOnlyMode() && (
+                                            <div className="text-[10px] text-slate-500 mt-0.5">This device</div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsChatModalOpen(true)}
+                                        className={`w-full px-3 py-2 rounded-lg bg-primary hover:bg-ds-primary-hover text-ds-on-primary text-xs font-medium transition-colors duration-ds flex items-center justify-center gap-2 relative ${unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                            }`}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                        </svg>
+                                        Chat
+                                        {unreadMessageCount > 0 && (
+                                            <>
+                                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
+                                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
                             </div>
-                        )}
-                    </div>
-                </div>
+                        </div>
+                    </>
+                )}
             </aside>
             {/* License Management Modal */}
             {isLicenseModalOpen && (

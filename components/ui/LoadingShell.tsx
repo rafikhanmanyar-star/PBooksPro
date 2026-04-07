@@ -11,7 +11,7 @@ const LoadingShell: React.FC = () => (
   >
     {/* Sidebar placeholder - same width as real Sidebar (md:pl-64) */}
     <div
-      className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-64 bg-gray-50 border-r border-gray-200"
+      className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 bg-gray-50 border-r border-gray-200 sidebar-desktop-width"
       aria-hidden
     >
       <div className="h-14 flex items-center px-4 border-b border-gray-200">
@@ -25,7 +25,7 @@ const LoadingShell: React.FC = () => (
     </div>
 
     {/* Main content area */}
-    <div className="flex-1 flex flex-col min-w-0 md:pl-64">
+    <div className="flex-1 flex flex-col min-w-0 main-content-offset overflow-x-hidden">
       {/* Header placeholder */}
       <header className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-gray-200 bg-white">
         <div className="h-5 w-24 bg-gray-200 rounded animate-pulse" />

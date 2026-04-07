@@ -8,6 +8,8 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
+import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
+import { currentMonthYyyyMm } from '../../utils/dateUtils';
 
 interface ManualServiceChargeModalProps {
     isOpen: boolean;
@@ -18,7 +20,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert } = useNotification();
 
-    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [month, setMonth] = useState(currentMonthYyyyMm()); // YYYY-MM
     const [propertyId, setPropertyId] = useState('');
     const [amount, setAmount] = useState('');
 
@@ -52,7 +54,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
     // Reset on open
     useEffect(() => {
         if (isOpen) {
-            setMonth(new Date().toISOString().slice(0, 7));
+            setMonth(currentMonthYyyyMm());
             setPropertyId('');
             setAmount('');
         }
@@ -82,8 +84,8 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
         }
 
         // 1. Identify Categories
-        let rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        let serviceIncomeCategory = state.categories.find(c => c.name === 'Service Charge Income');
+        let rentalIncomeCategory = state.categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
+        let serviceIncomeCategory = state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
 
         // Ensure categories exist (similar to bulk run)
         if (!rentalIncomeCategory || !serviceIncomeCategory) {
@@ -122,6 +124,12 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
         }
         
         const baseTimestamp = Date.now();
+        const ownerId = getOwnerIdForPropertyOnDate(
+            property.id,
+            dateStr,
+            state.propertyOwnershipHistory || [],
+            property.ownerId
+        );
 
         const debitTx: Transaction = {
             id: `bm-debit-man-${baseTimestamp}`,
@@ -134,6 +142,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
             propertyId: property.id,
             buildingId: property.buildingId,
             contactId: property.ownerId,
+            ownerId,
             isSystem: true,
         };
 
@@ -147,6 +156,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
             categoryId: serviceIncomeCategory.id, 
             propertyId: property.id,
             buildingId: property.buildingId,
+            ownerId,
             isSystem: true,
         };
 
@@ -154,6 +164,12 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
         dispatch({ type: 'SET_LAST_SERVICE_CHARGE_RUN', payload: new Date().toISOString() });
 
         showToast(`Service charge of ${CURRENCY} ${numAmount} applied to ${property.name}.`, 'success');
+        // Persist to DB immediately so data is not lost on logout/close/switch
+        setTimeout(() => {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('save-state-before-logout'));
+            }
+        }, 150);
         onClose();
     };
 

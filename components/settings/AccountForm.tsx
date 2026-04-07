@@ -9,7 +9,8 @@ import ComboBox from '../ui/ComboBox';
 import { useAppContext } from '../../context/AppContext';
 
 const SYSTEM_ACCOUNT_NAMES = new Set([
-    'cash', 'accounts receivable', 'accounts payable', 'owner equity', 'internal clearing'
+    'cash', 'accounts receivable', 'accounts payable', 'owner equity', 'internal clearing',
+    'security liability', 'project received assets'
 ]);
 
 interface AccountFormProps {
@@ -45,8 +46,9 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
         );
     }, [state.accounts, type, accountToEdit]);
 
-    const isReservedName = !accountToEdit?.id?.startsWith('sys-acc-') && 
-        SYSTEM_ACCOUNT_NAMES.has(name.toLowerCase().trim());
+    const id = accountToEdit?.id ?? '';
+    const isSystemAccountId = id.includes('sys-acc-');
+    const isReservedName = !isSystemAccountId && SYSTEM_ACCOUNT_NAMES.has(name.toLowerCase().trim());
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

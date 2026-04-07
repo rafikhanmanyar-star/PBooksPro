@@ -1,20 +1,18 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { ContactType, InvoiceType, TransactionType, ProjectAgreementStatus } from '../../types';
+import { ContactType, InvoiceType, TransactionType, ProjectAgreementStatus, Transaction } from '../../types';
 import Card from '../ui/Card';
-import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { useNotification } from '../../context/NotificationContext';
-import ReportToolbar, { ReportDateRange } from './ReportToolbar';
-import { formatDate } from '../../utils/dateUtils';
-import { WhatsAppService } from '../../services/whatsappService';
+import ReportToolbar from './ReportToolbar';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { usePrintContext } from '../../context/PrintContext';
-import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { OWNER_LEDGER_PRINT_CSS } from './ownerLedgerPrint.css';
 
 interface LedgerItem {
     id: string;
@@ -40,22 +38,59 @@ interface AgreementSummary {
     remainingAmount: number;
 }
 
+/** Tree + filters: all owners, one owner, or one unit (under an owner). */
+export type LedgerTreeSelection =
+    | { kind: 'all' }
+    | { kind: 'owner'; ownerId: string }
+    | { kind: 'unit'; unitId: string };
+
+function invoiceMatchesUnit(
+    inv: { id: string; unitId?: string | null; agreementId?: string | null },
+    unitId: string,
+    agreementUnitMap: Map<string, Set<string>>
+): boolean {
+    if (inv.unitId === unitId) return true;
+    if (inv.agreementId) {
+        const set = agreementUnitMap.get(inv.agreementId);
+        return set?.has(unitId) ?? false;
+    }
+    return false;
+}
+
+function transactionMatchesUnit(
+    tx: Transaction,
+    unitId: string,
+    agreementUnitMap: Map<string, Set<string>>,
+    invoices: { id: string; unitId?: string | null; agreementId?: string | null }[]
+): boolean {
+    if (tx.unitId === unitId) return true;
+    if (tx.invoiceId) {
+        const inv = invoices.find(i => i.id === tx.invoiceId);
+        if (inv) return invoiceMatchesUnit(inv, unitId, agreementUnitMap);
+    }
+    if (tx.agreementId) {
+        return agreementUnitMap.get(tx.agreementId)?.has(unitId) ?? false;
+    }
+    return false;
+}
+
 const ClientLedgerReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
-    const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();
+
+    const handlePrint = () => {
+        window.print();
+    };
     
-    // Date Filter State
-    const [dateRangeType, setDateRangeType] = useState<'total' | 'thisMonth' | 'lastMonth' | 'custom'>('thisMonth');
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
+    // Date Filter State (default: Total = full history range)
+    const [dateRangeType, setDateRangeType] = useState<'total' | 'thisMonth' | 'lastMonth' | 'custom'>('total');
+    const [startDate, setStartDate] = useState('2000-01-01');
+    const [endDate, setEndDate] = useState('2100-12-31');
     
-    // Default to All Owners
-    const [selectedOwnerId, setSelectedOwnerId] = useState<string>('all');
-    const [searchQuery, setSearchQuery] = useState('');
-    const [groupBy, setGroupBy] = useState('');
-    
+    const [ledgerSelection, setLedgerSelection] = useState<LedgerTreeSelection>({ kind: 'all' });
+    const [treeSearch, setTreeSearch] = useState('');
+
     // Sorting
     const [sortConfig, setSortConfig] = useState<{ key: keyof LedgerItem; direction: 'asc' | 'desc' } | null>(null);
 
@@ -66,11 +101,11 @@ const ClientLedgerReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (type === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (type === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -84,50 +119,139 @@ const ClientLedgerReport: React.FC = () => {
 
     // Include both CLIENT and OWNER types
     const owners = useMemo(() => state.contacts.filter(c => c.type === ContactType.CLIENT || c.type === ContactType.OWNER), [state.contacts]);
-    const ownerItems = useMemo(() => [{ id: 'all', name: 'All Owners' }, ...owners], [owners]);
+
+    const agreementUnitMap = useMemo(() => {
+        const m = new Map<string, Set<string>>();
+        state.projectAgreements.forEach(pa => {
+            m.set(pa.id, new Set(pa.unitIds || []));
+        });
+        return m;
+    }, [state.projectAgreements]);
+
+    /** Owners with units for sidebar tree (agreements + installment invoices). */
+    const ledgerTreeOwners = useMemo(() => {
+        const ownerUnits = new Map<string, Map<string, { name: string; projectName: string }>>();
+        const put = (ownerId: string, unitId: string, unitName: string, projectName: string) => {
+            if (!ownerUnits.has(ownerId)) ownerUnits.set(ownerId, new Map());
+            ownerUnits.get(ownerId)!.set(unitId, { name: unitName, projectName });
+        };
+        state.projectAgreements.forEach(pa => {
+            const project = state.projects.find(p => p.id === pa.projectId);
+            const pn = project?.name || 'Unknown';
+            (pa.unitIds || []).forEach(uid => {
+                const u = state.units.find(x => x.id === uid);
+                if (u) put(pa.clientId, uid, u.name, pn);
+            });
+        });
+        state.invoices
+            .filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT && inv.contactId && inv.unitId)
+            .forEach(inv => {
+                const u = state.units.find(x => x.id === inv.unitId);
+                if (!u) return;
+                const project = inv.projectId ? state.projects.find(p => p.id === inv.projectId) : undefined;
+                put(inv.contactId!, inv.unitId!, u.name, project?.name || 'Unknown');
+            });
+        return [...ownerUnits.entries()]
+            .map(([ownerId, umap]) => {
+                const owner = state.contacts.find(c => c.id === ownerId);
+                const units = [...umap.entries()]
+                    .map(([id, meta]) => ({ id, name: meta.name, projectName: meta.projectName }))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+                return { id: ownerId, name: owner?.name || 'Unknown', units };
+            })
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [state.projectAgreements, state.projects, state.units, state.invoices, state.contacts]);
+
+    const filteredLedgerTree = useMemo(() => {
+        const q = treeSearch.trim().toLowerCase();
+        if (!q) return ledgerTreeOwners;
+        return ledgerTreeOwners
+            .map(o => {
+                const ownerHit = o.name.toLowerCase().includes(q);
+                const units = ownerHit
+                    ? o.units
+                    : o.units.filter(
+                          u =>
+                              u.name.toLowerCase().includes(q) ||
+                              u.projectName.toLowerCase().includes(q)
+                      );
+                if (!ownerHit && units.length === 0) return null;
+                return { ...o, units };
+            })
+            .filter(Boolean) as typeof ledgerTreeOwners;
+    }, [ledgerTreeOwners, treeSearch]);
+
+    const resolvedWhatsappOwnerId = useMemo(() => {
+        if (ledgerSelection.kind === 'owner') return ledgerSelection.ownerId;
+        if (ledgerSelection.kind === 'unit') {
+            const pa = state.projectAgreements.find(p => p.unitIds?.includes(ledgerSelection.unitId));
+            if (pa) return pa.clientId;
+            const inv = state.invoices.find(
+                i => i.invoiceType === InvoiceType.INSTALLMENT && i.unitId === ledgerSelection.unitId
+            );
+            return inv?.contactId ?? null;
+        }
+        return null;
+    }, [ledgerSelection, state.projectAgreements, state.invoices]);
+
+    const selectionSubtitle = useMemo(() => {
+        if (ledgerSelection.kind === 'all') return 'All Owners';
+        if (ledgerSelection.kind === 'owner') {
+            return state.contacts.find(c => c.id === ledgerSelection.ownerId)?.name || 'Owner';
+        }
+        const u = state.units.find(x => x.id === ledgerSelection.unitId);
+        const oid = resolvedWhatsappOwnerId;
+        const on = oid ? state.contacts.find(c => c.id === oid)?.name : '';
+        return u ? `Unit: ${u.name}${on ? ` (${on})` : ''}` : 'Unit';
+    }, [ledgerSelection, state.contacts, state.units, resolvedWhatsappOwnerId]);
 
     // --- Summary Data Calculation ---
     const agreementSummaries = useMemo<AgreementSummary[]>(() => {
-        const agreements = state.projectAgreements.filter(pa => 
-            selectedOwnerId === 'all' || pa.clientId === selectedOwnerId
-        );
+        const agreements = state.projectAgreements.filter(pa => {
+            if (ledgerSelection.kind === 'all') return true;
+            if (ledgerSelection.kind === 'owner') return pa.clientId === ledgerSelection.ownerId;
+            return pa.unitIds?.includes(ledgerSelection.unitId) ?? false;
+        });
 
         return agreements.map(pa => {
             const owner = state.contacts.find(c => c.id === pa.clientId);
             const project = state.projects.find(p => p.id === pa.projectId);
             const units = state.units.filter(u => pa.unitIds?.includes(u.id) ?? false);
-            
-            // Calculate Total Received based on actual transactions linked to invoices of this agreement
-            // This matches how the ledger calculates payments (using transactions, not invoice.paidAmount)
-            // Only count INSTALLMENT invoices to match the ledger filtering logic
-            const agreementInvoices = state.invoices.filter(inv => 
-                inv.agreementId === pa.id && 
-                inv.invoiceType === InvoiceType.INSTALLMENT &&
-                (selectedOwnerId === 'all' || inv.contactId === selectedOwnerId)
+            const unitLabel =
+                ledgerSelection.kind === 'unit'
+                    ? units.find(u => u.id === ledgerSelection.unitId)?.name ||
+                      state.units.find(u => u.id === ledgerSelection.unitId)?.name ||
+                      units.map(u => u.name).join(', ')
+                    : units.map(u => u.name).join(', ');
+
+            let agreementInvoices = state.invoices.filter(
+                inv =>
+                    inv.agreementId === pa.id &&
+                    inv.invoiceType === InvoiceType.INSTALLMENT &&
+                    (ledgerSelection.kind === 'all' || inv.contactId === pa.clientId)
             );
-            
-            // Get invoice IDs for quick lookup
+            if (ledgerSelection.kind === 'owner') {
+                agreementInvoices = agreementInvoices.filter(inv => inv.contactId === ledgerSelection.ownerId);
+            } else if (ledgerSelection.kind === 'unit') {
+                agreementInvoices = agreementInvoices.filter(inv =>
+                    invoiceMatchesUnit(inv, ledgerSelection.unitId, agreementUnitMap)
+                );
+            }
+
             const agreementInvoiceIds = new Set(agreementInvoices.map(inv => inv.id));
-            
-            // Calculate total received - match ledger logic exactly
+
             const totalReceived = state.transactions
                 .filter(tx => {
-                    // Must be INCOME type
                     if (tx.type !== TransactionType.INCOME) return false;
-                    
-                    // Must be linked to an invoice
                     if (!tx.invoiceId) return false;
-                    
-                    // Invoice must belong to this agreement
                     if (!agreementInvoiceIds.has(tx.invoiceId)) return false;
-                    
-                    // Verify the invoice is INSTALLMENT type (double check)
                     const inv = state.invoices.find(i => i.id === tx.invoiceId);
                     if (!inv || inv.invoiceType !== InvoiceType.INSTALLMENT) return false;
-                    
-                    // If filtering by owner, ensure transaction matches
-                    if (selectedOwnerId !== 'all' && tx.contactId !== selectedOwnerId) return false;
-                    
+                    if (ledgerSelection.kind === 'owner' && tx.contactId !== ledgerSelection.ownerId) return false;
+                    if (ledgerSelection.kind === 'unit' && tx.invoiceId) {
+                        const inv2 = state.invoices.find(i => i.id === tx.invoiceId);
+                        if (inv2 && !invoiceMatchesUnit(inv2, ledgerSelection.unitId, agreementUnitMap)) return false;
+                    }
                     return true;
                 })
                 .reduce((sum, tx) => sum + tx.amount, 0);
@@ -143,7 +267,7 @@ const ClientLedgerReport: React.FC = () => {
                 id: pa.id,
                 ownerName: owner?.name || 'Unknown',
                 projectName: project?.name || 'Unknown',
-                unitNames: units.map(u => u.name).join(', '),
+                unitNames: unitLabel,
                 listPrice: pa.listPrice,
                 discounts,
                 sellingPrice: pa.sellingPrice,
@@ -151,7 +275,16 @@ const ClientLedgerReport: React.FC = () => {
                 remainingAmount: pa.sellingPrice - totalReceived
             };
         });
-    }, [state.projectAgreements, state.contacts, state.projects, state.units, state.invoices, state.transactions, selectedOwnerId]);
+    }, [
+        state.projectAgreements,
+        state.contacts,
+        state.projects,
+        state.units,
+        state.invoices,
+        state.transactions,
+        ledgerSelection,
+        agreementUnitMap
+    ]);
 
 
     const reportData = useMemo<LedgerItem[]>(() => {
@@ -164,12 +297,14 @@ const ClientLedgerReport: React.FC = () => {
         const rentalCategoryIds = new Set(state.categories.filter(c => c.isRental).map(c => c.id));
 
         // 1. Invoices (Debit - They owe us) - Only Project Installments
-        let ownerInvoices = state.invoices.filter(inv => 
-            inv.invoiceType === InvoiceType.INSTALLMENT
-        );
-        
-        if (selectedOwnerId !== 'all') {
-            ownerInvoices = ownerInvoices.filter(inv => inv.contactId === selectedOwnerId);
+        let ownerInvoices = state.invoices.filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT);
+
+        if (ledgerSelection.kind === 'owner') {
+            ownerInvoices = ownerInvoices.filter(inv => inv.contactId === ledgerSelection.ownerId);
+        } else if (ledgerSelection.kind === 'unit') {
+            ownerInvoices = ownerInvoices.filter(inv =>
+                invoiceMatchesUnit(inv, ledgerSelection.unitId, agreementUnitMap)
+            );
         }
 
         // 2. Payments Received (Credit - They paid us) - INCOME
@@ -193,14 +328,20 @@ const ClientLedgerReport: React.FC = () => {
         // STRICTER FILTER: Exclude Rental Categories and ensure it's likely project related
         ownerRefunds = ownerRefunds.filter(tx => !tx.categoryId || !rentalCategoryIds.has(tx.categoryId));
 
-        if (selectedOwnerId !== 'all') {
-            ownerPayments = ownerPayments.filter(tx => tx.contactId === selectedOwnerId);
-            ownerRefunds = ownerRefunds.filter(tx => tx.contactId === selectedOwnerId);
-        } else {
-            // If 'all', ensure we only get transactions for relevant project clients
+        if (ledgerSelection.kind === 'all') {
             const ownerIds = new Set(owners.map(c => c.id));
             ownerPayments = ownerPayments.filter(tx => tx.contactId && ownerIds.has(tx.contactId));
             ownerRefunds = ownerRefunds.filter(tx => tx.contactId && ownerIds.has(tx.contactId));
+        } else if (ledgerSelection.kind === 'owner') {
+            ownerPayments = ownerPayments.filter(tx => tx.contactId === ledgerSelection.ownerId);
+            ownerRefunds = ownerRefunds.filter(tx => tx.contactId === ledgerSelection.ownerId);
+        } else {
+            ownerPayments = ownerPayments.filter(tx =>
+                transactionMatchesUnit(tx, ledgerSelection.unitId, agreementUnitMap, state.invoices)
+            );
+            ownerRefunds = ownerRefunds.filter(tx =>
+                transactionMatchesUnit(tx, ledgerSelection.unitId, agreementUnitMap, state.invoices)
+            );
         }
 
         const rawItems: { date: string, ownerName: string, unitName: string, projectName: string, particulars: string, debit: number, credit: number }[] = [];
@@ -282,17 +423,24 @@ const ClientLedgerReport: React.FC = () => {
         // 4. Synthetic Penalties (Debit)
         state.projectAgreements.forEach(pa => {
             if (pa.status === ProjectAgreementStatus.CANCELLED && pa.cancellationDetails && pa.cancellationDetails.penaltyAmount > 0) {
-                if (selectedOwnerId === 'all' || pa.clientId === selectedOwnerId) {
+                const paMatches =
+                    ledgerSelection.kind === 'all' ||
+                    (ledgerSelection.kind === 'owner' && pa.clientId === ledgerSelection.ownerId) ||
+                    (ledgerSelection.kind === 'unit' && (pa.unitIds?.includes(ledgerSelection.unitId) ?? false));
+                if (paMatches) {
                     const cancelDate = new Date(pa.cancellationDetails.date);
                     if (cancelDate >= start && cancelDate <= end) {
                         const owner = state.contacts.find(c => c.id === pa.clientId);
                         const project = state.projects.find(p => p.id === pa.projectId);
-                        const units = state.units.filter(u => pa.unitIds?.includes(u.id) ?? false).map(u => u.name).join(', ');
+                        const unitNamesStr =
+                            ledgerSelection.kind === 'unit'
+                                ? state.units.find(u => u.id === ledgerSelection.unitId)?.name || '-'
+                                : state.units.filter(u => pa.unitIds?.includes(u.id) ?? false).map(u => u.name).join(', ');
                         
                         rawItems.push({
                             date: pa.cancellationDetails.date,
                             ownerName: owner?.name || 'Unknown',
-                            unitName: units || '-',
+                            unitName: unitNamesStr || '-',
                             projectName: project?.name || '-',
                             particulars: `Cancellation Penalty - Agreement #${pa.agreementNumber}`,
                             debit: pa.cancellationDetails.penaltyAmount,
@@ -306,13 +454,8 @@ const ClientLedgerReport: React.FC = () => {
         // Sort Chronologically
         rawItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        // Sorting Logic for Group By or SortConfig
-        if (groupBy === 'owner') {
-            rawItems.sort((a, b) => a.ownerName.localeCompare(b.ownerName) || new Date(a.date).getTime() - new Date(b.date).getTime());
-        } else if (groupBy === 'unit') {
-            rawItems.sort((a, b) => a.unitName.localeCompare(b.unitName) || new Date(a.date).getTime() - new Date(b.date).getTime());
-        } else if (sortConfig) {
-             rawItems.sort((a, b) => {
+        if (sortConfig) {
+            rawItems.sort((a, b) => {
                 if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -320,36 +463,14 @@ const ClientLedgerReport: React.FC = () => {
         }
 
         let runningBalance = 0;
-        let currentGroupKey = '';
-        let finalItems: LedgerItem[] = [];
-
-        finalItems = rawItems.map((item, index) => {
-            // Reset balance on group change
-            let groupKey = '';
-            if (groupBy === 'owner') groupKey = item.ownerName;
-            else if (groupBy === 'unit') groupKey = item.unitName;
-            
-            if (groupBy && groupKey !== currentGroupKey) {
-                currentGroupKey = groupKey;
-                runningBalance = 0;
-            }
-
+        const finalItems: LedgerItem[] = rawItems.map((item, index) => {
             runningBalance += item.debit - item.credit;
             return { ...item, id: `${item.date}-${index}`, balance: runningBalance };
         });
-        
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            finalItems = finalItems.filter(item => 
-                item.particulars.toLowerCase().includes(q) ||
-                item.ownerName.toLowerCase().includes(q) ||
-                item.unitName.toLowerCase().includes(q)
-            );
-        }
 
         return finalItems;
 
-    }, [state, startDate, endDate, selectedOwnerId, searchQuery, owners, groupBy, sortConfig]);
+    }, [state, startDate, endDate, ledgerSelection, agreementUnitMap, owners, sortConfig]);
     
     const requestSort = (key: keyof LedgerItem) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -383,9 +504,10 @@ const ClientLedgerReport: React.FC = () => {
     };
 
     const handleWhatsApp = async () => {
-        const selectedOwner = owners.find(c => c.id === selectedOwnerId);
-        if (selectedOwnerId === 'all' || !selectedOwner?.contactNo) {
-            await showAlert("Please select a single owner with a contact number to send a report.");
+        const waOwnerId = resolvedWhatsappOwnerId;
+        const selectedOwner = waOwnerId ? owners.find(c => c.id === waOwnerId) : undefined;
+        if (!waOwnerId || !selectedOwner?.contactNo) {
+            await showAlert("Please select a single owner (or a unit) with a contact number to send a report.");
             return;
         }
 
@@ -396,8 +518,12 @@ const ClientLedgerReport: React.FC = () => {
             message += `Period: ${formatDate(startDate)} to ${formatDate(endDate)}\n\n`;
             message += `Final Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
             message += `This is an automated summary from PBooksPro.`;
-        
-            WhatsAppService.sendMessage({ contact: selectedOwner, message });
+
+            sendOrOpenWhatsApp(
+                { contact: selectedOwner, message, phoneNumber: selectedOwner.contactNo },
+                () => state.whatsAppMode,
+                openChat
+            );
         } catch (error) {
             await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
@@ -405,92 +531,58 @@ const ClientLedgerReport: React.FC = () => {
     
     const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
 
-    const SortHeader: React.FC<{ label: string, sortKey: keyof LedgerItem, align?: 'left' | 'right' }> = ({ label, sortKey, align = 'left' }) => (
+    const SortHeader: React.FC<{ label: string; sortKey: keyof LedgerItem; align?: 'left' | 'right' }> = ({
+        label,
+        sortKey,
+        align = 'left'
+    }) => (
         <th 
-            className={`px-3 py-2 text-${align} font-semibold text-slate-600 bg-slate-50 cursor-pointer hover:bg-slate-100 select-none`}
+            className={`px-3 py-2 font-semibold text-app-muted bg-app-table-header cursor-pointer hover:bg-app-toolbar/60 select-none ${align === 'right' ? 'text-right num' : 'text-left'}`}
             onClick={() => requestSort(sortKey)}
         >
             <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
                 {label}
                 {sortConfig?.key === sortKey && (
-                    <span className="text-xs">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    <span className="text-xs text-app-muted">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                 )}
             </div>
         </th>
     );
 
-    // Helper to render the ledger rows with grouping headers
-    const renderLedgerRows = () => {
-        let lastGroupKey = '';
-        return (
-            <tbody className="bg-white divide-y divide-slate-200">
-                {reportData.map(item => {
-                    let showGroupHeader = false;
-                    let groupHeaderLabel = '';
-                    
-                    if (groupBy === 'owner') {
-                        if (item.ownerName !== lastGroupKey) {
-                            lastGroupKey = item.ownerName;
-                            showGroupHeader = true;
-                            groupHeaderLabel = `Owner: ${item.ownerName}`;
-                        }
-                    } else if (groupBy === 'unit') {
-                        if (item.unitName !== lastGroupKey) {
-                            lastGroupKey = item.unitName;
-                            showGroupHeader = true;
-                            groupHeaderLabel = `Unit: ${item.unitName}`;
-                        }
-                    }
-
-                    return (
-                        <React.Fragment key={item.id}>
-                            {showGroupHeader && (
-                                <tr className="bg-slate-100">
-                                    <td colSpan={7} className="px-3 py-2 font-bold text-slate-700 border-t border-b border-slate-300">
-                                        {groupHeaderLabel}
-                                    </td>
-                                </tr>
-                            )}
-                            <tr>
-                                <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.date)}</td>
-                                <td className="px-3 py-2 whitespace-normal break-words">{item.ownerName}</td>
-                                <td className="px-3 py-2 whitespace-normal break-words">{item.unitName}</td>
-                                <td className="px-3 py-2 max-w-xs whitespace-normal break-words">{item.particulars}</td>
-                                <td className="px-3 py-2 text-right whitespace-nowrap">{item.debit > 0 ? `${CURRENCY} ${item.debit.toLocaleString()}` : '-'}</td>
-                                <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.credit > 0 ? `${CURRENCY} ${item.credit.toLocaleString()}` : '-'}</td>
-                                <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-slate-700'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
-                            </tr>
-                        </React.Fragment>
-                    );
-                })}
-            </tbody>
-        );
-    };
+    const renderLedgerRows = () => (
+        <tbody className="divide-y divide-app-border">
+            {reportData.map(item => (
+                <tr key={item.id} className="hover:bg-app-toolbar/60 transition-colors">
+                    <td className="px-3 py-2 whitespace-nowrap text-app-text">{formatDate(item.date)}</td>
+                    <td className="px-3 py-2 whitespace-normal break-words text-app-text">{item.ownerName}</td>
+                    <td className="px-3 py-2 whitespace-normal break-words text-app-text">{item.unitName}</td>
+                    <td className="px-3 py-2 max-w-xs whitespace-normal break-words text-app-text">{item.particulars}</td>
+                    <td className="px-3 py-2 text-right text-ds-danger tabular-nums whitespace-nowrap num">{item.debit > 0 ? `${CURRENCY} ${item.debit.toLocaleString()}` : '-'}</td>
+                    <td className="px-3 py-2 text-right text-ds-success tabular-nums whitespace-nowrap num">{item.credit > 0 ? `${CURRENCY} ${item.credit.toLocaleString()}` : '-'}</td>
+                    <td className={`px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap num ${item.balance > 0 ? 'text-ds-danger' : 'text-app-text'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
+                </tr>
+            ))}
+        </tbody>
+    );
 
     return (
         <>
-            <style>{STANDARD_PRINT_STYLES}</style>
+            <style>{OWNER_LEDGER_PRINT_CSS}</style>
             <div className="flex flex-col h-full space-y-4">
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 no-print">
                     <ReportToolbar
                         startDate={startDate}
                         endDate={endDate}
                         onDateChange={handleDateChange}
-                        searchQuery={searchQuery}
-                        onSearchChange={setSearchQuery}
                         onExport={handleExport}
-                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
+                        onPrint={handlePrint}
                         onWhatsApp={handleWhatsApp}
-                        disableWhatsApp={selectedOwnerId === 'all'}
-                        groupBy={groupBy}
-                        onGroupByChange={setGroupBy}
-                        groupByOptions={[
-                            { label: 'Owner', value: 'owner' },
-                            { label: 'Unit', value: 'unit' }
-                        ]}
+                        disableWhatsApp={!resolvedWhatsappOwnerId}
+                        hideSearch
+                        hideGroup
                         hideDate={dateRangeType !== 'custom'}
                     >
-                        <div className="flex flex-col gap-1 min-w-[240px]">
+                        <div className="flex flex-col gap-1 min-w-[240px] no-print">
                             <label className="block text-sm font-medium text-slate-600">Date Filter</label>
                             <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200 gap-1">
                                 {(['total', 'thisMonth', 'lastMonth', 'custom'] as const).map(type => (
@@ -508,81 +600,145 @@ const ClientLedgerReport: React.FC = () => {
                                 ))}
                             </div>
                         </div>
-                        <ComboBox label="Owner" items={ownerItems} selectedId={selectedOwnerId} onSelect={(item) => setSelectedOwnerId(item?.id || 'all')} allowAddNew={false} />
                     </ReportToolbar>
                 </div>
 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                    <Card className="min-h-full flex flex-col">
-                        <ReportHeader />
-                        <div className="text-center mb-6 flex-shrink-0">
-                            <h3 className="text-2xl font-bold">Owner Ledger (Project)</h3>
-                            <p className="text-sm text-slate-500">From {formatDate(startDate)} to {formatDate(endDate)}</p>
-                            <p className="text-sm text-slate-500 font-semibold">
-                                Owner: {selectedOwnerId === 'all' ? 'All Owners' : state.contacts.find(c=>c.id === selectedOwnerId)?.name}
-                            </p>
+                <div className="flex-grow flex flex-row min-h-0 gap-3 overflow-hidden bg-background">
+                    <aside className="no-print print:hidden flex flex-col w-64 min-w-[200px] max-w-[300px] flex-shrink-0 border border-app-border rounded-lg bg-app-card shadow-ds-card p-3">
+                        <span className="text-xs font-medium text-app-muted uppercase tracking-wide mb-2">Owners & units</span>
+                        <input
+                            type="search"
+                            value={treeSearch}
+                            onChange={e => setTreeSearch(e.target.value)}
+                            placeholder="Search owners / units..."
+                            className="w-full px-2 py-1.5 text-sm border border-app-border rounded-md bg-background text-app-text placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            aria-label="Filter owner and unit list"
+                        />
+                        <div className="flex-1 overflow-y-auto mt-3 space-y-1 min-h-0">
+                            <button
+                                type="button"
+                                onClick={() => setLedgerSelection({ kind: 'all' })}
+                                className={`w-full text-left px-2 py-2 rounded-md text-sm transition-colors ${
+                                    ledgerSelection.kind === 'all'
+                                        ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                                        : 'text-app-text hover:bg-app-toolbar'
+                                }`}
+                            >
+                                All owners
+                            </button>
+                            {filteredLedgerTree.map(owner => (
+                                <div key={owner.id} className="border-t border-app-border/60 pt-2 first:border-t-0 first:pt-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setLedgerSelection({ kind: 'owner', ownerId: owner.id })}
+                                        className={`w-full text-left px-2 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                            ledgerSelection.kind === 'owner' && ledgerSelection.ownerId === owner.id
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'text-app-text hover:bg-app-toolbar'
+                                        }`}
+                                    >
+                                        {owner.name}
+                                    </button>
+                                    <div className="mt-1 space-y-0.5 pl-2 border-l-2 border-app-border/80 ml-1.5">
+                                        {owner.units.map(u => (
+                                            <button
+                                                key={u.id}
+                                                type="button"
+                                                onClick={() => setLedgerSelection({ kind: 'unit', unitId: u.id })}
+                                                className={`w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors ${
+                                                    ledgerSelection.kind === 'unit' && ledgerSelection.unitId === u.id
+                                                        ? 'bg-indigo-600 text-white font-semibold'
+                                                        : 'text-app-muted hover:bg-app-toolbar hover:text-app-text'
+                                                }`}
+                                                title={u.projectName}
+                                            >
+                                                <span className="block truncate">{u.name}</span>
+                                                <span className="block truncate text-[10px] opacity-80">{u.projectName}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                            {filteredLedgerTree.length === 0 && (
+                                <p className="text-xs text-app-muted px-1 py-2">No owners/units match the tree filter.</p>
+                            )}
                         </div>
+                    </aside>
+
+                    <div className="flex-grow overflow-y-auto min-h-0 flex flex-col">
+                        <div id="print-area" className="print-container flex-grow min-h-0 flex flex-col">
+                            <Card className="min-h-full flex flex-col p-4 md:p-6 print-container-inner">
+                                <div className="owner-ledger-company-header">
+                                    <ReportHeader />
+                                </div>
+                                <div className="owner-ledger-title-block text-center mb-6 flex-shrink-0">
+                                    <h2 className="text-2xl font-bold text-app-text">Owner Ledger (Project)</h2>
+                                    <p className="text-sm text-app-muted">
+                                        From {formatDate(startDate)} to {formatDate(endDate)}
+                                    </p>
+                                    <p className="text-sm text-app-muted font-semibold">Selection: {selectionSubtitle}</p>
+                                </div>
 
                         {/* Summaries Section */}
                         {agreementSummaries.length > 0 && (
-                            <div className="mb-4 grid grid-cols-1 gap-4 print:break-inside-avoid overflow-y-auto max-h-[25vh] pr-1 border border-slate-100 rounded-lg p-2 bg-slate-50 flex-shrink-0">
+                            <div className="mb-4 grid grid-cols-1 gap-4 print:break-inside-avoid overflow-y-auto max-h-[25vh] pr-1 border border-app-border rounded-lg p-2 bg-app-toolbar/40 flex-shrink-0">
                                 {agreementSummaries.map(summary => (
-                                    <div key={summary.id} className="p-4 bg-white rounded-lg border border-slate-200 text-sm shadow-sm">
-                                        <div className="grid grid-cols-3 gap-4 divide-x divide-slate-200">
+                                    <div key={summary.id} className="p-4 bg-app-card rounded-lg border border-app-border text-sm shadow-ds-card">
+                                        <div className="summary-grid grid grid-cols-3 gap-4 divide-x divide-app-border">
                                             {/* Section 1: Owner information, unit name and project name */}
-                                            <div className="flex flex-col gap-2 pr-4">
+                                            <div className="summary-col flex flex-col gap-2 pr-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-slate-500 font-medium text-xs uppercase tracking-wide">Owner Information</span>
-                                                    <span className="font-bold text-slate-800 text-base">{summary.ownerName}</span>
+                                                    <span className="text-app-muted font-medium text-xs uppercase tracking-wide">Owner Information</span>
+                                                    <span className="font-bold text-app-text text-base">{summary.ownerName}</span>
                                                 </div>
                                                 <div className="flex flex-col gap-1 mt-2">
-                                                    <span className="text-slate-500 text-xs">Unit:</span>
-                                                    <span className="font-bold text-slate-800">{summary.unitNames}</span>
+                                                    <span className="text-app-muted text-xs">Unit:</span>
+                                                    <span className="font-bold text-app-text">{summary.unitNames}</span>
                                                 </div>
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-slate-500 text-xs">Project name:</span>
-                                                    <span className="font-semibold text-slate-700">{summary.projectName}</span>
+                                                    <span className="text-app-muted text-xs">Project name:</span>
+                                                    <span className="font-semibold text-app-text">{summary.projectName}</span>
                                                 </div>
                                             </div>
 
                                             {/* Section 2: List price and discounts */}
-                                            <div className="flex flex-col gap-2 px-4">
+                                            <div className="summary-col flex flex-col gap-2 px-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-slate-500 font-medium text-xs uppercase tracking-wide">Pricing</span>
+                                                    <span className="text-app-muted font-medium text-xs uppercase tracking-wide">Pricing</span>
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-slate-500">List price:</span>
-                                                        <span className="font-medium text-slate-800">{CURRENCY} {summary.listPrice.toLocaleString()}</span>
+                                                        <span className="text-app-muted">List price:</span>
+                                                        <span className="font-medium text-app-text tabular-nums">{CURRENCY} {summary.listPrice.toLocaleString()}</span>
                                                     </div>
                                                 </div>
                                                 {summary.discounts.length > 0 && (
                                                     <div className="flex flex-col gap-1 mt-2">
-                                                        <span className="text-slate-500 text-xs mb-1">Discounts:</span>
+                                                        <span className="text-app-muted text-xs mb-1">Discounts:</span>
                                                         {summary.discounts.map((d, i) => (
-                                                            <div key={i} className="flex justify-between text-slate-600 text-xs">
+                                                            <div key={i} className="flex justify-between text-app-muted text-xs">
                                                                 <span>{d.label}:</span>
-                                                                <span className="text-danger">-{CURRENCY} {d.amount.toLocaleString()}</span>
+                                                                <span className="text-ds-danger tabular-nums">-{CURRENCY} {d.amount.toLocaleString()}</span>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 )}
-                                                <div className="flex justify-between border-t border-slate-300 pt-2 mt-auto">
-                                                    <span className="font-semibold text-slate-700">Selling price:</span>
-                                                    <span className="font-bold text-indigo-700">{CURRENCY} {summary.sellingPrice.toLocaleString()}</span>
+                                                <div className="flex justify-between border-t border-app-border pt-2 mt-auto">
+                                                    <span className="font-semibold text-app-text">Selling price:</span>
+                                                    <span className="font-bold text-primary tabular-nums">{CURRENCY} {summary.sellingPrice.toLocaleString()}</span>
                                                 </div>
                                             </div>
 
                                             {/* Section 3: Payment received and remaining payment */}
-                                            <div className="flex flex-col gap-2 pl-4">
+                                            <div className="summary-col flex flex-col gap-2 pl-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-slate-500 font-medium text-xs uppercase tracking-wide">Payments</span>
+                                                    <span className="text-app-muted font-medium text-xs uppercase tracking-wide">Payments</span>
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-slate-500">Payment received:</span>
-                                                        <span className="font-semibold text-success">{CURRENCY} {summary.totalReceived.toLocaleString()}</span>
+                                                        <span className="text-app-muted">Payment received:</span>
+                                                        <span className="font-semibold text-ds-success tabular-nums">{CURRENCY} {summary.totalReceived.toLocaleString()}</span>
                                                     </div>
                                                 </div>
-                                                <div className="flex justify-between border-t border-slate-300 pt-2 mt-auto">
-                                                    <span className="font-semibold text-slate-700">Remaining:</span>
-                                                    <span className="font-bold text-danger text-base">{CURRENCY} {summary.remainingAmount.toLocaleString()}</span>
+                                                <div className="flex justify-between border-t border-app-border pt-2 mt-auto">
+                                                    <span className="font-semibold text-app-text">Remaining:</span>
+                                                    <span className="font-bold text-ds-danger text-base tabular-nums">{CURRENCY} {summary.remainingAmount.toLocaleString()}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -592,37 +748,42 @@ const ClientLedgerReport: React.FC = () => {
                         )}
 
                         {reportData.length > 0 ? (
-                            <div className="overflow-auto flex-grow border rounded-lg shadow-inner relative min-h-[300px]">
-                                <table className="min-w-full divide-y divide-slate-200 text-sm relative">
-                                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                            <div className="owner-ledger-table-wrap overflow-auto flex-grow border border-app-border rounded-lg shadow-ds-card relative min-h-[300px]">
+                                <table className="owner-ledger-print-table min-w-full divide-y divide-app-border text-sm relative">
+                                    <thead className="bg-app-table-header border-b border-app-border sticky top-0 z-10">
                                         <tr>
                                             <SortHeader label="Date" sortKey="date" align="left" />
                                             <SortHeader label="Owner" sortKey="ownerName" align="left" />
                                             <SortHeader label="Unit" sortKey="unitName" align="left" />
                                             <SortHeader label="Particulars" sortKey="particulars" align="left" />
-                                            <SortHeader label="Debit (Due)" sortKey="debit" />
-                                            <SortHeader label="Credit (Paid)" sortKey="credit" />
-                                            <SortHeader label="Balance" sortKey="balance" />
+                                            <SortHeader label="Debit (Due)" sortKey="debit" align="right" />
+                                            <SortHeader label="Credit (Paid)" sortKey="credit" align="right" />
+                                            <SortHeader label="Balance" sortKey="balance" align="right" />
                                         </tr>
                                     </thead>
                                     {renderLedgerRows()}
-                                    <tfoot className="bg-slate-50 font-bold sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
-                                        <tr>
-                                            <td colSpan={4} className="px-3 py-2 text-right text-sm bg-slate-50">Totals (Period)</td>
-                                            <td className="px-3 py-2 text-right text-sm bg-slate-50 whitespace-nowrap">{CURRENCY} {totals.debit.toLocaleString()}</td>
-                                            <td className="px-3 py-2 text-right text-sm text-success bg-slate-50 whitespace-nowrap">{CURRENCY} {totals.credit.toLocaleString()}</td>
-                                            <td className="px-3 py-2 text-right text-sm bg-slate-50 whitespace-nowrap">
-                                                {selectedOwnerId !== 'all' || groupBy ? `${CURRENCY} ${finalBalance.toLocaleString()}` : '-'}
+                                    <tfoot className="bg-app-toolbar border-t border-app-border font-bold sticky bottom-0 z-10 shadow-ds-card">
+                                        <tr className="totals">
+                                            <td colSpan={4} className="px-3 py-2 text-right text-sm text-app-text">Totals (Period)</td>
+                                            <td className="px-3 py-2 text-right text-sm text-ds-danger tabular-nums whitespace-nowrap num">{CURRENCY} {totals.debit.toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-right text-sm text-ds-success tabular-nums whitespace-nowrap num">{CURRENCY} {totals.credit.toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-right text-sm text-app-text tabular-nums whitespace-nowrap num">
+                                                {ledgerSelection.kind !== 'all' ? `${CURRENCY} ${finalBalance.toLocaleString()}` : '-'}
                                             </td>
                                         </tr>
                                     </tfoot>
                                 </table>
                             </div>
-                        ) : (<div className="text-center py-16"><p className="text-slate-500">No ledger transactions found for the selected criteria.</p></div>)}
-                        <div className="flex-shrink-0 mt-auto">
-                            <ReportFooter />
+                        ) : (<div className="text-center py-16"><p className="text-app-muted">No ledger transactions found for the selected criteria.</p></div>)}
+                                <div className="owner-ledger-report-footer flex-shrink-0 mt-auto pt-4">
+                                    <ReportFooter />
+                                </div>
+                                <div className="hidden print:block owner-ledger-print-footer">
+                                    Printed on: {new Date().toLocaleString()}
+                                </div>
+                            </Card>
                         </div>
-                    </Card>
+                    </div>
                 </div>
             </div>
         </>

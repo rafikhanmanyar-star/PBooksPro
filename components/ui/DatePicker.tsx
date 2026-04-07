@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ICONS } from '../../constants';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, tryParseFlexibleDateToYyyyMmDd } from '../../utils/dateUtils';
 
 interface DatePickerProps {
     value: string; // ISO string YYYY-MM-DD
@@ -123,36 +123,31 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
         };
     }, [isOpen]);
 
-    const parseDateInput = (input: string): Date | null => {
-        // Try DD/MM/YYYY
-        const dmyMatch = input.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-        if (dmyMatch) {
-            const d = parseInt(dmyMatch[1], 10);
-            const m = parseInt(dmyMatch[2], 10) - 1;
-            const y = parseInt(dmyMatch[3], 10);
-            const date = new Date(y, m, d);
-            if (!isNaN(date.getTime()) && date.getDate() === d) return date;
-        }
-        // Try YYYY-MM-DD
-        const ymdMatch = input.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-        if (ymdMatch) {
-            const y = parseInt(ymdMatch[1], 10);
-            const m = parseInt(ymdMatch[2], 10) - 1;
-            const d = parseInt(ymdMatch[3], 10);
-            const date = new Date(y, m, d);
-            if (!isNaN(date.getTime()) && date.getDate() === d) return date;
-        }
-        return null;
+    const dateFromYyyyMmDd = (ymd: string): Date => {
+        const [y, m, d] = ymd.split('-').map(Number);
+        return new Date(y, m - 1, d);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         setInputValue(val);
-        const parsedDate = parseDateInput(val);
-        if (parsedDate) {
-            const utcDate = new Date(Date.UTC(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate()));
-            onChange(utcDate);
+        const ymd = tryParseFlexibleDateToYyyyMmDd(val);
+        if (ymd) {
+            const parsedDate = dateFromYyyyMmDd(ymd);
+            onChange(parsedDate);
             setCurrentMonth(parsedDate);
+        }
+    };
+
+    const handleInputBlur = () => {
+        const ymd = tryParseFlexibleDateToYyyyMmDd(inputValue);
+        if (ymd) {
+            const parsedDate = dateFromYyyyMmDd(ymd);
+            onChange(parsedDate);
+            setInputValue(formatDate(ymd));
+            setCurrentMonth(parsedDate);
+        } else {
+            setInputValue(formatDate(value));
         }
     };
 
@@ -190,8 +185,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
 
     const handleDateSelect = (date: Date) => {
         if (isNaN(date.getTime())) return;
-        const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-        onChange(utcDate);
+        onChange(date);
         setIsOpen(false);
     };
 
@@ -211,6 +205,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
                     onMouseDown={() => { mouseDownOnInputRef.current = true; }}
                     onMouseUp={() => { mouseDownOnInputRef.current = false; }}
                     onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
                     onClick={() => { mouseDownOnInputRef.current = false; if (!disabled) setIsOpen(true); }}
                     className={inputClassName}
                     disabled={disabled}

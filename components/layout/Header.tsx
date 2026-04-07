@@ -5,18 +5,21 @@ import SearchModal from './SearchModal';
 import HelpModal from './HelpModal';
 import { WhatsAppChatService, WhatsAppMessage, UnreadConversation, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
-import { getWebSocketClient } from '../../services/websocketClient';
-import { isStagingEnvironment } from '../../config/apiUrl';
+const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: () => {}, connect: () => {}, disconnect: () => {} });
+import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
+import { useTheme } from '../../context/ThemeContext';
 interface HeaderProps {
   title: string;
   isNavigating?: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
+  const { theme, toggleTheme } = useTheme();
   const dispatch = useDispatchOnly();
   const state = useStateSelector(s => s);
   const { isAuthenticated } = useAuth();
@@ -323,12 +326,22 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         state.contacts.find(item => item.id === notification.action.contactId)
         || findContactByPhone(notification.action.phoneNumber)
         || null;
-      setTimeout(() => {
-        openChat(contact, notification.action.phoneNumber);
-      }, 0);
+      const phone = notification.action.phoneNumber || contact?.contactNo;
+      const contactLike = contact || (phone ? { id: '', name: phone, contactNo: phone } : null);
+      if (contactLike && phone) {
+        setTimeout(() => {
+          sendOrOpenWhatsApp(
+            { contact: contactLike, message: '', phoneNumber: phone },
+            () => state.whatsAppMode,
+            openChat
+          );
+        }, 0);
+      } else {
+        setTimeout(() => openChat(contact, notification.action.phoneNumber), 0);
+      }
       return;
     }
-  }, [dispatch, dismissNotification, openChat, state.contacts, findContactByPhone]);
+  }, [dispatch, dismissNotification, openChat, state.contacts, state.whatsAppMode, findContactByPhone]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -345,17 +358,31 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, [isNotificationsOpen, isWhatsappDropdownOpen]);
 
   useEffect(() => {
+    if (isLocalOnlyMode()) {
+      setOrgUsers([]);
+      return;
+    }
+    if (!isAuthenticated) {
+      setOrgUsers([]);
+      return;
+    }
     const loadOrgUsers = async () => {
       try {
         const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
         setOrgUsers(data || []);
-      } catch (error) {
-        console.error('Failed to load organization users', error);
+      } catch (error: unknown) {
+        const msg =
+          error instanceof Error
+            ? error.message
+            : error && typeof error === 'object' && 'message' in error
+              ? String((error as { message?: unknown }).message)
+              : JSON.stringify(error);
+        console.error('Failed to load organization users', msg);
         setOrgUsers([]);
       }
     };
     loadOrgUsers();
-  }, []);
+  }, [isAuthenticated]);
 
   // Load WhatsApp unread count - only when authenticated
   // Load WhatsApp unread data (count + conversations)
@@ -375,6 +402,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, []);
 
   useEffect(() => {
+    // Skip if local-only (no cloud/WhatsApp API)
+    if (isLocalOnlyMode()) {
+      setWhatsappUnreadCount(0);
+      setUnreadConversations([]);
+      return;
+    }
     // Skip if not authenticated to prevent 401 errors
     if (!isAuthenticated) {
       setWhatsappUnreadCount(0);
@@ -476,25 +509,35 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       (item.contactId ? state.contacts.find(c => c.id === item.contactId) : null)
       || findContactByPhone(item.phoneNumber)
       || null;
-    setTimeout(() => {
-      openChat(contact, item.phoneNumber);
-    }, 0);
-  }, [dismissNotification, openChat, state.contacts, findContactByPhone]);
+    const phone = item.phoneNumber || contact?.contactNo;
+    const contactLike = contact || (phone ? { id: '', name: phone, contactNo: phone } : null);
+    if (contactLike && phone) {
+      setTimeout(() => {
+        sendOrOpenWhatsApp(
+          { contact: contactLike, message: '', phoneNumber: phone },
+          () => state.whatsAppMode,
+          openChat
+        );
+      }, 0);
+    } else {
+      setTimeout(() => openChat(contact, item.phoneNumber), 0);
+    }
+  }, [dismissNotification, openChat, state.contacts, state.whatsAppMode, findContactByPhone]);
 
   // Format breadcrumbs based on current page
   const getBreadcrumbs = () => {
     return (
-      <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
-        <span className="hover:text-slate-800 cursor-pointer transition-colors" onClick={() => dispatch({ type: 'SET_PAGE', payload: 'dashboard' })}>Home</span>
-        <span className="text-slate-300">/</span>
-        <span className="font-medium text-slate-900">{title}</span>
+      <div className="hidden sm:flex items-center gap-2 text-sm text-app-muted">
+        <span className="hover:text-app-text cursor-pointer transition-colors" onClick={() => dispatch({ type: 'SET_PAGE', payload: 'dashboard' })}>Home</span>
+        <span className="text-app-muted/50">/</span>
+        <span className="font-medium text-app-text">{title}</span>
       </div>
     );
   };
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-white border-b border-slate-200/80 shadow-sm transition-all duration-300">
+      <header className="sticky top-0 z-30 bg-app-header border-b border-app-border shadow-ds-header transition-all duration-ds">
         {isStagingEnvironment() && (
           <div className="w-full bg-amber-500 text-amber-950 text-center py-1 text-xs font-semibold tracking-wider">
             STAGING
@@ -510,14 +553,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           <div className="flex items-center gap-4 flex-1">
             <button
               onClick={() => document.dispatchEvent(new CustomEvent('toggle-sidebar'))}
-              className="md:hidden p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
+              className="md:hidden p-2 -ml-2 rounded-lg text-app-muted hover:bg-black/5 dark:hover:bg-white/10 min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
               aria-label="Toggle sidebar"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
 
             <div className="flex flex-col">
-              <h1 className="text-lg font-bold text-slate-900 leading-tight md:hidden">{title}</h1>
+              <h1 className="text-lg font-bold text-app-text leading-tight md:hidden">{title}</h1>
               {getBreadcrumbs()}
             </div>
           </div>
@@ -526,13 +569,13 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           <div className="hidden md:flex flex-1 max-w-xl justify-center">
             <button
               onClick={() => setIsSearchModalOpen(true)}
-              className="w-full max-w-md flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-400 rounded-xl hover:bg-white hover:border-slate-300 hover:shadow-sm transition-all group touch-manipulation"
+              className="w-full max-w-md flex items-center gap-3 px-4 py-2.5 bg-app-card border border-app-border text-app-muted rounded-xl hover:bg-app-header hover:border-app-border hover:shadow-sm transition-all group touch-manipulation"
               aria-label="Search"
             >
-              <svg className="text-slate-400 group-hover:text-indigo-500 transition-colors" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <svg className="text-app-muted group-hover:text-indigo-500 transition-colors" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               <span className="flex-1 text-left text-sm font-medium">Search transactions, contacts...</span>
               <div className="flex items-center gap-1">
-                <kbd className="hidden lg:inline-flex h-5 items-center gap-1 rounded border border-slate-200 bg-white px-1.5 font-mono text-[10px] font-medium text-slate-500">
+                <kbd className="hidden lg:inline-flex h-5 items-center gap-1 rounded border border-app-border bg-app-card px-1.5 font-mono text-[10px] font-medium text-app-muted">
                   <span className="text-xs">⌘</span>K
                 </kbd>
               </div>
@@ -543,17 +586,29 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           <div className="flex items-center gap-2 sm:gap-4 justify-end flex-1">
 
             {/* Connection Status & Sync Status */}
-            <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-app-card border border-app-border">
               <ConnectionStatusIndicator showLabel={true} />
-              <div className="h-4 w-px bg-slate-200 mx-1"></div>
+              <div className="h-4 w-px bg-app-border mx-1"></div>
               <SyncStatusIndicator showDetails={false} />
               <SyncProgressBar className={`ml-2 ${(typeof window !== 'undefined' && (window as any).electronAPI?.isElectron) ? 'flex' : 'hidden lg:flex'}`} />
             </div>
 
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-2 rounded-full text-app-muted hover:bg-black/5 dark:hover:bg-white/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center shrink-0"
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            >
+              <span className="text-lg leading-none select-none" aria-hidden>
+                {theme === 'dark' ? '☀️' : '🌙'}
+              </span>
+            </button>
+
             <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => setIsNotificationsOpen(prev => !prev)}
-                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative flex min-w-[44px] min-h-[44px] touch-manipulation items-center justify-center"
+                className="p-2 rounded-full text-app-muted hover:bg-black/5 dark:hover:bg-white/10 hover:text-indigo-600 transition-colors relative flex min-w-[44px] min-h-[44px] touch-manipulation items-center justify-center"
                 title={notifications.length > 0 ? `${notifications.length} notifications` : 'Notifications'}
                 aria-label="Notifications"
               >
@@ -565,10 +620,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                 )}
               </button>
               {isNotificationsOpen && (
-                <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-40">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-app-modal border border-app-border rounded-xl shadow-xl overflow-hidden z-40">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-app-border">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold text-slate-800">Notifications</h3>
+                      <h3 className="text-sm font-bold text-app-text">Notifications</h3>
                       <span className="text-xs text-slate-500">({notifications.length})</span>
                     </div>
                     {notifications.length > 0 && (
@@ -584,12 +639,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {notifications.length === 0 ? (
-                      <div className="px-4 py-6 text-sm text-slate-500 text-center">No new notifications</div>
+                      <div className="px-4 py-6 text-sm text-app-muted text-center">No new notifications</div>
                     ) : (
                       notifications.map(item => (
                         <div
                           key={item.id}
-                          className="group relative hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                          className="group relative hover:bg-app-table-hover border-b border-app-border last:border-b-0"
                         >
                           <button
                             onClick={() => handleNotificationClick(item)}
@@ -597,10 +652,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1">
-                                <p className="text-sm font-semibold text-slate-800">{item.title}</p>
-                                <p className="text-xs text-slate-500 mt-0.5">{item.message}</p>
+                                <p className="text-sm font-semibold text-app-text">{item.title}</p>
+                                <p className="text-xs text-app-muted mt-0.5">{item.message}</p>
                                 {formatNotificationTime(item.time) && (
-                                  <p className="text-[11px] text-slate-400 mt-1">{formatNotificationTime(item.time)}</p>
+                                  <p className="text-[11px] text-app-muted mt-1">{formatNotificationTime(item.time)}</p>
                                 )}
                               </div>
                               <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${item.badge.tone === 'blue'
@@ -622,7 +677,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                               e.stopPropagation();
                               dismissNotification(item.id);
                             }}
-                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-app-table-hover text-app-muted hover:text-app-text"
                             title="Dismiss notification"
                             aria-label="Dismiss notification"
                           >
@@ -636,86 +691,88 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               )}
             </div>
 
-            <div className="relative" ref={whatsappDropdownRef}>
-              <button
-                onClick={handleWhatsAppNotificationClick}
-                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-green-600 transition-colors relative group min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
-                title={whatsappUnreadCount > 0 ? `${whatsappUnreadCount} unread WhatsApp messages` : 'WhatsApp Messages'}
-                aria-label="WhatsApp Messages"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
-                {whatsappUnreadCount > 0 && (
-                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
-                    {whatsappUnreadCount > 99 ? '99+' : whatsappUnreadCount}
-                  </span>
-                )}
-              </button>
-              {isWhatsappDropdownOpen && mergedWhatsappItems.length > 0 && (
-                <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-40">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-green-50">
-                    <div className="flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
-                      <h3 className="text-sm font-bold text-green-800">WhatsApp Messages</h3>
-                      <span className="text-xs text-green-600">({whatsappUnreadCount})</span>
+            {state.whatsAppMode === 'api' && (
+              <div className="relative" ref={whatsappDropdownRef}>
+                <button
+                  onClick={handleWhatsAppNotificationClick}
+                  className="p-2 rounded-full text-app-muted hover:bg-black/5 dark:hover:bg-white/10 hover:text-green-600 transition-colors relative group min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
+                  title={whatsappUnreadCount > 0 ? `${whatsappUnreadCount} unread WhatsApp messages` : 'WhatsApp Messages'}
+                  aria-label="WhatsApp Messages"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
+                  {whatsappUnreadCount > 0 && (
+                    <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
+                      {whatsappUnreadCount > 99 ? '99+' : whatsappUnreadCount}
+                    </span>
+                  )}
+                </button>
+                {isWhatsappDropdownOpen && mergedWhatsappItems.length > 0 && (
+                  <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-app-modal border border-app-border rounded-xl shadow-xl overflow-hidden z-40">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-app-border bg-emerald-950/30 dark:bg-emerald-950/40">
+                      <div className="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
+                        <h3 className="text-sm font-bold text-green-800">WhatsApp Messages</h3>
+                        <span className="text-xs text-green-600">({whatsappUnreadCount})</span>
+                      </div>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {mergedWhatsappItems.map(item => (
+                        <div
+                          key={item.id}
+                          className="group relative hover:bg-emerald-950/20 border-b border-app-border last:border-b-0"
+                        >
+                          <button
+                            onClick={() => handleWhatsAppNotificationItemClick(item)}
+                            className="w-full text-left px-4 py-3"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-9 h-9 bg-green-500 rounded-full flex items-center justify-center text-white flex-shrink-0 mt-0.5">
+                                <span className="text-sm font-bold">
+                                  {(item.contactName || item.phoneNumber).charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-app-text truncate">
+                                    {item.contactName || item.phoneNumber}
+                                  </p>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {formatNotificationTime(item.timestamp) && (
+                                      <span className="text-[11px] text-app-muted">{formatNotificationTime(item.timestamp)}</span>
+                                    )}
+                                    {item.unreadCount && item.unreadCount > 1 && (
+                                      <span className="min-w-[20px] h-[20px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                                        {item.unreadCount}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <p className="text-xs text-app-muted mt-0.5 truncate">{item.messageText}</p>
+                              </div>
+                            </div>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t border-app-border px-4 py-2 bg-app-card">
+                      <button
+                        onClick={() => {
+                          setIsWhatsappDropdownOpen(false);
+                          openChat();
+                        }}
+                        className="w-full text-center text-xs text-green-700 hover:text-green-800 font-medium hover:underline py-1"
+                      >
+                        Open WhatsApp Chat
+                      </button>
                     </div>
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {mergedWhatsappItems.map(item => (
-                      <div
-                        key={item.id}
-                        className="group relative hover:bg-green-50 border-b border-slate-100 last:border-b-0"
-                      >
-                        <button
-                          onClick={() => handleWhatsAppNotificationItemClick(item)}
-                          className="w-full text-left px-4 py-3"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="w-9 h-9 bg-green-500 rounded-full flex items-center justify-center text-white flex-shrink-0 mt-0.5">
-                              <span className="text-sm font-bold">
-                                {(item.contactName || item.phoneNumber).charAt(0).toUpperCase()}
-                              </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold text-slate-800 truncate">
-                                  {item.contactName || item.phoneNumber}
-                                </p>
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  {formatNotificationTime(item.timestamp) && (
-                                    <span className="text-[11px] text-slate-400">{formatNotificationTime(item.timestamp)}</span>
-                                  )}
-                                  {item.unreadCount && item.unreadCount > 1 && (
-                                    <span className="min-w-[20px] h-[20px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                      {item.unreadCount}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <p className="text-xs text-slate-500 mt-0.5 truncate">{item.messageText}</p>
-                            </div>
-                          </div>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="border-t border-slate-100 px-4 py-2 bg-slate-50">
-                    <button
-                      onClick={() => {
-                        setIsWhatsappDropdownOpen(false);
-                        openChat();
-                      }}
-                      className="w-full text-center text-xs text-green-700 hover:text-green-800 font-medium hover:underline py-1"
-                    >
-                      Open WhatsApp Chat
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             <button
               onClick={() => setIsHelpModalOpen(true)}
-              className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
+              className="p-2 rounded-full text-app-muted hover:bg-black/5 dark:hover:bg-white/10 hover:text-indigo-600 transition-colors min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
               title="Help & Support"
               aria-label="Help & Support"
             >
@@ -728,7 +785,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               {/* Mobile Search Trigger */}
               <button
                 onClick={() => setIsSearchModalOpen(true)}
-                className="p-2 md:hidden text-slate-500 min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
+                className="p-2 md:hidden text-app-muted min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
                 aria-label="Search"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>

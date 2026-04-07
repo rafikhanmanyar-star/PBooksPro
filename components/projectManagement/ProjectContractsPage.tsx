@@ -13,7 +13,7 @@ import { formatDate } from '../../utils/dateUtils';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
 import { ImportType } from '../../services/importService';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 
@@ -172,6 +172,8 @@ const ProjectContractsPage: React.FC = () => {
 
         document.addEventListener('mousemove', handleResize);
         document.addEventListener('mouseup', stopResize);
+        window.addEventListener('blur', stopResize);
+        document.addEventListener('visibilitychange', stopResize);
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
     }, [sidebarWidth]);
@@ -188,6 +190,8 @@ const ProjectContractsPage: React.FC = () => {
         isResizing.current = false;
         document.removeEventListener('mousemove', handleResize);
         document.removeEventListener('mouseup', stopResize);
+        window.removeEventListener('blur', stopResize);
+        document.removeEventListener('visibilitychange', stopResize);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
     }, []);
@@ -255,12 +259,15 @@ const ProjectContractsPage: React.FC = () => {
             message += `Balance: ${CURRENCY} ${balance.toLocaleString()}\n\n`;
             message += `Terms:\n${contract.termsAndConditions}`;
 
-            // Open WhatsApp modal with pre-filled message
-            openChat(vendor, vendor.contactNo, message);
+            sendOrOpenWhatsApp(
+                { contact: vendor, message, phoneNumber: vendor.contactNo },
+                () => state.whatsAppMode,
+                openChat
+            );
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
-    }, [state.contacts, state.projects, state.transactions, showAlert, openChat]);
+    }, [state.contacts, state.projects, state.transactions, state.whatsAppMode, showAlert, openChat]);
 
     return (
         <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">

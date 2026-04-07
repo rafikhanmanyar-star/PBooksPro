@@ -2,6 +2,7 @@
 import React from 'react';
 import { AppState, LoanSubtype, TransactionType, RentalAgreementStatus, ContactType, InvoiceStatus, KpiDefinition, AccountType, InvoiceType } from '../../types';
 import { ICONS } from '../../constants';
+import { accountIdMatchesLogical } from '../../services/systemEntityIds';
 
 const calculateLoanSummary = (state: AppState) => {
     let totalLoanReceived = 0, totalLoanRepaid = 0;
@@ -336,45 +337,9 @@ export const ALL_KPIS: KpiDefinition[] = [
         group: 'Rental',
         icon: ICONS.lock,
         getData: (state) => {
-            // Identify Categories
-            const findCatId = (name: string) => state.categories.find(c => c.name.toLowerCase() === name.toLowerCase())?.id;
-
-            const secDepId = findCatId('Security Deposit');
-            const secRefId = findCatId('Security Deposit Refund');
-            const ownerSecPayId = findCatId('Owner Security Payout');
-
-            let liability = 0;
-
-            state.transactions.forEach(tx => {
-                // 1. Increase Liability (Money In from Tenant)
-                if (tx.type === TransactionType.INCOME && tx.categoryId === secDepId) {
-                    liability += tx.amount;
-                }
-                // 2. Decrease Liability (Money Out)
-                else if (tx.type === TransactionType.EXPENSE) {
-                    let isDeduction = false;
-
-                    // Direct Category Match: Refund to Tenant OR Payout to Owner
-                    if ((secRefId && tx.categoryId === secRefId) || (ownerSecPayId && tx.categoryId === ownerSecPayId)) {
-                        isDeduction = true;
-                    }
-                    // Implicit Tenant Deductions (e.g. Repairs charged to tenant)
-                    else {
-                        const category = state.categories.find(c => c.id === tx.categoryId);
-                        const contact = state.contacts.find(c => c.id === tx.contactId);
-
-                        // If expense is linked to a Tenant OR category name implies tenant deduction
-                        if (contact?.type === ContactType.TENANT || (category && category.name.includes('(Tenant)'))) {
-                            isDeduction = true;
-                        }
-                    }
-
-                    if (isDeduction) {
-                        liability -= tx.amount;
-                    }
-                }
-            });
-            return liability;
+            // Read directly from the Security Liability account balance
+            const secLiabilityAcc = state.accounts.find(a => accountIdMatchesLogical(a.id, 'sys-acc-sec-liability'));
+            return secLiabilityAcc?.balance || 0;
         }
     },
     // Project KPIs
@@ -390,6 +355,7 @@ export const ALL_KPIS: KpiDefinition[] = [
             // Helper to check for Equity/Capital categories
             const equityCategoryNames = ['Owner Equity', 'Share Capital', 'Investment', 'Capital Injection'];
             const withdrawalCategoryNames = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Profit Share', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
+            const withdrawalCategoryNamesForEquityOut = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
 
             const isEquityIncome = (catId?: string) => {
                 if (!catId) return false;
@@ -402,6 +368,13 @@ export const ALL_KPIS: KpiDefinition[] = [
                 const c = state.categories.find(cat => cat.id === catId);
                 return c && withdrawalCategoryNames.includes(c.name);
             };
+            const isEquityExpenseForEquityOut = (catId?: string) => {
+                if (!catId) return false;
+                const c = state.categories.find(cat => cat.id === catId);
+                return c && withdrawalCategoryNamesForEquityOut.includes(c.name);
+            };
+            const isProfitDistributionExpense = (tx: { type: string; description?: string }) =>
+                tx.type === TransactionType.EXPENSE && (tx.description?.toLowerCase().includes('profit distribution') ?? false);
 
             const equityAccountIds = new Set(state.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
 
@@ -441,30 +414,28 @@ export const ALL_KPIS: KpiDefinition[] = [
                             income += tx.amount;
                         }
                     } else if (tx.type === TransactionType.EXPENSE) {
-                        if (isEquityExpense(tx.categoryId)) {
+                        if (isEquityExpenseForEquityOut(tx.categoryId)) {
                             equityOut += tx.amount;
-                        } else {
+                        } else if (!isProfitDistributionExpense(tx)) {
                             expense += tx.amount;
                         }
                     } else if (tx.type === TransactionType.TRANSFER) {
                         const isFromEquity = tx.fromAccountId && equityAccountIds.has(tx.fromAccountId);
                         const isToEquity = tx.toAccountId && equityAccountIds.has(tx.toAccountId);
                         const isMoveIn = tx.description?.toLowerCase().includes('equity move in');
-                        const isMoveOut = tx.description?.toLowerCase().includes('equity move out');
-
+                        const desc = tx.description?.toLowerCase() ?? '';
+                        const isExplicitEquityMoveOut = desc.includes('equity move out');
+                        const isCapitalPayout = desc.includes('capital payout');
                         const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
                         const isFromClearing = fromAccount?.name === 'Internal Clearing';
-                        const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') ||
-                            tx.description?.toLowerCase().includes('pm fee equity');
-
+                        const isPMFeeTransfer = desc.includes('pm fee') || desc.includes('pm fee equity');
+                        if (isExplicitEquityMoveOut || isCapitalPayout) {
+                            equityOut += tx.amount;
+                        }
                         if (isFromEquity || isMoveIn) {
                             investment += tx.amount;
-                        } else if (isToEquity || isMoveOut) {
-                            if (isFromClearing && isPMFeeTransfer) {
-                                investment += tx.amount;
-                            } else {
-                                equityOut += tx.amount;
-                            }
+                        } else if (isToEquity && isFromClearing && isPMFeeTransfer) {
+                            investment += tx.amount;
                         }
                     } else if (tx.type === TransactionType.LOAN) {
                         if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {

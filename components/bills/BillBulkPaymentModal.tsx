@@ -10,6 +10,9 @@ import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface BillBulkPaymentModalProps {
     isOpen: boolean;
@@ -25,7 +28,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
     // State for individual bill payment amounts
     const [payments, setPayments] = useState<Record<string, string>>({});
 
-    const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+    const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
     const [accountId, setAccountId] = useState('');
     const [reference, setReference] = useState('');
 
@@ -65,9 +68,9 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
     }, [isOpen, selectedBills, userSelectableAccounts]);
 
     const handleAmountChange = (id: string, value: string) => {
-        // Allow valid positive decimal numbers
-        if (value === '' || /^\d*\.?\d*$/.test(value)) {
-            setPayments(prev => ({ ...prev, [id]: value }));
+        const normalized = normalizeDecimalAmountInput(value);
+        if (normalized === '' || /^\d*\.?\d*$/.test(normalized)) {
+            setPayments(prev => ({ ...prev, [id]: normalized }));
         }
     };
 
@@ -151,24 +154,29 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             return;
         }
 
+        if (isLocalOnlyMode()) {
+            // Local-only: persist via dispatch only (reducer + persistence write to local DB; bills updated by applyTransactionEffect)
+            dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
+            showToast(`Processed bulk payment for ${transactions.length} bills.`, 'success');
+            if (onPaymentComplete) onPaymentComplete();
+            else onClose();
+            return;
+        }
+
         try {
-            // Try to save transactions via API first to catch conflicts early
+            // Cloud: save via API first to catch conflicts early
             const apiService = getAppStateApiService();
             const savedTransactions: Transaction[] = [];
             const failedBills: { bill: Bill; error: any }[] = [];
 
-            // Ensure all bills exist on the server before recording payments (fixes "Bill not found"
-            // when bills were created locally but sync to API was skipped or failed).
             for (const bill of selectedBills) {
                 try {
                     await apiService.saveBill(bill);
                 } catch (e) {
-                    // Log but continue; saveTransaction may still work if bill was already synced
                     console.warn('Could not ensure bill on server before bulk payment:', bill.billNumber, e);
                 }
             }
 
-            // Process each transaction individually to handle errors per bill
             for (const tx of transactions) {
                 try {
                     const saved = await apiService.saveTransaction(tx);
@@ -176,19 +184,14 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                 } catch (error: any) {
                     const bill = selectedBills.find(b => b.id === tx.billId);
                     failedBills.push({ bill: bill!, error });
-
-                    // Handle specific error codes
                     if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
-                        // Concurrent modification - don't show error for this one, will show summary
                         console.warn(`Payment conflict for bill ${bill?.billNumber}:`, error.message);
                     } else if (error.status === 400 && error.code === 'PAYMENT_OVERPAYMENT') {
-                        // Overpayment detected
                         console.error(`Overpayment for bill ${bill?.billNumber}:`, error.message);
                     }
                 }
             }
 
-            // If all transactions failed, show error
             if (savedTransactions.length === 0) {
                 const firstError = failedBills[0]?.error;
                 if (firstError?.status === 409 || firstError?.code === 'BILL_LOCKED' || firstError?.code === 'BILL_VERSION_MISMATCH') {
@@ -207,26 +210,18 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                 return;
             }
 
-            // If some succeeded, dispatch only the successful ones
-            if (savedTransactions.length > 0) {
-                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
-
-                if (failedBills.length > 0) {
-                    const failedBillNumbers = failedBills.map(f => f.bill.billNumber).join(', ');
-                    showToast(
-                        `Processed ${savedTransactions.length} payment(s). Failed for bill(s): ${failedBillNumbers}. Please refresh and try again.`,
-                        'warning'
-                    );
-                } else {
-                    showToast(`Processed bulk payment for ${savedTransactions.length} bills.`, 'success');
-                }
-            }
-
-            if (onPaymentComplete) {
-                onPaymentComplete();
+            dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
+            if (failedBills.length > 0) {
+                const failedBillNumbers = failedBills.map(f => f.bill.billNumber).join(', ');
+                showToast(
+                    `Processed ${savedTransactions.length} payment(s). Failed for bill(s): ${failedBillNumbers}. Please refresh and try again.`,
+                    'warning'
+                );
             } else {
-                onClose();
+                showToast(`Processed bulk payment for ${savedTransactions.length} bills.`, 'success');
             }
+            if (onPaymentComplete) onPaymentComplete();
+            else onClose();
         } catch (error: any) {
             console.error('Error processing bulk payment:', error);
             const errorMessage = error.message || 'An unexpected error occurred while processing payments.';
@@ -257,7 +252,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                 </div>
 
                 <div className="flex gap-4">
-                    <div className="flex-1"><DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(d.toISOString().split('T')[0])} /></div>
+                    <div className="flex-1"><DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(toLocalDateString(d))} /></div>
                     <Input label="Reference / Note" value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. Check #123" className="flex-1" />
                 </div>
 

@@ -1,17 +1,17 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { AccountType, TransactionType, Transaction } from '../../types';
+import { AccountType, TransactionType, Transaction, EquityLedgerSubtype } from '../../types';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
+import DatePicker from '../ui/DatePicker';
 import { CURRENCY, ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, parseFlexibleDateToYyyyMmDd, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import TreeView, { TreeNode } from '../ui/TreeView';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
-import Tabs from '../ui/Tabs';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
@@ -19,6 +19,14 @@ import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { computeEquityBalances, roundEquityBalance, EQUITY_BALANCE_EPS } from '../investmentManagement/equityMetrics';
+import {
+    getEquityFlowLegs,
+    presentationForEquityLeg,
+    computeEquityLedgerSummaryTotals,
+    type EquityFlowLeg,
+} from '../investmentManagement/equityLedgerClassification';
+import { computeProjectProfitLossTotals } from '../reports/projectProfitLossComputation';
 
 interface InvestorDistribution {
     investorId: string;
@@ -62,16 +70,22 @@ const getEntityColorStyle = (projectId: string | undefined, buildingId: string |
     return {};
 };
 
-const ProjectEquityManagement: React.FC = () => {
+export const EQUITY_LEDGER_TABS = ['Ledger', 'Profit Distribution', 'Equity Transfer', 'Investor Distribution'] as const;
+export type EquityLedgerTab = (typeof EQUITY_LEDGER_TABS)[number];
+
+export interface ProjectEquityManagementProps {
+    equityTab: EquityLedgerTab;
+    onEquityTabChange: (tab: EquityLedgerTab) => void;
+}
+
+const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equityTab, onEquityTabChange }) => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert, showConfirm } = useNotification();
     
-    // State
-    const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
-    const [selectedTreeType, setSelectedTreeType] = useState<'project' | 'staff' | 'building' | null>(null);
+    // State - default to 'root-investors' so the ledger shows all equity transactions on load
+    const [selectedTreeId, setSelectedTreeId] = useState<string | null>('root-investors');
+    const [selectedTreeType, setSelectedTreeType] = useState<'project' | 'staff' | 'building' | null>('building');
     const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
-
-    const [activeTab, setActiveTab] = useState('Ledger'); // Default tab
 
     const [searchQuery, setSearchQuery] = useState('');
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('projectEquity_sidebarWidth', 300);
@@ -82,7 +96,7 @@ const ProjectEquityManagement: React.FC = () => {
     const [formProjectId, setFormProjectId] = useState(state.defaultProjectId || '');
     const [formBankAccountId, setFormBankAccountId] = useState('');
     const [formAmount, setFormAmount] = useState('');
-    const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+    const [formDate, setFormDate] = useState(toLocalDateString(new Date()));
     const [formDescription, setFormDescription] = useState('');
 
     // Editing State
@@ -114,7 +128,8 @@ const ProjectEquityManagement: React.FC = () => {
     const [transferStep, setTransferStep] = useState<1 | 2>(1);
     const [transferType, setTransferType] = useState<'PROJECT' | 'PAYOUT'>('PROJECT');
     const [payoutAccountId, setPayoutAccountId] = useState('');
-
+    const [transferDescription, setTransferDescription] = useState('');
+    const [transferDate, setTransferDate] = useState(() => toLocalDateString(new Date()));
 
     const equityAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.EQUITY), [state.accounts]);
     const bankAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
@@ -132,6 +147,8 @@ const ProjectEquityManagement: React.FC = () => {
         startWidth.current = sidebarWidth;
         document.addEventListener('mousemove', handleResize);
         document.addEventListener('mouseup', stopResize);
+        window.addEventListener('blur', stopResize);
+        document.addEventListener('visibilitychange', stopResize);
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
     }, [sidebarWidth]);
@@ -148,68 +165,13 @@ const ProjectEquityManagement: React.FC = () => {
         isResizing.current = false;
         document.removeEventListener('mousemove', handleResize);
         document.removeEventListener('mouseup', stopResize);
+        window.removeEventListener('blur', stopResize);
+        document.removeEventListener('visibilitychange', stopResize);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
     }, []);
 
-    // --- Balances Calculation for Tree ---
-    const balances = useMemo(() => {
-        const projBal: Record<string, number> = {};
-        const invTotalBal: Record<string, number> = {};
-        const invProjBal: Record<string, Record<string, number>> = {}; // projectId -> investorId -> amount
-
-        // Initialize
-        state.projects.forEach(p => projBal[p.id] = 0);
-        equityAccounts.forEach(a => invTotalBal[a.id] = 0);
-
-        const txs = state.transactions.filter(tx => 
-            tx.type === TransactionType.TRANSFER || 
-            (tx.type === TransactionType.INCOME && equityAccounts.some(e => e.id === tx.accountId))
-        );
-
-        txs.forEach(tx => {
-            const impacts: { investorId: string, amount: number, projectId: string }[] = [];
-            
-            const fromEquity = equityAccounts.find(a => a.id === tx.fromAccountId);
-            const toEquity = equityAccounts.find(a => a.id === tx.toAccountId);
-            const incomeEquity = equityAccounts.find(a => a.id === tx.accountId);
-            
-            const pId = tx.projectId || 'unassigned';
-
-            if (tx.type === TransactionType.INCOME && incomeEquity) {
-                // Profit Share (Direct) -> Deposit
-                impacts.push({ investorId: incomeEquity.id, amount: tx.amount, projectId: pId });
-            } else if (tx.type === TransactionType.TRANSFER) {
-                if (fromEquity && !toEquity) {
-                    // Investment -> Deposit (Positive Equity Balance)
-                    impacts.push({ investorId: fromEquity.id, amount: tx.amount, projectId: pId });
-                } else if (toEquity && !fromEquity) {
-                     // Withdrawal or Profit Share
-                     if (tx.description?.toLowerCase().includes('profit')) {
-                         impacts.push({ investorId: toEquity.id, amount: tx.amount, projectId: pId });
-                     } else {
-                         impacts.push({ investorId: toEquity.id, amount: -tx.amount, projectId: pId });
-                     }
-                } else if (fromEquity && toEquity) {
-                    // Transfer between equity. 
-                    impacts.push({ investorId: fromEquity.id, amount: -tx.amount, projectId: pId });
-                    impacts.push({ investorId: toEquity.id, amount: tx.amount, projectId: pId });
-                }
-            }
-
-            impacts.forEach(({ investorId, amount, projectId }) => {
-                invTotalBal[investorId] = (invTotalBal[investorId] || 0) + amount;
-                
-                if (projectId !== 'unassigned') {
-                    projBal[projectId] = (projBal[projectId] || 0) + amount;
-                    if (!invProjBal[projectId]) invProjBal[projectId] = {};
-                    invProjBal[projectId][investorId] = (invProjBal[projectId][investorId] || 0) + amount;
-                }
-            });
-        });
-
-        return { projBal, invTotalBal, invProjBal };
-    }, [state.transactions, equityAccounts, state.projects]);
+    const balances = useMemo(() => computeEquityBalances(state), [state]);
 
 
     const investorAccounts = useMemo(() => 
@@ -226,7 +188,8 @@ const ProjectEquityManagement: React.FC = () => {
         const allInvestorsChildren: TreeNode[] = [];
         
         investorAccounts.forEach(acc => {
-            const balance = balances.invTotalBal[acc.id] || 0;
+            const raw = balances.invTotalBal[acc.id] || 0;
+            const balance = roundEquityBalance(raw);
             allInvestorsChildren.push({
                 id: acc.id,
                 label: acc.name,
@@ -235,18 +198,19 @@ const ProjectEquityManagement: React.FC = () => {
                 value: balance !== 0 ? balance : undefined,
                 valueColor: balance >= 0 ? 'text-emerald-600' : 'text-rose-600'
             });
-            if (balance !== 0) allInvestorsTotal += balance;
+            allInvestorsTotal += raw;
         });
         allInvestorsChildren.sort((a, b) => a.label.localeCompare(b.label));
         
         // 1. All Investors Node (Parent)
+        const allInvestorsTotalRounded = roundEquityBalance(allInvestorsTotal);
         const allInvestorsNode: TreeNode = {
             id: 'root-investors',
             label: `All Investors (${allInvestorsChildren.length})`,
             type: 'building', 
             children: allInvestorsChildren,
-            value: allInvestorsTotal !== 0 ? allInvestorsTotal : undefined,
-            valueColor: allInvestorsTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'
+            value: allInvestorsTotalRounded !== 0 ? allInvestorsTotalRounded : undefined,
+            valueColor: allInvestorsTotalRounded >= 0 ? 'text-emerald-600' : 'text-rose-600'
         };
         
         nodes.push(allInvestorsNode); 
@@ -254,7 +218,8 @@ const ProjectEquityManagement: React.FC = () => {
         // 2. Projects Node Group
         const projectNodes: TreeNode[] = [];
         state.projects.forEach(p => {
-             const projBalance = balances.projBal[p.id] || 0;
+             const rawProjBalance = balances.projBal[p.id] || 0;
+             const projBalance = roundEquityBalance(rawProjBalance);
              const projectChildren: TreeNode[] = [];
             
             // Find investors active in this project via pre-calc
@@ -262,21 +227,22 @@ const ProjectEquityManagement: React.FC = () => {
             
             Object.entries(projInvestors).forEach(([invId, amount]) => {
                 const inv = investorAccounts.find(a => a.id === invId);
+                const roundedAmount = roundEquityBalance(amount);
                 if (inv) {
                     projectChildren.push({
                         id: inv.id,
                         label: inv.name,
                         type: 'staff',
                         children: [],
-                        value: amount !== 0 ? amount : undefined,
-                        valueColor: amount >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                        value: roundedAmount !== 0 ? roundedAmount : undefined,
+                        valueColor: roundedAmount >= 0 ? 'text-emerald-600' : 'text-rose-600'
                     });
                 }
             });
             
             projectChildren.sort((a,b) => a.label.localeCompare(b.label));
             
-            if (projectChildren.length > 0 || Math.abs(projBalance) > 0.01) {
+            if (projectChildren.length > 0 || Math.abs(projBalance) >= EQUITY_BALANCE_EPS) {
                 projectNodes.push({
                     id: p.id,
                     label: p.name,
@@ -293,88 +259,165 @@ const ProjectEquityManagement: React.FC = () => {
         return nodes;
     }, [state.projects, investorAccounts, balances]);
 
-    const ledgerData = useMemo(() => {
+    const equityAccountIds = useMemo(() => new Set(equityAccounts.map(a => a.id)), [equityAccounts]);
+    const invoiceMap = useMemo(() => new Map(state.invoices.map(i => [i.id, i])), [state.invoices]);
+    const billMap = useMemo(() => new Map(state.bills.map(b => [b.id, b])), [state.bills]);
+
+    const filteredLedgerTxs = useMemo(() => {
         if (!selectedTreeId) return [];
-        
-        let txs = state.transactions.filter(tx => tx.type === TransactionType.TRANSFER || (tx.type === TransactionType.INCOME && equityAccounts.some(e => e.id === tx.accountId)));
-        
+
+        const resolveProjectId = (tx: Transaction): string | undefined => {
+            if (tx.projectId) return tx.projectId;
+            if (tx.invoiceId) { const inv = invoiceMap.get(tx.invoiceId); if (inv?.projectId) return inv.projectId; }
+            if (tx.billId) { const bill = billMap.get(tx.billId); if (bill?.projectId) return bill.projectId; }
+            return undefined;
+        };
+
+        let txs = state.transactions.filter((tx) => {
+            if (tx.type === TransactionType.TRANSFER) return true;
+            if (tx.type === TransactionType.INCOME && equityAccountIds.has(tx.accountId)) return true;
+            if (equityAccountIds.has(tx.accountId)) return true;
+            return false;
+        });
+
         if (selectedTreeId === 'root-investors') {
-             txs = txs.filter(tx => 
-                equityAccounts.some(a => a.id === tx.fromAccountId || a.id === tx.toAccountId || a.id === tx.accountId)
+            txs = txs.filter(
+                (tx) =>
+                    equityAccountIds.has(tx.fromAccountId!) ||
+                    equityAccountIds.has(tx.toAccountId!) ||
+                    equityAccountIds.has(tx.accountId)
             );
         } else if (selectedTreeType === 'project') {
-            txs = txs.filter(tx => tx.projectId === selectedTreeId);
+            txs = txs.filter((tx) => resolveProjectId(tx) === selectedTreeId);
         } else if (selectedTreeType === 'staff') {
-            // Filter by investor ID
-            txs = txs.filter(tx => tx.fromAccountId === selectedTreeId || tx.toAccountId === selectedTreeId || tx.accountId === selectedTreeId);
-            
-            // STRICT FILTERING: Limit to selected parent project if exists and NOT global investor view
+            txs = txs.filter(
+                (tx) =>
+                    tx.fromAccountId === selectedTreeId ||
+                    tx.toAccountId === selectedTreeId ||
+                    tx.accountId === selectedTreeId
+            );
+
             if (selectedParentId && selectedParentId !== 'root-investors') {
-                txs = txs.filter(tx => tx.projectId === selectedParentId);
+                txs = txs.filter((tx) => resolveProjectId(tx) === selectedParentId);
             }
         }
 
-        // Sort Chronologically
-        txs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        txs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.id.localeCompare(b.id));
+        return txs;
+    }, [selectedTreeId, selectedTreeType, selectedParentId, state.transactions, equityAccountIds, invoiceMap, billMap]);
 
-        let runningBalance = 0;
+    const ledgerSummaryTotals = useMemo(
+        () =>
+            computeEquityLedgerSummaryTotals(
+                filteredLedgerTxs,
+                equityAccounts,
+                selectedTreeType === 'staff' && selectedTreeId ? selectedTreeId : null,
+            ),
+        [filteredLedgerTxs, equityAccounts, selectedTreeType, selectedTreeId],
+    );
 
-        return txs.map(tx => {
-            const isFromEquity = equityAccounts.some(a => a.id === tx.fromAccountId);
-            const isToEquity = equityAccounts.some(a => a.id === tx.toAccountId);
-            
+    /** Net equity for the current tree selection (same basis as Projects & Investors balances). */
+    const selectedNetEquity = useMemo(() => {
+        if (!selectedTreeId) return null;
+        if (selectedTreeId === 'root-investors') {
+            let total = 0;
+            investorAccounts.forEach((acc) => {
+                total += balances.invTotalBal[acc.id] || 0;
+            });
+            return roundEquityBalance(total);
+        }
+        if (selectedTreeType === 'project') {
+            return roundEquityBalance(balances.projBal[selectedTreeId] || 0);
+        }
+        if (selectedTreeType === 'staff' && selectedTreeId) {
+            if (selectedParentId && selectedParentId !== 'root-investors') {
+                const proj = balances.invProjBal[selectedParentId];
+                return roundEquityBalance((proj && proj[selectedTreeId]) || 0);
+            }
+            return roundEquityBalance(balances.invTotalBal[selectedTreeId] || 0);
+        }
+        return null;
+    }, [selectedTreeId, selectedTreeType, selectedParentId, balances, investorAccounts]);
+
+    const ledgerData = useMemo(() => {
+        if (!selectedTreeId) return [];
+
+        const txs = filteredLedgerTxs;
+
+        const expandLegs = selectedTreeId === 'root-investors' || selectedTreeType === 'project';
+
+        const rowRefs: { tx: Transaction; leg?: EquityFlowLeg }[] = [];
+        txs.forEach((tx) => {
+            let legs = getEquityFlowLegs(tx, equityAccounts);
+            if (selectedTreeType === 'staff' && selectedTreeId) {
+                legs = legs.filter((l) => l.investorId === selectedTreeId);
+            }
+            if (expandLegs) {
+                if (legs.length === 0) rowRefs.push({ tx });
+                else legs.forEach((leg) => rowRefs.push({ tx, leg }));
+            } else if (legs.length === 1) {
+                rowRefs.push({ tx, leg: legs[0] });
+            } else {
+                rowRefs.push({ tx });
+            }
+        });
+
+        if (expandLegs) {
+            rowRefs.sort((a, b) => {
+                const da = new Date(a.tx.date).getTime() - new Date(b.tx.date).getTime();
+                if (da !== 0) return da;
+                const idc = a.tx.id.localeCompare(b.tx.id);
+                if (idc !== 0) return idc;
+                return (a.leg?.investorId || '').localeCompare(b.leg?.investorId || '');
+            });
+        }
+
+        const runningByInvestor: Record<string, number> = {};
+        let runningLegacy = 0;
+
+        const computeLegacy = (tx: Transaction) => {
+            const isFromEquity = equityAccountIds.has(tx.fromAccountId!);
+            const isToEquity = equityAccountIds.has(tx.toAccountId!);
             let paymentType = 'Transfer';
             let paymentTypeColor = 'text-slate-600';
-            
-            let amount = tx.amount;
-            
+            const amount = tx.amount;
             let isDeposit = false;
             let isWithdrawal = false;
 
             if (tx.type === TransactionType.INCOME) {
                 paymentType = 'Profit Share';
                 paymentTypeColor = 'text-emerald-600';
-                isDeposit = true; // Income adds to equity
+                isDeposit = true;
             } else if (tx.type === TransactionType.TRANSFER) {
-                // Determine direction relative to the investor
-                const isTargetInvestor = selectedTreeType === 'staff' ? (tx.toAccountId === selectedTreeId) : isToEquity;
-                const isSourceInvestor = selectedTreeType === 'staff' ? (tx.fromAccountId === selectedTreeId) : isFromEquity;
+                const isTargetInvestor = selectedTreeType === 'staff' ? tx.toAccountId === selectedTreeId : isToEquity;
+                const isSourceInvestor = selectedTreeType === 'staff' ? tx.fromAccountId === selectedTreeId : isFromEquity;
 
-                // Check if this is a PM fee transfer (from Clearing to PM equity)
-                const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
+                const fromAccount = state.accounts.find((a) => a.id === tx.fromAccountId);
                 const isFromClearing = fromAccount?.name === 'Internal Clearing';
-                const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') || 
-                                       tx.description?.toLowerCase().includes('pm fee equity');
+                const isPMFeeTransfer =
+                    tx.description?.toLowerCase().includes('pm fee') ||
+                    tx.description?.toLowerCase().includes('pm fee equity');
 
                 if (isSourceInvestor && !isTargetInvestor) {
-                    // Investment: Money flows FROM investor (equity) TO bank
-                    // This increases the investor's equity balance (investment recorded)
                     isDeposit = true;
                     paymentType = 'Investment';
                     paymentTypeColor = 'text-blue-600';
                 } else if (isTargetInvestor && !isSourceInvestor) {
-                    // Check if this is a PM fee transfer (deposit) or withdrawal
                     if (isFromClearing && isPMFeeTransfer) {
-                        // PM Fee Transfer: Clearing -> PM Equity (deposit/investment)
-                        // This increases the PM project's equity balance
                         isDeposit = true;
                         paymentType = 'PM Fee Deposit';
                         paymentTypeColor = 'text-emerald-600';
                     } else if (tx.description?.toLowerCase().includes('profit')) {
-                        // Profit Share: Increases equity
                         paymentType = 'Profit Share';
                         paymentTypeColor = 'text-emerald-600';
                         isDeposit = true;
                         isWithdrawal = false;
                     } else {
-                        // Withdrawal: Money flows FROM bank TO investor (equity)
-                        // This decreases the investor's equity balance (capital returned)
                         isWithdrawal = true;
                         paymentType = 'Withdrawal';
                         paymentTypeColor = 'text-rose-600';
                     }
                 } else if (isSourceInvestor && isTargetInvestor) {
-                    // Equity to Equity (Transfer)
                     paymentType = 'Equity Transfer';
                     paymentTypeColor = 'text-slate-500';
                     if (selectedTreeType === 'staff') {
@@ -384,32 +427,29 @@ const ProjectEquityManagement: React.FC = () => {
                 }
             }
 
-            // Rounding to nearest 100
             const roundedAmount = Math.round(amount / 100) * 100;
-            
-            if (isDeposit) runningBalance += roundedAmount;
-            if (isWithdrawal) runningBalance -= roundedAmount;
+            if (isDeposit) runningLegacy += roundedAmount;
+            if (isWithdrawal) runningLegacy -= roundedAmount;
+            const roundedBalance = Math.round(runningLegacy / 100) * 100;
 
-            const roundedBalance = Math.round(runningBalance / 100) * 100;
-
-            // Info Column Construction
             let info = '';
-            const project = state.projects.find(p => p.id === tx.projectId);
+            const project = state.projects.find((p) => p.id === tx.projectId);
             if (project) info = `Project: ${project.name}`;
-            
+
             let otherAccId = tx.accountId;
             if (tx.type === TransactionType.TRANSFER) {
                 if (selectedTreeType === 'staff' && selectedTreeId) {
-                    otherAccId = (tx.fromAccountId === selectedTreeId) ? tx.toAccountId! : tx.fromAccountId!;
+                    otherAccId = tx.fromAccountId === selectedTreeId ? tx.toAccountId! : tx.fromAccountId!;
                 } else {
                     otherAccId = isDeposit ? tx.fromAccountId! : tx.toAccountId!;
                 }
             }
-            const otherAcc = state.accounts.find(a => a.id === otherAccId);
+            const otherAcc = state.accounts.find((a) => a.id === otherAccId);
             if (otherAcc) info += ` | ${otherAcc.name}`;
 
             return {
                 ...tx,
+                ledgerRowKey: tx.id,
                 paymentType,
                 paymentTypeColor,
                 info,
@@ -417,10 +457,72 @@ const ProjectEquityManagement: React.FC = () => {
                 balance: roundedBalance,
                 isDeposit,
                 isWithdrawal,
-                projectName: project?.name || '-'
+                projectName: project?.name || '-',
+                rowInvestorName: undefined as string | undefined,
             };
+        };
+
+        return rowRefs.map(({ tx, leg }) => {
+            if (leg) {
+                if (import.meta.env.DEV) {
+                    console.debug('[equity-ledger]', {
+                        operation: leg.kind,
+                        investorId: leg.investorId,
+                        projectId: tx.projectId,
+                        transactionId: tx.id,
+                    });
+                }
+                const mag = Math.round(tx.amount / 100) * 100;
+                const signedDelta = leg.signedAmount >= 0 ? mag : -mag;
+                const { paymentType, paymentTypeColor } = presentationForEquityLeg(leg.kind);
+                const invId = leg.investorId;
+                runningByInvestor[invId] = (runningByInvestor[invId] || 0) + signedDelta;
+                const roundedBalance = Math.round(runningByInvestor[invId] / 100) * 100;
+                const isDeposit = signedDelta > 0;
+                const isWithdrawal = signedDelta < 0;
+
+                let info = '';
+                const project = state.projects.find((p) => p.id === tx.projectId);
+                if (project) info = `Project: ${project.name}`;
+                const invAcc = state.accounts.find((a) => a.id === invId);
+                if (invAcc) info += (info ? ' | ' : '') + `Investor: ${invAcc.name}`;
+
+                let otherAccId = tx.accountId;
+                if (tx.type === TransactionType.TRANSFER) {
+                    if (tx.fromAccountId === invId) otherAccId = tx.toAccountId!;
+                    else if (tx.toAccountId === invId) otherAccId = tx.fromAccountId!;
+                    else otherAccId = tx.fromAccountId || tx.toAccountId || tx.accountId;
+                }
+                const otherAcc = state.accounts.find((a) => a.id === otherAccId);
+                if (otherAcc) info += ` | ${otherAcc.name}`;
+
+                return {
+                    ...tx,
+                    ledgerRowKey: `${tx.id}::${invId}`,
+                    paymentType,
+                    paymentTypeColor,
+                    info,
+                    amount: mag,
+                    balance: roundedBalance,
+                    isDeposit,
+                    isWithdrawal,
+                    projectName: project?.name || '-',
+                    rowInvestorName: invAcc?.name,
+                };
+            }
+
+            return computeLegacy(tx);
         });
-    }, [selectedTreeId, selectedTreeType, selectedParentId, state.transactions, equityAccounts, state.projects, state.accounts]);
+    }, [
+        filteredLedgerTxs,
+        selectedTreeId,
+        selectedTreeType,
+        selectedParentId,
+        state.projects,
+        state.accounts,
+        equityAccounts,
+        equityAccountIds,
+    ]);
 
     // --- Editing Handlers ---
     const handleRowClick = (txItem: any) => {
@@ -484,7 +586,7 @@ const ProjectEquityManagement: React.FC = () => {
             siblings,
             mode,
             amount: mainTx.amount.toString(),
-            date: new Date(mainTx.date).toISOString().split('T')[0],
+            date: parseStoredDateToYyyyMmDdInput(mainTx.date),
             description: mainTx.description || '',
             projectId,
             targetProjectId,
@@ -502,6 +604,8 @@ const ProjectEquityManagement: React.FC = () => {
             await showAlert("Invalid Amount");
             return;
         }
+
+        const resolvedDate = parseFlexibleDateToYyyyMmDd(date);
 
         const txsToUpdate: Transaction[] = [];
 
@@ -527,12 +631,16 @@ const ProjectEquityManagement: React.FC = () => {
             const updatedTx: Transaction = {
                 ...mainTx,
                 amount: numAmount,
-                date,
+                date: resolvedDate,
                 description,
                 projectId: projectId || undefined,
                 fromAccountId: fromId,
                 toAccountId: toId,
-                accountId: fromId // Primary account is the source
+                accountId: fromId,
+                subtype:
+                    fromId === investorId && bankAccounts.some((b) => b.id === toId)
+                        ? EquityLedgerSubtype.INVESTMENT
+                        : EquityLedgerSubtype.WITHDRAWAL,
             };
             txsToUpdate.push(updatedTx);
         } else if (mode === 'BATCH_MOVE') {
@@ -545,19 +653,20 @@ const ProjectEquityManagement: React.FC = () => {
                 txsToUpdate.push({
                     ...divestTx,
                     amount: numAmount,
-                    date,
-                    description: `Equity Move out of ${state.projects.find(p=>p.id===projectId)?.name}`,
+                    date: resolvedDate,
+                    description: `Equity Move out of ${state.projects.find((p) => p.id === projectId)?.name}`,
                     projectId: projectId,
-                    toAccountId: investorId // Divest sends to Investor from Clearing
+                    toAccountId: investorId,
+                    subtype: EquityLedgerSubtype.MOVE_OUT,
                 });
-                // Update Invest (Target Project)
                 txsToUpdate.push({
                     ...investTx,
                     amount: numAmount,
-                    date,
-                    description: `Equity Move in to ${state.projects.find(p=>p.id===targetProjectId)?.name}`,
+                    date: resolvedDate,
+                    description: `Equity Move in to ${state.projects.find((p) => p.id === targetProjectId)?.name}`,
                     projectId: targetProjectId,
-                    fromAccountId: investorId // Invest comes from Investor to Clearing
+                    fromAccountId: investorId,
+                    subtype: EquityLedgerSubtype.MOVE_IN,
                 });
             }
         } else if (mode === 'BATCH_DIST') {
@@ -569,18 +678,19 @@ const ProjectEquityManagement: React.FC = () => {
                 txsToUpdate.push({
                     ...expenseTx,
                     amount: numAmount,
-                    date,
+                    date: resolvedDate,
                     projectId,
                     description
                 });
                 txsToUpdate.push({
                     ...transferTx,
                     amount: numAmount,
-                    date,
+                    date: resolvedDate,
                     projectId,
                     description,
-                    toAccountId: investorId, // Transfer sends to Investor
-                    accountId: investorId
+                    toAccountId: investorId,
+                    accountId: investorId,
+                    subtype: EquityLedgerSubtype.PROFIT_SHARE,
                 });
             }
         }
@@ -605,7 +715,7 @@ const ProjectEquityManagement: React.FC = () => {
     const handleOpenInvestModal = () => {
         setFormAmount('');
         setFormDescription('');
-        setFormDate(new Date().toISOString().split('T')[0]);
+        setFormDate(toLocalDateString(new Date()));
         
         // Clear investor selection when opening from project context
         // Only set investor if explicitly selected from staff/investor tree
@@ -648,13 +758,14 @@ const ProjectEquityManagement: React.FC = () => {
         const tx: Transaction = {
             id: `eq-tx-${Date.now()}`,
             type: TransactionType.TRANSFER,
+            subtype: EquityLedgerSubtype.INVESTMENT,
             amount,
-            date: formDate,
+            date: parseFlexibleDateToYyyyMmDd(formDate),
             description: formDescription || desc,
             fromAccountId: fromId,
             toAccountId: toId,
-            accountId: fromId, 
-            projectId: formProjectId
+            accountId: fromId,
+            projectId: formProjectId,
         };
 
         dispatch({ type: 'ADD_TRANSACTION', payload: tx });
@@ -734,8 +845,12 @@ const ProjectEquityManagement: React.FC = () => {
     // Cycle Manager Logic
     const projectFinancials = useMemo(() => {
         if (!distProjectId) return { income: 0, expense: 0, netOperating: 0, distributed: 0, available: 0, investedCapital: 0 };
-         let income = 0;
-        let operatingExpense = 0;
+        const { totalIncome, totalExpense, netProfit } = computeProjectProfitLossTotals(
+            state,
+            distProjectId,
+            '2000-01-01',
+            toLocalDateString(new Date())
+        );
         let distributed = 0;
         let investedCapital = 0;
         const equityCategoryNames = ['Owner Equity', 'Owner Withdrawn', 'Profit Share', 'Dividend'];
@@ -743,37 +858,45 @@ const ProjectEquityManagement: React.FC = () => {
             if (tx.projectId !== distProjectId) return;
             const category = state.categories.find(c => c.id === tx.categoryId);
             const isEquityCategory = category && equityCategoryNames.includes(category.name);
-            if (tx.type === TransactionType.INCOME) {
-                if (!isEquityCategory) income += tx.amount;
-            } else if (tx.type === TransactionType.EXPENSE) {
-                if (isEquityCategory) distributed += tx.amount;
-                else operatingExpense += tx.amount;
+            if (tx.type === TransactionType.EXPENSE && isEquityCategory) {
+                distributed += tx.amount;
             }
-             if (tx.type === TransactionType.TRANSFER) {
+            if (tx.type === TransactionType.TRANSFER) {
                 const toEquity = equityAccounts.find(a => a.id === tx.toAccountId);
                 const fromEquity = equityAccounts.find(a => a.id === tx.fromAccountId);
                 if (fromEquity && !toEquity) investedCapital += tx.amount;
                 else if (toEquity && !fromEquity) investedCapital -= tx.amount;
             }
         });
-        const netOperating = income - operatingExpense;
-        const available = netOperating - distributed;
-        return { income, expense: operatingExpense, netOperating, distributed, available, investedCapital };
-    }, [distProjectId, state.transactions, equityAccounts, state.accounts, state.categories]);
+        const available = netProfit - distributed;
+        return {
+            income: totalIncome,
+            expense: totalExpense,
+            netOperating: netProfit,
+            distributed,
+            available,
+            investedCapital,
+        };
+    }, [distProjectId, state, equityAccounts]);
 
     const handleCalculateDistShares = () => {
-         if (!distProjectId) return;
+        if (!distProjectId) return;
+        // Use the same per-project investor stakes as the equity tree (computeEquityBalances / invProjBal).
+        // The old TRANSFER-only sum missed equity built via profit credits, clearing batches, and other flows.
+        const projInv = balances.invProjBal[distProjectId] || {};
+        const investorIds = new Set(investorAccounts.map((a) => a.id));
         const investorCapital: Record<string, number> = {};
-        state.transactions.forEach(tx => {
-            if (tx.projectId !== distProjectId || tx.type !== TransactionType.TRANSFER) return;
-            const toEquity = equityAccounts.find(a => a.id === tx.toAccountId);
-            const fromEquity = equityAccounts.find(a => a.id === tx.fromAccountId);
-            if (fromEquity && !toEquity) investorCapital[fromEquity.id] = (investorCapital[fromEquity.id] || 0) + tx.amount;
-            else if (toEquity && !fromEquity) investorCapital[toEquity.id] = (investorCapital[toEquity.id] || 0) - tx.amount;
+        Object.entries(projInv).forEach(([investorId, amt]) => {
+            if (!investorIds.has(investorId)) return;
+            const v = roundEquityBalance(amt);
+            if (v > 0) investorCapital[investorId] = v;
         });
         const totalCapital = Object.values(investorCapital).reduce((sum, val) => sum + val, 0);
         const profitToDistribute = distProfit ? parseFloat(distProfit) : projectFinancials.available;
-        if (totalCapital <= 0) { showAlert("No Active equity capital found for this project."); return; }
+        if (totalCapital <= 0) {
+            showAlert("No active equity capital found for this project.");
+            return;
+        }
         const calculatedDistributions: InvestorDistribution[] = Object.entries(investorCapital)
             .filter(([_, amount]) => amount > 0)
             .map(([investorId, amount]) => {
@@ -802,9 +925,31 @@ const ProjectEquityManagement: React.FC = () => {
         const transactions: Transaction[] = [];
         let profitExpCat = state.categories.find(c => c.name === 'Owner Equity' && c.type === TransactionType.EXPENSE);
         if (!profitExpCat) profitExpCat = state.categories.find(c=>c.type === TransactionType.EXPENSE)!;
-        distributions.forEach(dist => {
-            transactions.push({ id: `prof-exp-${timestamp}-${dist.investorId}`, type: TransactionType.EXPENSE, amount: dist.profitShare, date: new Date().toISOString().split('T')[0], description: `Profit Distribution: ${cycleName}`, accountId: clearingAcc!.id, categoryId: profitExpCat?.id, projectId: distProjectId, batchId } as any);
-            transactions.push({ id: `prof-inc-${timestamp}-${dist.investorId}`, type: TransactionType.TRANSFER, amount: dist.profitShare, date: new Date().toISOString().split('T')[0], description: `Profit Share: ${cycleName}`, accountId: dist.investorId, fromAccountId: clearingAcc!.id, toAccountId: dist.investorId, projectId: distProjectId, batchId } as any);
+        distributions.forEach((dist) => {
+            transactions.push({
+                id: `prof-exp-${timestamp}-${dist.investorId}`,
+                type: TransactionType.EXPENSE,
+                amount: dist.profitShare,
+                date: toLocalDateString(new Date()),
+                description: `Profit Distribution: ${cycleName}`,
+                accountId: clearingAcc!.id,
+                categoryId: profitExpCat?.id,
+                projectId: distProjectId,
+                batchId,
+            } as Transaction);
+            transactions.push({
+                id: `prof-inc-${timestamp}-${dist.investorId}`,
+                type: TransactionType.TRANSFER,
+                subtype: EquityLedgerSubtype.PROFIT_SHARE,
+                amount: dist.profitShare,
+                date: toLocalDateString(new Date()),
+                description: `Profit Share: ${cycleName}`,
+                accountId: dist.investorId,
+                fromAccountId: clearingAcc!.id,
+                toAccountId: dist.investorId,
+                projectId: distProjectId,
+                batchId,
+            } as Transaction);
         });
         dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
         showToast("Profit Distributed.", "success");
@@ -854,8 +999,13 @@ const ProjectEquityManagement: React.FC = () => {
         const selectedTransfers = transferRows.filter(r => r.isSelected && parseFloat(r.transferAmount) > 0);
         if (selectedTransfers.length === 0) return;
         
-        const confirm = await showConfirm(`Transfer equity for ${selectedTransfers.length} investors?`);
+        const totalAmount = selectedTransfers.reduce((sum, r) => sum + (parseFloat(r.transferAmount) || 0), 0);
+        const totalFormatted = `${CURRENCY} ${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const confirm = await showConfirm(`Transfer equity for ${selectedTransfers.length} investor(s). Total amount: ${totalFormatted}. Continue?`);
         if (!confirm) return;
+
+        const note = transferDescription.trim();
+        const noteSuffix = note ? ` — ${note}` : '';
 
         const timestamp = Date.now();
         const transactions: Transaction[] = [];
@@ -865,33 +1015,74 @@ const ProjectEquityManagement: React.FC = () => {
             dispatch({ type: 'ADD_ACCOUNT', payload: clearingAcc });
         }
 
-        selectedTransfers.forEach(row => {
+        const txDate = transferDate || toLocalDateString(new Date());
+
+        selectedTransfers.forEach((row) => {
             const amount = parseFloat(row.transferAmount);
             if (transferType === 'PROJECT') {
-                transactions.push({ id: `divest-${timestamp}-${row.investorId}`, type: TransactionType.TRANSFER, amount: amount, date: new Date().toISOString().split('T')[0], description: `Equity Move out`, accountId: clearingAcc!.id, fromAccountId: clearingAcc!.id, toAccountId: row.investorId, projectId: sourceProjectId, batchId: `eq-move-${timestamp}` } as any);
-                transactions.push({ id: `invest-${timestamp}-${row.investorId}`, type: TransactionType.TRANSFER, amount: amount, date: new Date().toISOString().split('T')[0], description: `Equity Move in`, accountId: row.investorId, fromAccountId: row.investorId, toAccountId: clearingAcc!.id, projectId: destProjectId, batchId: `eq-move-${timestamp}` } as any);
+                transactions.push({
+                    id: `divest-${timestamp}-${row.investorId}`,
+                    type: TransactionType.TRANSFER,
+                    subtype: EquityLedgerSubtype.MOVE_OUT,
+                    amount,
+                    date: txDate,
+                    description: `Equity Move out${noteSuffix}`,
+                    accountId: clearingAcc!.id,
+                    fromAccountId: clearingAcc!.id,
+                    toAccountId: row.investorId,
+                    projectId: sourceProjectId,
+                    batchId: `eq-move-${timestamp}`,
+                } as Transaction);
+                transactions.push({
+                    id: `invest-${timestamp}-${row.investorId}`,
+                    type: TransactionType.TRANSFER,
+                    subtype: EquityLedgerSubtype.MOVE_IN,
+                    amount,
+                    date: txDate,
+                    description: `Equity Move in${noteSuffix}`,
+                    accountId: row.investorId,
+                    fromAccountId: row.investorId,
+                    toAccountId: clearingAcc!.id,
+                    projectId: destProjectId,
+                    batchId: `eq-move-${timestamp}`,
+                } as Transaction);
             } else {
-                transactions.push({ id: `payout-${timestamp}-${row.investorId}`, type: TransactionType.TRANSFER, amount: amount, date: new Date().toISOString().split('T')[0], description: `Capital Payout`, accountId: payoutAccountId, fromAccountId: payoutAccountId, toAccountId: row.investorId, projectId: sourceProjectId, batchId: `eq-payout-${timestamp}` } as any);
+                transactions.push({
+                    id: `payout-${timestamp}-${row.investorId}`,
+                    type: TransactionType.TRANSFER,
+                    subtype: EquityLedgerSubtype.CAPITAL_PAYOUT,
+                    amount,
+                    date: txDate,
+                    description: `Capital Payout${noteSuffix}`,
+                    accountId: payoutAccountId,
+                    fromAccountId: payoutAccountId,
+                    toAccountId: row.investorId,
+                    projectId: sourceProjectId,
+                    batchId: `eq-payout-${timestamp}`,
+                } as Transaction);
             }
         });
 
         dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
         showToast("Equity transferred.", "success");
-        setTransferStep(1); setTransferRows([]);
+        setTransferStep(1);
+        setTransferRows([]);
+        setTransferDescription('');
+        setTransferDate(toLocalDateString(new Date()));
+        // Switch to Ledger and select project so updated values are visible
+        onEquityTabChange('Ledger');
+        const projectToShow = transferType === 'PROJECT' ? destProjectId : sourceProjectId;
+        if (projectToShow) {
+            setSelectedTreeId(projectToShow);
+            setSelectedTreeType('project');
+            setSelectedParentId(null);
+        }
     };
 
     return (
-        <div className="flex flex-col h-full">
-            <div className="flex-shrink-0">
-                <Tabs
-                    variant="browser"
-                    tabs={['Ledger', 'Profit Distribution', 'Equity Transfer', 'Investor Distribution']}
-                    activeTab={activeTab}
-                    onTabClick={setActiveTab}
-                />
-            </div>
-            <div className="flex-grow overflow-hidden bg-white rounded-b-lg -mt-px p-4">
-            {activeTab === 'Ledger' && (
+        <div className="flex flex-col h-full min-h-0">
+            <div className="flex-1 min-h-0 overflow-hidden bg-white dark:bg-slate-900/20 p-4 flex flex-col">
+            {equityTab === 'Ledger' && (
                 <>
                     <style>{STANDARD_PRINT_STYLES}</style>
                     {/* Printable area for print mode - hidden in screen, visible in print */}
@@ -930,7 +1121,7 @@ const ProjectEquityManagement: React.FC = () => {
                                     </tr>
                                 ) : (
                                     ledgerData.map(tx => (
-                                        <tr key={tx.id}>
+                                        <tr key={(tx as { ledgerRowKey?: string }).ledgerRowKey ?? tx.id}>
                                             <td className="px-4 py-2 text-slate-700">{formatDate(tx.date)}</td>
                                             <td className="px-4 py-2">
                                                 <span className={`px-3 py-1 font-medium rounded-full inline-block ${tx.paymentTypeColor}`}>
@@ -950,8 +1141,83 @@ const ProjectEquityManagement: React.FC = () => {
                     </div>
                     
                     {/* Screen view - hidden in print */}
-                    <div className="flex-grow flex h-full gap-4 overflow-hidden no-print">
-                        <div className="hidden md:flex flex-col h-full flex-shrink-0 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden" style={{ width: sidebarWidth }}>
+                    <div className="flex-grow flex flex-col h-full min-h-0 gap-3 overflow-hidden no-print">
+                        <div className="overflow-x-auto pb-0.5 -mx-1 px-1 sm:mx-0 sm:px-0">
+                            <div className="grid grid-cols-5 gap-1.5 sm:gap-2 min-w-[32rem] sm:min-w-0 shrink-0">
+                            {(
+                                [
+                                    {
+                                        label: 'Total principal amount',
+                                        value: ledgerSummaryTotals.totalPrincipal,
+                                        panel:
+                                            'border-blue-200/90 bg-blue-50/95 dark:border-blue-800/80 dark:bg-blue-950/45',
+                                        labelText: 'text-blue-800/85 dark:text-blue-300',
+                                        valueText: 'text-blue-950 dark:text-blue-50',
+                                    },
+                                    {
+                                        label: 'Total profit added',
+                                        value: ledgerSummaryTotals.totalProfit,
+                                        panel:
+                                            'border-emerald-200/90 bg-emerald-50/95 dark:border-emerald-800/80 dark:bg-emerald-950/45',
+                                        labelText: 'text-emerald-800/85 dark:text-emerald-300',
+                                        valueText: 'text-emerald-950 dark:text-emerald-50',
+                                    },
+                                    {
+                                        label: 'Total equity moved in',
+                                        value: ledgerSummaryTotals.totalEquityMovedIn,
+                                        panel:
+                                            'border-teal-200/90 bg-teal-50/95 dark:border-teal-800/80 dark:bg-teal-950/45',
+                                        labelText: 'text-teal-800/85 dark:text-teal-300',
+                                        valueText: 'text-teal-950 dark:text-teal-50',
+                                    },
+                                    {
+                                        label: 'Total equity moved out',
+                                        value: ledgerSummaryTotals.totalEquityMovedOut,
+                                        panel:
+                                            'border-rose-200/90 bg-rose-50/95 dark:border-rose-800/80 dark:bg-rose-950/45',
+                                        labelText: 'text-rose-800/85 dark:text-rose-300',
+                                        valueText: 'text-rose-950 dark:text-rose-50',
+                                    },
+                                    {
+                                        label: 'Net equity',
+                                        value: 0,
+                                        panel:
+                                            'border-indigo-200/90 bg-indigo-50/95 dark:border-indigo-800/80 dark:bg-indigo-950/45',
+                                        labelText: 'text-indigo-800/85 dark:text-indigo-300',
+                                        valueText: 'text-indigo-950 dark:text-indigo-50',
+                                    },
+                                ] as const
+                            ).map((item) => {
+                                const isNetCard = item.label === 'Net equity';
+                                const amount = isNetCard ? (selectedNetEquity ?? 0) : item.value;
+                                const showNegativeNet =
+                                    isNetCard && selectedTreeId && selectedNetEquity !== null && selectedNetEquity < 0;
+                                return (
+                                <div
+                                    key={item.label}
+                                    className={`rounded-lg border px-2 py-2 min-w-0 shadow-sm ${item.panel}`}
+                                >
+                                    <p
+                                        className={`text-[10px] sm:text-[11px] font-medium uppercase tracking-wide leading-tight ${item.labelText}`}
+                                    >
+                                        {item.label}
+                                    </p>
+                                    <p
+                                        className={`text-sm font-bold tabular-nums mt-0.5 sm:mt-1 break-all ${item.valueText} ${
+                                            showNegativeNet ? '!text-rose-700 dark:!text-rose-300' : ''
+                                        }`}
+                                    >
+                                        {selectedTreeId
+                                            ? `${CURRENCY} ${formatCurrency(amount)}`
+                                            : '—'}
+                                    </p>
+                                </div>
+                            );
+                            })}
+                            </div>
+                        </div>
+                        <div className="flex-grow flex h-full min-h-0 gap-4 overflow-hidden">
+                            <div className="hidden md:flex flex-col h-full flex-shrink-0 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden" style={{ width: sidebarWidth }}>
                             <div className="p-3 border-b bg-slate-50 font-bold text-slate-700 flex justify-between">
                                 <span>Projects & Investors</span>
                                 {selectedTreeId && <button onClick={() => { setSelectedTreeId(null); setSelectedTreeType(null); setSelectedParentId(null); }} className="text-xs text-accent hover:underline">Clear</button>}
@@ -959,11 +1225,11 @@ const ProjectEquityManagement: React.FC = () => {
                             <div className="flex-grow overflow-y-auto p-2">
                                 <TreeView treeData={treeData} selectedId={selectedTreeId} selectedParentId={selectedParentId} onSelect={(id, type, parentId) => { setSelectedTreeId(id); setSelectedTreeType(type as any); setSelectedParentId(parentId || null); }} />
                             </div>
-                        </div>
-                        <div className="hidden md:block h-full">
-                            <ResizeHandle onMouseDown={startResizing} />
-                        </div>
-                        <div className="flex-grow flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                            </div>
+                            <div className="hidden md:block h-full">
+                                <ResizeHandle onMouseDown={startResizing} />
+                            </div>
+                            <div className="flex-grow flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
                             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                                 <div><h2 className="text-lg font-bold text-slate-800">Equity Overview</h2></div>
                                 <div className="flex gap-2">
@@ -994,7 +1260,7 @@ const ProjectEquityManagement: React.FC = () => {
                                         ) : (
                                             ledgerData.map(tx => (
                                                 <tr 
-                                                    key={tx.id} 
+                                                    key={(tx as { ledgerRowKey?: string }).ledgerRowKey ?? tx.id} 
                                                     className="hover:bg-slate-50 cursor-pointer transition-colors"
                                                     onClick={() => handleRowClick(tx)}
                                                 >
@@ -1018,12 +1284,13 @@ const ProjectEquityManagement: React.FC = () => {
                                 </table>
                             </div>
                         </div>
+                        </div>
                     </div>
                 </>
             )}
 
             {/* Cycle Manager Tab */}
-             {activeTab === 'Profit Distribution' && (
+             {equityTab === 'Profit Distribution' && (
                 <div className="bg-white rounded-lg border border-slate-200 p-6 flex-grow overflow-y-auto">
                     {distStep === 1 && (
                          <div className="space-y-6 max-w-2xl mx-auto">
@@ -1105,7 +1372,7 @@ const ProjectEquityManagement: React.FC = () => {
                     )}
                 </div>
             )}
-             {activeTab === 'Equity Transfer' && (
+             {equityTab === 'Equity Transfer' && (
                 <div className="bg-white rounded-lg border border-slate-200 p-6 flex-grow overflow-y-auto">
                     {transferStep === 1 && (
                         <div className="space-y-6 max-w-2xl">
@@ -1114,10 +1381,10 @@ const ProjectEquityManagement: React.FC = () => {
                         </div>
                     )}
                     {transferStep === 2 && (
-                         <div className="flex flex-col h-full overflow-hidden space-y-4 max-w-5xl mx-auto w-full">
+                         <div className="flex flex-col space-y-4 max-w-5xl mx-auto w-full min-h-0">
                             <div className="flex justify-between items-center">
                                 <h3 className="text-xl font-bold">Equity Transfer</h3>
-                                <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); }}>Back</Button>
+                                <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); setTransferDescription(''); setTransferDate(toLocalDateString(new Date())); }}>Back</Button>
                             </div>
                             
                             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
@@ -1136,6 +1403,24 @@ const ProjectEquityManagement: React.FC = () => {
                                 ) : (
                                     <ComboBox label="Pay From Account" items={bankAccounts} selectedId={payoutAccountId} onSelect={(item) => setPayoutAccountId(item?.id || '')} placeholder="Select Bank/Cash Account" allowAddNew={false} />
                                 )}
+                                <div className="mt-4 max-w-xs">
+                                    <DatePicker
+                                        label="Date"
+                                        value={transferDate}
+                                        onChange={d => setTransferDate(toLocalDateString(d))}
+                                        required
+                                    />
+                                </div>
+                                <div className="mt-4">
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                    <textarea
+                                        value={transferDescription}
+                                        onChange={e => setTransferDescription(e.target.value)}
+                                        placeholder="Optional notes for this transfer (shown on ledger entries)"
+                                        rows={3}
+                                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                    />
+                                </div>
                             </div>
 
                             <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
@@ -1151,7 +1436,7 @@ const ProjectEquityManagement: React.FC = () => {
                                         {transferRows.every(r => r.isSelected) ? 'Deselect All' : 'Select All'}
                                     </button>
                                 </div>
-                                <div className="overflow-x-auto">
+                                <div className="overflow-auto max-h-[32vh]">
                                     <table className="min-w-full divide-y divide-slate-200">
                                         <thead className="bg-slate-50">
                                             <tr>
@@ -1250,7 +1535,7 @@ const ProjectEquityManagement: React.FC = () => {
                             )}
 
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                                <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); }}>Cancel</Button>
+                                <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); setTransferDescription(''); setTransferDate(toLocalDateString(new Date())); }}>Cancel</Button>
                                 <Button 
                                     onClick={handleTransferCommit} 
                                     disabled={(transferType === 'PROJECT' && !destProjectId) || (transferType === 'PAYOUT' && !payoutAccountId) || transferRows.filter(r => r.isSelected && parseFloat(r.transferAmount) > 0).length === 0}
@@ -1263,7 +1548,7 @@ const ProjectEquityManagement: React.FC = () => {
                     )}
                 </div>
             )}
-            {activeTab === 'Investor Distribution' && (
+            {equityTab === 'Investor Distribution' && (
                 <div className="flex-grow overflow-hidden">
                     <ProjectInvestorReport />
                 </div>
@@ -1276,7 +1561,7 @@ const ProjectEquityManagement: React.FC = () => {
                     <ComboBox label="Project" items={state.projects} selectedId={formProjectId} onSelect={(i) => setFormProjectId(i?.id || '')} required allowAddNew={false} />
                     <ComboBox label="Bank/Cash Account" items={bankAccounts} selectedId={formBankAccountId} onSelect={(i) => setFormBankAccountId(i?.id || '')} required allowAddNew={false} />
                     <Input label="Amount" type="number" value={formAmount} onChange={e => setFormAmount(e.target.value)} required />
-                    <Input label="Date" type="date" value={formDate} onChange={e => setFormDate(e.target.value)} required />
+                    <DatePicker label="Date" value={formDate} onChange={d => setFormDate(toLocalDateString(d))} required />
                     <Input label="Description" value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Optional note" />
                     
                     <div className="flex justify-end gap-2 pt-4">
@@ -1314,7 +1599,12 @@ const ProjectEquityManagement: React.FC = () => {
                         )}
 
                         <Input label="Amount" type="number" value={editingBatch.amount} onChange={e => setEditingBatch({...editingBatch, amount: e.target.value})} required />
-                        <Input label="Date" type="date" value={editingBatch.date} onChange={e => setEditingBatch({...editingBatch, date: e.target.value})} required />
+                        <DatePicker
+                            label="Date"
+                            value={editingBatch.date}
+                            onChange={d => setEditingBatch({ ...editingBatch, date: toLocalDateString(d) })}
+                            required
+                        />
                         <Input label="Description" value={editingBatch.description} onChange={e => setEditingBatch({...editingBatch, description: e.target.value})} />
                         
                         <div className="flex justify-between gap-2 pt-4">

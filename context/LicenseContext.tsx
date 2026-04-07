@@ -1,7 +1,8 @@
 
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import useDatabaseLicense from '../hooks/useDatabaseLicense';
 import { useAuth } from './AuthContext';
+import { isLocalOnlyMode } from '../config/apiUrl';
 
 interface LicenseContextType {
     isRegistered: boolean;
@@ -18,6 +19,9 @@ interface LicenseContextType {
 const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
 
 const TRIAL_DURATION_DAYS = 30;
+
+/** In local-only mode, all these modules are enabled for testing. */
+const LOCAL_ONLY_MODULES = ['real_estate', 'rental', 'shop'];
 
 /** Generate a short unique ID; works in HTTP and older browsers where crypto.randomUUID may be missing. */
 function generateDeviceId(): string {
@@ -92,6 +96,22 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, []);
 
     useEffect(() => {
+        // Local-only: full license so all features can be tested (no expiry, all modules)
+        if (isLocalOnlyMode() && isAuthenticated) {
+            setIsRegistered(true);
+            setIsExpired(false);
+            setDaysRemaining(999);
+            return;
+        }
+
+        // LAN / API without cloud license payload (no /tenants/license-status or empty modules): same as local dev
+        if (!isLocalOnlyMode() && isAuthenticated && !cloudLicense) {
+            setIsRegistered(true);
+            setIsExpired(false);
+            setDaysRemaining(999);
+            return;
+        }
+
         // 1. Initialize Device ID if missing
         let currentDeviceId = deviceId;
         if (!currentDeviceId) {
@@ -141,24 +161,38 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     }, [installDate, licenseKey, deviceId, isAuthenticated, cloudLicense]);
 
-    const hasModule = (moduleKey: string) => {
+    const hasModule = useCallback((moduleKey: string) => {
         if (!isAuthenticated) return false;
-        if (!cloudLicense?.modules) return false;
-        return cloudLicense.modules.includes(moduleKey);
-    };
+        if (isLocalOnlyMode()) return LOCAL_ONLY_MODULES.includes(moduleKey);
+        const mods = cloudLicense?.modules;
+        if (!mods?.length) {
+            return LOCAL_ONLY_MODULES.includes(moduleKey);
+        }
+        return mods.includes(moduleKey);
+    }, [isAuthenticated, cloudLicense?.modules]);
+
+    const effectiveModules = useMemo(() => {
+        if (!isAuthenticated) return [];
+        if (isLocalOnlyMode()) return LOCAL_ONLY_MODULES;
+        const mods = cloudLicense?.modules;
+        if (mods?.length) return mods;
+        return LOCAL_ONLY_MODULES;
+    }, [isAuthenticated, cloudLicense?.modules]);
+
+    const value = useMemo(() => ({
+        isRegistered,
+        isTrial: !isRegistered && !isExpired,
+        isExpired,
+        daysRemaining,
+        licenseKey,
+        deviceId,
+        installDate,
+        modules: effectiveModules,
+        hasModule
+    }), [isRegistered, isExpired, daysRemaining, licenseKey, deviceId, installDate, effectiveModules, hasModule]);
 
     return (
-        <LicenseContext.Provider value={{
-            isRegistered,
-            isTrial: !isRegistered && !isExpired,
-            isExpired,
-            daysRemaining,
-            licenseKey,
-            deviceId,
-            installDate,
-            modules: cloudLicense?.modules || [],
-            hasModule
-        }}>
+        <LicenseContext.Provider value={value}>
             {children}
         </LicenseContext.Provider>
     );

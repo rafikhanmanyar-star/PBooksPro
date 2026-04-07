@@ -1,6 +1,7 @@
 
 import { AppState } from '../../types';
 import { ImportValidationResult } from '../importValidator';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 /**
  * Base interface for all external system adapters
@@ -87,7 +88,7 @@ export abstract class BaseAdapter {
         // Try to parse as date
         const date = new Date(dateValue);
         if (!isNaN(date.getTime())) {
-            return date.toISOString().split('T')[0];
+            return toLocalDateString(date);
         }
 
         // Try common date formats

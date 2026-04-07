@@ -56,14 +56,14 @@ const LedgerSummary: React.FC<LedgerSummaryProps> = ({ transactions }) => {
         isCount?: boolean;
     }> = ({ title, amount, valueColor = 'white', prefix = '', isCount = false }) => {
         const valueStyles = {
-            green: 'text-emerald-400 font-bold',
-            white: 'text-white font-semibold',
-            rose: 'text-rose-400 font-semibold',
-            slate: 'text-slate-300 font-semibold',
+            green: 'text-ds-success font-bold',
+            white: 'text-app-text font-semibold',
+            rose: 'text-ds-danger font-semibold',
+            slate: 'text-app-muted font-semibold',
         };
         return (
-            <div className="rounded-xl px-4 py-3 bg-slate-700/40 border border-slate-600/50 shadow-sm backdrop-blur-sm">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{title}</p>
+            <div className="rounded-xl px-4 py-3 bg-app-card border border-app-border shadow-ds-card">
+                <p className="text-[10px] font-bold text-app-muted uppercase tracking-widest mb-1.5">{title}</p>
                 <p className={`text-sm sm:text-base font-bold tabular-nums tracking-tight ${valueStyles[valueColor]}`}>
                     {isCount ? amount.toLocaleString() : `${prefix}${CURRENCY} ${formatAmount(amount)}`}
                 </p>

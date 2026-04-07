@@ -9,7 +9,7 @@ import { formatRoundedNumber } from '../../utils/numberUtils';
 interface FundReportRow {
     id: string;
     name: string;
-    type: 'Project' | 'Building' | 'Loan';
+    type: 'Project' | 'Building' | 'Loan' | 'Personal';
     income: number;
     expense: number;
     investment: number;
@@ -53,27 +53,51 @@ const ProjectBuildingFundsReport: React.FC = () => {
 
     const reportData = useMemo<FundReportRow[]>(() => {
         const rows: FundReportRow[] = [];
-        
-        // IMPORTANT: This report processes ALL transactions from the database (from day one)
-        // No date filtering is applied - all historical data is included in calculations
-        
-        // Helper to check for Equity/Capital categories
+
         const equityCategoryNames = ['Owner Equity', 'Share Capital', 'Investment', 'Capital Injection'];
         const withdrawalCategoryNames = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Profit Share', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
-        
+        const withdrawalCategoryNamesForEquityOut = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
+
+        const categoryMap = new Map(state.categories.map(c => [c.id, c]));
+        const billMap = new Map(state.bills.map(b => [b.id, b]));
+        const invoiceMap = new Map(state.invoices.map(i => [i.id, i]));
+        const accountMap = new Map(state.accounts.map(a => [a.id, a]));
+        const propertyMap = new Map(state.properties.map(p => [p.id, p]));
+
         const isEquityIncome = (catId?: string) => {
             if (!catId) return false;
-            const c = state.categories.find(cat => cat.id === catId);
+            const c = categoryMap.get(catId);
             return c && equityCategoryNames.includes(c.name);
         };
         
         const isEquityExpense = (catId?: string) => {
             if (!catId) return false;
-            const c = state.categories.find(cat => cat.id === catId);
+            const c = categoryMap.get(catId);
             return c && withdrawalCategoryNames.includes(c.name);
         };
+        const isEquityExpenseForEquityOut = (catId?: string) => {
+            if (!catId) return false;
+            const c = categoryMap.get(catId);
+            return c && withdrawalCategoryNamesForEquityOut.includes(c.name);
+        };
+        const isProfitDistributionExpense = (tx: { type: string; description?: string }) =>
+            tx.type === TransactionType.EXPENSE && (tx.description?.toLowerCase().includes('profit distribution') ?? false);
 
         const equityAccountIds = new Set(state.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
+
+        // Pre-index: resolve each transaction's projectId and buildingId once
+        const txProjectIds = new Map<string, string | undefined>();
+        const txBuildingIds = new Map<string, string | undefined>();
+        for (const tx of state.transactions) {
+            let pid = tx.projectId;
+            if (!pid && tx.billId) { pid = billMap.get(tx.billId)?.projectId; }
+            if (!pid && tx.invoiceId) { pid = invoiceMap.get(tx.invoiceId)?.projectId; }
+            txProjectIds.set(tx.id, pid);
+
+            let bid = tx.buildingId;
+            if (!bid && tx.propertyId) { bid = propertyMap.get(tx.propertyId)?.buildingId; }
+            txBuildingIds.set(tx.id, bid);
+        }
 
         // 1. Process Projects
         state.projects.forEach(project => {
@@ -84,23 +108,7 @@ const ProjectBuildingFundsReport: React.FC = () => {
             let loanNetBalance = 0;
 
             state.transactions.forEach(tx => {
-                // Resolve projectId from transaction, bill, or invoice
-                let txProjectId = tx.projectId;
-                
-                // If projectId is not directly set, try to resolve from linked bill
-                if (!txProjectId && tx.billId) {
-                    const bill = state.bills.find(b => b.id === tx.billId);
-                    if (bill) txProjectId = bill.projectId;
-                }
-                
-                // If still not set, try to resolve from linked invoice
-                if (!txProjectId && tx.invoiceId) {
-                    const invoice = state.invoices.find(i => i.id === tx.invoiceId);
-                    if (invoice) txProjectId = invoice.projectId;
-                }
-                
-                // Only process transactions that belong to this project
-                if (txProjectId !== project.id) return;
+                if (txProjectIds.get(tx.id) !== project.id) return;
 
                 if (tx.type === TransactionType.INCOME) {
                     if (isEquityIncome(tx.categoryId)) {
@@ -109,42 +117,30 @@ const ProjectBuildingFundsReport: React.FC = () => {
                         income += tx.amount;
                     }
                 } else if (tx.type === TransactionType.EXPENSE) {
-                    if (isEquityExpense(tx.categoryId)) {
+                    if (isEquityExpenseForEquityOut(tx.categoryId)) {
                         equityOut += tx.amount;
-                    } else {
+                    } else if (!isProfitDistributionExpense(tx)) {
                         expense += tx.amount;
                     }
                 } else if (tx.type === TransactionType.TRANSFER) {
                     const isFromEquity = tx.fromAccountId && equityAccountIds.has(tx.fromAccountId);
                     const isToEquity = tx.toAccountId && equityAccountIds.has(tx.toAccountId);
                     const isMoveIn = tx.description?.toLowerCase().includes('equity move in');
-                    const isMoveOut = tx.description?.toLowerCase().includes('equity move out');
-                    
-                    // Check if this is a PM fee transfer (deposit from another project)
-                    const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
+                    const desc = tx.description?.toLowerCase() ?? '';
+                    const isExplicitEquityMoveOut = desc.includes('equity move out');
+                    const isCapitalPayout = desc.includes('capital payout');
+                    const fromAccount = accountMap.get(tx.fromAccountId || '');
                     const isFromClearing = fromAccount?.name === 'Internal Clearing';
-                    const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') || 
-                                           tx.description?.toLowerCase().includes('pm fee equity');
-                    
-                    // Logic for Project Investment vs Equity Out
+                    const isPMFeeTransfer = desc.includes('pm fee') || desc.includes('pm fee equity');
+                    if (isExplicitEquityMoveOut || isCapitalPayout) {
+                        equityOut += tx.amount;
+                    }
                     if (isFromEquity || isMoveIn) {
-                         // Investment: Money FROM equity account (investor putting money in)
-                         investment += tx.amount;
-                    } else if (isToEquity || isMoveOut) {
-                         // Check if this is a PM fee transfer (deposit) or actual equity withdrawal
-                         if (isFromClearing && isPMFeeTransfer) {
-                             // PM Fee Transfer: This is a deposit (investment) from another project
-                             // It increases the PM project's funds, so count as investment
-                             investment += tx.amount;
-                         } else {
-                             // Equity Out: Money TO equity account (withdrawal/payout)
-                             equityOut += tx.amount;
-                         }
+                        investment += tx.amount;
+                    } else if (isToEquity && isFromClearing && isPMFeeTransfer) {
+                        investment += tx.amount;
                     }
                 } else if (tx.type === TransactionType.LOAN) {
-                    // Calculate loan net balance
-                    // RECEIVE and COLLECT increase available funds (positive)
-                    // GIVE and REPAY decrease available funds (negative)
                     if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
                         loanNetBalance += tx.amount;
                     } else if (tx.subtype === LoanSubtype.GIVE || tx.subtype === LoanSubtype.REPAY) {
@@ -171,16 +167,9 @@ const ProjectBuildingFundsReport: React.FC = () => {
             let income = 0;
             let expense = 0;
             let loanNetBalance = 0;
-            
-            // For buildings, Total Investment is 0 as per requirements. 
-            // Equity Out matches payouts/withdrawals logic for consistency in Net Balance.
 
             state.transactions.forEach(tx => {
-                let txBuildingId = tx.buildingId;
-                if (!txBuildingId && tx.propertyId) {
-                    const prop = state.properties.find(p => p.id === tx.propertyId);
-                    if (prop) txBuildingId = prop.buildingId;
-                }
+                const txBuildingId = txBuildingIds.get(tx.id);
 
                 if (txBuildingId !== building.id) return;
 
@@ -265,8 +254,8 @@ const ProjectBuildingFundsReport: React.FC = () => {
                    Math.abs(row.loanNetBalance) > EPSILON;
         });
 
-        // Sorting
-        return filteredRows.sort((a, b) => {
+        // Sorting (projects / buildings / loans only; personal row appended after)
+        const sortedCore = filteredRows.sort((a, b) => {
             const valA = a[sortConfig.key];
             const valB = b[sortConfig.key];
             
@@ -279,17 +268,46 @@ const ProjectBuildingFundsReport: React.FC = () => {
             return 0;
         });
 
-    }, [state.projects, state.buildings, state.transactions, state.categories, state.accounts, state.properties, state.contacts, sortConfig]);
+        // Personal amounts: expenses are stored negative in DB (cashbook); show as positive expense and net = income - expense (same as Personal Transactions tab summary).
+        let personalIncome = 0;
+        let personalExpense = 0;
+        for (const p of state.personalTransactions || []) {
+            if (p.deletedAt) continue;
+            if (p.type === 'Income') personalIncome += Math.abs(Number(p.amount) || 0);
+            else if (p.type === 'Expense') personalExpense += Math.abs(Number(p.amount) || 0);
+        }
+        personalIncome = roundNumber(personalIncome);
+        personalExpense = roundNumber(personalExpense);
+
+        if (Math.abs(personalIncome) > EPSILON || Math.abs(personalExpense) > EPSILON) {
+            sortedCore.push({
+                id: 'personal-summary',
+                name: 'Personal transactions',
+                type: 'Personal',
+                income: personalIncome,
+                expense: personalExpense,
+                investment: 0,
+                equityOut: 0,
+                loanNetBalance: 0,
+                netBalance: roundNumber(personalIncome - personalExpense),
+            });
+        }
+
+        return sortedCore;
+
+    }, [state.projects, state.buildings, state.transactions, state.categories, state.accounts, state.properties, state.bills, state.invoices, state.personalTransactions, sortConfig]);
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className={`ml-1 text-[10px] ${sortConfig.key === column ? 'text-primary' : 'text-app-muted'}`}>
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
 
-    // Calculate summary totals (already rounded from reportData)
+    // Calculate summary totals (already rounded from reportData; exclude personal row — it has its own cards)
     const summary = useMemo(() => {
-        return reportData.reduce((acc, row) => ({
+        return reportData
+            .filter((row) => row.type !== 'Personal')
+            .reduce((acc, row) => ({
             totalIncome: acc.totalIncome + row.income,
             totalExpense: acc.totalExpense + row.expense,
             totalInvestment: acc.totalInvestment + row.investment,
@@ -316,119 +334,142 @@ const ProjectBuildingFundsReport: React.FC = () => {
         });
     }, [reportData]);
 
+    const personalRow = reportData.find((r) => r.type === 'Personal');
+    const personalIncomeTotal = personalRow?.income ?? 0;
+    const personalExpenseTotal = personalRow?.expense ?? 0;
+
     return (
         <Card className="overflow-hidden">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-slate-800">Funds Availability Report</h3>
+                <h3 className="text-lg font-bold text-app-text">Funds Availability Report</h3>
             </div>
             
             {/* Summary Section */}
             <div className="mb-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3">
-                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                    <div className="text-xs text-slate-500 font-medium mb-1">Total Projects</div>
-                    <div className="text-lg font-bold text-slate-800">{summary.totalProjects}</div>
+                <div className="bg-app-toolbar rounded-lg p-3 border border-app-border">
+                    <div className="text-xs text-app-muted font-medium mb-1">Total Projects</div>
+                    <div className="text-lg font-bold text-app-text">{summary.totalProjects}</div>
                 </div>
-                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                    <div className="text-xs text-slate-500 font-medium mb-1">Total Buildings</div>
-                    <div className="text-lg font-bold text-slate-800">{summary.totalBuildings}</div>
+                <div className="bg-app-toolbar rounded-lg p-3 border border-app-border">
+                    <div className="text-xs text-app-muted font-medium mb-1">Total Buildings</div>
+                    <div className="text-lg font-bold text-app-text">{summary.totalBuildings}</div>
                 </div>
-                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                    <div className="text-xs text-slate-500 font-medium mb-1">Total Loans</div>
-                    <div className="text-lg font-bold text-slate-800">{summary.totalLoans}</div>
+                <div className="bg-app-toolbar rounded-lg p-3 border border-app-border">
+                    <div className="text-xs text-app-muted font-medium mb-1">Total Loans</div>
+                    <div className="text-lg font-bold text-app-text">{summary.totalLoans}</div>
                 </div>
-                <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
-                    <div className="text-xs text-emerald-600 font-medium mb-1">Total Income</div>
-                    <div className={`${getFontSize(summary.totalIncome)} font-bold text-emerald-700 tabular-nums`}>{CURRENCY} {formatRoundedNumber(summary.totalIncome)}</div>
+                <div className="rounded-lg p-3 border border-app-border bg-[color:var(--badge-paid-bg)]">
+                    <div className="text-xs text-ds-success font-medium mb-1">Total Income</div>
+                    <div className={`${getFontSize(summary.totalIncome)} font-bold text-ds-success tabular-nums`}>{CURRENCY} {formatRoundedNumber(summary.totalIncome)}</div>
                 </div>
-                <div className="bg-rose-50 rounded-lg p-3 border border-rose-200">
-                    <div className="text-xs text-rose-600 font-medium mb-1">Total Expense</div>
-                    <div className={`${getFontSize(summary.totalExpense)} font-bold text-rose-700 tabular-nums`}>{CURRENCY} {formatRoundedNumber(summary.totalExpense)}</div>
+                <div className="rounded-lg p-3 border border-app-border bg-[color:var(--badge-unpaid-bg)]">
+                    <div className="text-xs text-ds-danger font-medium mb-1">Total Expense</div>
+                    <div className={`${getFontSize(summary.totalExpense)} font-bold text-ds-danger tabular-nums`}>{CURRENCY} {formatRoundedNumber(summary.totalExpense)}</div>
                 </div>
-                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                    <div className="text-xs text-blue-600 font-medium mb-1">Total Investment</div>
-                    <div className={`${getFontSize(summary.totalInvestment)} font-bold text-blue-700 tabular-nums`}>{CURRENCY} {formatRoundedNumber(summary.totalInvestment)}</div>
+                <div className="rounded-lg p-3 border border-primary/30 bg-app-toolbar">
+                    <div className="text-xs text-primary font-medium mb-1">Total Investment</div>
+                    <div className={`${getFontSize(summary.totalInvestment)} font-bold text-primary tabular-nums`}>{CURRENCY} {formatRoundedNumber(summary.totalInvestment)}</div>
                 </div>
-                <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                    <div className="text-xs text-amber-600 font-medium mb-1">Equity Moved Out</div>
-                    <div className={`${getFontSize(summary.totalEquityOut)} font-bold text-amber-700 tabular-nums`}>{CURRENCY} {formatRoundedNumber(summary.totalEquityOut)}</div>
+                <div className="rounded-lg p-3 border border-app-border bg-[color:var(--badge-partial-bg)]">
+                    <div className="text-xs text-ds-warning font-medium mb-1">Equity Moved Out</div>
+                    <div className={`${getFontSize(summary.totalEquityOut)} font-bold text-ds-warning tabular-nums`}>{CURRENCY} {formatRoundedNumber(summary.totalEquityOut)}</div>
                 </div>
-                <div className={`rounded-lg p-3 border ${summary.totalLoanNetBalance >= 0 ? 'bg-purple-50 border-purple-200' : 'bg-purple-100 border-purple-300'}`}>
-                    <div className={`text-xs font-medium mb-1 ${summary.totalLoanNetBalance >= 0 ? 'text-purple-600' : 'text-purple-700'}`}>Loan Net Balance</div>
-                    <div className={`${getFontSize(summary.totalLoanNetBalance)} font-bold tabular-nums ${summary.totalLoanNetBalance >= 0 ? 'text-purple-700' : 'text-purple-800'}`}>
+                <div className={`rounded-lg p-3 border border-app-border ${summary.totalLoanNetBalance >= 0 ? 'bg-app-surface-2' : 'bg-app-toolbar'}`}>
+                    <div className="text-xs font-medium mb-1 text-purple-600">Loan Net Balance</div>
+                    <div className={`${getFontSize(summary.totalLoanNetBalance)} font-bold tabular-nums text-purple-600`}>
                         {CURRENCY} {formatRoundedNumber(summary.totalLoanNetBalance)}
                     </div>
                 </div>
-                <div className={`rounded-lg p-3 border ${summary.totalNetBalance >= 0 ? 'bg-slate-100 border-slate-300' : 'bg-rose-100 border-rose-300'}`}>
-                    <div className={`text-xs font-medium mb-1 ${summary.totalNetBalance >= 0 ? 'text-slate-600' : 'text-rose-600'}`}>Net Balance</div>
-                    <div className={`${getFontSize(summary.totalNetBalance)} font-bold tabular-nums ${summary.totalNetBalance >= 0 ? 'text-slate-800' : 'text-rose-700'}`}>
+                <div className={`rounded-lg p-3 border ${summary.totalNetBalance >= 0 ? 'border-app-border bg-app-toolbar' : 'border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)]'}`}>
+                    <div className={`text-xs font-medium mb-1 ${summary.totalNetBalance >= 0 ? 'text-app-muted' : 'text-ds-danger'}`}>Net Balance</div>
+                    <div className={`${getFontSize(summary.totalNetBalance)} font-bold tabular-nums ${summary.totalNetBalance >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>
                         {CURRENCY} {formatRoundedNumber(summary.totalNetBalance)}
                     </div>
                 </div>
             </div>
+
+            <div className="mb-6">
+                <h4 className="text-sm font-semibold text-app-muted mb-2">Personal transactions</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+                    <div className="rounded-lg p-3 border border-app-border bg-[color:var(--badge-paid-bg)]">
+                        <div className="text-xs text-ds-success font-medium mb-1">Personal total income</div>
+                        <div className={`${getFontSize(personalIncomeTotal)} font-bold text-ds-success tabular-nums`}>
+                            {CURRENCY} {formatRoundedNumber(personalIncomeTotal)}
+                        </div>
+                    </div>
+                    <div className="rounded-lg p-3 border border-app-border bg-[color:var(--badge-unpaid-bg)]">
+                        <div className="text-xs text-ds-danger font-medium mb-1">Personal total expense</div>
+                        <div className={`${getFontSize(personalExpenseTotal)} font-bold text-ds-danger tabular-nums`}>
+                            {CURRENCY} {formatRoundedNumber(personalExpenseTotal)}
+                        </div>
+                    </div>
+                </div>
+            </div>
             
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50">
+            <div className="overflow-x-auto rounded-xl border border-app-border">
+                <table className="min-w-full divide-y divide-app-border text-sm">
+                    <thead className="bg-app-table-header">
                         <tr>
-                            <th onClick={() => handleSort('name')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Project / Building / Loan <SortIcon column="name"/></th>
-                            <th onClick={() => handleSort('income')} className="px-4 py-3 text-right font-semibold text-emerald-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Income <SortIcon column="income"/></th>
-                            <th onClick={() => handleSort('expense')} className="px-4 py-3 text-right font-semibold text-rose-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Expense <SortIcon column="expense"/></th>
-                            <th onClick={() => handleSort('investment')} className="px-4 py-3 text-right font-semibold text-blue-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Total Investment <SortIcon column="investment"/></th>
-                            <th onClick={() => handleSort('equityOut')} className="px-4 py-3 text-right font-semibold text-amber-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Equity Moved Out <SortIcon column="equityOut"/></th>
+                            <th onClick={() => handleSort('name')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Project / Building / Loan <SortIcon column="name"/></th>
+                            <th onClick={() => handleSort('income')} className="px-4 py-3 text-right font-semibold text-ds-success cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Income <SortIcon column="income"/></th>
+                            <th onClick={() => handleSort('expense')} className="px-4 py-3 text-right font-semibold text-ds-danger cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Expense <SortIcon column="expense"/></th>
+                            <th onClick={() => handleSort('investment')} className="px-4 py-3 text-right font-semibold text-primary cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Total Investment <SortIcon column="investment"/></th>
+                            <th onClick={() => handleSort('equityOut')} className="px-4 py-3 text-right font-semibold text-ds-warning cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Equity Moved Out <SortIcon column="equityOut"/></th>
                             {reportData.some(row => row.type === 'Loan') && (
                                 <>
                                     <th className="px-4 py-3 text-right font-semibold text-purple-600 whitespace-nowrap">Loan Given</th>
                                     <th className="px-4 py-3 text-right font-semibold text-purple-600 whitespace-nowrap">Loan Taken</th>
                                 </>
                             )}
-                            <th onClick={() => handleSort('loanNetBalance')} className="px-4 py-3 text-right font-semibold text-purple-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Loan Net Balance <SortIcon column="loanNetBalance"/></th>
-                            <th onClick={() => handleSort('netBalance')} className="px-4 py-3 text-right font-bold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap bg-slate-100">Net Balance <SortIcon column="netBalance"/></th>
+                            <th onClick={() => handleSort('loanNetBalance')} className="px-4 py-3 text-right font-semibold text-purple-600 cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Loan Net Balance <SortIcon column="loanNetBalance"/></th>
+                            <th onClick={() => handleSort('netBalance')} className="px-4 py-3 text-right font-bold text-app-text cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap bg-app-toolbar transition-colors duration-ds">Net Balance <SortIcon column="netBalance"/></th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
+                    <tbody className="divide-y divide-app-border bg-app-card">
                         {reportData.map(row => (
-                            <tr key={row.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-4 py-3 font-medium text-slate-800">
+                            <tr key={row.id} className="hover:bg-app-toolbar/80 transition-colors duration-ds">
+                                <td className="px-4 py-3 font-medium text-app-text border-b border-app-border">
                                     {row.name}
-                                    <span className={`ml-2 text-[10px] uppercase font-normal border px-1 rounded ${
-                                        row.type === 'Project' ? 'text-slate-400' : 
-                                        row.type === 'Building' ? 'text-emerald-400' : 
-                                        'text-purple-400'
-                                    }`}>{row.type}</span>
+                                    <span className={`ml-2 text-[10px] uppercase font-normal border border-app-border px-1 rounded ${
+                                        row.type === 'Project' ? 'text-app-muted' : 
+                                        row.type === 'Building' ? 'text-ds-success' : 
+                                        row.type === 'Personal' ? 'text-teal-600' :
+                                        'text-purple-600'
+                                    }`}>{row.type === 'Personal' ? 'PERSONAL' : row.type}</span>
                                 </td>
-                                <td className="px-4 py-3 text-right text-emerald-600 tabular-nums">{CURRENCY} {formatRoundedNumber(row.income)}</td>
-                                <td className="px-4 py-3 text-right text-rose-600 tabular-nums">{CURRENCY} {formatRoundedNumber(row.expense)}</td>
-                                <td className="px-4 py-3 text-right text-blue-600 tabular-nums">{CURRENCY} {formatRoundedNumber(row.investment)}</td>
-                                <td className="px-4 py-3 text-right text-amber-600 tabular-nums">{CURRENCY} {formatRoundedNumber(row.equityOut)}</td>
+                                <td className="px-4 py-3 text-right text-ds-success tabular-nums border-b border-app-border">{CURRENCY} {formatRoundedNumber(row.income)}</td>
+                                <td className="px-4 py-3 text-right text-ds-danger tabular-nums border-b border-app-border">{CURRENCY} {formatRoundedNumber(row.expense)}</td>
+                                <td className="px-4 py-3 text-right text-primary tabular-nums border-b border-app-border">{CURRENCY} {formatRoundedNumber(row.investment)}</td>
+                                <td className="px-4 py-3 text-right text-ds-warning tabular-nums border-b border-app-border">{CURRENCY} {formatRoundedNumber(row.equityOut)}</td>
                                 {reportData.some(r => r.type === 'Loan') && (
                                     <>
-                                        <td className="px-4 py-3 text-right text-purple-600 tabular-nums">
+                                        <td className="px-4 py-3 text-right text-purple-600 tabular-nums border-b border-app-border">
                                             {row.type === 'Loan' && row.loanGiven !== undefined ? (
                                                 <>{CURRENCY} {formatRoundedNumber(row.loanGiven)}</>
                                             ) : (
-                                                <span className="text-slate-300">-</span>
+                                                <span className="text-app-muted">-</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-purple-600 tabular-nums">
+                                        <td className="px-4 py-3 text-right text-purple-600 tabular-nums border-b border-app-border">
                                             {row.type === 'Loan' && row.loanTaken !== undefined ? (
                                                 <>{CURRENCY} {formatRoundedNumber(row.loanTaken)}</>
                                             ) : (
-                                                <span className="text-slate-300">-</span>
+                                                <span className="text-app-muted">-</span>
                                             )}
                                         </td>
                                     </>
                                 )}
-                                <td className={`px-4 py-3 text-right tabular-nums ${row.loanNetBalance >= 0 ? 'text-purple-600' : 'text-purple-700'}`}>
+                                <td className={`px-4 py-3 text-right tabular-nums border-b border-app-border ${row.loanNetBalance >= 0 ? 'text-purple-600' : 'text-purple-700'}`}>
                                     {CURRENCY} {formatRoundedNumber(row.loanNetBalance)}
                                 </td>
-                                <td className={`px-4 py-3 text-right font-bold tabular-nums ${row.netBalance >= 0 ? 'text-slate-800 bg-slate-50' : 'text-rose-600 bg-rose-50'}`}>
+                                <td className={`px-4 py-3 text-right font-bold tabular-nums border-b border-app-border ${row.netBalance >= 0 ? 'text-app-text bg-app-toolbar/50' : 'text-ds-danger bg-[color:var(--badge-unpaid-bg)]'}`}>
                                     {CURRENCY} {formatRoundedNumber(row.netBalance)}
                                 </td>
                             </tr>
                         ))}
                         {reportData.length === 0 && (
                             <tr>
-                                <td colSpan={reportData.some(row => row.type === 'Loan') ? 9 : 7} className="px-4 py-8 text-center text-slate-500">No projects or buildings found.</td>
+                                <td colSpan={reportData.some(row => row.type === 'Loan') ? 9 : 7} className="px-4 py-8 text-center text-app-muted">No projects or buildings found.</td>
                             </tr>
                         )}
                     </tbody>

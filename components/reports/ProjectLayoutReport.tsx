@@ -1,6 +1,7 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useThemeOptional } from '../../context/ThemeContext';
 import { CURRENCY } from '../../constants';
 import { InvoiceStatus, TransactionType } from '../../types';
 import ReportHeader from './ReportHeader';
@@ -9,6 +10,7 @@ import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import ProjectUnitDetailModal from './ProjectUnitDetailModal';
 
 interface UnitBoxData {
     id: string;
@@ -37,7 +39,10 @@ interface ProjectLayoutData {
 
 const ProjectLayoutReport: React.FC = () => {
     const { state } = useAppContext();
+    const themeCtx = useThemeOptional();
+    const isDark = themeCtx?.theme === 'dark';
     const { print: triggerPrint } = usePrintContext();
+    const [selectedUnit, setSelectedUnit] = useState<{ id: string; name: string } | null>(null);
 
     // --- Helper: Parse Unit Name (Project Context) ---
     const parseUnit = (name: string): { floorIndex: number, floorLabel: string, unitIndex: number, isUnconventional: boolean, type: string } => {
@@ -118,11 +123,33 @@ const ProjectLayoutReport: React.FC = () => {
             );
             const client = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.clientId) : null;
 
+            // Unit-level: invoices that have this unit's id
             const unitInvoices = state.invoices.filter(inv => inv.unitId === unit.id);
-            const receivable = unitInvoices
+            const agreementInvoices = activeAgreement
+                ? state.invoices.filter(inv => inv.agreementId === activeAgreement.id)
+                : [];
+            const invoices = unitInvoices.length > 0 ? unitInvoices : agreementInvoices;
+            const invoiceIds = new Set(invoices.map(inv => inv.id));
+
+            // Received: sum of actual INCOME transactions (matches unit detail modal and history table)
+            const incomePayments = state.transactions.filter(
+                tx => tx.type === TransactionType.INCOME &&
+                    (tx.unitId === unit.id || (tx.invoiceId != null && invoiceIds.has(tx.invoiceId)))
+            );
+            let received = incomePayments.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
+            let receivable = invoices
                 .filter(inv => inv.status !== InvoiceStatus.PAID)
                 .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
-            const received = unitInvoices.reduce((sum, inv) => sum + inv.paidAmount, 0);
+
+            // If unit has an active agreement and we used agreement invoices, split received/receivable by unit count for multi-unit agreements
+            if (activeAgreement && unitInvoices.length === 0 && agreementInvoices.length > 0) {
+                const unitCount = activeAgreement.unitIds?.length || 1;
+                if (unitCount > 1) {
+                    received = Math.round(received / unitCount);
+                    receivable = Math.round(receivable / unitCount);
+                }
+            }
 
             const boxData: UnitBoxData = {
                 id: unit.id,
@@ -162,55 +189,114 @@ const ProjectLayoutReport: React.FC = () => {
         };
     }, [state]);
 
+    const legendSwatch = {
+        available: 'bg-app-toolbar border-app-border',
+        low: isDark ? 'bg-[rgb(88,32,36)] border-ds-danger' : 'bg-red-50 border-red-400',
+        high: isDark ? 'bg-[rgb(24,52,40)] border-ds-success' : 'bg-emerald-50 border-emerald-300',
+    } as const;
+
+    /** Payment heatmap: light mode red-50 → emerald-50; dark mode deep red-tint → deep green-tint */
+    const getPaymentBackground = (unit: UnitBoxData): string | undefined => {
+        if (unit.status !== 'Sold') return undefined;
+        const total = unit.received + unit.receivable;
+        const percent = total > 0 ? (unit.received / total) : 1;
+        const p = Math.max(0, Math.min(1, percent));
+        if (isDark) {
+            const r0 = 88, g0 = 32, b0 = 36;
+            const r1 = 24, g1 = 52, b1 = 40;
+            const r = Math.round(r0 + (r1 - r0) * p);
+            const g = Math.round(g0 + (g1 - g0) * p);
+            const b = Math.round(b0 + (b1 - b0) * p);
+            return `rgb(${r},${g},${b})`;
+        }
+        const r = Math.round(254 - 18 * p);
+        const g = Math.round(242 + 11 * p);
+        const b = Math.round(242 + 3 * p);
+        return `rgb(${r},${g},${b})`;
+    };
 
     const getColorClasses = (unit: UnitBoxData) => {
-        if (unit.status === 'Available') return 'bg-slate-50 border-slate-300 opacity-80';
-        if (unit.receivable <= 0) return 'bg-emerald-50 border-emerald-300';
-        if (unit.receivable < 50000) return 'bg-orange-50 border-orange-300';
-        return 'bg-red-50 border-red-400'; 
+        if (unit.status === 'Available') return 'bg-app-toolbar/70 border-app-border';
+        if (unit.status === 'Sold') {
+            const total = unit.received + unit.receivable;
+            const percent = total > 0 ? (unit.received / total) : 1;
+            if (percent >= 1) return 'border-ds-success';
+            if (percent >= 0.5) return 'border-ds-warning';
+            return 'border-ds-danger';
+        }
+        if (unit.receivable <= 0) return 'bg-[color:var(--badge-paid-bg)] border-ds-success';
+        if (unit.receivable < 50000) return 'bg-[color:var(--badge-partial-bg)] border-ds-warning';
+        return 'bg-[color:var(--badge-unpaid-bg)] border-ds-danger';
     };
     
-    const renderBox = (unit: UnitBoxData) => (
+    const isFullyPaid = (u: UnitBoxData) => {
+        if (u.status !== 'Sold') return false;
+        const total = u.received + u.receivable;
+        // Only show Fully Paid when there is a real total and nothing is due (100% received)
+        return total > 0 && u.receivable <= 0;
+    };
+
+    const handleCardClick = (unit: UnitBoxData) => {
+        setSelectedUnit({ id: unit.id, name: unit.name });
+    };
+
+    const renderBox = (unit: UnitBoxData) => {
+        const paymentBg = getPaymentBackground(unit);
+        return (
         <div 
             key={unit.id} 
-            className={`relative rounded border-2 shadow-sm p-2 flex flex-col justify-between transition-all h-32 overflow-hidden
+            onClick={() => handleCardClick(unit)}
+            className={`relative rounded border-2 shadow-ds-card p-2 flex flex-col justify-between transition-all duration-ds h-32 overflow-hidden cursor-pointer hover:shadow-md hover:scale-[1.02]
                 ${getColorClasses(unit)}
             `}
+            style={paymentBg ? { backgroundColor: paymentBg } : undefined}
+            title="Click to view details"
         >
+            {/* Fully Paid stamp */}
+            {isFullyPaid(unit) && (
+                <div
+                    className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0"
+                    aria-hidden
+                >
+                    <span className="text-ds-success/35 font-bold text-sm uppercase tracking-wider transform -rotate-[-18deg] whitespace-nowrap drop-shadow-sm">
+                        Fully Paid
+                    </span>
+                </div>
+            )}
             {/* Header */}
             <div className="flex justify-between items-start mb-1 relative z-10">
                 <div className="min-w-0">
-                    <span className="font-bold text-sm text-slate-800 block truncate" title={unit.name}>{unit.name}</span>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter block">{unit.type}</span>
+                    <span className="font-bold text-sm text-app-text block truncate" title={unit.name}>{unit.name}</span>
+                    <span className="text-[10px] font-semibold text-app-muted uppercase tracking-tighter block">{unit.type}</span>
                 </div>
                  {unit.status === 'Sold' && (
-                    <div className="rounded-full bg-emerald-500 flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
+                    <div className="rounded-full bg-ds-success flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
                  )}
             </div>
             
             {/* Content */}
             <div className="text-[10px] leading-tight space-y-0.5 flex-grow relative z-10">
-                <div className={`truncate font-medium ${unit.status === 'Available' ? 'text-slate-400 italic' : 'text-slate-800'}`} title={unit.clientName}>
+                <div className={`truncate font-medium ${unit.status === 'Available' ? 'text-app-muted italic' : 'text-app-text'}`} title={unit.clientName}>
                     {unit.clientName}
                 </div>
-                <div className={`text-[9px] uppercase font-bold ${unit.status === 'Available' ? 'text-slate-400' : 'text-slate-500'}`}>
+                <div className={`text-[9px] uppercase font-bold ${unit.status === 'Available' ? 'text-app-muted' : 'text-app-muted'}`}>
                     {unit.status}
                 </div>
             </div>
 
             {/* Footer */}
-            <div className="mt-1 pt-1 border-t border-slate-300/50 text-[10px] flex justify-between items-center relative z-10">
+            <div className="mt-1 pt-1 border-t border-app-border/60 text-[10px] flex justify-between items-center relative z-10">
                 {unit.status === 'Sold' && (
                     <>
                         <div className="flex flex-col">
-                            <span className="text-slate-500 text-[9px] uppercase">Recv</span>
-                            <span className="font-medium text-emerald-700">
+                            <span className="text-app-muted text-[9px] uppercase">Recv</span>
+                            <span className="font-medium text-ds-success">
                                 {(unit.received / 1000).toFixed(0)}k
                             </span>
                         </div>
                         <div className="flex flex-col text-right">
-                            <span className="text-slate-500 text-[9px] uppercase">Due</span>
-                            <span className={`font-bold ${unit.receivable > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                            <span className="text-app-muted text-[9px] uppercase">Due</span>
+                            <span className={`font-bold ${unit.receivable > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
                                 {(unit.receivable / 1000).toFixed(0)}k
                             </span>
                         </div>
@@ -218,10 +304,11 @@ const ProjectLayoutReport: React.FC = () => {
                 )}
             </div>
         </div>
-    );
+        );
+    };
 
     return (
-        <div className="h-full flex flex-col space-y-4">
+        <div className="h-full flex flex-col space-y-4 bg-background">
              <style>{STANDARD_PRINT_STYLES}</style>
 
             <div className="flex flex-col sm:flex-row justify-end items-center gap-4 mb-2 no-print flex-shrink-0">
@@ -233,28 +320,30 @@ const ProjectLayoutReport: React.FC = () => {
             <div className="flex-grow overflow-y-auto printable-area pb-10" id="printable-area">
                 <ReportHeader />
                 <div className="text-center mb-6">
-                    <h2 className="text-2xl font-bold text-slate-800">Project Visual Layout</h2>
-                    <p className="text-xs text-slate-500 mt-1">
-                        <span className="inline-block w-2 h-2 bg-slate-50 border border-slate-300 mr-1"></span> Available
-                        <span className="inline-block w-2 h-2 bg-emerald-50 border border-emerald-300 ml-3 mr-1"></span> Sold / Paid
-                        <span className="inline-block w-2 h-2 bg-orange-50 border border-orange-300 ml-3 mr-1"></span> Low Debt
-                        <span className="inline-block w-2 h-2 bg-red-50 border border-red-400 ml-3 mr-1"></span> High Debt
+                    <h2 className="text-2xl font-bold text-app-text">Project Visual Layout</h2>
+                    <p className="text-xs text-app-muted mt-1 flex flex-wrap justify-center items-center gap-x-1 gap-y-1">
+                        <span className={`inline-block w-2 h-2 rounded-sm border mr-1 ${legendSwatch.available}`}></span> Available
+                        <span className={`inline-block w-2 h-2 rounded-sm border ml-3 mr-1 ${legendSwatch.low}`}></span> 0% received
+                        <span className={`inline-block w-2 h-2 rounded-sm border ml-3 mr-1 ${legendSwatch.high}`}></span> 100% received
+                        <span className="text-app-muted ml-2 max-w-md">
+                            (Sold: background shifts {isDark ? 'red-tint → green-tint' : 'light red → light green'} by payment %)
+                        </span>
                     </p>
                 </div>
 
                 {data.data.length === 0 ? (
-                    <div className="text-center py-10 text-slate-500">No project units found to display.</div>
+                    <div className="text-center py-10 text-app-muted">No project units found to display.</div>
                 ) : (
                     <div className="space-y-8">
                         {data.data.map((group) => (
-                            <div key={group.id} className="break-inside-avoid border-2 border-slate-400 rounded-xl p-4 bg-slate-200/30">
-                                <h3 className="text-lg font-bold text-slate-800 mb-4 border-b-2 border-slate-300 pb-1 pl-1">
+                            <div key={group.id} className="break-inside-avoid border-2 border-app-border rounded-xl p-4 bg-app-card shadow-ds-card">
+                                <h3 className="text-lg font-bold text-app-text mb-4 border-b border-app-border pb-2 pl-1">
                                     {group.name}
                                 </h3>
                                 <div className="flex flex-col gap-4">
                                     {group.floors.map((floor) => (
                                         <div key={floor.index} className="flex flex-col md:flex-row gap-2">
-                                            <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-slate-300 rounded font-bold text-slate-700 text-sm shadow-inner mb-2 md:mb-0">
+                                            <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-app-toolbar border border-app-border rounded font-bold text-app-text text-sm shadow-inner mb-2 md:mb-0">
                                                 {floor.label}
                                             </div>
                                             <div className="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
@@ -263,7 +352,7 @@ const ProjectLayoutReport: React.FC = () => {
                                         </div>
                                     ))}
                                     {group.unconventional.length > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-dashed border-slate-300">
+                                        <div className="mt-2 pt-2 border-t border-dashed border-app-border">
                                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:pl-14">
                                                   {group.unconventional.map((unit) => renderBox(unit))}
                                              </div>
@@ -276,6 +365,15 @@ const ProjectLayoutReport: React.FC = () => {
                 )}
                 <ReportFooter />
             </div>
+
+            {selectedUnit && (
+                <ProjectUnitDetailModal
+                    isOpen={!!selectedUnit}
+                    onClose={() => setSelectedUnit(null)}
+                    unitId={selectedUnit.id}
+                    unitName={selectedUnit.name}
+                />
+            )}
         </div>
     );
 };

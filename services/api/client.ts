@@ -5,14 +5,65 @@
  * Handles authentication, error handling, and request/response transformation.
  */
 
-import { getApiBaseUrl } from '../../config/apiUrl';
+import { getApiBaseUrl, isLanBackendApi, PBOOKS_API_BASE_STORAGE_KEY } from '../../config/apiUrl';
 import { logger } from '../logger';
+import { notifyApiConflictIfUserFacing } from '../dbErrorNotification';
+import { stringifyApiJsonBody } from '../../utils/apiJsonSerialize';
+
+/** Throttle "server unreachable" UI so a burst of failed requests does not flash repeatedly. */
+let lastServerUnreachableDispatch = 0;
+const SERVER_UNREACHABLE_DEBOUNCE_MS = 4000;
 
 export interface ApiError {
   error: string;
   message?: string;
   status?: number;
   code?: string;
+}
+
+/** Reads `{ success, data, error: { code, message } }` or legacy `{ message, code }`. */
+export function pickApiErrorFields(data: unknown): { message: string; code?: string } {
+  if (!data || typeof data !== 'object') {
+    return { message: 'Request failed' };
+  }
+  const d = data as Record<string, unknown>;
+  const nested = d.error;
+  if (nested && typeof nested === 'object' && nested !== null) {
+    const ne = nested as Record<string, unknown>;
+    if (typeof ne.message === 'string') {
+      return {
+        message: ne.message,
+        code: typeof ne.code === 'string' ? ne.code : undefined,
+      };
+    }
+  }
+  const msg = d.message ?? d.error;
+  if (typeof msg === 'string') return { message: msg, code: typeof d.code === 'string' ? d.code : undefined };
+  return { message: 'Request failed' };
+}
+
+/** Human-readable message for thrown API errors (plain objects) and standard Errors. */
+export function formatApiErrorMessage(error: unknown): string {
+  if (error == null) return 'Unknown error';
+  if (error instanceof Error) return error.message || 'Unknown error';
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object') {
+    const o = error as Record<string, unknown>;
+    const nested = o.error;
+    if (nested && typeof nested === 'object' && nested !== null) {
+      const nm = (nested as Record<string, unknown>).message;
+      if (typeof nm === 'string' && nm.trim()) return nm.trim();
+    }
+    const msg = o.message ?? o.error;
+    if (typeof msg === 'string' && msg.trim()) return msg.trim();
+    if (typeof o.error === 'string' && o.error.trim()) return o.error.trim();
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown error';
+    }
+  }
+  return String(error);
 }
 
 export class ApiClient {
@@ -34,6 +85,26 @@ export class ApiClient {
    */
   getBaseUrl(): string {
     return this.baseUrl;
+  }
+
+  /**
+   * Set API base URL (e.g. LAN server). Persists to localStorage for Electron file:// loads.
+   */
+  setBaseUrl(url: string): void {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    let base = trimmed.replace(/\/+$/, '');
+    if (!base.endsWith('/api')) {
+      base = `${base}/api`;
+    }
+    this.baseUrl = base;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(PBOOKS_API_BASE_STORAGE_KEY, this.baseUrl);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   /**
@@ -199,7 +270,9 @@ export class ApiClient {
     const isPublicEndpoint = endpoint.includes('/auth/') ||
                              endpoint.includes('/register-tenant') ||
                              endpoint.includes('/health') ||
-                             endpoint.includes('/schema/version');
+                             endpoint.includes('/schema/version') ||
+                             endpoint.includes('/app-info/version') ||
+                             endpoint.includes('/discover');
     if (!this.token && !isPublicEndpoint) {
       throw {
         error: 'No authentication token',
@@ -267,10 +340,14 @@ export class ApiClient {
         }
       }
       
-      const response = await fetch(url, {
+      const fetchInit: RequestInit = {
         ...options,
         headers,
-      });
+      };
+      if (!options.signal && typeof AbortSignal !== 'undefined' && typeof (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout === 'function') {
+        fetchInit.signal = (AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout(120_000);
+      }
+      const response = await fetch(url, fetchInit);
 
       // Diagnostic: always log state endpoint responses
       if (endpoint.includes('/state/')) {
@@ -313,8 +390,16 @@ export class ApiClient {
           
           if (is401 && (isExpected401Endpoint || isLogoutInProgress)) {
             // Silent - expected 401 before authentication or session already ended on logout
-          } else if (response.status === 409 && data?.code === 'VERSION_CONFLICT') {
-            // Silent - handled by sync layer (accepts server version)
+          } else if (
+            response.status === 409 &&
+            (() => {
+              const c = pickApiErrorFields(data).code;
+              return (
+                c === 'VERSION_CONFLICT' || c === 'CONFLICT' || c === 'LOCK_HELD' || c === 'LOCK_LOST'
+              );
+            })()
+          ) {
+            // Silent - sync / optimistic lock / record lock / lock heartbeat (LOCK_LOST) handled by caller
           } else if (!(is401 && isLogoutInProgress)) {
             // Log other errors (and 401 only when not logging out)
             logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
@@ -335,10 +420,12 @@ export class ApiClient {
 
       // Handle 401 Unauthorized - token expired or invalid
       if (response.status === 401) {
+        const fields = pickApiErrorFields(data);
         const error: ApiError = {
-          error: data.error || 'Unauthorized',
-          message: data.message || data.error || 'Your session has expired. Please login again.',
+          error: fields.message || 'Unauthorized',
+          message: fields.message || 'Your session has expired. Please login again.',
           status: 401,
+          ...(fields.code && { code: fields.code }),
         };
         
         // During logout, 401s are expected (session already invalidated). Don't log or dispatch.
@@ -375,12 +462,16 @@ export class ApiClient {
                                     endpoint.includes('/contracts') ||
                                     endpoint.includes('/budgets') ||
                                     endpoint.includes('/vendors') ||
+                                    endpoint.includes('/app-settings') ||
+                                    endpoint.includes('/state/') ||
                                     endpoint.includes('/quotations') ||
                                     endpoint.includes('/sales-returns') ||
                                     endpoint.includes('/documents') ||
                                     endpoint.includes('/recurring-invoice-templates') ||
                                     endpoint.includes('/pm-cycle-allocations') ||
-                                    endpoint.includes('/transaction-audit');
+                                    endpoint.includes('/transaction-audit') ||
+                                    endpoint.includes('/personal-categories') ||
+                                    endpoint.includes('/personal-transactions');
           
           if (isValidationEndpoint) {
             // Silent fail for validation endpoints - expected if token is invalid during app init
@@ -396,7 +487,8 @@ export class ApiClient {
           } else {
             // For user-initiated actions (like fetching data, navigation, auth operations), logout immediately
             // BUT: Don't logout for heartbeat SESSION_NOT_FOUND errors - might be race condition
-            const isHeartbeatSessionNotFound = endpoint.includes('/auth/heartbeat') && data.code === 'SESSION_NOT_FOUND';
+            const isHeartbeatSessionNotFound =
+              endpoint.includes('/auth/heartbeat') && pickApiErrorFields(data).code === 'SESSION_NOT_FOUND';
             
             if (isHeartbeatSessionNotFound) {
               // Don't logout for heartbeat session not found - might be race condition
@@ -405,8 +497,8 @@ export class ApiClient {
             } else {
               // Always log auth errors, even if logging is disabled
               logger.errorCategory('auth', 'API Error (401 Unauthorized) - Token was present but invalid:', {
-                error: data.error,
-                code: data.code,
+                error: fields.message,
+                code: fields.code,
                 endpoint
               });
               
@@ -429,36 +521,97 @@ export class ApiClient {
         throw error;
       }
 
-      if (!response.ok) {
-        const error: ApiError & Record<string, unknown> = {
-          error: data.error || data.message || 'Request failed',
-          message: data.message || data.error,
+      // Committed-only contract: HTTP 2xx can still return success: false (e.g. lock refresh).
+      if (
+        data &&
+        typeof data === 'object' &&
+        'success' in data &&
+        (data as { success?: boolean }).success === false
+      ) {
+        const fields = pickApiErrorFields(data);
+        const code = fields.code;
+        if (import.meta.env.DEV) {
+          console.warn('[API] success=false', endpoint, data);
+        }
+        const err: ApiError & Record<string, unknown> = {
+          error: fields.message,
+          message: fields.message,
           status: response.status,
-          ...(data.code && { code: data.code }),
+          ...(code && { code }),
           ...(data.existingRunId && { existingRunId: data.existingRunId }),
           ...(data.existingStatus && { existingStatus: data.existingStatus }),
           ...(data.serverVersion != null && { serverVersion: data.serverVersion }),
           ...(data.invoiceId != null && { invoiceId: data.invoiceId }),
           ...(data.invoiceNumber != null && { invoiceNumber: data.invoiceNumber }),
         };
-        const isVersionConflict = response.status === 409 && data?.code === 'VERSION_CONFLICT';
+        notifyApiConflictIfUserFacing(err, endpoint, options.method || 'GET');
+        throw err;
+      }
+
+      if (!response.ok) {
+        const fields = pickApiErrorFields(data);
+        const error: ApiError & Record<string, unknown> = {
+          error: fields.message || 'Request failed',
+          message: fields.message,
+          status: response.status,
+          ...(fields.code && { code: fields.code }),
+          ...(data.existingRunId && { existingRunId: data.existingRunId }),
+          ...(data.existingStatus && { existingStatus: data.existingStatus }),
+          ...(data.serverVersion != null && { serverVersion: data.serverVersion }),
+          ...(data.invoiceId != null && { invoiceId: data.invoiceId }),
+          ...(data.invoiceNumber != null && { invoiceNumber: data.invoiceNumber }),
+        };
+        const isVersionConflict = response.status === 409 && fields.code === 'VERSION_CONFLICT';
         if (isVersionConflict) {
           logger.logCategory('sync', `Version conflict for ${endpoint} (server v${data.serverVersion}) - sync will accept server version`);
+        } else if (response.status === 409 && fields.code === 'CONFLICT') {
+          logger.logCategory('sync', `Record conflict for ${endpoint}: ${fields.message || 'concurrent edit'}`);
+        } else if (response.status === 409 && fields.code === 'LOCK_HELD') {
+          logger.logCategory('sync', `Record lock for ${endpoint}: ${fields.message || 'another user'}`);
+        } else if (response.status === 409 && fields.code === 'LOCK_LOST') {
+          logger.logCategory('sync', `Lock heartbeat: ${endpoint} — ${fields.message || 'lock no longer held'}`);
         } else {
           console.error('API Error:', error);
         }
+        notifyApiConflictIfUserFacing(error, endpoint, options.method || 'GET');
         throw error;
+      }
+
+      if (
+        data &&
+        typeof data === 'object' &&
+        'success' in data &&
+        (data as { success?: boolean }).success === true &&
+        'data' in data &&
+        (data as { data?: unknown }).data !== undefined
+      ) {
+        return (data as { data: T }).data as T;
       }
 
       return data as T;
     } catch (error) {
       // During logout, 401 is expected; avoid noisy console error
       const is401DuringLogout = error && typeof error === 'object' && (error as ApiError).status === 401 && this.loggingOut;
-      const isVersionConflict = error && typeof error === 'object' && (error as any).status === 409 && (error as any).code === 'VERSION_CONFLICT';
-      if (!is401DuringLogout && !isVersionConflict) {
-        console.error('API Request Error:', error);
+      const errCode = error && typeof error === 'object' ? (error as { code?: string }).code : undefined;
+      const isVersionConflict = errCode === 'VERSION_CONFLICT';
+      const isConflict = errCode === 'CONFLICT';
+      const isLockHeld = errCode === 'LOCK_HELD';
+      const isLockLost = errCode === 'LOCK_LOST';
+      if (!is401DuringLogout && !isVersionConflict && !isConflict && !isLockHeld && !isLockLost) {
+        if (import.meta.env.DEV) {
+          console.error('API Request Error:', error);
+        }
       }
-      
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw {
+          error: 'Timeout',
+          message: 'Cannot connect to server. The request timed out — please try again.',
+          status: 408,
+          code: 'TIMEOUT',
+        } as ApiError;
+      }
+
       if (error instanceof Error) {
         // Check if it's a network error
         if (error.message.includes('Failed to fetch') || 
@@ -472,12 +625,28 @@ export class ApiClient {
           if (shouldLogThisRequest) {
             logger.errorCategory('api', 'Network error:', error.message);
           }
+
+          if (
+            typeof window !== 'undefined' &&
+            this.token &&
+            isLanBackendApi()
+          ) {
+            const now = Date.now();
+            if (now - lastServerUnreachableDispatch > SERVER_UNREACHABLE_DEBOUNCE_MS) {
+              lastServerUnreachableDispatch = now;
+              window.dispatchEvent(new CustomEvent('pbooks:server-unreachable'));
+            }
+          }
           
-          // Throw a specific network error (don't logout user)
+          // When API is localhost, connection refused usually means server isn't running
+          const isLocalApi = this.baseUrl.includes('localhost') || this.baseUrl.includes('127.0.0.1');
           const networkError: ApiError = {
             error: 'NetworkError',
-            message: 'No internet connection. Changes saved locally and will sync when online.',
-            status: 0 // Special status code for network errors
+            message: isLocalApi
+              ? 'Cannot reach API server. Make sure it\'s running (e.g. npm run dev:backend).'
+              : 'Cannot connect to server. Please check your network.',
+            status: 0, // Special status code for network errors
+            code: 'NETWORK_ERROR',
           };
           throw networkError;
         }
@@ -517,7 +686,7 @@ export class ApiClient {
   async post<T>(endpoint: string, data?: any, options?: { headers?: Record<string, string> }): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+      body: data ? stringifyApiJsonBody(data) : undefined,
       headers: options?.headers,
     });
   }
@@ -528,7 +697,7 @@ export class ApiClient {
   async put<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
+      body: data ? stringifyApiJsonBody(data) : undefined,
     });
   }
 
@@ -545,7 +714,7 @@ export class ApiClient {
   async patch<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PATCH',
-      body: data ? JSON.stringify(data) : undefined,
+      body: data ? stringifyApiJsonBody(data) : undefined,
     });
   }
 

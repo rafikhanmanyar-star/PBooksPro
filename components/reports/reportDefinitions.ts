@@ -14,13 +14,14 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'rental-building-analysis', title: 'Building Analysis Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Building Analysis' },
     { id: 'rental-visual-layout', title: 'Building Visual Layout', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Visual Layout' },
     { id: 'rental-unit-status', title: 'Property Status Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Property Status' },
-    { id: 'rental-owner-payouts', title: 'Owner Income Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Income' },
-    { id: 'rental-owner-income-summary', title: 'Owner Income Summary', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Income Summary' },
+    { id: 'rental-owner-payouts', title: 'Owner Rental Income', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Rental Income' },
+    { id: 'rental-owner-income-summary', title: 'Owner Rental Income Summary', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Rental Income Summary' },
     { id: 'rental-service-charges', title: 'Service Charges Deduction', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Service Charges Deduction' },
     { id: 'rental-tenant-ledger', title: 'Tenant Ledger Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Tenant Ledger' },
     { id: 'rental-vendor-ledger', title: 'Vendor Ledger (Rental)', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Vendor Ledger' },
     { id: 'rental-owner-security-deposit', title: 'Owner Security Deposit Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Security Deposit' },
     { id: 'rental-broker-fees', title: 'Broker Fee Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Broker Fees' },
+    { id: 'rental-receivable', title: 'Rental Receivable', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Rental Receivable' },
 
     // Project Reports
     { id: 'project-visual-layout', title: 'Project Visual Layout', group: 'Project', path: 'projectManagement', subPath: 'Reports:Visual Layout' },

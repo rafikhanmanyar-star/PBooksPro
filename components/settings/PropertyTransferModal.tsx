@@ -8,6 +8,7 @@ import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY, ICONS } from '../../constants';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface PropertyTransferModalProps {
     isOpen: boolean;
@@ -74,8 +75,10 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
 
     // State
     const [newOwnerId, setNewOwnerId] = useState('');
-    const [transferDate, setTransferDate] = useState(new Date().toISOString().split('T')[0]);
+    const [transferDate, setTransferDate] = useState(toLocalDateString(new Date()));
     const [transferReason, setTransferReason] = useState('Property Sale');
+    const [transferReference, setTransferReference] = useState('');
+    const [notes, setNotes] = useState('');
     const [shouldRenewAgreements, setShouldRenewAgreements] = useState(true);
     const [error, setError] = useState('');
 
@@ -89,29 +92,45 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
     );
 
 
+    // Current ownership from history (for validation)
+    const currentOwnershipRow = useMemo(() => 
+        (state.propertyOwnershipHistory || []).find(
+            h => h.propertyId === property.id && h.ownershipEndDate == null
+        ),
+        [state.propertyOwnershipHistory, property.id]
+    );
+    const lastOwnershipStartDate = currentOwnershipRow?.ownershipStartDate ?? '2000-01-01';
+
     // Reset form when modal opens
     useEffect(() => {
         if (isOpen) {
             setNewOwnerId('');
-            setTransferDate(new Date().toISOString().split('T')[0]);
+            setTransferDate(toLocalDateString(new Date()));
             setTransferReason('Property Sale');
-            setShouldRenewAgreements(activeAgreements.length > 0); // Only enable if there are active agreements
+            setTransferReference('');
+            setNotes('');
+            setShouldRenewAgreements(activeAgreements.length > 0);
             setError('');
         }
     }, [isOpen, activeAgreements.length]);
 
-    // Validation
+    // Validation: new owner required; transfer date after last ownership start; cannot transfer to same owner
     useEffect(() => {
         if (!isOpen) return;
-        
         if (!newOwnerId) {
             setError('Please select a new owner');
             return;
         }
-
-        // Remove validation error - property can be transferred even without active agreements
+        if (newOwnerId === property.ownerId) {
+            setError('Cannot transfer to the same owner');
+            return;
+        }
+        if (transferDate <= lastOwnershipStartDate) {
+            setError(`Transfer date must be after ${lastOwnershipStartDate}`);
+            return;
+        }
         setError('');
-    }, [isOpen, newOwnerId]);
+    }, [isOpen, newOwnerId, property.ownerId, transferDate, lastOwnershipStartDate]);
 
     // Helper to get next agreement number
     const getNextAgreementNumber = () => {
@@ -181,24 +200,31 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
         if (!confirmed) return;
 
         try {
-            // Preserve old owner ID before property transfer (needed for old agreements)
             const oldOwnerId = property.ownerId;
 
-            // 1. Update Property Owner
+            // 1. Ownership history + current owner (closes current row, adds new row, updates property.ownerId)
+            dispatch({
+                type: 'TRANSFER_PROPERTY_OWNERSHIP',
+                payload: {
+                    propertyId: property.id,
+                    newOwnerId,
+                    transferDate,
+                    transferReference: transferReference.trim() || undefined,
+                    notes: notes.trim() || undefined,
+                },
+            });
+
+            // 2. Update property description for display
             const updatedProperty: Property = {
                 ...property,
                 ownerId: newOwnerId,
-                description: property.description 
+                description: property.description
                     ? `${property.description}\n\n[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`
-                    : `[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`
+                    : `[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`,
             };
+            dispatch({ type: 'UPDATE_PROPERTY', payload: updatedProperty });
 
-            dispatch({
-                type: 'UPDATE_PROPERTY',
-                payload: updatedProperty
-            });
-
-            // 2. Update old agreements (RENEWED, EXPIRED, TERMINATED) to preserve old owner ID
+            // 3. Update old agreements (RENEWED, EXPIRED, TERMINATED) to preserve old owner ID
             // This ensures historical records show the correct owner at the time of the agreement
             oldAgreements.forEach(agreementInfo => {
                 const oldAgreement = agreementInfo.agreement;
@@ -217,7 +243,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                 }
             });
 
-            // 3. Renew Active Agreements (if requested and available)
+            // 4. Renew Active Agreements (if requested and available)
             if (shouldRenewAgreements && activeAgreements.length > 0) {
                 const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
                 const buildingId = property.buildingId;
@@ -238,15 +264,12 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                         }
                     });
 
-                    // Stop old recurring templates
-                    const activeOldTemplates = state.recurringInvoiceTemplates.filter(
-                        t => t.agreementId === oldAgreement.id && t.active
+                    // Remove old recurring templates for this agreement (so only active agreement templates remain)
+                    const oldTemplates = state.recurringInvoiceTemplates.filter(
+                        t => t.agreementId === oldAgreement.id
                     );
-                    activeOldTemplates.forEach(template => {
-                        dispatch({
-                            type: 'UPDATE_RECURRING_TEMPLATE',
-                            payload: { ...template, active: false }
-                        });
+                    oldTemplates.forEach(template => {
+                        dispatch({ type: 'DELETE_RECURRING_TEMPLATE', payload: template.id });
                     });
 
                     // Create new agreement
@@ -310,6 +333,33 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                     </div>
                 </div>
 
+                {/* Ownership History Timeline */}
+                {(() => {
+                    const historyRows = (state.propertyOwnershipHistory || [])
+                        .filter(h => h.propertyId === property.id)
+                        .sort((a, b) => a.ownershipStartDate.localeCompare(b.ownershipStartDate));
+                    if (historyRows.length === 0) return null;
+                    return (
+                        <div className="border border-slate-200 rounded-lg p-4 bg-white">
+                            <h3 className="text-sm font-bold text-slate-700 mb-3">Ownership History</h3>
+                            <div className="space-y-2">
+                                {historyRows.map((h) => {
+                                    const owner = state.contacts.find(c => c.id === h.ownerId);
+                                    const endLabel = h.ownershipEndDate ? h.ownershipEndDate : 'Present';
+                                    return (
+                                        <div key={h.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                                            <span className="font-medium text-slate-700">{owner?.name || 'Unknown'}</span>
+                                            <span className="text-sm text-slate-500">
+                                                {h.ownershipStartDate} → {endLabel}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 {/* Visual Transfer Flow */}
                 <div className="flex items-center justify-between bg-gradient-to-r from-slate-50 to-indigo-50 p-4 rounded-xl border-2 border-slate-200">
                     <div className="text-center flex-1">
@@ -347,7 +397,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                 <DatePicker
                     label="Transfer Date *"
                     value={transferDate}
-                    onChange={(date) => setTransferDate(date.toISOString().split('T')[0])}
+                    onChange={(date) => setTransferDate(toLocalDateString(date))}
                     required
                 />
 
@@ -357,6 +407,22 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                     value={transferReason}
                     onChange={(e) => setTransferReason(e.target.value)}
                     placeholder="e.g., Property Sale, Gift, etc."
+                />
+
+                {/* Reference */}
+                <Input
+                    label="Reference"
+                    value={transferReference}
+                    onChange={(e) => setTransferReference(e.target.value)}
+                    placeholder="e.g., Sale deed number, contract ref"
+                />
+
+                {/* Notes */}
+                <Input
+                    label="Notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Optional notes for this transfer"
                 />
 
                 {/* Active Agreements Section */}

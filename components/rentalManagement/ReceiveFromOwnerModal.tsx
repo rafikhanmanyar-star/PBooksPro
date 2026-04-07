@@ -5,9 +5,12 @@ import { useNotification } from '../../context/NotificationContext';
 import { Transaction, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
 import { CURRENCY } from '../../constants';
+import { resolveSystemCategoryId } from '../../services/systemEntityIds';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface ReceiveFromOwnerModalProps {
     isOpen: boolean;
@@ -41,7 +44,7 @@ const ReceiveFromOwnerModal: React.FC<ReceiveFromOwnerModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             setAmount(suggestedAmount.toFixed(2));
-            setDate(new Date().toISOString().split('T')[0]);
+            setDate(toLocalDateString(new Date()));
             const cashAccount = state.accounts.find(a => a.name === 'Cash');
             setAccountId(cashAccount?.id || accountOptions[0]?.id || '');
             setReference('');
@@ -72,13 +75,15 @@ const ReceiveFromOwnerModal: React.FC<ReceiveFromOwnerModalProps> = ({
             return;
         }
 
-        // Find the Owner Service Charge Payment category
-        let ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
+        const ownSvcResolved = resolveSystemCategoryId(state.categories, 'sys-cat-own-svc-pay');
+        let ownerSvcPayCategory =
+            (ownSvcResolved ? state.categories.find(c => c.id === ownSvcResolved) : undefined) ??
+            state.categories.find(c => c.name === 'Owner Service Charge Payment');
 
         if (!ownerSvcPayCategory) {
             // Auto-create if missing (shouldn't happen with proper initialization)
             ownerSvcPayCategory = {
-                id: 'sys-cat-own-svc-pay',
+                id: ownSvcResolved ?? 'sys-cat-own-svc-pay',
                 name: 'Owner Service Charge Payment',
                 type: TransactionType.INCOME,
                 isPermanent: true,
@@ -151,13 +156,7 @@ const ReceiveFromOwnerModal: React.FC<ReceiveFromOwnerModalProps> = ({
                 />
 
                 {/* Date */}
-                <Input
-                    label="Payment Date"
-                    type="date"
-                    value={date}
-                    onChange={e => setDate(e.target.value)}
-                    required
-                />
+                <DatePicker label="Payment Date" value={date} onChange={d => setDate(toLocalDateString(d))} required />
 
                 {/* Account */}
                 <div>

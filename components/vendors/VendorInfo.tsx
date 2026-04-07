@@ -5,7 +5,8 @@ import { ICONS } from '../../constants';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface VendorInfoProps {
   vendor: Contact;
@@ -18,7 +19,8 @@ interface VendorInfoProps {
 const VendorInfo: React.FC<VendorInfoProps> = ({ vendor, onEdit, onCreateBill, onRecordPayment, onCreateQuotation }) => {
   const { state } = useAppContext();
   const { showAlert } = useNotification();
-  
+  const { openChat } = useWhatsApp();
+
   const handleSendWhatsApp = async () => {
     if (!vendor.contactNo) {
         await showAlert("This vendor does not have a phone number saved.");
@@ -30,7 +32,11 @@ const VendorInfo: React.FC<VendorInfoProps> = ({ vendor, onEdit, onCreateBill, o
         state.whatsAppTemplates.vendorGreeting,
         vendor
       );
-      WhatsAppService.sendMessage({ contact: vendor, message });
+      sendOrOpenWhatsApp(
+        { contact: vendor, message, phoneNumber: vendor.contactNo },
+        () => state.whatsAppMode,
+        openChat
+      );
     } catch (error) {
       await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
     }

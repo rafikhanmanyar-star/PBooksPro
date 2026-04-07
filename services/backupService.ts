@@ -5,6 +5,7 @@ import { useProgress } from '../context/ProgressContext';
 import { getDatabaseService } from './database/databaseService';
 import { AppStateRepository } from './database/repositories/appStateRepository';
 import { migrateBackupData, CURRENT_DATA_VERSION } from './backupMigration';
+import { todayLocalYyyyMmDd } from '../utils/dateUtils';
 
 type ProgressReporter = ReturnType<typeof useProgress>;
 
@@ -45,7 +46,7 @@ export const createBackup = async (progress: ProgressReporter, dispatch: React.D
         
         await new Promise(res => setTimeout(res, 500));
         progress.updateProgress(90, 'Preparing download...');
-        const date = new Date().toISOString().split('T')[0];
+        const date = todayLocalYyyyMmDd();
         
         // Download database backup
         downloadFile(dbBackup, `finance-tracker-backup-${date}.db`, 'application/octet-stream');
@@ -312,7 +313,7 @@ export const createProjectBackup = async (projectId: string, projectName: string
         const jsonData = JSON.stringify(filteredState, null, 2);
         
         progress.updateProgress(95, 'Preparing download...');
-        const date = new Date().toISOString().split('T')[0];
+        const date = todayLocalYyyyMmDd();
         const safeName = projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         
         downloadFile(jsonData, `project-backup-${safeName}-${date}.json`, 'application/json');
@@ -351,7 +352,7 @@ export const createBuildingBackup = async (buildingId: string, buildingName: str
         const jsonData = JSON.stringify(filteredState, null, 2);
         
         progress.updateProgress(90, 'Preparing download...');
-        const date = new Date().toISOString().split('T')[0];
+        const date = todayLocalYyyyMmDd();
         const safeName = buildingName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         
         downloadFile(jsonData, `building-backup-${safeName}-${date}.json`, 'application/json');
@@ -630,7 +631,7 @@ export const createLoansInvestorsPMBackup = async (
         const jsonData = JSON.stringify(backupData, null, 2);
 
         progress.updateProgress(95, 'Preparing download...');
-        const date = new Date().toISOString().split('T')[0];
+        const date = todayLocalYyyyMmDd();
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' + 
                          new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
 

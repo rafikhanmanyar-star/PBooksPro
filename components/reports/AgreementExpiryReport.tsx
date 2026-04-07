@@ -187,7 +187,7 @@ const AgreementExpiryReport: React.FC = () => {
     const { print: triggerPrint } = usePrintContext();
     
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -203,7 +203,7 @@ const AgreementExpiryReport: React.FC = () => {
             <style>{STANDARD_PRINT_STYLES}</style>
             
             {/* Toolbar */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+            <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Building Filter */}
                     <div className="w-48 flex-shrink-0">
@@ -218,19 +218,19 @@ const AgreementExpiryReport: React.FC = () => {
 
                     {/* Search Input */}
                     <div className="relative flex-grow min-w-[180px]">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <span className="h-4 w-4">{ICONS.search}</span>
                         </div>
                         <Input 
                             placeholder="Search property, tenant, or agreement..." 
                             value={searchQuery} 
                             onChange={(e) => setSearchQuery(e.target.value)} 
-                            className="pl-9 py-1.5 text-sm"
+                            className="ds-input-field pl-9 py-1.5 text-sm"
                         />
                         {searchQuery && (
                             <button 
                                 onClick={() => setSearchQuery('')} 
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
                             >
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
@@ -239,7 +239,7 @@ const AgreementExpiryReport: React.FC = () => {
 
                     {/* Actions Group */}
                     <div className="flex items-center gap-2 ml-auto">
-                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
                             <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                         </Button>
                         <PrintButton
@@ -256,48 +256,49 @@ const AgreementExpiryReport: React.FC = () => {
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">
-                        <h3 className="text-2xl font-bold text-slate-800">Agreement Expiry Report</h3>
-                        <p className="text-sm text-slate-500">
+                        <h3 className="text-2xl font-bold text-app-text">Agreement Expiry Report</h3>
+                        <p className="text-sm text-app-muted">
                             Rental Agreements Expiring in Next 1, 2, and 3 Months
                         </p>
                     </div>
 
                     {/* Summary Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-center">
-                            <p className="text-xs text-slate-500 font-bold uppercase">Total Expiring</p>
-                            <p className="text-2xl font-bold text-slate-800">{totals.count}</p>
+                        <div className="p-4 bg-app-toolbar/40 rounded-lg border border-app-border text-center">
+                            <p className="text-xs text-app-muted font-bold uppercase">Total Expiring</p>
+                            <p className="text-2xl font-bold text-app-text">{totals.count}</p>
                         </div>
-                        <div className="p-4 bg-red-50 rounded-lg border border-red-100 text-center">
-                            <p className="text-xs text-red-600 font-bold uppercase">1 Month</p>
-                            <p className="text-2xl font-bold text-red-700">{chartData[0].count}</p>
+                        <div className="p-4 bg-ds-danger/10 rounded-lg border border-ds-danger/20 text-center">
+                            <p className="text-xs text-ds-danger font-bold uppercase">1 Month</p>
+                            <p className="text-2xl font-bold text-ds-danger">{chartData[0].count}</p>
                         </div>
-                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-100 text-center">
-                            <p className="text-xs text-amber-600 font-bold uppercase">2 Months</p>
-                            <p className="text-2xl font-bold text-amber-700">{chartData[1].count}</p>
+                        <div className="p-4 bg-ds-warning/10 rounded-lg border border-ds-warning/20 text-center">
+                            <p className="text-xs text-ds-warning font-bold uppercase">2 Months</p>
+                            <p className="text-2xl font-bold text-ds-warning">{chartData[1].count}</p>
                         </div>
-                        <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100 text-center">
-                            <p className="text-xs text-emerald-600 font-bold uppercase">3 Months</p>
-                            <p className="text-2xl font-bold text-emerald-700">{chartData[2].count}</p>
+                        <div className="p-4 bg-ds-success/10 rounded-lg border border-ds-success/20 text-center">
+                            <p className="text-xs text-ds-success font-bold uppercase">3 Months</p>
+                            <p className="text-2xl font-bold text-ds-success">{chartData[2].count}</p>
                         </div>
                     </div>
 
                     {/* Charts Section */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                         {/* Count Chart */}
-                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                            <h4 className="text-center font-semibold text-slate-700 mb-4">Properties by Expiry Period</h4>
+                        <div className="bg-app-toolbar/40 p-4 rounded-lg border border-app-border">
+                            <h4 className="text-center font-semibold text-app-text mb-4">Properties by Expiry Period</h4>
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                    <XAxis dataKey="name" stroke="#64748b" style={{ fontSize: '12px' }} />
-                                    <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                                    <XAxis dataKey="name" stroke="var(--text-muted)" style={{ fontSize: '12px' }} />
+                                    <YAxis stroke="var(--text-muted)" style={{ fontSize: '12px' }} />
                                     <Tooltip 
                                         contentStyle={{ 
-                                            backgroundColor: '#fff', 
-                                            border: '1px solid #e2e8f0',
+                                            backgroundColor: 'var(--card-bg)', 
+                                            border: '1px solid var(--border-color)',
                                             borderRadius: '8px',
-                                            fontSize: '12px'
+                                            fontSize: '12px',
+                                            color: 'var(--text-primary)'
                                         }}
                                     />
                                     <Bar dataKey="count" fill="#64748b" radius={[8, 8, 0, 0]}>
@@ -310,20 +311,21 @@ const AgreementExpiryReport: React.FC = () => {
                         </div>
 
                         {/* Rent Chart */}
-                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                            <h4 className="text-center font-semibold text-slate-700 mb-4">Total Monthly Rent at Risk</h4>
+                        <div className="bg-app-toolbar/40 p-4 rounded-lg border border-app-border">
+                            <h4 className="text-center font-semibold text-app-text mb-4">Total Monthly Rent at Risk</h4>
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                    <XAxis dataKey="name" stroke="#64748b" style={{ fontSize: '12px' }} />
-                                    <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                                    <XAxis dataKey="name" stroke="var(--text-muted)" style={{ fontSize: '12px' }} />
+                                    <YAxis stroke="var(--text-muted)" style={{ fontSize: '12px' }} />
                                     <Tooltip 
                                         formatter={(value: number) => `${CURRENCY} ${value.toLocaleString()}`}
                                         contentStyle={{ 
-                                            backgroundColor: '#fff', 
-                                            border: '1px solid #e2e8f0',
+                                            backgroundColor: 'var(--card-bg)', 
+                                            border: '1px solid var(--border-color)',
                                             borderRadius: '8px',
-                                            fontSize: '12px'
+                                            fontSize: '12px',
+                                            color: 'var(--text-primary)'
                                         }}
                                     />
                                     <Bar dataKey="rent" fill="#64748b" radius={[8, 8, 0, 0]}>
@@ -338,54 +340,54 @@ const AgreementExpiryReport: React.FC = () => {
 
                     {/* Data Table */}
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-toolbar/40 sticky top-0 z-10">
                                 <tr>
-                                    <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Agreement</th>
-                                    <th onClick={() => handleSort('propertyName')} className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">
+                                    <th className="px-4 py-3 text-left font-semibold text-app-muted uppercase tracking-wider text-xs">Agreement</th>
+                                    <th onClick={() => handleSort('propertyName')} className="px-4 py-3 text-left font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">
                                         Property <SortIcon column="propertyName"/>
                                     </th>
-                                    <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Building</th>
-                                    <th onClick={() => handleSort('tenantName')} className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">
+                                    <th className="px-4 py-3 text-left font-semibold text-app-muted uppercase tracking-wider text-xs">Building</th>
+                                    <th onClick={() => handleSort('tenantName')} className="px-4 py-3 text-left font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">
                                         Tenant <SortIcon column="tenantName"/>
                                     </th>
-                                    <th onClick={() => handleSort('monthlyRent')} className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">
+                                    <th onClick={() => handleSort('monthlyRent')} className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">
                                         Monthly Rent <SortIcon column="monthlyRent"/>
                                     </th>
-                                    <th onClick={() => handleSort('endDate')} className="px-4 py-3 text-center font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">
+                                    <th onClick={() => handleSort('endDate')} className="px-4 py-3 text-center font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">
                                         End Date <SortIcon column="endDate"/>
                                     </th>
-                                    <th onClick={() => handleSort('daysUntilExpiry')} className="px-4 py-3 text-center font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">
+                                    <th onClick={() => handleSort('daysUntilExpiry')} className="px-4 py-3 text-center font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">
                                         Days Left <SortIcon column="daysUntilExpiry"/>
                                     </th>
-                                    <th className="px-4 py-3 text-center font-semibold text-slate-600 uppercase tracking-wider text-xs">Status</th>
+                                    <th className="px-4 py-3 text-center font-semibold text-app-muted uppercase tracking-wider text-xs">Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200 bg-white">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {reportData.map(row => (
-                                    <tr key={row.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{row.agreementNumber}</td>
-                                        <td className="px-4 py-3 text-slate-800 whitespace-normal break-words">{row.propertyName}</td>
-                                        <td className="px-4 py-3 text-slate-600 whitespace-normal break-words">{row.buildingName}</td>
-                                        <td className="px-4 py-3 text-slate-800 whitespace-normal break-words">{row.tenantName}</td>
-                                        <td className="px-4 py-3 text-right font-semibold text-slate-800 whitespace-nowrap">
+                                    <tr key={row.id} className="hover:bg-app-toolbar/30 transition-colors">
+                                        <td className="px-4 py-3 font-medium text-app-text whitespace-nowrap">{row.agreementNumber}</td>
+                                        <td className="px-4 py-3 text-app-text whitespace-normal break-words">{row.propertyName}</td>
+                                        <td className="px-4 py-3 text-app-muted whitespace-normal break-words">{row.buildingName}</td>
+                                        <td className="px-4 py-3 text-app-text whitespace-normal break-words">{row.tenantName}</td>
+                                        <td className="px-4 py-3 text-right font-semibold text-app-text whitespace-nowrap">
                                             {CURRENCY} {row.monthlyRent.toLocaleString()}
                                         </td>
-                                        <td className="px-4 py-3 text-center text-slate-600 whitespace-nowrap">{formatDate(row.endDate)}</td>
+                                        <td className="px-4 py-3 text-center text-app-muted whitespace-nowrap">{formatDate(row.endDate)}</td>
                                         <td className="px-4 py-3 text-center whitespace-nowrap">
                                             <span className={`font-bold ${
-                                                row.daysUntilExpiry <= 30 ? 'text-red-600' : 
-                                                row.daysUntilExpiry <= 60 ? 'text-amber-600' : 
-                                                'text-emerald-600'
+                                                row.daysUntilExpiry <= 30 ? 'text-ds-danger' : 
+                                                row.daysUntilExpiry <= 60 ? 'text-ds-warning' : 
+                                                'text-ds-success'
                                             }`}>
                                                 {row.daysUntilExpiry}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-center whitespace-nowrap">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                                row.expiryBucket === '1 Month' ? 'bg-red-100 text-red-800' :
-                                                row.expiryBucket === '2 Months' ? 'bg-amber-100 text-amber-800' :
-                                                'bg-emerald-100 text-emerald-800'
+                                                row.expiryBucket === '1 Month' ? 'bg-ds-danger/15 text-ds-danger' :
+                                                row.expiryBucket === '2 Months' ? 'bg-ds-warning/15 text-ds-warning' :
+                                                'bg-ds-success/15 text-ds-success'
                                             }`}>
                                                 {row.expiryBucket}
                                             </span>
@@ -394,20 +396,20 @@ const AgreementExpiryReport: React.FC = () => {
                                 ))}
                                 {reportData.length === 0 && (
                                     <tr>
-                                        <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                                        <td colSpan={8} className="px-4 py-8 text-center text-app-muted">
                                             No agreements expiring in the next 3 months.
                                         </td>
                                     </tr>
                                 )}
                             </tbody>
                             {reportData.length > 0 && (
-                                <tfoot className="bg-slate-50 font-bold border-t border-slate-300 sticky bottom-0">
+                                <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border sticky bottom-0">
                                     <tr>
-                                        <td colSpan={4} className="px-4 py-3 text-right">TOTAL</td>
-                                        <td className="px-4 py-3 text-right text-slate-800 whitespace-nowrap">
+                                        <td colSpan={4} className="px-4 py-3 text-right text-app-text">TOTAL</td>
+                                        <td className="px-4 py-3 text-right text-app-text whitespace-nowrap">
                                             {CURRENCY} {totals.totalRent.toLocaleString()}
                                         </td>
-                                        <td colSpan={3} className="px-4 py-3 text-center text-slate-600">
+                                        <td colSpan={3} className="px-4 py-3 text-center text-app-muted">
                                             {totals.count} Agreement{totals.count !== 1 ? 's' : ''}
                                         </td>
                                     </tr>

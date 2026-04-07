@@ -1,10 +1,10 @@
 /**
  * Print Controller - Master component that listens to PrintContext and renders
- * the correct layout in a portal. Triggers window.print() after render and
- * resets state on afterprint.
+ * the correct layout in a portal. Shows print preview modal first; when user
+ * confirms, triggers window.print() and resets on afterprint.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { usePrintContext } from '../../context/PrintContext';
 import { useAppContext } from '../../context/AppContext';
@@ -15,6 +15,7 @@ import { AgreementLayout } from './AgreementLayout';
 import { LedgerLayout } from './LedgerLayout';
 import { ReportLayout } from './ReportLayout';
 import { PayslipPrintTemplate } from './PayslipPrintTemplate';
+import { PrintPreviewModal } from './PrintPreviewModal';
 import type { InvoicePrintData } from './InvoicePrintTemplate';
 import type { BillPrintData } from './BillPrintTemplate';
 import type { AgreementPrintData } from './AgreementLayout';
@@ -27,11 +28,66 @@ import './printPortal.css';
 
 const PRINT_DELAY_MS = 350;
 
-function PrintControllerContent(): React.ReactElement | null {
-  const { activeDocument, layoutType, reset } = usePrintContext();
+function usePrintContent(): React.ReactNode {
+  const { activeDocument, layoutType } = usePrintContext();
   const { state } = useAppContext();
   const printSettings = state.printSettings;
-  const hasTriggeredPrint = useRef(false);
+
+  if (activeDocument == null || !layoutType) return null;
+
+  switch (layoutType) {
+    case 'PO':
+      return (
+        <POPrintTemplate
+          printSettings={printSettings}
+          data={activeDocument as PurchaseOrder}
+        />
+      );
+    case 'INVOICE':
+      return (
+        <InvoicePrintTemplate
+          printSettings={printSettings}
+          data={activeDocument as InvoicePrintData}
+        />
+      );
+    case 'BILL':
+      return (
+        <BillPrintTemplate
+          printSettings={printSettings}
+          data={activeDocument as BillPrintData}
+        />
+      );
+    case 'AGREEMENT':
+      return (
+        <AgreementLayout
+          printSettings={printSettings}
+          data={activeDocument as AgreementPrintData}
+        />
+      );
+    case 'LEDGER':
+      return (
+        <LedgerLayout
+          printSettings={printSettings}
+          data={activeDocument as LedgerPrintData}
+        />
+      );
+    case 'REPORT':
+      return <ReportLayout data={activeDocument as ReportPrintData} />;
+    case 'PAYSLIP':
+      return (
+        <PayslipPrintTemplate
+          printSettings={printSettings}
+          data={activeDocument as PayslipPrintData}
+        />
+      );
+    default:
+      return null;
+  }
+}
+
+function PrintControllerContent(): React.ReactElement | null {
+  const { activeDocument, layoutType, phase, closePreview, confirmPrint, reset } = usePrintContext();
+  const content = usePrintContent();
 
   // Mark body so print CSS only hides #root when we're using the portal (not usePrintForm)
   useEffect(() => {
@@ -40,18 +96,14 @@ function PrintControllerContent(): React.ReactElement | null {
     return () => document.body.classList.remove('print-portal-active');
   }, [activeDocument, layoutType]);
 
-  // When activeDocument is set, trigger print after React has painted
+  // When phase becomes 'printing', trigger window.print() after paint
   useEffect(() => {
-    if (activeDocument == null || !layoutType) {
-      hasTriggeredPrint.current = false;
-      return;
-    }
-    hasTriggeredPrint.current = true;
+    if (phase !== 'printing' || activeDocument == null || !layoutType) return;
     const t = setTimeout(() => {
       window.print();
     }, PRINT_DELAY_MS);
     return () => clearTimeout(t);
-  }, [activeDocument, layoutType]);
+  }, [phase, activeDocument, layoutType]);
 
   // Post-print cleanup: reset when user closes print dialog
   useEffect(() => {
@@ -66,67 +118,21 @@ function PrintControllerContent(): React.ReactElement | null {
     return null;
   }
 
-  let content: React.ReactNode;
-  switch (layoutType) {
-    case 'PO':
-      content = (
-        <POPrintTemplate
-          printSettings={printSettings}
-          data={activeDocument as PurchaseOrder}
-        />
-      );
-      break;
-    case 'INVOICE':
-      content = (
-        <InvoicePrintTemplate
-          printSettings={printSettings}
-          data={activeDocument as InvoicePrintData}
-        />
-      );
-      break;
-    case 'BILL':
-      content = (
-        <BillPrintTemplate
-          printSettings={printSettings}
-          data={activeDocument as BillPrintData}
-        />
-      );
-      break;
-    case 'AGREEMENT':
-      content = (
-        <AgreementLayout
-          printSettings={printSettings}
-          data={activeDocument as AgreementPrintData}
-        />
-      );
-      break;
-    case 'LEDGER':
-      content = (
-        <LedgerLayout
-          printSettings={printSettings}
-          data={activeDocument as LedgerPrintData}
-        />
-      );
-      break;
-    case 'REPORT':
-      content = <ReportLayout data={activeDocument as ReportPrintData} />;
-      break;
-    case 'PAYSLIP':
-      content = (
-        <PayslipPrintTemplate
-          printSettings={printSettings}
-          data={activeDocument as PayslipPrintData}
-        />
-      );
-      break;
-    default:
-      content = null;
-  }
-
   return (
-    <div id="print-portal" className="print-portal-root" aria-hidden="true">
-      {content}
-    </div>
+    <>
+      {/* Portal content: used for actual printing (hidden on screen when preview is open) */}
+      <div id="print-portal" className="print-portal-root" aria-hidden="true">
+        {content}
+      </div>
+      {/* Preview modal: shown when phase is 'preview' */}
+      <PrintPreviewModal
+        open={phase === 'preview'}
+        onClose={closePreview}
+        onPrint={confirmPrint}
+      >
+        {content}
+      </PrintPreviewModal>
+    </>
   );
 }
 

@@ -17,8 +17,8 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { useNotification } from '../../context/NotificationContext';
-import { formatDate } from '../../utils/dateUtils';
-import { WhatsAppService } from '../../services/whatsappService';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -69,11 +69,11 @@ const TenantLedgerReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (type === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (type === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -143,31 +143,70 @@ const TenantLedgerReport: React.FC = () => {
             }
         });
 
+        // Security deposit refund: show two lines so ledger balances (owner security debit + amount refunded)
+        const secRefundCategoryNames = ['Security Deposit Refund', 'Owner Security Payout'];
+        const isSecRefundCategory = (categoryId: string | undefined) => {
+            if (!categoryId) return false;
+            const cat = state.categories.find(c => c.id === categoryId);
+            return cat ? secRefundCategoryNames.includes(cat.name) : false;
+        };
+
         tenantTransactions.forEach(tx => {
             const txDate = new Date(tx.date);
             if(txDate >= start && txDate <= end) {
                 const tenant = state.contacts.find(c => c.id === tx.contactId);
+                const tenantName = tenant?.name || 'Unknown/Deleted Tenant';
                 const isExpense = tx.type === TransactionType.EXPENSE;
-                
-                ledgerItems.push({ 
-                    date: tx.date, 
-                    tenantName: tenant?.name || 'Unknown/Deleted Tenant',
-                    particulars: tx.description || (isExpense ? 'Charge Paid by Owner' : 'Payment Received'), 
-                    debit: isExpense ? tx.amount : 0, 
-                    credit: isExpense ? 0 : tx.amount,
-                    entityType: 'transaction' as const,
-                    entityId: tx.id
-                });
+                const isSecRefund = isExpense && isSecRefundCategory(tx.categoryId);
+
+                if (isSecRefund) {
+                    // Line 1: Owner security debit (liability released) – debit so balance steps up
+                    ledgerItems.push({
+                        date: tx.date,
+                        tenantName,
+                        particulars: 'Owner security debit',
+                        debit: tx.amount,
+                        credit: 0,
+                        entityType: 'transaction' as const,
+                        entityId: `${tx.id}-release`
+                    });
+                    // Line 2: Amount refunded – credit so balance returns to zero
+                    ledgerItems.push({
+                        date: tx.date,
+                        tenantName,
+                        particulars: tx.description || 'Security deposit refund',
+                        debit: 0,
+                        credit: tx.amount,
+                        entityType: 'transaction' as const,
+                        entityId: tx.id
+                    });
+                } else {
+                    // Non-refund: INCOME = credit, EXPENSE = debit (charge paid by owner)
+                    const asDebit = isExpense;
+                    const asCredit = !isExpense;
+                    ledgerItems.push({
+                        date: tx.date,
+                        tenantName,
+                        particulars: tx.description || (isExpense ? 'Charge Paid by Owner' : 'Payment Received'),
+                        debit: asDebit ? tx.amount : 0,
+                        credit: asCredit ? tx.amount : 0,
+                        entityType: 'transaction' as const,
+                        entityId: tx.id
+                    });
+                }
             }
         });
-        
-        // Sort Chronologically
+
+        // Sort chronologically; for same date keep debit before credit (so refund pair shows debit then credit)
         ledgerItems.sort((a, b) => {
             if (groupBy === 'tenant') {
                 if (a.tenantName < b.tenantName) return -1;
                 if (a.tenantName > b.tenantName) return 1;
             }
-            return new Date(a.date).getTime() - new Date(b.date).getTime();
+            const tA = new Date(a.date).getTime();
+            const tB = new Date(b.date).getTime();
+            if (tA !== tB) return tA - tB;
+            return (b.debit - b.credit) - (a.debit - a.credit);
         });
 
         let runningBalance = 0;
@@ -295,8 +334,11 @@ const TenantLedgerReport: React.FC = () => {
             message += `Final Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
             message += `This is an automated summary from PBooksPro.`;
 
-            // Open WhatsApp side panel with pre-filled message
-            openChat(selectedTenant, selectedTenant.contactNo, message);
+            sendOrOpenWhatsApp(
+                { contact: selectedTenant, message, phoneNumber: selectedTenant.contactNo },
+                () => state.whatsAppMode,
+                openChat
+            );
         } catch (error) {
             await showAlert(error instanceof Error ? error.message : 'Failed to send WhatsApp message');
         }
@@ -306,7 +348,7 @@ const TenantLedgerReport: React.FC = () => {
 
     const SortHeader: React.FC<{ label: string, sortKey: keyof LedgerItem, align?: 'left' | 'right' }> = ({ label, sortKey, align = 'left' }) => (
         <th 
-            className={`px-3 py-2 text-${align} font-semibold text-slate-600 bg-slate-50 cursor-pointer hover:bg-slate-100 select-none`}
+            className={`px-3 py-2 ${align === 'right' ? 'text-right' : 'text-left'} font-semibold text-app-muted bg-app-toolbar/40 cursor-pointer hover:bg-app-toolbar/60 select-none`}
             onClick={() => requestSort(sortKey)}
         >
             <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
@@ -323,19 +365,19 @@ const TenantLedgerReport: React.FC = () => {
             <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex flex-col h-full space-y-4">
                 {/* Custom Toolbar - All controls in first row */}
-                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                     {/* First Row: Dates, Filters, and Actions */}
                     <div className="flex flex-wrap items-center gap-3">
                         {/* Date Range Pills */}
-                        <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                        <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
                             {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                                 <button
                                     key={opt}
                                     onClick={() => handleRangeChange(opt)}
                                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
                                         dateRangeType === opt 
-                                        ? 'bg-white text-accent shadow-sm font-bold' 
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                        ? 'bg-primary text-ds-on-primary shadow-sm font-bold' 
+                                        : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                     }`}
                                 >
                                     {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
@@ -346,9 +388,9 @@ const TenantLedgerReport: React.FC = () => {
                         {/* Custom Date Pickers */}
                         {dateRangeType === 'custom' && (
                             <div className="flex items-center gap-2 animate-fade-in">
-                                <DatePicker value={startDate} onChange={(d) => handleDateChange(d.toISOString().split('T')[0], endDate)} />
-                                <span className="text-slate-400">-</span>
-                                <DatePicker value={endDate} onChange={(d) => handleDateChange(startDate, d.toISOString().split('T')[0])} />
+                                <DatePicker value={startDate} onChange={(d) => handleDateChange(toLocalDateString(d), endDate)} />
+                                <span className="text-app-muted">-</span>
+                                <DatePicker value={endDate} onChange={(d) => handleDateChange(startDate, toLocalDateString(d))} />
                             </div>
                         )}
 
@@ -368,7 +410,8 @@ const TenantLedgerReport: React.FC = () => {
                             <select
                                 value={groupBy}
                                 onChange={(e) => setGroupBy(e.target.value)}
-                                className="block w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                                className="ds-input-field block w-full px-3 py-1.5 text-sm"
+                                aria-label="Group by"
                             >
                                 <option value="">No Grouping</option>
                                 <option value="tenant">Group by Tenant</option>
@@ -377,19 +420,19 @@ const TenantLedgerReport: React.FC = () => {
 
                         {/* Search Input */}
                         <div className="relative flex-grow min-w-[180px]">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                                 <span className="h-4 w-4">{ICONS.search}</span>
                             </div>
                             <Input 
                                 placeholder="Search report..." 
                                 value={searchQuery} 
                                 onChange={(e) => setSearchQuery(e.target.value)} 
-                                className="pl-9 py-1.5 text-sm"
+                                className="ds-input-field pl-9 py-1.5 text-sm"
                             />
                             {searchQuery && (
                                 <button 
                                     onClick={() => setSearchQuery('')} 
-                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
                                 >
                                     <div className="w-4 h-4">{ICONS.x}</div>
                                 </button>
@@ -403,11 +446,11 @@ const TenantLedgerReport: React.FC = () => {
                                 size="sm" 
                                 onClick={handleWhatsApp} 
                                 disabled={selectedTenantId === 'all'}
-                                className="text-green-600 bg-green-50 hover:bg-green-100 border-green-200 whitespace-nowrap"
+                                className="text-ds-success bg-ds-success/10 hover:bg-ds-success/20 border-ds-success/30 whitespace-nowrap"
                             >
                                 <div className="w-4 h-4 mr-1">{ICONS.whatsapp}</div> Share
                             </Button>
-                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
                                 <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                             </Button>
                             <PrintButton
@@ -424,17 +467,17 @@ const TenantLedgerReport: React.FC = () => {
                     <Card className="min-h-full">
                         <ReportHeader />
                         <div className="text-center mb-6">
-                            <h3 className="text-2xl font-bold">Tenant Ledger</h3>
-                            <p className="text-sm text-slate-500">From {formatDate(startDate)} to {formatDate(endDate)}</p>
-                            <p className="text-sm text-slate-500 font-semibold">
+                            <h3 className="text-2xl font-bold text-app-text">Tenant Ledger</h3>
+                            <p className="text-sm text-app-muted">From {formatDate(startDate)} to {formatDate(endDate)}</p>
+                            <p className="text-sm text-app-muted font-semibold">
                                 Tenant: {selectedTenantId === 'all' ? 'All Tenants' : state.contacts.find(c=>c.id === selectedTenantId)?.name}
                             </p>
                         </div>
 
                         {reportData.length > 0 ? (
                             <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                    <thead className="bg-slate-50 sticky top-0 z-10">
+                                <table className="min-w-full divide-y divide-app-border text-sm">
+                                    <thead className="bg-app-toolbar/40 sticky top-0 z-10">
                                         <tr>
                                             <SortHeader label="Date" sortKey="date" align="left" />
                                             <SortHeader label="Tenant" sortKey="tenantName" align="left" />
@@ -444,14 +487,14 @@ const TenantLedgerReport: React.FC = () => {
                                             <SortHeader label="Balance" sortKey="balance" />
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white divide-y divide-slate-200">
+                                    <tbody className="bg-app-card divide-y divide-app-border">
                                         {reportData.map(item => {
                                             const transaction = item.entityType === 'transaction' ? state.transactions.find(t => t.id === item.entityId) : null;
                                             const invoice = item.entityType === 'invoice' ? state.invoices.find(i => i.id === item.entityId) : null;
                                             return (
                                                 <tr 
                                                     key={item.id}
-                                                    className="cursor-pointer hover:bg-slate-50 transition-colors"
+                                                    className="cursor-pointer hover:bg-app-toolbar/30 transition-colors text-app-text"
                                                     onClick={() => {
                                                         if (transaction) setTransactionToEdit(transaction);
                                                         if (invoice) setInvoiceToEdit(invoice);
@@ -463,14 +506,14 @@ const TenantLedgerReport: React.FC = () => {
                                                     <td className="px-3 py-2 whitespace-normal break-words max-w-xs">{item.particulars}</td>
                                                     <td className="px-3 py-2 text-right whitespace-nowrap">{item.debit > 0 ? `${CURRENCY} ${item.debit.toLocaleString()}` : '-'}</td>
                                                     <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.credit > 0 ? `${CURRENCY} ${item.credit.toLocaleString()}` : '-'}</td>
-                                                    <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-slate-700'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
+                                                    <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-app-text'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
                                                 </tr>
                                             );
                                         })}
                                     </tbody>
-                                    <tfoot className="bg-slate-50 font-bold">
+                                    <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border">
                                         <tr>
-                                            <td colSpan={3} className="px-3 py-2 text-right text-sm">Totals (Period)</td>
+                                            <td colSpan={3} className="px-3 py-2 text-right text-sm text-app-text">Totals (Period)</td>
                                             <td className="px-3 py-2 text-right text-sm whitespace-nowrap">{CURRENCY} {totals.debit.toLocaleString()}</td>
                                             <td className="px-3 py-2 text-right text-sm text-success whitespace-nowrap">{CURRENCY} {totals.credit.toLocaleString()}</td>
                                             <td className="px-3 py-2 text-right text-sm whitespace-nowrap">
@@ -480,7 +523,7 @@ const TenantLedgerReport: React.FC = () => {
                                     </tfoot>
                                 </table>
                             </div>
-                        ) : (<div className="text-center py-16"><p className="text-slate-500">No ledger transactions found for the selected criteria.</p></div>)}
+                        ) : (<div className="text-center py-16"><p className="text-app-muted">No ledger transactions found for the selected criteria.</p></div>)}
                         <ReportFooter />
                     </Card>
                 </div>

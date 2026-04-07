@@ -162,7 +162,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -172,7 +172,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
             <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex flex-col h-full space-y-4">
                 {/* Custom Toolbar - All controls in first row */}
-                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                     {/* First Row: Filters and Actions */}
                     <div className="flex flex-wrap items-center gap-3">
                         {/* Building Filter */}
@@ -191,7 +191,8 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
                             <select
                                 value={groupBy}
                                 onChange={(e) => setGroupBy(e.target.value)}
-                                className="block w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                                className="ds-input-field block w-full px-3 py-1.5 text-sm"
+                                aria-label="Group by"
                             >
                                 <option value="">No Grouping</option>
                                 <option value="status">Group by Status</option>
@@ -201,19 +202,19 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
 
                         {/* Search Input */}
                         <div className="relative flex-grow min-w-[180px]">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                                 <span className="h-4 w-4">{ICONS.search}</span>
                             </div>
                             <Input 
                                 placeholder="Search report..." 
                                 value={searchQuery} 
                                 onChange={(e) => setSearchQuery(e.target.value)} 
-                                className="pl-9 py-1.5 text-sm"
+                                className="ds-input-field pl-9 py-1.5 text-sm"
                             />
                             {searchQuery && (
                                 <button 
                                     onClick={() => setSearchQuery('')} 
-                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
                                 >
                                     <div className="w-4 h-4">{ICONS.x}</div>
                                 </button>
@@ -227,8 +228,8 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
                                     onClick={() => onReportChange('Visual Layout')}
                                     className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap focus:outline-none ${
                                         activeReport === 'Visual Layout'
-                                            ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 shadow-sm'
-                                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                                            ? 'bg-primary/15 text-primary border-2 border-primary/40 shadow-sm'
+                                            : 'bg-app-toolbar text-app-text border border-app-border hover:bg-app-toolbar/80'
                                     }`}
                                 >
                                     Visual Layout
@@ -237,8 +238,8 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
                                     onClick={() => onReportChange('Tabular Layout')}
                                     className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap focus:outline-none ${
                                         activeReport === 'Tabular Layout'
-                                            ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 shadow-sm'
-                                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                                            ? 'bg-primary/15 text-primary border-2 border-primary/40 shadow-sm'
+                                            : 'bg-app-toolbar text-app-text border border-app-border hover:bg-app-toolbar/80'
                                     }`}
                                 >
                                     Tabular Layout
@@ -248,7 +249,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
 
                         {/* Actions Group */}
                         <div className="flex items-center gap-2 ml-auto">
-                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
                                 <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                             </Button>
                             <PrintButton
@@ -265,40 +266,40 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
                     <Card className="min-h-full">
                         <ReportHeader />
                         <div className="text-center mb-6">
-                            <h3 className="text-2xl font-bold">Property Status Report</h3>
-                            <p className="text-sm text-slate-500 font-semibold">
+                            <h3 className="text-2xl font-bold text-app-text">Property Status Report</h3>
+                            <p className="text-sm text-app-muted font-semibold">
                                 {selectedBuildingId !== 'all' ? `Building: ${state.buildings.find(b=>b.id===selectedBuildingId)?.name}` : 'All Buildings'}
                             </p>
                         </div>
 
                         {reportData.length > 0 ? (
                             <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                    <thead className="bg-slate-50 sticky top-0">
+                                <table className="min-w-full divide-y divide-app-border text-sm">
+                                    <thead className="bg-app-toolbar/40 sticky top-0">
                                         <tr>
-                                            <th onClick={() => handleSort('buildingName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Building <SortIcon column="buildingName"/></th>
-                                            <th onClick={() => handleSort('unitName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Unit <SortIcon column="unitName"/></th>
-                                            <th onClick={() => handleSort('ownerName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Owner <SortIcon column="ownerName"/></th>
-                                            <th onClick={() => handleSort('status')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Status <SortIcon column="status"/></th>
-                                            <th onClick={() => handleSort('tenantName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Tenant <SortIcon column="tenantName"/></th>
-                                            <th onClick={() => handleSort('agreementEndDate')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Agreement End <SortIcon column="agreementEndDate"/></th>
-                                            <th onClick={() => handleSort('expiryStatus')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Note <SortIcon column="expiryStatus"/></th>
+                                            <th onClick={() => handleSort('buildingName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Building <SortIcon column="buildingName"/></th>
+                                            <th onClick={() => handleSort('unitName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Unit <SortIcon column="unitName"/></th>
+                                            <th onClick={() => handleSort('ownerName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Owner <SortIcon column="ownerName"/></th>
+                                            <th onClick={() => handleSort('status')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Status <SortIcon column="status"/></th>
+                                            <th onClick={() => handleSort('tenantName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Tenant <SortIcon column="tenantName"/></th>
+                                            <th onClick={() => handleSort('agreementEndDate')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Agreement End <SortIcon column="agreementEndDate"/></th>
+                                            <th onClick={() => handleSort('expiryStatus')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Note <SortIcon column="expiryStatus"/></th>
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white divide-y divide-slate-200">
+                                    <tbody className="bg-app-card divide-y divide-app-border text-app-text">
                                         {reportData.map(item => (
-                                            <tr key={item.id} className="hover:bg-slate-50">
+                                            <tr key={item.id} className="hover:bg-app-toolbar/30">
                                                 <td className="px-3 py-2 whitespace-nowrap">{item.buildingName}</td>
-                                                <td className="px-3 py-2 whitespace-nowrap font-medium text-slate-800">{item.unitName}</td>
+                                                <td className="px-3 py-2 whitespace-nowrap font-medium text-app-text">{item.unitName}</td>
                                                 <td className="px-3 py-2 whitespace-nowrap">{item.ownerName}</td>
                                                 <td className="px-3 py-2 whitespace-nowrap">
-                                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === 'Occupied' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800'}`}>
+                                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${item.status === 'Occupied' ? 'bg-ds-success/15 text-ds-success' : 'bg-app-toolbar text-app-muted'}`}>
                                                         {item.status}
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-2 whitespace-nowrap">{item.tenantName}</td>
                                                 <td className="px-3 py-2 whitespace-nowrap">{item.agreementEndDate ? formatDate(item.agreementEndDate) : '-'}</td>
-                                                <td className={`px-3 py-2 whitespace-nowrap font-semibold ${item.expiryStatus === 'Expired' ? 'text-rose-600' : item.expiryStatus === 'Expires Soon' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                <td className={`px-3 py-2 whitespace-nowrap font-semibold ${item.expiryStatus === 'Expired' ? 'text-ds-danger' : item.expiryStatus === 'Expires Soon' ? 'text-ds-warning' : 'text-ds-success'}`}>
                                                     {item.expiryStatus !== 'N/A' && item.expiryStatus !== 'OK' ? item.expiryStatus : ''}
                                                 </td>
                                             </tr>
@@ -306,7 +307,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
                                     </tbody>
                                 </table>
                             </div>
-                        ) : (<div className="text-center py-16"><p className="text-slate-500">No properties found.</p></div>)}
+                        ) : (<div className="text-center py-16"><p className="text-app-muted">No properties found.</p></div>)}
                         <ReportFooter />
                     </Card>
                 </div>

@@ -8,7 +8,7 @@ import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY, ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, getFirstOfNextMonthLocal, toLocalDateString } from '../../utils/dateUtils';
 
 interface RentalAgreementRenewalModalProps {
     isOpen: boolean;
@@ -27,7 +27,6 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
     const [monthlyRent, setMonthlyRent] = useState('');
     const [securityDeposit, setSecurityDeposit] = useState('');
     const [rentDueDate, setRentDueDate] = useState('1');
-    const [brokerFee, setBrokerFee] = useState('');
     const [description, setDescription] = useState('');
 
     // --- Open Invoices Check (allow Paid and Partially Paid) ---
@@ -51,32 +50,31 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
             if (!isNaN(oldEnd.getTime())) {
                 const nextDay = new Date(oldEnd);
                 nextDay.setDate(nextDay.getDate() + 1);
-                const newStart = nextDay.toISOString().split('T')[0];
+                const newStart = toLocalDateString(nextDay);
                 setStartDate(newStart);
 
                 // End date = +1 year - 1 day
                 const newEnd = new Date(nextDay);
                 newEnd.setFullYear(newEnd.getFullYear() + 1);
                 newEnd.setDate(newEnd.getDate() - 1);
-                setEndDate(newEnd.toISOString().split('T')[0]);
+                setEndDate(toLocalDateString(newEnd));
             }
             setMonthlyRent(agreement.monthlyRent?.toString() || '');
             setSecurityDeposit(agreement.securityDeposit?.toString() || '');
             setRentDueDate(agreement.rentDueDate?.toString() || '1');
-            setBrokerFee(agreement.brokerFee?.toString() || '');
             setDescription('');
         }
     }, [isOpen, agreement]);
 
     // --- Auto-update End Date ---
     const handleStartDateChange = (newDate: Date) => {
-        const newStart = newDate.toISOString().split('T')[0];
+        const newStart = toLocalDateString(newDate);
         setStartDate(newStart);
         const d = new Date(newStart);
         if (!isNaN(d.getTime())) {
             d.setFullYear(d.getFullYear() + 1);
             d.setDate(d.getDate() - 1);
-            setEndDate(d.toISOString().split('T')[0]);
+            setEndDate(toLocalDateString(d));
         }
     };
 
@@ -127,9 +125,9 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
             return;
         }
 
-        // 1. Stop old recurring templates
-        const activeOldTemplates = state.recurringInvoiceTemplates.filter(t => t.agreementId === agreement.id && t.active);
-        activeOldTemplates.forEach(t => dispatch({ type: 'UPDATE_RECURRING_TEMPLATE', payload: { ...t, active: false } }));
+        // 1. Remove old recurring templates for this agreement (so only active agreement templates remain)
+        const oldTemplates = state.recurringInvoiceTemplates.filter(t => t.agreementId === agreement.id);
+        oldTemplates.forEach(t => dispatch({ type: 'DELETE_RECURRING_TEMPLATE', payload: t.id }));
 
         // 2. Mark old as Renewed
         dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: { ...agreement, status: RentalAgreementStatus.RENEWED } });
@@ -154,7 +152,7 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
             status: RentalAgreementStatus.ACTIVE,
             securityDeposit: newSecDep || undefined,
             brokerId: agreement.brokerId,
-            brokerFee: parseFloat(brokerFee) || undefined,
+            brokerFee: 0,
             description: description || agreement.description,
             ownerId: agreement.ownerId || property?.ownerId,
             previousAgreementId: agreement.id,
@@ -211,11 +209,11 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
                 dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
 
                 // c. Recurring template (next invoice on 1st of next month)
-                const nextMonth = new Date(rnYear, rnMonth + 1, 1);
+                const nextDueDateStr = getFirstOfNextMonthLocal(rnDateObj);
                 const recurringTemplate: RecurringInvoiceTemplate = {
                     id: `rec-ren-${Date.now()}`, contactId: agreement.contactId, propertyId: agreement.propertyId,
                     buildingId: bId || '', amount: newRent, descriptionTemplate: "Rent for {Month} [Rental]",
-                    dayOfMonth: 1, nextDueDate: nextMonth.toISOString().split('T')[0],
+                    dayOfMonth: 1, nextDueDate: nextDueDateStr,
                     active: true, agreementId: newAgreementId, invoiceType: InvoiceType.RENTAL,
                     autoGenerate: true, frequency: 'Monthly',
                 };
@@ -274,7 +272,7 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
 
                     <div className="grid grid-cols-2 gap-3">
                         <DatePicker label="New Start Date" value={startDate} onChange={handleStartDateChange} required className="text-sm" />
-                        <DatePicker label="New End Date" value={endDate} onChange={d => setEndDate(d.toISOString().split('T')[0])} required className="text-sm" />
+                        <DatePicker label="New End Date" value={endDate} onChange={d => setEndDate(toLocalDateString(d))} required className="text-sm" />
                     </div>
 
                     <div className="grid grid-cols-3 gap-3">
@@ -294,8 +292,6 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
                             )}
                         </div>
                     </div>
-
-                    <Input label="Broker Fee" type="number" value={brokerFee} onChange={e => setBrokerFee(e.target.value)} />
 
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>

@@ -50,6 +50,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
 
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
   const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
+  const [duplicateInvoiceData, setDuplicateInvoiceData] = useState<Partial<Invoice> | null>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
@@ -309,7 +310,29 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     }
   }, []);
 
+  const handleDuplicateInvoice = useCallback(
+    async (data: Partial<Invoice>) => {
+      const agreed = await showConfirm(
+        'A new invoice will open with a copy of the current details. You can change anything before saving.\n\nAfter you save the new invoice (or cancel), this invoice will no longer be open for editing.\n\nContinue?',
+        { title: 'Duplicate invoice', confirmLabel: 'Continue', cancelLabel: 'Cancel' }
+      );
+      if (!agreed) return;
+      const { id: _id, invoiceNumber: _num, paidAmount: _pa, status: _st, version: _ver, deletedAt: _del, ...rest } =
+        data as Invoice;
+      const inv = data as Invoice;
+      setDuplicateInvoiceData({
+        ...rest,
+        invoiceType: inv.invoiceType,
+        paidAmount: 0,
+        status: InvoiceStatus.UNPAID,
+      });
+      setInvoiceToEdit(null);
+    },
+    [showConfirm]
+  );
+
   const handleEditInvoice = useCallback((invoice: Invoice) => {
+    setDuplicateInvoiceData(null);
     setInvoiceToEdit(invoice);
     setViewInvoice(null);
   }, []);
@@ -469,6 +492,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           onChange={e => setEntityFilterId(e.target.value)}
           className={filterInputClass}
           style={{ width: '180px' }}
+          aria-label="Filter by entity"
         >
           <option value="all">
             All {groupBy === 'tenant' ? 'Tenants' : groupBy === 'owner' ? 'Owners' : groupBy === 'property' ? 'Properties' : 'Buildings'}
@@ -495,6 +519,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           onChange={e => setTypeFilter(e.target.value)}
           className={filterInputClass}
           style={{ width: '130px' }}
+          aria-label="Filter by type"
         >
           {availableTypeOptions.map(t => (
             <option key={t} value={t}>{t}</option>
@@ -505,6 +530,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           onChange={e => setDateFilter(e.target.value)}
           className={filterInputClass}
           style={{ width: '130px' }}
+          aria-label="Filter by date"
         >
           <option value="All">All Dates</option>
           <option value="This Month">This Month</option>
@@ -543,13 +569,14 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           onBulkPaymentClick={() => setIsBulkPayModalOpen(true)}
           selectedCount={selectedInvoiceIds.size}
           onEditInvoice={handleEditInvoice}
+          onDeleteInvoice={handleDeleteInvoice}
           onReceivePayment={handleRecordPayment}
           onEditPayment={handlePaymentClick}
+          onDeletePayment={handleShowDeleteWarning}
           typeFilter={typeFilter}
           dateFilter={dateFilter}
           onTypeFilterChange={setTypeFilter}
           onDateFilterChange={setDateFilter}
-          hideTypeDateFiltersInToolbar
           hideTypeDateFiltersInToolbar
         />
           </div>
@@ -575,18 +602,28 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit / Duplicate Modal */}
       <Modal
-        isOpen={!!invoiceToEdit}
-        onClose={() => setInvoiceToEdit(null)}
-        title="Edit Invoice"
+        isOpen={!!invoiceToEdit || !!duplicateInvoiceData}
+        onClose={() => {
+          setInvoiceToEdit(null);
+          setDuplicateInvoiceData(null);
+        }}
+        title={invoiceToEdit ? 'Edit Invoice' : 'Duplicate Invoice'}
         size="xl"
       >
-        {invoiceToEdit && (
+        {(invoiceToEdit || duplicateInvoiceData) && (
           <InvoiceBillForm
-            itemToEdit={invoiceToEdit}
-            onClose={() => setInvoiceToEdit(null)}
+            key={invoiceToEdit?.id ?? (duplicateInvoiceData ? `duplicate-${duplicateInvoiceData.invoiceType ?? 'inv'}` : 'new-invoice')}
+            itemToEdit={invoiceToEdit || undefined}
+            initialData={duplicateInvoiceData || undefined}
+            invoiceTypeForNew={duplicateInvoiceData?.invoiceType ?? invoiceToEdit?.invoiceType}
+            onClose={() => {
+              setInvoiceToEdit(null);
+              setDuplicateInvoiceData(null);
+            }}
             type="invoice"
+            onDuplicate={handleDuplicateInvoice}
           />
         )}
       </Modal>

@@ -7,6 +7,7 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
+import { fromPickerDateToYyyyMmDd, parseYyyyMmDdToLocalDate, toLocalDateString } from '../../utils/dateUtils';
 
 interface CreateRentInvoiceFormProps {
   propertyId: string;
@@ -50,7 +51,7 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
   // --- Default date: 1st of current month ---
   const getFirstOfMonth = () => {
     const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    return toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
   };
 
   // --- Form state ---
@@ -58,14 +59,15 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
   const [rentAmount, setRentAmount] = useState(agreement?.monthlyRent?.toString() || '0');
   const [invoiceDate, setInvoiceDate] = useState(getFirstOfMonth());
   const [dueDate, setDueDate] = useState(() => {
-    const d = new Date(getFirstOfMonth());
+    const base = parseYyyyMmDdToLocalDate(getFirstOfMonth());
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
     d.setDate(d.getDate() + 7);
-    return d.toISOString().split('T')[0];
+    return toLocalDateString(d);
   });
 
   // Auto-generate description
   const description = useMemo(() => {
-    const dateObj = new Date(invoiceDate + 'T00:00:00');
+    const dateObj = parseYyyyMmDdToLocalDate(invoiceDate);
     if (isNaN(dateObj.getTime())) return '';
     const monthYear = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
     return `Rent for ${property?.name || 'Unknown'} - ${monthYear}`;
@@ -73,11 +75,11 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
 
   // Update due date when invoice date changes (+7 days)
   useEffect(() => {
-    const d = new Date(invoiceDate + 'T00:00:00');
+    const d = parseYyyyMmDdToLocalDate(invoiceDate);
     if (!isNaN(d.getTime())) {
-      const dueDateObj = new Date(d);
+      const dueDateObj = new Date(d.getFullYear(), d.getMonth(), d.getDate());
       dueDateObj.setDate(dueDateObj.getDate() + 7);
-      setDueDate(dueDateObj.toISOString().split('T')[0]);
+      setDueDate(toLocalDateString(dueDateObj));
     }
   }, [invoiceDate]);
 
@@ -125,7 +127,7 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
       buildingId: building?.id,
       agreementId: agreement.id,
       categoryId: rentalIncomeCategory.id,
-      rentalMonth: new Date(invoiceDate + 'T00:00:00').toISOString().slice(0, 7),
+      rentalMonth: invoiceDate.slice(0, 7),
     };
 
     dispatch({ type: 'ADD_INVOICE', payload: newInvoice });
@@ -209,13 +211,13 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
           <DatePicker
             label="Invoice Date"
             value={invoiceDate}
-            onChange={d => setInvoiceDate(d.toISOString().split('T')[0])}
+            onChange={d => setInvoiceDate(fromPickerDateToYyyyMmDd(d))}
             required
           />
           <DatePicker
             label="Due Date"
             value={dueDate}
-            onChange={d => setDueDate(d.toISOString().split('T')[0])}
+            onChange={d => setDueDate(fromPickerDateToYyyyMmDd(d))}
             required
           />
         </div>

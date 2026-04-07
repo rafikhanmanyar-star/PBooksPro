@@ -10,6 +10,7 @@ import ComboBox from '../ui/ComboBox';
 import PropertyHistoryModal from './PropertyHistoryModal';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface UnitBoxData {
     id: string;
@@ -252,7 +253,7 @@ const PropertyLayoutReport: React.FC = () => {
                 const allDates = [...transactionDates, ...invoiceDates, ...agreementDates];
                 const lastUpdated = allDates.length > 0
                     ? allDates.sort().reverse()[0]
-                    : new Date().toISOString().split('T')[0];
+                    : toLocalDateString(new Date());
 
                 // Check all invoices for the current month
                 const currentMonthInvoices = state.invoices.filter(inv =>
@@ -411,9 +412,9 @@ const PropertyLayoutReport: React.FC = () => {
 
 
     const getStatusBadge = (unit: PropertyBoxData) => {
-        if (unit.isExpiringSoon) return { text: 'COMING', color: 'bg-orange-500' };
-        if (unit.status === 'Occupied') return { text: 'ACTIVE', color: 'bg-emerald-500' };
-        return { text: 'VACANT', color: 'bg-slate-400' };
+        if (unit.isExpiringSoon) return { text: 'COMING', color: 'bg-ds-warning text-ds-on-primary' };
+        if (unit.status === 'Occupied') return { text: 'ACTIVE', color: 'bg-ds-success text-ds-on-primary' };
+        return { text: 'VACANT', color: 'bg-app-toolbar text-app-text ring-1 ring-app-border' };
     };
 
     const getBackgroundColorStyle = (payoutDue: number, maxPayoutDue: number): React.CSSProperties => {
@@ -421,30 +422,23 @@ const PropertyLayoutReport: React.FC = () => {
             return {};
         }
 
-        // Calculate saturation ratio (0 to 1)
         const ratio = Math.min(payoutDue / maxPayoutDue, 1);
-
-        // Map ratio to opacity for indigo background
-        // Higher payoutDue = more saturated (higher opacity) color
-        // Using opacity from 0.05 (very light) to 0.25 (more visible) for subtle background
-        const opacity = 0.05 + (ratio * 0.20); // Range: 0.05 to 0.25
-
+        const pct = 5 + ratio * 20; // 5%–25% primary tint over page background (light + dark)
         return {
-            backgroundColor: `rgba(99, 102, 241, ${opacity})` // indigo-500 with variable opacity
+            backgroundColor: `color-mix(in srgb, var(--color-primary) ${pct}%, var(--bg-primary))`,
         };
     };
 
     const getColorClasses = (unit: any, mode: 'RENTAL' | 'PROJECT') => {
         if (mode === 'RENTAL') {
-            // Use status-based border colors
-            if (unit.isExpiringSoon) return 'border-orange-500';
-            if (unit.status === 'Occupied') return 'border-emerald-500';
-            return 'border-slate-400';
+            if (unit.isExpiringSoon) return 'border-ds-warning';
+            if (unit.status === 'Occupied') return 'border-ds-success';
+            return 'border-app-border';
         } else {
-            if (unit.status === 'Available') return 'border-slate-300';
-            if (unit.receivable <= 0) return 'border-emerald-500';
-            if (unit.receivable < 50000) return 'border-orange-500';
-            return 'border-red-500';
+            if (unit.status === 'Available') return 'border-app-border';
+            if (unit.receivable <= 0) return 'border-ds-success';
+            if (unit.receivable < 50000) return 'border-ds-warning';
+            return 'border-ds-danger';
         }
     };
 
@@ -469,24 +463,24 @@ const PropertyLayoutReport: React.FC = () => {
                 {/* Header with Status Badge */}
                 <div className="flex justify-between items-start mb-1 relative z-10">
                     <div className="min-w-0 flex-1">
-                        <span className="font-bold text-xs text-slate-900 block truncate" title={unit.name}>{unit.name}</span>
+                        <span className="font-bold text-xs text-app-text block truncate" title={unit.name}>{unit.name}</span>
                     </div>
                     {mode === 'RENTAL' && statusBadge && (
                         <div
-                            className={`${statusBadge.color} text-white text-[8px] font-bold px-1 py-0.5 rounded flex-shrink-0 ml-1.5`}
+                            className={`${statusBadge.color} text-[8px] font-bold px-1 py-0.5 rounded flex-shrink-0 ml-1.5`}
                             title={statusBadge.text}
                         >
                             {statusBadge.text}
                         </div>
                     )}
                     {mode === 'PROJECT' && unit.status === 'Sold' && (
-                        <div className="rounded-full bg-emerald-500 flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
+                        <div className="rounded-full bg-ds-success flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
                     )}
                 </div>
 
-                {mode === 'RENTAL' && unit.isCurrentMonthRentPaid && (
+                {mode === 'RENTAL' && unit.status === 'Occupied' && (unit.receivable ?? 0) <= 0.01 && (unit.securityDue ?? 0) <= 0.01 && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-20 pointer-events-none select-none z-0">
-                        <div className="border-4 border-emerald-600 text-emerald-600 font-black text-2xl px-2 py-1 rounded rotate-[-15deg] tracking-widest">
+                        <div className="border-4 border-ds-success text-ds-success font-black text-2xl px-2 py-1 rounded rotate-[-15deg] tracking-widest">
                             PAID
                         </div>
                     </div>
@@ -495,8 +489,8 @@ const PropertyLayoutReport: React.FC = () => {
                 {/* Owner/Tenant Section */}
                 {mode === 'RENTAL' && (
                     <div className="text-[9px] leading-tight space-y-0.5 mb-1 relative z-10">
-                        <div className="flex items-center gap-0.5 truncate text-slate-700" title={`Owner: ${unit.ownerName}`}>
-                            <svg className="w-2.5 h-2.5 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <div className="flex items-center gap-0.5 truncate text-app-text" title={`Owner: ${unit.ownerName}`}>
+                            <svg className="w-2.5 h-2.5 text-app-muted flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                 <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
                             </svg>
                             <span className="truncate">{unit.ownerName}</span>
@@ -510,10 +504,10 @@ const PropertyLayoutReport: React.FC = () => {
 
                 {mode === 'PROJECT' && (
                     <div className="text-[9px] leading-tight space-y-0.5 mb-1 relative z-10">
-                        <div className={`truncate font-medium ${unit.status === 'Available' ? 'text-slate-400 italic' : 'text-slate-800'}`} title={unit.clientName}>
+                        <div className={`truncate font-medium ${unit.status === 'Available' ? 'text-app-muted italic' : 'text-app-text'}`} title={unit.clientName}>
                             {unit.clientName}
                         </div>
-                        <div className={`text-[8px] uppercase font-bold ${unit.status === 'Available' ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <div className={`text-[8px] uppercase font-bold ${unit.status === 'Available' ? 'text-app-muted' : 'text-app-muted'}`}>
                             {unit.status}
                         </div>
                     </div>
@@ -522,10 +516,10 @@ const PropertyLayoutReport: React.FC = () => {
                 {/* Agreement Expiry Indicator */}
                 {mode === 'RENTAL' && unit.agreementEndDate && unit.daysUntilExpiry !== null && (
                     <div className={`text-[8px] font-semibold mb-0.5 relative z-10 ${unit.daysUntilExpiry < 0
-                            ? 'text-red-600'
+                            ? 'text-ds-danger'
                             : unit.daysUntilExpiry <= 30
-                                ? 'text-orange-600 animate-pulse'
-                                : 'text-slate-500'
+                                ? 'text-ds-warning animate-pulse'
+                                : 'text-app-muted'
                         }`}>
                         {unit.daysUntilExpiry < 0
                             ? `Expired ${Math.abs(unit.daysUntilExpiry)}d ago`
@@ -535,7 +529,7 @@ const PropertyLayoutReport: React.FC = () => {
                 )}
 
                 {/* Divider */}
-                <div className="border-t border-slate-200 my-1"></div>
+                <div className="border-t border-app-border my-1"></div>
 
                 {/* Financial Section */}
                 <div className="text-[9px] flex justify-between items-start relative z-10">
@@ -557,11 +551,11 @@ const PropertyLayoutReport: React.FC = () => {
                             </div>
                             <div className="flex flex-col text-right">
                                 <div className="flex flex-col">
-                                    <span className="text-slate-700 text-[8px] font-semibold uppercase">ACCT PAY</span>
-                                    <span className={`text-[8px] font-semibold uppercase ${unit.status === 'Vacant' ? 'text-slate-700' : 'text-blue-600'}`}>
+                                    <span className="text-app-text text-[8px] font-semibold uppercase">ACCT PAY</span>
+                                    <span className={`text-[8px] font-semibold uppercase ${unit.status === 'Vacant' ? 'text-app-text' : 'text-primary'}`}>
                                         {unit.status === 'Vacant' ? 'OWNR PAY' : 'ACCT PAY'}
                                     </span>
-                                    <span className="font-bold text-sm text-blue-600 leading-tight">
+                                    <span className="font-bold text-sm text-primary leading-tight">
                                         {unit.payoutDue > 0 ? (unit.payoutDue / 1000).toFixed(1) + 'k' : '0'}
                                     </span>
                                 </div>
@@ -571,14 +565,14 @@ const PropertyLayoutReport: React.FC = () => {
                         unit.status === 'Sold' && (
                             <>
                                 <div className="flex flex-col">
-                                    <span className="text-slate-500 text-[8px] uppercase">Recv</span>
-                                    <span className="font-medium text-emerald-700 text-xs">
+                                    <span className="text-app-muted text-[8px] uppercase">Recv</span>
+                                    <span className="font-medium text-ds-success text-xs">
                                         {(unit.received / 1000).toFixed(0)}k
                                     </span>
                                 </div>
                                 <div className="flex flex-col text-right">
-                                    <span className="text-slate-500 text-[8px] uppercase">Due</span>
-                                    <span className={`font-bold text-xs ${unit.receivable > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                                    <span className="text-app-muted text-[8px] uppercase">Due</span>
+                                    <span className={`font-bold text-xs ${unit.receivable > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
                                         {(unit.receivable / 1000).toFixed(0)}k
                                     </span>
                                 </div>
@@ -589,7 +583,7 @@ const PropertyLayoutReport: React.FC = () => {
 
                 {/* Last Updated Timestamp */}
                 {mode === 'RENTAL' && unit.lastUpdated && (
-                    <div className="text-[7px] text-slate-400 text-center mt-1 pt-0.5 border-t border-slate-100 relative z-10">
+                    <div className="text-[7px] text-app-muted text-center mt-1 pt-0.5 border-t border-app-border relative z-10">
                         Last: {unit.lastUpdated.split('T')[0]}
                     </div>
                 )}
@@ -602,29 +596,29 @@ const PropertyLayoutReport: React.FC = () => {
             <style>{STANDARD_PRINT_STYLES}</style>
 
             {/* Custom Toolbar - All controls in first row */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print mb-4">
+            <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print mb-4">
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Report Title */}
-                    <h2 className="text-xl font-bold text-slate-800 mr-4">
+                    <h2 className="text-xl font-bold text-app-text mr-4">
                         {data.type === 'RENTAL' ? 'Property' : 'Project'} Visual Layout
                     </h2>
                     {/* Legend - Only for Rental */}
                     {data.type === 'RENTAL' && (
-                        <div className="flex items-center gap-4 text-xs text-slate-600 border-l border-slate-300 pl-4">
+                        <div className="flex items-center gap-4 text-xs text-app-muted border-l border-app-border pl-4 flex-wrap">
                             <div className="flex items-center gap-1.5">
-                                <span className="inline-block w-3 h-3 bg-white border-2 border-emerald-500 rounded"></span>
+                                <span className="inline-block w-3 h-3 bg-app-card border-2 border-ds-success rounded"></span>
                                 <span>Good / Paid</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                                <span className="inline-block w-3 h-3 bg-white border-2 border-orange-500 rounded"></span>
+                                <span className="inline-block w-3 h-3 bg-app-card border-2 border-ds-warning rounded"></span>
                                 <span>Low Debt</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                                <span className="inline-block w-3 h-3 bg-white border-2 border-red-500 rounded"></span>
+                                <span className="inline-block w-3 h-3 bg-app-card border-2 border-ds-danger rounded"></span>
                                 <span>High Debt</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                                <span className="inline-block w-3 h-3 bg-white border-2 border-slate-400 rounded"></span>
+                                <span className="inline-block w-3 h-3 bg-app-card border-2 border-app-border rounded"></span>
                                 <span>Vacant</span>
                             </div>
                         </div>
@@ -659,18 +653,18 @@ const PropertyLayoutReport: React.FC = () => {
                 <ReportHeader />
 
                 {data.data.length === 0 ? (
-                    <div className="text-center py-10 text-slate-500">No project units found to display.</div>
+                    <div className="text-center py-10 text-app-muted">No project units found to display.</div>
                 ) : (
                     <div className="space-y-8">
                         {data.data.map((group) => (
-                            <div key={group.code || group.id} className="break-inside-avoid border-2 border-slate-400 rounded-xl p-4 bg-slate-200/30">
-                                <h3 className="text-lg font-bold text-indigo-700 mb-4 border-b-2 border-indigo-200 pb-1 pl-1 bg-indigo-50 rounded-lg px-3 py-2 shadow-md">
+                            <div key={group.code || group.id} className="break-inside-avoid border-2 border-app-border rounded-xl p-4 bg-app-toolbar/30">
+                                <h3 className="text-lg font-bold text-primary mb-4 border-b-2 border-primary/25 pb-1 pl-1 bg-primary/10 rounded-lg px-3 py-2 shadow-ds-card">
                                     {data.type === 'RENTAL' ? `Building ${group.code}` : group.name}
                                 </h3>
                                 <div className="flex flex-col gap-4">
                                     {group.floors.map((floor: any) => (
                                         <div key={floor.index} className="flex flex-col md:flex-row gap-2">
-                                            <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-lg mb-2 md:mb-0">
+                                            <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-primary text-ds-on-primary rounded-lg font-bold text-sm shadow-ds-card mb-2 md:mb-0">
                                                 {floor.label}
                                             </div>
                                             <div className="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
@@ -679,7 +673,7 @@ const PropertyLayoutReport: React.FC = () => {
                                         </div>
                                     ))}
                                     {group.unconventional.length > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-dashed border-slate-300">
+                                        <div className="mt-2 pt-2 border-t border-dashed border-app-border">
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:pl-14">
                                                 {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
                                             </div>

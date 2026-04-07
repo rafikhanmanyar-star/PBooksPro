@@ -83,6 +83,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             { Key: 'ShowSystemTransactions', Value: safeJson(s.showSystemTransactions) },
             { Key: 'EnableColorCoding', Value: safeJson(s.enableColorCoding) },
             { Key: 'EnableBeepOnSave', Value: safeJson(s.enableBeepOnSave) },
+            { Key: 'WhatsAppMode', Value: safeJson(s.whatsAppMode ?? 'manual') },
             { Key: 'LastServiceChargeRun', Value: safeJson(s.lastServiceChargeRun ?? '') },
         ];
 
@@ -148,7 +149,10 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             name: u.name,
             projectName: getName(projectsById, u.projectId),
             ownerName: getName(contactsById, u.contactId),
-            salePrice: u.salePrice ?? 0,
+            salePrice: u.salePrice ?? '',
+            type: u.type ?? '',
+            area: u.area ?? '',
+            floor: u.floor ?? '',
             description: u.description ?? '',
         }));
 
@@ -603,7 +607,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             { name: 'Projects', headers: ['id', 'name', 'description', 'color', 'status', 'pmConfig', 'installmentConfig'], rows: projectsRows },
             { name: 'Buildings', headers: ['id', 'name', 'description', 'color'], rows: buildingsRows },
             { name: 'Properties', headers: ['id', 'name', 'ownerName', 'buildingName', 'description', 'monthlyServiceCharge'], rows: propertiesRows },
-            { name: 'Units', headers: ['id', 'name', 'projectName', 'ownerName', 'salePrice', 'description'], rows: unitsRows },
+            { name: 'Units', headers: ['id', 'name', 'projectName', 'ownerName', 'salePrice', 'type', 'area', 'floor', 'description'], rows: unitsRows },
             { name: 'RentalAgreements', headers: ['id', 'agreementNumber', 'tenantName', 'propertyName', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'brokerFee'], rows: rentalAgreementsRows },
             { name: 'ProjectAgreements', headers: ['id', 'agreementNumber', 'clientName', 'projectName', 'UnitNames', 'issueDate', 'status', 'description', 'cancellationDetails', 'listPrice', 'customerDiscount', 'floorDiscount', 'lumpSumDiscount', 'miscDiscount', 'sellingPrice', 'rebateAmount', 'rebateBrokerName', 'listPriceCategoryName', 'customerDiscountCategoryName', 'floorDiscountCategoryName', 'lumpSumDiscountCategoryName', 'miscDiscountCategoryName', 'sellingPriceCategoryName', 'rebateCategoryName'], rows: projectAgreementsRows },
             { name: 'Contracts', headers: ['id', 'contractNumber', 'name', 'projectName', 'vendorName', 'totalAmount', 'area', 'rate', 'startDate', 'endDate', 'status', 'categoryNames', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits', 'paymentTerms', 'termsAndConditions', 'description'], rows: contractsRows },
@@ -648,6 +652,6 @@ export const exportJsonToExcel = (data: any[], filename: string, sheetName: stri
     XLSX.writeFile(workbook, filename);
 };
 
-export const exportLogToExcel = (log: ImportLogEntry[], filename: string) => {
+const exportLogToExcel = (log: ImportLogEntry[], filename: string) => {
     exportJsonToExcel(log, filename, 'Import Log');
 };

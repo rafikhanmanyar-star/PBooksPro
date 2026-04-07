@@ -1,5 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { getAppStateApiService } from '../../services/api/appStateApi';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 import { Vendor, Bill, Transaction, Page, TransactionType } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import VendorLedger from './VendorLedger';
@@ -12,7 +15,7 @@ import VendorBillPaymentModal from './VendorBillPaymentModal';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import VendorBills from './VendorBills';
 import VendorQuotationsTable from './VendorQuotationsTable';
 import QuotationForm from './QuotationForm';
@@ -34,6 +37,8 @@ const AddVendorSection: React.FC<{
     onModalOpenHandled?: () => void;
 }> = ({ optionsView, setOptionsView, setSelectedVendorId, triggerAddVendor, onModalOpenHandled }) => {
     const { state, dispatch } = useAppContext();
+    const { isAuthenticated } = useAuth();
+    const { showToast } = useNotification();
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
@@ -43,8 +48,23 @@ const AddVendorSection: React.FC<{
         }
     }, [triggerAddVendor, onModalOpenHandled]);
 
-    const handleSubmit = (vendorData: Partial<Vendor> | any) => {
-        dispatch({ type: 'ADD_VENDOR', payload: { ...vendorData, id: `vendor_${Date.now()}` } as Vendor });
+    const handleSubmit = async (vendorData: Partial<Vendor> | any) => {
+        const localId = `vendor_${Date.now()}`;
+        let payload = { ...vendorData, id: localId } as Vendor;
+        if (!isLocalOnlyMode() && isAuthenticated) {
+            try {
+                const merged = await getAppStateApiService().saveVendor({
+                    ...vendorData,
+                    id: localId,
+                    userId: state.currentUser?.id,
+                });
+                payload = { ...payload, ...merged };
+            } catch (err: any) {
+                showToast(err?.message || err?.error || 'Could not save vendor.', 'error');
+                return;
+            }
+        }
+        dispatch({ type: 'ADD_VENDOR', payload });
         setIsModalOpen(false);
     };
 
@@ -123,7 +143,8 @@ type SortDirection = 'asc' | 'desc';
 
 const VendorDirectoryPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const { showConfirm, showAlert } = useNotification();
+    const { isAuthenticated } = useAuth();
+    const { showConfirm, showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
     const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -252,6 +273,8 @@ const VendorDirectoryPage: React.FC = () => {
         isResizing.current = false;
         document.removeEventListener('mousemove', handleResize);
         document.removeEventListener('mouseup', stopResize);
+        window.removeEventListener('blur', stopResize);
+        document.removeEventListener('visibilitychange', stopResize);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
     }, [handleResize]);
@@ -265,6 +288,8 @@ const VendorDirectoryPage: React.FC = () => {
 
         document.addEventListener('mousemove', handleResize);
         document.addEventListener('mouseup', stopResize);
+        window.addEventListener('blur', stopResize);
+        document.addEventListener('visibilitychange', stopResize);
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
     }, [sidebarWidth, handleResize, stopResize]);
@@ -275,9 +300,22 @@ const VendorDirectoryPage: React.FC = () => {
     const transactionToEdit = editingItem?.type === 'transaction' ? (state.transactions || []).find(t => t.id === editingItem.id) : undefined;
 
 
-    const handleUpdateVendor = (vendorData: Partial<Vendor> | any) => {
+    const handleUpdateVendor = async (vendorData: Partial<Vendor> | any) => {
         if (!selectedVendor) return;
-        dispatch({ type: 'UPDATE_VENDOR', payload: { ...selectedVendor, ...vendorData } as Vendor });
+        let payload = { ...selectedVendor, ...vendorData } as Vendor;
+        if (!isLocalOnlyMode() && isAuthenticated) {
+            try {
+                const merged = await getAppStateApiService().updateVendor(selectedVendor.id, {
+                    ...payload,
+                    version: selectedVendor.version,
+                });
+                payload = { ...payload, ...merged };
+            } catch (err: any) {
+                showToast(err?.message || err?.error || 'Could not update vendor.', 'error');
+                return;
+            }
+        }
+        dispatch({ type: 'UPDATE_VENDOR', payload });
         setIsEditModalOpen(false);
     };
 
@@ -285,6 +323,16 @@ const VendorDirectoryPage: React.FC = () => {
         if (!selectedVendor) return;
         const confirmed = await showConfirm(`Are you sure you want to delete vendor "${selectedVendor.name}"? This cannot be undone.`, { title: 'Delete Vendor', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
         if (confirmed) {
+            if (!isLocalOnlyMode() && isAuthenticated) {
+                try {
+                    await getAppStateApiService().deleteVendor(selectedVendor.id, selectedVendor.version);
+                } catch (err: any) {
+                    if (err?.status !== 404) {
+                        showToast(err?.message || err?.error || 'Could not delete vendor.', 'error');
+                        return;
+                    }
+                }
+            }
             dispatch({ type: 'DELETE_VENDOR', payload: selectedVendor.id });
             setSelectedVendorId(null);
             setIsEditModalOpen(false);
@@ -535,8 +583,11 @@ const VendorDirectoryPage: React.FC = () => {
                                                         onClick={() => {
                                                             try {
                                                                 const message = WhatsAppService.generateVendorGreeting(state.whatsAppTemplates.vendorGreeting, selectedVendor);
-                                                                // Open WhatsApp side panel with pre-filled message
-                                                                openChat(selectedVendor, selectedVendor.contactNo, message);
+                                                                sendOrOpenWhatsApp(
+                                                                    { contact: selectedVendor, message, phoneNumber: selectedVendor.contactNo },
+                                                                    () => state.whatsAppMode,
+                                                                    openChat
+                                                                );
                                                             } catch (error) {
                                                                 showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
                                                             }
@@ -726,6 +777,7 @@ const VendorDirectoryPage: React.FC = () => {
                                                         value={selectedReport}
                                                         onChange={(e) => setSelectedReport(e.target.value)}
                                                         className="w-full pl-4 pr-10 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 appearance-none bg-white font-medium text-slate-700 shadow-sm transition-all"
+                                                        aria-label="Select report"
                                                     >
                                                         <option value="vendor-comparison">Vendor Comparison Report</option>
                                                         <option value="vendor-ledger">Vendor Ledger Report</option>

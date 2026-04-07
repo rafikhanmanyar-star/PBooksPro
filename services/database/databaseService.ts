@@ -9,6 +9,7 @@ import { CREATE_SCHEMA_SQL, SCHEMA_VERSION } from './schema';
 import { loadSqlJs } from './sqljs-loader';
 import { logger } from '../logger';
 import { ElectronDatabaseService } from './electronDatabaseService';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 
 // Types for sql.js
 type Database = any;
@@ -305,15 +306,38 @@ class DatabaseService {
             // Priority order: Electron file > OPFS > IndexedDB > localStorage
             let loadedData: Uint8Array | null = null;
 
+            /**
+             * Run a quick integrity check on a freshly-opened sql.js Database.
+             * Returns true when the DB is healthy, false when it is corrupted.
+             * A malformed file may parse without error but fail on the first real read,
+             * so we probe it before trusting it.
+             */
+            const isDbIntact = (candidate: any): boolean => {
+                try {
+                    const result = candidate.exec('PRAGMA integrity_check(1)');
+                    const value = result?.[0]?.values?.[0]?.[0];
+                    return value === 'ok';
+                } catch {
+                    return false;
+                }
+            };
+
             // 0. Electron: real file on disk (no browser storage issues)
             if (!this.db && (await electronFileStorage.isSupported())) {
                 const electronData = await electronFileStorage.load();
                 if (electronData) {
                     try {
-                        this.db = new SQL.Database(electronData);
-                        this.storageMode = 'electron';
-                        logger.logCategory('database', '✅ Loaded existing database from Electron file storage');
-                        loadedData = electronData;
+                        const candidate = new SQL.Database(electronData);
+                        if (isDbIntact(candidate)) {
+                            this.db = candidate;
+                            this.storageMode = 'electron';
+                            logger.logCategory('database', '✅ Loaded existing database from Electron file storage');
+                            loadedData = electronData;
+                        } else {
+                            candidate.close();
+                            logger.warnCategory('database', '⚠️ Electron file database failed integrity check (malformed) — clearing and recreating');
+                            await electronFileStorage.clear();
+                        }
                     } catch (parseError) {
                         logger.warnCategory('database', '⚠️ Failed to parse Electron file database, trying OPFS:', parseError);
                     }
@@ -325,10 +349,16 @@ class DatabaseService {
                 const opfsData = await this.opfs.load();
                 if (opfsData) {
                     try {
-                        this.db = new SQL.Database(opfsData);
-                        this.storageMode = 'opfs';
-                        logger.logCategory('database', '✅ Loaded existing database from OPFS');
-                        loadedData = opfsData;
+                        const candidate = new SQL.Database(opfsData);
+                        if (isDbIntact(candidate)) {
+                            this.db = candidate;
+                            this.storageMode = 'opfs';
+                            logger.logCategory('database', '✅ Loaded existing database from OPFS');
+                            loadedData = opfsData;
+                        } else {
+                            candidate.close();
+                            logger.warnCategory('database', '⚠️ OPFS database failed integrity check (malformed) — skipping');
+                        }
                     } catch (parseError) {
                         logger.warnCategory('database', '⚠️ Failed to parse OPFS database, trying localStorage:', parseError);
                     }
@@ -340,10 +370,16 @@ class DatabaseService {
                 const idbData = await this.indexedDBStorage.load();
                 if (idbData) {
                     try {
-                        this.db = new SQL.Database(idbData);
-                        this.storageMode = 'indexedDB';
-                        logger.logCategory('database', '✅ Loaded existing database from IndexedDB');
-                        loadedData = idbData;
+                        const candidate = new SQL.Database(idbData);
+                        if (isDbIntact(candidate)) {
+                            this.db = candidate;
+                            this.storageMode = 'indexedDB';
+                            logger.logCategory('database', '✅ Loaded existing database from IndexedDB');
+                            loadedData = idbData;
+                        } else {
+                            candidate.close();
+                            logger.warnCategory('database', '⚠️ IndexedDB database failed integrity check (malformed) — skipping');
+                        }
                     } catch (parseError) {
                         logger.warnCategory('database', '⚠️ Failed to parse IndexedDB database, trying localStorage:', parseError);
                     }
@@ -356,10 +392,17 @@ class DatabaseService {
                 if (typeof savedDb === 'string') {
                     try {
                         const buffer = Uint8Array.from(JSON.parse(savedDb));
-                        this.db = new SQL.Database(buffer);
-                        this.storageMode = 'localStorage';
-                        logger.logCategory('database', '✅ Loaded existing database from localStorage');
-                        loadedData = buffer;
+                        const candidate = new SQL.Database(buffer);
+                        if (isDbIntact(candidate)) {
+                            this.db = candidate;
+                            this.storageMode = 'localStorage';
+                            logger.logCategory('database', '✅ Loaded existing database from localStorage');
+                            loadedData = buffer;
+                        } else {
+                            candidate.close();
+                            logger.warnCategory('database', '⚠️ localStorage database failed integrity check (malformed) — clearing');
+                            localStorage.removeItem('finance_db');
+                        }
                     } catch (parseError) {
                         logger.warnCategory('database', '⚠️ Failed to parse saved database, creating new one:', parseError);
                     }
@@ -370,9 +413,11 @@ class DatabaseService {
                 // Create new database
                 logger.logCategory('database', '[SchemaSync] Creating new database (no existing blob)');
                 this.db = new SQL.Database();
-                // Create schema - use exec() to support multiple statements
+                // Create schema statement-by-statement so one failure (e.g. index on a column that an
+                // older table is missing) doesn't abort the entire schema creation. Each statement is
+                // tried independently; CREATE INDEX errors on missing columns are silently skipped.
                 try {
-                    this.db.exec(CREATE_SCHEMA_SQL);
+                    this.executeSchemaStatements(CREATE_SCHEMA_SQL);
                     // Set schema version directly (bypass isReady check during init)
                     this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                         ['schema_version', SCHEMA_VERSION.toString()]);
@@ -407,15 +452,11 @@ class DatabaseService {
                     // Database exists with tenant_id - check schema version and migrate if needed
                     await this.checkAndMigrateSchema();
 
-                    // IMPORTANT: Add tenant_id columns BEFORE ensureAllTablesExist
-                    // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
-                    // Ensure tenant columns are present even if schema version is current (idempotent)
-                    try {
-                        const { migrateTenantColumns } = await import('./tenantMigration');
-                        migrateTenantColumns();
-                    } catch (tenantError) {
-                        // Silent - not critical
-                    }
+                    // Unconditional repair: ensure rental_agreements.tenant_id is populated from org_id
+                    this.repairRentalAgreementsOrgIdToTenantId();
+
+                    // In local-only mode, normalize all tenant_ids to 'local'
+                    this.normalizeLocalOnlyTenantIds();
 
                     // Ensure contracts table has new columns
                     this.ensureContractColumnsExist();
@@ -428,7 +469,7 @@ class DatabaseService {
                     logger.logCategory('database', '🔄 Detected old database format, recreating with new schema...');
                     this.db = new SQL.Database();
                     try {
-                        this.db.exec(CREATE_SCHEMA_SQL);
+                        this.executeSchemaStatements(CREATE_SCHEMA_SQL);
                         // Set schema version directly (bypass isReady check during init)
                         this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
                             ['schema_version', SCHEMA_VERSION.toString()]);
@@ -622,21 +663,59 @@ class DatabaseService {
             db.run(sql, params);
         } catch (error: any) {
             const errorMsg = error?.message || String(error);
-            console.error(`❌ SQL execution failed:`, error);
-            console.error(`SQL: ${sql}`);
-            console.error(`Params:`, params);
-            console.error(`Error message: ${errorMsg}`);
-            console.error(`Error stack:`, error?.stack);
-
-            // Check if this is a constraint violation or other SQL error that would cause rollback
             const lowerMsg = errorMsg.toLowerCase();
-            if (lowerMsg.includes('constraint') || lowerMsg.includes('unique') ||
-                lowerMsg.includes('not null') || lowerMsg.includes('foreign key')) {
-                console.error(`⚠️ This appears to be a constraint violation that may cause transaction rollback!`);
+
+            // Corrupted database — wipe stored file so the next launch starts fresh
+            if (lowerMsg.includes('malformed') || lowerMsg.includes('disk image is malformed')) {
+                console.error('❌ SQLite database is malformed. Clearing stored DB so next launch rebuilds a fresh database.');
+                this._scheduleCorruptionReset();
+            } else {
+                console.error(`❌ SQL execution failed:`, error);
+                console.error(`SQL: ${sql}`);
+                console.error(`Params:`, params);
+                console.error(`Error message: ${errorMsg}`);
+                console.error(`Error stack:`, error?.stack);
+
+                if (lowerMsg.includes('constraint') || lowerMsg.includes('unique') ||
+                    lowerMsg.includes('not null') || lowerMsg.includes('foreign key')) {
+                    console.error(`⚠️ This appears to be a constraint violation that may cause transaction rollback!`);
+                }
             }
 
             throw error;
         }
+    }
+
+    /**
+     * Called when a "malformed" error is detected at runtime.
+     * Clears persisted storage asynchronously so the next app launch starts with a fresh DB.
+     * We do not reset the in-memory DB here to avoid cascading errors in the current session.
+     */
+    private _corruptionResetScheduled = false;
+    private _scheduleCorruptionReset(): void {
+        if (this._corruptionResetScheduled) return;
+        this._corruptionResetScheduled = true;
+        (async () => {
+            try {
+                console.warn('🔄 [DatabaseService] Clearing corrupted database files from all storage layers...');
+                await electronFileStorage.clear().catch(() => {});
+                localStorage.removeItem('finance_db');
+                if (await this.indexedDBStorage.isSupported()) {
+                    await this.indexedDBStorage.clear().catch(() => {});
+                }
+                if (typeof navigator !== 'undefined' && (navigator as any).storage?.getDirectory) {
+                    try {
+                        const root = await (navigator as any).storage.getDirectory();
+                        await root.removeEntry('finance_db.sqlite');
+                    } catch {
+                        // Ignore
+                    }
+                }
+                console.warn('✅ [DatabaseService] Corrupted database cleared. Please restart the app to rebuild a fresh database.');
+            } catch (e) {
+                console.error('❌ [DatabaseService] Failed to clear corrupted database files:', e);
+            }
+        })();
     }
 
     /**
@@ -691,15 +770,6 @@ class DatabaseService {
 
             // If any operation failed, rollback and throw
             if (operationError) {
-                // Clear pending sync operations on rollback
-                try {
-                    // Use require for synchronous access (BaseRepository is already loaded)
-                    const { BaseRepository } = require('./repositories/baseRepository');
-                    BaseRepository.clearPendingSyncOperations();
-                } catch (e) {
-                    // Ignore if BaseRepository not available (may cause circular dependency warning)
-                }
-
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
@@ -784,15 +854,6 @@ class DatabaseService {
             }
         } catch (error) {
             if (!committed) {
-                // Clear pending sync operations on rollback
-                try {
-                    // Use require for synchronous access (BaseRepository is already loaded)
-                    const { BaseRepository } = require('./repositories/baseRepository');
-                    BaseRepository.clearPendingSyncOperations();
-                } catch (e) {
-                    // Ignore if BaseRepository not available (may cause circular dependency warning)
-                }
-
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
@@ -1153,17 +1214,7 @@ class DatabaseService {
                 this.isInitialized = true;
 
                 try {
-                    // IMPORTANT: Add tenant_id columns FIRST before running ensureAllTablesExist
-                    // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
-                    // If we create indexes before the columns exist, SQLite will error
-                    try {
-                        const { migrateTenantColumns } = await import('./tenantMigration');
-                        migrateTenantColumns();
-                    } catch (migrationError) {
-                    }
-
                     // Ensure all tables exist (this will create any missing tables AND indexes)
-                    // Now safe because tenant_id columns already exist
                     this.ensureAllTablesExist();
 
                     // Ensure contract and bill columns exist (for expense_category_items)
@@ -1175,16 +1226,9 @@ class DatabaseService {
                     // Ensure transactions has building_id, is_system, updated_at (no FK on building_id for sync)
                     this.ensureTransactionExtraColumnsExist();
 
-                    // Run version-specific migrations
-                    if (currentVersion < 3) {
-                        // Migration from v2 to v3: Add document_path to bills table
-                        try {
-                            const { migrateAddDocumentPathToBills } = await import('./migrations/add-document-path-to-bills');
-                            await migrateAddDocumentPathToBills();
-                        } catch (migrationError) {
-                        }
-                    }
+                    this.repairRentalAgreementsOrgIdToTenantId();
 
+                    // Run version-specific migrations
                     if (currentVersion < 7) {
                         // Migration to v7: Add version, deleted_at columns to all entity tables
                         // and ensure sync_conflicts table exists
@@ -1214,13 +1258,9 @@ class DatabaseService {
                                 }
                             }
 
-                            // Rename org_id to tenant_id in rental_agreements if needed
+                            // Migrate rental_agreements: copy org_id into tenant_id and remove org_id
                             try {
-                                const raCols = this.rawQuery<{ name: string }>('PRAGMA table_info(rental_agreements)');
-                                const raColNames = new Set(raCols.map(c => c.name));
-                                if (raColNames.has('org_id') && !raColNames.has('tenant_id')) {
-                                    this.rawExecute('ALTER TABLE rental_agreements RENAME COLUMN org_id TO tenant_id');
-                                }
+                                this.repairRentalAgreementsOrgIdToTenantId();
                             } catch (renameError) {
                             }
 
@@ -1291,6 +1331,16 @@ class DatabaseService {
                         } catch (v9Error) {
                             // ignore
                         }
+                    }
+
+                    if (currentVersion < 14) {
+                        try {
+                            const catCols = this.rawQuery<{ name: string }>('PRAGMA table_info(categories)');
+                            const catNames = new Set(catCols.map(c => c.name));
+                            if (!catNames.has('is_hidden')) {
+                                this.rawExecute('ALTER TABLE categories ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0');
+                            }
+                        } catch (_) { }
                     }
 
                     // Update schema version directly (setMetadata relies on isReady)
@@ -1594,6 +1644,120 @@ class DatabaseService {
         }
     }
 
+    /** Unconditional repair: copy org_id into tenant_id, then remove org_id by recreating table if DROP COLUMN fails. */
+    private repairRentalAgreementsOrgIdToTenantId(): void {
+        if (!this.db) return;
+        try {
+            const raCols = this.rawQuery<{ name: string }>('PRAGMA table_info(rental_agreements)');
+            if (raCols.length === 0) return;
+            const raNames = new Set(raCols.map(c => c.name));
+            if (!raNames.has('org_id')) return;
+            if (raNames.has('tenant_id')) {
+                this.rawExecute("UPDATE rental_agreements SET tenant_id = org_id WHERE (tenant_id IS NULL OR tenant_id = '') AND org_id IS NOT NULL AND org_id != ''");
+            }
+            try {
+                this.rawExecute('ALTER TABLE rental_agreements DROP COLUMN org_id');
+            } catch (_) {
+                // SQLite < 3.35: recreate the table without org_id
+                this.recreateRentalAgreementsWithoutOrgId();
+            }
+        } catch (_) { }
+    }
+
+    /** Recreate rental_agreements table without org_id (for SQLite versions that don't support DROP COLUMN). */
+    private recreateRentalAgreementsWithoutOrgId(): void {
+        if (!this.db) return;
+        try {
+            this.rawExecute('PRAGMA foreign_keys = OFF');
+            this.rawExecute(`CREATE TABLE IF NOT EXISTS rental_agreements_new (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT '',
+                agreement_number TEXT NOT NULL,
+                contact_id TEXT NOT NULL,
+                property_id TEXT NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                monthly_rent REAL NOT NULL,
+                rent_due_date INTEGER,
+                status TEXT NOT NULL,
+                description TEXT,
+                security_deposit REAL,
+                broker_id TEXT,
+                broker_fee REAL,
+                owner_id TEXT,
+                previous_agreement_id TEXT,
+                user_id TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                version INTEGER NOT NULL DEFAULT 1,
+                deleted_at TEXT,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+                FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE RESTRICT,
+                UNIQUE(tenant_id, agreement_number)
+            )`);
+            this.rawExecute(`INSERT INTO rental_agreements_new
+                (id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date,
+                 monthly_rent, rent_due_date, status, description, security_deposit, broker_id,
+                 broker_fee, owner_id, previous_agreement_id, user_id, created_at, updated_at, version, deleted_at)
+                SELECT id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date,
+                 monthly_rent, rent_due_date, status, description, security_deposit, broker_id,
+                 broker_fee, owner_id, previous_agreement_id, user_id, created_at, updated_at, version, deleted_at
+                FROM rental_agreements`);
+            this.rawExecute('DROP TABLE rental_agreements');
+            this.rawExecute('ALTER TABLE rental_agreements_new RENAME TO rental_agreements');
+            this.rawExecute('PRAGMA foreign_keys = ON');
+            console.log('[DatabaseService] rental_agreements: recreated table without org_id');
+        } catch (e) {
+            console.warn('[DatabaseService] rental_agreements: table recreation failed:', e);
+            this.rawExecute('PRAGMA foreign_keys = ON');
+        }
+    }
+
+    /**
+     * In local-only mode, normalize all tenant_id values to 'local' so the
+     * tenant filter (WHERE tenant_id = 'local') matches existing data that
+     * may have been imported with a cloud UUID as tenant_id.
+     */
+    private normalizeLocalOnlyTenantIds(): void {
+        if (!this.db || !isLocalOnlyMode()) return;
+        const tables = [
+            'accounts', 'contacts', 'vendors', 'categories', 'projects', 'buildings',
+            'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
+            'quotations', 'plan_amenities', 'installment_plans', 'documents',
+            'rental_agreements', 'project_agreements', 'sales_returns', 'contracts',
+            'recurring_invoice_templates', 'pm_cycle_allocations', 'users',
+        ];
+        let tablesUpdated = 0;
+        for (const table of tables) {
+            try {
+                const exists = this.rawQuery<{ name: string }>(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?", [table]
+                );
+                if (exists.length === 0) continue;
+                const cols = this.rawQuery<{ name: string }>(`PRAGMA table_info(${table})`);
+                if (!cols.some(c => c.name === 'tenant_id')) continue;
+                const nonLocal = this.rawQuery<{ cnt: number }>(
+                    `SELECT COUNT(*) as cnt FROM ${table} WHERE tenant_id != 'local'`
+                );
+                if ((nonLocal[0]?.cnt ?? 0) > 0) {
+                    // Use UPDATE OR IGNORE to skip rows violating UNIQUE constraints
+                    // (multi-tenant backup data may have overlapping record numbers across tenants).
+                    try {
+                        this.rawExecute(`UPDATE OR IGNORE ${table} SET tenant_id = 'local' WHERE tenant_id != 'local'`);
+                    } catch (_) {
+                        this.rawExecute(`UPDATE ${table} SET tenant_id = 'local' WHERE tenant_id != 'local'`);
+                    }
+                    // Drop leftover duplicate rows from other tenants (their 'local' version now exists)
+                    try { this.rawExecute(`DELETE FROM ${table} WHERE tenant_id != 'local'`); } catch (_) { }
+                    tablesUpdated++;
+                }
+            } catch (_) { }
+        }
+        if (tablesUpdated > 0) {
+            console.log(`[DatabaseService] Normalized tenant_id to 'local' in ${tablesUpdated} table(s)`);
+        }
+    }
+
     /**
      * Add building_id, is_system, updated_at to transactions if missing (no FK on building_id for sync order).
      */
@@ -1608,6 +1772,7 @@ class DatabaseService {
             if (!columnNames.has('building_id')) this.execute('ALTER TABLE transactions ADD COLUMN building_id TEXT');
             if (!columnNames.has('is_system')) this.execute('ALTER TABLE transactions ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
             if (!columnNames.has('updated_at')) this.execute("ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
+            if (!columnNames.has('owner_id')) this.execute('ALTER TABLE transactions ADD COLUMN owner_id TEXT');
         } catch (error) {
             console.error('❌ Error ensuring transaction extra columns exist:', error);
         }
@@ -1693,16 +1858,52 @@ class DatabaseService {
     }
 
     /**
+     * Split SQL on ';' but keep CREATE TRIGGER ... BEGIN ... END; as one statement.
+     * Naive split breaks triggers: SELECT RAISE(...); appears inside BEGIN...END before END.
+     */
+    private splitSqlStatementsRespectingTriggers(sql: string): string[] {
+        const stripped = sql.replace(/--[^\n]*/g, '');
+        const raw = stripped
+            .split(';')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+        const out: string[] = [];
+        let i = 0;
+        while (i < raw.length) {
+            let stmt = raw[i];
+            if (/^CREATE\s+TRIGGER/i.test(stmt)) {
+                while (!/\bEND\s*$/i.test(stmt.trim()) && i + 1 < raw.length) {
+                    i++;
+                    stmt += ';' + raw[i];
+                }
+            }
+            out.push(stmt);
+            i++;
+        }
+        return out;
+    }
+
+    /**
      * Execute SQL schema statements one by one, handling index creation failures gracefully
      * This allows table creation to succeed even if some indexes fail due to missing columns
      */
     private executeSchemaStatements(sql: string): void {
         if (!this.db) return;
 
-        // Split by semicolon and filter out truly empty statements
-        const statements = sql.split(';')
-            .map(s => s.trim())
-            .filter(s => s.length > 0);
+        // Strip single-line SQL comments BEFORE splitting on ';' to avoid false splits
+        // on semicolons that appear inside comments (e.g. "-- registered_suppliers; aligned with PostgreSQL")
+        const stripped = sql.replace(/--[^\n]*/g, '').trim();
+
+        // Fast path: single exec (handles triggers with internal semicolons)
+        try {
+            this.db.exec(stripped);
+            return;
+        } catch (firstError: unknown) {
+            const msg = firstError instanceof Error ? firstError.message : String(firstError);
+            logger.logCategory('database', `[SchemaSync] Full schema exec failed, using statement batching:`, msg.slice(0, 160));
+        }
+
+        const statements = this.splitSqlStatementsRespectingTriggers(stripped);
 
         let skippedIndex = 0;
         for (const statement of statements) {
@@ -1738,13 +1939,6 @@ class DatabaseService {
      */
     async restoreBackup(data: Uint8Array): Promise<void> {
         this.import(data);
-
-        // Reset tenant migration flag so it re-runs on the imported data
-        try {
-            const { resetTenantMigrationFlag, migrateTenantColumns } = await import('./tenantMigration');
-            resetTenantMigrationFlag();
-            migrateTenantColumns(true);
-        } catch (_) { }
 
         // After importing, ensure schema is up to date
         this.ensureAllTablesExist();
@@ -1932,10 +2126,44 @@ class DatabaseService {
 // Singleton instance
 let dbServiceInstance: DatabaseService | null = null;
 
+/** Detect Electron so we never try to load sql.js (externalized in Electron build and would fail). */
+function isElectron(): boolean {
+    return typeof window !== 'undefined' && !!(window as unknown as { electronAPI?: unknown }).electronAPI;
+}
+
 export const getDatabaseService = (config?: DatabaseConfig): DatabaseService => {
     if (!dbServiceInstance) {
-        if (typeof window !== 'undefined' && (window as unknown as { sqliteBridge?: { querySync?: unknown } }).sqliteBridge?.querySync) {
-            dbServiceInstance = new ElectronDatabaseService(config) as unknown as DatabaseService;
+        const win = typeof window !== 'undefined' ? (window as unknown as { sqliteBridge?: { querySync?: unknown; execSync?: (sql: string) => { ok: boolean; error?: string } } }) : null;
+        const bridge = win?.sqliteBridge;
+
+        if (isElectron()) {
+            if (!bridge?.querySync) {
+                throw new Error(
+                    'Native SQLite bridge not available. The preload script may not have run yet, or the app may be misconfigured.'
+                );
+            }
+            const check = bridge.execSync!('SELECT 1');
+            if (!check.ok && check.error?.includes('No database open')) {
+                // Multi-company mode: no company DB opened yet. Create the service
+                // instance anyway — initialize() will detect this and defer.
+                dbServiceInstance = new ElectronDatabaseService(config) as unknown as DatabaseService;
+            } else if (!check.ok) {
+                throw new Error(
+                    'Native SQLite bridge health check failed. ' + (check.error || 'Ensure the database file is not locked.')
+                );
+            } else {
+                dbServiceInstance = new ElectronDatabaseService(config) as unknown as DatabaseService;
+            }
+        } else if (bridge?.querySync) {
+            const check = bridge.execSync!('SELECT 1');
+            if (check.ok) {
+                dbServiceInstance = new ElectronDatabaseService(config) as unknown as DatabaseService;
+            } else if (check.error?.includes('No database open')) {
+                dbServiceInstance = new ElectronDatabaseService(config) as unknown as DatabaseService;
+            } else {
+                logger.warnCategory('database', 'Native SQLite bridge not functional, falling back to sql.js');
+                dbServiceInstance = new DatabaseService(config);
+            }
         } else {
             dbServiceInstance = new DatabaseService(config);
         }

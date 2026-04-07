@@ -20,18 +20,18 @@ const SimpleInvoiceBillItem: React.FC<SimpleInvoiceBillItemProps> = ({ item, typ
   const contactLabel = type === 'invoice' ? 'Owner' : 'Supplier';
 
   return (
-    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+    <div className="p-3 bg-app-toolbar rounded-lg border border-app-border">
       <div className="flex justify-between items-start gap-4">
         <div>
-          <p className="font-bold text-gray-800">#{number}</p>
-          <p className="text-sm text-gray-600 font-medium">{contactLabel}: {contactName}</p>
+          <p className="font-bold text-app-text">#{number}</p>
+          <p className="text-sm text-app-muted font-medium">{contactLabel}: {contactName}</p>
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="font-semibold text-danger">{CURRENCY} {formatCurrency(balance || 0)}</p>
-          <p className="text-xs text-gray-500">Balance Due</p>
+          <p className="font-semibold text-ds-danger">{CURRENCY} {formatCurrency(balance || 0)}</p>
+          <p className="text-xs text-app-muted">Balance Due</p>
         </div>
       </div>
-       <div className="mt-2 text-xs text-gray-500">
+       <div className="mt-2 text-xs text-app-muted">
           Issued: {formatDate(issueDate)}
       </div>
     </div>

@@ -7,7 +7,7 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import Card from '../ui/Card';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
@@ -33,8 +33,8 @@ const RevenueAnalysisReport: React.FC = () => {
     
     // Filter State
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), 0, 1)));
+    const [endDate, setEndDate] = useState(toLocalDateString(new Date()));
     const [searchQuery, setSearchQuery] = useState('');
     
     // Sorting State
@@ -48,11 +48,11 @@ const RevenueAnalysisReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (option === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (option === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -159,7 +159,7 @@ const RevenueAnalysisReport: React.FC = () => {
 
     
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -182,61 +182,63 @@ const RevenueAnalysisReport: React.FC = () => {
                     onRangeChange={handleRangeChange}
                 />
             </div>
-            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                <Card className="min-h-full">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0 bg-background" id="printable-area">
+                <Card className="min-h-full flex flex-col p-4 md:p-6">
                     <ReportHeader />
-                    <h3 className="text-2xl font-bold text-center mb-6">Revenue Analysis Report</h3>
-                    <div className="text-center text-sm text-slate-500 mb-6">
+                    <h3 className="text-2xl font-bold text-center mb-2 text-app-text">Revenue Analysis Report</h3>
+                    <div className="text-center text-sm text-app-muted mb-6">
                         {formatDate(startDate)} - {formatDate(endDate)}
                     </div>
                     
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10">
+                    <div className="overflow-x-auto border border-app-border rounded-lg shadow-ds-card">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-table-header border-b border-app-border sticky top-0 z-10">
                                 <tr>
-                                    <th onClick={() => handleSort('agreementNumber')} className="px-2 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Agreement <SortIcon column="agreementNumber"/></th>
-                                    <th onClick={() => handleSort('projectName')} className="px-2 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Project <SortIcon column="projectName"/></th>
-                                    <th onClick={() => handleSort('ownerName')} className="px-2 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Owner <SortIcon column="ownerName"/></th>
-                                    <th onClick={() => handleSort('listPrice')} className="px-2 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">List Price <SortIcon column="listPrice"/></th>
-                                    <th onClick={() => handleSort('customerDiscount')} className="px-2 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Cust Disc <SortIcon column="customerDiscount"/></th>
-                                    <th onClick={() => handleSort('floorDiscount')} className="px-2 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Floor Disc <SortIcon column="floorDiscount"/></th>
-                                    <th onClick={() => handleSort('lumpSumDiscount')} className="px-2 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">LumpSum <SortIcon column="lumpSumDiscount"/></th>
-                                    <th onClick={() => handleSort('miscDiscount')} className="px-2 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Misc Disc <SortIcon column="miscDiscount"/></th>
-                                    <th onClick={() => handleSort('sellingPrice')} className="px-2 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Net Sales <SortIcon column="sellingPrice"/></th>
-                                    <th onClick={() => handleSort('brokerFee')} className="px-2 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Broker Fee <SortIcon column="brokerFee"/></th>
+                                    <th onClick={() => handleSort('agreementNumber')} className="px-2 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Agreement <SortIcon column="agreementNumber"/></th>
+                                    <th onClick={() => handleSort('projectName')} className="px-2 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Project <SortIcon column="projectName"/></th>
+                                    <th onClick={() => handleSort('ownerName')} className="px-2 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Owner <SortIcon column="ownerName"/></th>
+                                    <th onClick={() => handleSort('listPrice')} className="px-2 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">List Price <SortIcon column="listPrice"/></th>
+                                    <th onClick={() => handleSort('customerDiscount')} className="px-2 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Cust Disc <SortIcon column="customerDiscount"/></th>
+                                    <th onClick={() => handleSort('floorDiscount')} className="px-2 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Floor Disc <SortIcon column="floorDiscount"/></th>
+                                    <th onClick={() => handleSort('lumpSumDiscount')} className="px-2 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">LumpSum <SortIcon column="lumpSumDiscount"/></th>
+                                    <th onClick={() => handleSort('miscDiscount')} className="px-2 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Misc Disc <SortIcon column="miscDiscount"/></th>
+                                    <th onClick={() => handleSort('sellingPrice')} className="px-2 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Net Sales <SortIcon column="sellingPrice"/></th>
+                                    <th onClick={() => handleSort('brokerFee')} className="px-2 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Broker Fee <SortIcon column="brokerFee"/></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200 bg-white">
+                            <tbody className="divide-y divide-app-border">
                                 {reportData.map(row => (
-                                    <tr key={row.agreementId} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-2 py-2 whitespace-nowrap text-slate-700 font-mono">{row.agreementNumber}</td>
-                                        <td className="px-2 py-2 whitespace-normal break-words text-slate-800">{row.projectName}</td>
-                                        <td className="px-2 py-2 whitespace-normal break-words text-slate-800">{row.ownerName}</td>
-                                        <td className="px-2 py-2 text-right text-slate-600">{CURRENCY} {(row.listPrice || 0).toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {(row.customerDiscount || 0).toLocaleString()})</td>
-                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {(row.floorDiscount || 0).toLocaleString()})</td>
-                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {(row.lumpSumDiscount || 0).toLocaleString()})</td>
-                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {(row.miscDiscount || 0).toLocaleString()})</td>
-                                        <td className="px-2 py-2 text-right font-medium text-slate-700">{CURRENCY} {(row.sellingPrice || 0).toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-slate-500">{CURRENCY} {(row.brokerFee || 0).toLocaleString()}</td>
+                                    <tr key={row.agreementId} className="hover:bg-app-toolbar/60 transition-colors">
+                                        <td className="px-2 py-2 whitespace-nowrap text-app-text font-mono">{row.agreementNumber}</td>
+                                        <td className="px-2 py-2 whitespace-normal break-words text-app-text">{row.projectName}</td>
+                                        <td className="px-2 py-2 whitespace-normal break-words text-app-text">{row.ownerName}</td>
+                                        <td className="px-2 py-2 text-right text-app-muted tabular-nums">{CURRENCY} {(row.listPrice || 0).toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-ds-danger tabular-nums">({CURRENCY} {(row.customerDiscount || 0).toLocaleString()})</td>
+                                        <td className="px-2 py-2 text-right text-ds-danger tabular-nums">({CURRENCY} {(row.floorDiscount || 0).toLocaleString()})</td>
+                                        <td className="px-2 py-2 text-right text-ds-danger tabular-nums">({CURRENCY} {(row.lumpSumDiscount || 0).toLocaleString()})</td>
+                                        <td className="px-2 py-2 text-right text-ds-danger tabular-nums">({CURRENCY} {(row.miscDiscount || 0).toLocaleString()})</td>
+                                        <td className="px-2 py-2 text-right font-medium text-app-text tabular-nums">{CURRENCY} {(row.sellingPrice || 0).toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-app-muted tabular-nums">{CURRENCY} {(row.brokerFee || 0).toLocaleString()}</td>
                                     </tr>
                                 ))}
                             </tbody>
-                            <tfoot className="bg-slate-50 font-bold sticky bottom-0 z-10 shadow-md">
+                            <tfoot className="bg-app-toolbar border-t border-app-border font-bold sticky bottom-0 z-10 shadow-ds-card">
                                 <tr>
-                                    <td colSpan={3} className="px-2 py-2 text-right">Totals</td>
-                                    <td className="px-2 py-2 text-right">{CURRENCY} {(totals.listPrice || 0).toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {(totals.customerDiscount || 0).toLocaleString()})</td>
-                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {(totals.floorDiscount || 0).toLocaleString()})</td>
-                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {(totals.lumpSumDiscount || 0).toLocaleString()})</td>
-                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {(totals.miscDiscount || 0).toLocaleString()})</td>
-                                    <td className="px-2 py-2 text-right text-emerald-600">{CURRENCY} {(totals.sellingPrice || 0).toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right text-amber-600">{CURRENCY} {(totals.brokerFee || 0).toLocaleString()}</td>
+                                    <td colSpan={3} className="px-2 py-2 text-right text-app-text">Totals</td>
+                                    <td className="px-2 py-2 text-right text-app-text tabular-nums">{CURRENCY} {(totals.listPrice || 0).toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right text-ds-danger tabular-nums">({CURRENCY} {(totals.customerDiscount || 0).toLocaleString()})</td>
+                                    <td className="px-2 py-2 text-right text-ds-danger tabular-nums">({CURRENCY} {(totals.floorDiscount || 0).toLocaleString()})</td>
+                                    <td className="px-2 py-2 text-right text-ds-danger tabular-nums">({CURRENCY} {(totals.lumpSumDiscount || 0).toLocaleString()})</td>
+                                    <td className="px-2 py-2 text-right text-ds-danger tabular-nums">({CURRENCY} {(totals.miscDiscount || 0).toLocaleString()})</td>
+                                    <td className="px-2 py-2 text-right text-ds-success tabular-nums">{CURRENCY} {(totals.sellingPrice || 0).toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right text-ds-warning tabular-nums">{CURRENCY} {(totals.brokerFee || 0).toLocaleString()}</td>
                                 </tr>
                             </tfoot>
                         </table>
                     </div>
-                    <ReportFooter />
+                    <div className="mt-auto pt-4">
+                        <ReportFooter />
+                    </div>
                 </Card>
             </div>
         </div>

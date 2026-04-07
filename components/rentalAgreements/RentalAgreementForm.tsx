@@ -7,8 +7,13 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
+import Modal from '../ui/Modal';
+import ContactForm from '../settings/ContactForm';
 import { CURRENCY, ICONS } from '../../constants';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
+import { getFirstOfNextMonthLocal, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { RentalAgreementsApiRepository } from '../../services/api/repositories/rentalAgreementsApi';
 
 interface RentalAgreementFormProps {
     onClose: () => void;
@@ -54,9 +59,12 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const [contactId, setContactId] = useState(agreementToEdit?.contactId || '');
 
     const getSafeIsoDate = (dateStr: string | undefined, fallback: Date) => {
-        if (!dateStr) return fallback.toISOString().split('T')[0];
-        const d = new Date(dateStr);
-        return isNaN(d.getTime()) ? fallback.toISOString().split('T')[0] : d.toISOString().split('T')[0];
+        if (!dateStr) return toLocalDateString(fallback);
+        const trimmed = String(dateStr).trim();
+        const d = new Date(trimmed);
+        if (isNaN(d.getTime())) return toLocalDateString(fallback);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+        return parseStoredDateToYyyyMmDdInput(trimmed);
     };
 
     const getDefaultStartDate = () => {
@@ -79,6 +87,10 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const [brokerId, setBrokerId] = useState(agreementToEdit?.brokerId || '');
     const [brokerFee, setBrokerFee] = useState(agreementToEdit?.brokerFee?.toString() || '');
     const [brokerFeeManuallySet, setBrokerFeeManuallySet] = useState(!!agreementToEdit?.brokerFee);
+
+    // Add tenant on the fly (when user clicks "+" in Tenant ComboBox)
+    const [showAddTenantModal, setShowAddTenantModal] = useState(false);
+    const [newTenantInitialName, setNewTenantInitialName] = useState('');
 
     // --- Lookups ---
     const tenants = useMemo(() => state.contacts.filter(c => c.type === ContactType.TENANT), [state.contacts]);
@@ -123,16 +135,17 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
     // Auto-update End Date when Start Date changes
     const handleStartDateChange = (newDate: Date) => {
-        const newStart = newDate.toISOString().split('T')[0];
+        const newStart = toLocalDateString(newDate);
         setStartDate(newStart);
         if (state.enableDatePreservation && !agreementToEdit) {
             dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: newStart });
         }
-        const d = new Date(newStart);
+        const [y, m, day] = newStart.split('-').map(Number);
+        const d = new Date(y, m - 1, day);
         if (!isNaN(d.getTime())) {
             d.setFullYear(d.getFullYear() + 1);
             d.setDate(d.getDate() - 1);
-            setEndDate(d.toISOString().split('T')[0]);
+            setEndDate(toLocalDateString(d));
         }
     };
 
@@ -216,11 +229,11 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             };
             dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
 
-            const nextMonthDate = new Date(sYear, sMonth + 1, 1);
+            const nextDueDateStr = getFirstOfNextMonthLocal(startDateObj);
             const recurringTemplate: RecurringInvoiceTemplate = {
                 id: `rec-${Date.now()}`, contactId, propertyId, buildingId: bId || '', amount: rent,
                 descriptionTemplate: "Rent for {Month} [Rental]", dayOfMonth: 1,
-                nextDueDate: nextMonthDate.toISOString().split('T')[0], active: true, agreementId: agreementToEdit.id,
+                nextDueDate: nextDueDateStr, active: true, agreementId: agreementToEdit.id,
                 invoiceType: InvoiceType.RENTAL, autoGenerate: true, frequency: 'Monthly',
             };
             dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
@@ -232,22 +245,18 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         showToast("Initial invoices generated.", "success");
     };
 
-    // --- Submit ---
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
+    // --- Create agreement + optional invoice generation (wizard: only from step 3 "Broker & Review") ---
+    const handleCreateAgreementAndMaybeInvoices = async () => {
         if (!contactId || !propertyId || !startDate || !endDate || !monthlyRent) {
             await showAlert("Please fill in all required fields.");
             return;
         }
-
         const startD = new Date(startDate);
         const endD = new Date(endDate);
         if (isNaN(startD.getTime()) || isNaN(endD.getTime())) {
             await showAlert("Invalid Start or End Date.");
             return;
         }
-
         const agreementData = {
             contactId, propertyId,
             startDate: startD.toISOString(), endDate: endD.toISOString(),
@@ -260,105 +269,237 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             ownerId: autoOwner?.id || undefined,
             status: RentalAgreementStatus.ACTIVE,
         };
-
         const prefix = rentalInvoiceSettings?.prefix || 'INV-';
         const nextNumSetting = rentalInvoiceSettings?.nextNumber || 1;
         const padding = rentalInvoiceSettings?.padding || 5;
         let currentNextNum = nextNumSetting;
+        const agreementNumber = getNextAgreementNumber();
+        const nextSeq = parseInt(agreementNumber.slice(state.agreementSettings.prefix.length)) + 1;
+        dispatch({ type: 'UPDATE_AGREEMENT_SETTINGS', payload: { ...state.agreementSettings, nextNumber: nextSeq } });
 
-        if (agreementToEdit) {
-            // === EDIT MODE ===
-            const hasInvoices = state.invoices.some(inv => inv.agreementId === agreementToEdit.id);
-            if (hasInvoices && agreementToEdit.status !== RentalAgreementStatus.RENEWED) {
-                await showAlert(
-                    'This agreement has invoices. It cannot be edited directly. Use Renew to create updated terms.',
-                    { title: 'Edit Restricted' }
-                );
-                return;
-            }
-            dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: { ...agreementToEdit, ...agreementData } });
-            showToast("Agreement updated.");
-        } else {
-            // === NEW AGREEMENT ===
+        let agreementIdForInvoices: string;
+
+        if (isLocalOnlyMode()) {
             const id = Date.now().toString();
-            const agreementNumber = getNextAgreementNumber();
-            const nextSeq = parseInt(agreementNumber.slice(state.agreementSettings.prefix.length)) + 1;
-            dispatch({ type: 'UPDATE_AGREEMENT_SETTINGS', payload: { ...state.agreementSettings, nextNumber: nextSeq } });
-
             const newAgreement: RentalAgreement = { id, agreementNumber, ...agreementData };
             dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newAgreement });
-
-            const shouldGenerate = await showConfirm(
-                "Agreement created!\n\nGenerate initial invoices?\n\n1. Security Deposit Invoice\n2. First Month Rental Invoice\n3. Recurring Invoice Template",
-                { title: "Generate Invoices", confirmLabel: "Yes, Generate", cancelLabel: "No, Skip" }
-            );
-
-            if (shouldGenerate) {
-                const property = state.properties.find(p => p.id === propertyId);
-                const bId = property?.buildingId;
-
-                if (agreementData.securityDeposit > 0) {
-                    const secInvNum = getNextInvNumber(currentNextNum, prefix, padding);
-                    currentNextNum = parseInt(secInvNum.slice(prefix.length)) + 1;
-                    const secCat = state.categories.find(c => c.name === 'Security Deposit');
-                    const secInvoice: Invoice = {
-                        id: `inv-sec-new-${Date.now()}`, invoiceNumber: secInvNum, contactId: agreementData.contactId,
-                        invoiceType: InvoiceType.RENTAL, amount: agreementData.securityDeposit, paidAmount: 0,
-                        status: InvoiceStatus.UNPAID, issueDate: agreementData.startDate, dueDate: agreementData.startDate,
-                        description: `Security Deposit [Security]`, propertyId: agreementData.propertyId,
-                        buildingId: bId, categoryId: secCat?.id, agreementId: id, securityDepositCharge: agreementData.securityDeposit
-                    };
-                    dispatch({ type: 'ADD_INVOICE', payload: secInvoice });
-                }
-
-                if (agreementData.monthlyRent > 0) {
-                    const sdObj = new Date(agreementData.startDate);
-                    const sdYear = sdObj.getFullYear();
-                    const sdMonth = sdObj.getMonth();
-                    const sdDay = sdObj.getDate();
-                    const sdDaysInMonth = new Date(sdYear, sdMonth + 1, 0).getDate();
-                    const sdRemainingDays = sdDaysInMonth - sdDay + 1;
-                    const sdIsProrated = sdRemainingDays < sdDaysInMonth;
-                    const sdProRatedRent = sdIsProrated ? Math.ceil((agreementData.monthlyRent / sdDaysInMonth) * sdRemainingDays / 100) * 100 : agreementData.monthlyRent;
-
-                    const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
-                    currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
-                    const rentCat = state.categories.find(c => c.name === 'Rental Income');
-                    const monthName = new Date(agreementData.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
-                    const rentInvoice: Invoice = {
-                        id: `inv-rent-new-${Date.now()}`, invoiceNumber: rentInvNum, contactId: agreementData.contactId,
-                        invoiceType: InvoiceType.RENTAL, amount: sdProRatedRent, paidAmount: 0,
-                        status: InvoiceStatus.UNPAID, issueDate: agreementData.startDate, dueDate: agreementData.startDate,
-                        description: `Rent for ${monthName}${sdIsProrated ? ` (Pro-rata: ${sdRemainingDays} days)` : ''} [Rental]`, propertyId: agreementData.propertyId,
-                        buildingId: bId, categoryId: rentCat?.id, agreementId: id, rentalMonth: agreementData.startDate.slice(0, 7)
-                    };
-                    dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
-
-                    const nextMonthDate = new Date(sdYear, sdMonth + 1, 1);
-                    const recurringTemplate: RecurringInvoiceTemplate = {
-                        id: `rec-${Date.now()}`, contactId: agreementData.contactId, propertyId: agreementData.propertyId,
-                        buildingId: bId || '', amount: agreementData.monthlyRent, descriptionTemplate: "Rent for {Month} [Rental]",
-                        dayOfMonth: 1, nextDueDate: nextMonthDate.toISOString().split('T')[0],
-                        active: true, agreementId: id, invoiceType: InvoiceType.RENTAL, autoGenerate: true, frequency: 'Monthly',
-                    };
-                    dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
-                }
-
-                if (currentNextNum > nextNumSetting) {
-                    dispatch({ type: 'UPDATE_RENTAL_INVOICE_SETTINGS', payload: { ...rentalInvoiceSettings, nextNumber: currentNextNum } });
-                }
-                showToast("Agreement created and invoices generated.", "success");
-            } else {
-                showToast("Agreement created.");
+            agreementIdForInvoices = id;
+        } else {
+            try {
+                const rentalApi = new RentalAgreementsApiRepository();
+                const id = Date.now().toString();
+                const newAgreement = await rentalApi.create({
+                    id,
+                    agreementNumber,
+                    contactId: agreementData.contactId,
+                    propertyId: agreementData.propertyId,
+                    startDate: agreementData.startDate,
+                    endDate: agreementData.endDate,
+                    monthlyRent: agreementData.monthlyRent,
+                    rentDueDate: agreementData.rentDueDate,
+                    securityDeposit: agreementData.securityDeposit,
+                    brokerId: agreementData.brokerId,
+                    brokerFee: agreementData.brokerFee,
+                    description: agreementData.description,
+                    ownerId: agreementData.ownerId,
+                    status: agreementData.status,
+                });
+                dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newAgreement });
+                agreementIdForInvoices = newAgreement.id;
+            } catch (err: unknown) {
+                const msg =
+                    err && typeof err === 'object' && 'message' in err
+                        ? String((err as { message?: unknown }).message)
+                        : err instanceof Error
+                          ? err.message
+                          : 'Failed to create agreement';
+                await showAlert(msg);
+                return;
             }
+        }
+
+        // Show invoice generation prompt only after step 3 (Broker & Review) is complete
+        const shouldGenerate = await showConfirm(
+            "Agreement created!\n\nGenerate initial invoices?\n\n1. Security Deposit Invoice\n2. First Month Rental Invoice\n3. Recurring Invoice Template",
+            { title: "Generate Invoices", confirmLabel: "Yes, Generate", cancelLabel: "No, Skip" }
+        );
+
+        if (shouldGenerate) {
+            const property = state.properties.find(p => p.id === propertyId);
+            const bId = property?.buildingId;
+            if (agreementData.securityDeposit > 0) {
+                const secInvNum = getNextInvNumber(currentNextNum, prefix, padding);
+                currentNextNum = parseInt(secInvNum.slice(prefix.length)) + 1;
+                const secCat = state.categories.find(c => c.name === 'Security Deposit');
+                const secInvoice: Invoice = {
+                    id: `inv-sec-new-${Date.now()}`, invoiceNumber: secInvNum, contactId: agreementData.contactId,
+                    invoiceType: InvoiceType.RENTAL, amount: agreementData.securityDeposit, paidAmount: 0,
+                    status: InvoiceStatus.UNPAID, issueDate: agreementData.startDate, dueDate: agreementData.startDate,
+                    description: `Security Deposit [Security]`, propertyId: agreementData.propertyId,
+                    buildingId: bId, categoryId: secCat?.id, agreementId: agreementIdForInvoices, securityDepositCharge: agreementData.securityDeposit
+                };
+                dispatch({ type: 'ADD_INVOICE', payload: secInvoice });
+            }
+            if (agreementData.monthlyRent > 0) {
+                const sdObj = new Date(agreementData.startDate);
+                const sdYear = sdObj.getFullYear();
+                const sdMonth = sdObj.getMonth();
+                const sdDay = sdObj.getDate();
+                const sdDaysInMonth = new Date(sdYear, sdMonth + 1, 0).getDate();
+                const sdRemainingDays = sdDaysInMonth - sdDay + 1;
+                const sdIsProrated = sdRemainingDays < sdDaysInMonth;
+                const sdProRatedRent = sdIsProrated ? Math.ceil((agreementData.monthlyRent / sdDaysInMonth) * sdRemainingDays / 100) * 100 : agreementData.monthlyRent;
+                const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
+                currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
+                const rentCat = state.categories.find(c => c.name === 'Rental Income');
+                const monthName = new Date(agreementData.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
+                const rentInvoice: Invoice = {
+                    id: `inv-rent-new-${Date.now()}`, invoiceNumber: rentInvNum, contactId: agreementData.contactId,
+                    invoiceType: InvoiceType.RENTAL, amount: sdProRatedRent, paidAmount: 0,
+                    status: InvoiceStatus.UNPAID, issueDate: agreementData.startDate, dueDate: agreementData.startDate,
+                    description: `Rent for ${monthName}${sdIsProrated ? ` (Pro-rata: ${sdRemainingDays} days)` : ''} [Rental]`, propertyId: agreementData.propertyId,
+                    buildingId: bId, categoryId: rentCat?.id, agreementId: agreementIdForInvoices, rentalMonth: agreementData.startDate.slice(0, 7)
+                };
+                dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
+                const nextDueDateStr = getFirstOfNextMonthLocal(sdObj);
+                const recurringTemplate: RecurringInvoiceTemplate = {
+                    id: `rec-${Date.now()}`, contactId: agreementData.contactId, propertyId: agreementData.propertyId,
+                    buildingId: bId || '', amount: agreementData.monthlyRent, descriptionTemplate: "Rent for {Month} [Rental]",
+                    dayOfMonth: 1, nextDueDate: nextDueDateStr,
+                    active: true, agreementId: agreementIdForInvoices, invoiceType: InvoiceType.RENTAL, autoGenerate: true, frequency: 'Monthly',
+                };
+                dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
+            }
+            if (currentNextNum > nextNumSetting) {
+                dispatch({ type: 'UPDATE_RENTAL_INVOICE_SETTINGS', payload: { ...rentalInvoiceSettings, nextNumber: currentNextNum } });
+            }
+            showToast("Agreement created and invoices generated.", "success");
+        } else {
+            showToast("Agreement created.");
+        }
+        onClose();
+    };
+
+    // --- Submit: edit mode or wizard step 3 only ---
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        // New agreement wizard: create + invoice modal only from step 3 (Broker & Review). Never from step 1 or 2.
+        if (!isEditMode) {
+            if (currentStep !== 2) return;
+            await handleCreateAgreementAndMaybeInvoices();
+            return;
+        }
+
+        if (!contactId || !propertyId || !startDate || !endDate || !monthlyRent) {
+            await showAlert("Please fill in all required fields.");
+            return;
+        }
+        const startD = new Date(startDate);
+        const endD = new Date(endDate);
+        if (isNaN(startD.getTime()) || isNaN(endD.getTime())) {
+            await showAlert("Invalid Start or End Date.");
+            return;
+        }
+        // Explicitly clear brokerFee when empty so renewed agreements can have fee removed
+        const resolvedBrokerFee = (brokerFee === '' || brokerFee == null || String(brokerFee).trim() === '')
+            ? undefined
+            : (parseFloat(String(brokerFee)) || undefined);
+
+        const agreementData = {
+            contactId, propertyId,
+            startDate: startD.toISOString(), endDate: endD.toISOString(),
+            monthlyRent: parseFloat(monthlyRent) || 0,
+            rentDueDate: parseInt(rentDueDate) || 1,
+            securityDeposit: parseFloat(securityDeposit) || 0,
+            brokerId: brokerId || undefined,
+            brokerFee: resolvedBrokerFee,
+            description,
+            ownerId: autoOwner?.id || undefined,
+            status: RentalAgreementStatus.ACTIVE,
+        };
+
+        if (agreementToEdit) {
+            const hasInvoices = state.invoices.some(inv => inv.agreementId === agreementToEdit.id);
+            if (hasInvoices && agreementToEdit.status !== RentalAgreementStatus.RENEWED) {
+                // Broker and description can always be updated (they don't affect invoices)
+                const brokerOnly = (
+                    agreementToEdit.contactId === contactId &&
+                    agreementToEdit.propertyId === propertyId &&
+                    agreementToEdit.startDate === startD.toISOString() &&
+                    agreementToEdit.endDate === endD.toISOString() &&
+                    (agreementToEdit.monthlyRent || 0) === (parseFloat(monthlyRent) || 0) &&
+                    (agreementToEdit.securityDeposit || 0) === (parseFloat(securityDeposit) || 0) &&
+                    (agreementToEdit.rentDueDate || 1) === (parseInt(rentDueDate) || 1)
+                );
+                if (!brokerOnly) {
+                    await showAlert(
+                        'This agreement has invoices. Only broker details and description can be edited. Use Renew to change other terms.',
+                        { title: 'Edit Restricted' }
+                    );
+                    return;
+                }
+            }
+            if (isLocalOnlyMode()) {
+                dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: { ...agreementToEdit, ...agreementData } });
+            } else {
+                try {
+                    const rentalApi = new RentalAgreementsApiRepository();
+                    const updated = await rentalApi.update(agreementToEdit.id, {
+                        ...agreementToEdit,
+                        ...agreementData,
+                        agreementNumber: agreementToEdit.agreementNumber,
+                        version: agreementToEdit.version,
+                    });
+                    dispatch({
+                        type: 'UPDATE_RENTAL_AGREEMENT',
+                        payload: updated,
+                    });
+                } catch (err: unknown) {
+                    const msg =
+                        err && typeof err === 'object' && 'message' in err
+                            ? String((err as { message?: unknown }).message)
+                            : err instanceof Error
+                              ? err.message
+                              : 'Failed to update agreement';
+                    await showAlert(msg);
+                    return;
+                }
+            }
+            showToast("Agreement updated.");
         }
         onClose();
     };
 
     const handleDelete = async () => {
         if (!agreementToEdit) return;
+        const linkedInvoices = state.invoices.filter(inv => inv.agreementId === agreementToEdit.id);
+        if (linkedInvoices.length > 0) {
+            await showAlert(
+                `This agreement has ${linkedInvoices.length} associated invoice${linkedInvoices.length !== 1 ? 's' : ''}. ` +
+                `Agreements with invoices cannot be deleted. Delete the associated invoices from the Invoices section first.`,
+                { title: 'Cannot Delete Agreement' }
+            );
+            return;
+        }
         if (await showConfirm("Are you sure you want to delete this agreement?")) {
-            dispatch({ type: 'DELETE_RENTAL_AGREEMENT', payload: agreementToEdit.id });
+            if (isLocalOnlyMode()) {
+                dispatch({ type: 'DELETE_RENTAL_AGREEMENT', payload: agreementToEdit.id });
+            } else {
+                try {
+                    const rentalApi = new RentalAgreementsApiRepository();
+                    await rentalApi.delete(agreementToEdit.id, agreementToEdit.version);
+                    dispatch({ type: 'DELETE_RENTAL_AGREEMENT', payload: agreementToEdit.id });
+                } catch (err: unknown) {
+                    const msg =
+                        err && typeof err === 'object' && 'message' in err
+                            ? String((err as { message?: unknown }).message)
+                            : err instanceof Error
+                              ? err.message
+                              : 'Failed to delete agreement';
+                    await showAlert(msg);
+                    return;
+                }
+            }
             showToast("Agreement deleted.");
             onClose();
         }
@@ -369,7 +510,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     // === WIZARD VIEW (for new agreements) ===
     if (!isEditMode) {
         return (
-            <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0" style={formBackgroundStyle}>
+            <form onSubmit={(e) => { e.preventDefault(); if (currentStep === 2) handleCreateAgreementAndMaybeInvoices(); }} className="flex flex-col h-full min-h-0" style={formBackgroundStyle}>
                 {/* Step Indicator */}
                 <div className="flex-shrink-0 mb-4">
                     <div className="flex items-center justify-center gap-0">
@@ -430,10 +571,22 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                                 <h3 className="text-sm font-semibold text-slate-700">Lease Terms</h3>
                                 <p className="text-xs text-slate-500 mt-0.5">Set tenant, dates, and financial details</p>
                             </div>
-                            <ComboBox label="Tenant" items={tenants} selectedId={contactId} onSelect={item => setContactId(item?.id || '')} placeholder="Select tenant" required />
+                            <ComboBox
+                                label="Tenant"
+                                items={tenants}
+                                selectedId={contactId}
+                                onSelect={item => setContactId(item?.id || '')}
+                                placeholder="Select tenant"
+                                required
+                                entityType="contact"
+                                onAddNew={(_, name) => {
+                                    setNewTenantInitialName(name);
+                                    setShowAddTenantModal(true);
+                                }}
+                            />
                             <div className="grid grid-cols-2 gap-3">
                                 <DatePicker label="Start Date" value={startDate} onChange={handleStartDateChange} required className="text-sm" />
-                                <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(d.toISOString().split('T')[0])} required className="text-sm" />
+                                <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(toLocalDateString(d))} required className="text-sm" />
                             </div>
                             <div className="grid grid-cols-3 gap-3">
                                 <Input label="Monthly Rent" type="number" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required />
@@ -498,12 +651,30 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                                 Next
                             </Button>
                         ) : (
-                            <Button type="submit" className="!text-xs !py-1.5 !px-4">
-                                Create Agreement
+                            <Button type="button" onClick={handleCreateAgreementAndMaybeInvoices} className="!text-xs !py-1.5 !px-4">
+                                Generate
                             </Button>
                         )}
                     </div>
                 </div>
+
+                {/* Add New Tenant modal (when user clicks "+" in Tenant field) */}
+                <Modal isOpen={showAddTenantModal} onClose={() => { setShowAddTenantModal(false); setNewTenantInitialName(''); }} title="Add New Tenant" size="md">
+                    <ContactForm
+                        onSubmit={(data) => {
+                            const newId = Date.now().toString();
+                            const payload = { ...data, id: newId, type: ContactType.TENANT };
+                            dispatch({ type: 'ADD_CONTACT', payload });
+                            setContactId(newId);
+                            setShowAddTenantModal(false);
+                            setNewTenantInitialName('');
+                        }}
+                        onCancel={() => { setShowAddTenantModal(false); setNewTenantInitialName(''); }}
+                        existingContacts={state.contacts.filter(c => c.type === ContactType.TENANT)}
+                        initialName={newTenantInitialName}
+                        fixedTypeForNew={ContactType.TENANT}
+                    />
+                </Modal>
             </form>
         );
     }
@@ -525,7 +696,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                             <ComboBox label="Property" items={properties} selectedId={propertyId} onSelect={item => setPropertyId(item?.id || '')} placeholder="Select property" required disabled />
                         </div>
                         <DatePicker label="Start Date" value={startDate} onChange={handleStartDateChange} required className="text-sm" />
-                        <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(d.toISOString().split('T')[0])} required className="text-sm" />
+                        <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(toLocalDateString(d))} required className="text-sm" />
                     </div>
                     <div className="flex-shrink-0 p-2 rounded-lg bg-slate-50/80 border border-slate-200">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Description / Notes</label>
@@ -564,6 +735,13 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                         <div className="w-full sm:w-28 flex-shrink-0">
                             <Input label="Fee" type="number" value={brokerFee} onChange={e => { setBrokerFee(e.target.value); setBrokerFeeManuallySet(true); }} disabled={!brokerId} />
                         </div>
+                        {agreementToEdit && brokerFee !== '' && !isNaN(parseFloat(brokerFee)) && parseFloat(brokerFee) > 0 && (
+                            <div className="flex items-end pb-1">
+                                <button type="button" onClick={() => { setBrokerFee(''); setBrokerFeeManuallySet(true); }} className="text-xs text-rose-600 hover:text-rose-700 hover:underline">
+                                    Remove fee
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

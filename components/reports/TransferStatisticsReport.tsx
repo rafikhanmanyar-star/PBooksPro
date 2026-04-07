@@ -8,7 +8,7 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
-import { formatDate } from '../../utils/dateUtils';
+import { endOfMonthYyyyMmDd, formatDate, startOfMonthYyyyMmDd, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
@@ -35,8 +35,8 @@ const TransferStatisticsReport: React.FC = () => {
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(() => startOfMonthYyyyMmDd());
+    const [endDate, setEndDate] = useState(() => todayLocalYyyyMmDd());
     const [searchQuery, setSearchQuery] = useState('');
     
     // Sorting State
@@ -49,11 +49,12 @@ const TransferStatisticsReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (type === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(startOfMonthYyyyMmDd(now));
+            setEndDate(endOfMonthYyyyMmDd(now));
         } else if (type === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            const anchor = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+            setStartDate(startOfMonthYyyyMmDd(anchor));
+            setEndDate(endOfMonthYyyyMmDd(anchor));
         }
     };
 

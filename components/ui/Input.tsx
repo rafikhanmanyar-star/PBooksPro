@@ -4,13 +4,15 @@ import React from 'react';
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   helperText?: string;
+  /** Shows error styling and message; sets aria-invalid when present */
+  error?: string;
   enableSpellCheck?: boolean;
   icon?: React.ReactNode;
   horizontal?: boolean;
   compact?: boolean;
 }
 
-const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, enableSpellCheck = true, icon, horizontal = false, compact = false, ...props }) => {
+const Input: React.FC<InputProps> = ({ label, id, helperText, error, onKeyDown, onWheel, name, enableSpellCheck = true, icon, horizontal = false, compact = false, ...props }) => {
   // Mobile: py-3 and text-base to prevent zoom and increase touch area
   // Desktop: py-2 and text-sm for compactness
   // Added tabular-nums for consistent number width
@@ -18,14 +20,15 @@ const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, e
   const spinnerRemovalClasses = `[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
 
   const isNumberInput = props.type === 'number';
-  const baseClassName = `block w-full border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors tabular-nums ${
-    compact ? 'py-1 px-2 text-xs' : 'px-3 py-3 sm:py-2 text-base sm:text-sm'
+  const baseClassName = `block w-full border rounded-ds-md shadow-ds-card placeholder:text-app-muted/80 bg-app-input text-app-text border-app-input-border focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed transition-colors tabular-nums focus:ring-2 focus:ring-ds-primary/35 focus:border-ds-primary ${
+    error ? 'ds-input-error' : ''
+  } ${
+    compact ? 'py-1 px-2 text-ds-small' : 'px-ds-md py-3 sm:py-2 text-base sm:text-ds-body'
   }`;
 
-  // If custom className is provided, append spinner removal classes for number inputs
-  // Otherwise use the default className with spinner removal classes
+  const errorClass = error ? 'ds-input-error' : '';
   const finalClassName = props.className
-    ? (isNumberInput ? `${props.className} ${spinnerRemovalClasses}` : props.className)
+    ? `${props.className} ${errorClass} ${isNumberInput ? spinnerRemovalClasses : ''}`.trim()
     : (isNumberInput ? `${baseClassName} ${spinnerRemovalClasses}` : baseClassName);
 
   // Generate an id if not provided but label exists (for accessibility)
@@ -56,18 +59,33 @@ const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, e
         id={inputId}
         name={name || inputId}
         onKeyDown={handleKeyDown}
+        onWheel={props.type === 'number' ? (e) => { e.currentTarget.blur(); onWheel?.(e); } : onWheel}
         className={`${finalClassName} ${icon ? 'pl-10' : ''}`}
         autoComplete={props.autoComplete || "off"}
         autoCorrect={shouldEnableSpellCheck ? "on" : "off"}
         spellCheck={shouldEnableSpellCheck}
-        aria-describedby={helperText && inputId ? `${inputId}-helper-text` : undefined}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={
+          error && inputId
+            ? `${inputId}-error-text`
+            : helperText && inputId
+              ? `${inputId}-helper-text`
+              : undefined
+        }
       />
     </div>
   );
 
-  const helperTextElement = helperText ? (
-    <p id={inputId ? `${inputId}-helper-text` : undefined} className="mt-1 text-xs text-gray-500">{helperText}</p>
-  ) : null;
+  const helperTextElement =
+    error && inputId ? (
+      <p id={`${inputId}-error-text`} className="mt-ds-xs text-ds-small text-app-error" role="alert">
+        {error}
+      </p>
+    ) : helperText ? (
+      <p id={inputId ? `${inputId}-helper-text` : undefined} className="mt-ds-xs text-ds-small text-app-muted">
+        {helperText}
+      </p>
+    ) : null;
 
   if (!label) {
     return (
@@ -81,7 +99,7 @@ const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, e
   if (horizontal) {
     return (
       <div className="flex items-center gap-2">
-        <label htmlFor={inputId} className="block text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 w-24">
+        <label htmlFor={inputId} className="block text-ds-small font-bold text-app-muted uppercase tracking-wider shrink-0 w-24">
           {label}
         </label>
         <div className="flex-1">
@@ -94,7 +112,7 @@ const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, e
 
   return (
     <div>
-      <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1.5">
+      <label htmlFor={inputId} className="block text-ds-body font-medium text-app-text mb-ds-sm">
         {label}
       </label>
       {inputElement}

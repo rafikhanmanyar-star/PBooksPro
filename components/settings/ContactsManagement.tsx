@@ -8,6 +8,7 @@ import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import { useNotification } from '../../context/NotificationContext';
 import { ContactsApiRepository } from '../../services/api/repositories/contactsApi';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 
 /** Normalize API contact (snake_case) to app Contact (camelCase) so it displays correctly. */
 function normalizeContactFromApi(api: any): Contact {
@@ -190,6 +191,26 @@ const ContactsManagement: React.FC = () => {
         }
 
         try {
+            // Local-only: save to local DB via AppContext (no API)
+            if (isLocalOnlyMode()) {
+                if (editingContact) {
+                    appDispatch({
+                        type: 'UPDATE_CONTACT',
+                        payload: { ...contactData, id: editingContact.id } as Contact,
+                    });
+                    showToast('Contact updated successfully', 'success');
+                } else {
+                    const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    appDispatch({
+                        type: 'ADD_CONTACT',
+                        payload: { ...contactData, id: contactId } as Contact,
+                    });
+                    showToast('Contact created successfully', 'success');
+                }
+                handleResetForm(true);
+                return;
+            }
+
             const contactsApi = new ContactsApiRepository();
 
             if (editingContact) {
@@ -279,10 +300,15 @@ const ContactsManagement: React.FC = () => {
         );
         if (confirmed) {
             try {
-                const contactsApi = new ContactsApiRepository();
-                await contactsApi.delete(contact.id);
-                showToast('Contact deleted successfully', 'success');
-                appDispatch({ type: 'DELETE_CONTACT', payload: contact.id });
+                if (isLocalOnlyMode()) {
+                    appDispatch({ type: 'DELETE_CONTACT', payload: contact.id });
+                    showToast('Contact deleted successfully', 'success');
+                } else {
+                    const contactsApi = new ContactsApiRepository();
+                    await contactsApi.delete(contact.id);
+                    showToast('Contact deleted successfully', 'success');
+                    appDispatch({ type: 'DELETE_CONTACT', payload: contact.id });
+                }
 
                 if (editingContact?.id === contact.id) {
                     handleResetForm();

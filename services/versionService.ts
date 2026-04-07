@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../config/apiUrl';
+import { getApiBaseUrl, isLocalOnlyMode } from '../config/apiUrl';
 import { ApiClient } from './api/client';
 
 export interface VersionInfo {
@@ -67,6 +67,9 @@ class VersionService {
    * Check if a new version is available
    */
   async checkForUpdate(): Promise<{ available: boolean; serverVersion?: string; clientVersion: string }> {
+    if (isLocalOnlyMode()) {
+      return { available: false, clientVersion: this.currentVersion };
+    }
     try {
       const baseUrl = getApiBaseUrl();
       const response = await fetch(`${baseUrl}/app-info/version`);

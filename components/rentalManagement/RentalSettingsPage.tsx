@@ -13,6 +13,7 @@ import PropertyForm from '../settings/PropertyForm';
 import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
 import { ContactType } from '../../types';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 
 const RentalSettingsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -50,11 +51,34 @@ const RentalSettingsPage: React.FC = () => {
         setEditingItem({ type: activeCategory, item });
     };
 
-    const handleSubmit = (data: any) => {
+    const handleSubmit = async (data: any) => {
         if (!editingItem) return;
         const isEdit = !!editingItem.item;
         const id = isEdit ? editingItem.item.id : Date.now().toString();
-        const payload = { ...data, id };
+        let payload: Record<string, unknown> = { ...data, id };
+
+        if (!isLocalOnlyMode() && isAuthenticated && (editingItem.type === 'buildings' || editingItem.type === 'properties')) {
+            try {
+                const api = getAppStateApiService();
+                if (editingItem.type === 'buildings') {
+                    const ver = (editingItem.item as { version?: number } | undefined)?.version;
+                    const saved = isEdit
+                        ? await api.updateBuilding(id, { ...payload, version: ver } as any)
+                        : await api.saveBuilding(payload as any);
+                    payload = { ...payload, ...saved };
+                } else {
+                    const ver = (editingItem.item as { version?: number } | undefined)?.version;
+                    const saved = isEdit
+                        ? await api.updateProperty(id, { ...payload, version: ver } as any)
+                        : await api.saveProperty(payload as any);
+                    payload = { ...payload, ...saved };
+                }
+            } catch (err: unknown) {
+                const e = err as { message?: string; error?: string };
+                showToast(e?.message || e?.error || 'Could not save to server.', 'error');
+                return;
+            }
+        }
 
         switch (editingItem.type) {
             case 'buildings':

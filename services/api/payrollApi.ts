@@ -2,10 +2,14 @@
  * Payroll API Service
  * 
  * Provides API methods for payroll module operations.
- * Uses the main application's apiClient for authentication and tenant handling.
+ * In local-only mode, uses storageService (localStorage) instead of API.
  */
 
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { getCurrentTenantId } from '../database/tenantUtils';
+import { getCurrentUserId } from '../database/userUtils';
 import { apiClient } from './client';
+import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import {
   PayrollEmployee,
   PayrollRun,
@@ -29,11 +33,23 @@ import {
   PayrollStatus
 } from '../../components/payroll/types';
 
+function getTenantAndUser(): { tenantId: string; userId: string } {
+  const tenantId = getCurrentTenantId() || 'local';
+  const userId = getCurrentUserId() || 'local-user';
+  return { tenantId, userId };
+}
+
 // ==================== EMPLOYEES ====================
 
 export const payrollApi = {
   // Get all employees for current tenant
   async getEmployees(): Promise<PayrollEmployee[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getEmployees(tenantId);
+    }
     try {
       const response = await apiClient.get<any[]>('/payroll/employees');
       return (response || []).map(normalizeEmployee);
@@ -45,6 +61,12 @@ export const payrollApi = {
 
   // Get single employee by ID
   async getEmployee(id: string): Promise<PayrollEmployee | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getEmployees(tenantId).find((e) => e.id === id) ?? null;
+    }
     try {
       const response = await apiClient.get<any>(`/payroll/employees/${id}`);
       return response ? normalizeEmployee(response) : null;
@@ -56,6 +78,15 @@ export const payrollApi = {
 
   // Create new employee
   async createEmployee(data: PayrollEmployeeCreateRequest): Promise<PayrollEmployee | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId, userId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const id = `emp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const employee = normalizeEmployee({ ...data, id, tenant_id: tenantId } as any);
+      storageService.addEmployee(tenantId, employee, userId);
+      return employee;
+    }
     try {
       const response = await apiClient.post<any>('/payroll/employees', data);
       return response ? normalizeEmployee(response) : null;
@@ -67,6 +98,17 @@ export const payrollApi = {
 
   // Update employee
   async updateEmployee(id: string, data: PayrollEmployeeUpdateRequest): Promise<PayrollEmployee | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId, userId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const employees = storageService.getEmployees(tenantId);
+      const existing = employees.find(e => e.id === id);
+      if (!existing) return null;
+      const updated = normalizeEmployee({ ...existing, ...data, id } as any);
+      storageService.updateEmployee(tenantId, updated, userId);
+      return updated;
+    }
     try {
       const response = await apiClient.put<any>(`/payroll/employees/${id}`, data);
       return response ? normalizeEmployee(response) : null;
@@ -84,7 +126,7 @@ export const payrollApi = {
             department: data.department ?? 'General',
             department_id: data.department_id,
             grade: data.grade ?? '',
-            joining_date: data.joining_date ?? new Date().toISOString().split('T')[0],
+            joining_date: data.joining_date ?? todayLocalYyyyMmDd(),
             salary: data.salary ?? { basic: 0, allowances: [], deductions: [] },
             projects: data.projects ?? [],
           };
@@ -103,6 +145,12 @@ export const payrollApi = {
 
   // Delete employee
   async deleteEmployee(id: string): Promise<boolean> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.deleteEmployee(tenantId, id);
+      return true;
+    }
     try {
       await apiClient.delete(`/payroll/employees/${id}`);
       return true;
@@ -116,6 +164,12 @@ export const payrollApi = {
 
   // Get all payroll runs
   async getPayrollRuns(): Promise<PayrollRun[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getPayrollRuns(tenantId);
+    }
     try {
       const response = await apiClient.get<any[]>('/payroll/runs');
       return (response || []).map(normalizePayrollRun);
@@ -127,6 +181,12 @@ export const payrollApi = {
 
   // Get single payroll run
   async getPayrollRun(id: string): Promise<PayrollRun | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getPayrollRuns(tenantId).find((r) => r.id === id) ?? null;
+    }
     try {
       const response = await apiClient.get<any>(`/payroll/runs/${id}`);
       return response ? normalizePayrollRun(response) : null;
@@ -138,6 +198,26 @@ export const payrollApi = {
 
   // Create new payroll run (server generates payslips and auto-approves in one step)
   async createPayrollRun(data: PayrollRunCreateRequest): Promise<PayrollRunWithSummary | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId, userId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const id = `run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const run: PayrollRun = {
+        id,
+        tenant_id: tenantId,
+        month: data.month,
+        year: data.year,
+        status: PayrollStatus.DRAFT,
+        total_amount: 0,
+        employee_count: 0,
+        created_by: userId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      storageService.addPayrollRun(tenantId, run, userId);
+      return { ...normalizePayrollRun(run), processing_summary: {} as PayrollProcessingSummary };
+    }
     try {
       const response = await apiClient.post<any>('/payroll/runs', data);
       if (!response) return null;
@@ -153,6 +233,16 @@ export const payrollApi = {
 
   // Update payroll run (status changes)
   async updatePayrollRun(id: string, data: PayrollRunUpdateRequest): Promise<PayrollRun | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId, userId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const existing = storageService.getPayrollRuns(tenantId).find((r) => r.id === id);
+      if (!existing) return null;
+      const merged = normalizePayrollRun({ ...existing, ...data, id });
+      storageService.updatePayrollRun(tenantId, merged, userId);
+      return merged;
+    }
     try {
       const response = await apiClient.put<any>(`/payroll/runs/${id}`, data);
       return response ? normalizePayrollRun(response) : null;
@@ -164,9 +254,17 @@ export const payrollApi = {
 
   // Process payroll run (calculate payslips for new employees only)
   // Returns processing summary with info about new vs skipped payslips
-  async processPayrollRun(id: string): Promise<PayrollRunWithSummary | null> {
+  /** Optional `employeeId` limits generation to that employee only (e.g. back-dated manual payslip). */
+  async processPayrollRun(
+    id: string,
+    options?: { employeeId?: string }
+  ): Promise<PayrollRunWithSummary | null> {
     try {
-      const response = await apiClient.post<any>(`/payroll/runs/${id}/process`);
+      const body =
+        options?.employeeId && String(options.employeeId).trim()
+          ? { employeeId: String(options.employeeId).trim() }
+          : {};
+      const response = await apiClient.post<any>(`/payroll/runs/${id}/process`, body);
       if (!response) return null;
       
       const normalizedRun = normalizePayrollRun(response);
@@ -182,6 +280,13 @@ export const payrollApi = {
 
   // Delete payroll run and its unpaid payslips
   async deletePayrollRun(id: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const ok = storageService.deletePayrollRun(tenantId, id);
+      return ok ? { success: true, message: 'Deleted' } : { success: false, error: 'Not found' };
+    }
     try {
       const response = await apiClient.delete<{ success: boolean; message: string }>(`/payroll/runs/${id}`);
       return response;
@@ -197,6 +302,12 @@ export const payrollApi = {
   // ==================== GRADE LEVELS ====================
 
   async getGradeLevels(): Promise<GradeLevel[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getGradeLevels(tenantId);
+    }
     try {
       const response = await apiClient.get<GradeLevel[]>('/payroll/grades');
       return response || [];
@@ -207,6 +318,22 @@ export const payrollApi = {
   },
 
   async createGradeLevel(data: Omit<GradeLevel, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<GradeLevel | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId, userId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const id = `pg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const g: GradeLevel = {
+        id,
+        tenant_id: tenantId,
+        name: data.name,
+        description: data.description ?? '',
+        min_salary: data.min_salary,
+        max_salary: data.max_salary,
+      };
+      storageService.updateGradeLevel(tenantId, g, userId);
+      return g;
+    }
     try {
       return await apiClient.post<GradeLevel>('/payroll/grades', data);
     } catch (error) {
@@ -216,6 +343,16 @@ export const payrollApi = {
   },
 
   async updateGradeLevel(id: string, data: Partial<GradeLevel>): Promise<GradeLevel | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId, userId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const existing = storageService.getGradeLevels(tenantId).find((g) => g.id === id);
+      if (!existing) return null;
+      const merged = { ...existing, ...data, id };
+      storageService.updateGradeLevel(tenantId, merged, userId);
+      return merged;
+    }
     try {
       return await apiClient.put<GradeLevel>(`/payroll/grades/${id}`, data);
     } catch (error) {
@@ -227,6 +364,12 @@ export const payrollApi = {
   // ==================== DEPARTMENTS ====================
 
   async getDepartments(): Promise<Department[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getDepartments(tenantId);
+    }
     try {
       const response = await apiClient.get<any[]>('/payroll/departments');
       return (response || []).map(normalizeDepartment);
@@ -251,6 +394,19 @@ export const payrollApi = {
   },
 
   async createDepartment(data: Omit<Department, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<Department | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId, userId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const id = `pd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const d = normalizeDepartment({
+        ...data,
+        id,
+        tenant_id: tenantId,
+      } as any);
+      storageService.updateDepartment(tenantId, d, userId);
+      return d;
+    }
     try {
       const response = await apiClient.post<any>('/payroll/departments', data);
       return response ? normalizeDepartment(response) : null;
@@ -261,6 +417,16 @@ export const payrollApi = {
   },
 
   async updateDepartment(id: string, data: Partial<Department>): Promise<Department | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId, userId } = getTenantAndUser();
+      storageService.init(tenantId);
+      const existing = storageService.getDepartments(tenantId).find((d) => d.id === id);
+      if (!existing) return null;
+      const merged = normalizeDepartment({ ...existing, ...data, id });
+      storageService.updateDepartment(tenantId, merged, userId);
+      return merged;
+    }
     try {
       const response = await apiClient.put<any>(`/payroll/departments/${id}`, data);
       return response ? normalizeDepartment(response) : null;
@@ -271,6 +437,12 @@ export const payrollApi = {
   },
 
   async deleteDepartment(id: string): Promise<boolean> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.deleteDepartment(tenantId, id);
+      return true;
+    }
     try {
       await apiClient.delete(`/payroll/departments/${id}`);
       return true;
@@ -314,9 +486,15 @@ export const payrollApi = {
 
   /**
    * Get projects from the main application's projects module.
-   * These are the projects defined in the Settings page.
+   * In local-only mode, uses payroll storageService projects.
    */
   async getMainAppProjects(): Promise<PayrollProject[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getProjects(tenantId);
+    }
     try {
       const response = await apiClient.get<any[]>('/projects');
       // Map main app project structure to payroll project structure
@@ -388,6 +566,12 @@ export const payrollApi = {
   // ==================== SALARY COMPONENT TYPES ====================
 
   async getEarningTypes(): Promise<EarningType[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getEarningTypes(tenantId);
+    }
     try {
       const response = await apiClient.get<EarningType[]>('/payroll/earning-types');
       return response || [];
@@ -398,6 +582,12 @@ export const payrollApi = {
   },
 
   async getDeductionTypes(): Promise<DeductionType[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getDeductionTypes(tenantId);
+    }
     try {
       const response = await apiClient.get<DeductionType[]>('/payroll/deduction-types');
       return response || [];
@@ -408,6 +598,12 @@ export const payrollApi = {
   },
 
   async saveEarningTypes(types: EarningType[]): Promise<boolean> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.setEarningTypes(tenantId, types);
+      return true;
+    }
     try {
       await apiClient.put('/payroll/earning-types', { types });
       return true;
@@ -418,6 +614,12 @@ export const payrollApi = {
   },
 
   async saveDeductionTypes(types: DeductionType[]): Promise<boolean> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.setDeductionTypes(tenantId, types);
+      return true;
+    }
     try {
       await apiClient.put('/payroll/deduction-types', { types });
       return true;
@@ -430,6 +632,12 @@ export const payrollApi = {
   // ==================== PAYSLIPS ====================
 
   async getPayslipsByRun(runId: string): Promise<any[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getPayslipsByRunId(tenantId, runId);
+    }
     try {
       const response = await apiClient.get<any[]>(`/payroll/runs/${runId}/payslips`);
       return response || [];
@@ -440,6 +648,12 @@ export const payrollApi = {
   },
 
   async getEmployeePayslips(employeeId: string): Promise<any[]> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getPayslips(tenantId).filter((p) => p.employee_id === employeeId);
+    }
     try {
       const response = await apiClient.get<any[]>(`/payroll/employees/${employeeId}/payslips`);
       return response || [];
@@ -450,6 +664,12 @@ export const payrollApi = {
   },
 
   async getPayslip(id: string): Promise<any | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      return storageService.getPayslips(tenantId).find((p) => p.id === id) ?? null;
+    }
     try {
       return await apiClient.get<any>(`/payroll/payslips/${id}`);
     } catch (error) {
@@ -458,21 +678,65 @@ export const payrollApi = {
     }
   },
 
-  async payPayslip(payslipId: string, paymentData: {
-    accountId: string;
-    categoryId?: string;
-    projectId?: string;
-    amount?: number;
-    description?: string;
-  }): Promise<{ success: boolean; payslip?: any; transaction?: any; error?: string }> {
+  async updatePayslip(
+    payslipId: string,
+    data: Record<string, unknown>
+  ): Promise<any | null> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      const { normalizePayslip } = await import('../../components/payroll/types');
+      storageService.init(tenantId);
+      const existing = storageService.getPayslips(tenantId).find((p) => p.id === payslipId);
+      if (!existing) return null;
+      const updated = normalizePayslip({ ...existing, ...data, id: payslipId });
+      storageService.updatePayslip(tenantId, updated);
+      return updated;
+    }
     try {
-      console.log('💰 payPayslip API call:', { payslipId, paymentData });
-      const response = await apiClient.post<{ success: boolean; payslip: any; transaction: any }>(
+      return await apiClient.put<any>(`/payroll/payslips/${payslipId}`, data);
+    } catch (error) {
+      console.error('Error updating payslip:', error);
+      return null;
+    }
+  },
+
+  async deletePayslip(payslipId: string, tenantId: string, userId: string): Promise<boolean> {
+    if (isLocalOnlyMode()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      storageService.init(tenantId);
+      return storageService.deletePayslip(tenantId, payslipId, userId);
+    }
+    try {
+      await apiClient.delete(`/payroll/payslips/${payslipId}`);
+      return true;
+    } catch (error) {
+      console.error('Error deleting payslip:', error);
+      return false;
+    }
+  },
+
+  async payPayslip(
+    payslipId: string,
+    paymentData: {
+      accountId: string;
+      categoryId?: string;
+      projectId?: string;
+      buildingId?: string;
+      amount?: number;
+      description?: string;
+      date?: string;
+    }
+  ): Promise<{ success: boolean; payslip?: any; transaction?: any; error?: string }> {
+    if (isLocalOnlyMode()) {
+      return { success: false, error: 'Use local payroll payment flow.' };
+    }
+    try {
+      const response = await apiClient.post<{ payslip: any; transaction: any }>(
         `/payroll/payslips/${payslipId}/pay`,
         paymentData
       );
-      console.log('✅ payPayslip API response:', response);
-      return response;
+      return { success: true, payslip: response?.payslip, transaction: response?.transaction };
     } catch (error: any) {
       console.error('❌ Error paying payslip:', error);
       console.error('Error details:', {

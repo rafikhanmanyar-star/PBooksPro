@@ -2,8 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ShopPurchaseBill, ShopBillItem, ShopBillStatus, ShopInventoryItem, ShopPayment, TransactionType, Account, AccountType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
+import { formatInvAmount } from './formatInvDisplay';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 // Local storage key for shop data
 const SHOP_BILLS_KEY = 'shop_purchase_bills';
@@ -38,7 +41,7 @@ const PurchasesTab: React.FC = () => {
     // Form state for new bill
     const [isCreatingBill, setIsCreatingBill] = useState(false);
     const [selectedVendorId, setSelectedVendorId] = useState('');
-    const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
+    const [billDate, setBillDate] = useState(toLocalDateString(new Date()));
     const [billDescription, setBillDescription] = useState('');
     const [billItems, setBillItems] = useState<ShopBillItem[]>([]);
 
@@ -46,7 +49,7 @@ const PurchasesTab: React.FC = () => {
     const [paymentBillId, setPaymentBillId] = useState<string | null>(null);
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentAccountId, setPaymentAccountId] = useState('');
-    const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+    const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
 
     // Get vendors from vendors table
     const vendors = useMemo(() => 
@@ -189,7 +192,7 @@ const PurchasesTab: React.FC = () => {
         // Reset form
         setIsCreatingBill(false);
         setSelectedVendorId('');
-        setBillDate(new Date().toISOString().split('T')[0]);
+        setBillDate(toLocalDateString(new Date()));
         setBillDescription('');
         setBillItems([]);
     };
@@ -198,7 +201,7 @@ const PurchasesTab: React.FC = () => {
     const cancelBillCreation = () => {
         setIsCreatingBill(false);
         setSelectedVendorId('');
-        setBillDate(new Date().toISOString().split('T')[0]);
+        setBillDate(toLocalDateString(new Date()));
         setBillDescription('');
         setBillItems([]);
     };
@@ -265,7 +268,7 @@ const PurchasesTab: React.FC = () => {
         setPaymentBillId(null);
         setPaymentAmount('');
         setPaymentAccountId('');
-        setPaymentDate(new Date().toISOString().split('T')[0]);
+        setPaymentDate(toLocalDateString(new Date()));
     };
 
     // Get vendor name
@@ -321,6 +324,7 @@ const PurchasesTab: React.FC = () => {
                         <button 
                             onClick={cancelBillCreation}
                             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                            aria-label="Close create bill form"
                         >
                             <span className="w-5 h-5 text-slate-400">{ICONS.x}</span>
                         </button>
@@ -334,6 +338,7 @@ const PurchasesTab: React.FC = () => {
                                 value={selectedVendorId}
                                 onChange={(e) => setSelectedVendorId(e.target.value)}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                aria-label="Vendor"
                             >
                                 <option value="">Select Vendor</option>
                                 {vendors.map(v => (
@@ -342,12 +347,7 @@ const PurchasesTab: React.FC = () => {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Bill Date *</label>
-                            <Input
-                                type="date"
-                                value={billDate}
-                                onChange={(e) => setBillDate(e.target.value)}
-                            />
+                            <DatePicker label="Bill Date *" value={billDate} onChange={(d) => setBillDate(toLocalDateString(d))} />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
@@ -401,6 +401,7 @@ const PurchasesTab: React.FC = () => {
                                                             });
                                                         }}
                                                         className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded focus:ring-2 focus:ring-indigo-500"
+                                                        aria-label="Category"
                                                     >
                                                         <option value="">Select Category</option>
                                                         {expenseCategories.map(c => (
@@ -415,6 +416,7 @@ const PurchasesTab: React.FC = () => {
                                                         onChange={(e) => updateBillItem(item.id, { itemName: e.target.value })}
                                                         placeholder="Item name"
                                                         className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded focus:ring-2 focus:ring-indigo-500"
+                                                        aria-label="Item name"
                                                     />
                                                 </td>
                                                 <td className="px-3 py-2">
@@ -425,6 +427,7 @@ const PurchasesTab: React.FC = () => {
                                                         min="0"
                                                         step="1"
                                                         className="w-full px-2 py-1.5 text-sm text-right border border-slate-200 rounded focus:ring-2 focus:ring-indigo-500"
+                                                        aria-label="Quantity"
                                                     />
                                                 </td>
                                                 <td className="px-3 py-2">
@@ -435,15 +438,17 @@ const PurchasesTab: React.FC = () => {
                                                         min="0"
                                                         step="0.01"
                                                         className="w-full px-2 py-1.5 text-sm text-right border border-slate-200 rounded focus:ring-2 focus:ring-indigo-500"
+                                                        aria-label="Price per item"
                                                     />
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-medium text-slate-700">
-                                                    {CURRENCY} {item.totalCost.toLocaleString()}
+                                                    {CURRENCY} {formatInvAmount(item.totalCost)}
                                                 </td>
                                                 <td className="px-3 py-2">
                                                     <button
                                                         onClick={() => removeBillItem(item.id)}
                                                         className="p-1 text-rose-500 hover:bg-rose-50 rounded transition-colors"
+                                                        aria-label="Remove item"
                                                     >
                                                         <span className="w-4 h-4">{ICONS.trash}</span>
                                                     </button>
@@ -454,7 +459,7 @@ const PurchasesTab: React.FC = () => {
                                     <tfoot>
                                         <tr className="bg-slate-100 font-semibold">
                                             <td colSpan={4} className="px-3 py-3 text-right text-slate-700">Total:</td>
-                                            <td className="px-3 py-3 text-right text-indigo-600">{CURRENCY} {billTotal.toLocaleString()}</td>
+                                            <td className="px-3 py-3 text-right text-indigo-600">{CURRENCY} {formatInvAmount(billTotal)}</td>
                                             <td></td>
                                         </tr>
                                     </tfoot>
@@ -512,13 +517,13 @@ const PurchasesTab: React.FC = () => {
                                             <span className="text-sm">{bill.items.length} item(s)</span>
                                         </td>
                                         <td className="px-4 py-3 text-right font-medium text-slate-800">
-                                            {CURRENCY} {bill.totalAmount.toLocaleString()}
+                                            {CURRENCY} {formatInvAmount(bill.totalAmount)}
                                         </td>
                                         <td className="px-4 py-3 text-right text-emerald-600">
-                                            {CURRENCY} {bill.paidAmount.toLocaleString()}
+                                            {CURRENCY} {formatInvAmount(bill.paidAmount)}
                                         </td>
                                         <td className="px-4 py-3 text-right font-medium text-rose-600">
-                                            {CURRENCY} {(bill.totalAmount - bill.paidAmount).toLocaleString()}
+                                            {CURRENCY} {formatInvAmount(bill.totalAmount - bill.paidAmount)}
                                         </td>
                                         <td className="px-4 py-3 text-center">
                                             <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-full border ${getStatusBadge(bill.status)}`}>
@@ -556,6 +561,7 @@ const PurchasesTab: React.FC = () => {
                             <button 
                                 onClick={() => setPaymentBillId(null)}
                                 className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                aria-label="Close payment modal"
                             >
                                 <span className="w-5 h-5 text-slate-400">{ICONS.x}</span>
                             </button>
@@ -564,7 +570,7 @@ const PurchasesTab: React.FC = () => {
                         <div className="bg-slate-50 rounded-lg p-4 space-y-1">
                             <p className="text-sm text-slate-600">Bill: <span className="font-medium text-slate-800">{billToPay.billNumber}</span></p>
                             <p className="text-sm text-slate-600">Vendor: <span className="font-medium text-slate-800">{getVendorName(billToPay.vendorId)}</span></p>
-                            <p className="text-sm text-slate-600">Balance Due: <span className="font-semibold text-rose-600">{CURRENCY} {(billToPay.totalAmount - billToPay.paidAmount).toLocaleString()}</span></p>
+                            <p className="text-sm text-slate-600">Balance Due: <span className="font-semibold text-rose-600">{CURRENCY} {formatInvAmount(billToPay.totalAmount - billToPay.paidAmount)}</span></p>
                         </div>
 
                         <div className="space-y-4">
@@ -574,10 +580,11 @@ const PurchasesTab: React.FC = () => {
                                     value={paymentAccountId}
                                     onChange={(e) => setPaymentAccountId(e.target.value)}
                                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    aria-label="Payment Account"
                                 >
                                     <option value="">Select Account</option>
                                     {paymentAccounts.map(a => (
-                                        <option key={a.id} value={a.id}>{a.name} ({CURRENCY} {a.balance.toLocaleString()})</option>
+                                        <option key={a.id} value={a.id}>{a.name} ({CURRENCY} {formatInvAmount(a.balance)})</option>
                                     ))}
                                 </select>
                             </div>
@@ -595,12 +602,7 @@ const PurchasesTab: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Date *</label>
-                                <Input
-                                    type="date"
-                                    value={paymentDate}
-                                    onChange={(e) => setPaymentDate(e.target.value)}
-                                />
+                                <DatePicker label="Payment Date *" value={paymentDate} onChange={(d) => setPaymentDate(toLocalDateString(d))} />
                             </div>
                         </div>
 

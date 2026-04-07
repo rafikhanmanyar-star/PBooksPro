@@ -2,33 +2,37 @@ import React, { useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ImportType } from '../../services/importService';
 import { ICONS } from '../../constants';
-import RentalInvoicesContent from './RentalInvoicesContent';
 import RentalARDashboard from './RentalARDashboard';
 import CreateRentalInvoiceModal from './CreateRentalInvoiceModal';
 import RecurringInvoicesList from './RecurringInvoicesList';
 import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
 import Button from '../ui/Button';
-import useLocalStorage from '../../hooks/useLocalStorage';
 
 const TABS = ['Invoices', 'Recurring Templates', 'Monthly Service Charges'] as const;
-
-type InvoiceViewMode = 'ar-dashboard' | 'list';
 
 const RentalInvoicesPage: React.FC = () => {
   const { dispatch } = useAppContext();
   const [activeTab, setActiveTab] = useState<typeof TABS[number]>('Invoices');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalType, setCreateModalType] = useState<'rental' | 'security'>('rental');
-  const [invoiceView, setInvoiceView] = useLocalStorage<InvoiceViewMode>('rental_invoice_view_mode', 'ar-dashboard');
+  /** When set, modal opens with form prefilled from this property; when null/undefined, form opens empty. */
+  const [prefillPropertyId, setPrefillPropertyId] = useState<string | null>(null);
 
-  const handleCreateRental = () => {
+  const handleCreateRental = (selectedPropertyId?: string | null) => {
     setCreateModalType('rental');
+    setPrefillPropertyId(selectedPropertyId ?? null);
     setCreateModalOpen(true);
   };
 
-  const handleCreateSecurity = () => {
+  const handleCreateSecurity = (selectedPropertyId?: string | null) => {
     setCreateModalType('security');
+    setPrefillPropertyId(selectedPropertyId ?? null);
     setCreateModalOpen(true);
+  };
+
+  const handleCloseCreateModal = () => {
+    setCreateModalOpen(false);
+    setPrefillPropertyId(null);
   };
 
   const handleSchedulesClick = () => {
@@ -43,16 +47,9 @@ const RentalInvoicesPage: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'Invoices':
-        if (invoiceView === 'ar-dashboard') {
-          return (
-            <RentalARDashboard
-              onCreateRentalClick={handleCreateRental}
-              onCreateSecurityClick={handleCreateSecurity}
-            />
-          );
-        }
         return (
-          <RentalInvoicesContent
+          <RentalARDashboard
+            listMode
             onCreateRentalClick={handleCreateRental}
             onCreateSecurityClick={handleCreateSecurity}
             onSchedulesClick={handleSchedulesClick}
@@ -73,7 +70,7 @@ const RentalInvoicesPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2">
+      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-app-border bg-app-card px-4 py-2">
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0">
           {TABS.map(tab => (
             <button
@@ -82,8 +79,8 @@ const RentalInvoicesPage: React.FC = () => {
               onClick={() => setActiveTab(tab)}
               className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === tab
-                  ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-primary/15 text-primary ring-1 ring-primary/25 border border-primary/20'
+                  : 'text-app-muted hover:bg-app-toolbar hover:text-app-text'
               }`}
             >
               {tab}
@@ -92,35 +89,7 @@ const RentalInvoicesPage: React.FC = () => {
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2 ml-2">
-          {/* View mode toggle for Invoices tab */}
           {activeTab === 'Invoices' && (
-            <div className="flex items-center bg-slate-100 rounded-md p-0.5 mr-1">
-              <button
-                onClick={() => setInvoiceView('ar-dashboard')}
-                className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${
-                  invoiceView === 'ar-dashboard'
-                    ? 'bg-white text-slate-800 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-                title="AR Dashboard - Tree view with receivable summary"
-              >
-                Summary
-              </button>
-              <button
-                onClick={() => setInvoiceView('list')}
-                className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${
-                  invoiceView === 'list'
-                    ? 'bg-white text-slate-800 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-                title="List View - Traditional invoice list"
-              >
-                List
-              </button>
-            </div>
-          )}
-
-          {activeTab === 'Invoices' && invoiceView === 'list' && (
             <>
               <Button onClick={handleCreateRental} size="sm">
                 <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
@@ -147,8 +116,9 @@ const RentalInvoicesPage: React.FC = () => {
 
       <CreateRentalInvoiceModal
         isOpen={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
+        onClose={handleCloseCreateModal}
         initialInvoiceType={createModalType}
+        initialPreFillPropertyId={prefillPropertyId}
       />
     </div>
   );

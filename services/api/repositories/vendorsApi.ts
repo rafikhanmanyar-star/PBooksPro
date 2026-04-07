@@ -54,10 +54,11 @@ export class VendorsApiRepository {
     }
 
     /**
-     * Delete a vendor
+     * Delete a vendor (soft delete; optional version for optimistic locking)
      */
-    async delete(id: string): Promise<void> {
-        await apiClient.delete(`/vendors/${id}`);
+    async delete(id: string, version?: number): Promise<void> {
+        const qs = version !== undefined && Number.isFinite(version) ? `?version=${version}` : '';
+        await apiClient.delete(`/vendors/${id}${qs}`);
     }
 
     /**

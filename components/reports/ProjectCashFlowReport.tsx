@@ -8,10 +8,17 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
+import { resolveProjectIdForTransaction, isTransactionFromVoidedOrCancelledInvoice } from './reportUtils';
 import ComboBox from '../ui/ComboBox';
-import { formatDate } from '../../utils/dateUtils';
+import {
+    endOfMonthYyyyMmDd,
+    formatDate,
+    startOfMonthYyyyMmDd,
+    todayLocalYyyyMmDd,
+} from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { accountIdMatchesLogical } from '../../services/systemEntityIds';
 
 interface CashFlowItem {
     label: string;
@@ -38,15 +45,9 @@ const ProjectCashFlowReport: React.FC = () => {
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
     
-    const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    });
-    const [endDate, setEndDate] = useState(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-    });
+    const [dateRange, setDateRange] = useState<ReportDateRange>('all');
+    const [startDate, setStartDate] = useState('2000-01-01');
+    const [endDate, setEndDate] = useState(() => todayLocalYyyyMmDd());
     
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
 
@@ -58,17 +59,14 @@ const ProjectCashFlowReport: React.FC = () => {
         
         if (type === 'all') {
             setStartDate('2000-01-01');
-            setEndDate(now.toISOString().split('T')[0]);
+            setEndDate(todayLocalYyyyMmDd());
         } else if (type === 'thisMonth') {
-            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            setStartDate(firstDay.toISOString().split('T')[0]);
-            setEndDate(lastDay.toISOString().split('T')[0]);
+            setStartDate(startOfMonthYyyyMmDd(now));
+            setEndDate(endOfMonthYyyyMmDd(now));
         } else if (type === 'lastMonth') {
-            const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-            setStartDate(firstDay.toISOString().split('T')[0]);
-            setEndDate(lastDay.toISOString().split('T')[0]);
+            const anchor = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+            setStartDate(startOfMonthYyyyMmDd(anchor));
+            setEndDate(endOfMonthYyyyMmDd(anchor));
         }
     };
 
@@ -107,19 +105,7 @@ const ProjectCashFlowReport: React.FC = () => {
             const allTransactions = state.transactions.filter(tx => {
                 const txDate = new Date(tx.date);
                 if (txDate >= start) return false; // Only transactions before period
-                
-                let projectId = tx.projectId;
-                // Resolve projectId from linked entities
-                if (!projectId && tx.invoiceId) {
-                    const inv = state.invoices.find(i => i.id === tx.invoiceId);
-                    if (inv) projectId = inv.projectId;
-                }
-                if (!projectId && tx.billId) {
-                    const bill = state.bills.find(b => b.id === tx.billId);
-                    if (bill) projectId = bill.projectId;
-                }
-                
-                return projectId === selectedProjectId;
+                return resolveProjectIdForTransaction(tx, state) === selectedProjectId;
             });
             
             bankAccounts.forEach(acc => {
@@ -191,6 +177,7 @@ const ProjectCashFlowReport: React.FC = () => {
         const assetAccountIds = new Set(
             state.accounts.filter(acc => acc.type === AccountType.ASSET).map(acc => acc.id)
         );
+        const RECEIVED_ASSETS_ACCOUNT_ID = 'sys-acc-received-assets';
 
         // OPERATING ACTIVITIES
         const operatingItems: CashFlowItem[] = [];
@@ -199,21 +186,14 @@ const ProjectCashFlowReport: React.FC = () => {
 
         // Cash Inflows from Operations (Income transactions)
         transactionsInRange.forEach(tx => {
-            let projectId = tx.projectId;
-            
-            // Resolve projectId from linked entities
-            if (!projectId && tx.invoiceId) {
-                const inv = state.invoices.find(i => i.id === tx.invoiceId);
-                if (inv) projectId = inv.projectId;
-            }
-            if (!projectId && tx.billId) {
-                const bill = state.bills.find(b => b.id === tx.billId);
-                if (bill) projectId = bill.projectId;
-            }
+            const projectId = resolveProjectIdForTransaction(tx, state);
 
             // Filter by selected project
             if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return;
             if (!projectId && selectedProjectId !== 'all') return;
+
+            // Exclude operating flows tied to voided or cancelled-agreement invoices
+            if (isTransactionFromVoidedOrCancelledInvoice(tx, state)) return;
 
             // Skip equity and loan transactions (handled in financing)
             if (tx.type === TransactionType.TRANSFER) {
@@ -228,6 +208,9 @@ const ProjectCashFlowReport: React.FC = () => {
             
             // Only count transactions affecting bank/cash accounts
             if (account.type !== AccountType.BANK && account.type !== AccountType.CASH) return;
+
+            // Exclude asset sale proceeds (cash from sale of received assets) — they belong in Investing, not Operating
+            if (tx.type === TransactionType.INCOME && tx.projectAssetId) return;
 
             if (tx.type === TransactionType.INCOME) {
                 operatingInflows += tx.amount;
@@ -250,18 +233,10 @@ const ProjectCashFlowReport: React.FC = () => {
         let investingOutflows = 0;
         let equityContributed = 0;
         let equityWithdrawn = 0;
+        let salesOfFixedAssetInflow = 0;
 
         transactionsInRange.forEach(tx => {
-            let projectId = tx.projectId;
-            
-            if (!projectId && tx.invoiceId) {
-                const inv = state.invoices.find(i => i.id === tx.invoiceId);
-                if (inv) projectId = inv.projectId;
-            }
-            if (!projectId && tx.billId) {
-                const bill = state.bills.find(b => b.id === tx.billId);
-                if (bill) projectId = bill.projectId;
-            }
+            const projectId = resolveProjectIdForTransaction(tx, state);
 
             // Filter by selected project
             if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return;
@@ -271,12 +246,20 @@ const ProjectCashFlowReport: React.FC = () => {
             const fromAccount = tx.fromAccountId ? state.accounts.find(a => a.id === tx.fromAccountId) : null;
             const toAccount = tx.toAccountId ? state.accounts.find(a => a.id === tx.toAccountId) : null;
             const account = tx.accountId ? state.accounts.find(a => a.id === tx.accountId) : null;
+            const projectAssetId = tx.projectAssetId;
 
             if (tx.type === TransactionType.INCOME && account && assetAccountIds.has(account.id)) {
-                // Income from asset sale
+                // Income to received-assets account = receipt of asset in kind (non-cash); do not add to investing
+                if (accountIdMatchesLogical(account.id, 'sys-acc-received-assets')) return;
                 investingInflows += tx.amount;
+            } else if (tx.type === TransactionType.INCOME && projectAssetId && account && (account.type === AccountType.BANK || account.type === AccountType.CASH)) {
+                // Proceeds from sale of received asset (cash to bank) — Investing: "Sales of fixed asset"
+                investingInflows += tx.amount;
+                salesOfFixedAssetInflow += tx.amount;
             } else if (tx.type === TransactionType.EXPENSE && account && assetAccountIds.has(account.id)) {
-                // Expense on assets (purchase)
+                // Cost of asset sold is non-cash (reduces asset on balance sheet); do not count as investing outflow
+                if (projectAssetId) return;
+                // Other expense to asset account (e.g. purchase of fixed assets)
                 investingOutflows += tx.amount;
             } else if (tx.type === TransactionType.TRANSFER) {
                 // Transfers involving asset accounts
@@ -320,8 +303,12 @@ const ProjectCashFlowReport: React.FC = () => {
         if (equityWithdrawn > 0) {
             investingItems.push({ label: 'Owner/Investor Withdrawals', amount: -equityWithdrawn, level: 1 });
         }
-        if (investingInflows - equityContributed > 0) {
-            investingItems.push({ label: 'Proceeds from Sale of Assets', amount: investingInflows - equityContributed, level: 1 });
+        if (salesOfFixedAssetInflow > 0) {
+            investingItems.push({ label: 'Sales of fixed asset', amount: salesOfFixedAssetInflow, level: 1 });
+        }
+        const otherInvestingInflows = investingInflows - equityContributed - salesOfFixedAssetInflow;
+        if (otherInvestingInflows > 0) {
+            investingItems.push({ label: 'Proceeds from Sale of Other Assets', amount: otherInvestingInflows, level: 1 });
         }
         if (investingOutflows - equityWithdrawn > 0) {
             investingItems.push({ label: 'Purchase of Fixed Assets', amount: -(investingOutflows - equityWithdrawn), level: 1 });
@@ -338,16 +325,7 @@ const ProjectCashFlowReport: React.FC = () => {
         let loanPaid = 0;
 
         transactionsInRange.forEach(tx => {
-            let projectId = tx.projectId;
-            
-            if (!projectId && tx.invoiceId) {
-                const inv = state.invoices.find(i => i.id === tx.invoiceId);
-                if (inv) projectId = inv.projectId;
-            }
-            if (!projectId && tx.billId) {
-                const bill = state.bills.find(b => b.id === tx.billId);
-                if (bill) projectId = bill.projectId;
-            }
+            const projectId = resolveProjectIdForTransaction(tx, state);
 
             // Filter by selected project
             if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return;
@@ -394,19 +372,7 @@ const ProjectCashFlowReport: React.FC = () => {
             const allTransactionsUpToEnd = state.transactions.filter(tx => {
                 const txDate = new Date(tx.date);
                 if (txDate > end) return false; // Only transactions up to period end
-                
-                let projectId = tx.projectId;
-                // Resolve projectId from linked entities
-                if (!projectId && tx.invoiceId) {
-                    const inv = state.invoices.find(i => i.id === tx.invoiceId);
-                    if (inv) projectId = inv.projectId;
-                }
-                if (!projectId && tx.billId) {
-                    const bill = state.bills.find(b => b.id === tx.billId);
-                    if (bill) projectId = bill.projectId;
-                }
-                
-                return projectId === selectedProjectId;
+                return resolveProjectIdForTransaction(tx, state) === selectedProjectId;
             });
             
             bankAccounts.forEach(acc => {
@@ -472,7 +438,7 @@ const ProjectCashFlowReport: React.FC = () => {
             openingBalance,
             closingBalance
         };
-    }, [state.transactions, state.accounts, state.invoices, state.bills, startDate, endDate, selectedProjectId]);
+    }, [state.transactions, state.accounts, state.invoices, state.bills, state.projectAgreements, startDate, endDate, selectedProjectId]);
 
     const handleExport = () => {
         const exportData: any[] = [];

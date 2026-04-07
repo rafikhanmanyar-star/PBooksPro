@@ -21,6 +21,8 @@ interface TreeViewProps {
     selectedId?: string | null; // Currently selected node ID
     selectedParentId?: string | null; // Parent of the selected node (for scoped selection)
     onSelect?: (id: string, type?: string, parentId?: string | null) => void; // Selection callback
+    /** When nodes show `value`, label for the right column (e.g. provisional PM fee). */
+    valueColumnHeader?: string;
 }
 
 const TreeNodeItem: React.FC<{
@@ -44,22 +46,23 @@ const TreeNodeItem: React.FC<{
     };
 
     return (
-        <div className={`${level > 0 ? (showLines ? 'ml-4 border-l border-slate-200 pl-4' : 'ml-6') : ''}`}>
+        <div className={`${level > 0 ? (showLines ? 'ml-4 border-l border-app-border pl-4' : 'ml-6') : ''}`}>
             <div 
-                className={`flex items-center py-1.5 rounded px-1 -mx-1 transition-colors cursor-pointer ${
+                className={`flex items-center py-1.5 rounded px-1 -mx-1 transition-colors duration-ds cursor-pointer ${
                     isSelected 
-                        ? 'bg-indigo-100 text-indigo-900' 
-                        : 'hover:bg-slate-50'
+                        ? 'bg-nav-active text-app-text' 
+                        : 'hover:bg-app-toolbar/60'
                 }`}
                 onClick={handleClick}
             >
                 {hasChildren ? (
                     <button
+                        type="button"
                         onClick={(e) => {
                             e.stopPropagation();
                             setIsExpanded(!isExpanded);
                         }}
-                        className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 mr-1"
+                        className="w-5 h-5 flex items-center justify-center text-app-muted hover:text-app-text mr-1"
                     >
                         {isExpanded ? ICONS.chevronDown : ICONS.chevronRight}
                     </button>
@@ -67,17 +70,19 @@ const TreeNodeItem: React.FC<{
                     <span className="w-5 h-5 mr-1" />
                 )}
                 
-                {node.icon && <span className="mr-2 text-slate-500">{node.icon}</span>}
+                {node.icon && <span className="mr-2 text-app-muted">{node.icon}</span>}
                 
-                <span className={`flex-1 text-sm font-medium ${isSelected ? 'text-indigo-900' : 'text-slate-700'}`}>
+                <span className={`flex-1 text-sm font-medium ${isSelected ? 'text-primary' : 'text-app-text'}`}>
                     {node.label}
                 </span>
                 
                 {node.value !== undefined && (
                     <span
-                        className={`text-sm font-semibold tabular-nums ${node.valueColor || (isSelected ? 'text-indigo-900' : 'text-slate-900')}`}
+                        className={`text-sm font-semibold tabular-nums ${node.valueColor || (isSelected ? 'text-primary' : 'text-app-text')}`}
                     >
-                        {typeof node.value === 'number' ? node.value.toLocaleString() : node.value}
+                        {typeof node.value === 'number'
+                            ? (node.value === 0 || Object.is(node.value, -0) ? '0' : node.value.toLocaleString())
+                            : node.value}
                     </span>
                 )}
             </div>
@@ -86,7 +91,7 @@ const TreeNodeItem: React.FC<{
                 <div className="mt-0.5">
                     {node.children!.map(child => (
                         <TreeNodeItem
-                            key={child.id}
+                            key={`${parentId ?? 'root'}::${child.id}`}
                             node={child}
                             level={level + 1}
                             showLines={showLines}
@@ -111,6 +116,7 @@ const TreeView: React.FC<TreeViewProps> = ({
     selectedId,
     selectedParentId,
     onSelect,
+    valueColumnHeader,
 }) => {
     // Support both 'nodes' and 'treeData' props for backward compatibility
     const data = nodes || treeData || [];
@@ -118,7 +124,7 @@ const TreeView: React.FC<TreeViewProps> = ({
     // Defensive check: if no data, render nothing
     if (!data || data.length === 0) {
         return (
-            <div className={`${className} text-sm text-slate-400 italic p-2`}>
+            <div className={`${className} text-sm text-app-muted italic p-2`}>
                 No items to display
             </div>
         );
@@ -126,6 +132,12 @@ const TreeView: React.FC<TreeViewProps> = ({
     
     return (
         <div className={`${className}`}>
+            {valueColumnHeader ? (
+                <div className="flex items-center gap-1 px-1 pb-2 mb-1 border-b border-app-border text-[10px] font-bold text-app-muted uppercase tracking-wider">
+                    <span className="flex-1 pl-6">Project</span>
+                    <span className="shrink-0 tabular-nums max-w-[9rem] text-right">{valueColumnHeader}</span>
+                </div>
+            ) : null}
             {data.map(node => (
                 <TreeNodeItem
                     key={node.id}

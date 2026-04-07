@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src http: https:;" />
+  <title>PBooks Pro API Server</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, Segoe UI, Roboto, sans-serif;
+      margin: 0;
+      padding: 16px 20px;
+      background: #0f1419;
+      color: #e7e9ea;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+    .sub { color: #8b98a5; font-size: 12px; margin-bottom: 16px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge-ok { background: #1d3b2d; color: #7ee787; }
+    .badge-warn { background: #3d2f1d; color: #f0b429; }
+    .badge-err { background: #3d1d1d; color: #f85149; }
+    button {
+      background: #1d9bf0;
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.secondary { background: #38444d; color: #e7e9ea; }
+    button.danger { background: #421; color: #f85149; border: 1px solid #622; }
+    .logs {
+      background: #080c10;
+      border: 1px solid #38444d;
+      border-radius: 8px;
+      padding: 10px;
+      height: 220px;
+      overflow: auto;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #a8b5c4;
+    }
+    .hint { font-size: 12px; color: #8b98a5; margin-top: 12px; }
+    a { color: #1d9bf0; }
+    .addresses-block { margin-top: 4px; margin-bottom: 12px; }
+    .addresses-title { font-size: 12px; color: #8b98a5; margin-bottom: 8px; font-weight: 600; }
+    .addr-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .addr-line code {
+      background: #080c10;
+      border: 1px solid #38444d;
+      border-radius: 4px;
+      padding: 4px 8px;
+      color: #7dd3fc;
+      word-break: break-all;
+    }
+    .addr-tag {
+      font-size: 11px;
+      color: #8b98a5;
+      flex-shrink: 0;
+    }
+    .addr-tag::before { content: '— '; }
+    .update-box { background: #16202a; border: 1px solid #38444d; border-radius: 8px; padding: 12px; margin-top: 12px; }
+    .download-progress { margin-top: 12px; }
+    .download-progress-label { font-size: 12px; color: #8b98a5; margin-bottom: 6px; }
+    .download-progress-track {
+      height: 8px;
+      background: #38444d;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .download-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #1d9bf0, #1a8cd8);
+      border-radius: 4px;
+      transition: width 0.15s ease-out;
+    }
+    .download-progress-track.indeterminate .download-progress-fill {
+      width: 36%;
+      transition: none;
+      animation: dl-slide 1.15s ease-in-out infinite alternate;
+    }
+    .download-progress-bytes { font-size: 11px; color: #8b98a5; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    @keyframes dl-slide {
+      0% { margin-left: 0; }
+      100% { margin-left: 64%; }
+    }
+    .clients-panel {
+      background: #16202a;
+      border: 1px solid #38444d;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .clients-title { font-size: 12px; color: #8b98a5; margin-bottom: 6px; font-weight: 600; }
+    .clients-summary { font-size: 13px; color: #e7e9ea; margin-bottom: 8px; }
+    .clients-list { font-size: 12px; color: #c9d1d9; max-height: 140px; overflow-y: auto; }
+    .clients-row {
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      background: #080c10;
+      border-radius: 4px;
+      border: 1px solid #2f3b47;
+    }
+    .clients-row .name { font-weight: 600; color: #7dd3fc; }
+    .clients-row .meta { font-size: 11px; color: #8b98a5; margin-top: 2px; }
+    .clients-empty, .clients-err { font-size: 12px; color: #8b98a5; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>PBooks Pro API Server</h1>
+  <div class="sub">Runs the PostgreSQL API in the background. Minimize this window; the app stays in the system tray.</div>
+
+  <div class="row">
+    <span>App version:</span>
+    <strong id="appVer">—</strong>
+    <span id="statusBadge" class="badge badge-warn">Stopped</span>
+  </div>
+  <div class="row">
+    <span>Listen URL:</span>
+    <code id="listenUrl">—</code>
+  </div>
+  <div class="addresses-block">
+    <div class="addresses-title">API base URLs (localhost + this machine’s IP addresses)</div>
+    <div id="addressList"></div>
+  </div>
+
+  <div id="clientsPanel" class="clients-panel" style="display: none;">
+    <div class="clients-title">Connected clients (Socket.IO / real-time)</div>
+    <div id="clientsSummary" class="clients-summary">—</div>
+    <div id="clientsList" class="clients-list"></div>
+  </div>
+
+  <div class="row">
+    <button id="btnStart" type="button">Start API</button>
+    <button id="btnStop" type="button" class="secondary">Stop API</button>
+    <button id="btnEnv" type="button" class="secondary">Open config folder (.env)</button>
+    <button id="btnCheckUp" type="button" class="secondary">Check for updates</button>
+  </div>
+
+  <div id="updatePanel" class="update-box" style="display: none;">
+    <div id="updateMsg"></div>
+    <div id="downloadProgressWrap" class="download-progress" style="display: none;" aria-live="polite">
+      <div class="download-progress-label" id="downloadProgressLabel">Downloading installer…</div>
+      <div class="download-progress-track" id="downloadProgressTrack">
+        <div class="download-progress-fill" id="downloadProgressFill"></div>
+      </div>
+      <div class="download-progress-bytes" id="downloadProgressBytes"></div>
+    </div>
+    <div class="row" style="margin-top: 8px; margin-bottom: 0;">
+      <button id="btnDl" type="button" style="display: none;">Download installer</button>
+    </div>
+  </div>
+
+  <div class="hint">Health: <a id="healthLink" href="#" target="_blank">/health</a></div>
+  <div class="logs" id="logs"></div>
+  <p class="hint" id="envPathHint"></p>
+  <p class="hint">Requires Node.js on PATH. Put <code>DATABASE_URL</code> and <code>JWT_SECRET</code> in <code>.env</code> in the folder above (copy from your dev project <code>backend/.env</code>).</p>
+
+  <script src="server-ui.js"></script>
+</body>
+</html>

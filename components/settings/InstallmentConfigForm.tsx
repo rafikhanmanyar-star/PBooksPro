@@ -4,20 +4,32 @@ import { InstallmentFrequency } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 
+export type InstallmentConfig = {
+    durationYears: number;
+    downPaymentPercentage: number;
+    frequency: InstallmentFrequency;
+    optionalInstallment?: boolean;
+    optionalInstallmentName?: string;
+};
+
 interface InstallmentConfigFormProps {
-    config?: {
-        durationYears: number;
-        downPaymentPercentage: number;
-        frequency: InstallmentFrequency;
-    };
-    onSave: (config: { durationYears: number; downPaymentPercentage: number; frequency: InstallmentFrequency }) => void;
+    config?: InstallmentConfig;
+    onSave: (config: InstallmentConfig) => void;
     onCancel: () => void;
 }
 
+const DEFAULT_DURATION = '2';
+const DEFAULT_DOWN_PAYMENT = '25';
+const DEFAULT_FREQUENCY: InstallmentFrequency = 'Quarterly';
+const DEFAULT_OPTIONAL_INSTALLMENT = true;
+const DEFAULT_OPTIONAL_NAME = 'On Possession';
+
 const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ config, onSave, onCancel }) => {
-    const [durationYears, setDurationYears] = useState(config?.durationYears?.toString() || '1');
-    const [downPaymentPercentage, setDownPaymentPercentage] = useState(config?.downPaymentPercentage?.toString() || '20');
-    const [frequency, setFrequency] = useState<InstallmentFrequency>(config?.frequency || 'Monthly');
+    const [durationYears, setDurationYears] = useState(config?.durationYears?.toString() ?? DEFAULT_DURATION);
+    const [downPaymentPercentage, setDownPaymentPercentage] = useState(config?.downPaymentPercentage?.toString() ?? DEFAULT_DOWN_PAYMENT);
+    const [frequency, setFrequency] = useState<InstallmentFrequency>(config?.frequency ?? DEFAULT_FREQUENCY);
+    const [optionalInstallment, setOptionalInstallment] = useState(config !== undefined && config.optionalInstallment !== undefined ? !!config.optionalInstallment : DEFAULT_OPTIONAL_INSTALLMENT);
+    const [optionalInstallmentName, setOptionalInstallmentName] = useState(config?.optionalInstallmentName ?? DEFAULT_OPTIONAL_NAME);
 
     const handleSave = (e?: React.MouseEvent) => {
         if (e) {
@@ -25,22 +37,18 @@ const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ config, o
             e.stopPropagation();
         }
         
-        // Validate inputs
         const duration = parseFloat(durationYears);
         const downPayment = parseFloat(downPaymentPercentage);
         
-        if (isNaN(duration) || duration <= 0) {
-            return; // Input component should handle this, but add safety check
-        }
-        
-        if (isNaN(downPayment) || downPayment < 0 || downPayment > 100) {
-            return; // Input component should handle this, but add safety check
-        }
+        if (isNaN(duration) || duration <= 0) return;
+        if (isNaN(downPayment) || downPayment < 0 || downPayment > 100) return;
         
         onSave({
             durationYears: duration,
             downPaymentPercentage: downPayment,
-            frequency
+            frequency,
+            optionalInstallment: optionalInstallment || undefined,
+            optionalInstallmentName: optionalInstallment ? (optionalInstallmentName.trim() || DEFAULT_OPTIONAL_NAME) : undefined
         });
     };
 
@@ -107,6 +115,29 @@ const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ config, o
                             </label>
                         ))}
                     </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-4 mt-4">
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                        <input
+                            type="checkbox"
+                            checked={optionalInstallment}
+                            onChange={(e) => setOptionalInstallment(e.target.checked)}
+                            className="w-4 h-4 text-accent border-gray-300 rounded focus:ring-accent"
+                        />
+                        <span className="text-sm font-medium text-slate-700">Include optional installment</span>
+                    </label>
+                    <p className="text-xs text-slate-500 mb-2">Add one extra installment at the end (e.g. On Possession). It will receive the remainder so total installments equal the agreement value.</p>
+                    {optionalInstallment && (
+                        <Input
+                            label="Optional installment name"
+                            type="text"
+                            value={optionalInstallmentName}
+                            onChange={(e) => setOptionalInstallmentName(e.target.value)}
+                            placeholder="e.g. On Possession"
+                            className="max-w-xs"
+                        />
+                    )}
                 </div>
             </div>
 

@@ -22,6 +22,7 @@ export type Page =
   | 'import'
   | 'marketing'
   | 'payroll'
+  | 'personalTransactions'
 ;
 
 export enum TransactionType {
@@ -37,6 +38,20 @@ export enum LoanSubtype {
   REPAY = 'Repay Loan',
   COLLECT = 'Collect Loan',
 }
+
+/** Stored in transactions.subtype for Investment / equity flows (API + local). */
+export const EquityLedgerSubtype = {
+  PROFIT_SHARE: 'equity_profit_share',
+  INVESTMENT: 'equity_investment',
+  WITHDRAWAL: 'equity_withdrawal',
+  MOVE_OUT: 'equity_move_out',
+  MOVE_IN: 'equity_move_in',
+  CAPITAL_PAYOUT: 'equity_capital_payout',
+  PM_FEE_EQUITY: 'equity_pm_fee',
+  EQUITY_TRANSFER_BETWEEN: 'equity_transfer_between',
+} as const;
+
+export type EquityLedgerSubtype = (typeof EquityLedgerSubtype)[keyof typeof EquityLedgerSubtype];
 
 export enum AccountType {
   BANK = 'Bank',
@@ -84,6 +99,18 @@ export enum ProjectAgreementStatus {
   ACTIVE = 'Active',
   CANCELLED = 'Cancelled',
   COMPLETED = 'Completed',
+}
+
+/** DB/API may store mixed casing (e.g. ACTIVE); UI filters expect Title Case (Sales Returns agreement picker). */
+export function normalizeProjectAgreementStatus(
+  raw: string | undefined | null
+): ProjectAgreementStatus {
+  if (raw == null || String(raw).trim() === '') return ProjectAgreementStatus.ACTIVE;
+  const lower = String(raw).trim().toLowerCase();
+  if (lower === 'active') return ProjectAgreementStatus.ACTIVE;
+  if (lower === 'cancelled' || lower === 'canceled') return ProjectAgreementStatus.CANCELLED;
+  if (lower === 'completed' || lower === 'complete') return ProjectAgreementStatus.COMPLETED;
+  return ProjectAgreementStatus.ACTIVE;
 }
 
 export enum SalesReturnStatus {
@@ -140,6 +167,7 @@ export enum ImportType {
   PROJECT_AGREEMENTS = 'project_agreements',
   CONTRACTS = 'contracts',
   INVOICES = 'invoices',
+  RENTAL_INVOICES = 'rental_invoices',
   BILLS = 'bills',
   PROJECT_BILLS = 'project_bills',
   RENTAL_BILLS = 'rental_bills',
@@ -161,6 +189,7 @@ export enum ImportType {
 
 export type UserRole =
   // Administrative Roles
+  | 'SUPER_ADMIN'
   | 'Admin'
   | 'Manager'
   | 'Accounts'
@@ -202,6 +231,8 @@ export interface Contact {
   companyName?: string;
   address?: string;
   userId?: string;
+  /** Optimistic locking (API / PostgreSQL). */
+  version?: number;
   createdAt?: string;
   updatedAt?: string;
   isActive?: boolean;
@@ -218,6 +249,8 @@ export interface Vendor {
   createdAt?: string;
   updatedAt?: string;
   isActive?: boolean;
+  /** Optimistic locking (API / PostgreSQL). */
+  version?: number;
 }
 
 export interface Category {
@@ -228,6 +261,7 @@ export interface Category {
   isPermanent?: boolean;
   isRental?: boolean;
   parentCategoryId?: string;
+  isHidden?: boolean;
 }
 
 export interface Building {
@@ -297,6 +331,8 @@ export interface PlanAmenity {
   description?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Optimistic concurrency when syncing with PostgreSQL API */
+  version?: number;
 }
 
 export interface InstallmentPlanAmenity {
@@ -331,11 +367,17 @@ export interface PMCycleAllocation {
   expenseTotal: number;
   feeRate: number;
   excludedCategoryIds?: string[];
+  /** Optimistic concurrency when syncing with PostgreSQL API */
+  version?: number;
 }
 
 export interface Project {
   id: string;
   name: string;
+  /** Site / address (API: location) */
+  location?: string;
+  /** e.g. building, society, commercial — API: projectType */
+  projectType?: string;
   description?: string;
   color?: string;
   status?: ProjectStatus;
@@ -345,24 +387,37 @@ export interface Project {
     frequency: InstallmentFrequency;
   };
   pmConfig?: PMConfig;
+  /** Optimistic concurrency when syncing with PostgreSQL API */
+  version?: number;
 }
+
+/** Unit occupancy / sales pipeline status (PostgreSQL API) */
+export type UnitOccupancyStatus = 'available' | 'sold' | 'rented' | 'blocked';
 
 export interface Unit {
   id: string;
+  /** Display label; mirrors unit number from API */
   name: string;
+  /** Same as name when loaded from API (unit_number) */
+  unitNumber?: string;
   projectId: string;
   contactId?: string;
+  ownerContactId?: string;
   salePrice?: number;
   description?: string;
-  type?: string; // e.g., 2BHK, shop, Office
+  type?: string; // e.g., 2BHK, shop, apartment (API: unit_type)
+  /** API size field (text or numeric as string) */
+  size?: string;
   area?: number; // Area in square feet
   floor?: string; // e.g., Ground floor, 1st floor
+  status?: UnitOccupancyStatus;
+  version?: number;
 }
 
 export interface Transaction {
   id: string;
   type: TransactionType;
-  subtype?: LoanSubtype;
+  subtype?: LoanSubtype | EquityLedgerSubtype;
   amount: number;
   date: string;
   description?: string;
@@ -385,7 +440,25 @@ export interface Transaction {
   userId?: string;
   payslipId?: string;
   reference?: string;
+  projectAssetId?: string; // Link to project_received_assets when recording asset sale
+  ownerId?: string; // Owner at time of transaction (for rent attribution when property ownership changes)
   children?: Transaction[];
+  /** Server optimistic-lock / sync (PostgreSQL API); optional in local-only SQLite. */
+  version?: number;
+}
+
+/** One row per ownership period; only one per property has ownershipEndDate === null (current owner). */
+export interface PropertyOwnershipHistory {
+  id: string;
+  tenantId: string;
+  propertyId: string;
+  ownerId: string;
+  ownershipStartDate: string;
+  ownershipEndDate: string | null;
+  transferReference?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Invoice {
@@ -408,6 +481,11 @@ export interface Invoice {
   securityDepositCharge?: number;
   serviceCharges?: number;
   rentalMonth?: string;
+  userId?: string;
+  /** Optimistic concurrency / API sync (PostgreSQL). */
+  version?: number;
+  /** Soft-deleted on server; hide from lists and do not block agreement deletion. */
+  deletedAt?: string;
 }
 
 export type ExpenseBearerType = 'owner' | 'building' | 'tenant';
@@ -487,6 +565,8 @@ export interface RentalAgreement {
   brokerFee?: number;
   ownerId?: string; // Optional: stores owner at time of agreement (for historical accuracy after property transfer)
   previousAgreementId?: string; // Links to the previous agreement in a renewal chain
+  /** Set when loaded from LAN API (optimistic concurrency) */
+  version?: number;
 }
 
 export interface ProjectAgreement {
@@ -516,6 +596,9 @@ export interface ProjectAgreement {
     durationYears: number;
     downPaymentPercentage: number;
     frequency: InstallmentFrequency;
+    /** Include an extra installment (e.g. On Possession) at the end; gets remainder so total = agreement value */
+    optionalInstallment?: boolean;
+    optionalInstallmentName?: string;
   };
   listPriceCategoryId?: string;
   customerDiscountCategoryId?: string;
@@ -527,6 +610,8 @@ export interface ProjectAgreement {
   userId?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Optimistic concurrency / API sync (PostgreSQL). */
+  version?: number;
 }
 
 export interface SalesReturn {
@@ -545,6 +630,28 @@ export interface SalesReturn {
   refundBillId?: string; // Link to Accounts Payable bill
   createdBy?: string;
   notes?: string;
+  /** API / PostgreSQL optimistic concurrency */
+  version?: number;
+}
+
+/** Asset type when client pays with non-cash asset (plot, car, etc.) */
+export type ProjectReceivedAssetType = 'Plot' | 'Car' | 'Other';
+
+export interface ProjectReceivedAsset {
+  id: string;
+  projectId: string;
+  contactId: string;
+  invoiceId?: string | null;
+  description: string;
+  assetType: ProjectReceivedAssetType;
+  recordedValue: number;
+  receivedDate: string;
+  soldDate?: string | null;
+  saleAmount?: number | null;
+  saleAccountId?: string | null;
+  notes?: string | null;
+  /** API / PostgreSQL optimistic concurrency */
+  version?: number;
 }
 
 export interface ContractExpenseCategoryItem {
@@ -575,6 +682,8 @@ export interface Contract {
   description?: string;
   documentPath?: string; // Path to uploaded document file (legacy/local)
   documentId?: string; // Reference to documents table (local + cloud)
+  /** API / PostgreSQL optimistic concurrency */
+  version?: number;
 }
 
 export interface Budget {
@@ -582,6 +691,8 @@ export interface Budget {
   categoryId: string;
   amount: number;
   projectId?: string; // Optional project ID for project-specific budgets (required for project budgets)
+  /** PostgreSQL optimistic concurrency (LAN/API) */
+  version?: number;
 }
 
 export type RecurringFrequency = 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
@@ -604,6 +715,8 @@ export interface RecurringInvoiceTemplate {
   generatedCount?: number;
   lastGeneratedDate?: string;
   deletedAt?: string | null;
+  /** Server optimistic-lock / sync (PostgreSQL API). */
+  version?: number;
 }
 
 
@@ -717,6 +830,32 @@ export interface ImportLogEntry {
 }
 
 
+/** Personal finance categories (API + local SQLite); separate from main Category. */
+export interface PersonalCategoryEntry {
+  id: string;
+  name: string;
+  type: 'Income' | 'Expense';
+  sortOrder: number;
+  version?: number;
+  deletedAt?: string;
+}
+
+/** Personal finance ledger lines (links to chart accounts + personal categories). */
+export interface PersonalTransactionEntry {
+  id: string;
+  tenantId?: string;
+  accountId: string;
+  personalCategoryId: string;
+  type: 'Income' | 'Expense';
+  amount: number;
+  transactionDate: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  version?: number;
+  deletedAt?: string;
+}
+
 export interface AppState {
   version?: number;
   users: User[];
@@ -730,6 +869,7 @@ export interface AppState {
   projects: Project[];
   buildings: Building[];
   properties: Property[];
+  propertyOwnershipHistory: PropertyOwnershipHistory[];
   units: Unit[];
 
   transactions: Transaction[];
@@ -742,8 +882,13 @@ export interface AppState {
   rentalAgreements: RentalAgreement[];
   projectAgreements: ProjectAgreement[];
   salesReturns: SalesReturn[];
+  projectReceivedAssets: ProjectReceivedAsset[];
   contracts: Contract[];
 
+  /** Admin personal module: income/expense categories (PostgreSQL + incremental sync). */
+  personalCategories: PersonalCategoryEntry[];
+  /** Admin personal module: cashbook lines. */
+  personalTransactions: PersonalTransactionEntry[];
 
   recurringInvoiceTemplates: RecurringInvoiceTemplate[];
   pmCycleAllocations: PMCycleAllocation[];
@@ -767,6 +912,8 @@ export interface AppState {
   enableBeepOnSave: boolean;
   enableDatePreservation: boolean; // If enabled, save and reuse the last entered date in forms
   lastPreservedDate?: string; // Last date entered in any form (ISO date string)
+  /** 'api' = in-app WhatsApp panel; 'manual' = open wa.me so user sends manually */
+  whatsAppMode: 'api' | 'manual';
   pmCostPercentage: number;
   defaultProjectId?: string; // Default project to use in all forms and reports
 
@@ -814,6 +961,9 @@ export type AppAction =
   | { type: 'ADD_PROPERTY'; payload: Property }
   | { type: 'UPDATE_PROPERTY'; payload: Property }
   | { type: 'DELETE_PROPERTY'; payload: string }
+  | { type: 'ADD_PROPERTY_OWNERSHIP_HISTORY'; payload: PropertyOwnershipHistory }
+  | { type: 'UPDATE_PROPERTY_OWNERSHIP_HISTORY'; payload: PropertyOwnershipHistory }
+  | { type: 'TRANSFER_PROPERTY_OWNERSHIP'; payload: { propertyId: string; newOwnerId: string; transferDate: string; transferReference?: string; notes?: string } }
   | { type: 'ADD_UNIT'; payload: Unit }
   | { type: 'UPDATE_UNIT'; payload: Unit }
   | { type: 'DELETE_UNIT'; payload: string }
@@ -821,6 +971,7 @@ export type AppAction =
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
   | { type: 'DELETE_TRANSACTION'; payload: string }
   | { type: 'BATCH_ADD_TRANSACTIONS'; payload: Transaction[] }
+  | { type: 'BATCH_DELETE_TRANSACTIONS'; payload: { transactionIds: string[]; projectAssetIdToDelete?: string } }
   | { type: 'RESTORE_TRANSACTION'; payload: Transaction }
   | { type: 'ADD_INVOICE'; payload: Invoice }
   | { type: 'UPDATE_INVOICE'; payload: Invoice }
@@ -849,6 +1000,9 @@ export type AppAction =
   | { type: 'DELETE_SALES_RETURN'; payload: string }
   | { type: 'PROCESS_SALES_RETURN'; payload: { returnId: string } }
   | { type: 'MARK_RETURN_REFUNDED'; payload: { returnId: string; refundDate: string } }
+  | { type: 'ADD_PROJECT_RECEIVED_ASSET'; payload: ProjectReceivedAsset }
+  | { type: 'UPDATE_PROJECT_RECEIVED_ASSET'; payload: ProjectReceivedAsset }
+  | { type: 'DELETE_PROJECT_RECEIVED_ASSET'; payload: string }
   | { type: 'ADD_CONTRACT'; payload: Contract }
   | { type: 'UPDATE_CONTRACT'; payload: Contract }
   | { type: 'DELETE_CONTRACT'; payload: string }
@@ -877,6 +1031,7 @@ export type AppAction =
   | { type: 'TOGGLE_COLOR_CODING'; payload: boolean }
   | { type: 'TOGGLE_BEEP_ON_SAVE'; payload: boolean }
   | { type: 'TOGGLE_DATE_PRESERVATION'; payload: boolean }
+  | { type: 'SET_WHATSAPP_MODE'; payload: 'api' | 'manual' }
   | { type: 'UPDATE_PRESERVED_DATE'; payload: string }
   | { type: 'ADD_ERROR_LOG'; payload: any }
   | { type: 'CLEAR_ERROR_LOG' }

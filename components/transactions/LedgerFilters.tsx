@@ -2,10 +2,12 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType, SortDirection, LedgerSortKey as SortKey, FilterCriteria } from '../../types';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface LedgerFiltersProps {
     filters: FilterCriteria;
@@ -51,20 +53,21 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
     }, [state?.categories, tempFilters.type]);
 
     return (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-md p-5 border-t-4 border-t-indigo-500 overflow-hidden relative">
+        <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-5 border-t-4 border-t-primary overflow-hidden relative">
             <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                    <div className="w-8 h-8 rounded-lg bg-nav-active flex items-center justify-center text-primary">
                         <div className="w-4 h-4">{ICONS.filter}</div>
                     </div>
                     <div>
-                        <h3 className="text-sm font-bold text-slate-800">Advanced Filters</h3>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Refine your ledger view</p>
+                        <h3 className="text-sm font-bold text-app-text">Advanced Filters</h3>
+                        <p className="text-[10px] text-app-muted uppercase tracking-wider font-medium">Refine your ledger view</p>
                     </div>
                 </div>
                 <button
+                    type="button"
                     onClick={onClose}
-                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+                    className="p-1.5 text-app-muted hover:text-app-text hover:bg-app-toolbar rounded-lg transition-all duration-ds"
                 >
                     <div className="w-5 h-5">{ICONS.x}</div>
                 </button>
@@ -73,31 +76,32 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                 {/* Date Range */}
                 <div className="lg:col-span-1 space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Date Range</label>
+                    <label className="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-1">Date Range</label>
                     <div className="grid grid-cols-2 gap-2">
-                        <input
-                            type="date"
+                        <DatePicker
                             value={tempFilters.startDate}
-                            onChange={(e) => setTempFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                            onChange={(d) => setTempFilters((prev) => ({ ...prev, startDate: toLocalDateString(d) }))}
+                            className="!text-xs !py-1.5 !px-2"
+                            placeholder="DD/MM/YYYY"
                         />
-                        <input
-                            type="date"
+                        <DatePicker
                             value={tempFilters.endDate}
-                            onChange={(e) => setTempFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                            onChange={(d) => setTempFilters((prev) => ({ ...prev, endDate: toLocalDateString(d) }))}
+                            className="!text-xs !py-1.5 !px-2"
+                            placeholder="DD/MM/YYYY"
                         />
                     </div>
                 </div>
 
                 {/* Transaction Type */}
                 <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Type & Grouping</label>
+                    <label className="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-1">Type & Grouping</label>
                     <div className="grid grid-cols-2 gap-2">
                         <select
                             value={tempFilters.type}
                             onChange={(e) => setTempFilters(prev => ({ ...prev, type: e.target.value, categoryId: '' }))}
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                            className="ds-input-field w-full px-2 py-1.5 text-xs rounded-lg font-medium"
+                            aria-label="Transaction type"
                         >
                             <option value="">All Types</option>
                             <option value="Income">Income</option>
@@ -108,7 +112,8 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                         <select
                             value={tempFilters.groupBy}
                             onChange={(e) => setTempFilters(prev => ({ ...prev, groupBy: e.target.value as FilterCriteria['groupBy'] }))}
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                            className="ds-input-field w-full px-2 py-1.5 text-xs rounded-lg font-medium"
+                            aria-label="Group by"
                         >
                             <option value="none">No Grouping</option>
                             <option value="date">By Date</option>
@@ -145,7 +150,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
 
                 {/* Amount Range */}
                 <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Amount Range</label>
+                    <label className="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-1">Amount Range</label>
                     <div className="grid grid-cols-2 gap-2">
                         <input
                             type="number"
@@ -167,7 +172,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                 {/* Additional Scopes */}
                 <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Contact</label>
+                        <label className="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-1">Contact</label>
                         <ComboBox
                             items={state?.contacts || []}
                             selectedId={tempFilters.contactId}
@@ -189,7 +194,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                         />
                     </div>
                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Building/Unit</label>
+                        <label className="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-1">Building/Unit</label>
                         <ComboBox
                             items={state?.buildings || []}
                             selectedId={tempFilters.buildingId}
@@ -211,7 +216,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                     </button>
                     <Button
                         onClick={handleApply}
-                        className="!px-6 !py-2 !rounded-xl !text-sm !bg-indigo-600 hover:!bg-indigo-700 !text-white transition-all shadow-md shadow-indigo-500/20"
+                        className="!px-6 !py-2 !rounded-xl !text-sm !bg-primary hover:!bg-ds-primary-hover !text-ds-on-primary transition-all duration-ds shadow-ds-card"
                     >
                         Apply View
                     </Button>

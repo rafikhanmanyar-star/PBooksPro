@@ -11,7 +11,7 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ProjectTransactionModal from '../dashboard/ProjectTransactionModal';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
@@ -30,10 +30,17 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF19AF'
 const tooltipFormatter = (value: number) => `${CURRENCY} ${value.toLocaleString()}`;
 
 // Memoized Chart to prevent re-render loops
+const chartTooltipStyles = {
+    backgroundColor: 'var(--card-bg)',
+    border: '1px solid var(--border-color)',
+    borderRadius: '8px',
+    color: 'var(--text-primary)',
+};
+
 const CategoryPieChart = React.memo(({ data, title }: { data: any[], title: string }) => {
     return (
-        <div className="flex flex-col w-full bg-white p-4 rounded-lg border border-slate-200 shadow-sm h-full">
-            <h4 className="text-lg font-semibold text-center mb-4 text-slate-700">{title}</h4>
+        <div className="flex flex-col w-full bg-app-card p-4 rounded-lg border border-app-border shadow-ds-card h-full">
+            <h4 className="text-lg font-semibold text-center mb-4 text-app-text">{title}</h4>
             <div className="w-full h-[300px] relative">
                 {data.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -53,13 +60,13 @@ const CategoryPieChart = React.memo(({ data, title }: { data: any[], title: stri
                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 ))}
                             </Pie>
-                            <Tooltip formatter={tooltipFormatter} />
-                            <Legend />
+                            <Tooltip formatter={tooltipFormatter} contentStyle={chartTooltipStyles} />
+                            <Legend wrapperStyle={{ fontSize: '12px', color: 'var(--text-muted)' }} />
                         </PieChart>
                     </ResponsiveContainer>
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
-                        <p className="text-slate-500">No data available.</p>
+                        <p className="text-app-muted">No data available.</p>
                     </div>
                 )}
             </div>
@@ -77,8 +84,8 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+    const [endDate, setEndDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)));
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     
     const [drilldownData, setDrilldownData] = useState<{
@@ -99,11 +106,11 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (option === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (option === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -312,7 +319,7 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
     const projectLabel = selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p => p.id === selectedProjectId)?.name;
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -344,13 +351,13 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                     </ReportToolbar>
                 </div>
                 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                    <Card className="min-h-full flex flex-col">
+                <div className="flex-grow overflow-y-auto printable-area min-h-0 bg-background" id="printable-area">
+                    <Card className="min-h-full flex flex-col p-4 md:p-6">
                          <ReportHeader />
                          <div className="text-center mb-6">
-                            <h3 className="text-2xl font-bold">Project {type} Report</h3>
-                            <p className="text-sm text-slate-500 font-semibold">{projectLabel}</p>
-                            <p className="text-sm text-slate-500">
+                            <h3 className="text-2xl font-bold text-app-text">Project {type} Report</h3>
+                            <p className="text-sm text-app-muted font-semibold">{projectLabel}</p>
+                            <p className="text-sm text-app-muted">
                                 From {formatDate(startDate)} to {formatDate(endDate)}
                             </p>
                         </div>
@@ -358,38 +365,38 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                         {reportData.rows.length > 0 ? (
                             <div className="space-y-8">
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                    <div className="lg:col-span-2 overflow-x-auto">
-                                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                                    <div className="lg:col-span-2 overflow-x-auto border border-app-border rounded-lg shadow-ds-card">
+                                        <table className="min-w-full divide-y divide-app-border text-sm">
+                                            <thead className="bg-app-table-header border-b border-app-border sticky top-0 z-10">
                                                 <tr>
-                                                    <th onClick={() => handleSort('categoryName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Category <SortIcon column="categoryName"/></th>
-                                                    <th onClick={() => handleSort('count')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Count <SortIcon column="count"/></th>
-                                                    <th onClick={() => handleSort('amount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Amount <SortIcon column="amount"/></th>
-                                                    <th onClick={() => handleSort('percentage')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">% <SortIcon column="percentage"/></th>
+                                                    <th onClick={() => handleSort('categoryName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Category <SortIcon column="categoryName"/></th>
+                                                    <th onClick={() => handleSort('count')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Count <SortIcon column="count"/></th>
+                                                    <th onClick={() => handleSort('amount')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Amount <SortIcon column="amount"/></th>
+                                                    <th onClick={() => handleSort('percentage')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">% <SortIcon column="percentage"/></th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="bg-white divide-y divide-slate-200">
-                                                {reportData.rows.map((item, index) => (
-                                                    <tr key={item.categoryId} onClick={() => handleRowClick(item)} className="cursor-pointer hover:bg-slate-50 transition-colors">
-                                                        <td className="px-3 py-2 text-slate-800">
+                                            <tbody className="divide-y divide-app-border">
+                                                {reportData.rows.map((item) => (
+                                                    <tr key={item.categoryId} onClick={() => handleRowClick(item)} className="cursor-pointer hover:bg-app-toolbar/60 transition-colors">
+                                                        <td className="px-3 py-2 text-app-text">
                                                             {/* Show hierarchy indent only if sorting is default/by name, otherwise flat list is expected visually */}
                                                             <div style={{ paddingLeft: sortConfig.key === 'categoryName' ? `${item.level * 1.5}rem` : '0' }} className="flex items-center gap-2">
-                                                                {item.level > 0 && sortConfig.key === 'categoryName' && <span className="text-slate-300">└</span>}
+                                                                {item.level > 0 && sortConfig.key === 'categoryName' && <span className="text-app-muted/60">└</span>}
                                                                 <span className={item.hasChildren ? 'font-semibold' : ''}>{item.categoryName}</span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-3 py-2 text-right text-slate-600">{item.count}</td>
-                                                        <td className="px-3 py-2 text-right font-semibold text-slate-800">{CURRENCY} {item.amount.toLocaleString()}</td>
-                                                        <td className="px-3 py-2 text-right text-slate-500">{item.percentage.toFixed(1)}%</td>
+                                                        <td className="px-3 py-2 text-right text-app-muted tabular-nums">{item.count}</td>
+                                                        <td className="px-3 py-2 text-right font-semibold text-app-text tabular-nums">{CURRENCY} {item.amount.toLocaleString()}</td>
+                                                        <td className="px-3 py-2 text-right text-app-muted tabular-nums">{item.percentage.toFixed(1)}%</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
-                                            <tfoot className="bg-slate-50 font-bold sticky bottom-0 z-10 shadow-md">
+                                            <tfoot className="bg-app-toolbar border-t border-app-border font-bold sticky bottom-0 z-10 shadow-ds-card">
                                                 <tr>
-                                                    <td className="px-3 py-2 text-left">Total</td>
-                                                    <td className="px-3 py-2 text-right">{reportData.rows.reduce((acc, i) => i.level === 0 ? acc + i.count : acc, 0)}</td>
-                                                    <td className="px-3 py-2 text-right">{CURRENCY} {reportData.totalAmount.toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-right">100.0%</td>
+                                                    <td className="px-3 py-2 text-left text-app-text">Total</td>
+                                                    <td className="px-3 py-2 text-right text-app-text tabular-nums">{reportData.rows.reduce((acc, i) => i.level === 0 ? acc + i.count : acc, 0)}</td>
+                                                    <td className="px-3 py-2 text-right text-app-text tabular-nums">{CURRENCY} {reportData.totalAmount.toLocaleString()}</td>
+                                                    <td className="px-3 py-2 text-right text-app-text tabular-nums">100.0%</td>
                                                 </tr>
                                             </tfoot>
                                         </table>
@@ -401,12 +408,12 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                             </div>
                         ) : (
                             <div className="text-center py-16">
-                                <div className="mx-auto h-16 w-16 text-slate-400">{ICONS.barChart}</div>
-                                <h3 className="mt-2 text-lg font-semibold text-slate-800">No Data Found</h3>
-                                <p className="mt-1 text-sm text-slate-500">No transactions found for the selected criteria.</p>
+                                <div className="mx-auto h-16 w-16 text-app-muted">{ICONS.barChart}</div>
+                                <h3 className="mt-2 text-lg font-semibold text-app-text">No Data Found</h3>
+                                <p className="mt-1 text-sm text-app-muted">No transactions found for the selected criteria.</p>
                             </div>
                         )}
-                        <div className="mt-auto">
+                        <div className="mt-auto pt-4">
                             <ReportFooter />
                         </div>
                     </Card>

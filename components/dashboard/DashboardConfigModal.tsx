@@ -23,13 +23,13 @@ const DraggableKpiItem: React.FC<{
 }> = ({ kpi, onRemove, ...dragProps }) => {
     return (
         <li 
-            className="flex items-center justify-between p-2 bg-white rounded-lg border shadow-sm cursor-grab active:cursor-grabbing"
+            className="flex items-center justify-between p-2 bg-app-card rounded-lg border border-app-border shadow-ds-card cursor-grab active:cursor-grabbing"
             draggable="true"
             {...dragProps}
         >
             <div className="flex items-center gap-2">
-                <span className="text-slate-400">{ICONS.barChart}</span>
-                <span className="font-medium">{kpi.title}</span>
+                <span className="text-app-muted">{ICONS.barChart}</span>
+                <span className="font-medium text-app-text">{kpi.title}</span>
             </div>
             <Button variant="ghost" size="icon" onClick={onRemove} className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
                 <div className="w-4 h-4">{ICONS.x}</div>
@@ -113,24 +113,24 @@ const DashboardConfigModal: React.FC<DashboardConfigModalProps> = ({ isOpen, onC
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Left Side: Available KPIs */}
                 <div>
-                    <h3 className="font-semibold text-slate-800 mb-2">Available KPIs</h3>
+                    <h3 className="font-semibold text-app-text mb-2">Available KPIs</h3>
                     <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
                         {groupOrder.map((groupName) => {
                             const kpis = kpiGroups[groupName];
                             if (!kpis || kpis.length === 0) return null;
                             return (
                             <div key={groupName}>
-                                <h4 className="font-semibold text-sm text-slate-500 mb-2 sticky top-0 bg-slate-50 py-1">{groupName}</h4>
+                                <h4 className="font-semibold text-sm text-app-muted mb-2 sticky top-0 bg-app-card py-1">{groupName}</h4>
                                 <div className="space-y-2">
                                     {kpis.map(kpi => (
-                                        <label key={kpi.id} className="flex items-center p-2 rounded-md hover:bg-slate-100 cursor-pointer">
+                                        <label key={kpi.id} className="flex items-center p-2 rounded-md hover:bg-app-toolbar cursor-pointer transition-colors duration-ds">
                                             <input
                                                 type="checkbox"
                                                 checked={visibleKpis.includes(kpi.id)}
                                                 onChange={() => handleToggleKpi(kpi.id)}
-                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                className="h-4 w-4 rounded border-app-border text-primary focus:ring-primary"
                                             />
-                                            <span className="ml-3 text-sm font-medium text-slate-700">{kpi.title}</span>
+                                            <span className="ml-3 text-sm font-medium text-app-text">{kpi.title}</span>
                                         </label>
                                     ))}
                                 </div>
@@ -140,9 +140,9 @@ const DashboardConfigModal: React.FC<DashboardConfigModalProps> = ({ isOpen, onC
                 </div>
 
                 {/* Right Side: Selected & Reorder */}
-                <div className="bg-slate-50 p-4 rounded-lg">
-                    <h3 className="font-semibold text-slate-800 mb-2">Visible on Dashboard</h3>
-                    <p className="text-xs text-slate-500 mb-4">Drag and drop to reorder.</p>
+                <div className="bg-app-toolbar p-4 rounded-lg border border-app-border">
+                    <h3 className="font-semibold text-app-text mb-2">Visible on Dashboard</h3>
+                    <p className="text-xs text-app-muted mb-4">Drag and drop to reorder.</p>
                     {selectedKpis.length > 0 ? (
                         <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
                             {selectedKpis.map((kpi, index) => (
@@ -158,14 +158,14 @@ const DashboardConfigModal: React.FC<DashboardConfigModalProps> = ({ isOpen, onC
                             ))}
                         </ul>
                     ) : (
-                        <div className="text-center py-16 border-2 border-dashed rounded-lg">
-                            <p className="text-sm text-slate-500">Select KPIs from the left to display them here.</p>
+                        <div className="text-center py-16 border-2 border-dashed border-app-border rounded-lg">
+                            <p className="text-sm text-app-muted">Select KPIs from the left to display them here.</p>
                         </div>
                     )}
                 </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
+            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-app-border">
                 <Button variant="secondary" onClick={handleCancel}>Cancel</Button>
                 <Button onClick={handleSave}>Save Changes</Button>
             </div>

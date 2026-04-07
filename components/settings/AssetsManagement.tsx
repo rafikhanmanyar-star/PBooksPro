@@ -1,15 +1,17 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { Project, Building, Property, Unit, ContactType, TransactionType } from '../../types';
+import { Project, Building, Property, Unit, UnitOccupancyStatus, ContactType, TransactionType } from '../../types';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
+import PropertyTransferModal from './PropertyTransferModal';
 
 interface AssetTypeOption {
     id: string;
@@ -24,6 +26,8 @@ type AssetType = 'project' | 'building' | 'property' | 'unit';
 const AssetsManagement: React.FC = () => {
     const { state: appState, dispatch: appDispatch } = useAppContext();
     const { isAuthenticated } = useAuth();
+    /** Match delete flow / header: persist when JWT exists even if AuthContext lags behind the token. */
+    const hasAuthToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
     const { showConfirm, showToast } = useNotification();
     
     // Form state
@@ -31,6 +35,7 @@ const AssetsManagement: React.FC = () => {
     const [selectedType, setSelectedType] = useState<AssetType>('project');
     const [selectedAssetTypeFilter, setSelectedAssetTypeFilter] = useState<AssetType | null>(null);
     const [editingEntity, setEditingEntity] = useState<AssetEntity | null>(null);
+    const [propertyToTransfer, setPropertyToTransfer] = useState<Property | null>(null);
     
     // Common fields
     const [name, setName] = useState('');
@@ -39,6 +44,8 @@ const AssetsManagement: React.FC = () => {
     
     // Project specific
     const [projectStatus, setProjectStatus] = useState<'Active' | 'Completed' | 'On Hold'>('Active');
+    const [projectLocation, setProjectLocation] = useState('');
+    const [projectAssetType, setProjectAssetType] = useState('');
     
     // Property specific
     const [ownerId, setOwnerId] = useState('');
@@ -50,12 +57,26 @@ const AssetsManagement: React.FC = () => {
     const [unitContactId, setUnitContactId] = useState('');
     const [salePrice, setSalePrice] = useState('');
     const [unitType, setUnitType] = useState('');
+    const [unitStatus, setUnitStatus] = useState<UnitOccupancyStatus>('available');
+    const [unitSize, setUnitSize] = useState('');
     const [area, setArea] = useState('');
     const [floor, setFloor] = useState('');
     
     // Grid state
     const [gridSearchQuery, setGridSearchQuery] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+    const nameInputId = 'asset-form-name-input';
+
+    // Focus name input when form opens so keyboard input works reliably (e.g. in Electron)
+    useEffect(() => {
+        if (!isFormOpen) return;
+        const timer = setTimeout(() => {
+            const el = document.getElementById(nameInputId);
+            if (el && typeof (el as HTMLInputElement).focus === 'function') (el as HTMLInputElement).focus();
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [isFormOpen]);
 
     const assetTypes: AssetTypeOption[] = [
         {
@@ -244,8 +265,9 @@ const AssetsManagement: React.FC = () => {
                 );
                 break;
             case 'unit':
-                duplicate = appState.units.some(u => 
-                    u.name.toLowerCase().trim() === name.toLowerCase().trim() && 
+                duplicate = appState.units.some(u =>
+                    u.projectId === projectId &&
+                    u.name.toLowerCase().trim() === name.toLowerCase().trim() &&
                     (!editingEntity || u.id !== editingEntity.id)
                 );
                 break;
@@ -262,19 +284,43 @@ const AssetsManagement: React.FC = () => {
                 name: name.trim(),
                 description: description.trim() || undefined,
                 color: color,
-                status: projectStatus
+                status: projectStatus,
+                location: projectLocation.trim() || undefined,
+                projectType: projectAssetType.trim() || undefined,
             };
-            
+            const pid = editingEntity ? editingEntity.id : Date.now().toString();
+            let projectPayload: Project = { ...projectData, id: pid };
+
+            if (!isLocalOnlyMode() && (isAuthenticated || hasAuthToken)) {
+                try {
+                    const api = getAppStateApiService();
+                    if (editingEntity) {
+                        const merged = await api.updateProject(pid, {
+                            ...projectPayload,
+                            version: (editingEntity as Project & { version?: number }).version,
+                        });
+                        projectPayload = { ...projectPayload, ...merged };
+                    } else {
+                        const merged = await api.saveProject(projectPayload);
+                        projectPayload = { ...projectPayload, ...merged };
+                    }
+                } catch (err: unknown) {
+                    const e = err as { message?: string; error?: string };
+                    showToast(e?.message || e?.error || 'Could not save project to server.', 'error');
+                    return;
+                }
+            }
+
             if (editingEntity) {
                 appDispatch({
                     type: 'UPDATE_PROJECT',
-                    payload: { ...projectData, id: editingEntity.id }
+                    payload: projectPayload
                 });
                 showToast('Project updated successfully', 'success');
             } else {
                 appDispatch({
                     type: 'ADD_PROJECT',
-                    payload: { ...projectData, id: Date.now().toString() }
+                    payload: projectPayload
                 });
                 showToast('Project added successfully', 'success');
             }
@@ -284,17 +330,39 @@ const AssetsManagement: React.FC = () => {
                 description: description.trim() || undefined,
                 color: color
             };
-            
+            const bid = editingEntity ? editingEntity.id : Date.now().toString();
+            let buildingPayload: Building & { version?: number } = { ...buildingData, id: bid };
+
+            if (!isLocalOnlyMode() && (isAuthenticated || hasAuthToken)) {
+                try {
+                    const api = getAppStateApiService();
+                    if (editingEntity) {
+                        const merged = await api.updateBuilding(bid, {
+                            ...buildingPayload,
+                            version: (editingEntity as Building & { version?: number }).version,
+                        });
+                        buildingPayload = { ...buildingPayload, ...merged };
+                    } else {
+                        const merged = await api.saveBuilding(buildingPayload);
+                        buildingPayload = { ...buildingPayload, ...merged };
+                    }
+                } catch (err: unknown) {
+                    const e = err as { message?: string; error?: string };
+                    showToast(e?.message || e?.error || 'Could not save building to server.', 'error');
+                    return;
+                }
+            }
+
             if (editingEntity) {
                 appDispatch({
                     type: 'UPDATE_BUILDING',
-                    payload: { ...buildingData, id: editingEntity.id }
+                    payload: buildingPayload
                 });
                 showToast('Building updated successfully', 'success');
             } else {
                 appDispatch({
                     type: 'ADD_BUILDING',
-                    payload: { ...buildingData, id: Date.now().toString() }
+                    payload: buildingPayload
                 });
                 showToast('Building added successfully', 'success');
             }
@@ -306,17 +374,39 @@ const AssetsManagement: React.FC = () => {
                 description: description.trim() || undefined,
                 monthlyServiceCharge: parseFloat(monthlyServiceCharge) || undefined
             };
-            
+            const pid = editingEntity ? editingEntity.id : Date.now().toString();
+            let propertyPayload: Property & { version?: number } = { ...propertyData, id: pid };
+
+            if (!isLocalOnlyMode() && (isAuthenticated || hasAuthToken)) {
+                try {
+                    const api = getAppStateApiService();
+                    if (editingEntity) {
+                        const merged = await api.updateProperty(pid, {
+                            ...propertyPayload,
+                            version: (editingEntity as Property & { version?: number }).version,
+                        });
+                        propertyPayload = { ...propertyPayload, ...merged };
+                    } else {
+                        const merged = await api.saveProperty(propertyPayload);
+                        propertyPayload = { ...propertyPayload, ...merged };
+                    }
+                } catch (err: unknown) {
+                    const e = err as { message?: string; error?: string };
+                    showToast(e?.message || e?.error || 'Could not save property to server.', 'error');
+                    return;
+                }
+            }
+
             if (editingEntity) {
                 appDispatch({
                     type: 'UPDATE_PROPERTY',
-                    payload: { ...propertyData, id: editingEntity.id }
+                    payload: propertyPayload
                 });
                 showToast('Property updated successfully', 'success');
             } else {
                 appDispatch({
                     type: 'ADD_PROPERTY',
-                    payload: { ...propertyData, id: Date.now().toString() }
+                    payload: propertyPayload
                 });
                 showToast('Property added successfully', 'success');
             }
@@ -327,21 +417,27 @@ const AssetsManagement: React.FC = () => {
                 contactId: unitContactId || undefined,
                 salePrice: salePrice ? parseFloat(salePrice) : undefined,
                 type: unitType.trim() || undefined,
+                size: unitSize.trim() || undefined,
                 area: area ? parseFloat(area) : undefined,
                 floor: floor.trim() || undefined,
-                description: description.trim() || undefined
+                description: description.trim() || undefined,
+                status: unitStatus,
             };
-            
+            const uid = editingEntity ? editingEntity.id : Date.now().toString();
+            const unitPayload: Unit = { ...unitData, id: uid };
+
+            // Unit create/update is persisted by AppContext dispatch → PostgreSQL (same pattern as MarketingPage UPDATE_UNIT).
+
             if (editingEntity) {
                 appDispatch({
                     type: 'UPDATE_UNIT',
-                    payload: { ...unitData, id: editingEntity.id }
+                    payload: unitPayload
                 });
                 showToast('Unit updated successfully', 'success');
             } else {
                 appDispatch({
                     type: 'ADD_UNIT',
-                    payload: { ...unitData, id: Date.now().toString() }
+                    payload: unitPayload
                 });
                 showToast('Unit added successfully', 'success');
             }
@@ -355,6 +451,8 @@ const AssetsManagement: React.FC = () => {
         setDescription('');
         setColor('#10b981');
         setProjectStatus('Active');
+        setProjectLocation('');
+        setProjectAssetType('');
         setOwnerId('');
         setBuildingId('');
         setMonthlyServiceCharge('');
@@ -362,6 +460,8 @@ const AssetsManagement: React.FC = () => {
         setUnitContactId('');
         setSalePrice('');
         setUnitType('');
+        setUnitStatus('available');
+        setUnitSize('');
         setArea('');
         setFloor('');
         setEditingEntity(null);
@@ -376,6 +476,8 @@ const AssetsManagement: React.FC = () => {
         setDescription('');
         setColor('#10b981');
         setProjectStatus('Active');
+        setProjectLocation('');
+        setProjectAssetType('');
         setOwnerId('');
         setBuildingId('');
         setMonthlyServiceCharge('');
@@ -383,6 +485,8 @@ const AssetsManagement: React.FC = () => {
         setUnitContactId('');
         setSalePrice('');
         setUnitType('');
+        setUnitStatus('available');
+        setUnitSize('');
         setArea('');
         setFloor('');
         setEditingEntity(null);
@@ -416,6 +520,8 @@ const AssetsManagement: React.FC = () => {
             setUnitContactId(entity.contactId || '');
             setSalePrice(entity.salePrice?.toString() || '');
             setUnitType(entity.type || '');
+            setUnitStatus((entity.status as UnitOccupancyStatus) || 'available');
+            setUnitSize(entity.size || '');
             setArea(entity.area?.toString() || '');
             setFloor(entity.floor || '');
         }
@@ -435,33 +541,36 @@ const AssetsManagement: React.FC = () => {
         const entityType = (entity.entityType || selectedType) as AssetType;
         const typeLabel = getTypeConfig(entityType).label;
 
-        // Delete from cloud when we have a token (so it's removed on re-login). Use token so we don't skip due to isAuthenticated timing.
-        const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
-        if (isAuthenticated || hasToken) {
-            try {
-                const api = getAppStateApiService();
-                switch (entityType) {
-                    case 'project':
-                        await api.deleteProject(entity.id);
-                        break;
-                    case 'building':
-                        await api.deleteBuilding(entity.id);
-                        break;
-                    case 'property':
-                        await api.deleteProperty(entity.id);
-                        break;
-                    case 'unit':
-                        await api.deleteUnit(entity.id);
-                        break;
-                }
-            } catch (err: any) {
-                // 404 = already deleted on server, treat as success
-                if (err?.status === 404) {
-                    // Fall through to dispatch local delete
-                } else {
-                    const msg = err?.message || err?.error || 'Could not delete from cloud.';
-                    showToast(`${typeLabel} could not be removed from cloud: ${msg}`, 'error');
-                    return;
+        // In local-only mode skip API; only dispatch local delete to avoid "cannot reach API" and re-renders that can block form input.
+        const skipApiDelete = isLocalOnlyMode();
+        if (!skipApiDelete) {
+            const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
+            if (isAuthenticated || hasToken) {
+                try {
+                    const api = getAppStateApiService();
+                    switch (entityType) {
+                        case 'project':
+                            await api.deleteProject(entity.id);
+                            break;
+                        case 'building':
+                            await api.deleteBuilding(entity.id);
+                            break;
+                        case 'property':
+                            await api.deleteProperty(entity.id);
+                            break;
+                        case 'unit':
+                            await api.deleteUnit(entity.id);
+                            break;
+                    }
+                } catch (err: any) {
+                    // 404 = already deleted on server, treat as success
+                    if (err?.status === 404) {
+                        // Fall through to dispatch local delete
+                    } else {
+                        const msg = err?.message || err?.error || 'Could not delete from cloud.';
+                        showToast(`${typeLabel} could not be removed from cloud: ${msg}`, 'error');
+                        return;
+                    }
                 }
             }
         }
@@ -533,6 +642,7 @@ const AssetsManagement: React.FC = () => {
                 return [
                     { key: 'name', label: 'Name' },
                     { key: 'projectName', label: 'Project' },
+                    { key: 'status', label: 'Status' },
                     { key: 'ownerName', label: 'Owner' },
                     { key: 'type', label: 'Type' },
                     { key: 'area', label: 'Area' },
@@ -548,6 +658,7 @@ const AssetsManagement: React.FC = () => {
     };
 
     return (
+        <>
         <div className="flex flex-col h-full space-y-4 overflow-hidden px-0 pt-2 pb-2">
             {/* Asset Type Filter Tabs - Top Level */}
             <div className="flex-shrink-0">
@@ -627,9 +738,9 @@ const AssetsManagement: React.FC = () => {
                 </div>
             </div>
 
-            {/* Add New Asset Form - Collapsible */}
+            {/* Add New Asset Form - Collapsible. Stable key so parent re-renders don't remount and steal focus. */}
             {isFormOpen && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex-shrink-0">
+                <div key="add-asset-form" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex-shrink-0">
                     <div className="flex items-center gap-2 mb-3">
                         <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
                             <div className="w-5 h-5 text-indigo-600">{ICONS.plus}</div>
@@ -644,7 +755,7 @@ const AssetsManagement: React.FC = () => {
                         </div>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-4">
+                    <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
                         {/* Asset Type Selection - only when no type selected from top tabs */}
                         {!selectedAssetTypeFilter && (
                             <div>
@@ -704,29 +815,60 @@ const AssetsManagement: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div className="sm:col-span-2 lg:col-span-1">
                             <Input
+                                id={nameInputId}
                                 label="Name *"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder={selectedType === 'project' ? 'Project Name' : selectedType === 'building' ? 'Building Name' : selectedType === 'property' ? 'Property Name' : 'Unit Name'}
                                 required
                                 autoFocus
+                                autoComplete="off"
                                 className="text-sm border-slate-300 border-2 focus:border-indigo-500"
                             />
                         </div>
                         
                         {selectedType === 'project' && (
+                            <>
                             <div className="sm:col-span-2 lg:col-span-1">
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Status</label>
                                 <select
                                     value={projectStatus}
                                     onChange={(e) => setProjectStatus(e.target.value as any)}
                                     className="block w-full px-3 py-2 border-2 border-slate-300 rounded-lg shadow-sm text-sm focus:outline-none focus:border-indigo-500"
+                                    aria-label="Project status"
                                 >
                                     <option value="Active">Active</option>
                                     <option value="Completed">Completed</option>
                                     <option value="On Hold">On Hold</option>
                                 </select>
                             </div>
+                            <div className="sm:col-span-2 lg:col-span-1">
+                                <Input
+                                    label="Location"
+                                    value={projectLocation}
+                                    onChange={(e) => setProjectLocation(e.target.value)}
+                                    placeholder="Site / address"
+                                    className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                />
+                            </div>
+                            <div className="sm:col-span-2 lg:col-span-1">
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Project type</label>
+                                <select
+                                    value={projectAssetType}
+                                    onChange={(e) => setProjectAssetType(e.target.value)}
+                                    className="block w-full px-3 py-2 border-2 border-slate-300 rounded-lg shadow-sm text-sm focus:outline-none focus:border-indigo-500"
+                                    aria-label="Project asset type"
+                                >
+                                    <option value="">— Select —</option>
+                                    <option value="building">Building</option>
+                                    <option value="society">Society</option>
+                                    <option value="commercial">Commercial</option>
+                                    <option value="mixed">Mixed</option>
+                                    <option value="plot">Plot / land</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            </>
                         )}
                         
                         {selectedType === 'property' && (
@@ -781,13 +923,16 @@ const AssetsManagement: React.FC = () => {
                         
                         {(selectedType === 'project' || selectedType === 'building') && (
                             <div className="sm:col-span-2 lg:col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Color</label>
+                                <label htmlFor="asset-color-picker" className="block text-sm font-medium text-gray-700 mb-1.5">Color</label>
                                 <div className="flex items-center gap-2">
                                     <input
+                                        id="asset-color-picker"
                                         type="color"
                                         value={color}
                                         onChange={(e) => setColor(e.target.value)}
                                         className="h-10 w-20 rounded-md cursor-pointer border-2 border-slate-300"
+                                        title="Color"
+                                        aria-label="Color"
                                     />
                                 </div>
                             </div>
@@ -810,11 +955,32 @@ const AssetsManagement: React.FC = () => {
                             
                             {selectedType === 'unit' && (
                                 <>
+                                    <div className="sm:col-span-2 lg:col-span-1">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Status</label>
+                                        <select
+                                            value={unitStatus}
+                                            onChange={(e) => setUnitStatus(e.target.value as UnitOccupancyStatus)}
+                                            className="block w-full px-3 py-2 border-2 border-slate-300 rounded-lg shadow-sm text-sm focus:outline-none focus:border-indigo-500"
+                                            aria-label="Unit status"
+                                        >
+                                            <option value="available">Available</option>
+                                            <option value="sold">Sold</option>
+                                            <option value="rented">Rented</option>
+                                            <option value="blocked">Blocked</option>
+                                        </select>
+                                    </div>
                                     <Input
-                                        label="Type (e.g., 2BHK, Shop)"
+                                        label="Type (e.g., apartment, shop, plot)"
                                         value={unitType}
                                         onChange={(e) => setUnitType(e.target.value)}
                                         placeholder="Unit type"
+                                        className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                    />
+                                    <Input
+                                        label="Size"
+                                        value={unitSize}
+                                        onChange={(e) => setUnitSize(e.target.value)}
+                                        placeholder="e.g. 1200 sq ft"
                                         className="text-sm border-slate-300 border-2 focus:border-indigo-500"
                                     />
                                     <Input
@@ -954,18 +1120,32 @@ const AssetsManagement: React.FC = () => {
                                     >
                                         {getColumns().map((col) => {
                                             if (col.key === 'actions') {
+                                                const isProperty = entity.entityType === 'property';
                                                 return (
                                                     <td key={col.key} className="px-4 py-2 whitespace-nowrap text-right">
-                                                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div className={`flex justify-end gap-1 transition-opacity ${isProperty ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                                                             <button
-                                                                onClick={() => handleEdit(entity)}
+                                                                onClick={(e) => { e.stopPropagation(); handleEdit(entity); }}
                                                                 className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 p-1 rounded transition-colors"
                                                                 title="Edit"
                                                             >
                                                                 <div className="w-3.5 h-3.5">{ICONS.edit}</div>
                                                             </button>
+                                                            {isProperty && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const property = appState.properties.find(p => p.id === entity.id);
+                                                                        if (property) setPropertyToTransfer(property);
+                                                                    }}
+                                                                    className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1 rounded transition-colors"
+                                                                    title="Transfer ownership"
+                                                                >
+                                                                    <div className="w-3.5 h-3.5">{ICONS.arrowRight}</div>
+                                                                </button>
+                                                            )}
                                                             <button
-                                                                onClick={() => handleDelete(entity)}
+                                                                onClick={(e) => { e.stopPropagation(); handleDelete(entity); }}
                                                                 className="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 p-1 rounded transition-colors"
                                                                 title="Delete"
                                                             >
@@ -1021,6 +1201,15 @@ const AssetsManagement: React.FC = () => {
                 </div>
             </div>
         </div>
+
+        {propertyToTransfer && (
+            <PropertyTransferModal
+                isOpen={!!propertyToTransfer}
+                onClose={() => setPropertyToTransfer(null)}
+                property={propertyToTransfer}
+            />
+        )}
+    </>
     );
 };
 

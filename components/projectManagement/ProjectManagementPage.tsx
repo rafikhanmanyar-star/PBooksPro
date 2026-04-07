@@ -1,20 +1,21 @@
 
-import React, { useState, useEffect, useRef, useCallback, memo, Suspense } from 'react';
-import InvoicesPage from '../invoices/InvoicesPage';
+import React, { useState, useEffect, memo, Suspense } from 'react';
+import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
+import SubNavModeToggle from '../layout/SubNavModeToggle';
 import BillsPage from '../bills/BillsPage';
 import ProjectAgreementsPage from './ProjectAgreementsPage';
 import MarketingPage from '../marketing/MarketingPage';
 import SalesReturnsPage from './SalesReturnsPage';
 import BrokerPayouts from '../payouts/BrokerPayouts';
 import { Page, InvoiceType, TransactionType } from '../../types';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { ICONS } from '../../constants';
-
 // Non-report page imports (not lazy since they're operational)
 import ProjectPMPayouts from './ProjectPMPayouts';
 import ProjectContractsPage from './ProjectContractsPage';
+/** Static import: nested React.lazy + file:// in Electron often causes "Failed to fetch dynamically imported module" for the child chunk. */
+import ProjectReceivedAssetsPage from './ProjectReceivedAssetsPage';
 
 // Lazy-loaded report imports to reduce initial bundle size
 const ProjectLayoutReport = React.lazy(() => import('../reports/ProjectLayoutReport'));
@@ -34,6 +35,7 @@ const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetRep
 const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
 const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
 const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
+const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
 
 interface ProjectManagementPageProps {
     initialPage: Page;
@@ -42,6 +44,7 @@ interface ProjectManagementPageProps {
 // Define all possible view keys
 type ProjectView =
     | 'Marketing' | 'Agreements' | 'Contracts' | 'Invoices' | 'Bills' | 'Sales Returns'
+    | 'Assets'
     | 'Broker Payouts' | 'PM Payouts'
     | 'Visual Layout' | 'Tabular View'
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
@@ -49,48 +52,68 @@ type ProjectView =
     | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Investor Distribution' | 'Contract Report'
     | 'Budget vs Actual' | 'Cash Flows' | 'Marketing Activity';
 
+/** Project selling — operational tabs (persistent mount) */
+const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Assets', 'Sales Returns'];
+
+const SELLING_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Cash Flows', 'Investor Distribution'];
+
+const SELLING_OTHER_REPORTS: ProjectView[] = [
+    'Project Summary',
+    'Marketing Activity',
+    'Revenue Analysis',
+    'Broker Report',
+    'Owner Ledger',
+    'Income by Category',
+    'Expense by Category',
+];
+
+/** Project construction */
+const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Contracts', 'Bills'];
+
+const CONSTRUCTION_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Cash Flows', 'Investor Distribution'];
+
+const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
+    'Project Summary',
+    'Budget vs Actual',
+    'Contract Report',
+    'PM Cost Report',
+    'Material Report',
+    'Vendor Ledger',
+    'Owner Ledger',
+    'Income by Category',
+    'Expense by Category',
+];
+
+const CONSTRUCTION_PERSISTENT_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'PM Payouts'];
+
+function projectNavLabelShort(label: string): string {
+    const w = label.trim().split(/\s+/);
+    if (w.length === 1) return w[0].slice(0, 3).toUpperCase();
+    return w.map((x) => x[0]).join('').slice(0, 3).toUpperCase();
+}
+
 const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPage }) => {
-    const { state, dispatch } = useAppContext();
-    const { initialTabs, currentUser } = state;
+    const initialTabs = useStateSelector(s => s.initialTabs);
+    const currentUser = useStateSelector(s => s.currentUser);
+    const dispatch = useDispatchOnly();
     const { user } = useAuth();
-    // Check admin role from both AuthContext (cloud auth) and AppContext (local auth)
     const isAdmin = user?.role === 'Admin' || currentUser?.role === 'Admin';
 
-    // Detect Mobile
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-    useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth < 768);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+    const [constructionView, setConstructionView] = useLocalStorage<ProjectView>('projectManagement_activeView', 'Contracts');
+    const [sellingView, setSellingView] = useLocalStorage<ProjectView>('projectSelling_activeView', 'Marketing');
 
-    const [activeView, setActiveView] = useLocalStorage<ProjectView>('projectManagement_activeView', 'Agreements');
+    const [sellingReportsExpanded, setSellingReportsExpanded] = useState(true);
+    const [constructionReportsExpanded, setConstructionReportsExpanded] = useState(true);
 
-    const [isReportDropdownOpen, setIsReportDropdownOpen] = useState(false);
-    const [isPayoutDropdownOpen, setIsPayoutDropdownOpen] = useState(false);
-
-    const reportDropdownRef = useRef<HTMLDivElement>(null);
-    const payoutDropdownRef = useRef<HTMLDivElement>(null);
-
-    // Handle outside click for dropdowns
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (reportDropdownRef.current && !reportDropdownRef.current.contains(event.target as Node)) {
-                setIsReportDropdownOpen(false);
-            }
-            if (payoutDropdownRef.current && !payoutDropdownRef.current.contains(event.target as Node)) {
-                setIsPayoutDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    const sellingSubNav = useCollapsibleSubNav('subnav_project_selling');
+    const constructionSubNav = useCollapsibleSubNav('subnav_project_construction');
 
     const isSellingMode = initialPage === 'projectSelling' || initialPage === 'projectInvoices';
+    const activeView = isSellingMode ? sellingView : constructionView;
+    const setActiveView = isSellingMode ? setSellingView : setConstructionView;
 
-    // Lists of allowed views for each mode - used for resetting invalid states
     const allowedSellingViews = [
-        'Marketing', 'Agreements', 'Invoices', 'Broker Payouts',
+        'Marketing', 'Agreements', 'Invoices', 'Assets', 'Sales Returns', 'Broker Payouts',
         'Visual Layout', 'Tabular View',
         'Project Summary', 'Marketing Activity', 'Revenue Analysis',
         'Owner Ledger', 'Broker Report', 'Income by Category', 'Expense by Category',
@@ -98,7 +121,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     ];
 
     const allowedConstructionViews = [
-        'Contracts', 'Bills', 'Sales Returns', 'PM Payouts',
+        'Contracts', 'Bills', 'PM Payouts',
         'Project Summary', 'Budget vs Actual', 'Contract Report',
         'PM Cost Report', 'Material Report', 'Vendor Ledger',
         'Owner Ledger', 'Income by Category', 'Expense by Category',
@@ -118,7 +141,6 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
         } else {
-            // Validate current activeView based on mode
             if (isSellingMode) {
                 if (!allowedSellingViews.includes(activeView as string)) {
                     setActiveView('Marketing');
@@ -136,6 +158,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Marketing': return <MarketingPage />;
             case 'Agreements': return <ProjectAgreementsPage />;
             case 'Invoices': return <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />;
+            case 'Assets': return <ProjectReceivedAssetsPage />;
             case 'Contracts': return <ProjectContractsPage />;
             case 'Bills': return <BillsPage projectContext={true} />;
             case 'Sales Returns': return <SalesReturnsPage />;
@@ -163,162 +186,363 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         }
     };
 
-    const isReportActive = [
-        'Visual Layout', 'Tabular View',
-        'Project Summary', 'Marketing Activity', 'Profit & Loss', 'Balance Sheet', 'Investor Distribution', 'Revenue Analysis', 'Owner Ledger', 'Broker Report',
-        'Income by Category', 'Expense by Category', 'Material Report', 'Vendor Ledger', 'PM Cost Report', 'Contract Report', 'Budget vs Actual', 'Cash Flows'
-    ].includes(activeView);
-
-    const isPayoutActive = ['Broker Payouts', 'PM Payouts'].includes(activeView);
-
-    const NavButton = ({ view, label }: { view: ProjectView, label: string }) => (
-        <button
-            onClick={() => setActiveView(view)}
-            className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${activeView === view
-                ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-        >
-            {label}
-        </button>
-    );
-
-    return (
-        <div className="flex flex-col h-full space-y-4">
-            {/* Custom Navigation Bar */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between bg-white border-b border-slate-200 px-4 py-2 shadow-sm flex-shrink-0 gap-3 md:gap-4 z-50 relative">
-
-                {/* Left Side: Operational Tabs & Reports Dropdown */}
-                <div className="flex items-center flex-grow min-w-0">
-                    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-shrink">
-                        {isSellingMode ? (
-                            <>
-                                <NavButton view="Marketing" label="Marketing" />
-                                <NavButton view="Agreements" label="Agreements" />
-                                <NavButton view="Invoices" label="Invoices" />
-                            </>
-                        ) : (
-                            <>
-                                <NavButton view="Contracts" label="Contracts" />
-                                <NavButton view="Bills" label="Bills" />
-                                <NavButton view="Sales Returns" label="Returns" />
-                            </>
-                        )}
-                    </div>
-
-                    <div className="w-px h-5 bg-slate-300 mx-2 flex-shrink-0"></div>
-
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                        <div className="relative" ref={payoutDropdownRef}>
-                            <button
-                                onClick={() => { setIsPayoutDropdownOpen(!isPayoutDropdownOpen); setIsReportDropdownOpen(false); }}
-                                className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${isPayoutActive || isPayoutDropdownOpen
-                                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
-                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                                    }`}
-                            >
-                                Payouts
-                            </button>
-
-                            {isPayoutDropdownOpen && (
-                                <div className="absolute left-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] animate-fade-in-fast overflow-hidden">
-                                    <div className="py-1">
-                                        {isSellingMode && (
-                                            <button
-                                                onClick={() => { setActiveView('Broker Payouts'); setIsPayoutDropdownOpen(false); }}
-                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors ${activeView === 'Broker Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'}`}
-                                            >
-                                                Brokers
-                                            </button>
-                                        )}
-                                        {!isSellingMode && (
-                                            <button
-                                                onClick={() => { setActiveView('PM Payouts'); setIsPayoutDropdownOpen(false); }}
-                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors ${activeView === 'PM Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'}`}
-                                            >
-                                                PM Fee Log
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
+    const SELLING_PERSISTENT_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Assets', 'Sales Returns', 'Broker Payouts'];
+    const renderSellingPersistentContent = () => {
+        if (!isSellingMode) return renderContent();
+        if (SELLING_PERSISTENT_VIEWS.includes(activeView)) {
+            return (
+                <div className="relative h-full w-full">
+                    {SELLING_PERSISTENT_VIEWS.map((view) => (
+                        <div
+                            key={view}
+                            className={`absolute inset-0 h-full w-full min-w-0 ${view === 'Invoices' ? 'overflow-y-auto overflow-x-hidden' : 'overflow-auto'} ${activeView === view ? 'visible z-10' : 'invisible z-0 pointer-events-none'}`}
+                            {...(activeView !== view ? { 'aria-hidden': true } : {})}
+                        >
+                            {view === 'Marketing' && <MarketingPage />}
+                            {view === 'Agreements' && <ProjectAgreementsPage />}
+                            {view === 'Invoices' && <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />}
+                            {view === 'Assets' && <ProjectReceivedAssetsPage />}
+                            {view === 'Sales Returns' && <SalesReturnsPage />}
+                            {view === 'Broker Payouts' && <BrokerPayouts context="Project" />}
                         </div>
+                    ))}
+                </div>
+            );
+        }
+        return renderContent();
+    };
 
-                        <div className="relative" ref={reportDropdownRef}>
-                            <button
-                                onClick={() => { setIsReportDropdownOpen(!isReportDropdownOpen); setIsPayoutDropdownOpen(false); }}
-                                className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${isReportActive || isReportDropdownOpen
-                                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
-                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                                    }`}
-                            >
-                                Reports
-                            </button>
+    const renderConstructionPersistentContent = () => {
+        if (CONSTRUCTION_PERSISTENT_VIEWS.includes(activeView)) {
+            return (
+                <div className="relative h-full w-full">
+                    {CONSTRUCTION_PERSISTENT_VIEWS.map((view) => (
+                        <div
+                            key={view}
+                            className={`absolute inset-0 h-full w-full overflow-auto ${activeView === view ? 'visible z-10' : 'invisible z-0 pointer-events-none'}`}
+                            {...(activeView !== view ? { 'aria-hidden': true } : {})}
+                        >
+                            {view === 'Contracts' && <ProjectContractsPage />}
+                            {view === 'Bills' && <BillsPage projectContext={true} />}
+                            {view === 'PM Payouts' && <ProjectPMPayouts />}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        return renderContent();
+    };
 
-                            {isReportDropdownOpen && (
-                                <div className="absolute left-0 mt-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] animate-fade-in-fast overflow-hidden">
-                                    <div className="max-h-[70vh] overflow-y-auto no-scrollbar">
-                                        {isAdmin && (
-                                            <>
-                                                <div className="bg-slate-50 px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">Financial Statements</div>
-                                                <button onClick={() => { setActiveView('Profit & Loss'); setIsReportDropdownOpen(false); }} className={`block w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${activeView === 'Profit & Loss' ? 'text-accent font-semibold bg-indigo-50/30' : 'text-slate-600'}`}>Profit & Loss</button>
-                                                <button onClick={() => { setActiveView('Balance Sheet'); setIsReportDropdownOpen(false); }} className={`block w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${activeView === 'Balance Sheet' ? 'text-accent font-semibold bg-indigo-50/30' : 'text-slate-600'}`}>Balance Sheet</button>
-                                                <button onClick={() => { setActiveView('Cash Flows'); setIsReportDropdownOpen(false); }} className={`block w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${activeView === 'Cash Flows' ? 'text-accent font-semibold bg-indigo-50/30' : 'text-slate-600'}`}>Cash Flows</button>
-                                                <button onClick={() => { setActiveView('Investor Distribution'); setIsReportDropdownOpen(false); }} className={`block w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${activeView === 'Investor Distribution' ? 'text-accent font-semibold bg-indigo-50/30' : 'text-slate-600'}`}>Investor Distribution</button>
-                                            </>
-                                        )}
+    const sellingReportKeys = [...(isAdmin ? SELLING_FINANCIAL_REPORTS : []), ...SELLING_OTHER_REPORTS];
+    const constructionReportKeys = [...(isAdmin ? CONSTRUCTION_FINANCIAL_REPORTS : []), ...CONSTRUCTION_OTHER_REPORTS];
 
-                                        <div className="bg-slate-50 px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-t border-b border-slate-100 mt-1">Operational Reports</div>
-                                        {[
-                                            'Project Summary',
-                                            ...(isSellingMode ? ['Visual Layout', 'Tabular View', 'Marketing Activity', 'Revenue Analysis', 'Broker Report'] : []),
-                                            ...(!isSellingMode ? ['Budget vs Actual', 'Contract Report', 'PM Cost Report', 'Material Report', 'Vendor Ledger'] : []),
-                                            'Owner Ledger',
-                                            'Income by Category',
-                                            'Expense by Category'
-                                        ].map((reportName) => (
-                                            <button
-                                                key={reportName}
-                                                onClick={() => {
-                                                    setActiveView(reportName as ProjectView);
-                                                    setIsReportDropdownOpen(false);
-                                                }}
-                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors ${activeView === reportName ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'}`}
-                                            >
-                                                {reportName}
-                                            </button>
+    const isSellingReportActive = sellingReportKeys.includes(activeView);
+    const isConstructionReportActive = constructionReportKeys.includes(activeView);
+
+    useEffect(() => {
+        if (!isSellingMode) return;
+        if (sellingReportKeys.includes(activeView)) {
+            setSellingReportsExpanded(true);
+        }
+    }, [isSellingMode, activeView, isAdmin]);
+
+    useEffect(() => {
+        if (isSellingMode) return;
+        if (constructionReportKeys.includes(activeView)) {
+            setConstructionReportsExpanded(true);
+        }
+    }, [isSellingMode, activeView, isAdmin]);
+
+    const ModuleNavItem = ({ view, label, collapsed }: { view: ProjectView; label: string; collapsed: boolean }) => {
+        const on = activeView === view;
+        const short = projectNavLabelShort(label);
+        if (collapsed) {
+            return (
+                <button
+                    type="button"
+                    title={label}
+                    onClick={() => setActiveView(view)}
+                    className={`w-full flex justify-center px-1 py-1.5 rounded-md text-[10px] font-bold leading-tight transition-colors ${on
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                        }`}
+                >
+                    {short}
+                </button>
+            );
+        }
+        return (
+            <button
+                type="button"
+                onClick={() => setActiveView(view)}
+                className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${on
+                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/20'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                    }`}
+            >
+                {label}
+            </button>
+        );
+    };
+
+    const sellingNavPanel = (subCollapsed: boolean) => (
+        <>
+            <div
+                className={`border-b border-slate-200 dark:border-slate-700 shrink-0 flex items-center gap-1 ${subCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
+            >
+                {!subCollapsed && (
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Project selling</p>
+                )}
+                <SubNavModeToggle
+                    collapsed={sellingSubNav.effectiveCollapsed}
+                    onToggle={sellingSubNav.toggle}
+                    title={sellingSubNav.toggleTitle}
+                    compact
+                />
+            </div>
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project selling navigation">
+                <div className="space-y-0.5">
+                    <ModuleNavItem view="Marketing" label="Marketing" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Agreements" label="Agreements" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Invoices" label="Invoices" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Assets" label="Assets" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Sales Returns" label="Returns" collapsed={subCollapsed} />
+                </div>
+
+                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
+                    {!subCollapsed && (
+                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Payouts</p>
+                    )}
+                    <ModuleNavItem view="Broker Payouts" label="Brokers" collapsed={subCollapsed} />
+                </div>
+
+                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
+                    {!subCollapsed && (
+                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Project views</p>
+                    )}
+                    <ModuleNavItem view="Visual Layout" label="Visual" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Tabular View" label="Units" collapsed={subCollapsed} />
+                </div>
+
+                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700">
+                    <button
+                        type="button"
+                        onClick={() => setSellingReportsExpanded((e) => !e)}
+                        className={`w-full flex items-center ${subCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2 rounded-md text-sm font-medium transition-colors ${isSellingReportActive || sellingReportsExpanded
+                            ? 'bg-indigo-50 dark:bg-indigo-950/50 text-accent'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                            }`}
+                    >
+                        {subCollapsed ? <span className="text-[10px] font-bold">RPT</span> : <span>Reports</span>}
+                        {!subCollapsed && (
+                            <svg className={`w-4 h-4 shrink-0 transition-transform ${sellingReportsExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        )}
+                    </button>
+                    {sellingReportsExpanded && (
+                        <div className="mt-1 space-y-2">
+                            {isAdmin && (
+                                <div>
+                                    {!subCollapsed && (
+                                        <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Financial statements</p>
+                                    )}
+                                    <div className="space-y-0.5">
+                                        {SELLING_FINANCIAL_REPORTS.map((name) => (
+                                            <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
                                         ))}
                                     </div>
                                 </div>
                             )}
+                            <div>
+                                {!subCollapsed && (
+                                    <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Operational reports</p>
+                                )}
+                                <div className="space-y-0.5">
+                                    {SELLING_OTHER_REPORTS.map((name) => (
+                                        <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
+                                    ))}
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    )}
+                </div>
+            </nav>
+        </>
+    );
+
+    const constructionNavPanel = (subCollapsed: boolean) => (
+        <>
+            <div
+                className={`border-b border-slate-200 dark:border-slate-700 shrink-0 flex items-center gap-1 ${subCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
+            >
+                {!subCollapsed && (
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Project construction</p>
+                )}
+                <SubNavModeToggle
+                    collapsed={constructionSubNav.effectiveCollapsed}
+                    onToggle={constructionSubNav.toggle}
+                    title={constructionSubNav.toggleTitle}
+                    compact
+                />
+            </div>
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project construction navigation">
+                <div className="space-y-0.5">
+                    <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} />
                 </div>
 
-                {/* Right Side: Segmented Control for Visual/Units - Only shown in Selling mode */}
-                {isSellingMode && (
-                    <div className="flex items-center bg-slate-100 rounded-lg p-1 flex-shrink-0">
-                        <button
-                            onClick={() => setActiveView('Visual Layout')}
-                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${activeView === 'Visual Layout' ? 'bg-white shadow text-accent' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            Visual
-                        </button>
-                        <button
-                            onClick={() => setActiveView('Tabular View')}
-                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${activeView === 'Tabular View' ? 'bg-white shadow text-accent' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            Units
-                        </button>
-                    </div>
-                )}
+                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
+                    {!subCollapsed && (
+                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Payouts</p>
+                    )}
+                    <ModuleNavItem view="PM Payouts" label="PM Fee Log" collapsed={subCollapsed} />
+                </div>
+
+                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700">
+                    <button
+                        type="button"
+                        onClick={() => setConstructionReportsExpanded((e) => !e)}
+                        className={`w-full flex items-center ${subCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2 rounded-md text-sm font-medium transition-colors ${isConstructionReportActive || constructionReportsExpanded
+                            ? 'bg-indigo-50 dark:bg-indigo-950/50 text-accent'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                            }`}
+                    >
+                        {subCollapsed ? <span className="text-[10px] font-bold">RPT</span> : <span>Reports</span>}
+                        {!subCollapsed && (
+                            <svg className={`w-4 h-4 shrink-0 transition-transform ${constructionReportsExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        )}
+                    </button>
+                    {constructionReportsExpanded && (
+                        <div className="mt-1 space-y-2">
+                            {isAdmin && (
+                                <div>
+                                    {!subCollapsed && (
+                                        <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Financial statements</p>
+                                    )}
+                                    <div className="space-y-0.5">
+                                        {CONSTRUCTION_FINANCIAL_REPORTS.map((name) => (
+                                            <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            <div>
+                                {!subCollapsed && (
+                                    <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Operational reports</p>
+                                )}
+                                <div className="space-y-0.5">
+                                    {CONSTRUCTION_OTHER_REPORTS.map((name) => (
+                                        <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </nav>
+        </>
+    );
+
+    const allSellingMobileOptions: { value: ProjectView; label: string; group: string }[] = [
+        ...SELLING_OPERATIONAL_VIEWS.map((v) => ({ value: v, label: v === 'Sales Returns' ? 'Returns' : v, group: 'Operations' })),
+        { value: 'Broker Payouts', label: 'Brokers', group: 'Payouts' },
+        { value: 'Visual Layout', label: 'Visual', group: 'Project views' },
+        { value: 'Tabular View', label: 'Units', group: 'Project views' },
+        ...(isAdmin ? SELLING_FINANCIAL_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Financial' })) : []),
+        ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Operational' })),
+    ];
+
+    const allConstructionMobileOptions: { value: ProjectView; label: string; group: string }[] = [
+        ...CONSTRUCTION_OPERATIONAL_VIEWS.map((v) => ({ value: v, label: v, group: 'Operations' })),
+        { value: 'PM Payouts', label: 'PM Fee Log', group: 'Payouts' },
+        ...(isAdmin ? CONSTRUCTION_FINANCIAL_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Financial' })) : []),
+        ...CONSTRUCTION_OTHER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Operational' })),
+    ];
+
+    const sharedContentShell = (children: React.ReactNode) => (
+        <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col px-2 sm:px-3 md:px-0 pt-2 md:pt-0">
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-400">Loading...</div>}>
+                {children}
+            </Suspense>
+        </div>
+    );
+
+    // ——— Project selling: second-level left nav ———
+    if (isSellingMode) {
+        return (
+            <div className="flex flex-col md:flex-row h-full min-h-0 w-full">
+                <aside
+                    className={`hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${sellingSubNav.effectiveCollapsed ? 'w-14' : 'w-60'}`}
+                    aria-label="Project selling secondary navigation"
+                >
+                    {sellingNavPanel(sellingSubNav.effectiveCollapsed)}
+                </aside>
+
+                <div className="md:hidden shrink-0 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2">
+                    <label htmlFor="project-selling-view" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Project selling</label>
+                    <select
+                        id="project-selling-view"
+                        value={activeView}
+                        onChange={(e) => setActiveView(e.target.value as ProjectView)}
+                        className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
+                        aria-label="Project selling section"
+                    >
+                        {['Operations', 'Payouts', 'Project views', 'Reports — Financial', 'Reports — Operational'].map((group) => {
+                            const opts = allSellingMobileOptions.filter((o) => o.group === group);
+                            if (opts.length === 0) return null;
+                            return (
+                                <optgroup key={group} label={group}>
+                                    {opts.map((o) => (
+                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
+                                </optgroup>
+                            );
+                        })}
+                    </select>
+                </div>
+
+                {sharedContentShell(renderSellingPersistentContent())}
+            </div>
+        );
+    }
+
+    // ——— Project construction: second-level left nav ———
+    return (
+        <div className="flex flex-col md:flex-row h-full min-h-0 w-full">
+            <aside
+                className={`hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${constructionSubNav.effectiveCollapsed ? 'w-14' : 'w-60'}`}
+                aria-label="Project construction secondary navigation"
+            >
+                {constructionNavPanel(constructionSubNav.effectiveCollapsed)}
+            </aside>
+
+            <div className="md:hidden shrink-0 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2">
+                <label htmlFor="project-construction-view" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Project construction</label>
+                <select
+                    id="project-construction-view"
+                    value={activeView}
+                    onChange={(e) => setActiveView(e.target.value as ProjectView)}
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
+                    aria-label="Project construction section"
+                >
+                    {['Operations', 'Payouts', 'Reports — Financial', 'Reports — Operational'].map((group) => {
+                        const opts = allConstructionMobileOptions.filter((o) => o.group === group);
+                        if (opts.length === 0) return null;
+                        return (
+                            <optgroup key={group} label={group}>
+                                {opts.map((o) => (
+                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                            </optgroup>
+                        );
+                    })}
+                </select>
             </div>
 
-            <div className="flex-grow overflow-hidden px-4 md:px-0">
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-400">Loading...</div>}>
-                    {renderContent()}
-                </Suspense>
-            </div>
+            {sharedContentShell(renderConstructionPersistentContent())}
         </div>
     );
 };

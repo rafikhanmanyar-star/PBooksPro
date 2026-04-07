@@ -12,7 +12,7 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import DatePicker from '../ui/DatePicker';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
@@ -49,11 +49,11 @@ const BMAnalysisReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (option === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (option === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -260,7 +260,7 @@ const BMAnalysisReport: React.FC = () => {
     const { print: triggerPrint } = usePrintContext();
     
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -269,19 +269,19 @@ const BMAnalysisReport: React.FC = () => {
         <div className="flex flex-col h-full space-y-4">
             <style>{STANDARD_PRINT_STYLES}</style>
             {/* Custom Toolbar - All controls in first row */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+            <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                 {/* First Row: Dates, Filters, and Actions */}
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Date Range Pills */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                    <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
                         {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                             <button
                                 key={opt}
                                 onClick={() => handleRangeChange(opt)}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
                                     dateRange === opt 
-                                    ? 'bg-white text-accent shadow-sm font-bold' 
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                    ? 'bg-primary text-ds-on-primary shadow-sm font-bold' 
+                                    : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                 }`}
                             >
                                 {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
@@ -292,9 +292,9 @@ const BMAnalysisReport: React.FC = () => {
                     {/* Custom Date Pickers */}
                     {dateRange === 'custom' && (
                         <div className="flex items-center gap-2 animate-fade-in">
-                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
-                            <span className="text-slate-400">-</span>
-                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(toLocalDateString(d), endDate)} />
+                            <span className="text-app-muted">-</span>
+                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, toLocalDateString(d))} />
                         </div>
                     )}
 
@@ -311,19 +311,19 @@ const BMAnalysisReport: React.FC = () => {
 
                     {/* Search Input */}
                     <div className="relative flex-grow min-w-[180px]">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <span className="h-4 w-4">{ICONS.search}</span>
                         </div>
                         <Input 
                             placeholder="Search report..." 
                             value={searchQuery} 
                             onChange={(e) => setSearchQuery(e.target.value)} 
-                            className="pl-9 py-1.5 text-sm"
+                            className="ds-input-field pl-9 py-1.5 text-sm"
                         />
                         {searchQuery && (
                             <button 
                                 onClick={() => setSearchQuery('')} 
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
                             >
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
@@ -332,7 +332,7 @@ const BMAnalysisReport: React.FC = () => {
 
                     {/* Actions Group */}
                     <div className="flex items-center gap-2 ml-auto">
-                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
                             <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                         </Button>
                         <PrintButton
@@ -349,69 +349,69 @@ const BMAnalysisReport: React.FC = () => {
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">
-                        <h3 className="text-2xl font-bold text-slate-800">Building Maintenance Analysis</h3>
-                        <p className="text-sm text-slate-500">
+                        <h3 className="text-2xl font-bold text-app-text">Building Maintenance Analysis</h3>
+                        <p className="text-sm text-app-muted">
                             Service Charges Collection & Expenses • {formatDate(startDate)} - {formatDate(endDate)}
                         </p>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100 text-center">
-                            <p className="text-xs text-emerald-600 font-bold uppercase">Collected</p>
-                            <p className="text-lg font-bold text-emerald-700">{CURRENCY} {totals.collected.toLocaleString()}</p>
+                        <div className="p-4 bg-ds-success/10 rounded-lg border border-ds-success/20 text-center">
+                            <p className="text-xs text-ds-success font-bold uppercase">Collected</p>
+                            <p className="text-lg font-bold text-ds-success">{CURRENCY} {totals.collected.toLocaleString()}</p>
                         </div>
-                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-100 text-center">
-                            <p className="text-xs text-amber-600 font-bold uppercase">Receivable</p>
-                            <p className="text-lg font-bold text-amber-700">{CURRENCY} {totals.receivable.toLocaleString()}</p>
+                        <div className="p-4 bg-ds-warning/10 rounded-lg border border-ds-warning/20 text-center">
+                            <p className="text-xs text-ds-warning font-bold uppercase">Receivable</p>
+                            <p className="text-lg font-bold text-ds-warning">{CURRENCY} {totals.receivable.toLocaleString()}</p>
                         </div>
-                        <div className="p-4 bg-rose-50 rounded-lg border border-rose-100 text-center">
-                            <p className="text-xs text-rose-600 font-bold uppercase">Expenses</p>
-                            <p className="text-lg font-bold text-rose-700">{CURRENCY} {totals.expenses.toLocaleString()}</p>
+                        <div className="p-4 bg-ds-danger/10 rounded-lg border border-ds-danger/20 text-center">
+                            <p className="text-xs text-ds-danger font-bold uppercase">Expenses</p>
+                            <p className="text-lg font-bold text-ds-danger">{CURRENCY} {totals.expenses.toLocaleString()}</p>
                         </div>
-                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-center">
-                            <p className="text-xs text-slate-500 font-bold uppercase">Net Fund Flow</p>
-                            <p className={`text-lg font-bold ${totals.net >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
+                        <div className="p-4 bg-app-toolbar/40 rounded-lg border border-app-border text-center">
+                            <p className="text-xs text-app-muted font-bold uppercase">Net Fund Flow</p>
+                            <p className={`text-lg font-bold ${totals.net >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>
                                 {CURRENCY} {totals.net.toLocaleString()}
                             </p>
                         </div>
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-toolbar/40 sticky top-0 z-10">
                                 <tr>
-                                    <th onClick={() => handleSort('buildingName')} className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">Building <SortIcon column="buildingName"/></th>
-                                    <th onClick={() => handleSort('collected')} className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">Collected <SortIcon column="collected"/></th>
-                                    <th onClick={() => handleSort('receivable')} className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">Receivable <SortIcon column="receivable"/></th>
-                                    <th onClick={() => handleSort('expenses')} className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">Expenses <SortIcon column="expenses"/></th>
-                                    <th onClick={() => handleSort('net')} className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs cursor-pointer hover:bg-slate-100 select-none">Net Income/Loss <SortIcon column="net"/></th>
+                                    <th onClick={() => handleSort('buildingName')} className="px-4 py-3 text-left font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">Building <SortIcon column="buildingName"/></th>
+                                    <th onClick={() => handleSort('collected')} className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">Collected <SortIcon column="collected"/></th>
+                                    <th onClick={() => handleSort('receivable')} className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">Receivable <SortIcon column="receivable"/></th>
+                                    <th onClick={() => handleSort('expenses')} className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">Expenses <SortIcon column="expenses"/></th>
+                                    <th onClick={() => handleSort('net')} className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs cursor-pointer hover:bg-app-toolbar/60 select-none">Net Income/Loss <SortIcon column="net"/></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {reportData.map(row => (
-                                    <tr key={row.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-4 py-3 font-medium text-slate-800 whitespace-normal break-words">{row.buildingName}</td>
-                                        <td className="px-4 py-3 text-right text-emerald-600 whitespace-nowrap">{CURRENCY} {row.collected.toLocaleString()}</td>
-                                        <td className="px-4 py-3 text-right text-amber-600 whitespace-nowrap">{CURRENCY} {row.receivable.toLocaleString()}</td>
-                                        <td className="px-4 py-3 text-right text-rose-600 whitespace-nowrap">{CURRENCY} {row.expenses.toLocaleString()}</td>
-                                        <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${row.net >= 0 ? 'text-slate-700' : 'text-rose-600'}`}>
+                                    <tr key={row.id} className="hover:bg-app-toolbar/30 transition-colors">
+                                        <td className="px-4 py-3 font-medium text-app-text whitespace-normal break-words">{row.buildingName}</td>
+                                        <td className="px-4 py-3 text-right text-ds-success whitespace-nowrap">{CURRENCY} {row.collected.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right text-ds-warning whitespace-nowrap">{CURRENCY} {row.receivable.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right text-ds-danger whitespace-nowrap">{CURRENCY} {row.expenses.toLocaleString()}</td>
+                                        <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${row.net >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>
                                             {CURRENCY} {row.net.toLocaleString()}
                                         </td>
                                     </tr>
                                 ))}
                                 {reportData.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="px-4 py-8 text-center text-slate-500">No data found for the selected criteria.</td>
+                                        <td colSpan={5} className="px-4 py-8 text-center text-app-muted">No data found for the selected criteria.</td>
                                     </tr>
                                 )}
                             </tbody>
-                            <tfoot className="bg-slate-50 font-bold border-t border-slate-300 sticky bottom-0">
+                            <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border sticky bottom-0">
                                 <tr>
-                                    <td className="px-4 py-3 text-right">TOTALS</td>
-                                    <td className="px-4 py-3 text-right text-emerald-700 whitespace-nowrap">{CURRENCY} {totals.collected.toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-right text-amber-700 whitespace-nowrap">{CURRENCY} {totals.receivable.toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-right text-rose-700 whitespace-nowrap">{CURRENCY} {totals.expenses.toLocaleString()}</td>
-                                    <td className={`px-4 py-3 text-right whitespace-nowrap ${totals.net >= 0 ? 'text-slate-900' : 'text-rose-700'}`}>{CURRENCY} {totals.net.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right text-app-text">TOTALS</td>
+                                    <td className="px-4 py-3 text-right text-ds-success whitespace-nowrap">{CURRENCY} {totals.collected.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right text-ds-warning whitespace-nowrap">{CURRENCY} {totals.receivable.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right text-ds-danger whitespace-nowrap">{CURRENCY} {totals.expenses.toLocaleString()}</td>
+                                    <td className={`px-4 py-3 text-right whitespace-nowrap ${totals.net >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>{CURRENCY} {totals.net.toLocaleString()}</td>
                                 </tr>
                             </tfoot>
                         </table>

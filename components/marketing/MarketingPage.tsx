@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useAppContext } from '../../context/AppContext';
 import { 
     ContactType, 
@@ -30,6 +31,7 @@ import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import PrintButton from '../ui/PrintButton';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 // Amenity Configuration Modal Component
 const AmenityConfigModal: React.FC<{
@@ -339,6 +341,10 @@ const MarketingPage: React.FC = () => {
 
     useEffect(() => {
         const loadOrgUsers = async () => {
+            if (isLocalOnlyMode()) {
+                setOrgUsers([]);
+                return;
+            }
             try {
                 devLogger.log('[ORG USERS] Loading organization users from API...');
                 const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
@@ -348,7 +354,8 @@ const MarketingPage: React.FC = () => {
                 });
                 setOrgUsers(data || []);
             } catch (error) {
-                devLogger.error('[ORG USERS] Failed to load organization users', error);
+                const msg = error instanceof Error ? error.message : String(error);
+                devLogger.error('[ORG USERS] Failed to load organization users', msg);
                 setOrgUsers([]);
             }
         };
@@ -961,8 +968,8 @@ const MarketingPage: React.FC = () => {
                 };
 
                 // Upload document
-                const docResponse = await apiClient.post('/documents', documentData);
-                const docId = docResponse.data.id;
+                const docResponse = await apiClient.post<{ id: string }>('/documents', documentData);
+                const docId = docResponse.id;
 
                         // Get public URL (including tenant ID for access)
                         const baseUrl = window.location.origin;
@@ -1016,8 +1023,8 @@ const MarketingPage: React.FC = () => {
                     };
 
                     try {
-                        const docResponse = await apiClient.post('/documents', documentData);
-                        const docId = docResponse.data.id;
+                        const docResponse = await apiClient.post<{ id: string }>('/documents', documentData);
+                        const docId = docResponse.id;
 
                         // Get public URL (including tenant ID for access)
                         const baseUrl = window.location.origin;
@@ -1130,20 +1137,21 @@ const MarketingPage: React.FC = () => {
 
             // Step 4: Generate agreement number
             logProgress('Generating agreement number...');
-            const agreementSettings = state.settings?.projectInvoiceSettings || {
-                prefix: 'AGR-',
+            const agreementSettings = state.projectAgreementSettings || {
+                prefix: 'P-AGR-',
                 nextNumber: 1,
-                padding: 5
+                padding: 4
             };
             
+            const prefix = agreementSettings.prefix || 'P-AGR-';
             let maxNum = agreementSettings.nextNumber || 1;
             state.projectAgreements.forEach(agr => {
-                if (agr.agreementNumber && agr.agreementNumber.startsWith(agreementSettings.prefix || 'AGR-')) {
-                    const numPart = parseInt(agr.agreementNumber.slice((agreementSettings.prefix || 'AGR-').length), 10);
+                if (agr.agreementNumber && agr.agreementNumber.startsWith(prefix)) {
+                    const numPart = parseInt(agr.agreementNumber.slice(prefix.length), 10);
                     if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
                 }
             });
-            const agreementNumber = `${agreementSettings.prefix || 'AGR-'}${String(maxNum).padStart(agreementSettings.padding || 5, '0')}`;
+            const agreementNumber = `${prefix}${String(maxNum).padStart(agreementSettings.padding ?? 4, '0')}`;
 
             // Step 5: Create agreement from installment plan (NO DISCOUNTS)
             logProgress('Creating agreement...');
@@ -1162,7 +1170,7 @@ const MarketingPage: React.FC = () => {
                 lumpSumDiscount: 0,
                 miscDiscount: 0,
                 sellingPrice: netValue,
-                issueDate: new Date().toISOString().split('T')[0],
+                issueDate: toLocalDateString(new Date()),
                 description: plan.description || `Converted from installment plan`,
                 status: ProjectAgreementStatus.ACTIVE,
                 installmentPlan: {
@@ -1180,36 +1188,53 @@ const MarketingPage: React.FC = () => {
 
             // Step 6: Generate invoices
             logProgress('Generating invoices...');
-            const invoiceSettings = state.settings?.projectInvoiceSettings || {
-                prefix: 'INV-',
+            const invoiceSettings = state.projectInvoiceSettings || {
+                prefix: 'P-INV-',
                 nextNumber: 1,
                 padding: 5
             };
+            const invPrefix = invoiceSettings.prefix || 'P-INV-';
 
             let nextInvNum = invoiceSettings.nextNumber || 1;
-            state.invoices.forEach(inv => {
-                if (inv.invoiceNumber && inv.invoiceNumber.startsWith(invoiceSettings.prefix || 'INV-')) {
-                    const numPart = parseInt(inv.invoiceNumber.slice((invoiceSettings.prefix || 'INV-').length), 10);
+            let invoicesForNumberScan = state.invoices || [];
+            if (!isLocalOnlyMode()) {
+                try {
+                    const { InvoicesApiRepository } = await import('../../services/api/repositories/invoicesApi');
+                    const serverInvoices = await new InvoicesApiRepository().findAll({ includeDeleted: true });
+                    const byId = new Map<string, Invoice>();
+                    for (const inv of state.invoices || []) {
+                        byId.set(inv.id, inv);
+                    }
+                    for (const inv of serverInvoices) {
+                        if (!byId.has(inv.id)) byId.set(inv.id, inv);
+                    }
+                    invoicesForNumberScan = Array.from(byId.values());
+                } catch (e) {
+                    devLogger.warn('[Convert] Could not load invoices from API for number scan; using local state only.', e);
+                }
+            }
+            invoicesForNumberScan.forEach(inv => {
+                if (inv.invoiceNumber && inv.invoiceNumber.startsWith(invPrefix)) {
+                    const numPart = parseInt(inv.invoiceNumber.slice(invPrefix.length), 10);
                     if (!isNaN(numPart) && numPart >= nextInvNum) nextInvNum = numPart + 1;
                 }
             });
 
             const invoices: Invoice[] = [];
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalDateString(new Date());
 
             // Calculate installment details
             const downPaymentAmount = plan.downPaymentAmount;
             const installmentAmount = plan.installmentAmount;
             const totalInstallments = plan.totalInstallments;
-            const freqMonths = plan.frequency === 'Monthly' ? 1 : 
-                             plan.frequency === 'Quarterly' ? 3 : 
-                             plan.frequency === 'Half-Yearly' ? 6 : 12;
+            const freqMonths = plan.frequency === 'Monthly' ? 1 :
+                             plan.frequency === 'Quarterly' ? 3 : 12;
 
             // 1. Down Payment Invoice
             if (downPaymentAmount > 0) {
                 const downPaymentInvoice: Invoice = {
                     id: `inv-gen-${Date.now()}-dp`,
-                    invoiceNumber: `${invoiceSettings.prefix || 'INV-'}${String(nextInvNum).padStart(invoiceSettings.padding || 5, '0')}`,
+                    invoiceNumber: `${invPrefix}${String(nextInvNum).padStart(invoiceSettings.padding ?? 5, '0')}`,
                     contactId: ownerId,
                     invoiceType: InvoiceType.INSTALLMENT,
                     amount: downPaymentAmount,
@@ -1234,8 +1259,8 @@ const MarketingPage: React.FC = () => {
                     const targetDate = new Date(baseDate);
                     targetDate.setMonth(baseDate.getMonth() + (i * freqMonths));
                     
-                    const invNum = `${invoiceSettings.prefix || 'INV-'}${String(nextInvNum).padStart(invoiceSettings.padding || 5, '0')}`;
-                    const invDate = targetDate.toISOString().split('T')[0];
+                    const invNum = `${invPrefix}${String(nextInvNum).padStart(invoiceSettings.padding ?? 5, '0')}`;
+                    const invDate = toLocalDateString(targetDate);
                     
                     const installmentInvoice: Invoice = {
                         id: `inv-gen-${Date.now()}-${i}`,
@@ -1281,17 +1306,11 @@ const MarketingPage: React.FC = () => {
             dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: updatedPlan });
             logProgress('Plan status updated to Sale Recognized and locked');
 
-            // Step 8: Update invoice settings
-            if (state.settings) {
-                const updatedSettings = {
-                    ...state.settings,
-                    projectInvoiceSettings: {
-                        ...invoiceSettings,
-                        nextNumber: nextInvNum
-                    }
-                };
-                dispatch({ type: 'UPDATE_SETTINGS', payload: updatedSettings });
-            }
+            // Step 8: Update project invoice settings (next number for future invoices)
+            dispatch({
+                type: 'UPDATE_PROJECT_INVOICE_SETTINGS',
+                payload: { ...invoiceSettings, nextNumber: nextInvNum }
+            });
 
             // Log conversion to console for debugging
             devLogger.log('✅ Conversion completed:', {
@@ -1721,10 +1740,11 @@ const MarketingPage: React.FC = () => {
                                     <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Add Amenities</h3>
                                     
                                     <div className="flex gap-1.5 p-1.5 rounded bg-slate-50 border border-slate-100">
-                                        <select 
+                                        <select
                                             value={selectedAmenityIdToAdd}
                                             onChange={e => setSelectedAmenityIdToAdd(e.target.value)}
                                             className="flex-1 px-2 py-1 bg-white border border-slate-200 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
+                                            aria-label="Select amenity to add"
                                         >
                                             <option value="">Select Amenity...</option>
                                             {activeAmenities
@@ -1871,20 +1891,22 @@ const MarketingPage: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-2 pt-1">
                                         <div className="flex items-center gap-1.5">
                                             <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Years</label>
-                                            <select 
+                                            <select
                                                 value={durationYears}
                                                 onChange={e => setDurationYears(e.target.value)}
                                                 className="flex-1 px-2 py-1 bg-white border border-slate-300 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                aria-label="Duration in years"
                                             >
                                                 {[1, 2, 3, 4, 5, 10].map(y => <option key={y} value={y}>{y}y</option>)}
                                             </select>
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Freq</label>
-                                            <select 
+                                            <select
                                                 value={frequency}
                                                 onChange={e => setFrequency(e.target.value as InstallmentFrequency)}
                                                 className="flex-1 px-2 py-1 bg-white border border-slate-300 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                aria-label="Payment frequency"
                                             >
                                                 <option value="Monthly">Mon</option>
                                                 <option value="Quarterly">Quar</option>

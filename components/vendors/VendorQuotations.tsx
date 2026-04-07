@@ -105,6 +105,7 @@ const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuo
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as 'date' | 'amount')}
                         className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        aria-label="Sort by"
                     >
                         <option value="date">Date</option>
                         <option value="amount">Amount</option>

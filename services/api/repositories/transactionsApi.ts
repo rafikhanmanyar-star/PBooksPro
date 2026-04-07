@@ -13,6 +13,9 @@ export interface TransactionFilters {
   startDate?: string;
   endDate?: string;
   type?: string;
+  invoiceId?: string;
+  /** Only payments linked to rental-module invoices (Rental, Security Deposit, Service Charge). */
+  rentalInvoiceOnly?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -27,6 +30,8 @@ export class TransactionsApiRepository {
     if (filters.startDate) params.append('startDate', filters.startDate);
     if (filters.endDate) params.append('endDate', filters.endDate);
     if (filters.type) params.append('type', filters.type);
+    if (filters.invoiceId) params.append('invoiceId', filters.invoiceId);
+    if (filters.rentalInvoiceOnly) params.append('rentalInvoiceOnly', 'true');
     if (filters.limit) params.append('limit', filters.limit.toString());
     if (filters.offset) params.append('offset', filters.offset.toString());
 

@@ -10,10 +10,18 @@ import { Unit } from '../../../types';
 
 export class UnitsApiRepository {
   /**
-   * Get all units
+   * Get all units, optionally filtered by project
    */
-  async findAll(): Promise<Unit[]> {
-    return apiClient.get<Unit[]>('/units');
+  async findAll(projectId?: string): Promise<Unit[]> {
+    const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    return apiClient.get<Unit[]>(`/units${q}`);
+  }
+
+  /**
+   * Units for a single project (GET /api/units?project_id=…)
+   */
+  async findByProjectId(projectId: string): Promise<Unit[]> {
+    return this.findAll(projectId);
   }
 
   /**

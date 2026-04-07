@@ -12,13 +12,15 @@ import ProjectForm from '../ui/ProjectForm';
 import UnitForm from '../settings/UnitForm';
 import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
-import { ContactType } from '../../types';
+import { ContactType, Project, Unit } from '../../types';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 import InstallmentConfigForm from '../settings/InstallmentConfigForm';
 import { ImportType } from '../../services/importService';
 
 const ProjectSettingsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { isAuthenticated } = useAuth();
+    const hasAuthToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
     const { showConfirm, showToast } = useNotification();
     const [activeCategory, setActiveCategory] = useState('projects');
     const [searchQuery, setSearchQuery] = useState('');
@@ -51,11 +53,32 @@ const ProjectSettingsPage: React.FC = () => {
         setEditingItem({ type: activeCategory, item });
     };
 
-    const handleSubmit = (data: any) => {
+    const handleSubmit = async (data: any) => {
         if (!editingItem) return;
         const isEdit = !!editingItem.item;
         const id = isEdit ? editingItem.item.id : Date.now().toString();
-        const payload = { ...data, id };
+        let payload: any = { ...data, id };
+
+        if (!isLocalOnlyMode() && (isAuthenticated || hasAuthToken) && editingItem.type === 'projects') {
+            try {
+                const api = getAppStateApiService();
+                if (isEdit) {
+                    const merged = await api.updateProject(id, {
+                        ...payload,
+                        version: (editingItem.item as Project & { version?: number }).version,
+                    });
+                    payload = { ...payload, ...merged };
+                } else {
+                    const merged = await api.saveProject(payload as Project);
+                    payload = { ...payload, ...merged };
+                }
+            } catch (err: any) {
+                showToast(err?.message || err?.error || 'Could not save project.', 'error');
+                return;
+            }
+        }
+
+        // Units: AppContext dispatch persists to API (ADD_UNIT / UPDATE_UNIT).
 
         switch (editingItem.type) {
             case 'projects':
@@ -77,7 +100,7 @@ const ProjectSettingsPage: React.FC = () => {
         if (!confirmed) return;
 
         const itemId = editingItem.item.id;
-        if (isAuthenticated && (editingItem.type === 'projects' || editingItem.type === 'units')) {
+        if ((isAuthenticated || hasAuthToken) && (editingItem.type === 'projects' || editingItem.type === 'units')) {
             try {
                 const api = getAppStateApiService();
                 if (editingItem.type === 'projects') await api.deleteProject(itemId);

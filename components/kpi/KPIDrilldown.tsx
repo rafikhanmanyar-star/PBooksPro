@@ -232,6 +232,7 @@ const KPIDrilldown: React.FC = () => {
 
             const equityCategoryNames = ['Owner Equity', 'Share Capital', 'Investment', 'Capital Injection'];
             const withdrawalCategoryNames = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Profit Share', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
+            const withdrawalCategoryNamesForEquityOut = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
 
             const isEquityIncome = (catId?: string) => {
                 if (!catId) return false;
@@ -244,6 +245,13 @@ const KPIDrilldown: React.FC = () => {
                 const c = state.categories.find(cat => cat.id === catId);
                 return c && withdrawalCategoryNames.includes(c.name);
             };
+            const isEquityExpenseForEquityOut = (catId?: string) => {
+                if (!catId) return false;
+                const c = state.categories.find(cat => cat.id === catId);
+                return c && withdrawalCategoryNamesForEquityOut.includes(c.name);
+            };
+            const isProfitDistributionExpense = (tx: { type: string; description?: string }) =>
+                tx.type === TransactionType.EXPENSE && (tx.description?.toLowerCase().includes('profit distribution') ?? false);
 
             const equityAccountIds = new Set(state.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
 
@@ -282,30 +290,28 @@ const KPIDrilldown: React.FC = () => {
                             income += tx.amount;
                         }
                     } else if (tx.type === TransactionType.EXPENSE) {
-                        if (isEquityExpense(tx.categoryId)) {
+                        if (isEquityExpenseForEquityOut(tx.categoryId)) {
                             equityOut += tx.amount;
-                        } else {
+                        } else if (!isProfitDistributionExpense(tx)) {
                             expense += tx.amount;
                         }
                     } else if (tx.type === TransactionType.TRANSFER) {
                         const isFromEquity = tx.fromAccountId && equityAccountIds.has(tx.fromAccountId);
                         const isToEquity = tx.toAccountId && equityAccountIds.has(tx.toAccountId);
                         const isMoveIn = tx.description?.toLowerCase().includes('equity move in');
-                        const isMoveOut = tx.description?.toLowerCase().includes('equity move out');
-
+                        const desc = tx.description?.toLowerCase() ?? '';
+                        const isExplicitEquityMoveOut = desc.includes('equity move out');
+                        const isCapitalPayout = desc.includes('capital payout');
                         const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
                         const isFromClearing = fromAccount?.name === 'Internal Clearing';
-                        const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') ||
-                            tx.description?.toLowerCase().includes('pm fee equity');
-
+                        const isPMFeeTransfer = desc.includes('pm fee') || desc.includes('pm fee equity');
+                        if (isExplicitEquityMoveOut || isCapitalPayout) {
+                            equityOut += tx.amount;
+                        }
                         if (isFromEquity || isMoveIn) {
                             investment += tx.amount;
-                        } else if (isToEquity || isMoveOut) {
-                            if (isFromClearing && isPMFeeTransfer) {
-                                investment += tx.amount;
-                            } else {
-                                equityOut += tx.amount;
-                            }
+                        } else if (isToEquity && isFromClearing && isPMFeeTransfer) {
+                            investment += tx.amount;
                         }
                     } else if (tx.type === TransactionType.LOAN) {
                         if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {

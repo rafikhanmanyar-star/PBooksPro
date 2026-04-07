@@ -6,7 +6,33 @@
  */
 
 import { apiClient } from '../client';
-import { RentalAgreement } from '../../../types';
+import { RentalAgreement, RentalAgreementStatus } from '../../../types';
+
+/** Map API JSON (camelCase) to app RentalAgreement */
+export function normalizeRentalAgreementFromApi(raw: Record<string, unknown>): RentalAgreement {
+  const status = (raw.status as string) || RentalAgreementStatus.ACTIVE;
+  const asStatus = Object.values(RentalAgreementStatus).includes(status as RentalAgreementStatus)
+    ? (status as RentalAgreementStatus)
+    : RentalAgreementStatus.ACTIVE;
+  return {
+    id: String(raw.id ?? ''),
+    agreementNumber: String(raw.agreementNumber ?? ''),
+    contactId: String(raw.contactId ?? ''),
+    propertyId: String(raw.propertyId ?? ''),
+    startDate: String(raw.startDate ?? ''),
+    endDate: String(raw.endDate ?? ''),
+    monthlyRent: Number(raw.monthlyRent ?? 0),
+    rentDueDate: Number(raw.rentDueDate ?? 1),
+    status: asStatus,
+    description: raw.description != null ? String(raw.description) : undefined,
+    securityDeposit: raw.securityDeposit != null ? Number(raw.securityDeposit) : undefined,
+    brokerId: raw.brokerId != null ? String(raw.brokerId) : undefined,
+    brokerFee: raw.brokerFee != null ? Number(raw.brokerFee) : undefined,
+    ownerId: raw.ownerId != null ? String(raw.ownerId) : undefined,
+    previousAgreementId: raw.previousAgreementId != null ? String(raw.previousAgreementId) : undefined,
+    version: typeof raw.version === 'number' ? raw.version : undefined,
+  };
+}
 
 export class RentalAgreementsApiRepository {
   /**
@@ -18,7 +44,8 @@ export class RentalAgreementsApiRepository {
     if (filters?.propertyId) params.append('propertyId', filters.propertyId);
     
     const query = params.toString();
-    return apiClient.get<RentalAgreement[]>(`/rental-agreements${query ? `?${query}` : ''}`);
+    const rows = await apiClient.get<Record<string, unknown>[]>(`/rental-agreements${query ? `?${query}` : ''}`);
+    return Array.isArray(rows) ? rows.map((r) => normalizeRentalAgreementFromApi(r)) : [];
   }
 
   /**
@@ -26,7 +53,8 @@ export class RentalAgreementsApiRepository {
    */
   async findById(id: string): Promise<RentalAgreement | null> {
     try {
-      return await apiClient.get<RentalAgreement>(`/rental-agreements/${id}`);
+      const raw = await apiClient.get<Record<string, unknown>>(`/rental-agreements/${id}`);
+      return normalizeRentalAgreementFromApi(raw);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -39,21 +67,24 @@ export class RentalAgreementsApiRepository {
    * Create a new rental agreement
    */
   async create(agreement: Partial<RentalAgreement>): Promise<RentalAgreement> {
-    return apiClient.post<RentalAgreement>('/rental-agreements', agreement);
+    const raw = await apiClient.post<Record<string, unknown>>('/rental-agreements', agreement);
+    return normalizeRentalAgreementFromApi(raw);
   }
 
   /**
    * Update an existing rental agreement
    */
   async update(id: string, agreement: Partial<RentalAgreement>): Promise<RentalAgreement> {
-    return apiClient.put<RentalAgreement>(`/rental-agreements/${id}`, agreement);
+    const raw = await apiClient.put<Record<string, unknown>>(`/rental-agreements/${id}`, agreement);
+    return normalizeRentalAgreementFromApi(raw);
   }
 
   /**
    * Delete a rental agreement
    */
-  async delete(id: string): Promise<void> {
-    await apiClient.delete(`/rental-agreements/${id}`);
+  async delete(id: string, version?: number): Promise<void> {
+    const qs = version != null && Number.isFinite(version) ? `?version=${version}` : '';
+    await apiClient.delete(`/rental-agreements/${id}${qs}`);
   }
 
   /**

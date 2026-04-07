@@ -6,6 +6,7 @@
  */
 
 import { AppState, Bill, Contract, ProjectAgreement, RentalAgreement, Category, Transaction, Invoice, TransactionType } from '../types';
+import { todayLocalYyyyMmDd } from '../utils/dateUtils';
 
 export interface BackupMetadata {
     version?: number;
@@ -167,7 +168,7 @@ function normalizeBill(bill: any): Bill {
         amount: typeof bill.amount === 'number' ? bill.amount : parseFloat(bill.amount || '0'),
         paidAmount: typeof bill.paidAmount === 'number' ? bill.paidAmount : parseFloat(bill.paid_amount || bill.paidAmount || '0'),
         status: bill.status || 'Unpaid',
-        issueDate: bill.issueDate || bill.issue_date || new Date().toISOString().split('T')[0],
+        issueDate: bill.issueDate || bill.issue_date || todayLocalYyyyMmDd(),
         dueDate: bill.dueDate || bill.due_date || undefined,
         description: bill.description || undefined,
         categoryId: bill.categoryId || bill.category_id || undefined,
@@ -222,8 +223,8 @@ function normalizeContract(contract: any): Contract {
         totalAmount: typeof contract.totalAmount === 'number' ? contract.totalAmount : parseFloat(contract.total_amount || contract.totalAmount || '0'),
         area: contract.area !== undefined ? (typeof contract.area === 'number' ? contract.area : parseFloat(contract.area || '0')) : undefined,
         rate: contract.rate !== undefined ? (typeof contract.rate === 'number' ? contract.rate : parseFloat(contract.rate || '0')) : undefined,
-        startDate: contract.startDate || contract.start_date || new Date().toISOString().split('T')[0],
-        endDate: contract.endDate || contract.end_date || new Date().toISOString().split('T')[0],
+        startDate: contract.startDate || contract.start_date || todayLocalYyyyMmDd(),
+        endDate: contract.endDate || contract.end_date || todayLocalYyyyMmDd(),
         status: contract.status || 'Active',
         categoryIds: contract.categoryIds || contract.category_ids || (expenseCategoryItems ? expenseCategoryItems.map((item: any) => item.categoryId) : []),
         expenseCategoryItems: expenseCategoryItems,
@@ -251,7 +252,7 @@ function normalizeProjectAgreement(agreement: any): ProjectAgreement {
         sellingPrice: typeof agreement.sellingPrice === 'number' ? agreement.sellingPrice : parseFloat(agreement.selling_price || agreement.sellingPrice || '0'),
         rebateAmount: agreement.rebateAmount !== undefined ? (typeof agreement.rebateAmount === 'number' ? agreement.rebateAmount : parseFloat(agreement.rebate_amount || agreement.rebateAmount || '0')) : undefined,
         rebateBrokerId: agreement.rebateBrokerId || agreement.rebate_broker_id || undefined,
-        issueDate: agreement.issueDate || agreement.issue_date || new Date().toISOString().split('T')[0],
+        issueDate: agreement.issueDate || agreement.issue_date || todayLocalYyyyMmDd(),
         description: agreement.description || undefined,
         status: agreement.status || 'Active',
         cancellationDetails: agreement.cancellationDetails || agreement.cancellation_details || undefined,
@@ -274,8 +275,8 @@ function normalizeRentalAgreement(agreement: any): RentalAgreement {
         agreementNumber: agreement.agreementNumber || agreement.agreement_number || `RENT-${agreement.id}`,
         contactId: agreement.contactId || agreement.contact_id || agreement.tenantId || agreement.tenant_id || '',
         propertyId: agreement.propertyId || agreement.property_id || '',
-        startDate: agreement.startDate || agreement.start_date || new Date().toISOString().split('T')[0],
-        endDate: agreement.endDate || agreement.end_date || new Date().toISOString().split('T')[0],
+        startDate: agreement.startDate || agreement.start_date || todayLocalYyyyMmDd(),
+        endDate: agreement.endDate || agreement.end_date || todayLocalYyyyMmDd(),
         monthlyRent: typeof agreement.monthlyRent === 'number' ? agreement.monthlyRent : parseFloat(agreement.monthly_rent || agreement.monthlyRent || '0'),
         rentDueDate: typeof agreement.rentDueDate === 'number' ? agreement.rentDueDate : parseInt(agreement.rent_due_date || agreement.rentDueDate || '1'),
         status: agreement.status || 'Active',
@@ -311,7 +312,7 @@ function normalizeTransaction(transaction: any): Transaction {
         type: transaction.type || TransactionType.EXPENSE,
         subtype: transaction.subtype || undefined,
         amount: typeof transaction.amount === 'number' ? transaction.amount : parseFloat(transaction.amount || '0'),
-        date: transaction.date || new Date().toISOString().split('T')[0],
+        date: transaction.date || todayLocalYyyyMmDd(),
         description: transaction.description || undefined,
         accountId: transaction.accountId || transaction.account_id || '',
         fromAccountId: transaction.fromAccountId || transaction.from_account_id || undefined,
@@ -344,8 +345,8 @@ function normalizeInvoice(invoice: any): Invoice {
         amount: typeof invoice.amount === 'number' ? invoice.amount : parseFloat(invoice.amount || '0'),
         paidAmount: typeof invoice.paidAmount === 'number' ? invoice.paidAmount : parseFloat(invoice.paid_amount || invoice.paidAmount || '0'),
         status: invoice.status || 'Unpaid',
-        issueDate: invoice.issueDate || invoice.issue_date || new Date().toISOString().split('T')[0],
-        dueDate: invoice.dueDate || invoice.due_date || new Date().toISOString().split('T')[0],
+        issueDate: invoice.issueDate || invoice.issue_date || todayLocalYyyyMmDd(),
+        dueDate: invoice.dueDate || invoice.due_date || todayLocalYyyyMmDd(),
         invoiceType: invoice.invoiceType || invoice.invoice_type || 'Rental',
         description: invoice.description || undefined,
         projectId: invoice.projectId || invoice.project_id || undefined,

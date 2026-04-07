@@ -11,13 +11,19 @@ export const formatDate = (dateString: string | Date | null | undefined): string
   if (!dateString) return '—';
   
   try {
+    if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString.trim())) {
+      return dateString.trim();
+    }
     const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
     
     // Check if valid date
     if (isNaN(date.getTime())) return '—';
-    
-    // Return in YYYY-MM-DD format
-    return date.toISOString().split('T')[0];
+
+    // Local calendar day (avoid UTC shift from toISOString)
+    const y = date.getFullYear();
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   } catch (error) {
     console.warn('Error formatting date:', error);
     return '—';

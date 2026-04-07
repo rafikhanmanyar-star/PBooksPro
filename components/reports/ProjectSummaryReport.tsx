@@ -11,8 +11,7 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
-import { formatDate } from '../../utils/dateUtils';
-import DatePicker from '../ui/DatePicker';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
@@ -32,6 +31,13 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF19AF'
 
 const tooltipFormatter = (value: number) => `${CURRENCY} ${(value || 0).toLocaleString()}`;
 
+const chartTooltipStyles = {
+    backgroundColor: 'var(--card-bg)',
+    border: '1px solid var(--border-color)',
+    borderRadius: '8px',
+    color: 'var(--text-primary)',
+};
+
 const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
     const RADIAN = Math.PI / 180;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -50,8 +56,8 @@ const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, per
 // Memoized Chart Component to prevent re-render loops
 const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: string }) => {
     return (
-        <div className="flex flex-col h-full min-h-[300px]">
-            <h4 className="text-lg font-semibold text-center mb-2">{title}</h4>
+        <div className="flex flex-col h-full min-h-[300px] bg-app-card border border-app-border rounded-lg shadow-ds-card p-4">
+            <h4 className="text-lg font-semibold text-center mb-2 text-app-text">{title}</h4>
             <div className="w-full h-[250px] relative">
                 {data.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -71,13 +77,13 @@ const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: strin
                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 ))}
                             </Pie>
-                            <Tooltip formatter={tooltipFormatter} />
-                            <Legend />
+                            <Tooltip formatter={tooltipFormatter} contentStyle={chartTooltipStyles} />
+                            <Legend wrapperStyle={{ fontSize: '12px', color: 'var(--text-muted)' }} />
                         </PieChart>
                     </ResponsiveContainer>
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
-                        <p className="text-slate-500">No {title.toLowerCase()} recorded.</p>
+                        <p className="text-app-muted">No {title.toLowerCase()} recorded.</p>
                     </div>
                 )}
             </div>
@@ -93,11 +99,11 @@ const ProjectSummaryReport: React.FC = () => {
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(() => {
         const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        return toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
     });
     const [endDate, setEndDate] = useState(() => {
         const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+        return toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
     });
     const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
     
@@ -121,11 +127,11 @@ const ProjectSummaryReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (option === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (option === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -297,7 +303,7 @@ const ProjectSummaryReport: React.FC = () => {
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -320,7 +326,7 @@ const ProjectSummaryReport: React.FC = () => {
                         hideSearch={true}
                     >
                          <div className="w-full sm:w-48">
-                            <label className="block text-sm font-medium text-slate-600 mb-1">Project</label>
+                            <label className="block text-sm font-medium text-app-muted mb-1">Project</label>
                             <ComboBox 
                                 label={undefined} 
                                 items={projectItems} 
@@ -332,65 +338,65 @@ const ProjectSummaryReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
                 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                    <Card className="min-h-full flex flex-col">
+                <div className="flex-grow overflow-y-auto printable-area min-h-0 bg-background" id="printable-area">
+                    <Card className="min-h-full flex flex-col p-4 md:p-6">
                          <ReportHeader />
                          <div className="text-center mb-6">
-                            <h3 className="text-2xl font-bold">Project Financial Report</h3>
-                            <p className="text-sm text-slate-500">
+                            <h3 className="text-2xl font-bold text-app-text">Project Financial Report</h3>
+                            <p className="text-sm text-app-muted">
                                 {selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p=>p.id === selectedProjectId)?.name}
                             </p>
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-app-muted">
                                 From {formatDate(startDate)} to {formatDate(endDate)}
                             </p>
                         </div>
                         
                         {reportData.length > 0 ? (
                             <div className="space-y-8 flex-grow">
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                        <thead className="bg-slate-50">
+                                <div className="overflow-x-auto border border-app-border rounded-lg shadow-ds-card">
+                                    <table className="min-w-full divide-y divide-app-border text-sm">
+                                        <thead className="bg-app-table-header border-b border-app-border">
                                             <tr>
-                                                <th onClick={() => handleSort('projectName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Project <SortIcon column="projectName"/></th>
-                                                <th onClick={() => handleSort('income')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Total Income <SortIcon column="income"/></th>
-                                                <th onClick={() => handleSort('expense')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Total Expense <SortIcon column="expense"/></th>
-                                                <th onClick={() => handleSort('net')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Net Profit/Loss <SortIcon column="net"/></th>
+                                                <th onClick={() => handleSort('projectName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Project <SortIcon column="projectName"/></th>
+                                                <th onClick={() => handleSort('income')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Total Income <SortIcon column="income"/></th>
+                                                <th onClick={() => handleSort('expense')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Total Expense <SortIcon column="expense"/></th>
+                                                <th onClick={() => handleSort('net')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Net Profit/Loss <SortIcon column="net"/></th>
                                             </tr>
                                         </thead>
-                                        <tbody className="bg-white divide-y divide-slate-200">
+                                        <tbody className="divide-y divide-app-border">
                                             {reportData.map(item => (
-                                                <tr key={item.projectId} onClick={() => handleProjectClick(item.projectId)} className="cursor-pointer hover:bg-slate-50">
-                                                    <td className="px-3 py-2 whitespace-nowrap font-medium text-slate-800">{item.projectName}</td>
-                                                    <td className="px-3 py-2 text-right text-success">{CURRENCY} {(item.income || 0).toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-right text-danger">{CURRENCY} {(item.expense || 0).toLocaleString()}</td>
-                                                    <td className={`px-3 py-2 text-right font-bold ${(item.net || 0) >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {(item.net || 0).toLocaleString()}</td>
+                                                <tr key={item.projectId} onClick={() => handleProjectClick(item.projectId)} className="cursor-pointer hover:bg-app-toolbar/60 transition-colors">
+                                                    <td className="px-3 py-2 whitespace-nowrap font-medium text-app-text">{item.projectName}</td>
+                                                    <td className="px-3 py-2 text-right text-ds-success tabular-nums">{CURRENCY} {(item.income || 0).toLocaleString()}</td>
+                                                    <td className="px-3 py-2 text-right text-ds-danger tabular-nums">{CURRENCY} {(item.expense || 0).toLocaleString()}</td>
+                                                    <td className={`px-3 py-2 text-right font-bold tabular-nums ${(item.net || 0) >= 0 ? 'text-ds-success' : 'text-ds-danger'}`}>{CURRENCY} {(item.net || 0).toLocaleString()}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
-                                        <tfoot className="bg-slate-50 font-bold border-t border-slate-300">
+                                        <tfoot className="bg-app-toolbar font-bold border-t border-app-border shadow-ds-card">
                                             <tr>
-                                                <td className="px-3 py-2 text-right">Totals</td>
-                                                <td className="px-3 py-2 text-right text-success">{CURRENCY} {(totals.totalIncome || 0).toLocaleString()}</td>
-                                                <td className="px-3 py-2 text-right text-danger">{CURRENCY} {(totals.totalExpense || 0).toLocaleString()}</td>
-                                                <td className={`px-3 py-2 text-right ${(totals.totalNet || 0) >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {(totals.totalNet || 0).toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right text-app-text">Totals</td>
+                                                <td className="px-3 py-2 text-right text-ds-success tabular-nums">{CURRENCY} {(totals.totalIncome || 0).toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right text-ds-danger tabular-nums">{CURRENCY} {(totals.totalExpense || 0).toLocaleString()}</td>
+                                                <td className={`px-3 py-2 text-right tabular-nums ${(totals.totalNet || 0) >= 0 ? 'text-ds-success' : 'text-ds-danger'}`}>{CURRENCY} {(totals.totalNet || 0).toLocaleString()}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
                                 </div>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-6 border-t print:break-inside-avoid">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-6 border-t border-app-border print:break-inside-avoid">
                                     <ProjectPieChart data={incomeChartData} title="Income by Project" />
                                     <ProjectPieChart data={expenseChartData} title="Expense by Project" />
                                 </div>
                             </div>
                         ) : (
                             <div className="text-center py-16 flex-grow">
-                                <div className="mx-auto h-16 w-16 text-slate-400">{ICONS.archive}</div>
-                                <h3 className="mt-2 text-lg font-semibold text-slate-800">No Project Data</h3>
-                                <p className="mt-1 text-sm text-slate-500">No project transactions were found for the selected period.</p>
+                                <div className="mx-auto h-16 w-16 text-app-muted">{ICONS.archive}</div>
+                                <h3 className="mt-2 text-lg font-semibold text-app-text">No Project Data</h3>
+                                <p className="mt-1 text-sm text-app-muted">No project transactions were found for the selected period.</p>
                             </div>
                         )}
-                        <div className="flex-shrink-0 mt-auto">
+                        <div className="flex-shrink-0 mt-auto pt-4">
                             <ReportFooter />
                         </div>
                     </Card>

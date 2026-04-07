@@ -4,6 +4,7 @@ import { useAppContext } from '../../context/AppContext';
 import { Transaction } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
 
@@ -23,8 +24,7 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
     useEffect(() => {
         if (isOpen && transaction) {
             setAmount(transaction.amount.toString());
-            const d = new Date(transaction.date);
-            setDate(!isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '');
+            setDate(parseStoredDateToYyyyMmDdInput(transaction.date));
         }
     }, [isOpen, transaction]);
 
@@ -42,7 +42,7 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
             return;
         }
         
-        const dateObj = new Date(date);
+        const dateObj = new Date(date + 'T12:00:00');
         if (isNaN(dateObj.getTime())) {
             await showAlert("Invalid date selected.");
             return;
@@ -52,7 +52,7 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
         const updatedTx: Transaction = {
             ...transaction,
             amount: newAmount,
-            date: dateObj.toISOString(),
+            date: toLocalDateString(dateObj),
         };
         dispatch({ type: 'UPDATE_TRANSACTION', payload: updatedTx });
 
@@ -84,7 +84,7 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
             const updatedPairTx: Transaction = {
                 ...pairTx,
                 amount: -newAmount, // Invert for deduction
-                date: dateObj.toISOString(),
+                date: toLocalDateString(dateObj),
             };
             dispatch({ type: 'UPDATE_TRANSACTION', payload: updatedPairTx });
         }
@@ -148,12 +148,7 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
                     onChange={e => setAmount(e.target.value)} 
                 />
                 
-                <Input 
-                    label="Date Applied" 
-                    type="date" 
-                    value={date} 
-                    onChange={e => setDate(e.target.value)} 
-                />
+                <DatePicker label="Date Applied" value={date} onChange={(d) => setDate(toLocalDateString(d))} />
 
                 <div className="flex justify-between pt-4">
                     <Button variant="danger" onClick={handleDelete}>Delete</Button>

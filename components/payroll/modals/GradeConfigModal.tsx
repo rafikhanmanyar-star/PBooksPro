@@ -98,20 +98,20 @@ const GradeConfigModal: React.FC<GradeConfigModalProps> = ({ isOpen, onClose, in
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2"><Award size={20} className="text-blue-600" /><h3 className="font-bold text-slate-900">{initialData ? 'Update' : 'Add'} Grade Level</h3></div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-400"><X size={20} /></button>
+          <button type="button" onClick={onClose} className="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-400" aria-label="Close"><X size={20} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Grade Name</label>
-            <input type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" placeholder="e.g. G1, Senior Manager" />
+            <label htmlFor="grade-config-name" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Grade Name</label>
+            <input id="grade-config-name" type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" placeholder="e.g. G1, Senior Manager" aria-label="Grade name" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Description</label>
-            <input type="text" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" placeholder="e.g. Individual Contributor" />
+            <label htmlFor="grade-config-description" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Description</label>
+            <input id="grade-config-description" type="text" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" placeholder="e.g. Individual Contributor" aria-label="Description" />
           </div>
           <div className="flex gap-4">
-            <div className="flex-1"><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Min Salary (PKR)</label><input type="number" required value={formData.min_salary} onChange={(e) => setFormData({...formData, min_salary: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" /></div>
-            <div className="flex-1"><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Max Salary (PKR)</label><input type="number" required value={formData.max_salary} onChange={(e) => setFormData({...formData, max_salary: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" /></div>
+            <div className="flex-1"><label htmlFor="grade-config-min-salary" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Min Salary (PKR)</label><input id="grade-config-min-salary" type="number" required value={formData.min_salary} onChange={(e) => setFormData({...formData, min_salary: parseFloat(e.target.value) || 0})} onWheel={e => e.currentTarget.blur()} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" aria-label="Minimum salary in PKR" /></div>
+            <div className="flex-1"><label htmlFor="grade-config-max-salary" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Max Salary (PKR)</label><input id="grade-config-max-salary" type="number" required value={formData.max_salary} onChange={(e) => setFormData({...formData, max_salary: parseFloat(e.target.value) || 0})} onWheel={e => e.currentTarget.blur()} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" aria-label="Maximum salary in PKR" /></div>
           </div>
           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex gap-3"><AlertCircle size={20} className="text-blue-500 shrink-0" /><p className="text-xs text-blue-700 leading-relaxed font-medium">Grade levels help define standard salary bands across the organization.</p></div>
           <div className="flex gap-3 pt-4">

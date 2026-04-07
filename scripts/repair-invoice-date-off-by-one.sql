@@ -1,0 +1,24 @@
+-- =============================================================================
+-- OPTIONAL data repair: rental / invoice calendar dates stored one day early
+-- =============================================================================
+-- Symptom: issue_date or due_date in the DB is N when the user chose N+1 (UTC/toISOString bug).
+-- Only run after backup and if you are sure ALL affected rows need +1 calendar day.
+-- This project stores rental invoices in table `invoices` (invoice_type = 'Rental'), not `rental_invoices`.
+--
+-- PostgreSQL (DATE columns):
+-- UPDATE invoices
+-- SET issue_date = issue_date + INTERVAL '1 day',
+--     due_date   = due_date + INTERVAL '1 day'
+-- WHERE tenant_id = 'your-tenant-id'
+--   AND invoice_type = 'Rental'
+--   AND issue_date IS NOT NULL;
+--
+-- SQLite (TEXT YYYY-MM-DD):
+-- UPDATE invoices
+-- SET issue_date = date(issue_date, '+1 day'),
+--     due_date   = date(due_date, '+1 day')
+-- WHERE tenant_id = 'local'
+--   AND invoice_type = 'Rental'
+--   AND issue_date IS NOT NULL AND issue_date != '';
+--
+-- Verify a few rows before/after; adjust WHERE to match only corrupted imports.

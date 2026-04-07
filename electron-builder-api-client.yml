@@ -1,0 +1,66 @@
+# Electron client for LAN / PostgreSQL API (VITE_LOCAL_ONLY=false). Output: release-api-client/
+appId: com.pbookspro.app.client
+productName: PBooks Pro Client
+compression: maximum
+directories:
+  output: release-api-client
+files:
+  - "dist/**/*"
+  - "!dist/assets/sql-asm*"
+  - "!dist/assets/sql-wasm*"
+  - "!dist/assets/sqljs-*"
+  - "!dist/assets/worker.sql-*"
+  - "!dist/**/*.map"
+  - "electron/main.cjs"
+  - "electron/preload.cjs"
+  - "electron/sqliteBridge.cjs"
+  - "electron/stability.cjs"
+  - "electron/schemaValidator.cjs"
+  - "electron/schemaVersion.json"
+  - "electron/migrations/**/*.cjs"
+  - "electron/companyManager.cjs"
+  - "electron/spellChecker.cjs"
+  - "electron/schema.sql"
+  - "electron/assets/**/*"
+  - "package.json"
+  - "node_modules/better-sqlite3/**"
+  - "node_modules/bindings/**"
+  - "node_modules/file-uri-to-path/**"
+  - "node_modules/electron-updater/**"
+  - "node_modules/builder-util-runtime/**"
+  - "node_modules/debug/**"
+  - "node_modules/ms/**"
+  - "node_modules/supports-color/**"
+  - "node_modules/has-flag/**"
+  - "node_modules/fs-extra/**"
+  - "node_modules/graceful-fs/**"
+  - "node_modules/jsonfile/**"
+  - "node_modules/universalify/**"
+  - "node_modules/js-yaml/**"
+  - "node_modules/lazy-val/**"
+  - "node_modules/lodash.escaperegexp/**"
+  - "node_modules/lodash.isequal/**"
+  - "node_modules/sax/**"
+  - "node_modules/semver/**"
+  - "node_modules/tiny-typed-emitter/**"
+  - "!node_modules/**/{test,tests,__tests__,docs,doc,example,examples}/**"
+  - "!node_modules/**/*.{md,ts,map}"
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+  - "node_modules/electron-updater/**"
+win:
+  target:
+    - nsis
+  icon: electron/assets/icon.ico
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PBooks Pro Client
+  artifactName: PBooks-Pro-Client-Setup-${version}.${ext}
+# Allow deploy:production to publish PBooks-Pro-Client-Setup + latest.yml to GitHub (do not use publish: [] here).
+publish:
+  - provider: github
+    releaseType: release

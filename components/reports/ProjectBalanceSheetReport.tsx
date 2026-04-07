@@ -8,10 +8,13 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
+import { resolveProjectIdForTransaction } from './reportUtils';
 import ComboBox from '../ui/ComboBox';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
+import { resolveSystemAccountId } from '../../services/systemEntityIds';
 
 interface AccountBalance {
     id: string;
@@ -22,7 +25,8 @@ interface AccountBalance {
 
 interface BalanceSheetData {
     assets: {
-        accounts: AccountBalance[];
+        currentAccounts: AccountBalance[];
+        longTermAccounts: AccountBalance[];
         accountsReceivable: number;
         total: number;
     };
@@ -38,6 +42,8 @@ interface BalanceSheetData {
         accounts: AccountBalance[];
         ownerContribution: number;
         retainedEarnings: number;
+        /** Matches long-term "Project Received Assets" held in kind (excluded from P&L until sale). */
+        receivedAssetsEquityOffset: number;
         total: number;
     };
     marketInventory: number; // Memo item
@@ -49,7 +55,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
-    const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
+    const [asOfDate, setAsOfDate] = useState(toLocalDateString(new Date()));
     const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
 
     const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
@@ -59,13 +65,13 @@ const ProjectBalanceSheetReport: React.FC = () => {
         const now = new Date();
         
         if (type === 'all') {
-            setAsOfDate(now.toISOString().split('T')[0]);
+            setAsOfDate(toLocalDateString(now));
         } else if (type === 'thisMonth') {
             const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            setAsOfDate(endOfMonth.toISOString().split('T')[0]);
+            setAsOfDate(toLocalDateString(endOfMonth));
         } else if (type === 'lastMonth') {
             const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-            setAsOfDate(endOfLastMonth.toISOString().split('T')[0]);
+            setAsOfDate(toLocalDateString(endOfLastMonth));
         }
     };
 
@@ -110,7 +116,9 @@ const ProjectBalanceSheetReport: React.FC = () => {
         // Liability Categories (Pass-through funds)
         const secDepIn = categories.find(c => c.name === 'Security Deposit')?.id;
         const rentalIn = categories.find(c => c.name === 'Rental Income')?.id;
-        
+        // Asset received in kind: not revenue at receipt; revenue recognized at sale (Asset Sale Proceeds)
+        const assetReceivedCat = findProjectAssetCategory(categories, 'ASSET_BALANCE_SHEET_ONLY')?.id;
+
         const secDepOut = new Set(categories.filter(c => c.name === 'Security Deposit Refund' || c.name === 'Owner Security Payout').map(c => c.id));
         const rentalOut = new Set(categories.filter(c => c.name === 'Owner Payout').map(c => c.id));
 
@@ -118,16 +126,8 @@ const ProjectBalanceSheetReport: React.FC = () => {
             const txDate = new Date(tx.date);
             if (txDate > dateLimit) return;
             
-            // Resolve projectId from linked entities if missing
-            let projectId = tx.projectId;
-            if (!projectId && tx.billId) {
-                const bill = state.bills.find(b => b.id === tx.billId);
-                if (bill) projectId = bill.projectId;
-            }
-            if (!projectId && tx.invoiceId) {
-                const inv = state.invoices.find(i => i.id === tx.invoiceId);
-                if (inv) projectId = inv.projectId;
-            }
+            // Resolve projectId from linked entities if missing (shared report helper)
+            const projectId = resolveProjectIdForTransaction(tx, state);
             
             // Strictly filter by selected project
             if (selectedProjectId !== 'all') {
@@ -190,65 +190,51 @@ const ProjectBalanceSheetReport: React.FC = () => {
                 if (tx.categoryId && equityCats.has(tx.categoryId)) {
                     ownerContribution += tx.amount;
                 } else if (tx.categoryId === secDepIn) {
-                    securityDepositsHeld += tx.amount; // Liability increases
+                    // Security deposits are liabilities, not income — tracked via Security Liability account
+                    // Skip from P&L entirely
                 } else if (tx.categoryId === rentalIn) {
-                    ownerFundsHeld += tx.amount; // Liability increases (Money due to owner)
+                    ownerFundsHeld += tx.amount;
+                } else if (tx.categoryId === assetReceivedCat) {
+                    // Asset received in kind: balance sheet only; revenue recognized when asset is sold (Asset Sale Proceeds)
+                    // Skip from retained earnings so RE is not overstated
                 } else {
-                    companyRevenue += tx.amount; // Actual Company Income
+                    companyRevenue += tx.amount;
                 }
             } 
             // EXPENSE
             else if (tx.type === TransactionType.EXPENSE) {
-                // Exclude Internal Clearing account transactions (internal adjustments)
                 const clearingAccount = state.accounts.find(a => a.name === 'Internal Clearing');
                 if (clearingAccount && tx.accountId === clearingAccount.id) {
-                    // Skip Internal Clearing transactions - they're internal adjustments
                     return;
                 }
                 
                 if (tx.categoryId && drawingsCats.has(tx.categoryId)) {
                     ownerContribution -= tx.amount;
                 } else if (tx.categoryId && secDepOut.has(tx.categoryId)) {
-                    securityDepositsHeld -= tx.amount; // Liability decreases (Refunded/Paid out)
+                    // Security refunds/payouts are liability reductions, not expenses — tracked via Security Liability account
+                    // Skip from P&L entirely
                 } else if (tx.categoryId && rentalOut.has(tx.categoryId)) {
-                    ownerFundsHeld -= tx.amount; // Liability decreases (Paid to owner)
+                    ownerFundsHeld -= tx.amount;
                 } else {
-                    // Check if this expense is reducing income (expense with income category)
-                    // This happens for sales return refunds - they reduce income, not add to expenses
                     const category = categories.find(c => c.id === tx.categoryId);
                     if (category && category.type === TransactionType.INCOME) {
-                        // This is an expense that reduces income (like refund reduction)
-                        // Subtract from revenue instead of adding to expenses
                         companyRevenue -= tx.amount;
-                        return; // Skip further processing
+                        return;
                     }
-                    
-                    // Determine if expense is Company Expense or Pass-through (Owner's Expense)
-                    // Heuristic: If expense is linked to a Rental Property, it reduces Owner Funds Held
-                    // UNLESS it's specifically a "Tenant Deduction" which reduces Security Deposit Liability
                     
                     let isOwnerExpense = false;
-                    let isTenantDeduction = false;
-
                     const catName = String(catMap.get(tx.categoryId || '') || '');
                     
-                    // Check for Tenant Deductions (Repairs charged to tenant -> reduces Sec Dep liability)
-                    const contact = (state.contacts || []).find(c => c.id === tx.contactId);
-                    if (contact?.type === 'Tenant' || catName.includes('(Tenant)')) {
-                        isTenantDeduction = true;
-                    }
-                    // Check for Owner Expenses (Repairs, Broker Fees on rentals -> reduces Owner Funds liability)
-                    else if (tx.propertyId && !tx.projectId) {
-                        // Assume property-linked expenses are owner's responsibility
+                    // Tenant deductions reduce Security Liability (handled by applyTransactionEffect)
+                    // but still show as expenses in P&L
+                    if (tx.propertyId && !tx.projectId && !catName.includes('(Tenant)')) {
                         isOwnerExpense = true;
                     }
 
-                    if (isTenantDeduction) {
-                        securityDepositsHeld -= tx.amount;
-                    } else if (isOwnerExpense) {
+                    if (isOwnerExpense) {
                         ownerFundsHeld -= tx.amount;
                     } else {
-                        companyExpense += tx.amount; // True Company Expense
+                        companyExpense += tx.amount;
                     }
                 }
             }
@@ -314,38 +300,46 @@ const ProjectBalanceSheetReport: React.FC = () => {
             }
         });
 
-        // 3. Retained Earnings (Company Net Income for the selected project)
+        // Received Assets (Long-term): balance = sum of held (unsold) assets so reversal of sale shows asset back in long-term
+        const receivedAssetsAccountId =
+            resolveSystemAccountId(state.accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets';
+        const receivedAssetsHeldBalance = (state.projectReceivedAssets || [])
+            .filter(a => !a.soldDate)
+            .filter(a => selectedProjectId === 'all' || a.projectId === selectedProjectId)
+            .reduce((sum, a) => sum + (a.recordedValue || 0), 0);
+        if (state.accounts?.some(a => a.id === receivedAssetsAccountId)) {
+            accountBalances[receivedAssetsAccountId] = receivedAssetsHeldBalance;
+            if (receivedAssetsHeldBalance > 0.01) accountsWithTransactions.add(receivedAssetsAccountId);
+        }
+
+        // 3. Retained Earnings (project equity / net position)
+        // "Asset received (balance sheet only)" is excluded from companyRevenue (revenue at sale — see RecordSaleModal).
+        // Held in-kind value is shown as Project Received Assets; book the balancing credit to equity so Assets = Liab + Equity.
         const retainedEarnings = (companyRevenue - companyExpense) + accountsReceivable - accountsPayable;
+        const receivedAssetsEquityOffset = receivedAssetsHeldBalance;
 
         // 4. Asset/Liab Classification
-        const assetsArr: AccountBalance[] = [];
+        const currentAssetsArr: AccountBalance[] = [];
+        const longTermAssetsArr: AccountBalance[] = [];
         const liabilitiesArr: AccountBalance[] = [];
         const equityArr: AccountBalance[] = [];
 
-        // Target specific accounts created by user to link category totals
         const RENTAL_LIABILITY_KEYWORDS = ['rental liability', 'rent liability', 'rental suspense'];
-        const SECURITY_LIABILITY_KEYWORDS = ['security liability', 'security deposit liability'];
         
         let rentalLiabilityAccountFound = false;
-        let securityLiabilityAccountFound = false;
 
         (state.accounts || []).forEach(acc => {
             let balance = accountBalances[acc.id] || 0;
             const nameLower = acc.name.toLowerCase();
 
-            // --- LINKING LOGIC START ---
-            // If this is the user-created Rental Liability account, force the calculated balance
+            // If this is the Rental Liability account, force the calculated balance
             if (RENTAL_LIABILITY_KEYWORDS.some(kw => nameLower.includes(kw))) {
                 balance = -ownerFundsHeld;
                 rentalLiabilityAccountFound = true;
             }
             
-            // If this is the user-created Security Liability account
-            if (SECURITY_LIABILITY_KEYWORDS.some(kw => nameLower.includes(kw))) {
-                balance = -securityDepositsHeld;
-                securityLiabilityAccountFound = true;
-            }
-            // --- LINKING LOGIC END ---
+            // Security Liability account uses its own tracked balance from applyTransactionEffect
+            // (sys-acc-sec-liability balance is maintained directly, no override needed)
 
             // Check if account has transactions for the selected project
             const hasTransactions = accountsWithTransactions.has(acc.id);
@@ -359,26 +353,33 @@ const ProjectBalanceSheetReport: React.FC = () => {
                     equityArr.push({ id: acc.id, name: acc.name, balance: -balance, type: acc.type });
                 }
             } else if (acc.type === AccountType.LIABILITY) {
-                // For liability accounts, only include if has transactions AND (non-zero balance OR is a linked account)
-                if (hasTransactions && (hasBalance || rentalLiabilityAccountFound || securityLiabilityAccountFound)) {
-                    // Only include linked accounts if they have a non-zero balance
-                    if ((rentalLiabilityAccountFound || securityLiabilityAccountFound) && !hasBalance) {
+                if (hasTransactions && (hasBalance || rentalLiabilityAccountFound)) {
+                    if (rentalLiabilityAccountFound && !hasBalance) {
                         // Skip linked accounts with zero balance
                     } else {
                         liabilitiesArr.push({ id: acc.id, name: acc.name, balance: -balance, type: acc.type });
                     }
                 }
             } else {
-                // For asset accounts (BANK, CASH, ASSET), only include if has transactions AND non-zero balance
+                // Asset accounts: split into current (BANK, CASH) vs long-term (ASSET)
                 if (hasTransactions && hasBalance) {
-                    assetsArr.push({ id: acc.id, name: acc.name, balance: balance, type: acc.type });
+                    const item = { id: acc.id, name: acc.name, balance: balance, type: acc.type };
+                    if (acc.type === AccountType.BANK || acc.type === AccountType.CASH) {
+                        currentAssetsArr.push(item);
+                    } else if (acc.type === AccountType.ASSET) {
+                        longTermAssetsArr.push(item);
+                    }
                 }
             }
         });
+
+        // Combined for total (current + long-term)
+        const allAssetsArr = [...currentAssetsArr, ...longTermAssetsArr];
         
         // If specific accounts weren't found in the loop, we append them as generic line items via the extraItems prop in display.
         // But we need to zero out the variable passed to extraItems if found to avoid double counting.
-        const finalSecurityDepositsHeld = securityLiabilityAccountFound ? 0 : (Math.abs(securityDepositsHeld) > 0.01 ? securityDepositsHeld : 0);
+        // Security Liability is now tracked via sys-acc-sec-liability account directly (no fallback needed)
+        const finalSecurityDepositsHeld = 0;
         const finalOwnerFundsHeld = rentalLiabilityAccountFound ? 0 : (Math.abs(ownerFundsHeld) > 0.01 ? ownerFundsHeld : 0);
         const finalOutstandingLoans = Math.abs(outstandingLoans) > 0.01 ? outstandingLoans : 0;
 
@@ -401,8 +402,8 @@ const ProjectBalanceSheetReport: React.FC = () => {
         const finalOwnerContribution = Math.abs(ownerContribution) > 0.01 ? ownerContribution : 0;
         const finalRetainedEarnings = Math.abs(retainedEarnings) > 0.01 ? retainedEarnings : 0;
         
-        // Assets = All accounts related to selected project + Accounts Receivable + Potential Revenue
-        const totalAssets = assetsArr.reduce((sum, a) => sum + a.balance, 0) + finalAccountsReceivable + finalMarketInventory;
+        // Assets = Current + Long-term + Accounts Receivable + Potential Revenue
+        const totalAssets = allAssetsArr.reduce((sum, a) => sum + a.balance, 0) + finalAccountsReceivable + finalMarketInventory;
         
         // Liabilities = All liability accounts related to selected project + All accounts payable + outstanding loans + security deposits + owner funds
         const totalLiabilities = liabilitiesArr.reduce((sum, l) => sum + l.balance, 0) + 
@@ -414,13 +415,16 @@ const ProjectBalanceSheetReport: React.FC = () => {
         // Equity = Owner's current equity for the selected project
         // This includes equity accounts related to the project + owner contributions + retained earnings
         const totalEquityAccounts = equityArr.reduce((sum, e) => sum + e.balance, 0);
-        const totalEquity = totalEquityAccounts + finalOwnerContribution + finalRetainedEarnings;
+        const finalReceivedAssetsEquityOffset =
+            Math.abs(receivedAssetsEquityOffset) > 0.01 ? receivedAssetsEquityOffset : 0;
+        const totalEquity =
+            totalEquityAccounts + finalOwnerContribution + finalRetainedEarnings + finalReceivedAssetsEquityOffset;
 
         const discrepancy = totalAssets - (totalLiabilities + totalEquity);
         const isBalanced = Math.abs(discrepancy) < 1;
 
         return {
-            assets: { accounts: assetsArr, accountsReceivable: finalAccountsReceivable, total: totalAssets },
+            assets: { currentAccounts: currentAssetsArr, longTermAccounts: longTermAssetsArr, accountsReceivable: finalAccountsReceivable, total: totalAssets },
             liabilities: { 
                 accounts: liabilitiesArr, 
                 accountsPayable: finalAccountsPayable, 
@@ -429,7 +433,13 @@ const ProjectBalanceSheetReport: React.FC = () => {
                 ownerFundsHeld: finalOwnerFundsHeld, 
                 total: totalLiabilities 
             },
-            equity: { accounts: equityArr, ownerContribution: finalOwnerContribution, retainedEarnings: finalRetainedEarnings, total: totalEquity },
+            equity: {
+                accounts: equityArr,
+                ownerContribution: finalOwnerContribution,
+                retainedEarnings: finalRetainedEarnings,
+                receivedAssetsEquityOffset: finalReceivedAssetsEquityOffset,
+                total: totalEquity,
+            },
             marketInventory: finalMarketInventory,
             isBalanced,
             discrepancy
@@ -441,9 +451,12 @@ const ProjectBalanceSheetReport: React.FC = () => {
     const handleExport = () => {
         const data = [
             { Category: 'ASSETS (What it owns)', Amount: '' },
-            ...reportData.assets.accounts.map(a => ({ Category: `  ${a.name}`, Amount: a.balance })),
+            { Category: '  Current assets', Amount: '' },
+            ...reportData.assets.currentAccounts.map(a => ({ Category: `    ${a.name}`, Amount: a.balance })),
             { Category: '  Accounts Receivable (Projects)', Amount: reportData.assets.accountsReceivable },
             { Category: '  Potential Revenue (Unsold Units)', Amount: reportData.marketInventory },
+            { Category: '  Long-term assets', Amount: '' },
+            ...reportData.assets.longTermAccounts.map(a => ({ Category: `    ${a.name}`, Amount: a.balance })),
             { Category: 'TOTAL ASSETS', Amount: reportData.assets.total },
             {},
             { Category: 'LIABILITIES (What it owes)', Amount: '' },
@@ -459,41 +472,42 @@ const ProjectBalanceSheetReport: React.FC = () => {
             ...reportData.equity.accounts.map(e => ({ Category: `  ${e.name}`, Amount: e.balance })),
             { Category: "  Owner's Contribution", Amount: reportData.equity.ownerContribution },
             { Category: '  Retained Earnings', Amount: reportData.equity.retainedEarnings },
+            ...(Math.abs(reportData.equity.receivedAssetsEquityOffset) > 0.01
+                ? [{ Category: '  In-kind project assets (held)', Amount: reportData.equity.receivedAssetsEquityOffset }]
+                : []),
             { Category: 'TOTAL EQUITY', Amount: reportData.equity.total },
         ];
         exportJsonToExcel(data, 'balance-sheet.xlsx', 'Balance Sheet');
     };
 
-    const SectionRender = ({ title, accounts, extraItems, total, color, bgClass }: { title: string, accounts: AccountBalance[], extraItems?: {label: string, amount: number}[], total: number, color: string, bgClass: string }) => (
-        <div className={`mb-6 rounded-xl border border-slate-200 overflow-hidden ${bgClass}`}>
-            <h4 className={`text-sm font-bold ${color} uppercase tracking-wider p-3 bg-white/50 border-b border-slate-200`}>{title}</h4>
+    const SectionRender = ({ title, accounts, extraItems, total, color }: { title: string, accounts: AccountBalance[], extraItems?: {label: string, amount: number}[], total: number, color: string }) => (
+        <div className="mb-6 rounded-xl border border-app-border overflow-hidden bg-app-card shadow-ds-card transition-shadow duration-ds">
+            <h4 className={`text-sm font-bold ${color} uppercase tracking-wider p-3 bg-app-table-header border-b border-app-border`}>{title}</h4>
             <div className="p-3 space-y-2 text-sm">
                 {accounts.map(acc => (
-                    <div key={acc.id} className="flex justify-between py-1 hover:bg-white/50 rounded px-1 transition-colors">
-                        <span className="text-slate-700">{acc.name}</span>
-                        <span className="font-mono tabular-nums text-slate-800">{CURRENCY} {acc.balance.toLocaleString()}</span>
+                    <div key={acc.id} className="flex justify-between py-1 hover:bg-app-toolbar/60 rounded px-1 transition-colors duration-ds">
+                        <span className="text-app-text">{acc.name}</span>
+                        <span className="font-mono tabular-nums text-app-text">{CURRENCY} {acc.balance.toLocaleString()}</span>
                     </div>
                 ))}
                 {extraItems?.map((item, idx) => (
                     Math.abs(item.amount) > 0.01 ? (
-                        <div key={idx} className="flex justify-between py-1 hover:bg-white/50 rounded px-1 transition-colors">
-                            <span className="text-slate-700">{item.label}</span>
-                            <span className="font-mono tabular-nums text-slate-800">{CURRENCY} {item.amount.toLocaleString()}</span>
+                        <div key={idx} className="flex justify-between py-1 hover:bg-app-toolbar/60 rounded px-1 transition-colors duration-ds">
+                            <span className="text-app-text">{item.label}</span>
+                            <span className="font-mono tabular-nums text-app-text">{CURRENCY} {item.amount.toLocaleString()}</span>
                         </div>
                     ) : null
                 ))}
             </div>
-            <div className="flex justify-between p-3 bg-white/60 border-t border-slate-200 font-bold text-base">
+            <div className="flex justify-between p-3 bg-app-toolbar border-t border-app-border font-bold text-base text-app-text">
                 <span>Total {title}</span>
                 <span className="tabular-nums">{CURRENCY} {total.toLocaleString()}</span>
             </div>
         </div>
     );
 
-    const projectLabel = selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p => p.id === selectedProjectId)?.name;
-
     return (
-        <div className="flex flex-col h-full space-y-4">
+        <div className="flex flex-col h-full space-y-4 bg-background">
             <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
@@ -522,14 +536,14 @@ const ProjectBalanceSheetReport: React.FC = () => {
             </div>
 
             <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                <Card className="min-h-full">
+                <Card className="min-h-full p-4 md:p-6">
                     <ReportHeader />
                     <div className="text-center mb-8">
-                        <h3 className="text-2xl font-bold text-slate-800 uppercase tracking-wide">Balance Sheet</h3>
-                        <p className="text-sm text-slate-500 font-medium mt-1">
+                        <h3 className="text-2xl font-bold text-app-text uppercase tracking-wide">Balance Sheet</h3>
+                        <p className="text-sm text-app-muted font-medium mt-1">
                             {selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p => p.id === selectedProjectId)?.name}
                         </p>
-                        <p className="text-xs text-slate-400">As of {formatDate(asOfDate)}</p>
+                        <p className="text-xs text-app-muted/90">As of {formatDate(asOfDate)}</p>
                     </div>
 
                     <div className="max-w-6xl mx-auto">
@@ -537,16 +551,25 @@ const ProjectBalanceSheetReport: React.FC = () => {
                             {/* Left Column: Assets */}
                             <div>
                                 <SectionRender 
-                                    title="Assets" 
-                                    accounts={reportData.assets.accounts} 
+                                    title="Current assets" 
+                                    accounts={reportData.assets.currentAccounts} 
                                     extraItems={[
                                         ...(Math.abs(reportData.assets.accountsReceivable) > 0.01 ? [{ label: 'Accounts Receivable (Projects)', amount: reportData.assets.accountsReceivable }] : []),
                                         ...(Math.abs(reportData.marketInventory) > 0.01 ? [{ label: 'Potential Revenue (Unsold Units)', amount: reportData.marketInventory }] : [])
                                     ]}
-                                    total={reportData.assets.total}
-                                    color="text-emerald-700"
-                                    bgClass="bg-emerald-50/30"
+                                    total={reportData.assets.currentAccounts.reduce((s, a) => s + a.balance, 0) + (Math.abs(reportData.assets.accountsReceivable) > 0.01 ? reportData.assets.accountsReceivable : 0) + (Math.abs(reportData.marketInventory) > 0.01 ? reportData.marketInventory : 0)}
+                                    color="text-ds-success"
                                 />
+                                <SectionRender 
+                                    title="Long-term assets" 
+                                    accounts={reportData.assets.longTermAccounts} 
+                                    total={reportData.assets.longTermAccounts.reduce((s, a) => s + a.balance, 0)}
+                                    color="text-ds-success"
+                                />
+                                <div className="flex justify-between p-3 bg-app-toolbar border border-ds-success/35 rounded-b-xl font-bold text-base text-app-text">
+                                    <span className="text-ds-success">Total assets</span>
+                                    <span className="tabular-nums text-app-text">{CURRENCY} {reportData.assets.total.toLocaleString()}</span>
+                                </div>
                             </div>
 
                             {/* Right Column: Liabilities & Equity */}
@@ -561,8 +584,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
                                         ...(Math.abs(reportData.liabilities.ownerFundsHeld) > 0.01 ? [{ label: 'Owner Funds Held (Rental)', amount: reportData.liabilities.ownerFundsHeld }] : [])
                                     ]}
                                     total={reportData.liabilities.total}
-                                    color="text-rose-700"
-                                    bgClass="bg-rose-50/30"
+                                    color="text-ds-danger"
                                 />
                                 
                                 <SectionRender 
@@ -570,41 +592,43 @@ const ProjectBalanceSheetReport: React.FC = () => {
                                     accounts={reportData.equity.accounts} 
                                     extraItems={[
                                         ...(Math.abs(reportData.equity.ownerContribution) > 0.01 ? [{ label: "Owner's Contribution", amount: reportData.equity.ownerContribution }] : []),
-                                        ...(Math.abs(reportData.equity.retainedEarnings) > 0.01 ? [{ label: "Retained Earnings", amount: reportData.equity.retainedEarnings }] : [])
+                                        ...(Math.abs(reportData.equity.retainedEarnings) > 0.01 ? [{ label: "Retained Earnings", amount: reportData.equity.retainedEarnings }] : []),
+                                        ...(Math.abs(reportData.equity.receivedAssetsEquityOffset) > 0.01
+                                            ? [{ label: 'In-kind project assets (held)', amount: reportData.equity.receivedAssetsEquityOffset }]
+                                            : []),
                                     ]}
                                     total={reportData.equity.total}
-                                    color="text-indigo-700"
-                                    bgClass="bg-indigo-50/30"
+                                    color="text-primary"
                                 />
                             </div>
                         </div>
 
                         {/* Equation Check */}
-                        <div className="mt-8 border-t-2 border-slate-800 pt-6">
-                            <div className="flex flex-col md:flex-row justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="mt-8 border-t-2 border-app-border pt-6">
+                            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-app-toolbar p-4 rounded-xl border border-app-border shadow-ds-card">
                                 <div className="text-center md:text-left mb-4 md:mb-0">
-                                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-1">Accounting Equation</p>
-                                    <p className="text-sm font-medium text-slate-700">Assets = Liabilities + Equity</p>
+                                    <p className="text-xs text-app-muted font-bold uppercase tracking-widest mb-1">Accounting Equation</p>
+                                    <p className="text-sm font-medium text-app-text">Assets = Liabilities + Equity</p>
                                 </div>
                                 
                                 <div className="flex items-center gap-4 text-lg sm:text-xl font-bold font-mono tabular-nums">
-                                    <div className="text-emerald-700">
-                                        <span className="text-xs text-slate-400 block font-sans font-normal text-center">Assets</span>
+                                    <div className="text-ds-success">
+                                        <span className="text-xs text-app-muted block font-sans font-normal text-center">Assets</span>
                                         {CURRENCY} {reportData.assets.total.toLocaleString()}
                                     </div>
-                                    <div className="text-slate-400">=</div>
-                                    <div className="text-slate-700">
-                                        <span className="text-xs text-slate-400 block font-sans font-normal text-center">Liab + Equity</span>
+                                    <div className="text-app-muted">=</div>
+                                    <div className="text-app-text">
+                                        <span className="text-xs text-app-muted block font-sans font-normal text-center">Liab + Equity</span>
                                         {CURRENCY} {(reportData.liabilities.total + reportData.equity.total).toLocaleString()}
                                     </div>
                                 </div>
 
                                 {reportData.isBalanced ? (
-                                    <div className="flex items-center gap-2 bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold">
+                                    <div className="flex items-center gap-2 border border-ds-success/40 bg-[color:var(--badge-paid-bg)] text-ds-success px-3 py-1 rounded-full text-xs font-bold">
                                         <span>✓</span> Balanced
                                     </div>
                                 ) : (
-                                    <div className="flex items-center gap-2 bg-rose-100 text-rose-800 px-3 py-1 rounded-full text-xs font-bold">
+                                    <div className="flex items-center gap-2 border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)] px-3 py-1 rounded-full text-xs font-bold">
                                         <span>⚠</span> Discrepancy: {CURRENCY} {reportData.discrepancy.toLocaleString()}
                                     </div>
                                 )}

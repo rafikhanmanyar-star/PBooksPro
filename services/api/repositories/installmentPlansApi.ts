@@ -45,10 +45,11 @@ export class InstallmentPlansApiRepository {
   }
 
   /**
-   * Delete an installment plan
+   * Delete an installment plan (optional version for optimistic concurrency)
    */
-  async delete(id: string): Promise<void> {
-    await apiClient.delete(`/installment-plans/${id}`);
+  async delete(id: string, version?: number): Promise<void> {
+    const q = version != null ? `?version=${encodeURIComponent(String(version))}` : '';
+    await apiClient.delete(`/installment-plans/${id}${q}`);
   }
 
   /**

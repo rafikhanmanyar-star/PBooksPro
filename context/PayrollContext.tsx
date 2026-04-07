@@ -10,7 +10,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import { PayrollEmployee, PayrollRun } from '../components/payroll/types';
 
 // Sub-tab types for payroll navigation
-export type PayrollSubTab = 'workforce' | 'cycles' | 'report' | 'structure' | 'history';
+export type PayrollSubTab = 'workforce' | 'cycles' | 'report' | 'structure' | 'history' | 'settings';
 
 // State interface for PayrollContext
 interface PayrollState {
@@ -21,11 +21,6 @@ interface PayrollState {
   selectedEmployee: PayrollEmployee | null;
   isAddingEmployee: boolean;
   workforceSearchTerm: string;
-  
-  // Payroll Cycles tab state
-  selectedRunDetail: PayrollRun | null;
-  isCreatingRun: boolean;
-  cyclesSearchTerm: string;
   
   // Payment History tab state
   historySearchTerm: string;
@@ -47,11 +42,6 @@ interface PayrollContextValue extends PayrollState {
   setIsAddingEmployee: (isAdding: boolean) => void;
   setWorkforceSearchTerm: (term: string) => void;
   
-  // Cycles actions
-  setSelectedRunDetail: (run: PayrollRun | null) => void;
-  setIsCreatingRun: (isCreating: boolean) => void;
-  setCyclesSearchTerm: (term: string) => void;
-  
   // History actions
   setHistorySearchTerm: (term: string) => void;
   setHistoryFilterYear: (year: string) => void;
@@ -63,7 +53,6 @@ interface PayrollContextValue extends PayrollState {
   
   // Reset functions
   resetWorkforceState: () => void;
-  resetCyclesState: () => void;
   resetHistoryState: () => void;
   resetAllState: () => void;
 }
@@ -74,9 +63,6 @@ const initialState: PayrollState = {
   selectedEmployee: null,
   isAddingEmployee: false,
   workforceSearchTerm: '',
-  selectedRunDetail: null,
-  isCreatingRun: false,
-  cyclesSearchTerm: '',
   historySearchTerm: '',
   historyFilterYear: 'All',
   selectedBatch: null,
@@ -101,11 +87,6 @@ export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) =>
   const [isAddingEmployee, setIsAddingEmployee] = useState(initialState.isAddingEmployee);
   const [workforceSearchTerm, setWorkforceSearchTerm] = useState(initialState.workforceSearchTerm);
   
-  // Cycles tab state
-  const [selectedRunDetail, setSelectedRunDetail] = useState<PayrollRun | null>(initialState.selectedRunDetail);
-  const [isCreatingRun, setIsCreatingRun] = useState(initialState.isCreatingRun);
-  const [cyclesSearchTerm, setCyclesSearchTerm] = useState(initialState.cyclesSearchTerm);
-  
   // History tab state
   const [historySearchTerm, setHistorySearchTerm] = useState(initialState.historySearchTerm);
   const [historyFilterYear, setHistoryFilterYear] = useState(initialState.historyFilterYear);
@@ -122,12 +103,6 @@ export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) =>
     setWorkforceSearchTerm('');
   }, []);
   
-  const resetCyclesState = useCallback(() => {
-    setSelectedRunDetail(null);
-    setIsCreatingRun(false);
-    setCyclesSearchTerm('');
-  }, []);
-  
   const resetHistoryState = useCallback(() => {
     setHistorySearchTerm('');
     setHistoryFilterYear('All');
@@ -137,11 +112,10 @@ export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) =>
   const resetAllState = useCallback(() => {
     setActiveSubTab('workforce');
     resetWorkforceState();
-    resetCyclesState();
     resetHistoryState();
     setReportPeriod('monthly');
     setReportYear(new Date().getFullYear());
-  }, [resetWorkforceState, resetCyclesState, resetHistoryState]);
+  }, [resetWorkforceState, resetHistoryState]);
   
   const value: PayrollContextValue = {
     // State
@@ -149,9 +123,6 @@ export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) =>
     selectedEmployee,
     isAddingEmployee,
     workforceSearchTerm,
-    selectedRunDetail,
-    isCreatingRun,
-    cyclesSearchTerm,
     historySearchTerm,
     historyFilterYear,
     selectedBatch,
@@ -163,9 +134,6 @@ export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) =>
     setSelectedEmployee,
     setIsAddingEmployee,
     setWorkforceSearchTerm,
-    setSelectedRunDetail,
-    setIsCreatingRun,
-    setCyclesSearchTerm,
     setHistorySearchTerm,
     setHistoryFilterYear,
     setSelectedBatch,
@@ -174,7 +142,6 @@ export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) =>
     
     // Reset functions
     resetWorkforceState,
-    resetCyclesState,
     resetHistoryState,
     resetAllState,
   };

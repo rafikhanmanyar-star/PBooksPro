@@ -14,7 +14,7 @@ interface ExportDataModalProps {
 
 const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) => {
     const { state } = useAppContext();
-    const { startProgress, updateProgress, completeProgress, errorProgress } = useProgress();
+    const { startProgress, updateProgress, finishProgress, errorProgress } = useProgress();
     const { showToast, showAlert } = useNotification();
     
     const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
@@ -72,7 +72,7 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
                 }
             );
             
-            completeProgress();
+            finishProgress('Export completed successfully');
             await showToast('Export completed successfully!', 'success');
             onClose();
         } catch (error) {

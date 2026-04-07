@@ -8,6 +8,7 @@
  */
 
 import { getDatabaseService } from './database/databaseService';
+import { isLocalOnlyMode } from '../config/apiUrl';
 import { ErrorLogEntry } from '../types';
 
 interface ExtendedErrorLogEntry extends ErrorLogEntry {
@@ -40,46 +41,48 @@ class ErrorLogger {
                 console.warn('Failed to load error logs from localStorage:', e);
             }
 
-            // Try to load from database if available
-            try {
-                const dbService = getDatabaseService();
-                if (dbService.isReady()) {
-                    const results = dbService.query<{
-                        id: number;
-                        message: string;
-                        stack?: string;
-                        component_stack?: string;
-                        timestamp: string;
-                    }>(
-                        'SELECT * FROM error_log ORDER BY timestamp DESC LIMIT ?',
-                        [this.maxLogs]
-                    );
+            // Try to load from database if available (local-only; LAN/API has no SQLite error_log)
+            if (isLocalOnlyMode()) {
+                try {
+                    const dbService = getDatabaseService();
+                    if (dbService.isReady()) {
+                        const results = dbService.query<{
+                            id: number;
+                            message: string;
+                            stack?: string;
+                            component_stack?: string;
+                            timestamp: string;
+                        }>(
+                            'SELECT * FROM error_log ORDER BY timestamp DESC LIMIT ?',
+                            [this.maxLogs]
+                        );
 
-                    // Merge with existing logs, avoiding duplicates
-                    const dbLogs: ExtendedErrorLogEntry[] = results.map(row => ({
-                        id: row.id.toString(),
-                        timestamp: row.timestamp,
-                        message: row.message,
-                        stack: row.stack,
-                        componentStack: row.component_stack,
-                        errorType: 'database'
-                    }));
+                        // Merge with existing logs, avoiding duplicates
+                        const dbLogs: ExtendedErrorLogEntry[] = results.map(row => ({
+                            id: row.id.toString(),
+                            timestamp: row.timestamp,
+                            message: row.message,
+                            stack: row.stack,
+                            componentStack: row.component_stack,
+                            errorType: 'database'
+                        }));
 
-                    // Combine and deduplicate by timestamp and message
-                    const allLogs = [...this.logs, ...dbLogs];
-                    const seen = new Set<string>();
-                    this.logs = allLogs.filter(log => {
-                        const key = `${log.timestamp}-${log.message}`;
-                        if (seen.has(key)) return false;
-                        seen.add(key);
-                        return true;
-                    }).sort((a, b) =>
-                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                    ).slice(0, this.maxLogs);
+                        // Combine and deduplicate by timestamp and message
+                        const allLogs = [...this.logs, ...dbLogs];
+                        const seen = new Set<string>();
+                        this.logs = allLogs.filter(log => {
+                            const key = `${log.timestamp}-${log.message}`;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                        }).sort((a, b) =>
+                            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                        ).slice(0, this.maxLogs);
+                    }
+                } catch (dbError) {
+                    console.warn('Failed to load error logs from database:', dbError);
+                    // Continue with localStorage logs only
                 }
-            } catch (dbError) {
-                console.warn('Failed to load error logs from database:', dbError);
-                // Continue with localStorage logs only
             }
         } catch (error) {
             console.error('Failed to initialize error logger:', error);
@@ -123,24 +126,25 @@ class ErrorLogger {
                 this.logs = this.logs.slice(0, this.maxLogs);
             }
 
-            // Save to database (if available)
-            try {
-                const dbService = getDatabaseService();
-                if (dbService.isReady()) {
-                    dbService.execute(
-                        'INSERT INTO error_log (message, stack, component_stack, timestamp) VALUES (?, ?, ?, ?)',
-                        [
-                            logEntry.message,
-                            logEntry.stack || null,
-                            logEntry.componentStack || null,
-                            logEntry.timestamp
-                        ]
-                    );
-                    dbService.save();
+            // Save to database (if available, local-only)
+            if (isLocalOnlyMode()) {
+                try {
+                    const dbService = getDatabaseService();
+                    if (dbService.isReady()) {
+                        dbService.execute(
+                            'INSERT INTO error_log (message, stack, component_stack, timestamp) VALUES (?, ?, ?, ?)',
+                            [
+                                logEntry.message,
+                                logEntry.stack || null,
+                                logEntry.componentStack || null,
+                                logEntry.timestamp
+                            ]
+                        );
+                        dbService.save();
+                    }
+                } catch (dbError) {
+                    console.warn('Failed to save error to database (database may not be ready):', dbError);
                 }
-            } catch (dbError) {
-                // Database might not be ready yet - that's okay, we have localStorage backup
-                console.warn('Failed to save error to database (database may not be ready):', dbError);
             }
 
             // Also save to localStorage as backup
@@ -181,11 +185,13 @@ class ErrorLogger {
         try {
             this.logs = [];
 
-            // Clear from database
-            const dbService = getDatabaseService();
-            if (dbService.isReady()) {
-                dbService.execute('DELETE FROM error_log');
-                dbService.save();
+            // Clear from database (local-only)
+            if (isLocalOnlyMode()) {
+                const dbService = getDatabaseService();
+                if (dbService.isReady()) {
+                    dbService.execute('DELETE FROM error_log');
+                    dbService.save();
+                }
             }
 
             // Clear from localStorage

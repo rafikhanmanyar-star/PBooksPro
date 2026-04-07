@@ -14,7 +14,7 @@ import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import PrintButton from '../ui/PrintButton';
@@ -79,11 +79,11 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (option === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (option === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -319,7 +319,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -330,18 +330,18 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             {/* Custom Toolbar */}
             <div className="flex-shrink-0">
                 {/* Custom Toolbar - All controls in first row */}
-                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                     {/* First Row: Dates, Filters, and Actions */}
                     <div className="flex flex-wrap items-center gap-3">
                         {/* Date Range Pills */}
-                        <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                        <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
                             {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                                 <button
                                     key={opt}
                                     onClick={() => handleRangeChange(opt)}
                                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${dateRange === opt
-                                        ? 'bg-white text-accent shadow-sm font-bold'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                        ? 'bg-primary text-ds-on-primary shadow-sm font-bold'
+                                        : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                         }`}
                                 >
                                     {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
@@ -352,9 +352,9 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                         {/* Custom Date Pickers */}
                         {dateRange === 'custom' && (
                             <div className="flex items-center gap-2 animate-fade-in">
-                                <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
-                                <span className="text-slate-400">-</span>
-                                <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                                <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(toLocalDateString(d), endDate)} />
+                                <span className="text-app-muted">-</span>
+                                <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, toLocalDateString(d))} />
                             </div>
                         )}
 
@@ -384,19 +384,19 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
                         {/* Search Input */}
                         <div className="relative flex-grow min-w-[180px]">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                                 <span className="h-4 w-4">{ICONS.search}</span>
                             </div>
                             <Input
                                 placeholder="Search report..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 py-1.5 text-sm"
+                                className="ds-input-field pl-9 py-1.5 text-sm"
                             />
                             {searchQuery && (
                                 <button
                                     onClick={() => setSearchQuery('')}
-                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
                                 >
                                     <div className="w-4 h-4">{ICONS.x}</div>
                                 </button>
@@ -405,7 +405,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
                         {/* Actions Group */}
                         <div className="flex items-center gap-2 ml-auto">
-                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
                                 <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                             </Button>
                             <PrintButton
@@ -422,16 +422,16 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
-                    <h3 className="text-2xl font-bold text-center mb-4">
+                    <h3 className="text-2xl font-bold text-center mb-4 text-app-text">
                         Vendor Ledger {context ? `(${context})` : ''}
                     </h3>
-                    <div className="text-center text-sm text-slate-500 mb-6">
+                    <div className="text-center text-sm text-app-muted mb-6">
                         <p>{formatDate(startDate)} - {formatDate(endDate)}</p>
                         {selectedVendorId !== 'all' && <p className="font-semibold mt-1">Vendor: {vendors.find(v => v.id === selectedVendorId)?.name}</p>}
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full divide-y divide-slate-200 text-sm table-fixed" style={{ tableLayout: 'fixed' }}>
+                        <table className="w-full divide-y divide-app-border text-sm table-fixed bg-app-card" style={{ tableLayout: 'fixed' }}>
                             <colgroup>
                                 <col style={{ width: '10%' }} />
                                 <col style={{ width: context !== 'Project' ? '15%' : '20%' }} />
@@ -441,24 +441,24 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                 <col style={{ width: '12%' }} />
                                 <col style={{ width: '11%' }} />
                             </colgroup>
-                            <thead className="bg-slate-50 sticky top-0 z-10">
+                            <thead className="bg-app-toolbar/40 sticky top-0 z-10">
                                 <tr>
-                                    <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
-                                    <th onClick={() => handleSort('vendorName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Vendor <SortIcon column="vendorName" /></th>
-                                    {context !== 'Project' && <th onClick={() => handleSort('buildingName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Building <SortIcon column="buildingName" /></th>}
-                                    <th onClick={() => handleSort('particulars')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Particulars <SortIcon column="particulars" /></th>
-                                    <th onClick={() => handleSort('billAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bill Amount <SortIcon column="billAmount" /></th>
-                                    <th onClick={() => handleSort('paidAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Paid Amount <SortIcon column="paidAmount" /></th>
-                                    <th onClick={() => handleSort('balance')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance" /></th>
+                                    <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
+                                    <th onClick={() => handleSort('vendorName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Vendor <SortIcon column="vendorName" /></th>
+                                    {context !== 'Project' && <th onClick={() => handleSort('buildingName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Building <SortIcon column="buildingName" /></th>}
+                                    <th onClick={() => handleSort('particulars')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Particulars <SortIcon column="particulars" /></th>
+                                    <th onClick={() => handleSort('billAmount')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Bill Amount <SortIcon column="billAmount" /></th>
+                                    <th onClick={() => handleSort('paidAmount')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Paid Amount <SortIcon column="paidAmount" /></th>
+                                    <th onClick={() => handleSort('balance')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Balance <SortIcon column="balance" /></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-app-border">
                                 {reportData.map(item => {
                                     const isClickable = !!(item.billId || item.transactionId);
                                     return (
                                         <tr
                                             key={item.id}
-                                            className={`transition-colors ${isClickable ? 'cursor-pointer hover:bg-slate-100' : 'hover:bg-slate-50'}`}
+                                            className={`transition-colors ${isClickable ? 'cursor-pointer hover:bg-app-toolbar/50' : 'hover:bg-app-toolbar/30'}`}
                                             onClick={() => {
                                                 if (item.billId) {
                                                     const bill = state.bills.find(b => b.id === item.billId);
@@ -469,23 +469,23 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                                 }
                                             }}
                                         >
-                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700 overflow-hidden text-ellipsis">{formatDate(item.date)}</td>
-                                            <td className="px-3 py-2 text-slate-800 overflow-hidden text-ellipsis" title={item.vendorName}>{item.vendorName}</td>
-                                            {context !== 'Project' && <td className="px-3 py-2 text-slate-600 text-xs overflow-hidden text-ellipsis" title={item.buildingName || '-'}>{item.buildingName || '-'}</td>}
-                                            <td className="px-3 py-2 text-slate-500 overflow-hidden text-ellipsis" title={item.particulars}>{item.particulars}</td>
-                                            <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap">{item.billAmount > 0 ? `${CURRENCY} ${item.billAmount.toLocaleString()}` : '-'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-app-text overflow-hidden text-ellipsis">{formatDate(item.date)}</td>
+                                            <td className="px-3 py-2 text-app-text overflow-hidden text-ellipsis" title={item.vendorName}>{item.vendorName}</td>
+                                            {context !== 'Project' && <td className="px-3 py-2 text-app-muted text-xs overflow-hidden text-ellipsis" title={item.buildingName || '-'}>{item.buildingName || '-'}</td>}
+                                            <td className="px-3 py-2 text-app-muted overflow-hidden text-ellipsis" title={item.particulars}>{item.particulars}</td>
+                                            <td className="px-3 py-2 text-right text-app-text whitespace-nowrap">{item.billAmount > 0 ? `${CURRENCY} ${item.billAmount.toLocaleString()}` : '-'}</td>
                                             <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.paidAmount > 0 ? `${CURRENCY} ${item.paidAmount.toLocaleString()}` : '-'}</td>
-                                            <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-slate-700'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
+                                            <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-app-text'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
                                         </tr>
                                     );
                                 })}
                             </tbody>
-                            <tfoot className="bg-slate-50 font-bold sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
+                            <tfoot className="bg-app-toolbar/40 font-bold sticky bottom-0 border-t border-app-border shadow-[0_-1px_3px_rgba(0,0,0,0.15)]">
                                 <tr>
-                                    <td colSpan={context !== 'Project' ? 4 : 3} className="px-3 py-2 text-right text-sm bg-slate-50">Totals</td>
-                                    <td className="px-3 py-2 text-right text-slate-800 whitespace-nowrap">{CURRENCY} {totals.bill.toLocaleString()}</td>
+                                    <td colSpan={context !== 'Project' ? 4 : 3} className="px-3 py-2 text-right text-sm text-app-text">Totals</td>
+                                    <td className="px-3 py-2 text-right text-app-text whitespace-nowrap">{CURRENCY} {totals.bill.toLocaleString()}</td>
                                     <td className="px-3 py-2 text-right text-success whitespace-nowrap">{CURRENCY} {totals.paid.toLocaleString()}</td>
-                                    <td className={`px-3 py-2 text-right text-sm bg-slate-50 whitespace-nowrap ${finalBalance > 0 ? 'text-danger' : 'text-slate-800'}`}>
+                                    <td className={`px-3 py-2 text-right text-sm whitespace-nowrap ${finalBalance > 0 ? 'text-danger' : 'text-app-text'}`}>
                                         {selectedVendorId !== 'all' ? `${CURRENCY} ${finalBalance.toLocaleString()}` : '-'}
                                     </td>
                                 </tr>
@@ -494,7 +494,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                     </div>
                     {reportData.length === 0 && (
                         <div className="text-center py-16">
-                            <p className="text-slate-500">No ledger transactions found for the selected criteria.</p>
+                            <p className="text-app-muted">No ledger transactions found for the selected criteria.</p>
                         </div>
                     )}
                     <ReportFooter />

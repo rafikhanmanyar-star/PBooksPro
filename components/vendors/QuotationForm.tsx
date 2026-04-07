@@ -8,6 +8,7 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { ICONS } from '../../constants';
 import { documentService } from '../../services/documentService';
+import { fromPickerDateToYyyyMmDd, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 
 interface QuotationFormProps {
     onClose: () => void;
@@ -22,7 +23,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [name, setName] = useState(vendorName);
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(todayLocalYyyyMmDd());
     const [items, setItems] = useState<QuotationItem[]>([]);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [documentId, setDocumentId] = useState<string | undefined>(quotationToEdit?.documentId);
@@ -178,7 +179,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
                     name="quotation-date"
                     label="Quotation Date"
                     value={date}
-                    onChange={(d) => setDate(d.toISOString().split('T')[0])}
+                    onChange={(d) => setDate(fromPickerDateToYyyyMmDd(d))}
                     required
                 />
             </div>

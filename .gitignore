@@ -15,14 +15,18 @@ dist-ssr
 # Electron build outputs
 release
 release-staging
+release-api-client
+release-api-server
+build/electron-api-server
 win-unpacked
 mac-unpacked
 linux-unpacked
 
-# Installer exe files (hosted on GitHub Releases, not in git)
-website/Website/updates/*.exe
-server/releases/*.exe
-server/releases/*.blockmap
+# Electron installer build outputs
+release/**/*.exe
+release/**/*.blockmap
+release-staging/**/*.exe
+release-staging/**/*.blockmap
 
 # Code signing certificates (NEVER commit these!)
 *.pfx
@@ -47,10 +51,9 @@ build/*.pem
 .env
 .env.local
 .env.*.local
-server/.env
-admin/.env
-mcp-server/.env
-*.env
+.env.development
+.env.production
+.env.staging
 
 # Database files
 *.db
@@ -58,11 +61,6 @@ mcp-server/.env
 *.sqlite3
 *.dump
 
-# Server build outputs (built on Render)
-server/api/*.js
-server/api/**/*.js
-server/**/*.js
-!server/scripts/*.js
 *.js.map
 
 # Logs

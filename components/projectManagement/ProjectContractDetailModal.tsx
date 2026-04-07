@@ -11,7 +11,7 @@ import ReportFooter from '../reports/ReportFooter';
 import { usePrint } from '../../hooks/usePrint';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 
 interface ProjectContractDetailModalProps {
@@ -61,8 +61,11 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
                 message += `Terms:\n${contract.termsAndConditions}`;
             }
 
-            // Open WhatsApp modal with pre-filled message
-            openChat(vendor, vendor.contactNo, message);
+            sendOrOpenWhatsApp(
+                { contact: vendor, message, phoneNumber: vendor.contactNo },
+                () => state.whatsAppMode,
+                openChat
+            );
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }

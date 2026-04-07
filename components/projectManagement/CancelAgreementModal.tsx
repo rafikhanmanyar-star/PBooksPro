@@ -1,7 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ProjectAgreement, AccountType, InvoiceStatus } from '../../types';
+import { ProjectAgreement, AccountType, InvoiceStatus, ProjectAgreementStatus } from '../../types';
 import { useAppContext } from '../../context/AppContext';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { ProjectAgreementsApiRepository } from '../../services/api/repositories/projectAgreementsApi';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -54,16 +56,37 @@ const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onC
 
     if (!agreement) return null;
 
-    const handleConfirm = () => {
+    const handleConfirm = async () => {
+        const payload = {
+            agreementId: agreement.id,
+            penaltyPercentage: parseFloat(penaltyPercentage) || 0,
+            penaltyAmount: penaltyAmount,
+            refundAmount: refundAmount,
+        };
         dispatch({
             type: 'CANCEL_PROJECT_AGREEMENT',
-            payload: {
-                agreementId: agreement.id,
-                penaltyPercentage: parseFloat(penaltyPercentage) || 0,
-                penaltyAmount: penaltyAmount,
-                refundAmount: refundAmount,
-            }
+            payload,
         });
+        if (!isLocalOnlyMode()) {
+            try {
+                const cancelled: ProjectAgreement = {
+                    ...agreement,
+                    status: ProjectAgreementStatus.CANCELLED,
+                    cancellationDetails: {
+                        date: new Date().toISOString(),
+                        penaltyAmount: payload.penaltyAmount,
+                        penaltyPercentage: payload.penaltyPercentage,
+                        refundAmount: payload.refundAmount,
+                    },
+                };
+                await new ProjectAgreementsApiRepository().update(agreement.id, {
+                    ...cancelled,
+                    version: agreement.version,
+                });
+            } catch {
+                /* local state already updated; user can refresh */
+            }
+        }
         onClose();
     };
 

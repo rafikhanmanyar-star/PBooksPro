@@ -9,6 +9,7 @@ import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollEmployee, EmployeeListProps } from './types';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
+import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 
 const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
   const { tenant } = useAuth();
@@ -20,6 +21,13 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
+
+  // Deduplicate by id so each employee appears once
+  const dedupeById = (list: PayrollEmployee[]): PayrollEmployee[] => {
+    const byId = new Map<string, PayrollEmployee>();
+    list.forEach(emp => byId.set(emp.id, emp));
+    return Array.from(byId.values());
+  };
 
   // Fetch employees from API with localStorage fallback
   useEffect(() => {
@@ -34,9 +42,10 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
         // Try API first
         const apiEmployees = await payrollApi.getEmployees();
         if (apiEmployees.length > 0) {
-          setEmployees(apiEmployees);
-          // Update localStorage cache
-          localStorage.setItem(`payroll_employees_${tenantId}`, JSON.stringify(apiEmployees));
+          const unique = dedupeById(apiEmployees);
+          setEmployees(unique);
+          storageService.init(tenantId);
+          storageService.setEmployees(tenantId, unique);
         } else {
           // Fallback to localStorage
           setEmployees(storageService.getEmployees(tenantId));
@@ -88,7 +97,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
-      link.setAttribute("download", `Workforce_Export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `Workforce_Export_${todayLocalYyyyMmDd()}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -100,8 +109,8 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
   if (!tenantId || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <Loader2 size={32} className="text-blue-600 animate-spin" />
-        <p className="text-slate-400 font-bold">Loading workforce...</p>
+        <Loader2 size={32} className="text-primary animate-spin" />
+        <p className="text-app-muted font-bold">Loading workforce...</p>
       </div>
     );
   }
@@ -111,32 +120,32 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Workforce</h1>
-          <p className="text-slate-500 text-xs sm:text-sm">Management of employee payroll profiles and status.</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-app-text tracking-tight">Workforce</h1>
+          <p className="text-app-muted text-xs sm:text-sm">Management of employee payroll profiles and status.</p>
         </div>
         <button 
           onClick={onAdd}
-          className="bg-blue-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2 text-sm"
+          className="bg-primary text-ds-on-primary px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl font-bold hover:opacity-90 transition-all shadow-ds-card flex items-center justify-center gap-2 text-sm"
         >
           <UserPlus size={18} /> Add Employee
         </button>
       </div>
 
       {/* Search and Export */}
-      <div className="flex items-center gap-2 sm:gap-4 bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm focus-within:ring-2 ring-blue-500/20 transition-all">
-        <Search size={18} className="text-slate-400 shrink-0" />
+      <div className="flex items-center gap-2 sm:gap-4 bg-app-card p-3 sm:p-4 rounded-2xl border border-app-border shadow-ds-card focus-within:ring-2 ring-primary/20 transition-all">
+        <Search size={18} className="text-app-muted shrink-0" />
         <input 
           type="text" 
           placeholder="Search workforce..." 
           value={workforceSearchTerm}
           onChange={(e) => setWorkforceSearchTerm(e.target.value)}
-          className="flex-1 min-w-0 outline-none text-slate-700 placeholder-slate-400 bg-transparent text-sm font-medium"
+          className="flex-1 min-w-0 outline-none text-app-text placeholder:text-[color:var(--text-placeholder)] bg-transparent text-sm font-medium"
         />
-        <div className="h-6 w-[1px] bg-slate-200 hidden sm:block"></div>
+        <div className="h-6 w-[1px] bg-app-border hidden sm:block"></div>
         <button 
           onClick={handleExportCSV}
           disabled={isExporting}
-          className="text-slate-400 hover:text-slate-900 transition-colors p-2 hover:bg-slate-100 rounded-lg disabled:opacity-50 shrink-0"
+          className="text-app-muted hover:text-app-text transition-colors p-2 hover:bg-app-toolbar rounded-lg disabled:opacity-50 shrink-0"
           title="Export Filtered CSV"
         >
           {isExporting ? <Loader2 size={18} className="animate-spin" /> : <FileDown size={18} />}
@@ -149,31 +158,31 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
           filteredEmployees.map((emp) => (
             <div 
               key={emp.id} 
-              className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm active:bg-blue-50/30 transition-colors" 
+              className="bg-app-card rounded-2xl border border-app-border p-4 shadow-ds-card active:bg-primary/5 transition-colors" 
               onClick={() => onSelect(emp)}
             >
               <div className="flex items-start gap-3">
-                <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-400 uppercase shrink-0">
+                <div className="w-12 h-12 rounded-xl bg-app-toolbar flex items-center justify-center font-bold text-app-muted uppercase shrink-0">
                   {emp.name.split(' ').map(n => n[0]).join('')}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-bold text-slate-900">{emp.name}</div>
-                  <div className="text-xs text-slate-400 font-medium truncate">
+                  <div className="font-bold text-app-text">{emp.name}</div>
+                  <div className="text-xs text-app-muted font-medium truncate">
                     {emp.employee_code || `ID: ${emp.id}`}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{emp.designation}</span>
-                    <span className="text-xs font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">{emp.department}</span>
+                    <span className="text-xs font-bold text-app-text bg-app-toolbar px-2 py-0.5 rounded">{emp.designation}</span>
+                    <span className="text-xs font-medium text-app-muted bg-app-toolbar/60 px-2 py-0.5 rounded">{emp.department}</span>
                   </div>
                   {(emp.email || emp.phone) && (
                     <div className="mt-2 space-y-1">
                       {emp.email && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium truncate">
+                        <div className="flex items-center gap-1.5 text-xs text-app-muted font-medium truncate">
                           <Mail size={10} /> {emp.email}
                         </div>
                       )}
                       {emp.phone && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                        <div className="flex items-center gap-1.5 text-xs text-app-muted font-medium">
                           <Phone size={10} /> {emp.phone}
                         </div>
                       )}
@@ -184,40 +193,40 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
             </div>
           ))
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-200 px-4 py-12 text-center text-slate-400 font-medium text-sm">
+          <div className="bg-app-card rounded-2xl border border-app-border px-4 py-12 text-center text-app-muted font-medium text-sm">
             {workforceSearchTerm ? 'No employees found matching your search.' : 'No employees added yet.'}
           </div>
         )}
       </div>
 
       {/* Employee Table (Desktop) */}
-      <div className="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="hidden md:block bg-app-card rounded-3xl shadow-ds-card border border-app-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <tr className="bg-app-toolbar/40 border-b border-app-border text-[10px] font-black text-app-muted uppercase tracking-widest">
                 <th className="px-6 lg:px-8 py-5">Employee Info</th>
                 <th className="px-6 lg:px-8 py-5">Contact Details</th>
                 <th className="px-6 lg:px-8 py-5">Role & Dept</th>
                 <th className="px-6 lg:px-8 py-5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-app-border">
               {filteredEmployees.length > 0 ? (
                 filteredEmployees.map((emp) => (
                   <tr 
                     key={emp.id} 
-                    className="group hover:bg-blue-50/30 cursor-pointer transition-colors" 
+                    className="group hover:bg-app-toolbar/30 cursor-pointer transition-colors" 
                     onClick={() => onSelect(emp)}
                   >
                     <td className="px-6 lg:px-8 py-5">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors uppercase shrink-0">
+                        <div className="w-10 h-10 rounded-xl bg-app-toolbar flex items-center justify-center font-bold text-app-muted group-hover:bg-primary/15 group-hover:text-primary transition-colors uppercase shrink-0">
                           {emp.name.split(' ').map(n => n[0]).join('')}
                         </div>
                         <div className="min-w-0">
-                          <div className="font-bold text-slate-900 group-hover:text-blue-700 transition-colors truncate">{emp.name}</div>
-                          <div className="text-xs text-slate-400 font-medium truncate">
+                          <div className="font-bold text-app-text group-hover:text-primary transition-colors truncate">{emp.name}</div>
+                          <div className="text-xs text-app-muted font-medium truncate">
                             {emp.employee_code || `ID: ${emp.id}`}
                           </div>
                         </div>
@@ -227,26 +236,26 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
                       {emp.email || emp.phone ? (
                         <div className="space-y-1">
                           {emp.email && (
-                            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium truncate max-w-[180px]">
+                            <div className="flex items-center gap-1.5 text-xs text-app-muted font-medium truncate max-w-[180px]">
                               <Mail size={10} className="shrink-0" /> <span className="truncate">{emp.email}</span>
                             </div>
                           )}
                           {emp.phone && (
-                            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium truncate max-w-[150px]">
+                            <div className="flex items-center gap-1.5 text-xs text-app-muted font-medium truncate max-w-[150px]">
                               <Phone size={10} className="shrink-0" /> {emp.phone}
                             </div>
                           )}
                         </div>
                       ) : (
-                        <span className="text-[10px] text-slate-300 uppercase font-black tracking-widest">Not Provided</span>
+                        <span className="text-[10px] text-app-muted/60 uppercase font-black tracking-widest">Not Provided</span>
                       )}
                     </td>
                     <td className="px-6 lg:px-8 py-5">
-                      <div className="text-sm font-bold text-slate-700">{emp.designation}</div>
-                      <div className="text-xs text-slate-400 font-medium">{emp.department}</div>
+                      <div className="text-sm font-bold text-app-text">{emp.designation}</div>
+                      <div className="text-xs text-app-muted font-medium">{emp.department}</div>
                     </td>
                     <td className="px-6 lg:px-8 py-5 text-right">
-                      <button className="text-blue-600 font-bold text-xs uppercase tracking-wider hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg border border-blue-600/10 transition-all">
+                      <button className="text-primary font-bold text-xs uppercase tracking-wider hover:bg-primary hover:text-ds-on-primary px-3 py-1.5 rounded-lg border border-primary/20 transition-all">
                         View Profile
                       </button>
                     </td>
@@ -254,7 +263,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-medium">
+                  <td colSpan={4} className="px-8 py-20 text-center text-app-muted font-medium">
                     {workforceSearchTerm ? 'No employees found matching your search.' : 'No employees added yet. Click "Add Employee" to get started.'}
                   </td>
                 </tr>

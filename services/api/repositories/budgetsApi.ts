@@ -60,8 +60,9 @@ export class BudgetsApiRepository {
   /**
    * Delete a budget
    */
-  async delete(id: string): Promise<void> {
-    await apiClient.delete(`/budgets/${id}`);
+  async delete(id: string, version?: number): Promise<void> {
+    const q = version != null && Number.isFinite(version) ? `?version=${encodeURIComponent(String(version))}` : '';
+    await apiClient.delete(`/budgets/${id}${q}`);
   }
 
   /**

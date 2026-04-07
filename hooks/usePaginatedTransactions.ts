@@ -12,8 +12,8 @@ import { Transaction } from '../types';
 import { TransactionsRepository } from '../services/database/repositories';
 import { useStateSelector } from './useSelectiveState';
 import { getDatabaseService } from '../services/database/databaseService';
-import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
 import { isMobileDevice } from '../utils/platformDetection';
+import { isLocalOnlyMode } from '../config/apiUrl';
 
 interface UsePaginatedTransactionsOptions {
   projectId?: string | null;
@@ -50,8 +50,9 @@ export function usePaginatedTransactions(
   const repo = useMemo(() => new TransactionsRepository(), []);
   const isNativeEnabled = useMemo(() => repo.isNativeEnabled(), [repo]);
 
-  // Check if we should use native backend
+  // Check if we should use native backend (SQLite IPC / sql.js). LAN/API uses PostgreSQL via AppState only.
   const shouldUseNative = useMemo(() => {
+    if (!isLocalOnlyMode()) return false;
     if (!enabled) return false;
     if (!isNativeEnabled) return false;
 
@@ -72,8 +73,9 @@ export function usePaginatedTransactions(
       // Always fetch count on first page or when it's null
       // Only fetch if database is ready to avoid warnings
       if (page === 0 || totalCount === null) {
-        // Mobile: Use API repository for count (or skip)
-        if (isMobileDevice()) {
+        if (!isLocalOnlyMode()) {
+          setTotalCount(stateTransactions.length);
+        } else if (isMobileDevice()) {
           setTotalCount(null); // Count would come from API if needed
         } else {
           const dbService = getDatabaseService();
@@ -82,12 +84,9 @@ export function usePaginatedTransactions(
               const count = await repo.getCount({ projectId });
               setTotalCount(count);
             } catch (error) {
-              // Silently handle count errors during initialization
               console.debug('Count query failed:', error);
             }
           } else {
-            // Database not ready yet, will retry on next render or when database becomes ready
-            // For now, use state transactions length as fallback
             if (!shouldUseNative) {
               setTotalCount(stateTransactions.length);
             }

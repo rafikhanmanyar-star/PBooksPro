@@ -3,14 +3,16 @@
  * 
  * This service provides data access for the payroll module.
  * It uses the API for cloud storage with localStorage fallback for offline mode.
- * 
- * For proper multi-tenant support, use the tenant_id from AuthContext.
+ * In local-only mode, uses only localStorage (no API calls).
  */
 
+import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
+import { persistPayrollRunsToDb, persistPayrollToDbInOrder, deletePayslipFromDb, deletePayrollRunFromDb, persistPayrollDepartmentsToDb, persistPayrollGradesToDb, persistPayrollEmployeesToDb } from './payrollDb';
 import {
   PayrollEmployee,
   PayrollRun,
+  Payslip,
   GradeLevel,
   Department,
   PayrollProject,
@@ -19,13 +21,15 @@ import {
   EmploymentStatus,
   PayrollStatus,
   normalizeEmployee,
-  normalizePayrollRun
+  normalizePayrollRun,
+  normalizePayslip
 } from '../types';
 
 // Local storage keys for offline/demo mode
 const STORAGE_KEYS = {
   EMPLOYEES: 'payroll_employees',
   PAYROLL_RUNS: 'payroll_runs',
+  PAYSLIPS: 'payroll_payslips',
   EARNING_TYPES: 'payroll_earning_types',
   DEDUCTION_TYPES: 'payroll_deduction_types',
   GRADE_LEVELS: 'payroll_grade_levels',
@@ -103,10 +107,7 @@ const DEMO_EMPLOYEES: PayrollEmployee[] = [
       ]
     },
     adjustments: [],
-    projects: [
-      { project_id: 'proj-1', project_name: 'Cloud Migration', percentage: 60, start_date: '2024-01-01' },
-      { project_id: 'proj-2', project_name: 'Mobile App', percentage: 40, start_date: '2024-01-01' }
-    ],
+    projects: [],
     created_by: 'system'
   },
   {
@@ -131,9 +132,7 @@ const DEMO_EMPLOYEES: PayrollEmployee[] = [
       ]
     },
     adjustments: [],
-    projects: [
-      { project_id: 'proj-1', project_name: 'Cloud Migration', percentage: 100, start_date: '2024-01-01' }
-    ],
+    projects: [],
     created_by: 'system'
   }
 ];
@@ -201,10 +200,7 @@ export const storageService = {
 
     const projectsKey = getKey(tenantId, STORAGE_KEYS.PROJECTS);
     if (!localStorage.getItem(projectsKey)) {
-      localStorage.setItem(projectsKey, JSON.stringify([
-        { id: 'proj-1', tenant_id: tenantId, name: 'Cloud Migration', code: 'CLM', status: 'ACTIVE', created_by: 'system' },
-        { id: 'proj-2', tenant_id: tenantId, name: 'Mobile App', code: 'MOB', status: 'ACTIVE', created_by: 'system' }
-      ]));
+      localStorage.setItem(projectsKey, JSON.stringify([]));
     }
   },
 
@@ -217,13 +213,19 @@ export const storageService = {
   getEmployees(tenantId: string): PayrollEmployee[] {
     this.init(tenantId);
     const data = localStorage.getItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES));
-    const employees = JSON.parse(data || '[]');
-    return employees.map(normalizeEmployee);
+    const raw = JSON.parse(data || '[]');
+    const employees = raw.map(normalizeEmployee);
+    // Deduplicate by id (keep last occurrence) so one row per employee
+    const byId = new Map<string, PayrollEmployee>();
+    employees.forEach(emp => byId.set(emp.id, emp));
+    return Array.from(byId.values());
   },
 
   // Async method to fetch employees from API with localStorage fallback
   async getEmployeesFromApi(tenantId: string): Promise<PayrollEmployee[]> {
-    // Check cache first
+    if (isLocalOnlyMode()) {
+      return this.getEmployees(tenantId);
+    }
     const cached = this._employeesCache.get(tenantId);
     if (cached && (Date.now() - cached.timestamp) < this._employeesCacheTimeout) {
       return cached.data;
@@ -254,11 +256,17 @@ export const storageService = {
       created_by: userId,
       created_at: new Date().toISOString()
     };
-    employees.push(newEmployee);
+    const existingIndex = employees.findIndex(e => e.id === newEmployee.id);
+    if (existingIndex >= 0) {
+      employees[existingIndex] = newEmployee;
+    } else {
+      employees.push(newEmployee);
+    }
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(employees));
-    
-    // Invalidate cache
     this._employeesCache.delete(tenantId);
+    persistPayrollDepartmentsToDb(tenantId, this.getDepartments(tenantId)).catch(() => {});
+    persistPayrollGradesToDb(tenantId, this.getGradeLevels(tenantId)).catch(() => {});
+    persistPayrollEmployeesToDb(tenantId, this.getEmployees(tenantId)).catch(() => {});
   },
 
   updateEmployee(tenantId: string, employee: PayrollEmployee, userId: string): void {
@@ -271,19 +279,21 @@ export const storageService = {
         updated_at: new Date().toISOString()
       };
       localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(employees));
+      this._employeesCache.delete(tenantId);
+      persistPayrollDepartmentsToDb(tenantId, this.getDepartments(tenantId)).catch(() => {});
+      persistPayrollGradesToDb(tenantId, this.getGradeLevels(tenantId)).catch(() => {});
+      persistPayrollEmployeesToDb(tenantId, this.getEmployees(tenantId)).catch(() => {});
     }
-    
-    // Invalidate cache
-    this._employeesCache.delete(tenantId);
   },
 
   deleteEmployee(tenantId: string, employeeId: string): void {
     const employees = this.getEmployees(tenantId);
     const filtered = employees.filter(e => e.id !== employeeId);
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(filtered));
-    
-    // Invalidate cache
+
+    // Invalidate cache and persist updated list to DB
     this._employeesCache.delete(tenantId);
+    persistPayrollEmployeesToDb(tenantId, filtered).catch(() => {});
   },
 
   // ==================== PAYROLL RUNS ====================
@@ -305,6 +315,7 @@ export const storageService = {
     };
     runs.unshift(newRun); // Add to beginning
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYROLL_RUNS), JSON.stringify(runs));
+    persistPayrollRunsToDb(tenantId, runs).catch(() => {});
   },
 
   updatePayrollRun(tenantId: string, run: PayrollRun, userId: string): void {
@@ -317,7 +328,128 @@ export const storageService = {
         updated_at: new Date().toISOString()
       };
       localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYROLL_RUNS), JSON.stringify(runs));
+      persistPayrollRunsToDb(tenantId, runs).catch(() => {});
     }
+  },
+
+  /** Delete a payroll run from storage and DB. Use for empty/phantom runs (e.g. 0 employees). */
+  deletePayrollRun(tenantId: string, runId: string): boolean {
+    const runs = this.getPayrollRuns(tenantId);
+    const index = runs.findIndex(r => r.id === runId);
+    if (index === -1) return false;
+    const next = runs.filter(r => r.id !== runId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYROLL_RUNS), JSON.stringify(next));
+    persistPayrollRunsToDb(tenantId, next).catch(() => {});
+    deletePayrollRunFromDb(tenantId, runId).catch(() => {});
+    return true;
+  },
+
+  // ==================== PAYSLIPS ====================
+
+  getPayslips(tenantId: string): Payslip[] {
+    this.init(tenantId);
+    const data = localStorage.getItem(getKey(tenantId, STORAGE_KEYS.PAYSLIPS));
+    const list = JSON.parse(data || '[]');
+    return list.map((ps: any) => normalizePayslip(ps));
+  },
+
+  /** Hydration from DB: overwrite localStorage with runs and payslips (used after loading from SQLite). */
+  setPayrollRuns(tenantId: string, runs: PayrollRun[]): void {
+    this.init(tenantId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYROLL_RUNS), JSON.stringify(runs));
+  },
+
+  setPayslips(tenantId: string, payslips: Payslip[]): void {
+    this.init(tenantId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYSLIPS), JSON.stringify(payslips));
+  },
+
+  setEmployees(tenantId: string, employees: PayrollEmployee[]): void {
+    this.init(tenantId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(employees));
+    this._employeesCache.delete(tenantId);
+  },
+
+  setDepartments(tenantId: string, departments: Department[]): void {
+    this.init(tenantId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.DEPARTMENTS), JSON.stringify(departments));
+  },
+
+  setGradeLevels(tenantId: string, grades: GradeLevel[]): void {
+    this.init(tenantId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.GRADE_LEVELS), JSON.stringify(grades));
+  },
+
+  getPayslipsByRunId(tenantId: string, payrollRunId: string): Payslip[] {
+    return this.getPayslips(tenantId).filter(ps => ps.payroll_run_id === payrollRunId);
+  },
+
+  getPayslipByRunAndEmployee(tenantId: string, payrollRunId: string, employeeId: string): Payslip | null {
+    const list = this.getPayslips(tenantId);
+    return list.find(ps => ps.payroll_run_id === payrollRunId && ps.employee_id === employeeId) || null;
+  },
+
+  addPayslip(tenantId: string, payslip: Payslip): void {
+    const list = this.getPayslips(tenantId);
+    const next = [...list, { ...payslip, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }];
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYSLIPS), JSON.stringify(next));
+    persistPayrollToDbInOrder(tenantId, this.getPayrollRuns(tenantId), this.getEmployees(tenantId), next, this.getDepartments(tenantId), this.getGradeLevels(tenantId)).catch(() => {});
+  },
+
+  updatePayslip(tenantId: string, payslip: Payslip, userId?: string): void {
+    const list = this.getPayslips(tenantId);
+    const index = list.findIndex(ps => ps.id === payslip.id);
+    if (index !== -1) {
+      const next = list.slice();
+      next[index] = { ...payslip, updated_at: new Date().toISOString() };
+      localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYSLIPS), JSON.stringify(next));
+      persistPayrollToDbInOrder(tenantId, this.getPayrollRuns(tenantId), this.getEmployees(tenantId), next, this.getDepartments(tenantId), this.getGradeLevels(tenantId)).catch(() => {});
+
+      const runId = payslip.payroll_run_id;
+      const runs = this.getPayrollRuns(tenantId);
+      const run = runs.find(r => r.id === runId);
+      if (run) {
+        const runPayslips = next.filter(p => p.payroll_run_id === runId);
+        const total_amount = runPayslips.reduce((s, p) => s + p.net_pay, 0);
+        this.updatePayrollRun(tenantId, {
+          ...run,
+          total_amount,
+          employee_count: runPayslips.length,
+          updated_at: new Date().toISOString()
+        }, userId || 'system');
+      }
+    }
+  },
+
+  /** Delete a payslip (paid or unpaid). Recalculates run total and employee_count. If run has no payslips left, sets run to DRAFT so it no longer appears in Payment History. */
+  deletePayslip(tenantId: string, payslipId: string, userId: string): boolean {
+    const list = this.getPayslips(tenantId);
+    const ps = list.find(p => p.id === payslipId);
+    if (!ps) return false;
+    const next = list.filter(p => p.id !== payslipId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYSLIPS), JSON.stringify(next));
+    persistPayrollToDbInOrder(tenantId, this.getPayrollRuns(tenantId), this.getEmployees(tenantId), next, this.getDepartments(tenantId), this.getGradeLevels(tenantId)).catch(() => {});
+
+    deletePayslipFromDb(tenantId, payslipId).catch(() => {});
+
+    const runId = ps.payroll_run_id;
+    const runs = this.getPayrollRuns(tenantId);
+    const run = runs.find(r => r.id === runId);
+    if (run) {
+      const runPayslips = next.filter(p => p.payroll_run_id === runId);
+      const total_amount = runPayslips.reduce((s, p) => s + p.net_pay, 0);
+      const allRemainingPaid = runPayslips.length > 0 && runPayslips.every(p => p.is_paid);
+      const newStatus = runPayslips.length === 0 ? PayrollStatus.DRAFT : (allRemainingPaid ? PayrollStatus.PAID : PayrollStatus.DRAFT);
+      this.updatePayrollRun(tenantId, {
+        ...run,
+        total_amount,
+        employee_count: runPayslips.length,
+        status: newStatus,
+        paid_at: newStatus === PayrollStatus.PAID ? run.paid_at : undefined,
+        updated_at: new Date().toISOString()
+      }, userId);
+    }
+    return true;
   },
 
   // ==================== EARNING TYPES ====================
@@ -337,6 +469,16 @@ export const storageService = {
       types.push(type);
     }
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EARNING_TYPES), JSON.stringify(types));
+  },
+
+  setEarningTypes(tenantId: string, types: EarningType[]): void {
+    this.init(tenantId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EARNING_TYPES), JSON.stringify(types));
+  },
+
+  setDeductionTypes(tenantId: string, types: DeductionType[]): void {
+    this.init(tenantId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.DEDUCTION_TYPES), JSON.stringify(types));
   },
 
   // ==================== DEDUCTION TYPES ====================
@@ -375,6 +517,7 @@ export const storageService = {
       grades.push({ ...grade, tenant_id: tenantId, created_by: userId });
     }
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.GRADE_LEVELS), JSON.stringify(grades));
+    persistPayrollGradesToDb(tenantId, this.getGradeLevels(tenantId)).catch(() => {});
   },
 
   // ==================== DEPARTMENTS ====================
@@ -394,6 +537,7 @@ export const storageService = {
       departments.push({ ...department, tenant_id: tenantId, created_by: userId });
     }
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.DEPARTMENTS), JSON.stringify(departments));
+    persistPayrollDepartmentsToDb(tenantId, this.getDepartments(tenantId)).catch(() => {});
   },
 
   deleteDepartment(tenantId: string, departmentId: string): void {
@@ -444,7 +588,116 @@ export const storageService = {
       projects[index] = { ...project, updated_by: userId };
       localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PROJECTS), JSON.stringify(projects));
     }
+  },
+
+  /**
+   * After GET /api/state/changes includes payroll_* entities, merge into localStorage (API mode).
+   */
+  applyPayrollIncrementalEntities(tenantId: string, entities: Record<string, unknown[]>): void {
+    if (!tenantId || typeof localStorage === 'undefined') return;
+    this.init(tenantId);
+
+    const mergeById = <T>(
+      storageKey: string,
+      rows: unknown[] | undefined,
+      normalize: (x: Record<string, unknown>) => T,
+      idOf: (x: T) => string
+    ) => {
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const key = getKey(tenantId, storageKey);
+      const existing = JSON.parse(localStorage.getItem(key) || '[]') as T[];
+      const map = new Map<string, T>();
+      for (const item of existing) {
+        map.set(idOf(item), item);
+      }
+      for (const raw of rows) {
+        const r = raw as Record<string, unknown>;
+        const id = String(r.id ?? '');
+        if (!id) continue;
+        const del = r.deleted_at ?? r.deletedAt;
+        if (del) {
+          map.delete(id);
+        } else {
+          map.set(id, normalize(r));
+        }
+      }
+      localStorage.setItem(key, JSON.stringify(Array.from(map.values())));
+    };
+
+    const normGrade = (g: Record<string, unknown>): GradeLevel => ({
+      id: String(g.id),
+      tenant_id: String(g.tenant_id ?? g.tenantId ?? tenantId),
+      name: String(g.name ?? ''),
+      description: String(g.description ?? ''),
+      min_salary: Number(g.min_salary ?? g.minSalary ?? 0),
+      max_salary: Number(g.max_salary ?? g.maxSalary ?? 0),
+      created_by: (g.created_by ?? g.createdBy) as string | undefined,
+      updated_by: (g.updated_by ?? g.updatedBy) as string | undefined,
+      created_at: (g.created_at ?? g.createdAt) as string | undefined,
+      updated_at: (g.updated_at ?? g.updatedAt) as string | undefined
+    });
+
+    mergeById(STORAGE_KEYS.DEPARTMENTS, entities.payroll_departments as unknown[] | undefined, (r) => normalizeDepartment(r), (d) => d.id);
+    mergeById(STORAGE_KEYS.GRADE_LEVELS, entities.payroll_grades as unknown[] | undefined, normGrade, (g) => g.id);
+    mergeById(STORAGE_KEYS.EMPLOYEES, entities.payroll_employees as unknown[] | undefined, (r) => normalizeEmployee(r), (e) => e.id);
+    mergeById(STORAGE_KEYS.PAYROLL_RUNS, entities.payroll_runs as unknown[] | undefined, (r) => normalizePayrollRun(r), (x) => x.id);
+    mergeById(STORAGE_KEYS.PAYSLIPS, entities.payslips as unknown[] | undefined, (r) => normalizePayslip(r), (p) => p.id);
+
+    const cfgRows = entities.payroll_tenant_config as unknown[] | undefined;
+    if (Array.isArray(cfgRows) && cfgRows[0] && typeof cfgRows[0] === 'object') {
+      const c = cfgRows[0] as Record<string, unknown>;
+      if (Array.isArray(c.earning_types)) this.setEarningTypes(tenantId, c.earning_types as EarningType[]);
+      if (Array.isArray(c.deduction_types)) this.setDeductionTypes(tenantId, c.deduction_types as DeductionType[]);
+    }
+
+    this._employeesCache.delete(tenantId);
+    notifyPayrollStorageUpdated(tenantId);
+  },
+
+  /** Full list refresh from REST (used after incremental sync / realtime debounce). */
+  async syncPayrollListsFromApi(tenantId: string): Promise<void> {
+    if (isLocalOnlyMode()) return;
+    this.init(tenantId);
+    try {
+      const [employees, runs, departments, grades, et, dt] = await Promise.all([
+        payrollApi.getEmployees(),
+        payrollApi.getPayrollRuns(),
+        payrollApi.getDepartments(),
+        payrollApi.getGradeLevels(),
+        payrollApi.getEarningTypes(),
+        payrollApi.getDeductionTypes()
+      ]);
+      this.setEmployees(tenantId, employees);
+      localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYROLL_RUNS), JSON.stringify(runs));
+      this.setDepartments(tenantId, departments);
+      this.setGradeLevels(tenantId, grades);
+      this.setEarningTypes(tenantId, et);
+      this.setDeductionTypes(tenantId, dt);
+
+      const serverRunIds = new Set(runs.map((r) => r.id));
+      const payslipLists = await Promise.all(runs.map((r) => payrollApi.getPayslipsByRun(r.id)));
+      const serverPayslips = payslipLists.flat().map((p) => normalizePayslip(p));
+      const existing = this.getPayslips(tenantId);
+      const keepLocal = existing.filter((p) => !serverRunIds.has(p.payroll_run_id));
+      const byId = new Map<string, Payslip>();
+      for (const p of [...keepLocal, ...serverPayslips]) {
+        byId.set(p.id, p);
+      }
+      this.setPayslips(tenantId, Array.from(byId.values()));
+    } catch (e) {
+      console.warn('[payroll] syncPayrollListsFromApi failed', e);
+    }
+    notifyPayrollStorageUpdated(tenantId);
   }
 };
+
+function notifyPayrollStorageUpdated(tenantId: string): void {
+  if (typeof window === 'undefined' || !tenantId) return;
+  try {
+    window.dispatchEvent(new CustomEvent('pbooks-payroll-storage-updated', { detail: { tenantId } }));
+  } catch {
+    /* ignore */
+  }
+}
 
 export default storageService;

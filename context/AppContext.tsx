@@ -1,20 +1,26 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef, useMemo } from 'react';
-import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice, RecurringInvoiceTemplate } from '../types';
+import { flushSync } from 'react-dom';
+import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, Contract, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice, RecurringInvoiceTemplate, ProjectReceivedAsset, Budget, PMCycleAllocation, Project, InstallmentPlan, PlanAmenity, Unit } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
 import { getDatabaseService } from '../services/database/databaseService';
+import { getPersistableStateFingerprint } from '../services/database/persistableStateFingerprint';
 import { useAuth } from './AuthContext';
-import { getAppStateApiService } from '../services/api/appStateApi';
+import { useCompanyOptional } from './CompanyContext';
 import { logger } from '../services/logger';
+import { MANDATORY_SYSTEM_ACCOUNTS } from '../services/database/mandatorySystemAccounts';
+import { MANDATORY_SYSTEM_CATEGORIES } from '../services/database/mandatorySystemCategories';
+import { findSalesReturnCategory } from '../constants/salesReturnSystemCategories';
+import { resolveSystemCategoryId } from '../services/systemEntityIds';
 import packageJson from '../package.json';
-import { shouldSyncAction } from '../services/sync/dataFilter';
+import { isLocalOnlyMode } from '../config/apiUrl';
+import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
+import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
+import { toLocalDateString } from '../utils/dateUtils';
 import InitializationScreen from '../components/InitializationScreen';
-import { getSyncQueue } from '../services/syncQueue';
-import { getSyncManager } from '../services/sync/syncManager';
-import { SyncOperationType } from '../types/sync';
-import { getLastSyncTimestamp, setLastSyncTimestamp, isLastSyncRecent, clearLastSyncTimestamp } from '../utils/lastSyncStorage';
+import { syncQueueStub as getSyncQueue } from '../services/sync/localOnlyStubs';
 // --- Module-level state store for selective subscriptions via useSyncExternalStore ---
 // Components using useStateSelector() only re-render when their selected slice changes,
 // unlike useAppContext() which re-renders ALL 155+ consumers on every state change.
@@ -31,52 +37,19 @@ function _notifyStateListeners() {
     _stateListeners.forEach(l => l());
 }
 
-// PERFORMANCE: Module-level constant set of action types that trigger API sync.
-// Previously this 60+ entry Set was re-created on EVERY dispatch call inside useCallback.
-const SYNC_TO_API_ACTIONS = new Set<string>([
-    // Financial transactions
-    'ADD_TRANSACTION', 'UPDATE_TRANSACTION', 'DELETE_TRANSACTION', 'BATCH_ADD_TRANSACTIONS', 'RESTORE_TRANSACTION',
-    // Accounts
-    'ADD_ACCOUNT', 'UPDATE_ACCOUNT', 'DELETE_ACCOUNT',
-    // Contacts
-    'ADD_CONTACT', 'UPDATE_CONTACT', 'DELETE_CONTACT',
-    // Vendors
-    'ADD_VENDOR', 'UPDATE_VENDOR', 'DELETE_VENDOR',
-    // Categories
-    'ADD_CATEGORY', 'UPDATE_CATEGORY', 'DELETE_CATEGORY',
-    // Projects & Properties
-    'ADD_PROJECT', 'UPDATE_PROJECT', 'DELETE_PROJECT',
-    'ADD_BUILDING', 'UPDATE_BUILDING', 'DELETE_BUILDING',
-    'ADD_PROPERTY', 'UPDATE_PROPERTY', 'DELETE_PROPERTY',
-    'ADD_UNIT', 'UPDATE_UNIT', 'DELETE_UNIT',
-    // Invoices & Bills
-    'ADD_INVOICE', 'UPDATE_INVOICE', 'DELETE_INVOICE',
-    'ADD_BILL', 'UPDATE_BILL', 'DELETE_BILL',
-    // Recurring Invoice Templates
-    'ADD_RECURRING_TEMPLATE', 'UPDATE_RECURRING_TEMPLATE', 'DELETE_RECURRING_TEMPLATE',
-    // Budgets
-    'ADD_BUDGET', 'UPDATE_BUDGET', 'DELETE_BUDGET',
-    // Agreements
-    'ADD_RENTAL_AGREEMENT', 'UPDATE_RENTAL_AGREEMENT', 'DELETE_RENTAL_AGREEMENT',
-    'ADD_PROJECT_AGREEMENT', 'UPDATE_PROJECT_AGREEMENT', 'DELETE_PROJECT_AGREEMENT', 'CANCEL_PROJECT_AGREEMENT',
-    // Sales Returns
-    'ADD_SALES_RETURN', 'UPDATE_SALES_RETURN', 'DELETE_SALES_RETURN', 'MARK_RETURN_REFUNDED',
-    // Contracts
-    'ADD_CONTRACT', 'UPDATE_CONTRACT', 'DELETE_CONTRACT',
-    // Organization settings
-    'UPDATE_AGREEMENT_SETTINGS', 'UPDATE_PROJECT_AGREEMENT_SETTINGS',
-    'UPDATE_RENTAL_INVOICE_SETTINGS', 'UPDATE_PROJECT_INVOICE_SETTINGS',
-    'UPDATE_PRINT_SETTINGS', 'UPDATE_WHATSAPP_TEMPLATES',
-    'ADD_INSTALLMENT_PLAN', 'UPDATE_INSTALLMENT_PLAN', 'DELETE_INSTALLMENT_PLAN',
-    'ADD_PLAN_AMENITY', 'UPDATE_PLAN_AMENITY', 'DELETE_PLAN_AMENITY',
-    'ADD_INVENTORY_ITEM', 'UPDATE_INVENTORY_ITEM', 'DELETE_INVENTORY_ITEM',
-    'UPDATE_PM_COST_PERCENTAGE',
-    // General settings
-    'TOGGLE_SYSTEM_TRANSACTIONS', 'TOGGLE_COLOR_CODING', 'TOGGLE_BEEP_ON_SAVE', 'TOGGLE_DATE_PRESERVATION',
-    'UPDATE_DEFAULT_PROJECT', 'UPDATE_DASHBOARD_CONFIG',
-    // PM Cycle Allocations
-    'ADD_PM_CYCLE_ALLOCATION', 'UPDATE_PM_CYCLE_ALLOCATION', 'DELETE_PM_CYCLE_ALLOCATION',
-]);
+/**
+ * Serialize PostgreSQL API writes for the same transaction id. Concurrent POST /transactions
+ * with the same stale client `version` causes 409 CONFLICT even for a single user; the first
+ * upsert succeeds and bumps `version`, the second fails and triggers a spurious "another user" modal.
+ */
+const transactionApiSaveQueues = new Map<string, Promise<void>>();
+
+function enqueueTransactionApiSave(txId: string, task: () => Promise<void>): Promise<void> {
+    const previous = transactionApiSaveQueues.get(txId) ?? Promise.resolve();
+    const next = previous.catch(() => {}).then(() => task());
+    transactionApiSaveQueues.set(txId, next);
+    return next;
+}
 
 // Lazy import AppStateRepository to avoid initialization issues during module load
 // It will be imported when actually needed
@@ -100,13 +73,7 @@ async function getAppStateRepository() {
     return new AppStateRepositoryClass();
 }
 
-const SYSTEM_ACCOUNTS: Account[] = [
-    { id: 'sys-acc-cash', name: 'Cash', type: AccountType.BANK, balance: 0, isPermanent: true, description: 'Default cash account' },
-    { id: 'sys-acc-ar', name: 'Accounts Receivable', type: AccountType.ASSET, balance: 0, isPermanent: true, description: 'System account for unpaid invoices' },
-    { id: 'sys-acc-ap', name: 'Accounts Payable', type: AccountType.LIABILITY, balance: 0, isPermanent: true, description: 'System account for unpaid bills and salaries' },
-    { id: 'sys-acc-equity', name: 'Owner Equity', type: AccountType.EQUITY, balance: 0, isPermanent: true, description: 'System account for owner capital and equity' },
-    { id: 'sys-acc-clearing', name: 'Internal Clearing', type: AccountType.BANK, balance: 0, isPermanent: true, description: 'System account for internal transfers and equity clearing' }
-];
+const SYSTEM_ACCOUNTS: Account[] = MANDATORY_SYSTEM_ACCOUNTS;
 
 const DEFAULT_ADMIN: User = {
     id: 'sys-admin',
@@ -116,45 +83,7 @@ const DEFAULT_ADMIN: User = {
     password: '' // Empty string signifies no password set
 };
 
-const SYSTEM_CATEGORIES: Category[] = [
-    // Income
-    { id: 'sys-cat-rent-inc', name: 'Rental Income', type: TransactionType.INCOME, isPermanent: true, isRental: true },
-    { id: 'sys-cat-svc-inc', name: 'Service Charge Income', type: TransactionType.INCOME, isPermanent: true, isRental: true },
-    { id: 'sys-cat-sec-dep', name: 'Security Deposit', type: TransactionType.INCOME, isPermanent: true, isRental: true },
-    { id: 'sys-cat-proj-list', name: 'Project Listed Income', type: TransactionType.INCOME, isPermanent: true },
-    { id: 'sys-cat-unit-sell', name: 'Unit Selling Income', type: TransactionType.INCOME, isPermanent: true },
-    { id: 'sys-cat-penalty-inc', name: 'Penalty Income', type: TransactionType.INCOME, isPermanent: true },
-    { id: 'sys-cat-own-eq', name: 'Owner Equity', type: TransactionType.INCOME, isPermanent: true },
-    { id: 'sys-cat-own-svc-pay', name: 'Owner Service Charge Payment', type: TransactionType.INCOME, isPermanent: true, isRental: true },
-
-    // Expense
-    { id: 'sys-cat-sal-adv', name: 'Salary Advance', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-proj-sal', name: 'Project Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-rent-sal', name: 'Rental Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-bld-maint', name: 'Building Maintenance', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
-    { id: 'sys-cat-bld-util', name: 'Building Utilities', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
-    { id: 'sys-cat-own-pay', name: 'Owner Payout', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
-    { id: 'sys-cat-own-sec-pay', name: 'Owner Security Payout', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
-    { id: 'sys-cat-sec-ref', name: 'Security Deposit Refund', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
-    { id: 'sys-cat-prop-rep-own', name: 'Property Repair (Owner)', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
-    { id: 'sys-cat-prop-rep-ten', name: 'Property Repair (Tenant)', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
-    { id: 'sys-cat-brok-fee', name: 'Broker Fee', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-rebate', name: 'Rebate Amount', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-pm-cost', name: 'Project Management Cost', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-own-with', name: 'Owner Withdrawn', type: TransactionType.EXPENSE, isPermanent: true },
-
-    // Discounts (Virtual Expenses)
-    { id: 'sys-cat-disc-cust', name: 'Customer Discount', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-disc-flr', name: 'Floor Discount', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-disc-lump', name: 'Lump Sum Discount', type: TransactionType.EXPENSE, isPermanent: true },
-    { id: 'sys-cat-disc-misc', name: 'Misc Discount', type: TransactionType.EXPENSE, isPermanent: true },
-
-    // Legacy
-    { id: 'sys-cat-svc-deduct', name: 'Service Charge Deduction', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
-
-    // Payroll
-    { id: 'sys-cat-sal-exp', name: 'Salary Expenses', type: TransactionType.EXPENSE, isPermanent: true },
-];
+const SYSTEM_CATEGORIES: Category[] = MANDATORY_SYSTEM_CATEGORIES;
 
 const DEFAULT_INVOICE_TEMPLATE = `<!DOCTYPE html>
 <html lang="en">
@@ -292,8 +221,11 @@ const initialState: AppState = {
     rentalAgreements: [],
     projectAgreements: [],
     salesReturns: [],
+    projectReceivedAssets: [],
     contracts: [],
     budgets: [],
+    personalCategories: [],
+    personalTransactions: [],
     recurringInvoiceTemplates: [],
     printSettings: {
         companyName: 'My Company',
@@ -437,6 +369,31 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
     return newState;
 };
 
+/** Same invoice math as applyTransactionEffect (for PostgreSQL sync when LAN has no SQLite). */
+function applyTxToInvoiceCopy(inv: Invoice, tx: Transaction, isAdd: boolean): Invoice {
+    const factor = isAdd ? 1 : -1;
+    const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
+    const newPaid = Math.max(0, (inv.paidAmount || 0) + (amount * factor));
+    let newStatus = inv.status;
+    if (newPaid >= inv.amount - 0.1) newStatus = InvoiceStatus.PAID;
+    else if (newPaid > 0.1) newStatus = InvoiceStatus.PARTIALLY_PAID;
+    else newStatus = InvoiceStatus.UNPAID;
+    return { ...inv, paidAmount: newPaid, status: newStatus };
+}
+
+/** Same bill math as applyTransactionEffect. */
+function applyTxToBillCopy(b: Bill, tx: Transaction, isAdd: boolean): Bill {
+    const factor = isAdd ? 1 : -1;
+    const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
+    const newPaid = Math.max(0, (b.paidAmount || 0) + (amount * factor));
+    let newStatus = b.status;
+    const threshold = 0.01;
+    if (newPaid >= b.amount - threshold) newStatus = InvoiceStatus.PAID;
+    else if (newPaid > threshold) newStatus = InvoiceStatus.PARTIALLY_PAID;
+    else newStatus = InvoiceStatus.UNPAID;
+    return { ...b, paidAmount: newPaid, status: newStatus };
+}
+
 // Helper for log creation
 const createLogEntry = (action: TransactionLogEntry['action'], entityType: TransactionLogEntry['entityType'], entityId: string, description: string, user: User | null, data?: any): TransactionLogEntry => ({
     id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
@@ -449,6 +406,17 @@ const createLogEntry = (action: TransactionLogEntry['action'], entityType: Trans
     userLabel: user?.name || 'System',
     data
 });
+
+/** When category_id is missing on a bill payment, inherit from the bill (same rules as pay modal). */
+function enrichExpenseBillPaymentCategory(tx: Transaction, state: AppState): Transaction {
+    if (tx.type !== TransactionType.EXPENSE || !tx.billId) return tx;
+    if (tx.categoryId != null && String(tx.categoryId).trim() !== '') return tx;
+    const bill = state.bills.find(b => b.id === tx.billId);
+    if (!bill) return tx;
+    const cid = resolveExpenseCategoryForBillPayment(bill, state.categories, state.rentalAgreements);
+    if (!cid) return tx;
+    return { ...tx, categoryId: cid };
+}
 
 const reducer = (state: AppState, action: AppAction): AppState => {
     // Real-time sync is now handled via Socket.IO in the backend with tenant isolation
@@ -465,12 +433,15 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
             const snakeToCamelKey: Record<string, string> = {
                 rental_agreements: 'rentalAgreements',
+                personal_categories: 'personalCategories',
+                personal_transactions: 'personalTransactions',
                 project_agreements: 'projectAgreements',
                 plan_amenities: 'planAmenities',
                 installment_plans: 'installmentPlans',
                 recurring_invoice_templates: 'recurringInvoiceTemplates',
                 pm_cycle_allocations: 'pmCycleAllocations',
                 sales_returns: 'salesReturns',
+                project_received_assets: 'projectReceivedAssets',
                 inventory_items: 'inventoryItems',
             };
 
@@ -592,7 +563,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
         // --- TRANSACTION HANDLERS ---
         case 'ADD_TRANSACTION': {
-            const tx = action.payload as Transaction;
+            const tx = enrichExpenseBillPaymentCategory(action.payload as Transaction, state);
 
             // Deduplicate: check if transaction with same ID exists
             const existingTxIndex = state.transactions.findIndex(t => t.id === tx.id);
@@ -622,7 +593,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
 
         case 'UPDATE_TRANSACTION': {
-            const updatedTx = action.payload as Transaction;
+            const updatedTx = enrichExpenseBillPaymentCategory(action.payload as Transaction, state);
             const originalTx = state.transactions.find(t => t.id === updatedTx.id);
             if (!originalTx) return state;
             let tempState = applyTransactionEffect(state, originalTx, false);
@@ -641,15 +612,64 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const tx = state.transactions.find(t => t.id === txId);
             if (!tx) return state;
             const newStateWithoutTx = { ...state, transactions: state.transactions.filter(t => t.id !== txId) };
-            const finalState = applyTransactionEffect(newStateWithoutTx, tx, false);
+            let finalState = applyTransactionEffect(newStateWithoutTx, tx, false);
             if (tx.contractId) Object.assign(finalState, updateContractStatus(finalState, tx.contractId));
+            // In-kind / bulk asset payments link transactions to project_received_assets; removing the last tx must drop the asset row.
+            const aid = tx.projectAssetId;
+            if (aid && !finalState.transactions.some(t => t.projectAssetId === aid)) {
+                finalState = {
+                    ...finalState,
+                    projectReceivedAssets: (finalState.projectReceivedAssets || []).filter(a => a.id !== aid),
+                };
+            }
             const logEntry = createLogEntry('DELETE', 'Transaction', tx.id, `Deleted ${tx.type}: ${tx.description}`, state.currentUser, tx);
             finalState.transactionLog = [logEntry, ...(state.transactionLog || [])];
             return finalState;
         }
 
+        case 'BATCH_DELETE_TRANSACTIONS': {
+            const { transactionIds, projectAssetIdToDelete } = action.payload;
+            const uniqueIds = [...new Set(transactionIds)].filter(Boolean);
+            if (uniqueIds.length === 0 && !projectAssetIdToDelete) return state;
+
+            let nextState = state;
+            let deletedCount = 0;
+            for (const txId of uniqueIds) {
+                const tx = nextState.transactions.find(t => t.id === txId);
+                if (!tx) continue;
+                deletedCount++;
+                const newStateWithoutTx = { ...nextState, transactions: nextState.transactions.filter(t => t.id !== txId) };
+                let finalState = applyTransactionEffect(newStateWithoutTx, tx, false);
+                if (tx.contractId) Object.assign(finalState, updateContractStatus(finalState, tx.contractId));
+                const logEntry = createLogEntry('DELETE', 'Transaction', tx.id, `Deleted ${tx.type}: ${tx.description}`, state.currentUser, tx);
+                finalState.transactionLog = [logEntry, ...(finalState.transactionLog || [])];
+                nextState = finalState;
+            }
+
+            if (projectAssetIdToDelete) {
+                nextState = {
+                    ...nextState,
+                    projectReceivedAssets: (nextState.projectReceivedAssets || []).filter(a => a.id !== projectAssetIdToDelete),
+                };
+            }
+
+            if (deletedCount === 0 && nextState === state) return state;
+
+            if (deletedCount > 0) {
+                const summaryLog = createLogEntry(
+                    'DELETE',
+                    'Transaction',
+                    'BATCH',
+                    `Batch deleted ${deletedCount} transaction(s)`,
+                    state.currentUser
+                );
+                nextState.transactionLog = [summaryLog, ...(nextState.transactionLog || [])];
+            }
+            return nextState;
+        }
+
         case 'BATCH_ADD_TRANSACTIONS': {
-            const txs = action.payload as Transaction[];
+            const txs = (action.payload as Transaction[]).map(tx => enrichExpenseBillPaymentCategory(tx, state));
             let batchState = { ...state, transactions: [...state.transactions, ...txs] };
             txs.forEach(tx => {
                 batchState = applyTransactionEffect(batchState, tx, true);
@@ -661,7 +681,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
 
         case 'RESTORE_TRANSACTION': {
-            const txToRestore = action.payload as Transaction;
+            const txToRestore = enrichExpenseBillPaymentCategory(action.payload as Transaction, state);
             if (state.transactions.find(t => t.id === txToRestore.id)) return state; // Already exists
             let restoredState = { ...state, transactions: [...state.transactions, txToRestore] };
             restoredState = applyTransactionEffect(restoredState, txToRestore, true);
@@ -764,8 +784,19 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 return { ...state, units: state.units.map(u => u.id === action.payload.id ? action.payload : u) };
             }
             return { ...state, units: [...state.units, action.payload] };
-        case 'UPDATE_UNIT':
-            return { ...state, units: state.units.map(u => u.id === action.payload.id ? action.payload : u) };
+        case 'UPDATE_UNIT': {
+            const p = action.payload as Unit;
+            return {
+                ...state,
+                units: state.units.map((u) => {
+                    if (u.id !== p.id) return u;
+                    const merged = { ...u, ...p };
+                    const nm = merged.name != null ? String(merged.name).trim() : '';
+                    if (nm) merged.unitNumber = nm;
+                    return merged;
+                }),
+            };
+        }
         case 'DELETE_UNIT':
             return { ...state, units: state.units.filter(u => u.id !== action.payload) };
 
@@ -819,21 +850,33 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
             let newState = { ...state, bills: state.bills.map(b => b.id === updatedBill.id ? updatedBill : b) };
 
-            // Update related PM cycle allocation when bill payment status changes
-            const paymentChanged = originalBill.paidAmount !== updatedBill.paidAmount || originalBill.status !== updatedBill.status;
-            if (paymentChanged && state.pmCycleAllocations) {
-                const relatedAllocation = state.pmCycleAllocations.find(a => a.billId === updatedBill.id);
-                if (relatedAllocation) {
-                    const updatedAllocation = {
-                        ...relatedAllocation,
-                        paidAmount: updatedBill.paidAmount || 0,
-                        status: updatedBill.status === InvoiceStatus.PAID ? 'paid' :
-                            updatedBill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
-                    };
-                    newState.pmCycleAllocations = newState.pmCycleAllocations.map(a =>
-                        a.id === updatedAllocation.id ? updatedAllocation : a
-                    );
+            // Keep pm_cycle_allocations in sync with PM fee bills (payment, amount, status)
+            const relatedAllocation = state.pmCycleAllocations?.find((a) => a.billId === updatedBill.id);
+            const paymentChanged =
+                originalBill.paidAmount !== updatedBill.paidAmount || originalBill.status !== updatedBill.status;
+            const pmBillAmountChanged =
+                !!relatedAllocation && originalBill.amount !== updatedBill.amount;
+            if (relatedAllocation && (paymentChanged || pmBillAmountChanged)) {
+                let updatedAllocation = { ...relatedAllocation };
+                if (paymentChanged) {
+                    updatedAllocation.paidAmount = updatedBill.paidAmount || 0;
+                    updatedAllocation.status =
+                        updatedBill.status === InvoiceStatus.PAID
+                            ? 'paid'
+                            : updatedBill.status === InvoiceStatus.PARTIALLY_PAID
+                              ? 'partially_paid'
+                              : 'unpaid';
                 }
+                if (pmBillAmountChanged) {
+                    updatedAllocation.amount = updatedBill.amount;
+                    const fr = relatedAllocation.feeRate || 0;
+                    if (fr > 0.0001) {
+                        updatedAllocation.expenseTotal = updatedBill.amount / (fr / 100);
+                    }
+                }
+                newState.pmCycleAllocations = newState.pmCycleAllocations!.map((a) =>
+                    a.id === updatedAllocation.id ? updatedAllocation : a
+                );
             }
 
             // If contractId is being added or changed, update existing transactions
@@ -871,8 +914,14 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
             return newState;
         }
-        case 'DELETE_BILL':
-            return { ...state, bills: state.bills.filter(b => b.id !== action.payload) };
+        case 'DELETE_BILL': {
+            const billId = action.payload as string;
+            return {
+                ...state,
+                bills: state.bills.filter((b) => b.id !== billId),
+                pmCycleAllocations: (state.pmCycleAllocations || []).filter((a) => a.billId !== billId),
+            };
+        }
 
         // --- PM CYCLE ALLOCATIONS ---
         case 'ADD_PM_CYCLE_ALLOCATION':
@@ -983,10 +1032,13 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                     return newState;
                 }
 
-                // Find or use Penalty Income category
-                let penaltyCategoryId = state.categories.find(c => c.name === 'Penalty Income')?.id;
+                // Sales Return Penalty (system) → legacy Penalty Income
+                let penaltyCategoryId =
+                    findSalesReturnCategory(state.categories, 'PENALTY')?.id
+                    ?? resolveSystemCategoryId(state.categories, 'sys-cat-penalty-inc')
+                    ?? state.categories.find(c => c.name === 'Penalty Income')?.id;
                 if (!penaltyCategoryId) {
-                    console.warn('Penalty Income category not found');
+                    console.warn('Sales Return / Penalty Income category not found');
                     return newState;
                 }
 
@@ -1003,7 +1055,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                     id: `reduce-income-penalty-${Date.now()}`,
                     type: TransactionType.EXPENSE, // Expense reduces income (via category)
                     amount: Math.round(penaltyAmount), // Round to whole number
-                    date: new Date().toISOString().split('T')[0],
+                    date: toLocalDateString(new Date()),
                     description: `Revenue Reduction - Penalty for Cancelled Agreement #${updatedAgreement.agreementNumber}`,
                     accountId: cashAccount.id, // Use Cash account so it appears in P&L
                     contactId: updatedAgreement.clientId,
@@ -1019,7 +1071,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                     id: `penalty-${Date.now()}`,
                     type: TransactionType.INCOME, // Penalty is income to company
                     amount: Math.round(penaltyAmount), // Round to whole number
-                    date: new Date().toISOString().split('T')[0],
+                    date: toLocalDateString(new Date()),
                     description: `Cancellation Penalty - Agreement #${updatedAgreement.agreementNumber} (${penaltyPercentage}% of ${updatedAgreement.sellingPrice.toLocaleString()})`,
                     accountId: cashAccount.id, // Use Cash account (penalty is retained)
                     contactId: updatedAgreement.clientId,
@@ -1048,6 +1100,31 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
             return newState;
         }
+
+        case 'ADD_PROJECT_RECEIVED_ASSET': {
+            const existing = state.projectReceivedAssets?.find((a) => a.id === action.payload.id);
+            if (existing) {
+                return {
+                    ...state,
+                    projectReceivedAssets: (state.projectReceivedAssets || []).map((a) =>
+                        a.id === action.payload.id ? action.payload : a
+                    ),
+                };
+            }
+            return { ...state, projectReceivedAssets: [...(state.projectReceivedAssets || []), action.payload] };
+        }
+        case 'UPDATE_PROJECT_RECEIVED_ASSET':
+            return {
+                ...state,
+                projectReceivedAssets: (state.projectReceivedAssets || []).map((a) =>
+                    a.id === action.payload.id ? action.payload : a
+                ),
+            };
+        case 'DELETE_PROJECT_RECEIVED_ASSET':
+            return {
+                ...state,
+                projectReceivedAssets: (state.projectReceivedAssets || []).filter((a) => a.id !== action.payload),
+            };
 
         case 'ADD_SALES_RETURN':
             return { ...state, salesReturns: [...(state.salesReturns || []), action.payload] };
@@ -1129,6 +1206,8 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, defaultProjectId: action.payload };
         case 'SET_LAST_SERVICE_CHARGE_RUN':
             return { ...state, lastServiceChargeRun: action.payload };
+        case 'SET_WHATSAPP_MODE':
+            return { ...state, whatsAppMode: action.payload };
 
         case 'TOGGLE_SYSTEM_TRANSACTIONS': return { ...state, showSystemTransactions: action.payload };
         case 'TOGGLE_COLOR_CODING': return { ...state, enableColorCoding: action.payload };
@@ -1166,14 +1245,95 @@ const reducer = (state: AppState, action: AppAction): AppState => {
     }
 };
 
+/**
+ * Full GET / loadState() replaces invoice arrays. After POST, a refresh can run before the new row appears in list —
+ * merge keeps optimistic local rows whose id is not yet in the server payload. Rows present on both sides use server copy.
+ */
+/** After tenant settings actions, merge into prev so we can flush full tenant payload to PostgreSQL (LAN/API). */
+function mergeTenantSettingsFromAction(prev: AppState, action: AppAction): AppState | null {
+    switch (action.type) {
+        case 'TOGGLE_SYSTEM_TRANSACTIONS':
+            return { ...prev, showSystemTransactions: action.payload };
+        case 'TOGGLE_COLOR_CODING':
+            return { ...prev, enableColorCoding: action.payload };
+        case 'TOGGLE_BEEP_ON_SAVE':
+            return { ...prev, enableBeepOnSave: action.payload };
+        case 'TOGGLE_DATE_PRESERVATION':
+            return { ...prev, enableDatePreservation: action.payload };
+        case 'UPDATE_DEFAULT_PROJECT':
+            return { ...prev, defaultProjectId: action.payload };
+        case 'SET_WHATSAPP_MODE':
+            return { ...prev, whatsAppMode: action.payload };
+        case 'UPDATE_DASHBOARD_CONFIG':
+            return { ...prev, dashboardConfig: action.payload };
+        case 'UPDATE_AGREEMENT_SETTINGS':
+            return { ...prev, agreementSettings: action.payload };
+        case 'UPDATE_PROJECT_AGREEMENT_SETTINGS':
+            return { ...prev, projectAgreementSettings: action.payload };
+        case 'UPDATE_RENTAL_INVOICE_SETTINGS':
+            return { ...prev, rentalInvoiceSettings: action.payload };
+        case 'UPDATE_PROJECT_INVOICE_SETTINGS':
+            return { ...prev, projectInvoiceSettings: action.payload };
+        case 'UPDATE_PRINT_SETTINGS':
+            return { ...prev, printSettings: action.payload };
+        case 'UPDATE_WHATSAPP_TEMPLATES':
+            return { ...prev, whatsAppTemplates: action.payload };
+        case 'UPDATE_PM_COST_PERCENTAGE':
+            return { ...prev, pmCostPercentage: action.payload };
+        case 'UPDATE_INVOICE_TEMPLATE':
+            return { ...prev, invoiceHtmlTemplate: action.payload };
+        default:
+            return null;
+    }
+}
+
+function mergeInvoicesWithServerBaseline(base: Invoice[], server: Invoice[]): Invoice[] {
+    const serverIds = new Set(server.map((i) => i.id).filter(Boolean));
+    const out = [...server];
+    for (const inv of base) {
+        if (!inv.id || serverIds.has(inv.id)) continue;
+        // Rows missing from the server list were soft-deleted (listInvoices omits deleted_at)
+        // or never existed server-side. Do not resurrect synced invoices that were deleted.
+        const hadServerVersion = typeof inv.version === 'number' && inv.version >= 1;
+        if (hadServerVersion) continue;
+        // Keep optimistic / not-yet-persisted creates (no server version yet)
+        out.push(inv);
+    }
+    return out;
+}
+
+function mergeProjectReceivedAssetsWithServerBaseline(base: ProjectReceivedAsset[], server: ProjectReceivedAsset[]): ProjectReceivedAsset[] {
+    const serverIds = new Set(server.map((a) => a.id).filter(Boolean));
+    const out = [...server];
+    for (const a of base) {
+        if (a.id && !serverIds.has(a.id)) {
+            out.push(a);
+        }
+    }
+    return out;
+}
+
+function mergeSalesReturnsWithServerBaseline(base: SalesReturn[], server: SalesReturn[]): SalesReturn[] {
+    const serverIds = new Set(server.map((sr) => sr.id).filter(Boolean));
+    const out = [...server];
+    for (const sr of base) {
+        if (sr.id && !serverIds.has(sr.id)) {
+            out.push(sr);
+        }
+    }
+    return out;
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Get auth status - must be called unconditionally at top level
     // AuthProvider wraps AppProvider in index.tsx, so this should work
     const auth = useAuth();
+    const companyOpt = useCompanyOptional();
+    /** Local-only: pass active company id so useDatabaseState loads SQLite and enables saveNow (otherwise payments are never persisted). */
+    const companyDbReloadTrigger = isLocalOnlyMode() ? (companyOpt?.activeCompany?.id ?? undefined) : undefined;
 
     // Track previous auth state to detect when user re-authenticates
     const prevAuthRef = React.useRef<boolean>(false);
-    const prevTenantIdRef = React.useRef<string | null>(null);
     const isAuthenticated = auth.isAuthenticated;
 
     // Track tenant ID to detect tenant switches
@@ -1196,6 +1356,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [initProgress, setInitProgress] = useState(0);
     const [useFallback, setUseFallback] = useState(false);
     const [initError, setInitError] = useState<string | null>(null);
+    /** LAN/API mode: initial loadState() failed — do not hydrate from SQLite or continue as if data were synced. */
+    const [apiStateLoadFailed, setApiStateLoadFailed] = useState(false);
     const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
 
     // 1. Initialize State with Database (with fallback to localStorage)
@@ -1203,7 +1365,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Then use the appropriate one based on useFallback state
     // Add error boundary logging before hooks
 
-    const [dbState, setDbState, dbStateHelpers] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
+    const [dbState, setDbState, dbStateHelpers] = useDatabaseState<AppState>('finance_app_state_v4', initialState, companyDbReloadTrigger);
     const [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
 
 
@@ -1212,12 +1374,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const setStoredState = useFallback ? setFallbackState : setDbState;
     // Single saver contract: persist only via hook’s saveNow (see doc/DB_STATE_LOADER_SAVER_CONTRACT.md)
     const saveNow = dbStateHelpers?.saveNow;
+    const markDbLoadCompleteRef = useRef(dbStateHelpers?.markDbLoadComplete);
+    markDbLoadCompleteRef.current = dbStateHelpers?.markDbLoadComplete;
 
     // Use a ref to track storedState to avoid initialization issues in dependency arrays
     // Initialize ref with initialState to ensure it's always defined
     const storedStateRef = useRef<AppState>(initialState);
     // Ref for dispatch so init effect (declared before useReducer) can update reducer when background sync completes
     const dispatchRef = useRef<React.Dispatch<AppAction> | null>(null);
+    /** Set after refreshFromApi is defined; used from dispatch for post-conflict merge (declared early for closure). */
+    const refreshFromApiRef = useRef<(() => Promise<void>) | null>(null);
     useEffect(() => {
         if (storedState) {
             storedStateRef.current = storedState;
@@ -1251,9 +1417,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return prev;
         });
 
-        // Also clear from database if needed (check after state update)
-        if (isAppRelaunched || versionChanged) {
-            // Clear from database if available (async, don't block)
+        // Also clear from local SQLite if needed (LAN/API does not persist auth user in SQLite)
+        if (isLocalOnlyMode() && (isAppRelaunched || versionChanged)) {
             (async () => {
                 try {
                     const dbService = getDatabaseService();
@@ -1349,6 +1514,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                         if (isMounted) {
                             setStoredState(migratedState as AppState);
+                            markDbLoadCompleteRef.current?.();
                             setInitProgress(100);
                             setInitMessage('Migration completed successfully!');
                             setTimeout(() => setIsInitializing(false), 800);
@@ -1366,14 +1532,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     setInitMessage('Loading application data...');
                     setInitProgress(50);
 
-                    // Check if user is authenticated (cloud mode)
+                    // Check if user is authenticated (cloud / LAN API vs local SQLite)
                     if (isAuthenticated) {
-                        // OFFLINE-FIRST: Load from local DB first, show UI, then sync with cloud in background
+                        // LAN / API: load state from server (PostgreSQL-backed API)
+                        if (!isLocalOnlyMode()) {
+                            try {
+                                setInitMessage('Loading application data from server...');
+                                setInitProgress(60);
+                                const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
+                                const partial = await getAppStateApiService().loadState();
+                                if (isMounted) {
+                                    const mergedInit = { ...initialState, ...partial, ...pickTenantSettingsPartial(partial) } as AppState;
+                                    setStoredState(mergedInit);
+                                    if (typeof sessionStorage !== 'undefined') {
+                                        sessionStorage.setItem('pbooks_api_last_sync_at', new Date().toISOString());
+                                    }
+                                    markDbLoadCompleteRef.current?.();
+                                    logger.logCategory('sync', '✅ Application state loaded from API');
+                                }
+                            } catch (apiErr) {
+                                logger.warnCategory(
+                                    'sync',
+                                    'API load failed — not using local database (no offline fallback to SQLite in API mode):',
+                                    apiErr
+                                );
+                                const msg =
+                                    apiErr instanceof Error
+                                        ? apiErr.message
+                                        : typeof apiErr === 'string'
+                                          ? apiErr
+                                          : 'Could not reach the server or load your data.';
+                                if (!isMounted) return;
+                                if (timeoutId) clearTimeout(timeoutId);
+                                if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                                setInitError(msg);
+                                setInitMessage('Could not load data from the server.');
+                                setInitProgress(100);
+                                setApiStateLoadFailed(true);
+                                setIsInitializing(false);
+                                return;
+                            }
+                            if (!isMounted) return;
+                            if (timeoutId) clearTimeout(timeoutId);
+                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                            setInitProgress(100);
+                            setInitMessage('Ready!');
+                            setTimeout(() => {
+                                if (isMounted) setIsInitializing(false);
+                            }, 300);
+                        } else {
+                        // Authenticated + local-only: offline-first SQLite
                         try {
                             const { apiClient } = await import('../services/api/client');
                             const currentTenantId = apiClient.getTenantId();
 
-                            // CRITICAL: Restore offline transactions from sync queue before any load
                             let offlineTransactions: Transaction[] = [];
                             let offlineContacts: Contact[] = [];
                             let offlineInvoices: Invoice[] = [];
@@ -1422,51 +1634,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 logger.warnCategory('sync', '⚠️ Could not load sync queue items:', syncQueueError);
                             }
 
-                            // Clear local database ONLY when tenant actually changed (not on every startup)
-                            try {
-                                const dbService = getDatabaseService();
-                                if (dbService.isReady()) {
-                                    const { AppSettingsRepository } = await import('../services/database/repositories/index');
-                                    const settingsRepo = new AppSettingsRepository();
-                                    const localTenantId = settingsRepo.getSetting('tenantId') ?? null;
-                                    const effectiveTenantId = (auth.tenant?.id || auth.user?.tenantId) ?? null;
-
-                                    if (effectiveTenantId && localTenantId != null && String(localTenantId) !== String(effectiveTenantId)) {
-                                        logger.logCategory('sync', `🔄 Tenant changed (local: ${localTenantId} → current: ${effectiveTenantId}), clearing local DB for new tenant`);
-                                        const { ContactsRepository, TransactionsRepository, AccountsRepository,
-                                            CategoriesRepository, ProjectsRepository, BuildingsRepository,
-                                            PropertiesRepository, UnitsRepository, InvoicesRepository,
-                                            BillsRepository, BudgetsRepository, RentalAgreementsRepository,
-                                            ProjectAgreementsRepository, ContractsRepository,
-                                            QuotationsRepository, DocumentsRepository,
-                                            RecurringTemplatesRepository, PMCycleAllocationsRepository,
-                                            VendorsRepository } = await import('../services/database/repositories/index');
-                                        const repos = [
-                                            new ContactsRepository(), new TransactionsRepository(), new AccountsRepository(),
-                                            new CategoriesRepository(), new ProjectsRepository(), new BuildingsRepository(),
-                                            new PropertiesRepository(), new UnitsRepository(), new InvoicesRepository(),
-                                            new BillsRepository(), new BudgetsRepository(), new RentalAgreementsRepository(),
-                                            new ProjectAgreementsRepository(), new ContractsRepository(),
-                                            new QuotationsRepository(), new DocumentsRepository(),
-                                            new RecurringTemplatesRepository(), new PMCycleAllocationsRepository(),
-                                            new VendorsRepository()
-                                        ];
-                                        for (const repo of repos) {
-                                            await repo.deleteAllUnfiltered();
-                                        }
-                                        settingsRepo.setSetting('tenantId', effectiveTenantId);
-                                    } else if (effectiveTenantId && (localTenantId == null || localTenantId === '')) {
-                                        settingsRepo.setSetting('tenantId', effectiveTenantId);
-                                        logger.logCategory('database', '✅ Set tenantId in local settings (first time or was unset)');
-                                    } else {
-                                        logger.logCategory('database', '✅ Same tenant, not clearing local DB — offline-first: using existing local data');
-                                    }
-                                }
-                            } catch (clearError) {
-                                console.warn('⚠️ Could not check/clear local database data:', clearError);
-                            }
-
-                            // STEP 1 (offline-first): Load from local DB and show UI immediately
                             try {
                                 const dbService = getDatabaseService();
                                 if (!dbService.isReady()) {
@@ -1488,6 +1655,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 const loadedState = await appStateRepo.loadState();
                                 if (isMounted) {
                                     setStoredState(loadedState as AppState);
+                                    markDbLoadCompleteRef.current?.();
                                     logger.logCategory('database', '✅ Database state loaded (offline-first), UI will show from local');
                                 }
                             } catch (loadErr) {
@@ -1503,140 +1671,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 if (isMounted) setIsInitializing(false);
                             }, 300);
 
-                            // STEP 2: Background sync with cloud — delay start so UI stays responsive, then defer heavy updates
-                            const BACKGROUND_SYNC_DELAY_MS = 1000;
-                            setTimeout(() => {
-                                (async function runBackgroundCloudSync() {
-                                    try {
-                                        const apiService = getAppStateApiService();
-                                        let apiState: Partial<AppState>;
-                                        try {
-                                            const dbService = getDatabaseService();
-                                            let baseline: Partial<AppState> | null = null;
-                                            if (dbService.isReady()) {
-                                                const appStateRepo = await getAppStateRepository();
-                                                baseline = await appStateRepo.loadState();
-                                            }
-                                            const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
-                                            const hasBaseline = baseline && (
-                                                (baseline.projects?.length ?? 0) > 0 ||
-                                                (baseline.transactions?.length ?? 0) > 0 ||
-                                                (baseline.contacts?.length ?? 0) > 0
-                                            );
-                                            if (currentTenantId && lastSync && hasBaseline && isLastSyncRecent(currentTenantId)) {
-                                                apiState = await apiService.loadStateViaIncrementalSync(lastSync, baseline as Partial<AppState>);
-                                                logger.logCategory('sync', '[CloudSync] Background: used incremental sync, entities:', Object.keys(apiState || {}).filter(k => Array.isArray((apiState as any)?.[k])).join(', '));
-                                            } else {
-                                                const syncManager = getSyncManager();
-                                                try {
-                                                    apiState = await apiService.loadStateBulkChunked(
-                                                        (loaded, total) => syncManager.setPullProgress(loaded, total || null),
-                                                        200
-                                                    );
-                                                    syncManager.clearPullProgress();
-                                                    logger.logCategory('sync', '[CloudSync] Background: full bulk load done, entities:', Object.keys(apiState || {}).filter(k => Array.isArray((apiState as any)?.[k])).join(', '));
-                                                } catch (chunkErr) {
-                                                    logger.warnCategory('sync', '[CloudSync] Chunked load failed, falling back to loadState:', chunkErr);
-                                                    console.error('[CloudSync] loadStateBulkChunked failed:', chunkErr);
-                                                    syncManager.clearPullProgress();
-                                                    apiState = await apiService.loadState();
-                                                }
-                                            }
-                                        } catch (incErr) {
-                                            logger.warnCategory('sync', '⚠️ Background incremental sync failed, full load:', incErr);
-                                            console.error('[CloudSync] Incremental sync failed, attempting full load:', incErr);
-                                            if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
-                                            getSyncManager().clearPullProgress();
-                                            const syncManager = getSyncManager();
-                                            try {
-                                                apiState = await apiService.loadStateBulkChunked(
-                                                    (loaded, total) => syncManager.setPullProgress(loaded, total || null),
-                                                    200
-                                                );
-                                                syncManager.clearPullProgress();
-                                            } catch (chunkErr) {
-                                                logger.warnCategory('sync', '⚠️ Chunked load failed, falling back to loadState:', chunkErr);
-                                                console.error('[CloudSync] Chunked load failed (fallback to loadState):', chunkErr);
-                                                syncManager.clearPullProgress();
-                                                apiState = await apiService.loadState();
-                                            }
-                                        }
-                                        if (currentTenantId) {
-                                            setLastSyncTimestamp(currentTenantId, new Date().toISOString());
-                                        }
-
-                                        const apiTransactionsMap = new Map((apiState.transactions || []).map(tx => [tx.id, tx]));
-                                        const apiContactsMap = new Map((apiState.contacts || []).map(c => [c.id, c]));
-                                        const apiInvoicesMap = new Map((apiState.invoices || []).map(i => [i.id, i]));
-                                        const apiBillsMap = new Map((apiState.bills || []).map(b => [b.id, b]));
-                                        const apiAccountsMap = new Map((apiState.accounts || []).map(a => [a.id, a]));
-                                        const apiCategoriesMap = new Map((apiState.categories || []).map(c => [c.id, c]));
-                                        const apiVendorsMap = new Map((apiState.vendors || []).map(v => [v.id, v]));
-                                        for (const t of offlineTransactions) apiTransactionsMap.set(t.id, t);
-                                        for (const c of offlineContacts) apiContactsMap.set(c.id, c);
-                                        for (const i of offlineInvoices) apiInvoicesMap.set(i.id, i);
-                                        for (const b of offlineBills) apiBillsMap.set(b.id, b);
-                                        for (const a of offlineAccounts) apiAccountsMap.set(a.id, a);
-                                        for (const c of offlineCategories) apiCategoriesMap.set(c.id, c);
-                                        for (const v of offlineVendors) apiVendorsMap.set(v.id, v);
-                                        const apiRecurringTemplatesMap = new Map((apiState.recurringInvoiceTemplates || []).map(t => [t.id, t]));
-                                        for (const t of offlineRecurringTemplates) apiRecurringTemplatesMap.set(t.id, t);
-                                        const mergedRecurringTemplates = Array.from(apiRecurringTemplatesMap.values());
-
-                                        const fullState: AppState = {
-                                            ...storedStateRef.current,
-                                            accounts: Array.from(apiAccountsMap.values()),
-                                            contacts: Array.from(apiContactsMap.values()),
-                                            transactions: Array.from(apiTransactionsMap.values()),
-                                            categories: Array.from(apiCategoriesMap.values()),
-                                            projects: apiState.projects || [],
-                                            buildings: apiState.buildings || [],
-                                            properties: apiState.properties || [],
-                                            units: apiState.units || [],
-                                            invoices: Array.from(apiInvoicesMap.values()),
-                                            bills: Array.from(apiBillsMap.values()),
-                                            budgets: apiState.budgets || [],
-                                            rentalAgreements: apiState.rentalAgreements || [],
-                                            projectAgreements: apiState.projectAgreements || [],
-                                            installmentPlans: apiState.installmentPlans || [],
-                                            planAmenities: apiState.planAmenities || [],
-                                            contracts: apiState.contracts || [],
-                                            salesReturns: apiState.salesReturns || [],
-                                            quotations: apiState.quotations || [],
-                                            documents: apiState.documents || [],
-                                            recurringInvoiceTemplates: mergedRecurringTemplates,
-                                            pmCycleAllocations: apiState.pmCycleAllocations || [],
-                                            vendors: Array.from(apiVendorsMap.values()),
-                                            transactionLog: apiState.transactionLog || [],
-                                        };
-
-                                        // Defer heavy state update and save so main thread stays responsive.
-                                        const applyUpdate = () => {
-                                            setStoredState(fullState);
-                                            dispatchRef.current?.({ type: 'SET_STATE', payload: fullState, _isRemote: true } as any);
-                                            const dbReady = !useFallback && getDatabaseService().isReady() && saveNow;
-                                            logger.logCategory('sync', `[CloudSync] Merged API state: accounts=${fullState.accounts?.length ?? 0} contacts=${fullState.contacts?.length ?? 0} transactions=${fullState.transactions?.length ?? 0} installmentPlans=${fullState.installmentPlans?.length ?? 0} pmCycleAllocations=${fullState.pmCycleAllocations?.length ?? 0} | willSaveToLocal=${!!dbReady}`);
-                                            if (dbReady) {
-                                                saveNow(fullState, { disableSyncQueueing: true }).then(() => {
-                                                    logger.logCategory('sync', '[CloudSync] Background sync: saved to local SQLite successfully');
-                                                }).catch((saveError: unknown) => {
-                                                    console.warn('[CloudSync] Background sync: could not save to local database:', saveError);
-                                                });
-                                            } else {
-                                                logger.logCategory('sync', '[CloudSync] Background sync: skipping local save (useFallback or db not ready)');
-                                            }
-                                        };
-                                        if (typeof requestIdleCallback !== 'undefined') {
-                                            requestIdleCallback(applyUpdate, { timeout: 200 });
-                                        } else {
-                                            setTimeout(applyUpdate, 0);
-                                        }
-                                    } catch (bgError) {
-                                        logger.warnCategory('sync', '⚠️ Background cloud sync failed (app continues with local data):', bgError);
-                                        console.error('[CloudSync] Background sync error (check network, API URL, auth):', bgError);
-                                    }
-                                })();
-                            }, BACKGROUND_SYNC_DELAY_MS);
                         } catch (initError) {
                             console.error('⚠️ Authenticated init error:', initError);
                             setInitMessage('Using local data...');
@@ -1648,6 +1682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             setTimeout(() => {
                                 if (isMounted) setIsInitializing(false);
                             }, 300);
+                        }
                         }
                     } else {
                         // Load from local database (offline mode)
@@ -1677,6 +1712,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const loadedState = await appStateRepo.loadState();
                             if (isMounted) {
                                 setStoredState(loadedState as AppState);
+                                markDbLoadCompleteRef.current?.();
                                 logger.logCategory('database', '✅ Database state loaded for offline init');
                             }
                         } catch (loadErr) {
@@ -1743,958 +1779,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return newState;
         }
 
-        // Sync to API if authenticated (cloud mode)
-        // IMPORTANT: Only organization data is synced, not user-specific preferences
-        if (isAuthenticated && !(action as any)._isRemote) {
-            // Skip user-specific actions (UI preferences, navigation, etc.)
-            // These include: enableBeepOnSave, dashboardConfig, defaultProjectId, etc.
-            if (!shouldSyncAction(action)) {
-                return newState;
-            }
-
-            // Only trigger API sync for organization data actions
-            // User preferences (enableBeepOnSave, dashboardConfig, defaultProjectId, etc.) are NOT synced
-            // PERFORMANCE: SYNC_TO_API_ACTIONS is now a module-level constant (avoids
-            // re-creating a 60+ entry Set on every dispatch call)
-
-            if (!SYNC_TO_API_ACTIONS.has(action.type)) {
-                return newState;
-            }
-
-            const getDeleteSyncTarget = (action: AppAction): { type: SyncOperationType; id: string } | null => {
-                switch (action.type) {
-                    case 'DELETE_ACCOUNT':
-                        return { type: 'account', id: action.payload as string };
-                    case 'DELETE_INVOICE':
-                        return { type: 'invoice', id: action.payload as string };
-                    case 'DELETE_TRANSACTION':
-                        return { type: 'transaction', id: action.payload as string };
-                    case 'DELETE_RECURRING_TEMPLATE':
-                        return { type: 'recurring_invoice_template', id: action.payload as string };
-                    default:
-                        return null;
-                }
-            };
-
-            const prunePendingSyncItems = async (currentUser: User | null, action: AppAction) => {
-                const target = getDeleteSyncTarget(action);
-                const tenantId = currentUser?.tenant?.id;
-                if (!target || !tenantId) return;
-
-                try {
-                    const removed = await getSyncQueue().removePendingByEntity(tenantId, target.type, target.id);
-                    if (removed > 0) {
-                        logger.logCategory('sync', `🧹 Removed ${removed} pending sync item(s) for ${target.type}:${target.id}`);
-                    }
-                } catch (error) {
-                    logger.warnCategory('sync', '⚠️ Failed to prune pending sync items:', error);
-                }
-            };
-
-            // Sync to API asynchronously (don't block UI)
-            const syncToApi = async () => {
-                logger.logCategory('sync', `🚀 syncToApi called for action: ${action.type}`, {
-                    actionType: action.type,
-                    isAuthenticated: isAuthenticated,
-                    hasToken: !!localStorage.getItem('auth_token')
-                });
-
-                try {
-                    // Check if user is authenticated before syncing
-                    if (!isAuthenticated) {
-                        logger.logCategory('sync', '⏭️ Skipping API sync - user not authenticated');
-                        return;
-                    }
-
-                    // Verify token is valid before attempting sync
-                    const token = localStorage.getItem('auth_token');
-                    if (!token) {
-                        logger.warnCategory('sync', '⚠️ No token found, skipping API sync');
-                        return;
-                    }
-
-                    logger.logCategory('sync', `✅ Authentication check passed, proceeding with sync for action: ${action.type}`);
-
-                    // Check token expiration using ApiClient
-                    try {
-                        const { apiClient } = await import('../services/api/client');
-                        if (apiClient.isTokenExpired()) {
-                            logger.warnCategory('sync', '⚠️ Token is expired, skipping API sync. Data saved locally.');
-                            return;
-                        }
-                    } catch (tokenCheckError) {
-                        logger.warnCategory('sync', '⚠️ Could not verify token, skipping API sync:', tokenCheckError);
-                        return;
-                    }
-
-                    // Fast-path: if the browser is definitely offline, queue immediately
-                    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-                        logger.logCategory('sync', '📴 Browser reports offline, queuing operation for later sync');
-                        await queueOperationForSync(action);
-                        return;
-                    }
-
-                    await prunePendingSyncItems(state.currentUser, action);
-
-                    const apiService = getAppStateApiService();
-
-                    // Handle account changes
-                    if (action.type === 'ADD_ACCOUNT' || action.type === 'UPDATE_ACCOUNT') {
-                        const account = action.payload as Account;
-                        if (!account.isPermanent) {
-                            try {
-                                await apiService.saveAccount(account);
-                                logger.logCategory('sync', `✅ Synced account ${action.type === 'ADD_ACCOUNT' ? '' : 'update'} to API: ${account.name}`);
-                            } catch (err) {
-                                logger.errorCategory('sync', `❌ FAILED to sync account ${account.name} to API:`, err);
-                                await queueOperationForSync(action);
-                            }
-                        }
-                    } else if (action.type === 'DELETE_ACCOUNT') {
-                        const accountId = action.payload as string;
-                        const account = state.accounts.find(a => a.id === accountId);
-                        if (account && !account.isPermanent) {
-                            try {
-                                await apiService.deleteAccount(accountId);
-                                logger.logCategory('sync', '✅ Synced account deletion to API:', accountId);
-                            } catch (err) {
-                                logger.errorCategory('sync', `❌ FAILED to sync account deletion ${accountId} to API:`, err);
-                                await queueOperationForSync(action);
-                            }
-                        }
-                    }
-
-                    // Handle contact changes
-                    if (action.type === 'ADD_CONTACT') {
-                        const contact = action.payload;
-                        logger.logCategory('sync', `🔄 Starting sync for ADD_CONTACT: ${contact.name} (${contact.id})`);
-                        try {
-                            logger.logCategory('sync', `📤 Calling apiService.saveContact for: ${contact.name}`);
-                            const savedContact = await apiService.saveContact(contact);
-                            logger.logCategory('sync', `✅ Successfully synced contact to API: ${savedContact.name} (${savedContact.id})`);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync contact ${contact.name} to API:`, {
-                                error: err,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                status: err?.status,
-                                statusText: err?.statusText,
-                                contact: {
-                                    id: contact.id,
-                                    name: contact.name,
-                                    type: contact.type
-                                },
-                                fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                            });
-                            // Don't re-throw - log and continue, data is saved locally
-                            // This allows user to continue working even if sync fails
-                        }
-                    } else if (action.type === 'UPDATE_CONTACT') {
-                        const contact = action.payload;
-                        logger.logCategory('sync', `🔄 Starting sync for UPDATE_CONTACT: ${contact.name} (${contact.id})`);
-                        try {
-                            logger.logCategory('sync', `📤 Calling apiService.saveContact for update: ${contact.name}`);
-                            const savedContact = await apiService.saveContact(contact);
-                            logger.logCategory('sync', `✅ Successfully synced contact update to API: ${savedContact.name} (${savedContact.id})`);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync contact update ${contact.name} to API:`, {
-                                error: err,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                status: err?.status,
-                                statusText: err?.statusText,
-                                contact: {
-                                    id: contact.id,
-                                    name: contact.name,
-                                    type: contact.type
-                                },
-                                fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                            });
-                            // Don't re-throw - log and continue
-                        }
-                    } else if (action.type === 'DELETE_CONTACT') {
-                        const contactId = action.payload as string;
-                        try {
-                            await apiService.deleteContact(contactId);
-                            logger.logCategory('sync', '✅ Synced contact deletion to API:', contactId);
-                        } catch (err: any) {
-                            console.error(`⚠️ Failed to sync contact deletion ${contactId} to API:`, {
-                                error: err,
-                                contactId: contactId,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                status: err?.status
-                            });
-                            throw err;
-                        }
-                    }
-
-                    // Handle vendor changes
-                    if (action.type === 'ADD_VENDOR') {
-                        const vendor = action.payload;
-                        logger.logCategory('sync', `🔄 Starting sync for ADD_VENDOR: ${vendor.name} (${vendor.id})`);
-                        try {
-                            const apiService = getAppStateApiService();
-                            await apiService.saveVendor(vendor);
-                            logger.logCategory('sync', `✅ Synced vendor to API: ${vendor.name} (${vendor.id})`);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync vendor ${vendor.name} to API:`, {
-                                error: err,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                vendor: { id: vendor.id, name: vendor.name }
-                            });
-                        }
-                    } else if (action.type === 'UPDATE_VENDOR') {
-                        const vendor = action.payload;
-                        logger.logCategory('sync', `🔄 Starting sync for UPDATE_VENDOR: ${vendor.name} (${vendor.id})`);
-                        try {
-                            const apiService = getAppStateApiService();
-                            await apiService.saveVendor(vendor);
-                            logger.logCategory('sync', `✅ Synced vendor update to API: ${vendor.name} (${vendor.id})`);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync vendor update ${vendor.name} to API:`, {
-                                error: err,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                vendor: { id: vendor.id, name: vendor.name }
-                            });
-                        }
-                    } else if (action.type === 'DELETE_VENDOR') {
-                        const vendorId = action.payload as string;
-                        try {
-                            const apiService = getAppStateApiService();
-                            await apiService.deleteVendor(vendorId);
-                            logger.logCategory('sync', '✅ Synced vendor deletion to API:', vendorId);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `⚠️ Failed to sync vendor deletion ${vendorId} to API:`, {
-                                error: err,
-                                vendorId,
-                                errorMessage: err?.message || err?.error || 'Unknown error'
-                            });
-                        }
-                    }
-
-                    // Handle transaction changes
-                    if (action.type === 'ADD_TRANSACTION' || action.type === 'UPDATE_TRANSACTION' || action.type === 'RESTORE_TRANSACTION') {
-                        const transaction = action.payload as Transaction;
-                        try {
-                            await apiService.saveTransaction(transaction);
-                            logger.logCategory('sync', `✅ Synced transaction ${action.type === 'UPDATE_TRANSACTION' ? 'update' : ''} to API: ${transaction.id}`);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync transaction ${transaction.id} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_TRANSACTION') {
-                        const transactionId = action.payload as string;
-                        try {
-                            await apiService.deleteTransaction(transactionId);
-                            logger.logCategory('sync', '✅ Synced transaction deletion to API:', transactionId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync transaction deletion ${transactionId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'BATCH_ADD_TRANSACTIONS') {
-                        // Sync batch transactions
-                        const transactions = action.payload as Transaction[];
-                        try {
-                            const syncPromises = transactions.map(tx =>
-                                apiService.saveTransaction(tx).catch(async err => {
-                                    logger.errorCategory('sync', `⚠️ Failed to sync transaction ${tx.id} during batch:`, err);
-                                    // Queue individual failed transactions from batch
-                                    await queueOperationForSync({ type: 'ADD_TRANSACTION', payload: tx } as AppAction);
-                                    return null;
-                                })
-                            );
-                            await Promise.all(syncPromises);
-                            logger.logCategory('sync', `✅ Processed batch of ${transactions.length} transactions`);
-                        } catch (err) {
-                            logger.errorCategory('sync', '❌ FAILED to process transaction batch:', err);
-                            await queueOperationForSync(action);
-                        }
-                    }
-
-                    // Handle category changes
-                    if (action.type === 'ADD_CATEGORY') {
-                        const category = action.payload;
-                        // Skip system categories (they're permanent and managed by server)
-                        if (!category.isPermanent && !category.id?.startsWith('sys-cat-')) {
-                            await apiService.saveCategory(category);
-                            logger.logCategory('sync', '✅ Synced category to API:', category.name);
-                        } else {
-                            logger.logCategory('sync', '⏭️ Skipped syncing system category:', category.name);
-                        }
-                    } else if (action.type === 'UPDATE_CATEGORY') {
-                        const category = action.payload;
-                        // Skip system categories (they're permanent and read-only)
-                        if (!category.isPermanent && !category.id?.startsWith('sys-cat-')) {
-                            await apiService.saveCategory(category);
-                            logger.logCategory('sync', '✅ Synced category update to API:', category.name);
-                        } else {
-                            logger.logCategory('sync', '⏭️ Skipped syncing system category update:', category.name);
-                        }
-                    } else if (action.type === 'DELETE_CATEGORY') {
-                        const categoryId = action.payload as string;
-                        // Check if it's a system category before deleting
-                        const category = state.categories.find(c => c.id === categoryId);
-                        if (category && !category.isPermanent && !categoryId.startsWith('sys-cat-')) {
-                            await apiService.deleteCategory(categoryId);
-                            logger.logCategory('sync', '✅ Synced category deletion to API:', categoryId);
-                        } else {
-                            logger.logCategory('sync', '⏭️ Skipped deleting system category:', categoryId);
-                        }
-                    }
-
-                    // Handle project, building, property, unit changes
-                    if (action.type === 'ADD_PROJECT' || action.type === 'UPDATE_PROJECT') {
-                        const project = action.payload;
-                        try {
-                            await apiService.saveProject(project);
-                            logger.logCategory('sync', `✅ Synced project ${action.type === 'UPDATE_PROJECT' ? 'update' : ''} to API: ${project.name}`);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync project ${project.name} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_PROJECT') {
-                        const projectId = action.payload as string;
-                        try {
-                            await apiService.deleteProject(projectId);
-                            logger.logCategory('sync', '✅ Synced project deletion to API:', projectId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync project deletion ${projectId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'ADD_BUILDING' || action.type === 'UPDATE_BUILDING') {
-                        const building = action.payload;
-                        try {
-                            await apiService.saveBuilding(building);
-                            logger.logCategory('sync', `✅ Synced building ${action.type === 'UPDATE_BUILDING' ? 'update' : ''} to API: ${building.name}`);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync building ${building.name} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_BUILDING') {
-                        const buildingId = action.payload as string;
-                        try {
-                            await apiService.deleteBuilding(buildingId);
-                            logger.logCategory('sync', '✅ Synced building deletion to API:', buildingId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync building deletion ${buildingId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'ADD_PROPERTY' || action.type === 'UPDATE_PROPERTY') {
-                        const property = action.payload;
-                        try {
-                            await apiService.saveProperty(property);
-                            logger.logCategory('sync', `✅ Synced property ${action.type === 'UPDATE_PROPERTY' ? 'update' : ''} to API: ${property.name}`);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync property ${property.name} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_PROPERTY') {
-                        const propertyId = action.payload as string;
-                        try {
-                            await apiService.deleteProperty(propertyId);
-                            logger.logCategory('sync', '✅ Synced property deletion to API:', propertyId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync property deletion ${propertyId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'ADD_UNIT' || action.type === 'UPDATE_UNIT') {
-                        const unit = action.payload;
-                        try {
-                            await apiService.saveUnit(unit);
-                            logger.logCategory('sync', `✅ Synced unit ${action.type === 'UPDATE_UNIT' ? 'update' : ''} to API: ${unit.name}`);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync unit ${unit.name} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_UNIT') {
-                        const unitId = action.payload as string;
-                        try {
-                            await apiService.deleteUnit(unitId);
-                            logger.logCategory('sync', '✅ Synced unit deletion to API:', unitId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync unit deletion ${unitId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    }
-
-                    // Handle installment plan changes
-                    if (action.type === 'ADD_INSTALLMENT_PLAN') {
-                        const plan = action.payload;
-                        await apiService.saveInstallmentPlan(plan);
-                        logger.logCategory('sync', '✅ Synced installment plan to API:', plan.id);
-                    } else if (action.type === 'UPDATE_INSTALLMENT_PLAN') {
-                        const plan = action.payload;
-                        await apiService.saveInstallmentPlan(plan);
-                        logger.logCategory('sync', '✅ Synced installment plan update to API:', plan.id);
-                    } else if (action.type === 'DELETE_INSTALLMENT_PLAN') {
-                        const planId = action.payload as string;
-                        await apiService.deleteInstallmentPlan(planId);
-                        logger.logCategory('sync', '✅ Synced installment plan deletion to API:', planId);
-                    }
-
-                    // Handle plan amenity changes
-                    if (action.type === 'ADD_PLAN_AMENITY') {
-                        const amenity = action.payload;
-                        await apiService.savePlanAmenity(amenity);
-                        logger.logCategory('sync', '✅ Synced plan amenity to API:', amenity.name);
-                    } else if (action.type === 'UPDATE_PLAN_AMENITY') {
-                        const amenity = action.payload;
-                        await apiService.savePlanAmenity(amenity);
-                        logger.logCategory('sync', '✅ Synced plan amenity update to API:', amenity.name);
-                    } else if (action.type === 'DELETE_PLAN_AMENITY') {
-                        const amenityId = action.payload as string;
-                        await apiService.deletePlanAmenity(amenityId);
-                        logger.logCategory('sync', '✅ Synced plan amenity deletion to API:', amenityId);
-                    }
-
-                    // Handle inventory item changes (Settings → Inventory → New Item)
-                    if (action.type === 'ADD_INVENTORY_ITEM') {
-                        const item = action.payload as any;
-                        logger.logCategory('sync', `🔄 Starting sync for ADD_INVENTORY_ITEM: ${item.name} (${item.id})`);
-                        try {
-                            await apiService.saveInventoryItem(item);
-                            logger.logCategory('sync', `✅ Synced inventory item to API: ${item.name} (${item.id})`);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync inventory item ${item.name} to API:`, {
-                                error: err,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                status: err?.status,
-                                item: { id: item.id, name: item.name }
-                            });
-                        }
-                    } else if (action.type === 'UPDATE_INVENTORY_ITEM') {
-                        const item = action.payload as any;
-                        logger.logCategory('sync', `🔄 Starting sync for UPDATE_INVENTORY_ITEM: ${item.name} (${item.id})`);
-                        try {
-                            await apiService.saveInventoryItem(item);
-                            logger.logCategory('sync', `✅ Synced inventory item update to API: ${item.name} (${item.id})`);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync inventory item update ${item.name} to API:`, {
-                                error: err,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                status: err?.status,
-                                item: { id: item.id, name: item.name }
-                            });
-                        }
-                    } else if (action.type === 'DELETE_INVENTORY_ITEM') {
-                        const itemId = action.payload as string;
-                        try {
-                            await apiService.deleteInventoryItem(itemId);
-                            logger.logCategory('sync', '✅ Synced inventory item deletion to API:', itemId);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `⚠️ Failed to sync inventory item deletion ${itemId} to API:`, {
-                                error: err,
-                                itemId,
-                                errorMessage: err?.message || err?.error || 'Unknown error'
-                            });
-                        }
-                    }
-
-                    // Handle invoice changes
-                    if (action.type === 'ADD_INVOICE' || action.type === 'UPDATE_INVOICE') {
-                        const invoice = action.payload;
-                        try {
-                            await apiService.saveInvoice(invoice);
-                            logger.logCategory('sync', `✅ Synced invoice ${action.type === 'UPDATE_INVOICE' ? 'update' : ''} to API: ${invoice.invoiceNumber}`);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync invoice ${invoice.invoiceNumber} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_INVOICE') {
-                        const invoiceId = action.payload as string;
-                        try {
-                            await apiService.deleteInvoice(invoiceId);
-                            logger.logCategory('sync', '✅ Synced invoice deletion to API:', invoiceId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync invoice deletion ${invoiceId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    }
-
-                    // Handle bill changes
-                    if (action.type === 'ADD_BILL' || action.type === 'UPDATE_BILL') {
-                        const bill = action.payload;
-                        logger.logCategory('sync', `🔄 Starting sync for ${action.type}: ${bill.billNumber} (${bill.id})`);
-                        try {
-                            await apiService.saveBill(bill);
-                            logger.logCategory('sync', `✅ Synced bill ${action.type === 'UPDATE_BILL' ? 'update' : ''} to API: ${bill.billNumber}`);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync bill ${bill.billNumber} to API:`, err);
-                            // Queue for later sync
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_BILL') {
-                        const billId = action.payload as string;
-                        try {
-                            await apiService.deleteBill(billId);
-                            logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync bill deletion ${billId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    }
-
-                    // Handle recurring invoice template changes
-                    if (action.type === 'ADD_RECURRING_TEMPLATE' || action.type === 'UPDATE_RECURRING_TEMPLATE') {
-                        const template = action.payload;
-                        try {
-                            await apiService.saveRecurringTemplate(template);
-                            logger.logCategory('sync', `✅ Synced recurring template ${action.type === 'UPDATE_RECURRING_TEMPLATE' ? 'update' : ''} to API: ${template.id}`);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync recurring template ${template.id} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_RECURRING_TEMPLATE') {
-                        const templateId = action.payload as string;
-                        try {
-                            await apiService.deleteRecurringTemplate(templateId);
-                            logger.logCategory('sync', '✅ Synced recurring template deletion to API:', templateId);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync recurring template deletion ${templateId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    }
-
-                    // Handle budget changes
-                    if (action.type === 'ADD_BUDGET') {
-                        const budget = action.payload;
-                        await apiService.saveBudget(budget);
-                        logger.logCategory('sync', '✅ Synced budget to API:', budget.id);
-                    } else if (action.type === 'UPDATE_BUDGET') {
-                        const budget = action.payload;
-                        await apiService.saveBudget(budget);
-                        logger.logCategory('sync', '✅ Synced budget update to API:', budget.id);
-                    } else if (action.type === 'DELETE_BUDGET') {
-                        const budgetId = action.payload as string;
-                        await apiService.deleteBudget(budgetId);
-                        logger.logCategory('sync', '✅ Synced budget deletion to API:', budgetId);
-                    }
-
-                    // Handle rental agreement changes
-                    if (action.type === 'ADD_RENTAL_AGREEMENT' || action.type === 'UPDATE_RENTAL_AGREEMENT') {
-                        const agreement = action.payload;
-                        try {
-                            await apiService.saveRentalAgreement(agreement);
-                            logger.logCategory('sync', `✅ Synced rental agreement ${action.type === 'UPDATE_RENTAL_AGREEMENT' ? 'update' : ''} to API: ${agreement.agreementNumber}`);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync rental agreement ${agreement.agreementNumber} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    } else if (action.type === 'DELETE_RENTAL_AGREEMENT') {
-                        const agreementId = action.payload as string;
-                        try {
-                            await apiService.deleteRentalAgreement(agreementId);
-                            logger.logCategory('sync', '✅ Synced rental agreement deletion to API:', agreementId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync rental agreement deletion ${agreementId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    }
-
-                    // Handle project agreement changes
-                    if (action.type === 'ADD_PROJECT_AGREEMENT' || action.type === 'UPDATE_PROJECT_AGREEMENT' || action.type === 'CANCEL_PROJECT_AGREEMENT') {
-                        let agreement: any;
-                        if (action.type === 'CANCEL_PROJECT_AGREEMENT') {
-                            const { agreementId } = action.payload as any;
-                            agreement = newState.projectAgreements.find(pa => pa.id === agreementId);
-                        } else {
-                            agreement = action.payload;
-                        }
-
-                        if (agreement) {
-                            try {
-                                await apiService.saveProjectAgreement(agreement);
-                                logger.logCategory('sync', `✅ Synced project agreement ${action.type} to API: ${agreement.agreementNumber}`);
-                            } catch (err) {
-                                logger.errorCategory('sync', `❌ FAILED to sync project agreement ${agreement.agreementNumber || 'unknown'} to API:`, err);
-                                await queueOperationForSync(action);
-                            }
-                        }
-                    } else if (action.type === 'DELETE_PROJECT_AGREEMENT') {
-                        const agreementId = action.payload as string;
-                        try {
-                            await apiService.deleteProjectAgreement(agreementId);
-                            logger.logCategory('sync', '✅ Synced project agreement deletion to API:', agreementId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync project agreement deletion ${agreementId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    }
-
-                    // Handle sales return changes
-                    if (action.type === 'ADD_SALES_RETURN' || action.type === 'UPDATE_SALES_RETURN' || action.type === 'MARK_RETURN_REFUNDED') {
-                        let salesReturn: any;
-                        if (action.type === 'MARK_RETURN_REFUNDED') {
-                            const { returnId } = action.payload as any;
-                            salesReturn = newState.salesReturns.find(sr => sr.id === returnId);
-                        } else {
-                            salesReturn = action.payload;
-                        }
-
-                        if (salesReturn) {
-                            try {
-                                await apiService.saveSalesReturn(salesReturn);
-                                logger.logCategory('sync', `✅ Synced sales return ${action.type} to API: ${salesReturn.returnNumber}`);
-                            } catch (err) {
-                                logger.errorCategory('sync', `❌ FAILED to sync sales return ${salesReturn.returnNumber || 'unknown'} to API:`, err);
-                                await queueOperationForSync(action);
-                            }
-                        }
-                    } else if (action.type === 'DELETE_SALES_RETURN') {
-                        const salesReturnId = action.payload as string;
-                        try {
-                            await apiService.deleteSalesReturn(salesReturnId);
-                            logger.logCategory('sync', '✅ Synced sales return deletion to API:', salesReturnId);
-                        } catch (err) {
-                            logger.errorCategory('sync', `❌ FAILED to sync sales return deletion ${salesReturnId} to API:`, err);
-                            await queueOperationForSync(action);
-                        }
-                    }
-
-                    // Handle contract changes
-                    if (action.type === 'ADD_CONTRACT') {
-                        const contract = action.payload;
-                        await apiService.saveContract(contract);
-                        logger.logCategory('sync', '✅ Synced contract to API:', contract.contractNumber);
-                    } else if (action.type === 'UPDATE_CONTRACT') {
-                        const contract = action.payload;
-                        await apiService.saveContract(contract);
-                        logger.logCategory('sync', '✅ Synced contract update to API:', contract.contractNumber);
-                    } else if (action.type === 'DELETE_CONTRACT') {
-                        const contractId = action.payload as string;
-                        await apiService.deleteContract(contractId);
-                        logger.logCategory('sync', '✅ Synced contract deletion to API:', contractId);
-                    }
-
-                    // Handle PM cycle allocation changes
-                    if (action.type === 'ADD_PM_CYCLE_ALLOCATION') {
-                        const allocation = action.payload as any;
-                        await apiService.savePMCycleAllocation(allocation);
-                        logger.logCategory('sync', '✅ Synced PM cycle allocation to API:', allocation.cycleId);
-                    } else if (action.type === 'UPDATE_PM_CYCLE_ALLOCATION') {
-                        const allocation = action.payload as any;
-                        await apiService.savePMCycleAllocation(allocation);
-                        logger.logCategory('sync', '✅ Synced PM cycle allocation update to API:', allocation.cycleId);
-                    } else if (action.type === 'DELETE_PM_CYCLE_ALLOCATION') {
-                        const allocationId = action.payload as string;
-                        await apiService.deletePMCycleAllocation(allocationId);
-                        logger.logCategory('sync', '✅ Synced PM cycle allocation deletion to API:', allocationId);
-                    }
-
-                    // Handle settings changes (both general and communication settings)
-                    const { settingsSyncService } = await import('../services/settingsSyncService');
-                    if (action.type === 'UPDATE_PRINT_SETTINGS') {
-                        await settingsSyncService.saveSetting('printSettings', action.payload);
-                        logger.logCategory('sync', '✅ Synced print settings to cloud');
-                    } else if (action.type === 'UPDATE_WHATSAPP_TEMPLATES') {
-                        await settingsSyncService.saveSetting('whatsAppTemplates', action.payload);
-                        logger.logCategory('sync', '✅ Synced WhatsApp templates to cloud');
-                    } else if (action.type === 'TOGGLE_SYSTEM_TRANSACTIONS') {
-                        await settingsSyncService.saveSetting('showSystemTransactions', action.payload);
-                        logger.logCategory('sync', '✅ Synced showSystemTransactions to cloud');
-                    } else if (action.type === 'TOGGLE_COLOR_CODING') {
-                        await settingsSyncService.saveSetting('enableColorCoding', action.payload);
-                        logger.logCategory('sync', '✅ Synced enableColorCoding to cloud');
-                    } else if (action.type === 'TOGGLE_BEEP_ON_SAVE') {
-                        await settingsSyncService.saveSetting('enableBeepOnSave', action.payload);
-                        logger.logCategory('sync', '✅ Synced enableBeepOnSave to cloud');
-                    } else if (action.type === 'TOGGLE_DATE_PRESERVATION') {
-                        await settingsSyncService.saveSetting('enableDatePreservation', action.payload);
-                        logger.logCategory('sync', '✅ Synced enableDatePreservation to cloud');
-                    } else if (action.type === 'UPDATE_DEFAULT_PROJECT') {
-                        await settingsSyncService.saveSetting('defaultProjectId', action.payload);
-                        logger.logCategory('sync', '✅ Synced defaultProjectId to cloud');
-                    } else if (action.type === 'UPDATE_DASHBOARD_CONFIG') {
-                        await settingsSyncService.saveSetting('dashboardConfig', action.payload);
-                        logger.logCategory('sync', '✅ Synced dashboardConfig to cloud');
-                    } else if (action.type === 'UPDATE_AGREEMENT_SETTINGS') {
-                        await settingsSyncService.saveSetting('agreementSettings', action.payload);
-                        logger.logCategory('sync', '✅ Synced agreementSettings to cloud');
-                    } else if (action.type === 'UPDATE_PROJECT_AGREEMENT_SETTINGS') {
-                        await settingsSyncService.saveSetting('projectAgreementSettings', action.payload);
-                        logger.logCategory('sync', '✅ Synced projectAgreementSettings to cloud');
-                    } else if (action.type === 'UPDATE_RENTAL_INVOICE_SETTINGS') {
-                        await settingsSyncService.saveSetting('rentalInvoiceSettings', action.payload);
-                        logger.logCategory('sync', '✅ Synced rentalInvoiceSettings to cloud');
-                    } else if (action.type === 'UPDATE_PROJECT_INVOICE_SETTINGS') {
-                        await settingsSyncService.saveSetting('projectInvoiceSettings', action.payload);
-                        logger.logCategory('sync', '✅ Synced projectInvoiceSettings to cloud');
-                    }
-                } catch (error: any) {
-                    // Log error but don't block UI - state is already updated locally
-                    logger.errorCategory('sync', '❌ CRITICAL: Failed to sync to API in syncToApi:', {
-                        actionType: action.type,
-                        error: error,
-                        errorMessage: error?.message || error?.error || 'Unknown error',
-                        status: error?.status,
-                        statusText: error?.statusText,
-                        stack: error?.stack,
-                        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
-                        payload: action.payload ? {
-                            ...(typeof action.payload === 'object' && action.payload !== null
-                                ? { id: (action.payload as any).id, name: (action.payload as any).name }
-                                : action.payload)
-                        } : undefined
-                    });
-
-                    // Check if it's a network error (status 0)
-                    if (error?.status === 0 || error?.error === 'NetworkError') {
-                        logger.warnCategory('sync', '📴 Network error detected, queuing operation for later sync');
-                        await queueOperationForSync(action);
-                        return;
-                    }
-
-                    // Show user-friendly notification for expired token
-                    if (error?.status === 401) {
-                        // Only show notification once per session to avoid spam
-                        const hasShownTokenWarning = sessionStorage.getItem('token_expired_warning_shown');
-                        if (!hasShownTokenWarning) {
-                            sessionStorage.setItem('token_expired_warning_shown', 'true');
-                            // Dispatch custom event to show notification
-                            if (typeof window !== 'undefined') {
-                                window.dispatchEvent(new CustomEvent('show-sync-warning', {
-                                    detail: {
-                                        message: 'Your session has expired. Data is saved locally. Please re-login to sync to the cloud.',
-                                        type: 'info'
-                                    }
-                                }));
-                            }
-                        }
-                    }
-
-                    // Notify when transaction sync fails (e.g. 400 validation / account not in cloud)
-                    const isTransactionAction = action.type === 'ADD_TRANSACTION' || action.type === 'BATCH_ADD_TRANSACTIONS' || action.type === 'UPDATE_TRANSACTION';
-                    if (error?.status === 400 && isTransactionAction && typeof window !== 'undefined') {
-                        const msg = error?.message || error?.error || 'Payment could not sync to cloud.';
-                        window.dispatchEvent(new CustomEvent('show-sync-warning', {
-                            detail: {
-                                message: `${msg} Please ensure the payment account exists in cloud and try again.`,
-                                type: 'warning'
-                            }
-                        }));
-                    }
-                }
-            };
-
-            const user = state.currentUser;
-
-            // Helper function to queue operations for offline sync
-            const queueOperationForSync = async (action: AppAction) => {
-                try {
-                    const syncQueue = getSyncQueue();
-                    const tenantId = localStorage.getItem('tenant_id') || (user as any)?.tenant?.id || (user as any)?.tenantId;
-                    const userId = user?.id || localStorage.getItem('user_id');
-
-                    if (!tenantId || !userId) {
-                        logger.warnCategory('sync', '⚠️ Cannot queue operation: missing tenant or user ID', { tenantId, userId });
-                        return;
-                    }
-
-                    await prunePendingSyncItems(user, action);
-
-                    // BATCH_ADD_TRANSACTIONS: enqueue each transaction separately so all are synced when back online
-                    if (action.type === 'BATCH_ADD_TRANSACTIONS') {
-                        const transactions = action.payload as Transaction[];
-                        for (const tx of transactions) {
-                            await syncQueue.enqueue(
-                                tenantId,
-                                userId,
-                                'transaction',
-                                'create',
-                                tx
-                            );
-                        }
-                        logger.logCategory('sync', `✅ Queued ${transactions.length} transaction(s) for sync when online`);
-                        return;
-                    }
-
-                    // Map action type to sync operation type and extract data
-                    const mapping = mapActionToSyncOperation(action);
-                    if (!mapping) {
-                        logger.warnCategory('sync', `⚠️ Unknown action type for queue: ${action.type}`);
-                        return;
-                    }
-
-                    await syncQueue.enqueue(
-                        tenantId,
-                        userId,
-                        mapping.type,
-                        mapping.action,
-                        mapping.data
-                    );
-
-                    logger.logCategory('sync', `✅ Queued ${mapping.action} ${mapping.type} for sync when online`);
-                } catch (error) {
-                    console.error('Failed to queue operation:', error);
-                }
-            };
-
-            // Map AppAction to SyncOperation
-            const mapActionToSyncOperation = (action: AppAction): { type: SyncOperationType, action: 'create' | 'update' | 'delete', data: any } | null => {
-                switch (action.type) {
-                    case 'ADD_TRANSACTION':
-                        return { type: 'transaction', action: 'create', data: action.payload };
-                    case 'UPDATE_TRANSACTION':
-                        return { type: 'transaction', action: 'update', data: action.payload };
-                    case 'DELETE_TRANSACTION':
-                        return { type: 'transaction', action: 'delete', data: { id: action.payload } };
-                    case 'BATCH_ADD_TRANSACTIONS':
-                        return { type: 'transaction', action: 'create', data: (action.payload as Transaction[])[0] }; // Queue first one
-                    case 'RESTORE_TRANSACTION':
-                        return { type: 'transaction', action: 'update', data: action.payload };
-                    case 'ADD_CONTACT':
-                        return { type: 'contact', action: 'create', data: action.payload };
-                    case 'UPDATE_CONTACT':
-                        return { type: 'contact', action: 'update', data: action.payload };
-                    case 'DELETE_CONTACT':
-                        return { type: 'contact', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_VENDOR':
-                        return { type: 'vendor', action: 'create', data: action.payload };
-                    case 'UPDATE_VENDOR':
-                        return { type: 'vendor', action: 'update', data: action.payload };
-                    case 'DELETE_VENDOR':
-                        return { type: 'vendor', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_INVOICE':
-                        return { type: 'invoice', action: 'create', data: action.payload };
-                    case 'UPDATE_INVOICE':
-                        return { type: 'invoice', action: 'update', data: action.payload };
-                    case 'DELETE_INVOICE':
-                        return { type: 'invoice', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_BILL':
-                        return { type: 'bill', action: 'create', data: action.payload };
-                    case 'UPDATE_BILL':
-                        return { type: 'bill', action: 'update', data: action.payload };
-                    case 'DELETE_BILL':
-                        return { type: 'bill', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_RECURRING_TEMPLATE':
-                        return { type: 'recurring_invoice_template', action: 'create', data: action.payload };
-                    case 'UPDATE_RECURRING_TEMPLATE':
-                        return { type: 'recurring_invoice_template', action: 'update', data: action.payload };
-                    case 'DELETE_RECURRING_TEMPLATE':
-                        return { type: 'recurring_invoice_template', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_ACCOUNT':
-                        return { type: 'account', action: 'create', data: action.payload };
-                    case 'UPDATE_ACCOUNT':
-                        return { type: 'account', action: 'update', data: action.payload };
-                    case 'DELETE_ACCOUNT':
-                        return { type: 'account', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_CATEGORY':
-                        return { type: 'category', action: 'create', data: action.payload };
-                    case 'UPDATE_CATEGORY':
-                        return { type: 'category', action: 'update', data: action.payload };
-                    case 'DELETE_CATEGORY':
-                        return { type: 'category', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_PROJECT':
-                        return { type: 'project', action: 'create', data: action.payload };
-                    case 'UPDATE_PROJECT':
-                        return { type: 'project', action: 'update', data: action.payload };
-                    case 'DELETE_PROJECT':
-                        return { type: 'project', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_BUILDING':
-                        return { type: 'building', action: 'create', data: action.payload };
-                    case 'UPDATE_BUILDING':
-                        return { type: 'building', action: 'update', data: action.payload };
-                    case 'DELETE_BUILDING':
-                        return { type: 'building', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_PROPERTY':
-                        return { type: 'property', action: 'create', data: action.payload };
-                    case 'UPDATE_PROPERTY':
-                        return { type: 'property', action: 'update', data: action.payload };
-                    case 'DELETE_PROPERTY':
-                        return { type: 'property', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_UNIT':
-                        return { type: 'unit', action: 'create', data: action.payload };
-                    case 'UPDATE_UNIT':
-                        return { type: 'unit', action: 'update', data: action.payload };
-                    case 'DELETE_UNIT':
-                        return { type: 'unit', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_BUDGET':
-                        return { type: 'budget', action: 'create', data: action.payload };
-                    case 'UPDATE_BUDGET':
-                        return { type: 'budget', action: 'update', data: action.payload };
-                    case 'DELETE_BUDGET':
-                        return { type: 'budget', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_PLAN_AMENITY':
-                        return { type: 'plan_amenity', action: 'create', data: action.payload };
-                    case 'UPDATE_PLAN_AMENITY':
-                        return { type: 'plan_amenity', action: 'update', data: action.payload };
-                    case 'DELETE_PLAN_AMENITY':
-                        return { type: 'plan_amenity', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_INVENTORY_ITEM':
-                        return { type: 'inventory_item', action: 'create', data: action.payload };
-                    case 'UPDATE_INVENTORY_ITEM':
-                        return { type: 'inventory_item', action: 'update', data: action.payload };
-                    case 'DELETE_INVENTORY_ITEM':
-                        return { type: 'inventory_item', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_WAREHOUSE':
-                        return { type: 'warehouse', action: 'create', data: action.payload };
-                    case 'UPDATE_WAREHOUSE':
-                        return { type: 'warehouse', action: 'update', data: action.payload };
-                    case 'DELETE_WAREHOUSE':
-                        return { type: 'warehouse', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_RENTAL_AGREEMENT':
-                        return { type: 'rental_agreement', action: 'create', data: action.payload };
-                    case 'UPDATE_RENTAL_AGREEMENT':
-                        return { type: 'rental_agreement', action: 'update', data: action.payload };
-                    case 'DELETE_RENTAL_AGREEMENT':
-                        return { type: 'rental_agreement', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_PROJECT_AGREEMENT':
-                        return { type: 'project_agreement', action: 'create', data: action.payload };
-                    case 'UPDATE_PROJECT_AGREEMENT':
-                        return { type: 'project_agreement', action: 'update', data: action.payload };
-                    case 'DELETE_PROJECT_AGREEMENT':
-                    case 'CANCEL_PROJECT_AGREEMENT':
-                        return { type: 'project_agreement', action: 'update', data: action.payload };
-                    case 'ADD_CONTRACT':
-                        return { type: 'contract', action: 'create', data: action.payload };
-                    case 'UPDATE_CONTRACT':
-                        return { type: 'contract', action: 'update', data: action.payload };
-                    case 'DELETE_CONTRACT':
-                        return { type: 'contract', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_SALES_RETURN':
-                        return { type: 'sales_return', action: 'create', data: action.payload };
-                    case 'UPDATE_SALES_RETURN':
-                    case 'MARK_RETURN_REFUNDED':
-                        return { type: 'sales_return', action: 'update', data: action.payload };
-                    case 'DELETE_SALES_RETURN':
-                        return { type: 'sales_return', action: 'delete', data: { id: action.payload } };
-                    case 'UPDATE_PRINT_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'printSettings', value: action.payload } };
-                    case 'UPDATE_WHATSAPP_TEMPLATES':
-                        return { type: 'setting', action: 'update', data: { key: 'whatsAppTemplates', value: action.payload } };
-                    case 'UPDATE_DASHBOARD_CONFIG':
-                        return { type: 'setting', action: 'update', data: { key: 'dashboardConfig', value: action.payload } };
-                    case 'UPDATE_AGREEMENT_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'agreementSettings', value: action.payload } };
-                    case 'UPDATE_PROJECT_AGREEMENT_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'projectAgreementSettings', value: action.payload } };
-                    case 'UPDATE_RENTAL_INVOICE_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'rentalInvoiceSettings', value: action.payload } };
-                    case 'UPDATE_PROJECT_INVOICE_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'projectInvoiceSettings', value: action.payload } };
-                    case 'UPDATE_PM_COST_PERCENTAGE':
-                        return { type: 'setting', action: 'update', data: { key: 'pmCostPercentage', value: action.payload } };
-                    case 'TOGGLE_SYSTEM_TRANSACTIONS':
-                        return { type: 'setting', action: 'update', data: { key: 'showSystemTransactions', value: action.payload } };
-                    case 'TOGGLE_COLOR_CODING':
-                        return { type: 'setting', action: 'update', data: { key: 'enableColorCoding', value: action.payload } };
-                    case 'TOGGLE_BEEP_ON_SAVE':
-                        return { type: 'setting', action: 'update', data: { key: 'enableBeepOnSave', value: action.payload } };
-                    case 'TOGGLE_DATE_PRESERVATION':
-                        return { type: 'setting', action: 'update', data: { key: 'enableDatePreservation', value: action.payload } };
-                    case 'UPDATE_DEFAULT_PROJECT':
-                        return { type: 'setting', action: 'update', data: { key: 'defaultProjectId', value: action.payload } };
-                    default:
-                        return null;
-                }
-            };
-
-            // Defer API sync to avoid blocking UI
-            if ('requestIdleCallback' in window) {
-                requestIdleCallback(syncToApi, { timeout: 2000 });
-            } else {
-                setTimeout(syncToApi, 0);
-            }
-        }
-
         // Sync Broadcast - Skip for navigation-only actions (performance optimization)
         if (!(action as any)._isRemote) {
             const NAVIGATION_ACTIONS = ['SET_PAGE', 'SET_INITIAL_TABS', 'CLEAR_INITIAL_TABS',
@@ -2702,30 +1786,936 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'SET_INITIAL_TRANSACTION_FILTER', 'SET_INITIAL_IMPORT_TYPE',
                 'CLEAR_INITIAL_IMPORT_TYPE', 'SET_EDITING_ENTITY', 'CLEAR_EDITING_ENTITY'];
 
-            // Real-time sync is now handled via Socket.IO in the backend
-            // No peer-to-peer sync needed
+            // Local-only: persistence runs via useDatabaseState / save hooks; no cloud broadcast.
         }
 
         return newState;
-    }, [isAuthenticated]);
+    }, []);
 
     // Use a ref to track if we've initialized the reducer with database state
     const reducerInitializedRef = useRef(false);
 
     // Initialize reducer with initialState first, then sync with storedState when ready
     // This avoids initialization issues with storedState
-    const [state, dispatch] = useReducer(reducerWithPersistence, initialState);
+    const [state, baseDispatch] = useReducer(reducerWithPersistence, initialState);
+    const latestStateRef = useRef(state);
+    latestStateRef.current = state;
+
+    /**
+     * LAN/API mode: SQLite is not used; persist mutations to PostgreSQL via REST.
+     * Transactions must be POSTed here — RentalPaymentModal and most flows only dispatch ADD_TRANSACTION.
+     * Also sync invoice/bill paid amounts after payment transactions (applyTransactionEffect is local-only).
+     * Skip when action came from server merge ( _isRemote ) to avoid feedback loops.
+     */
+    const dispatch = useCallback(
+        (action: AppAction) => {
+            // LAN/API: allow REST sync when AuthContext says logged in OR a JWT is present (header uses token; context can lag).
+            const hasAuthToken =
+                typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
+            if (isLocalOnlyMode() || (!isAuthenticated && !hasAuthToken)) {
+                baseDispatch(action);
+                return;
+            }
+            if ((action as { _isRemote?: boolean })._isRemote) {
+                baseDispatch(action);
+                return;
+            }
+
+            const a = action as { type: string; payload?: unknown };
+            const prev = latestStateRef.current;
+
+            if (a.type === 'ADD_TRANSACTION') {
+                const tx = a.payload as Transaction;
+                const invoiceToSave =
+                    tx.invoiceId && tx.id
+                        ? (() => {
+                              const inv = prev.invoices.find(i => i.id === tx.invoiceId);
+                              return inv ? applyTxToInvoiceCopy(inv, tx, true) : undefined;
+                          })()
+                        : undefined;
+                const billToSave =
+                    tx.billId && tx.id
+                        ? (() => {
+                              const b = prev.bills.find(x => x.id === tx.billId);
+                              return b ? applyTxToBillCopy(b, tx, true) : undefined;
+                          })()
+                        : undefined;
+                baseDispatch(action);
+                if (!tx?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const api = getAppStateApiService();
+                    api.saveTransaction(tx)
+                        .then(async (saved) => {
+                            const v = typeof saved?.version === 'number' ? saved.version : undefined;
+                            if (typeof v === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_TRANSACTION',
+                                    payload: { ...tx, version: v },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                            // Server recalculates invoice/bill paid_amount + version in the same txn; do not POST stale rows (409 + spurious modal).
+                            if (invoiceToSave && tx.invoiceId) {
+                                const savedInv = await api.fetchInvoice(tx.invoiceId);
+                                if (savedInv?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_INVOICE',
+                                        payload: savedInv,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            if (billToSave && tx.billId) {
+                                const savedBill = await api.fetchBill(tx.billId);
+                                if (savedBill?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_BILL',
+                                        payload: savedBill,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist transaction (or linked invoice/bill) to API:', err);
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'BATCH_ADD_TRANSACTIONS') {
+                const txs = a.payload as Transaction[];
+                const invoiceIds = [...new Set(txs.map(t => t.invoiceId).filter(Boolean) as string[])];
+                const billIds = [...new Set(txs.map(t => t.billId).filter(Boolean) as string[])];
+                const invoicesAfter = new Map<string, Invoice>();
+                for (const id of invoiceIds) {
+                    let inv = prev.invoices.find(i => i.id === id);
+                    if (!inv) continue;
+                    for (const tx of txs) {
+                        if (tx.invoiceId === id) inv = applyTxToInvoiceCopy(inv, tx, true);
+                    }
+                    invoicesAfter.set(id, inv);
+                }
+                const billsAfter = new Map<string, Bill>();
+                for (const id of billIds) {
+                    let b = prev.bills.find(x => x.id === id);
+                    if (!b) continue;
+                    for (const tx of txs) {
+                        if (tx.billId === id) b = applyTxToBillCopy(b, tx, true);
+                    }
+                    billsAfter.set(id, b);
+                }
+                baseDispatch(action);
+                if (!txs?.length) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const api = getAppStateApiService();
+                    const accountIds = new Set<string>();
+                    txs.forEach((tx) => {
+                        if (tx.fromAccountId) accountIds.add(tx.fromAccountId);
+                        if (tx.toAccountId) accountIds.add(tx.toAccountId);
+                        if (tx.accountId) accountIds.add(tx.accountId);
+                    });
+                    const accountsToUpsert = [...accountIds]
+                        .map((id) => prev.accounts.find((acc) => acc.id === id))
+                        .filter((acc): acc is Account => !!acc);
+                    const syncAccountsFirst = () =>
+                        accountsToUpsert.length === 0
+                            ? Promise.resolve<Account[]>([])
+                            : Promise.all(
+                                  accountsToUpsert.map((acc) =>
+                                      // Omit client version: a previous batch (e.g. profit distribution) may have
+                                      // already POSTed these accounts and bumped server version while the client
+                                      // still holds the old version — stale version causes 409 CONFLICT.
+                                      api.saveAccount({ ...acc, version: undefined })
+                                  )
+                              );
+                    syncAccountsFirst()
+                        .then((savedAccounts) => {
+                            for (const saved of savedAccounts) {
+                                if (saved?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_ACCOUNT',
+                                        payload: saved,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            return Promise.all(txs.map((tx) => api.saveTransaction(tx)));
+                        })
+                        .then(async (savedList) => {
+                            for (let i = 0; i < txs.length; i++) {
+                                const s = savedList[i];
+                                const origTx = txs[i];
+                                if (s && typeof s.version === 'number' && origTx?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_TRANSACTION',
+                                        payload: { ...origTx, version: s.version },
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            for (const id of invoicesAfter.keys()) {
+                                const savedInv = await api.fetchInvoice(id);
+                                if (savedInv?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_INVOICE',
+                                        payload: savedInv,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            for (const id of billsAfter.keys()) {
+                                const savedBill = await api.fetchBill(id);
+                                if (savedBill?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_BILL',
+                                        payload: savedBill,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                        })
+                        .catch((err: unknown) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist batch transactions to API:', err);
+                            const e = err as { status?: number; code?: string };
+                            if (e?.status === 409 || e?.code === 'LOCK_HELD' || e?.code === 'CONFLICT') {
+                                void refreshFromApiRef.current?.();
+                            }
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'BATCH_DELETE_TRANSACTIONS') {
+                const payload = a.payload as { transactionIds: string[]; projectAssetIdToDelete?: string };
+                const uniqueIds = [...new Set(payload.transactionIds)].filter(Boolean);
+                const txsToDelete = uniqueIds
+                    .map(id => prev.transactions.find(t => t.id === id))
+                    .filter((t): t is Transaction => !!t);
+                const projectAssetIdToDelete = payload.projectAssetIdToDelete;
+                const projectAssetVersionForApi = projectAssetIdToDelete
+                    ? prev.projectReceivedAssets?.find((x) => x.id === projectAssetIdToDelete)?.version
+                    : undefined;
+                baseDispatch(action);
+                if (uniqueIds.length === 0) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const api = getAppStateApiService();
+                    void (async () => {
+                        try {
+                            await Promise.all(uniqueIds.map(id => api.deleteTransaction(id)));
+                            const invoiceIds = [...new Set(txsToDelete.map(t => t.invoiceId).filter(Boolean) as string[])];
+                            const billIds = [...new Set(txsToDelete.map(t => t.billId).filter(Boolean) as string[])];
+                            for (const iid of invoiceIds) {
+                                const savedInv = await api.fetchInvoice(iid);
+                                if (savedInv?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_INVOICE',
+                                        payload: savedInv,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            for (const bid of billIds) {
+                                const savedBill = await api.fetchBill(bid);
+                                if (savedBill?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_BILL',
+                                        payload: savedBill,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            if (projectAssetIdToDelete) {
+                                await api.deleteProjectReceivedAsset(projectAssetIdToDelete, projectAssetVersionForApi);
+                            }
+                        } catch (err) {
+                            logger.warnCategory('sync', '⚠️ Failed to persist batch transaction deletes to API:', err);
+                        }
+                    })();
+                });
+                return;
+            }
+
+            if (a.type === 'SET_LAST_SERVICE_CHARGE_RUN') {
+                const lastRun = a.payload as string;
+                baseDispatch(action);
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const merged = { ...prev, lastServiceChargeRun: lastRun } as AppState;
+                    void getAppStateApiService().flushTenantSettingsNow(merged);
+                });
+                return;
+            }
+
+            if (a.type === 'UPDATE_TRANSACTION') {
+                const updatedTx = a.payload as Transaction;
+                flushSync(() => {
+                    baseDispatch(action);
+                });
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const api = getAppStateApiService();
+                    void enqueueTransactionApiSave(updatedTx.id, async () => {
+                        const latest = latestStateRef.current.transactions.find(t => t.id === updatedTx.id);
+                        if (!latest) return;
+                        try {
+                            const saved = await api.saveTransaction(latest);
+                            const mergedVersion =
+                                typeof saved.version === 'number' ? saved.version : latest.version;
+                            dispatch({
+                                type: 'UPDATE_TRANSACTION',
+                                payload: { ...latest, version: mergedVersion },
+                                _isRemote: true,
+                            } as AppAction);
+
+                            if (latest.invoiceId) {
+                                const savedInv = await api.fetchInvoice(latest.invoiceId);
+                                if (savedInv?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_INVOICE',
+                                        payload: savedInv,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            if (latest.billId) {
+                                const savedBill = await api.fetchBill(latest.billId);
+                                if (savedBill?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_BILL',
+                                        payload: savedBill,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            // Keep linked construction contract status in sync on server (reducer updates local state)
+                            const st = latestStateRef.current;
+                            const cTx = st.transactions.find(t => t.id === latest.id) ?? latest;
+                            if (cTx.contractId) {
+                                const cid = cTx.contractId;
+                                const totalPaid = st.transactions
+                                    .filter(t => t.contractId === cid)
+                                    .reduce((sum, t) => {
+                                        const amt =
+                                            t.id === cTx.id ? cTx.amount : t.amount;
+                                        const n = typeof amt === 'number' ? amt : parseFloat(String(amt)) || 0;
+                                        return sum + n;
+                                    }, 0);
+                                const c = st.contracts.find(x => x.id === cid);
+                                if (c && c.status !== ContractStatus.TERMINATED) {
+                                    const isFullyPaid = totalPaid >= c.totalAmount - 1.0;
+                                    let newStatus = c.status;
+                                    if (isFullyPaid && c.status === ContractStatus.ACTIVE) {
+                                        newStatus = ContractStatus.COMPLETED;
+                                    } else if (!isFullyPaid && c.status === ContractStatus.COMPLETED) {
+                                        newStatus = ContractStatus.ACTIVE;
+                                    }
+                                    if (newStatus !== c.status) {
+                                        await api.saveContract({
+                                            ...c,
+                                            status: newStatus,
+                                            version: c.version,
+                                        });
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            logger.warnCategory('sync', '⚠️ Failed to persist transaction update to API:', err);
+                        }
+                    });
+                });
+                return;
+            }
+
+            if (a.type === 'DELETE_TRANSACTION' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const tx = prev.transactions.find(t => t.id === id);
+                const assetIdToRemoveOnApi =
+                    tx?.projectAssetId &&
+                    prev.transactions.filter(t => t.projectAssetId === tx.projectAssetId).length === 1
+                        ? tx.projectAssetId
+                        : undefined;
+                const assetVersionForApi = assetIdToRemoveOnApi
+                    ? prev.projectReceivedAssets?.find((x) => x.id === assetIdToRemoveOnApi)?.version
+                    : undefined;
+                baseDispatch(action);
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const api = getAppStateApiService();
+                    void (async () => {
+                        try {
+                            await api.deleteTransaction(id);
+                            if (tx?.invoiceId) {
+                                const savedInv = await api.fetchInvoice(tx.invoiceId);
+                                if (savedInv?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_INVOICE',
+                                        payload: savedInv,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            if (tx?.billId) {
+                                const savedBill = await api.fetchBill(tx.billId);
+                                if (savedBill?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_BILL',
+                                        payload: savedBill,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                            if (assetIdToRemoveOnApi) {
+                                await api.deleteProjectReceivedAsset(assetIdToRemoveOnApi, assetVersionForApi);
+                            }
+                        } catch (err) {
+                            logger.warnCategory('sync', '⚠️ Failed to delete transaction on API:', err);
+                        }
+                    })();
+                });
+                return;
+            }
+
+            if (a.type === 'DELETE_INVOICE' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const version = prev.invoices.find((i) => i.id === id)?.version;
+                baseDispatch(action);
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteInvoice(id, version)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete invoice on API:', err);
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'DELETE_PROJECT_RECEIVED_ASSET' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const version = prev.projectReceivedAssets?.find((x) => x.id === id)?.version;
+                baseDispatch(action);
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteProjectReceivedAsset(id, version)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete project received asset on API:', err);
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'DELETE_SALES_RETURN' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const version = prev.salesReturns?.find((x) => x.id === id)?.version;
+                baseDispatch(action);
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteSalesReturn(id, version)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete sales return on API:', err);
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'PROCESS_SALES_RETURN') {
+                const { returnId } = a.payload as { returnId: string };
+                const returnRecord = prev.salesReturns?.find(sr => sr.id === returnId);
+                baseDispatch(action);
+                if (!returnRecord) return;
+                const updated: SalesReturn = {
+                    ...returnRecord,
+                    status: SalesReturnStatus.PROCESSED,
+                    processedDate: new Date().toISOString(),
+                };
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveSalesReturn(updated)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_SALES_RETURN',
+                                    payload: { ...updated, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist processed sales return to API:', err);
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'MARK_RETURN_REFUNDED') {
+                const { returnId, refundDate } = a.payload as { returnId: string; refundDate: string };
+                const returnRecord = prev.salesReturns?.find(sr => sr.id === returnId);
+                baseDispatch(action);
+                if (!returnRecord) return;
+                const updated: SalesReturn = {
+                    ...returnRecord,
+                    status: SalesReturnStatus.REFUNDED,
+                    refundedDate: refundDate,
+                };
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveSalesReturn(updated)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_SALES_RETURN',
+                                    payload: { ...updated, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist refunded sales return to API:', err);
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'ADD_ACCOUNT') {
+                const acc = a.payload as Account;
+                baseDispatch(action);
+                if (!acc?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveAccount(acc)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_ACCOUNT',
+                                    payload: { ...acc, ...saved } as Account,
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist account to API:', err);
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'UPDATE_ACCOUNT') {
+                const acc = a.payload as Account;
+                baseDispatch(action);
+                if (!acc?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveAccount(acc)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_ACCOUNT',
+                                    payload: { ...acc, ...saved } as Account,
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist account update to API:', err);
+                        });
+                });
+                return;
+            }
+
+            if (a.type === 'DELETE_ACCOUNT' && typeof a.payload === 'string') {
+                const id = a.payload;
+                baseDispatch(action);
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteAccount(id)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete account on API:', err);
+                        });
+                });
+                return;
+            }
+
+            baseDispatch(action);
+
+            if (a.type === 'ADD_INVOICE' || a.type === 'UPDATE_INVOICE') {
+                const inv = a.payload as Invoice;
+                if (!inv?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveInvoice(inv)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_INVOICE',
+                                    payload: { ...inv, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist invoice to API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_BILL' || a.type === 'UPDATE_BILL') {
+                const bill = a.payload as Bill;
+                if (!bill?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveBill(bill)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist bill to API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_PM_CYCLE_ALLOCATION' || a.type === 'UPDATE_PM_CYCLE_ALLOCATION') {
+                const alloc = a.payload as PMCycleAllocation;
+                if (!alloc?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const api = getAppStateApiService();
+                    const run = async () => {
+                        if (alloc.billId) {
+                            const b = latestStateRef.current.bills.find((x) => x.id === alloc.billId);
+                            if (b) {
+                                try {
+                                    await api.saveBill(b);
+                                } catch (be) {
+                                    logger.warnCategory('sync', '⚠️ PM allocation: could not persist linked bill before allocation:', be);
+                                }
+                            }
+                        }
+                        return api.savePMCycleAllocation(alloc);
+                    };
+                    run()
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_PM_CYCLE_ALLOCATION',
+                                    payload: { ...alloc, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist PM cycle allocation to API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_PM_CYCLE_ALLOCATION' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const version = prev.pmCycleAllocations?.find((x) => x.id === id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deletePMCycleAllocation(id, version)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete PM cycle allocation on API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_BILL' && typeof a.payload === 'string') {
+                const id = a.payload;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteBill(id)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete bill on API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_CATEGORY' || a.type === 'UPDATE_CATEGORY') {
+                const cat = a.payload as Category;
+                if (!cat?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveCategory(cat)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist category to API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_CATEGORY' && typeof a.payload === 'string') {
+                const id = a.payload;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteCategory(id)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete category on API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_RECURRING_TEMPLATE' || a.type === 'UPDATE_RECURRING_TEMPLATE') {
+                const tpl = a.payload as RecurringInvoiceTemplate;
+                if (!tpl?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveRecurringTemplate(tpl)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_RECURRING_TEMPLATE',
+                                    payload: { ...tpl, version: saved.version },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist recurring template to API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_RECURRING_TEMPLATE' && typeof a.payload === 'string') {
+                const id = a.payload;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteRecurringTemplate(id)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete recurring template on API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_PROJECT_RECEIVED_ASSET' || a.type === 'UPDATE_PROJECT_RECEIVED_ASSET') {
+                const asset = a.payload as ProjectReceivedAsset;
+                if (!asset?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveProjectReceivedAsset(asset)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_PROJECT_RECEIVED_ASSET',
+                                    payload: { ...asset, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist project received asset to API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_SALES_RETURN' || a.type === 'UPDATE_SALES_RETURN') {
+                const sr = a.payload as SalesReturn;
+                if (!sr?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveSalesReturn(sr)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_SALES_RETURN',
+                                    payload: { ...sr, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist sales return to API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_CONTRACT' || a.type === 'UPDATE_CONTRACT') {
+                const c = a.payload as Contract;
+                if (!c?.id) return;
+                const version = c.version ?? prev.contracts?.find((x) => x.id === c.id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveContract({ ...c, version })
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_CONTRACT',
+                                    payload: { ...c, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist contract to API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_CONTRACT' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const version = prev.contracts?.find((x) => x.id === id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteContract(id, version)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete contract on API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_BUDGET' || a.type === 'UPDATE_BUDGET') {
+                const b = a.payload as Budget;
+                if (!b?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveBudget(b)
+                        .then((saved) => {
+                            if (saved?.id) {
+                                dispatch({
+                                    type: 'UPDATE_BUDGET',
+                                    payload: { ...b, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist budget to API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_BUDGET' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const version = prev.budgets?.find((x) => x.id === id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteBudget(id, version)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete budget on API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_INSTALLMENT_PLAN' || a.type === 'UPDATE_INSTALLMENT_PLAN') {
+                const plan = a.payload as InstallmentPlan;
+                if (!plan?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveInstallmentPlan(plan)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_INSTALLMENT_PLAN',
+                                    payload: { ...plan, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist installment plan to API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_INSTALLMENT_PLAN' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const version = prev.installmentPlans?.find((x) => x.id === id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteInstallmentPlan(id, version)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete installment plan on API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_PLAN_AMENITY' || a.type === 'UPDATE_PLAN_AMENITY') {
+                const amenity = a.payload as PlanAmenity;
+                if (!amenity?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .savePlanAmenity(amenity)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_PLAN_AMENITY',
+                                    payload: { ...amenity, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist plan amenity to API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_PLAN_AMENITY' && typeof a.payload === 'string') {
+                const id = a.payload;
+                const version = prev.planAmenities?.find((x) => x.id === id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deletePlanAmenity(id, version)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete plan amenity on API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_PROJECT') {
+                const proj = a.payload as Project;
+                if (!proj?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveProject(proj)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_PROJECT',
+                                    payload: { ...proj, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist project to API:', err);
+                        });
+                });
+            } else if (a.type === 'UPDATE_PROJECT') {
+                const proj = a.payload as Project;
+                if (!proj?.id) return;
+                const version = proj.version ?? prev.projects?.find((x) => x.id === proj.id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .updateProject(proj.id, { ...proj, version })
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_PROJECT',
+                                    payload: { ...proj, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist project update to API:', err);
+                        });
+                });
+            } else if (a.type === 'DELETE_PROJECT' && typeof a.payload === 'string') {
+                const id = a.payload;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteProject(id)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete project on API:', err);
+                        });
+                });
+            } else if (a.type === 'ADD_UNIT' || a.type === 'UPDATE_UNIT') {
+                const unit = a.payload as Unit;
+                if (!unit?.id) return;
+                const version = unit.version ?? prev.units?.find((x) => x.id === unit.id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const api = getAppStateApiService();
+                    const save =
+                        a.type === 'ADD_UNIT'
+                            ? api.saveUnit(unit)
+                            : api.updateUnit(unit.id, { ...unit, version });
+                    save
+                        .then((saved) => {
+                            if (saved?.id) {
+                                dispatch({
+                                    type: 'UPDATE_UNIT',
+                                    payload: { ...unit, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist unit to API:', err);
+                        });
+                });
+            } else {
+                const mergedForFlush = mergeTenantSettingsFromAction(prev, action as AppAction);
+                if (mergedForFlush) {
+                    void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                        getAppStateApiService()
+                            .flushTenantSettingsNow(mergedForFlush)
+                            .catch((err) => {
+                                logger.warnCategory('sync', '⚠️ Failed to persist tenant settings to API:', err);
+                            });
+                    });
+                }
+            }
+        },
+        [baseDispatch, isAuthenticated]
+    );
 
     useEffect(() => {
         dispatchRef.current = dispatch;
-        return () => { dispatchRef.current = null; };
+        return () => {
+            dispatchRef.current = null;
+        };
     }, [dispatch]);
 
     // Sync reducer state with loaded database state (critical for first load)
     // Initialize with storedState when it's ready (after initialization)
     useEffect(() => {
         // Wait for initialization to complete and storedState to be ready
-        if (!isInitializing && storedStateRef.current) {
+        if (!isInitializing && !apiStateLoadFailed && storedStateRef.current) {
             // Use ref to access storedState to avoid dependency issues
             const currentStoredState = storedStateRef.current;
 
@@ -2762,220 +2752,206 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         // Only depend on isInitializing to avoid accessing storedState before it's ready
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isInitializing, state, dispatch]);
+    }, [isInitializing, apiStateLoadFailed, state, dispatch]);
 
-    /**
-     * Cloud contacts refresh (one-entity wiring test)
-     * When authenticated, reload contacts from API and merge into state + local DB.
-     * This makes different users on the same tenant see the same contacts.
-     */
     // Track latest state to avoid stale captures in async effects
     const stateRef = useRef(state);
     useEffect(() => {
         stateRef.current = state;
     }, [state]);
 
-    const refreshFromApi = useCallback(async (onCriticalLoaded?: () => void) => {
-        if (!isAuthenticated) {
-            return;
-        }
-        const apiService = getAppStateApiService();
-
-        const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
-            if (!api || api.length === 0) return current;
-            const merged = new Map<string, T>();
-            current.forEach(item => merged.set(item.id, item));
-            api.forEach(item => merged.set(item.id, item));
-            return Array.from(merged.values());
-        };
-
-        const applyApiState = (apiState: Partial<AppState>): AppState | null => {
-            const updates: Partial<AppState> = {};
-            const currentState = stateRef.current;
-            if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
-            if (apiState.transactions) updates.transactions = mergeById(currentState.transactions, apiState.transactions);
-            if (apiState.bills) updates.bills = mergeById(currentState.bills, apiState.bills);
-            if (apiState.invoices) updates.invoices = mergeById(currentState.invoices, apiState.invoices);
-            if (apiState.budgets) updates.budgets = mergeById(currentState.budgets, apiState.budgets);
-            if (apiState.contracts) updates.contracts = mergeById(currentState.contracts, apiState.contracts);
-            if (apiState.rentalAgreements) updates.rentalAgreements = mergeById(currentState.rentalAgreements, apiState.rentalAgreements);
-            if (apiState.projectAgreements) updates.projectAgreements = mergeById(currentState.projectAgreements, apiState.projectAgreements);
-            if (apiState.salesReturns) updates.salesReturns = mergeById(currentState.salesReturns, apiState.salesReturns);
-            if (apiState.installmentPlans) updates.installmentPlans = mergeById(currentState.installmentPlans, apiState.installmentPlans);
-            if (apiState.planAmenities) updates.planAmenities = mergeById(currentState.planAmenities || [], apiState.planAmenities);
-            if (apiState.categories) {
-                const mergedApiLocal = mergeById(currentState.categories, apiState.categories);
-                const systemCategoryIds = new Set(SYSTEM_CATEGORIES.map(c => c.id));
-                const userCategories = mergedApiLocal.filter(c => !systemCategoryIds.has(c.id));
-                const existingSystemCategories = mergedApiLocal.filter(c => systemCategoryIds.has(c.id));
-                const allSystemCategories = SYSTEM_CATEGORIES.map(sysCat => {
-                    const existing = existingSystemCategories.find(c => c.id === sysCat.id);
-                    return existing || sysCat;
-                });
-                updates.categories = [...allSystemCategories, ...userCategories];
-            }
-            if (apiState.accounts) updates.accounts = mergeById(currentState.accounts, apiState.accounts);
-            if (apiState.projects) updates.projects = mergeById(currentState.projects, apiState.projects);
-            if (apiState.buildings) updates.buildings = mergeById(currentState.buildings, apiState.buildings);
-            if (apiState.properties) updates.properties = mergeById(currentState.properties, apiState.properties);
-            if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
-            if (apiState.vendors) updates.vendors = mergeById(currentState.vendors || [], apiState.vendors);
-            if (apiState.recurringInvoiceTemplates) updates.recurringInvoiceTemplates = mergeById(currentState.recurringInvoiceTemplates || [], apiState.recurringInvoiceTemplates);
-            if (Object.keys(updates).length === 0) return null;
-            const mergedState = { ...stateRef.current, ...updates };
-            dispatch({ type: 'SET_STATE', payload: mergedState, _isRemote: true } as any);
-            setStoredState(prev => ({ ...prev, ...updates }));
-            return mergedState as AppState;
-        };
-
-        const persistLoadedStateToDb = async (mergedState: AppState | null) => {
-            if (!mergedState || !saveNow) return;
-            try {
-                const dbService = getDatabaseService();
-                if (dbService.isReady()) {
-                    await saveNow(mergedState, { disableSyncQueueing: true });
-                    logger.logCategory('sync', '✅ Saved cloud data to local database');
-                }
-            } catch (saveErr) {
-                console.warn('[CloudSync] Failed to save loaded data to local DB:', saveErr);
-            }
-        };
-
+    /**
+     * Merge latest server state into React + persisted state (LAN / PostgreSQL API).
+     * Required so User B sees projects/units created by User A without reloading the app.
+     */
+    const refreshFromApi = useCallback(async (_onCriticalLoaded?: () => void) => {
+        if (!isAuthenticated || isLocalOnlyMode()) return;
         try {
-            // INCREMENTAL SYNC: If we have a recent baseline, fetch only changes since last sync.
-            // This avoids reloading all data on every WebSocket event or navigation refresh.
-            const { apiClient } = await import('../services/api/client');
-            const currentTenantId = apiClient.getTenantId();
-            const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
-            // Require contacts OR transactions as baseline (accounts alone are just defaults)
-            const hasBaseline = (stateRef.current.contacts?.length ?? 0) > 0 ||
-                (stateRef.current.transactions?.length ?? 0) > 0;
+            const { getAppStateApiService, pickTenantSettingsPartial, getServerTimeIso } = await import('../services/api/appStateApi');
+            const base = stateRef.current;
+            const lastSync = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_last_sync_at') : null;
 
-            if (currentTenantId && lastSync && hasBaseline && isLastSyncRecent(currentTenantId)) {
-                logger.logCategory('sync', `📡 refreshFromApi: using incremental sync (since ${lastSync})`);
+            // Incremental sync returns deltas (vendors, contacts, rental_agreements, project_agreements, invoices, bills, accounts, transactions, categories, app settings).
+            // It does not re-fetch projects, buildings, properties, etc. Using it when the baseline is
+            // still empty would leave PostgreSQL-backed data missing after a fresh login or when sessionStorage still
+            // has pbooks_api_last_sync_at from an earlier tab session.
+            const baselineHasCoreData =
+                (base.accounts?.length ?? 0) > 0 ||
+                (base.categories?.length ?? 0) > 0 ||
+                (base.projects?.length ?? 0) > 0 ||
+                (base.contacts?.length ?? 0) > 0 ||
+                (base.buildings?.length ?? 0) > 0 ||
+                (base.invoices?.length ?? 0) > 0 ||
+                (base.bills?.length ?? 0) > 0 ||
+                (base.transactions?.length ?? 0) > 0;
+
+            let merged: AppState;
+            let nextSyncCursor: string;
+
+            if (lastSync && baselineHasCoreData) {
                 try {
-                    const incrementalState = await apiService.loadStateViaIncrementalSync(lastSync, stateRef.current);
-                    const merged = applyApiState(incrementalState);
-                    if (merged) persistLoadedStateToDb(merged);
-                    if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
-                    onCriticalLoaded?.();
-                    return;
-                } catch (incErr) {
-                    logger.warnCategory('sync', '⚠️ Incremental sync failed in refreshFromApi, falling back to full load:', incErr);
-                    if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
+                    const { merged: inc, serverCursor } = await getAppStateApiService().loadStateViaIncrementalSync(lastSync, base);
+                    merged = { ...base, ...inc, ...pickTenantSettingsPartial(inc) } as AppState;
+                    nextSyncCursor = serverCursor;
+                } catch {
+                    const partial = await getAppStateApiService().loadState();
+                    const partialSettings = pickTenantSettingsPartial(partial);
+                    merged = {
+                        ...base,
+                        ...partial,
+                        invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
+                        projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
+                            base.projectReceivedAssets || [],
+                            partial.projectReceivedAssets || []
+                        ),
+                        salesReturns: mergeSalesReturnsWithServerBaseline(
+                            base.salesReturns || [],
+                            partial.salesReturns || []
+                        ),
+                        contracts: partial.contracts ?? base.contracts,
+                        ...partialSettings,
+                    } as AppState;
+                    nextSyncCursor = await getServerTimeIso();
+                }
+            } else {
+                const partial = await getAppStateApiService().loadState();
+                const partialSettings = pickTenantSettingsPartial(partial);
+                merged = {
+                    ...base,
+                    ...partial,
+                    invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
+                    projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
+                        base.projectReceivedAssets || [],
+                        partial.projectReceivedAssets || []
+                    ),
+                    salesReturns: mergeSalesReturnsWithServerBaseline(
+                        base.salesReturns || [],
+                        partial.salesReturns || []
+                    ),
+                    contracts: partial.contracts ?? base.contracts,
+                    ...partialSettings,
+                } as AppState;
+                nextSyncCursor = await getServerTimeIso();
+            }
+
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem('pbooks_api_last_sync_at', nextSyncCursor);
+            }
+
+            dispatch({ type: 'SET_STATE', payload: merged, _isRemote: true } as any);
+            setStoredState(prev => ({ ...prev, ...merged } as AppState));
+
+            if (currentTenantId) {
+                try {
+                    const { storageService } = await import('../components/payroll/services/storageService');
+                    storageService.init(currentTenantId);
+                    void storageService.syncPayrollListsFromApi(currentTenantId);
+                } catch (pe) {
+                    logger.warnCategory('sync', 'payroll list sync failed', pe);
                 }
             }
 
-            // FULL LOAD: No recent baseline — load everything (initial login or stale data)
-            logger.logCategory('sync', '📡 refreshFromApi: performing full data load');
-
-            // STEP 1: Load critical entities FIRST (accounts, contacts, categories, projects, buildings, properties, units)
-            setInitMessage('Loading critical data...');
-            try {
-                const critical = await apiService.loadStateBulk('accounts,contacts,categories,projects,buildings,properties,units,vendors');
-                if (critical && Object.keys(critical).length > 0) {
-                    const mergedCritical = applyApiState(critical);
-                    if (mergedCritical) persistLoadedStateToDb(mergedCritical);
-                    onCriticalLoaded?.();
-
-                    // STEP 2: Load remaining data in background (chunked, non-blocking)
-                    setInitMessage('Loading additional data...');
-                    apiService.loadStateBulkChunked((loaded, total) => {
-                        setLoadProgress({ loaded, total });
-                        setInitMessage(`Loading data: ${loaded}/${total} records`);
-                        if (total > 0) {
-                            setInitProgress(Math.round((loaded / total) * 100));
-                        }
-                    }, 200)
-                        .then(full => {
-                            const mergedFull = applyApiState(full);
-                            if (mergedFull) persistLoadedStateToDb(mergedFull);
-                            setLoadProgress(null);
-                            setInitMessage('Data loaded');
-                            setInitProgress(100);
-                            if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
-                            logger.logCategory('sync', '✅ Background data load complete');
-                        })
-                        .catch(err => {
-                            console.error('⚠️ Background chunked load failed:', err);
-                            setLoadProgress(null);
-                            logger.logCategory('sync', '⚠️ Chunked load failed, falling back to bulk');
-                            apiService.loadStateBulk()
-                                .then(full => {
-                                    const merged = applyApiState(full);
-                                    if (merged) persistLoadedStateToDb(merged);
-                                    if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
-                                })
-                                .catch(bulkErr => console.error('⚠️ Bulk fallback also failed:', bulkErr));
-                        });
-                    return;
-                }
-            } catch (criticalErr: any) {
-                console.warn('⚠️ Critical load failed, falling back to full load:', criticalErr);
-            }
-
-            // STEP 3: Fallback to old behavior if critical endpoint fails
-            let apiState: Partial<AppState>;
-            try {
-                apiState = await apiService.loadStateBulk();
-            } catch (bulkErr: any) {
-                if (bulkErr?.status === 404 || bulkErr?.message?.includes('404')) {
-                    apiState = await apiService.loadState();
-                } else {
-                    throw bulkErr;
-                }
-            }
-            const mergedFallback = applyApiState(apiState);
-            if (mergedFallback) persistLoadedStateToDb(mergedFallback);
-            if (currentTenantId) setLastSyncTimestamp(currentTenantId, new Date().toISOString());
-            onCriticalLoaded?.();
-        } catch (err) {
-            console.error('[DIAG] refreshFromApi FAILED:', err);
-            onCriticalLoaded?.();
+            logger.logCategory('sync', '✅ refreshFromApi: merged server state', {
+                projects: merged.projects?.length ?? 0,
+                units: merged.units?.length ?? 0,
+                vendors: merged.vendors?.length ?? 0,
+                contacts: merged.contacts?.length ?? 0,
+                rentalAgreements: merged.rentalAgreements?.length ?? 0,
+                projectAgreements: merged.projectAgreements?.length ?? 0,
+                projectReceivedAssets: merged.projectReceivedAssets?.length ?? 0,
+                salesReturns: merged.salesReturns?.length ?? 0,
+                contracts: merged.contracts?.length ?? 0,
+                invoices: merged.invoices?.length ?? 0,
+                bills: merged.bills?.length ?? 0,
+                accounts: merged.accounts?.length ?? 0,
+                categories: merged.categories?.length ?? 0,
+                transactions: merged.transactions?.length ?? 0,
+                personalCategories: merged.personalCategories?.length ?? 0,
+                personalTransactions: merged.personalTransactions?.length ?? 0,
+                pmCycleAllocations: merged.pmCycleAllocations?.length ?? 0,
+                incremental: !!(lastSync && baselineHasCoreData),
+            });
+            _onCriticalLoaded?.();
+        } catch (e) {
+            logger.warnCategory('sync', '⚠️ refreshFromApi failed:', e);
         }
-    }, [dispatch, isAuthenticated, setStoredState, setInitMessage, setInitProgress, setLoadProgress, saveNow]);
+    }, [isAuthenticated, dispatch, setStoredState, currentTenantId]);
 
-    // Store refreshFromApi in a ref so WebSocket handlers always use the latest version
-    const refreshFromApiRef = useRef(refreshFromApi);
     useEffect(() => {
         refreshFromApiRef.current = refreshFromApi;
     }, [refreshFromApi]);
 
-    // Run refreshFromApi only after user logs in (not on initial load with existing session — init background sync handles that)
+    /** After auth hydrates, if init ran before isAuthenticated was true, SQLite had no API-backed projects — merge once. */
+    const didPostAuthApiMergeRef = useRef(false);
     useEffect(() => {
-        const handleLoginSuccess = () => {
-            logger.logCategory('sync', '📡 Login success: loading data from cloud...');
+        if (!isAuthenticated) {
+            didPostAuthApiMergeRef.current = false;
+            return;
+        }
+        if (isInitializing || isLocalOnlyMode() || apiStateLoadFailed) return;
+        if (didPostAuthApiMergeRef.current) return;
+        didPostAuthApiMergeRef.current = true;
+        void refreshFromApi();
+    }, [isAuthenticated, isInitializing, apiStateLoadFailed, refreshFromApi]);
 
-            // Clear stale sync timestamps so we always do a FULL load after fresh login.
-            // Auto-login is disabled, so every app launch clears auth → user must re-login.
-            // Without this, a stale lastSyncTimestamp causes incremental sync (delta only),
-            // which misses data that existed before the timestamp.
-            try {
-                const keysToRemove: string[] = [];
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key?.startsWith('pbookspro_lastSync_')) keysToRemove.push(key);
-                }
-                keysToRemove.forEach(k => localStorage.removeItem(k));
-            } catch (e) { /* ignore */ }
+    /** Socket.IO: merge server state when another user mutates data (tenant-scoped rooms on API). */
+    useEffect(() => {
+        if (!isAuthenticated || isLocalOnlyMode() || apiStateLoadFailed) {
+            disconnectRealtimeSocket();
+            return;
+        }
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        if (!token) {
+            disconnectRealtimeSocket();
+            return;
+        }
 
-            // Brief delay so localStorage/auth state and API client are fully updated before first request
-            setTimeout(() => {
-                refreshFromApiRef.current(undefined);
-            }, 500);
-
-            // Safety net: retry data load if state is still empty 5s after login
-            setTimeout(() => {
-                const s = stateRef.current;
-                const dataLoaded = (s.contacts?.length ?? 0) > 0 || (s.transactions?.length ?? 0) > 0 || (s.accounts?.length ?? 0) > 0;
-                if (!dataLoaded) {
-                    refreshFromApiRef.current(undefined);
-                }
-            }, 5000);
+        let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+        const scheduleRefresh = () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                debounceTimer = null;
+                void refreshFromApiRef.current?.();
+            }, 400);
         };
-        window.addEventListener('auth:login-success', handleLoginSuccess);
-        return () => window.removeEventListener('auth:login-success', handleLoginSuccess);
-    }, []);
+
+        const handleEntity = (payload: { sourceUserId?: string }) => {
+            if (payload?.sourceUserId && auth.user?.id && payload.sourceUserId === auth.user.id) {
+                return;
+            }
+            scheduleRefresh();
+        };
+
+        const s = connectRealtimeSocket(token);
+        s.on('entity_created', handleEntity);
+        s.on('entity_updated', handleEntity);
+        s.on('entity_deleted', handleEntity);
+
+        return () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            disconnectRealtimeSocket();
+        };
+    }, [isAuthenticated, auth.user?.id, currentTenantId, apiStateLoadFailed]);
+
+    /** When user returns to the tab, refresh from API so multi-user changes (e.g. new projects) appear. */
+    useEffect(() => {
+        if (!isAuthenticated || isLocalOnlyMode() || apiStateLoadFailed) return;
+        let debounce: ReturnType<typeof setTimeout> | null = null;
+        const onVisibility = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (debounce) clearTimeout(debounce);
+            debounce = setTimeout(() => {
+                debounce = null;
+                void refreshFromApiRef.current?.();
+            }, 1200);
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibility);
+            if (debounce) clearTimeout(debounce);
+        };
+    }, [isAuthenticated, apiStateLoadFailed]);
+
 
     // Reload AppContext from local DB when bidirectional sync completes (sync writes to DB but does not update React state)
     useEffect(() => {
@@ -2984,13 +2960,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const dbService = getDatabaseService();
                 if (!dbService.isReady()) return;
                 const appStateRepo = await getAppStateRepository();
-                const loadedState = await appStateRepo.loadState();
-                if (loadedState && (loadedState.transactions?.length > 0 || loadedState.contacts?.length > 0 || loadedState.invoices?.length > 0 || loadedState.accounts?.length > 0)) {
+                let loadedState = await appStateRepo.loadState();
+                // Projects/units/vendors/contacts/rental/invoices/accounts and tenant app settings are not fully loaded from SQLite in API mode; merge from server so we never wipe them here.
+                if (!isLocalOnlyMode() && isAuthenticated) {
+                    try {
+                        const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
+                        const partial = await getAppStateApiService().loadState();
+                        loadedState = {
+                            ...loadedState,
+                            projects: partial.projects ?? loadedState.projects,
+                            units: partial.units ?? loadedState.units,
+                            vendors: partial.vendors ?? loadedState.vendors,
+                            contacts: partial.contacts ?? loadedState.contacts,
+                            rentalAgreements: partial.rentalAgreements ?? loadedState.rentalAgreements,
+                            projectAgreements: partial.projectAgreements ?? loadedState.projectAgreements,
+                            projectReceivedAssets: partial.projectReceivedAssets ?? loadedState.projectReceivedAssets,
+                            salesReturns: partial.salesReturns ?? loadedState.salesReturns,
+                            invoices: partial.invoices ?? loadedState.invoices,
+                            accounts: partial.accounts ?? loadedState.accounts,
+                            categories: partial.categories ?? loadedState.categories,
+                            bills: partial.bills ?? loadedState.bills,
+                            transactions: partial.transactions ?? loadedState.transactions,
+                            recurringInvoiceTemplates:
+                                partial.recurringInvoiceTemplates ?? loadedState.recurringInvoiceTemplates,
+                            pmCycleAllocations: partial.pmCycleAllocations ?? loadedState.pmCycleAllocations,
+                            contracts: partial.contracts ?? loadedState.contracts,
+                            budgets: partial.budgets ?? loadedState.budgets,
+                            personalCategories: partial.personalCategories ?? loadedState.personalCategories,
+                            personalTransactions: partial.personalTransactions ?? loadedState.personalTransactions,
+                            ...pickTenantSettingsPartial(partial),
+                        };
+                    } catch (apiErr) {
+                        logger.warnCategory('sync', '⚠️ Bidir reload: could not merge projects/units/vendors/contacts/app settings from API:', apiErr);
+                    }
+                }
+                if (
+                    loadedState &&
+                    (loadedState.transactions?.length > 0 ||
+                        loadedState.contacts?.length > 0 ||
+                        loadedState.invoices?.length > 0 ||
+                        loadedState.accounts?.length > 0 ||
+                        (loadedState.rentalAgreements?.length ?? 0) > 0)
+                ) {
                     dispatch({ type: 'SET_STATE', payload: loadedState, _isRemote: true } as any);
                     setStoredState(loadedState as AppState);
+                    markDbLoadCompleteRef.current?.();
                     logger.logCategory('sync', '✅ Reloaded AppContext from DB after bidirectional sync', {
                         transactions: loadedState.transactions?.length ?? 0,
                         contacts: loadedState.contacts?.length ?? 0,
+                        projects: loadedState.projects?.length ?? 0,
+                        vendors: loadedState.vendors?.length ?? 0,
                     });
                 }
             } catch (err) {
@@ -2999,7 +3018,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         window.addEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
         return () => window.removeEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
-    }, [dispatch, setStoredState]);
+    }, [dispatch, setStoredState, isAuthenticated, isLocalOnlyMode]);
 
     // Listen for cloud settings loaded after login
     useEffect(() => {
@@ -3054,806 +3073,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
     }, [dispatch]);
 
-    // Real-time sync via WebSocket events
+
+    // 3. Unified SQLite persistence: any change to persisted data (add/update/delete) triggers saveNow.
+    // Uses a full-data fingerprint (excluding navigation/UI-only fields) so in-place edits are detected,
+    // not only array length changes. Serializes saves via a promise chain so rapid edits flush in order.
+    const persistBaselineFingerprintRef = useRef<string | null>(null);
+    const persistQueueRef = useRef(Promise.resolve());
+
     useEffect(() => {
-        let cleanup: (() => void) | undefined;
+        if (isInitializing || useFallback || !saveNow) return;
 
-        const setupWebSocket = async () => {
-            if (!isAuthenticated) return;
-            try {
-                const { apiClient } = await import('../services/api/client');
-                const token = apiClient.getToken();
-                const tenantId = apiClient.getTenantId();
-                if (!token || !tenantId) return;
-                if (apiClient.isTokenExpired()) {
-                    console.warn('⚠️ Token expired, skipping WebSocket connection');
-                    return;
-                }
+        const fp = getPersistableStateFingerprint(state);
+        if (persistBaselineFingerprintRef.current === null) {
+            persistBaselineFingerprintRef.current = fp;
+            return;
+        }
+        if (fp === persistBaselineFingerprintRef.current) return;
 
-                // Check if real-time sync should be enabled
-                // Sync is only enabled if there are 2+ active users in the organization
-                let shouldEnableSync = false;
+        persistQueueRef.current = persistQueueRef.current
+            .then(async () => {
                 try {
-                    const syncStatus = await apiClient.get<{ shouldEnableSync: boolean; userCount: number }>('/tenants/should-enable-sync');
-                    shouldEnableSync = syncStatus.shouldEnableSync;
-                    if (!shouldEnableSync) {
-                        return;
-                    }
-                } catch (syncCheckError) {
-                    // If check fails, log warning but don't block - allow connection to proceed
-                    // This ensures sync still works even if the endpoint is temporarily unavailable
-                    console.warn('⚠️ Could not determine if sync should be enabled, proceeding with connection:', syncCheckError);
-                    shouldEnableSync = true;
-                }
-
-                if (!shouldEnableSync) return;
-
-                const { getWebSocketClient } = await import('../services/websocketClient');
-                const ws = getWebSocketClient();
-                ws.connect(token, tenantId);
-
-                // Throttle refresh to avoid bursts
-                let pending = false;
-                const scheduleRefresh = (eventData?: any) => {
-                    // Ignore events from the current user - they already have the data locally
-                    // This prevents the refresh from overwriting optimistic updates
-                    const currentUser = stateRef.current.currentUser;
-                    if (eventData?.userId && currentUser?.id) {
-                        if (eventData.userId === currentUser.id) {
-                            return;
-                        }
-                    }
-
-                    if (pending) return;
-                    pending = true;
-                    setTimeout(() => {
-                        pending = false;
-                        // Use ref to get latest refreshFromApi without adding it as dependency
-                        refreshFromApiRef.current();
-                    }, 300);
-                };
-
-                // Helper: normalize bill shape from server event payload
-                const normalizeBillFromEvent = (payloadBill: any) => {
-                    if (!payloadBill) return null;
-                    return {
-                        id: payloadBill.id,
-                        billNumber: payloadBill.bill_number ?? payloadBill.billNumber,
-                        contactId: payloadBill.contact_id ?? payloadBill.contactId,
-                        amount: typeof payloadBill.amount === 'number' ? payloadBill.amount : parseFloat(String(payloadBill.amount ?? '0')),
-                        paidAmount: typeof payloadBill.paid_amount === 'number'
-                            ? payloadBill.paid_amount
-                            : (typeof payloadBill.paidAmount === 'number' ? payloadBill.paidAmount : parseFloat(String(payloadBill.paid_amount ?? payloadBill.paidAmount ?? '0'))),
-                        status: payloadBill.status ?? 'Unpaid',
-                        issueDate: payloadBill.issue_date ?? payloadBill.issueDate,
-                        dueDate: payloadBill.due_date ?? payloadBill.dueDate ?? undefined,
-                        description: payloadBill.description ?? undefined,
-                        categoryId: payloadBill.category_id ?? payloadBill.categoryId ?? undefined,
-                        projectId: payloadBill.project_id ?? payloadBill.projectId ?? undefined,
-                        buildingId: payloadBill.building_id ?? payloadBill.buildingId ?? undefined,
-                        propertyId: payloadBill.property_id ?? payloadBill.propertyId ?? undefined,
-                        projectAgreementId: payloadBill.project_agreement_id ?? payloadBill.projectAgreementId ?? undefined,
-                        contractId: payloadBill.contract_id ?? payloadBill.contractId ?? undefined,
-                        staffId: payloadBill.staff_id ?? payloadBill.staffId ?? undefined,
-                        documentPath: payloadBill.document_path ?? payloadBill.documentPath ?? undefined,
-                        expenseCategoryItems: (() => {
-                            const items = payloadBill.expense_category_items ?? payloadBill.expenseCategoryItems;
-                            if (!items) return undefined;
-                            if (typeof items === 'string' && items.trim().length > 0) {
-                                try { return JSON.parse(items); } catch { return undefined; }
-                            }
-                            return Array.isArray(items) ? items : undefined;
-                        })()
-                    };
-                };
-
-                // Helper: normalize transaction from event payload
-                const normalizeTransactionFromEvent = (t: any) => {
-                    if (!t) return null;
-                    return {
-                        id: t.id,
-                        type: t.type,
-                        subtype: t.subtype ?? undefined,
-                        amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
-                        date: t.date,
-                        description: t.description ?? undefined,
-                        accountId: t.account_id ?? t.accountId,
-                        fromAccountId: t.from_account_id ?? t.fromAccountId ?? undefined,
-                        toAccountId: t.to_account_id ?? t.toAccountId ?? undefined,
-                        categoryId: t.category_id ?? t.categoryId ?? undefined,
-                        contactId: t.contact_id ?? t.contactId ?? undefined,
-                        projectId: t.project_id ?? t.projectId ?? undefined,
-                        buildingId: t.building_id ?? t.buildingId ?? undefined,
-                        propertyId: t.property_id ?? t.propertyId ?? undefined,
-                        unitId: t.unit_id ?? t.unitId ?? undefined,
-                        invoiceId: t.invoice_id ?? t.invoiceId ?? undefined,
-                        billId: t.bill_id ?? t.billId ?? undefined,
-                        contractId: t.contract_id ?? t.contractId ?? undefined,
-                        agreementId: t.agreement_id ?? t.agreementId ?? undefined,
-                        batchId: t.batch_id ?? t.batchId ?? undefined,
-                        isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
-                        userId: t.user_id ?? t.userId ?? undefined,
-                        children: t.children ?? undefined
-                    };
-                };
-
-                // Helper: normalize invoice from event payload
-                const normalizeInvoiceFromEvent = (inv: any) => {
-                    if (!inv) return null;
-                    return {
-                        id: inv.id,
-                        invoiceNumber: inv.invoice_number ?? inv.invoiceNumber ?? '',
-                        contactId: inv.contact_id ?? inv.contactId ?? '',
-                        amount: typeof inv.amount === 'number' ? inv.amount : parseFloat(String(inv.amount ?? '0')),
-                        paidAmount: typeof inv.paid_amount === 'number'
-                            ? inv.paid_amount
-                            : (typeof inv.paidAmount === 'number' ? inv.paidAmount : parseFloat(String(inv.paid_amount ?? inv.paidAmount ?? '0'))),
-                        status: inv.status ?? 'Unpaid',
-                        issueDate: inv.issue_date ?? inv.issueDate ?? '',
-                        dueDate: inv.due_date ?? inv.dueDate ?? '',
-                        invoiceType: inv.invoice_type ?? inv.invoiceType ?? 'Sales',
-                        description: inv.description ?? undefined,
-                        projectId: inv.project_id ?? inv.projectId ?? undefined,
-                        buildingId: inv.building_id ?? inv.buildingId ?? undefined,
-                        propertyId: inv.property_id ?? inv.propertyId ?? undefined,
-                        unitId: inv.unit_id ?? inv.unitId ?? undefined,
-                        categoryId: inv.category_id ?? inv.categoryId ?? undefined,
-                        agreementId: inv.agreement_id ?? inv.agreementId ?? undefined,
-                        securityDepositCharge: inv.security_deposit_charge ?? inv.securityDepositCharge ?? undefined,
-                        serviceCharges: inv.service_charges ?? inv.serviceCharges ?? undefined,
-                        rentalMonth: inv.rental_month ?? inv.rentalMonth ?? undefined,
-                    };
-                };
-
-                // Helper: normalize rental agreement from event payload
-                const normalizeRentalAgreementFromEvent = (ra: any) => {
-                    if (!ra) return null;
-                    return {
-                        id: ra.id,
-                        agreementNumber: ra.agreement_number ?? ra.agreementNumber ?? '',
-                        contactId: ra.contact_id ?? ra.contactId ?? '',
-                        propertyId: ra.property_id ?? ra.propertyId ?? '',
-                        startDate: ra.start_date ?? ra.startDate ?? '',
-                        endDate: ra.end_date ?? ra.endDate ?? '',
-                        monthlyRent: typeof ra.monthly_rent === 'number' ? ra.monthly_rent : (typeof ra.monthlyRent === 'number' ? ra.monthlyRent : parseFloat(String(ra.monthly_rent ?? ra.monthlyRent ?? '0'))),
-                        rentDueDate: ra.rent_due_date ?? ra.rentDueDate ?? undefined,
-                        status: ra.status ?? 'Active',
-                        description: ra.description ?? undefined,
-                        securityDeposit: ra.security_deposit ?? ra.securityDeposit ?? undefined,
-                        brokerId: ra.broker_id ?? ra.brokerId ?? undefined,
-                        brokerFee: ra.broker_fee ?? ra.brokerFee ?? undefined,
-                        ownerId: ra.owner_id ?? ra.ownerId ?? undefined,
-                    };
-                };
-
-                // Helper: normalize recurring invoice template from event payload
-                const normalizeRecurringTemplateFromEvent = (t: any) => {
-                    if (!t) return null;
-                    return {
-                        id: t.id,
-                        contactId: t.contact_id ?? t.contactId ?? '',
-                        propertyId: t.property_id ?? t.propertyId ?? '',
-                        buildingId: t.building_id ?? t.buildingId ?? '',
-                        amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
-                        descriptionTemplate: t.description_template ?? t.descriptionTemplate ?? '',
-                        dayOfMonth: typeof t.day_of_month === 'number' ? t.day_of_month : parseInt(String(t.day_of_month ?? t.dayOfMonth ?? '1')),
-                        nextDueDate: t.next_due_date ?? t.nextDueDate ?? '',
-                        active: t.active === true || t.active === 1 || t.active === 'true',
-                        agreementId: t.agreement_id ?? t.agreementId ?? undefined,
-                        invoiceType: t.invoice_type ?? t.invoiceType ?? 'Rental',
-                        frequency: t.frequency ?? 'Monthly',
-                        autoGenerate: t.auto_generate === true || t.auto_generate === 1 || t.autoGenerate === true,
-                        maxOccurrences: t.max_occurrences ?? t.maxOccurrences ?? undefined,
-                        generatedCount: typeof t.generated_count === 'number' ? t.generated_count : (typeof t.generatedCount === 'number' ? t.generatedCount : parseInt(String(t.generated_count ?? t.generatedCount ?? '0'))),
-                        lastGeneratedDate: t.last_generated_date ?? t.lastGeneratedDate ?? undefined,
-                        deletedAt: t.deleted_at ?? t.deletedAt ?? undefined,
-                    };
-                };
-
-                const events = [
-                    'transaction:created', 'transaction:updated', 'transaction:deleted',
-                    'bill:created', 'bill:updated', 'bill:deleted',
-                    'invoice:created', 'invoice:updated', 'invoice:deleted',
-                    'contact:created', 'contact:updated', 'contact:deleted',
-                    'vendor:created', 'vendor:updated', 'vendor:deleted',
-                    'project:created', 'project:updated', 'project:deleted',
-                    'account:created', 'account:updated', 'account:deleted',
-                    'category:created', 'category:updated', 'category:deleted',
-                    'budget:created', 'budget:updated', 'budget:deleted',
-                    'rental_agreement:created', 'rental_agreement:updated', 'rental_agreement:deleted',
-                    'project_agreement:created', 'project_agreement:updated', 'project_agreement:deleted',
-                    'sales_return:created', 'sales_return:updated', 'sales_return:deleted',
-                    'contract:created', 'contract:updated', 'contract:deleted',
-                    'building:created', 'building:updated', 'building:deleted',
-                    'property:created', 'property:updated', 'property:deleted',
-                    'unit:created', 'unit:updated', 'unit:deleted',
-                    'loan_advance_record:created', 'loan_advance_record:updated', 'loan_advance_record:deleted',
-                    'installment_plan:created', 'installment_plan:updated', 'installment_plan:deleted',
-                    'plan_amenity:created', 'plan_amenity:updated', 'plan_amenity:deleted',
-                    'recurring_invoice_template:created', 'recurring_invoice_template:updated', 'recurring_invoice_template:deleted'
-                ];
-
-                // Events that have specific handlers below → we dispatch directly, no full refresh.
-                // Only schedule a full refresh for event types we don't handle specifically (avoids re-sync on every WS event / navigation).
-                const eventsWithSpecificHandlers = new Set([
-                    'bill:created', 'bill:updated', 'bill:deleted',
-                    'transaction:created', 'transaction:updated', 'transaction:deleted',
-                    'invoice:created', 'invoice:updated', 'invoice:deleted',
-                    'rental_agreement:created', 'rental_agreement:updated', 'rental_agreement:deleted',
-                    'recurring_invoice_template:created', 'recurring_invoice_template:updated', 'recurring_invoice_template:deleted',
-                    'contact:created', 'contact:updated', 'contact:deleted',
-                    'vendor:created', 'vendor:updated', 'vendor:deleted',
-                    'project:created', 'project:updated', 'project:deleted',
-                    'building:created', 'building:updated', 'building:deleted',
-                    'property:created', 'property:updated', 'property:deleted',
-                    'unit:created', 'unit:updated', 'unit:deleted',
-                ]);
-                const fallbackEvents = events.filter(evt => !eventsWithSpecificHandlers.has(evt));
-                const unsubFallback = fallbackEvents.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
-
-                // --- Batched WebSocket dispatch ---
-                // Instead of dispatching immediately per event, accumulate into a buffer
-                // and flush once per 150ms window to minimize re-render cascades on other users.
-                const currentUserId = stateRef.current.currentUser?.id;
-                const unsubSpecific: Array<() => void> = [];
-
-                const wsBatchBuffer = {
-                    upserts: {} as Record<string, any[]>,
-                    deletes: {} as Record<string, string[]>,
-                    flushTimer: null as ReturnType<typeof setTimeout> | null,
-                };
-
-                const enqueueUpsert = (entityKey: string, item: any) => {
-                    if (!wsBatchBuffer.upserts[entityKey]) wsBatchBuffer.upserts[entityKey] = [];
-                    wsBatchBuffer.upserts[entityKey].push(item);
-                    scheduleBatchFlush();
-                };
-
-                const enqueueDelete = (entityKey: string, id: string) => {
-                    if (!wsBatchBuffer.deletes[entityKey]) wsBatchBuffer.deletes[entityKey] = [];
-                    wsBatchBuffer.deletes[entityKey].push(id);
-                    scheduleBatchFlush();
-                };
-
-                const scheduleBatchFlush = () => {
-                    if (wsBatchBuffer.flushTimer) return;
-                    wsBatchBuffer.flushTimer = setTimeout(flushWsBatch, 150);
-                };
-
-                const flushWsBatch = () => {
-                    wsBatchBuffer.flushTimer = null;
-                    const upserts = wsBatchBuffer.upserts;
-                    const deletes = wsBatchBuffer.deletes;
-                    wsBatchBuffer.upserts = {};
-                    wsBatchBuffer.deletes = {};
-
-                    const hasUpserts = Object.keys(upserts).some(k => upserts[k].length > 0);
-                    const hasDeletes = Object.keys(deletes).some(k => deletes[k].length > 0);
-                    if (hasUpserts || hasDeletes) {
-                        dispatch({
-                            type: 'BATCH_WS_SYNC',
-                            payload: { upserts, deletes },
-                            _isRemote: true
-                        } as any);
-                    }
-                };
-
-                // Bill events
-                unsubSpecific.push(ws.on('bill:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadBill = data?.bill ?? data;
-                    const normalized = normalizeBillFromEvent(payloadBill);
-                    if (!normalized) return;
-                    enqueueUpsert('bills', normalized);
-
-                    const existing = stateRef.current.bills.find(b => b.id === normalized.id);
-                    if (existing && (existing.paidAmount !== normalized.paidAmount || existing.status !== normalized.status)) {
-                        const relatedAllocation = stateRef.current.pmCycleAllocations?.find(
-                            (a: any) => a.billId === normalized.id
-                        );
-                        if (relatedAllocation) {
-                            enqueueUpsert('pmCycleAllocations', {
-                                ...relatedAllocation,
-                                paidAmount: normalized.paidAmount || 0,
-                                status: normalized.status === 'Paid' ? 'paid' :
-                                    normalized.status === 'Partially Paid' ? 'partially_paid' : 'unpaid'
-                            });
-                        }
-                    }
-                }));
-                unsubSpecific.push(ws.on('bill:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadBill = data?.bill ?? data;
-                    const normalized = normalizeBillFromEvent(payloadBill);
-                    if (!normalized) return;
-                    enqueueUpsert('bills', normalized);
-                }));
-                unsubSpecific.push(ws.on('bill:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.billId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('bills', id);
-                }));
-
-                // Transaction events
-                unsubSpecific.push(ws.on('transaction:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadTx = data?.transaction ?? data;
-                    const normalizedTx = normalizeTransactionFromEvent(payloadTx);
-                    if (!normalizedTx) return;
-                    enqueueUpsert('transactions', normalizedTx);
-                }));
-                unsubSpecific.push(ws.on('transaction:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadTx = data?.transaction ?? data;
-                    const normalizedTx = normalizeTransactionFromEvent(payloadTx);
-                    if (!normalizedTx) return;
-                    enqueueUpsert('transactions', normalizedTx);
-                }));
-                unsubSpecific.push(ws.on('transaction:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.transactionId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('transactions', id);
-                }));
-
-                // Invoice events
-                unsubSpecific.push(ws.on('invoice:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadInv = data?.invoice ?? data;
-                    const normalized = normalizeInvoiceFromEvent(payloadInv);
-                    if (!normalized) return;
-                    enqueueUpsert('invoices', normalized);
-                }));
-                unsubSpecific.push(ws.on('invoice:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadInv = data?.invoice ?? data;
-                    const normalized = normalizeInvoiceFromEvent(payloadInv);
-                    if (!normalized) return;
-                    enqueueUpsert('invoices', normalized);
-                }));
-                unsubSpecific.push(ws.on('invoice:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.invoiceId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('invoices', id);
-                }));
-
-                // Rental Agreement events
-                unsubSpecific.push(ws.on('rental_agreement:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadAgreement = data?.agreement ?? data?.rentalAgreement ?? data?.rental_agreement ?? data;
-                    const normalized = normalizeRentalAgreementFromEvent(payloadAgreement);
-                    if (!normalized) return;
-                    enqueueUpsert('rentalAgreements', normalized);
-                }));
-                unsubSpecific.push(ws.on('rental_agreement:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadAgreement = data?.agreement ?? data?.rentalAgreement ?? data?.rental_agreement ?? data;
-                    const normalized = normalizeRentalAgreementFromEvent(payloadAgreement);
-                    if (!normalized) return;
-                    enqueueUpsert('rentalAgreements', normalized);
-                }));
-                unsubSpecific.push(ws.on('rental_agreement:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.agreementId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('rentalAgreements', id);
-                }));
-
-                // Recurring Invoice Template events
-                unsubSpecific.push(ws.on('recurring_invoice_template:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadTemplate = data?.template ?? data;
-                    const normalized = normalizeRecurringTemplateFromEvent(payloadTemplate);
-                    if (!normalized) return;
-                    enqueueUpsert('recurringInvoiceTemplates', normalized);
-                }));
-                unsubSpecific.push(ws.on('recurring_invoice_template:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadTemplate = data?.template ?? data;
-                    const normalized = normalizeRecurringTemplateFromEvent(payloadTemplate);
-                    if (!normalized) return;
-                    enqueueUpsert('recurringInvoiceTemplates', normalized);
-                }));
-                unsubSpecific.push(ws.on('recurring_invoice_template:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.templateId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('recurringInvoiceTemplates', id);
-                }));
-
-                // Contact events
-                unsubSpecific.push(ws.on('contact:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadContact = data?.contact ?? data;
-                    if (!payloadContact || !payloadContact.id) return;
-                    const normalized = {
-                        id: payloadContact.id,
-                        name: payloadContact.name,
-                        type: payloadContact.type,
-                        contactNo: payloadContact.contact_no ?? payloadContact.contactNo ?? undefined,
-                        companyName: payloadContact.company_name ?? payloadContact.companyName ?? undefined,
-                        address: payloadContact.address ?? undefined,
-                        description: payloadContact.description ?? undefined,
-                        userId: payloadContact.user_id ?? payloadContact.userId ?? undefined,
-                        createdAt: payloadContact.created_at ?? payloadContact.createdAt ?? new Date().toISOString(),
-                        updatedAt: payloadContact.updated_at ?? payloadContact.updatedAt ?? new Date().toISOString()
-                    };
-                    enqueueUpsert('contacts', normalized);
-                }));
-                unsubSpecific.push(ws.on('contact:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadContact = data?.contact ?? data;
-                    if (!payloadContact || !payloadContact.id) return;
-                    const normalized = {
-                        id: payloadContact.id,
-                        name: payloadContact.name,
-                        type: payloadContact.type,
-                        contactNo: payloadContact.contact_no ?? payloadContact.contactNo ?? undefined,
-                        companyName: payloadContact.company_name ?? payloadContact.companyName ?? undefined,
-                        address: payloadContact.address ?? undefined,
-                        description: payloadContact.description ?? undefined,
-                        userId: payloadContact.user_id ?? payloadContact.userId ?? undefined,
-                        createdAt: payloadContact.created_at ?? payloadContact.createdAt ?? undefined,
-                        updatedAt: payloadContact.updated_at ?? payloadContact.updatedAt ?? new Date().toISOString()
-                    };
-                    enqueueUpsert('contacts', normalized);
-                }));
-                unsubSpecific.push(ws.on('contact:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.contactId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('contacts', id);
-                }));
-
-                // Vendor events
-                unsubSpecific.push(ws.on('vendor:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadVendor = data?.vendor ?? data;
-                    if (!payloadVendor || !payloadVendor.id) return;
-                    const normalized = {
-                        id: payloadVendor.id,
-                        name: payloadVendor.name,
-                        description: payloadVendor.description ?? undefined,
-                        contactNo: payloadVendor.contact_no ?? payloadVendor.contactNo ?? undefined,
-                        companyName: payloadVendor.company_name ?? payloadVendor.companyName ?? undefined,
-                        address: payloadVendor.address ?? undefined,
-                        userId: payloadVendor.user_id ?? payloadVendor.userId ?? undefined,
-                        createdAt: payloadVendor.created_at ?? payloadVendor.createdAt ?? new Date().toISOString(),
-                        updatedAt: payloadVendor.updated_at ?? payloadVendor.updatedAt ?? new Date().toISOString()
-                    };
-                    enqueueUpsert('vendors', normalized);
-                }));
-                unsubSpecific.push(ws.on('vendor:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadVendor = data?.vendor ?? data;
-                    if (!payloadVendor || !payloadVendor.id) return;
-                    const normalized = {
-                        id: payloadVendor.id,
-                        name: payloadVendor.name,
-                        description: payloadVendor.description ?? undefined,
-                        contactNo: payloadVendor.contact_no ?? payloadVendor.contactNo ?? undefined,
-                        companyName: payloadVendor.company_name ?? payloadVendor.companyName ?? undefined,
-                        address: payloadVendor.address ?? undefined,
-                        userId: payloadVendor.user_id ?? payloadVendor.userId ?? undefined,
-                        createdAt: payloadVendor.created_at ?? payloadVendor.createdAt ?? undefined,
-                        updatedAt: payloadVendor.updated_at ?? payloadVendor.updatedAt ?? new Date().toISOString()
-                    };
-                    enqueueUpsert('vendors', normalized);
-                }));
-                unsubSpecific.push(ws.on('vendor:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.vendorId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('vendors', id);
-                }));
-
-                // Project events
-                unsubSpecific.push(ws.on('project:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const p = data?.project ?? data;
-                    if (!p || !p.id) return;
-                    const normalized = {
-                        id: p.id, name: p.name || '',
-                        description: p.description ?? undefined,
-                        color: p.color ?? undefined,
-                        status: p.status ?? 'Active',
-                        installmentConfig: (() => { const c = p.installment_config ?? p.installmentConfig; if (!c) return undefined; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return undefined; } } return c; })(),
-                        pmConfig: (() => { const c = p.pm_config ?? p.pmConfig; if (!c) return undefined; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return undefined; } } return c; })(),
-                    };
-                    enqueueUpsert('projects', normalized);
-                }));
-                unsubSpecific.push(ws.on('project:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const p = data?.project ?? data;
-                    if (!p || !p.id) return;
-                    const existing = stateRef.current.projects.find(x => x.id === p.id);
-                    const normalized = {
-                        id: p.id, name: p.name || '',
-                        description: p.description ?? undefined,
-                        color: p.color ?? undefined,
-                        status: p.status ?? existing?.status ?? 'Active',
-                        installmentConfig: (() => { const c = p.installment_config ?? p.installmentConfig; if (!c) return existing?.installmentConfig; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return existing?.installmentConfig; } } return c; })(),
-                        pmConfig: (() => { const c = p.pm_config ?? p.pmConfig; if (!c) return existing?.pmConfig; if (typeof c === 'string') { try { return JSON.parse(c); } catch { return existing?.pmConfig; } } return c; })(),
-                    };
-                    enqueueUpsert('projects', normalized);
-                }));
-                unsubSpecific.push(ws.on('project:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.projectId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('projects', id);
-                }));
-
-                // Building events
-                unsubSpecific.push(ws.on('building:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const b = data?.building ?? data;
-                    if (!b || !b.id) return;
-                    enqueueUpsert('buildings', { id: b.id, name: b.name || '', description: b.description ?? undefined, color: b.color ?? undefined });
-                }));
-                unsubSpecific.push(ws.on('building:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const b = data?.building ?? data;
-                    if (!b || !b.id) return;
-                    enqueueUpsert('buildings', { id: b.id, name: b.name || '', description: b.description ?? undefined, color: b.color ?? undefined });
-                }));
-                unsubSpecific.push(ws.on('building:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.buildingId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('buildings', id);
-                }));
-
-                // Property events
-                unsubSpecific.push(ws.on('property:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const p = data?.property ?? data;
-                    if (!p || !p.id) return;
-                    const normalized = {
-                        id: p.id, name: p.name || '',
-                        ownerId: p.owner_id ?? p.ownerId ?? '',
-                        buildingId: p.building_id ?? p.buildingId ?? '',
-                        description: p.description ?? undefined,
-                        monthlyServiceCharge: (() => { const c = p.monthly_service_charge ?? p.monthlyServiceCharge; if (c == null) return undefined; return typeof c === 'number' ? c : parseFloat(String(c)); })(),
-                    };
-                    enqueueUpsert('properties', normalized);
-                }));
-                unsubSpecific.push(ws.on('property:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const p = data?.property ?? data;
-                    if (!p || !p.id) return;
-                    const existing = stateRef.current.properties.find(x => x.id === p.id);
-                    const normalized = {
-                        id: p.id, name: p.name || '',
-                        ownerId: p.owner_id ?? p.ownerId ?? existing?.ownerId ?? '',
-                        buildingId: p.building_id ?? p.buildingId ?? existing?.buildingId ?? '',
-                        description: p.description ?? undefined,
-                        monthlyServiceCharge: (() => { const c = p.monthly_service_charge ?? p.monthlyServiceCharge; if (c == null) return existing?.monthlyServiceCharge; return typeof c === 'number' ? c : parseFloat(String(c)); })(),
-                    };
-                    enqueueUpsert('properties', normalized);
-                }));
-                unsubSpecific.push(ws.on('property:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.propertyId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('properties', id);
-                }));
-
-                // Unit events
-                unsubSpecific.push(ws.on('unit:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const u = data?.unit ?? data;
-                    if (!u || !u.id) return;
-                    const normalized = {
-                        id: u.id, name: u.name || '',
-                        projectId: u.project_id ?? u.projectId ?? '',
-                        contactId: u.contact_id ?? u.contactId ?? undefined,
-                        salePrice: (() => { const v = u.sale_price ?? u.salePrice; if (v == null) return undefined; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
-                        description: u.description ?? undefined,
-                        type: u.type ?? undefined,
-                        area: (() => { const v = u.area; if (v == null) return undefined; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
-                        floor: u.floor ?? undefined,
-                    };
-                    enqueueUpsert('units', normalized);
-                }));
-                unsubSpecific.push(ws.on('unit:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const u = data?.unit ?? data;
-                    if (!u || !u.id) return;
-                    const existing = stateRef.current.units.find(x => x.id === u.id);
-                    const normalized = {
-                        id: u.id, name: u.name || '',
-                        projectId: u.project_id ?? u.projectId ?? existing?.projectId ?? '',
-                        contactId: u.contact_id ?? u.contactId ?? existing?.contactId ?? undefined,
-                        salePrice: (() => { const v = u.sale_price ?? u.salePrice; if (v == null) return existing?.salePrice; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
-                        description: u.description ?? undefined,
-                        type: u.type ?? existing?.type ?? undefined,
-                        area: (() => { const v = u.area; if (v == null) return existing?.area; return typeof v === 'number' ? v : parseFloat(String(v)); })(),
-                        floor: u.floor ?? existing?.floor ?? undefined,
-                    };
-                    enqueueUpsert('units', normalized);
-                }));
-                unsubSpecific.push(ws.on('unit:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.unitId ?? data?.id;
-                    if (!id) return;
-                    enqueueDelete('units', id);
-                }));
-
-                cleanup = () => {
-                    if (wsBatchBuffer.flushTimer) {
-                        clearTimeout(wsBatchBuffer.flushTimer);
-                        flushWsBatch();
-                    }
-                    unsubFallback.forEach(unsub => unsub());
-                    unsubSpecific.forEach(unsub => unsub());
-                    ws.disconnect();
-                };
-            } catch (err) {
-                console.error('⚠️ Failed to set up real-time sync:', err);
-            }
-        };
-
-        setupWebSocket();
-
-        // Re-check WebSocket connection periodically in case shouldEnableSync
-        // was false initially (e.g., User A logged in first when only 1 user existed,
-        // then User B logged in later making it 2 users).
-        const recheckInterval = setInterval(() => {
-            if (!isAuthenticated || cleanup) return;
-            setupWebSocket();
-        }, 60_000);
-
-        return () => {
-            clearInterval(recheckInterval);
-            if (cleanup) cleanup();
-        };
-    }, [isAuthenticated]); // Only depend on isAuthenticated, not refreshFromApi
-
-    // 3. Persist State Changes (with error handling) - OPTIMIZED: Skip navigation-only changes
-    // Use refs to track previous values for fast comparison (no JSON.stringify blocking)
-    const prevContactsLengthRef = useRef(state.contacts.length);
-    const prevTransactionsLengthRef = useRef(state.transactions.length);
-    const prevInvoicesLengthRef = useRef(state.invoices.length);
-    const prevBillsLengthRef = useRef(state.bills.length);
-    const prevAccountsLengthRef = useRef(state.accounts.length);
-    const prevProjectsLengthRef = useRef(state.projects.length);
-    const prevBuildingsLengthRef = useRef(state.buildings.length);
-    const prevPropertiesLengthRef = useRef(state.properties.length);
-    const prevUnitsLengthRef = useRef(state.units.length);
-    const prevCategoriesLengthRef = useRef(state.categories.length);
-    const prevCurrentUserRef = useRef(state.currentUser);
-    const prevCurrentPageRef = useRef(state.currentPage);
-
-    useEffect(() => {
-        if (!isInitializing) {
-            // Fast check: Skip if only navigation changed (most common case)
-            if (prevCurrentPageRef.current !== state.currentPage) {
-                prevCurrentPageRef.current = state.currentPage;
-                // Navigation change - skip save (performance optimization)
-                return;
-            }
-
-            // Fast length checks (no expensive operations)
-            const dataChanged =
-                prevContactsLengthRef.current !== state.contacts.length ||
-                prevTransactionsLengthRef.current !== state.transactions.length ||
-                prevInvoicesLengthRef.current !== state.invoices.length ||
-                prevBillsLengthRef.current !== state.bills.length ||
-                prevAccountsLengthRef.current !== state.accounts.length ||
-                prevProjectsLengthRef.current !== state.projects.length ||
-                prevBuildingsLengthRef.current !== state.buildings.length ||
-                prevPropertiesLengthRef.current !== state.properties.length ||
-                prevUnitsLengthRef.current !== state.units.length ||
-                prevCategoriesLengthRef.current !== state.categories.length ||
-                prevCurrentUserRef.current !== state.currentUser;
-
-            // Only persist if data changed
-            if (dataChanged) {
-                // Update refs
-                prevContactsLengthRef.current = state.contacts.length;
-                prevTransactionsLengthRef.current = state.transactions.length;
-                prevInvoicesLengthRef.current = state.invoices.length;
-                prevBillsLengthRef.current = state.bills.length;
-                prevAccountsLengthRef.current = state.accounts.length;
-                prevProjectsLengthRef.current = state.projects.length;
-                prevBuildingsLengthRef.current = state.buildings.length;
-                prevPropertiesLengthRef.current = state.properties.length;
-                prevUnitsLengthRef.current = state.units.length;
-                prevCategoriesLengthRef.current = state.categories.length;
-                prevCurrentUserRef.current = state.currentUser;
-
-                // Defer save to avoid blocking (use requestIdleCallback or setTimeout)
-                if ('requestIdleCallback' in window) {
-                    requestIdleCallback(() => {
-                        try {
-                            setStoredState(state);
-                        } catch (error) {
-                            console.error('Failed to persist state:', error);
-                        }
-                    });
-                } else {
-                    setTimeout(() => {
-                        try {
-                            setStoredState(state);
-                        } catch (error) {
-                            console.error('Failed to persist state:', error);
-                        }
-                    }, 0);
-                }
-            }
-        }
-    }, [state, setStoredState, isInitializing]);
-
-    // 4. Force immediate save for critical operations (LOGIN, LOGOUT, ADD_CONTACT, assets, etc.)
-    const previousContactsLengthRef = useRef(state.contacts.length);
-    const previousTransactionsLengthRef = useRef(state.transactions.length);
-    const previousBillsLengthRef = useRef(state.bills.length);
-    const previousInvoicesLengthRef = useRef(state.invoices.length);
-    const previousRentalAgreementsLengthRef = useRef(state.rentalAgreements.length);
-    const previousProjectsLengthRef = useRef(state.projects.length);
-    const previousBuildingsLengthRef = useRef(state.buildings.length);
-    const previousPropertiesLengthRef = useRef(state.properties.length);
-    const previousUnitsLengthRef = useRef(state.units.length);
-
-    useEffect(() => {
-        if (!isInitializing) {
-            const contactsChanged = state.contacts.length !== previousContactsLengthRef.current;
-            const transactionsChanged = state.transactions.length !== previousTransactionsLengthRef.current;
-            const billsChanged = state.bills.length !== previousBillsLengthRef.current;
-            const invoicesChanged = state.invoices.length !== previousInvoicesLengthRef.current;
-            const rentalAgreementsChanged = state.rentalAgreements.length !== previousRentalAgreementsLengthRef.current;
-            const projectsChanged = state.projects.length !== previousProjectsLengthRef.current;
-            const buildingsChanged = state.buildings.length !== previousBuildingsLengthRef.current;
-            const propertiesChanged = state.properties.length !== previousPropertiesLengthRef.current;
-            const unitsChanged = state.units.length !== previousUnitsLengthRef.current;
-
-            if (contactsChanged || transactionsChanged || billsChanged || invoicesChanged || rentalAgreementsChanged ||
-                projectsChanged || buildingsChanged || propertiesChanged || unitsChanged) {
-                previousContactsLengthRef.current = state.contacts.length;
-                previousTransactionsLengthRef.current = state.transactions.length;
-                previousBillsLengthRef.current = state.bills.length;
-                previousInvoicesLengthRef.current = state.invoices.length;
-                previousRentalAgreementsLengthRef.current = state.rentalAgreements.length;
-                previousProjectsLengthRef.current = state.projects.length;
-                previousBuildingsLengthRef.current = state.buildings.length;
-                previousPropertiesLengthRef.current = state.properties.length;
-                previousUnitsLengthRef.current = state.units.length;
-
-                if (!useFallback && saveNow) {
-                    const doSave = async () => {
-                        try {
-                            await saveNow(state);
-                        } catch (error) {
-                            console.error('❌ Failed to save state after data change:', error);
-                            const { getErrorLogger } = await import('../services/errorLogger');
-                            getErrorLogger().logError(error instanceof Error ? error : new Error(String(error)), {
-                                errorType: 'immediate_save_failed',
-                                componentStack: 'AppContext immediate save',
-                                stateSnapshot: {
-                                    contacts: state.contacts.length,
-                                    transactions: state.transactions.length,
-                                    bills: state.bills.length,
-                                    invoices: state.invoices.length,
-                                    rentalAgreements: state.rentalAgreements.length,
-                                    projects: state.projects.length,
-                                    buildings: state.buildings.length
-                                }
-                            });
-                        }
-                    };
-                    if (transactionsChanged || rentalAgreementsChanged || projectsChanged || buildingsChanged || propertiesChanged || unitsChanged) {
-                        doSave();
-                    } else {
-                        const saveTimer = setTimeout(doSave, 200);
-                        return () => clearTimeout(saveTimer);
+                    await saveNow(stateRef.current);
+                    persistBaselineFingerprintRef.current = getPersistableStateFingerprint(stateRef.current);
+                } catch (error) {
+                    console.error('❌ Failed to persist state to SQLite:', error);
+                    try {
+                        const { getErrorLogger } = await import('../services/errorLogger');
+                        getErrorLogger().logError(error instanceof Error ? error : new Error(String(error)), {
+                            errorType: 'auto_persist_failed',
+                            componentStack: 'AppContext unified persist',
+                        });
+                    } catch {
+                        /* ignore */
                     }
                 }
-            }
-        }
-    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, state.rentalAgreements.length, state.projects.length, state.buildings.length, state.properties.length, state.units.length, isInitializing, state, useFallback, saveNow]);
+            })
+            .catch(() => {});
+    }, [state, isInitializing, useFallback, saveNow]);
 
     // 🔧 FIX: Sync authenticated user from AuthContext to AppContext state
     useEffect(() => {
@@ -3936,29 +3192,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state.currentUser, isInitializing, state, useFallback, saveNow]);
 
-    // Listen for logout event to save state before logout
+    // Listen for logout event to save state before logout / update install (must dispatch detail.success for UpdateContext.installUpdate)
     useEffect(() => {
-        const handleSaveStateBeforeLogout = async (event: CustomEvent) => {
+        const handleSaveStateBeforeLogout = async (_event: CustomEvent) => {
+            let success = false;
+            const snapshot = stateRef.current;
             try {
                 logger.logCategory('database', '💾 Saving state before logout...');
-                if (!useFallback && saveNow) {
-                    await saveNow(state, { disableSyncQueueing: true });
+                if (useFallback) {
+                    // No native SQLite path; nothing to flush here
+                    success = true;
+                } else if (saveNow) {
+                    await saveNow(snapshot, { disableSyncQueueing: true });
                     logger.logCategory('database', '✅ State saved successfully before logout');
-                } else if (!useFallback) {
+                    success = true;
+                } else {
                     const dbService = getDatabaseService();
                     if (dbService.isReady()) {
                         const appStateRepo = await getAppStateRepository();
-                        await appStateRepo.saveState(state, true);
+                        await appStateRepo.saveState(snapshot, true);
                         logger.logCategory('database', '✅ State saved successfully before logout');
+                        success = true;
                     } else {
                         logger.warnCategory('database', '⚠️ Database not ready, skipping save before logout');
+                        success = false;
                     }
                 }
-                window.dispatchEvent(new CustomEvent('state-saved-for-logout'));
             } catch (error) {
                 logger.errorCategory('database', '❌ Failed to save state before logout:', error);
-                window.dispatchEvent(new CustomEvent('state-saved-for-logout'));
+                success = false;
             }
+            window.dispatchEvent(new CustomEvent('state-saved-for-logout', { detail: { success } }));
         };
 
         if (typeof window !== 'undefined') {
@@ -3967,7 +3231,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 window.removeEventListener('save-state-before-logout', handleSaveStateBeforeLogout as EventListener);
             };
         }
-    }, [state, useFallback, saveNow]);
+    }, [useFallback, saveNow]);
 
     // Listen for incremental sync updates — accumulate chunks and dispatch once via requestIdleCallback
     useEffect(() => {
@@ -4014,12 +3278,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Auto-sync: on session restore, load from API when state is empty (init may have run before auth completed)
     const sessionRestoreRefreshDoneRef = useRef(false);
     useEffect(() => {
-        // When authenticated and init done, if state has no records, load from API (session restore case)
-        if (isAuthenticated && !isInitializing && !sessionRestoreRefreshDoneRef.current) {
+        // When authenticated and init done, if state has no core records OR no projects (API-only master data), refresh from API
+        if (
+            isAuthenticated &&
+            !isInitializing &&
+            !isLocalOnlyMode() &&
+            !apiStateLoadFailed &&
+            !sessionRestoreRefreshDoneRef.current
+        ) {
             const hasData = (state.contacts?.length ?? 0) > 0 || (state.transactions?.length ?? 0) > 0 ||
                 (state.invoices?.length ?? 0) > 0 || (state.accounts?.length ?? 0) > 0;
-            if (!hasData) {
-                sessionRestoreRefreshDoneRef.current = true;
+            const missingProjects = (state.projects?.length ?? 0) === 0;
+            sessionRestoreRefreshDoneRef.current = true;
+            if (!hasData || missingProjects) {
                 refreshFromApiRef.current(undefined);
             }
         }
@@ -4029,126 +3300,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // Update previous auth state
         prevAuthRef.current = isAuthenticated;
-    }, [isAuthenticated, isInitializing, state.contacts?.length, state.transactions?.length, state.invoices?.length, state.accounts?.length]);
+    }, [
+        isAuthenticated,
+        isInitializing,
+        apiStateLoadFailed,
+        state.contacts?.length,
+        state.transactions?.length,
+        state.invoices?.length,
+        state.accounts?.length,
+        state.projects?.length,
+    ]);
 
     // PERFORMANCE: Removed duplicate "reload data from API" effect that was dead code.
     // The condition `!prevAuthRef.current` could never be true here because the preceding
     // useEffect (auto-sync) already sets `prevAuthRef.current = isAuthenticated` before
     // this effect runs (React runs effects in declaration order).
     // The actual API load is handled by the refreshFromApi effect at line ~2738.
-
-    // Clear local database when tenant changes (to prevent data leakage between tenants)
-    useEffect(() => {
-        const currentTenantId = auth.tenant?.id || null;
-        const prevTenantId = prevTenantIdRef.current;
-
-        // Detect tenant change: tenant exists, is different from previous, and we're authenticated
-        if (isAuthenticated && currentTenantId && prevTenantId !== null && prevTenantId !== currentTenantId && !isInitializing) {
-            logger.logCategory('sync', `🔄 Tenant changed (${prevTenantId} -> ${currentTenantId}), clearing local database...`);
-
-            const clearLocalDatabase = async () => {
-                try {
-                    const dbService = getDatabaseService();
-                    if (dbService.isReady()) {
-                        // Clear all local data
-                        dbService.clearAllData();
-                        logger.logCategory('database', '✅ Cleared local database for tenant change');
-
-                        // Reset state to initial state (keeping system defaults)
-                        setStoredState(prev => ({
-                            ...initialState,
-                            // Preserve settings that should persist across tenants
-                            printSettings: prev.printSettings,
-                            whatsAppTemplates: prev.whatsAppTemplates,
-                            invoiceHtmlTemplate: prev.invoiceHtmlTemplate,
-                            dashboardConfig: prev.dashboardConfig,
-                            agreementSettings: prev.agreementSettings,
-                            projectAgreementSettings: prev.projectAgreementSettings,
-                            rentalInvoiceSettings: prev.rentalInvoiceSettings,
-                            projectInvoiceSettings: prev.projectInvoiceSettings,
-                            showSystemTransactions: prev.showSystemTransactions,
-                            enableColorCoding: prev.enableColorCoding,
-                            enableBeepOnSave: prev.enableBeepOnSave,
-                            enableDatePreservation: prev.enableDatePreservation,
-                            pmCostPercentage: prev.pmCostPercentage,
-                        }));
-
-                        // Reload data from API for the new tenant
-                        try {
-                            logger.logCategory('sync', '🔄 Reloading data from API for new tenant...');
-                            const apiService = getAppStateApiService();
-                            let apiState: Partial<AppState>;
-                            try {
-                                apiState = await apiService.loadStateBulk();
-                            } catch (bulkErr: any) {
-                                if (bulkErr?.status === 404 || bulkErr?.message?.includes('404')) {
-                                    apiState = await apiService.loadState();
-                                } else {
-                                    throw bulkErr;
-                                }
-                            }
-
-                            const prev = storedStateRef.current;
-                            const fullState: AppState = {
-                                ...prev,
-                                accounts: apiState.accounts || [],
-                                contacts: apiState.contacts || [],
-                                transactions: apiState.transactions || [],
-                                categories: apiState.categories || [],
-                                projects: apiState.projects || [],
-                                buildings: apiState.buildings || [],
-                                properties: apiState.properties || [],
-                                units: apiState.units || [],
-                                invoices: apiState.invoices || [],
-                                bills: apiState.bills || [],
-                                budgets: apiState.budgets || [],
-                                rentalAgreements: apiState.rentalAgreements || [],
-                                projectAgreements: apiState.projectAgreements || [],
-                                contracts: apiState.contracts || [],
-                                vendors: (apiState.vendors || []).map((v: any) => ({
-                                    ...v,
-                                    isActive: v.isActive ?? v.is_active ?? true
-                                })),
-                                installmentPlans: apiState.installmentPlans || [],
-                                planAmenities: apiState.planAmenities || [],
-                                recurringInvoiceTemplates: apiState.recurringInvoiceTemplates || [],
-                                salesReturns: apiState.salesReturns || [],
-                                quotations: apiState.quotations || [],
-                                documents: apiState.documents || [],
-                                pmCycleAllocations: apiState.pmCycleAllocations || [],
-                            };
-
-                            setStoredState(fullState);
-                            if (saveNow) {
-                                try {
-                                    await saveNow(fullState, { disableSyncQueueing: true });
-                                } catch (err) {
-                                    logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
-                                }
-                            }
-
-                            logger.logCategory('sync', '✅ Reloaded and saved data from API for new tenant:', {
-                                contacts: apiState.contacts?.length || 0,
-                                vendors: apiState.vendors?.length || 0,
-                                projects: apiState.projects?.length || 0,
-                                transactions: apiState.transactions?.length || 0,
-                            });
-                        } catch (error) {
-                            logger.errorCategory('sync', '⚠️ Failed to reload data from API after tenant change:', error);
-                        }
-                    }
-                } catch (error) {
-                    logger.errorCategory('database', '⚠️ Failed to clear local database for tenant change:', error);
-                }
-            };
-
-            // Small delay to ensure auth is fully updated
-            setTimeout(clearLocalDatabase, 500);
-        }
-
-        // Update previous tenant ID
-        prevTenantIdRef.current = currentTenantId;
-    }, [auth.tenant?.id, isAuthenticated, isInitializing, setStoredState, saveNow]);
 
     // Keep module-level store in sync for useSyncExternalStore-based selective hooks.
     // State is set synchronously during render to avoid stale snapshots.
@@ -4166,20 +3333,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // because React hooks must be called in the same order on every render.
     const contextValue = useMemo(() => ({ state, dispatch, isInitialDataLoading }), [state, dispatch, isInitialDataLoading]);
 
-    // Show loading/initialization state
-    if (isInitializing) {
-        return (
-            <InitializationScreen
-                initMessage={initMessage}
-                initProgress={initProgress}
-                useFallback={useFallback}
-            />
-        );
-    }
-
+    // Always mount AppContext.Provider so any descendant (e.g. KPIProvider) never renders outside the
+    // context — conditional returns that omit the Provider caused "useAppContext must be used within an AppProvider".
     return (
         <AppContext.Provider value={contextValue}>
-            {children}
+            {isInitializing || apiStateLoadFailed ? (
+                <InitializationScreen
+                    initMessage={initMessage}
+                    initProgress={initProgress}
+                    useFallback={useFallback}
+                    errorMessage={apiStateLoadFailed ? initError : null}
+                    onRetry={apiStateLoadFailed ? () => window.location.reload() : undefined}
+                />
+            ) : (
+                children
+            )}
         </AppContext.Provider>
     );
 };

@@ -70,10 +70,11 @@ const AdjustmentModal: React.FC<AdjustmentModalProps> = ({ isOpen, onClose, onAd
           <div className="flex gap-4">
             <div className="flex-1">
               <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Type</label>
-              <select 
-                value={formData.type} 
-                onChange={e => setFormData({...formData, type: e.target.value as any})} 
+              <select
+                value={formData.type}
+                onChange={e => setFormData({...formData, type: e.target.value as any})}
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white font-bold text-slate-700"
+                aria-label="Adjustment type"
               >
                 <option value="EARNING">Bonus / Incentive</option>
                 <option value="DEDUCTION">Penalty / Advance</option>

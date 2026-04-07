@@ -7,7 +7,7 @@ import { formatDate } from '../../utils/dateUtils';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import { useNotification } from '../../context/NotificationContext';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface VendorBillsProps {
@@ -83,8 +83,11 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
                 bill.paidAmount
             );
 
-            // Open WhatsApp side panel with pre-filled message
-            openChat(vendor, vendor.contactNo, message);
+            sendOrOpenWhatsApp(
+                { contact: vendor, message, phoneNumber: vendor.contactNo },
+                () => state.whatsAppMode,
+                openChat
+            );
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }

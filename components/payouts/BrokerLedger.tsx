@@ -4,17 +4,19 @@ import { useAppContext } from '../../context/AppContext';
 import { TransactionType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface BrokerLedgerProps {
     brokerId: string | null;
     context?: 'Rental' | 'Project';
+    buildingId?: string;
+    propertyId?: string;
 }
 
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
-const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context }) => {
+const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, buildingId, propertyId }) => {
     const { state } = useAppContext();
     const { openChat } = useWhatsApp();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
@@ -26,6 +28,17 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context }) => {
         }));
     };
 
+    // Property scope for Rental context: when building/property filter is applied, ledger shows only that scope.
+    const rentalPropertyIdsInScope = useMemo(() => {
+        if (context !== 'Rental' || (!buildingId && !propertyId)) return null;
+        if (propertyId) return new Set<string>([String(propertyId)]);
+        return new Set(
+            state.properties
+                .filter(p => p.buildingId === buildingId)
+                .map(p => String(p.id))
+        );
+    }, [context, buildingId, propertyId, state.properties]);
+
     const ledgerItems = useMemo(() => {
         if (!brokerId) return [];
         
@@ -35,11 +48,15 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context }) => {
 
         const items: any[] = [];
 
-        // 1. Broker Fees from Rental Agreements (Credit)
-        // Include only if context is Rental or undefined (All)
+        // 1. Broker Fees from Rental Agreements (Credit). Exclude renewed agreements so broker is not charged again on renewal.
+        // When filter is applied, only include agreements for in-scope properties.
         if (!context || context === 'Rental') {
             state.rentalAgreements
-                .filter(ra => ra.brokerId === brokerId && (ra.brokerFee || 0) > 0)
+                .filter(ra => {
+                    if (ra.previousAgreementId || ra.brokerId !== brokerId || !(ra.brokerFee || 0)) return false;
+                    if (rentalPropertyIdsInScope && (!ra.propertyId || !rentalPropertyIdsInScope.has(String(ra.propertyId)))) return false;
+                    return true;
+                })
                 .forEach(ra => {
                     const property = state.properties.find(p => p.id === ra.propertyId);
                     items.push({
@@ -71,7 +88,7 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context }) => {
                 });
         }
             
-        // 3. Payments to Broker (Debit)
+        // 3. Payments to Broker (Debit). When Rental filter is applied, only include payments for in-scope properties (tx.propertyId).
         state.transactions
             .filter(tx => tx.type === TransactionType.EXPENSE && tx.contactId === brokerId && tx.categoryId && relevantCategoryIds.includes(tx.categoryId))
             .filter(tx => {
@@ -79,11 +96,14 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context }) => {
                 const isRebate = category?.name === 'Rebate Amount';
                 
                 if (context === 'Project') {
-                    // Must be linked to a project OR be a Rebate category
                     return !!tx.projectId || isRebate;
                 } else if (context === 'Rental') {
-                    // Must NOT be linked to a project AND not be a Rebate category
-                    return !tx.projectId && !isRebate;
+                    if (tx.projectId || isRebate) return false;
+                    if (rentalPropertyIdsInScope) {
+                        if (!tx.propertyId) return false;
+                        return rentalPropertyIdsInScope.has(String(tx.propertyId));
+                    }
+                    return true;
                 }
                 return true;
             })
@@ -127,10 +147,10 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context }) => {
             return { ...item, balance: runningBalance };
         });
 
-    }, [brokerId, context, state.transactions, state.rentalAgreements, state.projectAgreements, state.properties, state.projects, state.categories, sortConfig]);
+    }, [brokerId, context, rentalPropertyIdsInScope, state.transactions, state.rentalAgreements, state.projectAgreements, state.properties, state.projects, state.categories, sortConfig]);
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className={`ml-1 text-[10px] ${sortConfig.key === column ? 'text-primary' : 'text-app-muted'}`}>
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -154,33 +174,37 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context }) => {
         const message = WhatsAppService.generateBrokerPayoutLedger(
             template, brokerContact, totalEarned, totalPaid, finalBalance
         );
-        openChat(brokerContact, brokerContact.contactNo || '', message);
+        sendOrOpenWhatsApp(
+            { contact: brokerContact, message, phoneNumber: brokerContact.contactNo || undefined },
+            () => state.whatsAppMode,
+            openChat
+        );
     };
 
     return (
         <div className="flow-root">
             <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
                 <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                    <table className="min-w-full divide-y divide-slate-300">
-                        <thead>
+                    <table className="min-w-full divide-y divide-app-border">
+                        <thead className="bg-app-table-header">
                             <tr>
-                                <th onClick={() => handleSort('date')} scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 sm:pl-0 cursor-pointer hover:bg-slate-50 select-none">Date <SortIcon column="date"/></th>
-                                <th onClick={() => handleSort('particulars')} scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-slate-900 cursor-pointer hover:bg-slate-50 select-none">Particulars <SortIcon column="particulars"/></th>
-                                <th onClick={() => handleSort('credit')} scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-slate-900 cursor-pointer hover:bg-slate-50 select-none">Fee Earned (+) <SortIcon column="credit"/></th>
-                                <th onClick={() => handleSort('debit')} scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-slate-900 cursor-pointer hover:bg-slate-50 select-none">Paid (-) <SortIcon column="debit"/></th>
-                                <th onClick={() => handleSort('balance')} scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-0 text-right text-sm font-semibold text-slate-900 cursor-pointer hover:bg-slate-50 select-none">Balance <SortIcon column="balance"/></th>
+                                <th onClick={() => handleSort('date')} scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-app-muted sm:pl-0 cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Date <SortIcon column="date"/></th>
+                                <th onClick={() => handleSort('particulars')} scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Particulars <SortIcon column="particulars"/></th>
+                                <th onClick={() => handleSort('credit')} scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Fee Earned (+) <SortIcon column="credit"/></th>
+                                <th onClick={() => handleSort('debit')} scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Paid (-) <SortIcon column="debit"/></th>
+                                <th onClick={() => handleSort('balance')} scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-0 text-right text-sm font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Balance <SortIcon column="balance"/></th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200">
+                        <tbody className="divide-y divide-app-border">
                             {ledgerItems.map((item) => (
-                                <tr key={item.id}>
-                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-700 sm:pl-0">{formatDate(item.date)}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 max-w-xs truncate" title={item.particulars}>
+                                <tr key={item.id} className="hover:bg-app-table-hover transition-colors duration-ds">
+                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-app-muted sm:pl-0">{formatDate(item.date)}</td>
+                                    <td className="px-3 py-4 text-sm text-app-text max-w-md min-w-[10rem] whitespace-normal break-words" title={item.particulars}>
                                         {item.particulars}
                                     </td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-success">{item.credit > 0 ? (item.credit || 0).toLocaleString() : '-'}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-danger">{item.debit > 0 ? (item.debit || 0).toLocaleString() : '-'}</td>
-                                    <td className={`relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0 ${item.balance > 0 ? 'text-danger' : 'text-slate-800'}`}>{(item.balance || 0).toLocaleString()}</td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-ds-success tabular-nums">{item.credit > 0 ? (item.credit || 0).toLocaleString() : '-'}</td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-ds-danger tabular-nums">{item.debit > 0 ? (item.debit || 0).toLocaleString() : '-'}</td>
+                                    <td className={`relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0 tabular-nums ${item.balance > 0 ? 'text-ds-danger' : 'text-app-text'}`}>{(item.balance || 0).toLocaleString()}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -188,10 +212,11 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context }) => {
                 </div>
             </div>
             {/* WhatsApp Send Ledger Button */}
-            <div className="flex justify-end mt-3 pt-3 border-t border-slate-200">
+            <div className="flex justify-end mt-3 pt-3 border-t border-app-border">
                 <button
+                    type="button"
                     onClick={handleSendWhatsApp}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-ds-success/35 bg-[color:var(--badge-paid-bg)] text-ds-success hover:bg-app-toolbar transition-colors duration-ds"
                 >
                     <div className="w-3.5 h-3.5">{ICONS.whatsapp}</div>
                     Send Ledger via WhatsApp

@@ -7,7 +7,9 @@
  */
 
 import { CREATE_SCHEMA_SQL, SCHEMA_VERSION } from './schema';
+import type { SchemaHealthResult } from './schemaHealth';
 import { logger } from '../logger';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 
 declare global {
   interface Window {
@@ -16,6 +18,13 @@ declare global {
       runSync: (sql: string, params?: unknown[]) => { ok: boolean; error?: string; changes?: number; lastInsertRowid?: number };
       execSync: (sql: string) => { ok: boolean; error?: string };
       readDbBytesSync?: () => { ok: boolean; data?: number[] | null; error?: string };
+      schemaHealth?: () => Promise<Record<string, unknown>>;
+      isReadOnly?: () => Promise<boolean>;
+      query: (sql: string, params?: unknown[]) => Promise<{ ok: boolean; rows?: unknown[]; error?: string }>;
+      run: (sql: string, params?: unknown[]) => Promise<{ ok: boolean; error?: string; changes?: number; lastInsertRowid?: number }>;
+      exec: (sql: string) => Promise<{ ok: boolean; error?: string }>;
+      commitAllPending?: () => Promise<{ ok: boolean; error?: string }>;
+      transaction: (operations: { type: 'query' | 'run'; sql: string; params?: unknown[] }[]) => Promise<{ ok: boolean; results?: unknown[]; error?: string }>;
     };
   }
 }
@@ -27,16 +36,24 @@ function getBridge() {
   return window.sqliteBridge;
 }
 
-/** Proxy for getDatabase() - maps db.run/exec to sync IPC */
-function createDbProxy() {
+const NO_DB_OPEN = 'No database open';
+
+/** Proxy for getDatabase() - maps db.run/exec to sync IPC. Invalidates service when bridge returns "No database open". */
+function createDbProxy(service: ElectronDatabaseService) {
   return {
     run(sql: string, params: unknown[] = []) {
       const r = getBridge().runSync(sql, Array.isArray(params) ? params : [params]);
-      if (!r.ok) throw new Error(r.error || 'SQL run failed');
+      if (!r.ok) {
+        if (r.error?.includes(NO_DB_OPEN)) service.invalidateConnection();
+        throw new Error(r.error || 'SQL run failed');
+      }
     },
     exec(sql: string) {
       const r = getBridge().execSync(sql);
-      if (!r.ok) throw new Error(r.error || 'SQL exec failed');
+      if (!r.ok) {
+        if (r.error?.includes(NO_DB_OPEN)) service.invalidateConnection();
+        throw new Error(r.error || 'SQL exec failed');
+      }
     },
     prepare(sql: string) {
       const params: unknown[] = [];
@@ -50,7 +67,10 @@ function createDbProxy() {
         step() {
           if (rowIndex === 0) {
             const res = getBridge().querySync(sql, params);
-            if (!res.ok) throw new Error(res.error || 'Query failed');
+            if (!res.ok) {
+              if (res.error?.includes(NO_DB_OPEN)) service.invalidateConnection();
+              throw new Error(res.error || 'Query failed');
+            }
             rows = (res.rows || []) as Record<string, unknown>[];
           }
           return rowIndex < rows.length ? (rowIndex++, true) : false;
@@ -104,6 +124,18 @@ export class ElectronDatabaseService {
     }
   }
 
+  /** Keep schema_meta in sync with metadata.schema_version (canonical version is SCHEMA_VERSION). */
+  private syncSchemaMetaRow(): void {
+    try {
+      this.rawExecute(
+        'INSERT OR REPLACE INTO schema_meta (id, version, last_updated) VALUES (1, ?, datetime(\'now\'))',
+        [SCHEMA_VERSION]
+      );
+    } catch (_) {
+      /* table may not exist on very old DB until main-process validator runs */
+    }
+  }
+
   async initialize(): Promise<void> {
     if (this.initializationPromise) return this.initializationPromise;
     if (this.isInitialized) return;
@@ -119,7 +151,18 @@ export class ElectronDatabaseService {
   private async _doInitialize(): Promise<void> {
     try {
       getBridge();
-      this.dbProxy = createDbProxy();
+      // Verify the native bridge actually works (catches NODE_MODULE_VERSION mismatches)
+      const healthCheck = getBridge().execSync('SELECT 1');
+      if (!healthCheck.ok) {
+        const errMsg = healthCheck.error || 'Native SQLite bridge not functional';
+        if (errMsg.includes(NO_DB_OPEN)) {
+          // Multi-company mode: no company DB has been opened yet — this is expected.
+          // Leave isInitialized=false so callers can retry after a company is opened.
+          return;
+        }
+        throw new Error(errMsg);
+      }
+      this.dbProxy = createDbProxy(this);
 
       let currentVersion = 0;
       try {
@@ -129,10 +172,6 @@ export class ElectronDatabaseService {
 
       if (currentVersion < SCHEMA_VERSION) {
         this.isInitialized = true;
-        try {
-          const { migrateTenantColumns } = await import('./tenantMigration');
-          migrateTenantColumns();
-        } catch (_) { }
         this.ensureAllTablesExist();
         this.ensureContractColumnsExist();
         this.ensureVendorIdColumnsExist();
@@ -141,10 +180,23 @@ export class ElectronDatabaseService {
         if (currentVersion < 7) await this.runV7Migrations();
         if (currentVersion < 8) await this.runV8Migrations();
         if (currentVersion < 9) await this.runV9Migrations();
+        // V10 migrations handle migration from versions 9, 10, and 11 to version 12+
+        // Versions 10 and 11 don't have separate migrations - they use V10 migrations
+        if (currentVersion < 12) await this.runV10Migrations();
+        if (currentVersion < 14) {
+          try {
+            const catCols = this.rawQuery<{ name: string }>('PRAGMA table_info(categories)');
+            const catNames = new Set(catCols.map(c => c.name));
+            if (!catNames.has('is_hidden')) {
+              this.rawExecute('ALTER TABLE categories ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0');
+            }
+          } catch (_) { }
+        }
         this.rawExecute(
           'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
           ['schema_version', SCHEMA_VERSION.toString()]
         );
+        this.syncSchemaMetaRow();
         this.isInitialized = false;
       }
 
@@ -152,6 +204,9 @@ export class ElectronDatabaseService {
       this.initializationError = null;
       this.ensureAllTablesExist();
       this.ensureTransactionExtraColumnsExist();
+      this.repairRentalAgreementsOrgIdToTenantId();
+      this.normalizeLocalOnlyTenantIds();
+      this.syncSchemaMetaRow();
       logger.logCategory('database', '✅ Native SQLite initialized');
     } catch (error) {
       this.initializationError = error instanceof Error ? error : new Error(String(error));
@@ -166,8 +221,9 @@ export class ElectronDatabaseService {
       'accounts', 'contacts', 'vendors', 'categories', 'projects', 'buildings',
       'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
       'quotations', 'plan_amenities', 'installment_plans', 'documents',
-      'rental_agreements', 'project_agreements', 'sales_returns', 'contracts',
+      'rental_agreements', 'project_agreements', 'sales_returns', 'project_received_assets', 'contracts',
       'recurring_invoice_templates', 'pm_cycle_allocations', 'purchase_orders',
+      'personal_categories', 'personal_transactions',
     ];
     for (const table of entityTables) {
       try {
@@ -180,15 +236,7 @@ export class ElectronDatabaseService {
   }
 
   private async runV8Migrations(): Promise<void> {
-    // v8: rental_agreements uses org_id (PostgreSQL-aligned). Add org_id if table has tenant_id.
-    try {
-      const raCols = this.rawQuery<{ name: string }>('PRAGMA table_info(rental_agreements)');
-      const raNames = new Set(raCols.map(c => c.name));
-      if (!raNames.has('org_id') && raNames.has('tenant_id')) {
-        this.rawExecute('ALTER TABLE rental_agreements ADD COLUMN org_id TEXT NOT NULL DEFAULT ""');
-        this.rawExecute('UPDATE rental_agreements SET org_id = tenant_id WHERE tenant_id IS NOT NULL AND tenant_id != ""');
-      }
-    } catch (_) { }
+    // v8: (no longer adds org_id to rental_agreements; we use tenant_id everywhere)
   }
 
   private async runV9Migrations(): Promise<void> {
@@ -247,11 +295,177 @@ export class ElectronDatabaseService {
     } catch (_) { }
   }
 
+  /** v10: Migrate org_id into tenant_id and drop org_id (tenant_id already exists in table). */
+  private async runV10Migrations(): Promise<void> {
+    try {
+      const raCols = this.rawQuery<{ name: string }>('PRAGMA table_info(rental_agreements)');
+      if (raCols.length === 0) return;
+      const raNames = new Set(raCols.map(c => c.name));
+      if (!raNames.has('org_id')) return;
+      // Copy org_id into tenant_id, then drop org_id
+      this.rawExecute("UPDATE rental_agreements SET tenant_id = org_id WHERE (tenant_id IS NULL OR tenant_id = '') AND org_id IS NOT NULL AND org_id != ''");
+      try {
+        this.rawExecute('ALTER TABLE rental_agreements DROP COLUMN org_id');
+      } catch (_) {
+        // SQLite < 3.35 does not support DROP COLUMN; column remains but we use tenant_id for all reads/writes
+      }
+    } catch (_) { }
+  }
+
+  /** One-time repair: if rental_agreements still has org_id, copy to tenant_id and drop org_id. Runs every startup until done. */
+  private repairRentalAgreementsOrgIdToTenantId(): void {
+    try {
+      const raCols = this.rawQuery<{ name: string }>('PRAGMA table_info(rental_agreements)');
+      if (raCols.length === 0) return;
+      const raNames = new Set(raCols.map(c => c.name));
+      if (!raNames.has('org_id')) return;
+      if (!raNames.has('tenant_id')) return;
+      this.rawExecute("UPDATE rental_agreements SET tenant_id = org_id WHERE (tenant_id IS NULL OR tenant_id = '') AND org_id IS NOT NULL AND org_id != ''");
+      try {
+        this.rawExecute('ALTER TABLE rental_agreements DROP COLUMN org_id');
+        logger.logCategory('database', '✅ rental_agreements: migrated org_id → tenant_id and dropped org_id');
+      } catch (_) {
+        this.recreateRentalAgreementsWithoutOrgId();
+      }
+    } catch (_) { }
+  }
+
+  private recreateRentalAgreementsWithoutOrgId(): void {
+    try {
+      this.rawExecute('PRAGMA foreign_keys = OFF');
+      this.rawExecute(`CREATE TABLE IF NOT EXISTS rental_agreements_new (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL DEFAULT '',
+          agreement_number TEXT NOT NULL,
+          contact_id TEXT NOT NULL,
+          property_id TEXT NOT NULL,
+          start_date TEXT NOT NULL,
+          end_date TEXT NOT NULL,
+          monthly_rent REAL NOT NULL,
+          rent_due_date INTEGER,
+          status TEXT NOT NULL,
+          description TEXT,
+          security_deposit REAL,
+          broker_id TEXT,
+          broker_fee REAL,
+          owner_id TEXT,
+          previous_agreement_id TEXT,
+          user_id TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          version INTEGER NOT NULL DEFAULT 1,
+          deleted_at TEXT,
+          FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+          FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE RESTRICT,
+          UNIQUE(tenant_id, agreement_number)
+      )`);
+      this.rawExecute(`INSERT INTO rental_agreements_new
+          (id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date,
+           monthly_rent, rent_due_date, status, description, security_deposit, broker_id,
+           broker_fee, owner_id, previous_agreement_id, user_id, created_at, updated_at, version, deleted_at)
+          SELECT id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date,
+           monthly_rent, rent_due_date, status, description, security_deposit, broker_id,
+           broker_fee, owner_id, previous_agreement_id, user_id, created_at, updated_at, version, deleted_at
+          FROM rental_agreements`);
+      this.rawExecute('DROP TABLE rental_agreements');
+      this.rawExecute('ALTER TABLE rental_agreements_new RENAME TO rental_agreements');
+      this.rawExecute('PRAGMA foreign_keys = ON');
+      logger.logCategory('database', '✅ rental_agreements: recreated table without org_id');
+    } catch (e) {
+      logger.warnCategory('database', 'rental_agreements: table recreation failed:', e);
+      this.rawExecute('PRAGMA foreign_keys = ON');
+    }
+  }
+
+  private normalizeLocalOnlyTenantIds(): void {
+    if (!isLocalOnlyMode()) return;
+    const tables = [
+      'accounts', 'contacts', 'vendors', 'categories', 'projects', 'buildings',
+      'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
+      'quotations', 'plan_amenities', 'installment_plans', 'documents',
+      'rental_agreements', 'project_agreements', 'sales_returns', 'project_received_assets', 'contracts',
+      'recurring_invoice_templates', 'pm_cycle_allocations', 'users',
+    ];
+    let tablesUpdated = 0;
+    for (const table of tables) {
+      try {
+        const exists = this.rawQuery<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name=?", [table]
+        );
+        if (exists.length === 0) continue;
+        const cols = this.rawQuery<{ name: string }>(`PRAGMA table_info(${table})`);
+        if (!cols.some(c => c.name === 'tenant_id')) continue;
+        const nonLocal = this.rawQuery<{ cnt: number }>(
+          `SELECT COUNT(*) as cnt FROM ${table} WHERE tenant_id != 'local'`
+        );
+        if ((nonLocal[0]?.cnt ?? 0) > 0) {
+          // Use UPDATE OR IGNORE to skip rows that would violate UNIQUE constraints
+          // (can happen when the backup had multiple tenants with overlapping record numbers).
+          try {
+            this.rawExecute(`UPDATE OR IGNORE ${table} SET tenant_id = 'local' WHERE tenant_id != 'local'`);
+          } catch (_) {
+            this.rawExecute(`UPDATE ${table} SET tenant_id = 'local' WHERE tenant_id != 'local'`);
+          }
+          // Drop leftover duplicate rows from other tenants (their 'local' counterpart now exists)
+          try { this.rawExecute(`DELETE FROM ${table} WHERE tenant_id != 'local'`); } catch (_) { }
+          tablesUpdated++;
+        }
+      } catch (_) { }
+    }
+    if (tablesUpdated > 0) {
+      logger.logCategory('database', `Normalized tenant_id to 'local' in ${tablesUpdated} table(s)`);
+    }
+  }
+
   ensureAllTablesExist(): void {
     try {
-      getBridge().execSync(CREATE_SCHEMA_SQL);
+      // Migrate old tables first: add missing columns before creating indexes on them
+      this.migrateOldTablesForSchema();
+      // Strip SQL comments (may contain semicolons) before splitting into statements
+      const stripped = CREATE_SCHEMA_SQL.replace(/--[^\n]*/g, '');
+      const statements = stripped.split(';').map(s => s.trim()).filter(s => s.length > 0);
+      for (const stmt of statements) {
+        try {
+          getBridge().execSync(stmt + ';');
+        } catch (_) { /* expected for existing objects */ }
+      }
     } catch (e) {
       logger.warnCategory('database', 'ensureAllTablesExist:', e);
+    }
+  }
+
+  private migrateOldTablesForSchema(): void {
+    const entityTables = [
+      'accounts', 'contacts', 'vendors', 'categories', 'projects', 'buildings',
+      'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
+      'quotations', 'plan_amenities', 'installment_plans', 'documents',
+      'rental_agreements', 'project_agreements', 'sales_returns', 'project_received_assets', 'contracts',
+      'recurring_invoice_templates', 'pm_cycle_allocations', 'purchase_orders',
+      'transaction_log', 'error_log', 'app_settings', 'license_settings',
+      'chat_messages', 'project_agreement_units', 'contract_categories',
+      'users', 'sync_outbox', 'sync_metadata',
+    ];
+
+    const requiredColumns: [string, string][] = [
+      ['tenant_id', "TEXT NOT NULL DEFAULT ''"],
+      ['version', 'INTEGER NOT NULL DEFAULT 1'],
+      ['deleted_at', 'TEXT'],
+      ['user_id', 'TEXT'],
+      ['updated_at', "TEXT DEFAULT ''"],
+    ];
+
+    for (const table of entityTables) {
+      try {
+        const cols = this.rawQuery<{ name: string }>(`PRAGMA table_info("${table}")`);
+        if (cols.length === 0) continue;
+        const existingCols = new Set(cols.map(c => c.name));
+
+        for (const [colName, colDef] of requiredColumns) {
+          if (!existingCols.has(colName)) {
+            try { this.rawExecute(`ALTER TABLE "${table}" ADD COLUMN ${colName} ${colDef}`); } catch (_) { }
+          }
+        }
+      } catch (_) { }
     }
   }
 
@@ -283,12 +497,12 @@ export class ElectronDatabaseService {
         rental_agreements: [
           ['broker_fee', 'REAL'],
           ['owner_id', 'TEXT'],
-          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+          ['updated_at', "TEXT DEFAULT ''"],
         ],
         accounts: [
           ['description', 'TEXT'],
           ['user_id', 'TEXT'],
-          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+          ['updated_at', "TEXT DEFAULT ''"],
         ],
         projects: [
           ['description', 'TEXT'],
@@ -296,17 +510,17 @@ export class ElectronDatabaseService {
           ['pm_config', 'TEXT'],
           ['installment_config', 'TEXT'],
           ['user_id', 'TEXT'],
-          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+          ['updated_at', "TEXT DEFAULT ''"],
         ],
         buildings: [
           ['description', 'TEXT'],
           ['color', 'TEXT'],
-          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+          ['updated_at', "TEXT DEFAULT ''"],
         ],
         properties: [
           ['description', 'TEXT'],
           ['monthly_service_charge', 'REAL'],
-          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+          ['updated_at', "TEXT DEFAULT ''"],
         ],
         units: [
           ['sale_price', 'REAL'],
@@ -315,7 +529,7 @@ export class ElectronDatabaseService {
           ['area', 'REAL'],
           ['floor', 'TEXT'],
           ['user_id', 'TEXT'],
-          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+          ['updated_at', "TEXT DEFAULT ''"],
         ],
         project_agreements: [
           ['unit_ids', 'TEXT'],
@@ -337,7 +551,7 @@ export class ElectronDatabaseService {
           ['selling_price_category_id', 'TEXT'],
           ['rebate_category_id', 'TEXT'],
           ['user_id', 'TEXT'],
-          ['updated_at', "TEXT DEFAULT (datetime('now'))"],
+          ['updated_at', "TEXT DEFAULT ''"],
         ],
       };
 
@@ -390,13 +604,23 @@ export class ElectronDatabaseService {
       const cols = new Set(this.rawQuery<{ name: string }>('PRAGMA table_info(transactions)').map(c => c.name));
       if (!cols.has('building_id')) this.rawExecute('ALTER TABLE transactions ADD COLUMN building_id TEXT');
       if (!cols.has('is_system')) this.rawExecute('ALTER TABLE transactions ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
-      if (!cols.has('updated_at')) this.rawExecute("ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
+      if (!cols.has('updated_at')) this.rawExecute("ALTER TABLE transactions ADD COLUMN updated_at TEXT DEFAULT ''");
+      if (!cols.has('owner_id')) this.rawExecute('ALTER TABLE transactions ADD COLUMN owner_id TEXT');
     } catch (_) { }
   }
 
   getDatabase(): ReturnType<typeof createDbProxy> {
     if (!this.dbProxy || !this.isInitialized) throw new Error('Database not initialized');
     return this.dbProxy;
+  }
+
+  /**
+   * Call when the bridge returns "No database open" so the next operation re-initializes.
+   * (e.g. company was closed or switched before a queued save ran.)
+   */
+  invalidateConnection(): void {
+    this.isInitialized = false;
+    this.dbProxy = null;
   }
 
   isReady(): boolean {
@@ -418,36 +642,60 @@ export class ElectronDatabaseService {
   query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
     if (!this.isReady()) return [];
     const r = getBridge().querySync(sql, params);
-    if (!r.ok) return [];
+    if (!r.ok) {
+      if (r.error?.includes(NO_DB_OPEN)) this.invalidateConnection();
+      return [];
+    }
     return (r.rows || []) as T[];
   }
 
   execute(sql: string, params: unknown[] = []): void {
-    if (!this.isReady()) return;
-    const r = getBridge().runSync(sql, Array.isArray(params) ? params : [params]);
-    if (!r.ok) throw new Error(r.error || 'SQL execution failed');
+    if (!this.isReady()) {
+      throw new Error('Cannot execute SQL: database not ready (no company DB open or not initialized).');
+    }
+    const bridge = getBridge();
+    const p = Array.isArray(params) ? params : [params];
+    // When not in a transaction, temporarily disable FK checks for this statement to avoid
+    // FOREIGN KEY constraint failed from stale refs or save order (e.g. single INSERT transaction).
+    if (!this.inTransaction) {
+      try {
+        bridge.runSync('PRAGMA foreign_keys = OFF', []);
+        const r = bridge.runSync(sql, p);
+        if (!r.ok) {
+          if (r.error?.includes(NO_DB_OPEN)) this.invalidateConnection();
+          throw new Error(r.error || 'SQL execution failed');
+        }
+      } finally {
+        bridge.runSync('PRAGMA foreign_keys = ON', []);
+      }
+    } else {
+      const r = bridge.runSync(sql, p);
+      if (!r.ok) {
+        if (r.error?.includes(NO_DB_OPEN)) this.invalidateConnection();
+        throw new Error(r.error || 'SQL execution failed');
+      }
+    }
   }
 
   transaction(operations: (() => void)[], onCommit?: () => void): void {
     if (!Array.isArray(operations) || operations.length === 0) return;
     const db = this.getDatabase();
+    const startTime = Date.now();
     let committed = false;
     try {
-      // PRAGMA foreign_keys must run BEFORE BEGIN - inside a transaction it is silently ignored
       try {
         db.run('PRAGMA foreign_keys = OFF');
       } catch (e) {
         console.warn('[ElectronDatabaseService] Failed to disable foreign keys for transaction:', e);
       }
 
-      db.run('BEGIN TRANSACTION');
+      db.run('BEGIN IMMEDIATE');
       this.inTransaction = true;
 
       for (let i = 0; i < operations.length; i++) {
         try {
           operations[i]();
         } catch (opError) {
-          import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => { });
           try { db.run('ROLLBACK'); } catch (_) { }
           try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
           throw opError;
@@ -457,18 +705,22 @@ export class ElectronDatabaseService {
       db.run('COMMIT');
       committed = true;
 
-      // Re-enable foreign keys after commit (must be outside transaction)
       try {
         db.run('PRAGMA foreign_keys = ON');
       } catch (e) {
         console.warn('[ElectronDatabaseService] Failed to re-enable foreign keys after commit:', e);
       }
+
+      const elapsed = Date.now() - startTime;
+      if (elapsed > 500) {
+        console.warn(`[ElectronDatabaseService] Slow transaction: ${elapsed}ms`);
+      }
+
       if (onCommit) {
         try { onCommit(); } catch (e) { console.error('Post-commit error:', e); }
       }
     } catch (error) {
       if (!committed) {
-        import('./repositories/baseRepository').then(m => m.BaseRepository.clearPendingSyncOperations()).catch(() => { });
         try { db.run('ROLLBACK'); } catch (_) { }
         try { db.run('PRAGMA foreign_keys = ON'); } catch (_) { }
       }
@@ -476,6 +728,69 @@ export class ElectronDatabaseService {
     } finally {
       this.inTransaction = false;
     }
+  }
+
+  /**
+   * Async query -- uses ipcRenderer.invoke instead of sendSync so the renderer is not blocked.
+   */
+  async queryAsync<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+    if (!this.isReady()) return [];
+    const bridge = getBridge();
+    if (!bridge.query) return this.query<T>(sql, params);
+    const r = await bridge.query(sql, params);
+    if (!r.ok) {
+      if (r.error?.includes(NO_DB_OPEN)) this.invalidateConnection();
+      return [];
+    }
+    return (r.rows || []) as T[];
+  }
+
+  /**
+   * Async execute -- uses ipcRenderer.invoke instead of sendSync so the renderer is not blocked.
+   */
+  async executeAsync(sql: string, params: unknown[] = []): Promise<void> {
+    if (!this.isReady()) {
+      throw new Error('Cannot execute SQL: database not ready (no company DB open or not initialized).');
+    }
+    const bridge = getBridge();
+    if (!bridge.run) { this.execute(sql, params); return; }
+    const p = Array.isArray(params) ? params : [params];
+    const r = await bridge.run(sql, p);
+    if (!r.ok) {
+      if (r.error?.includes(NO_DB_OPEN)) this.invalidateConnection();
+      const errMsg = r.error || '';
+      if (!errMsg.toLowerCase().includes('duplicate column')) throw new Error(errMsg);
+    }
+  }
+
+  /**
+   * Run a batch of SQL operations in a single transaction via async IPC.
+   * This is the key performance method: the renderer is NOT blocked while the
+   * main process executes potentially thousands of SQL statements.
+   */
+  async transactionAsync(operations: { type: 'query' | 'run'; sql: string; params?: unknown[] }[]): Promise<{ ok: boolean; results?: unknown[]; error?: string }> {
+    if (!operations.length) return { ok: true, results: [] };
+    const bridge = getBridge();
+    if (!bridge.transaction) {
+      this.transaction([() => {
+        for (const op of operations) {
+          if (op.type === 'query') this.query(op.sql, op.params);
+          else this.execute(op.sql, op.params);
+        }
+      }]);
+      return { ok: true };
+    }
+    const startTime = Date.now();
+    const r = await bridge.transaction(operations);
+    const elapsed = Date.now() - startTime;
+    if (elapsed > 500) {
+      console.warn(`[ElectronDatabaseService] Slow async transaction: ${elapsed}ms (${operations.length} ops)`);
+    }
+    if (!r.ok) {
+      if (r.error?.includes(NO_DB_OPEN)) this.invalidateConnection();
+      throw new Error(r.error || 'Async transaction failed');
+    }
+    return r;
   }
 
   save(): void {
@@ -515,8 +830,8 @@ export class ElectronDatabaseService {
 
   clearTransactionData(tenantId?: string): void {
     const db = this.getDatabase();
-    const tables = ['transactions', 'sales_returns', 'pm_cycle_allocations', 'invoices', 'bills', 'quotations', 'recurring_invoice_templates', 'contracts', 'rental_agreements', 'project_agreements', 'accounts'];
-    db.run('BEGIN TRANSACTION');
+    const tables = ['transactions', 'sales_returns', 'project_received_assets', 'pm_cycle_allocations', 'invoices', 'bills', 'quotations', 'recurring_invoice_templates', 'contracts', 'rental_agreements', 'project_agreements', 'accounts'];
+    db.run('BEGIN IMMEDIATE');
     try {
       db.run('PRAGMA foreign_keys = OFF');
       for (const table of tables) {
@@ -540,8 +855,8 @@ export class ElectronDatabaseService {
 
   clearAllData(tenantId?: string): void {
     const db = this.getDatabase();
-    const tables = ['users', 'accounts', 'contacts', 'categories', 'projects', 'buildings', 'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets', 'rental_agreements', 'project_agreements', 'sales_returns', 'contracts', 'recurring_invoice_templates', 'transaction_log', 'error_log', 'app_settings', 'license_settings', 'project_agreement_units', 'contract_categories', 'pm_cycle_allocations'];
-    db.run('BEGIN TRANSACTION');
+    const tables = ['users', 'accounts', 'contacts', 'categories', 'projects', 'buildings', 'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets', 'rental_agreements', 'project_agreements', 'sales_returns', 'project_received_assets', 'contracts', 'recurring_invoice_templates', 'transaction_log', 'error_log', 'app_settings', 'license_settings', 'project_agreement_units', 'contract_categories', 'pm_cycle_allocations'];
+    db.run('BEGIN IMMEDIATE');
     try {
       db.run('PRAGMA foreign_keys = OFF');
       for (const table of tables) {
@@ -566,8 +881,24 @@ export class ElectronDatabaseService {
   }
 
   setMetadata(key: string, value: string): void {
-    if (!this.isReady()) return;
+    if (!this.isReady()) {
+      throw new Error('Cannot set metadata: database not ready.');
+    }
     this.execute('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))', [key, value]);
+  }
+
+  /** Flush WAL to the main DB file (Electron IPC). Call after critical saves / before shutdown. */
+  async commitAllPendingToDisk(): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const bridge = getBridge();
+      if (typeof bridge.commitAllPending === 'function') {
+        return await bridge.commitAllPending();
+      }
+      return { ok: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, error: msg };
+    }
   }
 
   stopAutoSave(): void { }
@@ -583,6 +914,16 @@ export class ElectronDatabaseService {
 
   getStorageMode(): 'opfs' | 'localStorage' {
     return 'opfs'; // Native file is like OPFS
+  }
+
+  async getSchemaHealth(): Promise<SchemaHealthResult | null> {
+    try {
+      const fn = window.sqliteBridge?.schemaHealth;
+      if (!fn) return null;
+      return (await fn()) as SchemaHealthResult;
+    } catch {
+      return null;
+    }
   }
 }
 

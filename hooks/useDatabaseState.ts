@@ -9,35 +9,15 @@ import React, { useState, useEffect, useCallback, Dispatch, SetStateAction } fro
 import { AppState } from '../types';
 import { getDatabaseService } from '../services/database/databaseService';
 import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
+import { isLocalOnlyMode } from '../config/apiUrl';
 import { isMobileDevice } from '../utils/platformDetection';
-// Lazy import AppStateRepository to avoid initialization issues during module load
-let AppStateRepositoryClass: any = null;
-let appStateRepoLoadPromise: Promise<any> | null = null;
 
-async function getAppStateRepository(): Promise<any> {
-    try {
-        if (AppStateRepositoryClass) {
-            return new AppStateRepositoryClass();
-        }
+/** Local-only: no debounce — every state push schedules an immediate save (critical path uses saveNow anyway). */
+const PERSIST_DEBOUNCE_MS = isLocalOnlyMode() ? 0 : 2000;
+import { AppStateRepository } from '../services/database/repositories/appStateRepository';
 
-        if (!appStateRepoLoadPromise) {
-            appStateRepoLoadPromise = import('../services/database/repositories/appStateRepository')
-                .then(mod => {
-                    AppStateRepositoryClass = mod.AppStateRepository;
-                    return AppStateRepositoryClass;
-                })
-                .catch(error => {
-                    console.error('❌ [useDatabaseState] Failed to load AppStateRepository:', error);
-                    throw new Error(`Failed to load AppStateRepository: ${error instanceof Error ? error.message : String(error)}`);
-                });
-        }
-
-        const RepoClass = await appStateRepoLoadPromise;
-        return new RepoClass();
-    } catch (error) {
-        console.error('❌ [useDatabaseState] Failed to instantiate AppStateRepository:', error);
-        throw error;
-    }
+function getAppStateRepository() {
+    return new AppStateRepository();
 }
 
 let dbInitialized = false;
@@ -48,6 +28,7 @@ const DB_STATE_DIRTY_KEY = 'finance_app_state_dirty';
 
 async function ensureDatabaseInitialized(): Promise<void> {
     if (dbInitialized) return;
+    if (!isLocalOnlyMode()) return;
 
     if (initializationPromise) {
         return initializationPromise;
@@ -55,36 +36,39 @@ async function ensureDatabaseInitialized(): Promise<void> {
 
     initializationPromise = (async () => {
         try {
-
-            // Initialize unified service first
             const unifiedService = getUnifiedDatabaseService();
             await unifiedService.initialize();
 
-            // For desktop, also initialize local SQLite
             if (!isMobileDevice()) {
                 const dbService = getDatabaseService();
                 await dbService.initialize();
-            } else {
+                if (!dbService.isReady()) {
+                    // No company DB open yet — silently skip; will retry on next call.
+                    return;
+                }
             }
 
             dbInitialized = true;
         } catch (error) {
             console.error('❌ [useDatabaseState] Database initialization failed:', error);
-            console.error('❌ [useDatabaseState] Error details:', {
-                message: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-                name: error instanceof Error ? error.name : typeof error
-            });
             throw error;
+        } finally {
+            initializationPromise = null;
         }
     })();
 
     return initializationPromise;
 }
 
+/**
+ * Optional reload trigger: when this value changes (e.g. active company id),
+ * the hook will re-run load from DB. Use when DB is opened later (e.g. user
+ * selects a company after cold start) so state is loaded from the correct company DB.
+ */
 export function useDatabaseState<T extends AppState>(
     key: string,
-    initialValue: T
+    initialValue: T,
+    reloadTrigger?: string | null
 ): UseDatabaseStateResult<T> {
     // Start with initial value immediately - don't block rendering
     const [storedValue, setStoredValue] = useState<T>(initialValue);
@@ -92,8 +76,11 @@ export function useDatabaseState<T extends AppState>(
     const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
     const pendingSaveRef = React.useRef<T | null>(null);
     const hasModifiedRef = React.useRef(false);
+    // Guard: never save to DB until we've loaded from it at least once.
+    // Prevents writing empty initialState and wiping real data.
+    const hasLoadedFromDbRef = React.useRef(false);
 
-    // Load initial state from database
+    // Load initial state from database (and re-load when reloadTrigger changes, e.g. company opened)
     useEffect(() => {
         let isMounted = true;
         let timeoutId: NodeJS.Timeout | null = null;
@@ -101,6 +88,26 @@ export function useDatabaseState<T extends AppState>(
         const loadState = async () => {
             try {
                 setIsLoading(true);
+
+                // LAN / API mode: state is loaded from server in AppContext; keep in-memory store only (no SQLite).
+                if (!isLocalOnlyMode()) {
+                    if (isMounted) {
+                        setStoredValue(initialValue);
+                        hasLoadedFromDbRef.current = true;
+                        setIsLoading(false);
+                    }
+                    return;
+                }
+
+                // Local-only multi-company: skip DB access until a company is selected (avoids "No database open" IPC).
+                // When AppProvider passes activeCompany.id as reloadTrigger, load runs and hasLoadedFromDbRef is set — required for saveNow to persist.
+                if (isLocalOnlyMode() && (reloadTrigger === null || reloadTrigger === undefined)) {
+                    if (isMounted) {
+                        setStoredValue(initialValue);
+                        setIsLoading(false);
+                    }
+                    return;
+                }
 
                 // Add timeout to prevent infinite loading
                 timeoutId = setTimeout(() => {
@@ -128,14 +135,26 @@ export function useDatabaseState<T extends AppState>(
                     return;
                 }
 
+                // Skip load when no company DB is open (multi-company mode: avoids noisy warnings)
+                const dbService = getDatabaseService();
+                if (!dbService.isReady()) {
+                    if (isMounted && timeoutId) {
+                        clearTimeout(timeoutId);
+                        setStoredValue(initialValue);
+                        setIsLoading(false);
+                    }
+                    return;
+                }
+
                 try {
-                    const appStateRepo = await getAppStateRepository();
+                    const appStateRepo = getAppStateRepository();
                     const state = await appStateRepo.loadState();
 
                     if (isMounted && timeoutId) {
                         if (timeoutId) clearTimeout(timeoutId);
 
                         // Only update if the state hasn't been modified by the user in the meantime
+                        hasLoadedFromDbRef.current = true;
                         if (!hasModifiedRef.current) {
                             // Always use loaded state from database (it's the source of truth)
                             setStoredValue(state as T);
@@ -147,7 +166,7 @@ export function useDatabaseState<T extends AppState>(
                             if (valueToSave && valueToSave !== initialValue) {
                                 ensureDatabaseInitialized()
                                     .then(async () => {
-                                        const appStateRepo = await getAppStateRepository();
+                                        const appStateRepo = getAppStateRepository();
                                         await appStateRepo.saveState(valueToSave as AppState, true);
                                     })
                                     .catch(() => {});
@@ -193,7 +212,7 @@ export function useDatabaseState<T extends AppState>(
             isMounted = false;
             if (timeoutId) clearTimeout(timeoutId);
         };
-    }, [initialValue]);
+    }, [initialValue, reloadTrigger]);
 
     // Save state to database when it changes
     const setValue: Dispatch<SetStateAction<T>> = useCallback((value) => {
@@ -214,6 +233,11 @@ export function useDatabaseState<T extends AppState>(
             saveTimeoutRef.current = setTimeout(async () => {
                 const valueToSave = pendingSaveRef.current;
                 if (!valueToSave) return;
+                if (!hasLoadedFromDbRef.current) return;
+                if (!isLocalOnlyMode()) {
+                    pendingSaveRef.current = null;
+                    return;
+                }
 
                 try {
                     try {
@@ -222,7 +246,7 @@ export function useDatabaseState<T extends AppState>(
                         return; // Don't try to save if database isn't available
                     }
 
-                    const appStateRepo = await getAppStateRepository();
+                    const appStateRepo = getAppStateRepository();
                     await appStateRepo.saveState(valueToSave as AppState, false);
                     if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
                     pendingSaveRef.current = null;
@@ -240,7 +264,7 @@ export function useDatabaseState<T extends AppState>(
                         console.error('Failed to log database save error:', logError);
                     }
                 }
-            }, 2000); // 2 second debounce - prevents blocking navigation with frequent saves
+            }, PERSIST_DEBOUNCE_MS);
 
         } catch (error) {
             console.error('Failed to update state:', error);
@@ -255,11 +279,31 @@ export function useDatabaseState<T extends AppState>(
         }
         const valueToSave = value ?? pendingSaveRef.current ?? storedValue;
         if (!valueToSave) return;
+        if (!hasLoadedFromDbRef.current) return;
+
+        if (!isLocalOnlyMode()) {
+            setStoredValue(valueToSave as T);
+            pendingSaveRef.current = null;
+            return;
+        }
 
         try {
             await ensureDatabaseInitialized();
-            const appStateRepo = await getAppStateRepository();
+            const dbService = getDatabaseService();
+            if (!dbService.isReady()) {
+                await dbService.initialize();
+            }
+            if (!dbService.isReady()) {
+                throw new Error('Cannot save: no company database is open. Your changes are only in memory until you open a company file.');
+            }
+            const appStateRepo = getAppStateRepository();
             await appStateRepo.saveState(valueToSave as AppState, options?.disableSyncQueueing ?? false);
+            const eds = dbService as unknown as { commitAllPendingToDisk?: () => Promise<{ ok: boolean }> };
+            if (typeof eds.commitAllPendingToDisk === 'function') {
+                await eds.commitAllPendingToDisk();
+            }
+            // Keep hook value in sync with what was persisted (avoids stale storedValue vs reducer state).
+            setStoredValue(valueToSave as T);
             if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
             pendingSaveRef.current = null;
         } catch (error) {
@@ -280,10 +324,10 @@ export function useDatabaseState<T extends AppState>(
 
             const valueToSave = pendingSaveRef.current ?? storedValue;
             const hasSomethingToSave = valueToSave && valueToSave !== initialValue;
-            if (!isLoading && hasSomethingToSave) {
+            if (!isLoading && hasSomethingToSave && hasLoadedFromDbRef.current && isLocalOnlyMode()) {
                 ensureDatabaseInitialized()
                     .then(async () => {
-                        const appStateRepo = await getAppStateRepository();
+                        const appStateRepo = getAppStateRepository();
                         await appStateRepo.saveState(valueToSave as AppState, true);
                     })
                     .catch((error) => {
@@ -304,6 +348,8 @@ export function useDatabaseState<T extends AppState>(
     // so close-time save is not guaranteed. We set a dirty flag so next load can detect it.
     useEffect(() => {
         const handleBeforeUnload = () => {
+            if (!isLocalOnlyMode()) return;
+            if (!hasLoadedFromDbRef.current) return;
             const valueToSave = pendingSaveRef.current || storedValue;
             if (valueToSave && valueToSave !== initialValue) {
                 try {
@@ -312,7 +358,7 @@ export function useDatabaseState<T extends AppState>(
                     }
                     ensureDatabaseInitialized().then(async () => {
                         try {
-                            const appStateRepo = await getAppStateRepository();
+                            const appStateRepo = getAppStateRepository();
                             await appStateRepo.saveState(valueToSave as AppState, true);
                             if (typeof localStorage !== 'undefined') {
                                 localStorage.removeItem(DB_STATE_DIRTY_KEY);
@@ -336,12 +382,20 @@ export function useDatabaseState<T extends AppState>(
         };
     }, [storedValue, initialValue]);
 
-    return [storedValue, setValue, { saveNow }];
+    /** Call after AppContext loads state via loadState + setStoredState so saveNow works even if this hook's async load has not finished yet (avoids silent no-op saves). */
+    const markDbLoadComplete = useCallback(() => {
+        hasLoadedFromDbRef.current = true;
+    }, []);
+
+    return [storedValue, setValue, { saveNow, markDbLoadComplete }];
 }
 
 export type UseDatabaseStateResult<T> = [
     T,
     React.Dispatch<React.SetStateAction<T>>,
-    { saveNow: (value?: T, options?: { disableSyncQueueing?: boolean }) => Promise<void> }
+    {
+        saveNow: (value?: T, options?: { disableSyncQueueing?: boolean }) => Promise<void>;
+        markDbLoadComplete: () => void;
+    }
 ];
 export default useDatabaseState;

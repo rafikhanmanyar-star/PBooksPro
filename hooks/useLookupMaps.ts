@@ -15,8 +15,8 @@ export interface LookupMaps {
   projects: Map<string, { name: string }>;
   buildings: Map<string, { name: string }>;
   properties: Map<string, { name: string; buildingId?: string }>;
-  invoices: Map<string, { invoiceType?: string; status?: string; projectId?: string }>;
-  bills: Map<string, { status?: string; projectId?: string }>;
+  invoices: Map<string, { invoiceType?: string; status?: string; projectId?: string; categoryId?: string }>;
+  bills: Map<string, { status?: string; projectId?: string; categoryId?: string }>;
 }
 
 /**
@@ -75,20 +75,22 @@ export function useLookupMaps(): LookupMaps {
       });
     });
 
-    const invoicesMap = new Map<string, { invoiceType?: string; status?: string; projectId?: string }>();
+    const invoicesMap = new Map<string, { invoiceType?: string; status?: string; projectId?: string; categoryId?: string }>();
     (invoices || []).forEach(invoice => {
       invoicesMap.set(invoice.id, {
         invoiceType: invoice.invoiceType,
         status: invoice.status,
-        projectId: invoice.projectId
+        projectId: invoice.projectId,
+        categoryId: invoice.categoryId
       });
     });
 
-    const billsMap = new Map<string, { status?: string; projectId?: string }>();
+    const billsMap = new Map<string, { status?: string; projectId?: string; categoryId?: string }>();
     (bills || []).forEach(bill => {
       billsMap.set(bill.id, {
         status: bill.status,
-        projectId: bill.projectId
+        projectId: bill.projectId,
+        categoryId: bill.categoryId
       });
     });
 

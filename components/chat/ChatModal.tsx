@@ -5,7 +5,15 @@ import { getDatabaseService } from '../../services/database/databaseService';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
 import { apiClient } from '../../services/api/client';
-import { getWebSocketClient } from '../../services/websocketClient';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import {
+    appendInMemoryChatMessage,
+    getInMemoryConversation,
+    getInMemoryConversationsForUser,
+    markInMemoryChatRead,
+    type InMemoryChatMessage,
+} from '../../services/chat/inMemoryChatStore';
+import { connectRealtimeSocket } from '../../core/socket';
 
 interface OnlineUser {
     id: string;
@@ -45,9 +53,11 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     const [conversations, setConversations] = useState<any[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatRepo = new ChatMessagesRepository();
-    const wsClient = getWebSocketClient();
 
     const ensureChatDbReady = async (): Promise<boolean> => {
+        if (!isLocalOnlyMode()) {
+            return true;
+        }
         try {
             console.log(`📝 [ChatModal] ensureChatDbReady called`);
             const dbService = getDatabaseService();
@@ -94,25 +104,18 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         }
     };
 
-    // Connect to WebSocket on mount
+    // Socket.IO: internal chat (LAN / API mode — same server as entity sync)
     useEffect(() => {
+        if (isLocalOnlyMode()) return;
         const token = apiClient.getToken();
-        const tenantId = apiClient.getTenantId();
-        if (token && tenantId) {
-            wsClient.connect(token, tenantId);
-        }
-        return () => {
-            // Don't disconnect on unmount - keep connection alive for other components
-        };
-    }, []);
+        if (!token) return;
+        const socket = connectRealtimeSocket(token);
 
-    // Listen for incoming chat messages
-    useEffect(() => {
         const handleChatMessage = async (data: ChatMessage) => {
             console.log(`📝 [ChatModal] WebSocket message received:`, data);
             
             // Ignore WhatsApp messages (they have different structure)
-            if (data.phoneNumber || data.direction || !data.senderId) {
+            if ((data as any).phoneNumber || (data as any).direction || !data.senderId) {
                 console.log(`📝 [ChatModal] Message appears to be WhatsApp message, ignoring (ChatModal is for internal chat only)`);
                 return;
             }
@@ -121,6 +124,14 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
             if (data.recipientId === currentUserId || data.senderId === currentUserId) {
                 try {
                     console.log(`📝 [ChatModal] Processing message for current user`);
+                    if (!isLocalOnlyMode()) {
+                        appendInMemoryChatMessage(data as InMemoryChatMessage);
+                        if (selectedUserId && (data.senderId === selectedUserId || data.recipientId === selectedUserId)) {
+                            setMessages(getInMemoryConversation(currentUserId, selectedUserId) as ChatMessage[]);
+                        }
+                        setConversations(getInMemoryConversationsForUser(currentUserId));
+                        return;
+                    }
                     const ready = await ensureChatDbReady();
                     console.log(`📝 [ChatModal] Database ready for incoming message: ${ready}`);
                     if (!ready) {
@@ -149,10 +160,10 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
             }
         };
 
-        wsClient.on('chat:message', handleChatMessage);
+        socket.on('chat:message', handleChatMessage);
 
         return () => {
-            wsClient.off('chat:message', handleChatMessage);
+            socket.off('chat:message', handleChatMessage);
         };
     }, [currentUserId, selectedUserId]);
 
@@ -177,6 +188,10 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
 
     const loadConversations = async () => {
         try {
+            if (!isLocalOnlyMode()) {
+                setConversations(getInMemoryConversationsForUser(currentUserId));
+                return;
+            }
             const ready = await ensureChatDbReady();
             if (!ready) return;
             const convos = chatRepo.getConversationsForUser(currentUserId);
@@ -188,6 +203,22 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
 
     const loadMessages = async (otherUserId: string) => {
         try {
+            if (!isLocalOnlyMode()) {
+                const token = apiClient.getToken();
+                if (!token) {
+                    setMessages(getInMemoryConversation(currentUserId, otherUserId) as ChatMessage[]);
+                    return;
+                }
+                const { messages: list } = await apiClient.get<{ messages: ChatMessage[] }>(
+                    `/tenants/chat/messages?withUserId=${encodeURIComponent(otherUserId)}`
+                );
+                for (const m of list || []) {
+                    appendInMemoryChatMessage(m as InMemoryChatMessage);
+                }
+                setMessages((list || []) as ChatMessage[]);
+                markInMemoryChatRead(otherUserId, currentUserId);
+                return;
+            }
             const ready = await ensureChatDbReady();
             if (!ready) return;
             const msgs = chatRepo.getConversation(currentUserId, otherUserId);
@@ -218,10 +249,12 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
             console.log(`📝 [ChatModal] Selected user ID: ${selectedUserId}`);
             console.log(`📝 [ChatModal] Current user ID: ${currentUserId}`);
             
-            const ready = await ensureChatDbReady();
-            console.log(`📝 [ChatModal] Database ready: ${ready}`);
-            if (!ready) throw new Error('Chat database not ready');
-            
+            if (isLocalOnlyMode()) {
+                const ready = await ensureChatDbReady();
+                console.log(`📝 [ChatModal] Database ready: ${ready}`);
+                if (!ready) throw new Error('Chat database not ready');
+            }
+
             // Send message via API (which will broadcast via WebSocket)
             console.log(`📝 [ChatModal] Sending message via API...`);
             const response = await apiClient.post('/tenants/chat/send', {
@@ -230,13 +263,15 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
             });
             console.log(`📝 [ChatModal] API response received:`, response);
 
-            // Message will be received via WebSocket and saved locally
-            // But we can also save it locally immediately for instant UI update
             if (response.message) {
-                console.log(`📝 [ChatModal] Saving message locally:`, response.message);
-                chatRepo.insert(response.message);
-                console.log(`✅ [ChatModal] Message saved locally`);
-                setMessages([...messages, response.message]);
+                if (isLocalOnlyMode()) {
+                    console.log(`📝 [ChatModal] Saving message locally:`, response.message);
+                    chatRepo.insert(response.message);
+                    console.log(`✅ [ChatModal] Message saved locally`);
+                } else {
+                    appendInMemoryChatMessage(response.message as InMemoryChatMessage);
+                }
+                setMessages((prev) => [...prev, response.message]);
                 await loadConversations();
             } else {
                 console.warn(`⚠️ [ChatModal] API response did not include message`);
@@ -283,7 +318,6 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
                                     .filter(u => u.id !== currentUserId)
                                     .map(user => {
                                         const isSelected = selectedUserId === user.id;
-                                        const unreadCount = chatRepo.getUnreadCount(currentUserId);
                                         return (
                                             <button
                                                 key={user.id}

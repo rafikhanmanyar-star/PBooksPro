@@ -121,7 +121,7 @@ const SalaryConfigModal: React.FC<SalaryConfigModalProps> = ({ isOpen, onClose, 
       <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-slate-900 capitalize">Configure {type} Rule</h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-400">
+          <button type="button" onClick={onClose} className="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-400" aria-label="Close" title="Close">
             <X size={20} />
           </button>
         </div>
@@ -139,8 +139,8 @@ const SalaryConfigModal: React.FC<SalaryConfigModalProps> = ({ isOpen, onClose, 
               </div>
             </div>
             <div className="flex-1">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{formData.is_percentage ? 'Rate (%)' : 'Amount (PKR)'}</label>
-              <input type="number" required value={formData.amount} onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" />
+              <label htmlFor="salary-config-amount" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{formData.is_percentage ? 'Rate (%)' : 'Amount (PKR)'}</label>
+              <input id="salary-config-amount" type="number" required value={formData.amount} onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} onWheel={e => e.currentTarget.blur()} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" title={formData.is_percentage ? 'Rate (%)' : 'Amount (PKR)'} placeholder={formData.is_percentage ? 'e.g. 10' : 'e.g. 5000'} />
             </div>
           </div>
           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex gap-3">

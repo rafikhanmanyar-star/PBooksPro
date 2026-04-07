@@ -8,14 +8,18 @@ interface LinkedTransactionWarningModalProps {
   onConfirm: () => void;
   linkedItemName: string;
   action: 'update' | 'delete';
+  /** When provided, overrides the default first-line message */
+  customMessage?: string;
+  /** When provided, overrides the default consequence paragraph (e.g. for bulk payment deletion) */
+  customConsequence?: string;
 }
 
-const LinkedTransactionWarningModal: React.FC<LinkedTransactionWarningModalProps> = ({ isOpen, onClose, onConfirm, linkedItemName, action }) => {
+const LinkedTransactionWarningModal: React.FC<LinkedTransactionWarningModalProps> = ({ isOpen, onClose, onConfirm, linkedItemName, action, customMessage, customConsequence }) => {
   const title = `Confirm Transaction ${action === 'update' ? 'Update' : 'Deletion'}`;
-  const message = `This transaction is linked to ${linkedItemName}.`;
-  const consequence = action === 'update'
+  const message = customMessage ?? `This transaction is linked to ${linkedItemName}.`;
+  const consequence = customConsequence ?? (action === 'update'
     ? "Updating it will adjust the paid amount on the linked item. Are you sure you want to proceed?"
-    : "Deleting it will reverse the payment and update the linked item's status (e.g., from 'Paid' to 'Unpaid'). This action cannot be undone.";
+    : "Deleting it will reverse the payment and update the linked item's status (e.g., from 'Paid' to 'Unpaid'). This action cannot be undone.");
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title}>

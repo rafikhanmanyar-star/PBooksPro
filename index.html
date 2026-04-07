@@ -1,11 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 
 <head>
+  <script>
+    (function () {
+      try {
+        var s = localStorage.getItem('theme');
+        var t;
+        if (s === 'light' || s === 'dark') {
+          t = s;
+        } else {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', t === 'dark' ? '#1e1e1e' : '#ffffff');
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   <meta name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>PBooks Pro</title>
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#374151" />
@@ -52,9 +70,11 @@
       color: #374151;
     }
 
-    input,
-    textarea,
-    [contenteditable] {
+    /* Ensure inputs always accept keyboard and selection (overrides body user-select in all environments including Electron) */
+    body input,
+    body textarea,
+    body select,
+    body [contenteditable] {
       user-select: text;
       -webkit-user-select: text;
       cursor: text;
@@ -79,8 +99,21 @@
   <!-- The CSS file loads correctly via the JavaScript import -->
 </head>
 
-<body class="bg-background">
+<body class="bg-background" tabindex="-1">
   <div id="root"></div>
+  <script>
+    (function() {
+      var w = window.screen ? window.screen.width : 1920;
+      var h = window.screen ? window.screen.height : 1080;
+      var compact = w <= 1400 || h <= 800;
+      var root = document.documentElement;
+      root.style.setProperty('--viewport-compact', compact ? '1' : '0');
+      root.style.setProperty('--sidebar-width', compact ? '14rem' : '16rem');
+      root.style.setProperty('--content-padding', compact ? '0.5rem' : '1rem');
+      root.style.setProperty('--content-padding-lg', compact ? '0.75rem' : '1.5rem');
+      root.dataset.viewportCompact = compact ? 'true' : 'false';
+    })();
+  </script>
   <script>
     // In Electron: unregister any stale service workers (e.g. from previous web session)
     // to prevent "Offline / app is not cached" when loading from file://

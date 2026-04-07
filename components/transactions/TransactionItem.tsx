@@ -63,6 +63,16 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }
   const getCategoryName = (id: string | undefined) => (id && lookups.categories.get(id)?.name) || 'Uncategorized';
   const getContactName = (id: string | undefined) => (id && lookups.contacts.get(id)?.name) || '-';
 
+  /** Bill/invoice category when payment row lost category_id (e.g. after DB migration). */
+  const resolvedCategoryId =
+    categoryId ||
+    (type === TransactionType.EXPENSE && transaction.billId
+      ? lookups.bills.get(transaction.billId)?.categoryId
+      : undefined) ||
+    (type === TransactionType.INCOME && transaction.invoiceId
+      ? lookups.invoices.get(transaction.invoiceId)?.categoryId
+      : undefined);
+
   const getTransactionDetails = () => {
     const isPositive = type === TransactionType.INCOME || (type === TransactionType.LOAN && (transaction.subtype === LoanSubtype.RECEIVE || transaction.subtype === LoanSubtype.COLLECT));
     const isNegative = type === TransactionType.EXPENSE || (type === TransactionType.LOAN && (transaction.subtype === LoanSubtype.GIVE || transaction.subtype === LoanSubtype.REPAY));
@@ -78,7 +88,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }
     const payingName = getContactName(contactId); // Paying/Paid Name
     
     // Row 2 Data
-    const categoryName = type === TransactionType.TRANSFER ? 'Transfer' : getCategoryName(categoryId);
+    const categoryName = type === TransactionType.TRANSFER ? 'Transfer' : getCategoryName(resolvedCategoryId);
     const descText = description || '-';
 
     return { iconColorClass, accountInfo, timeStr, relatedName, payingName, categoryName, descText };

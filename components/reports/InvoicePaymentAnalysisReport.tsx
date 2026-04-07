@@ -128,17 +128,17 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
     return (
         <div className="flex flex-col h-full space-y-6 p-1">
             {/* Header / Controls */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-end">
+            <div className="bg-app-card p-4 rounded-xl border border-app-border shadow-ds-card flex flex-wrap gap-4 items-end">
                 <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Analyze By</label>
-                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <label className="text-xs font-semibold text-app-muted uppercase">Analyze By</label>
+                    <div className="flex bg-app-toolbar p-1 rounded-lg">
                         {(['tenant', 'owner', 'property'] as const).map(opt => (
                             <button
                                 key={opt}
                                 onClick={() => { setGroupBy(opt); setSelectedEntityId('all'); }}
                                 className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all capitalize ${groupBy === opt
-                                        ? 'bg-white text-indigo-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700'
+                                        ? 'bg-primary text-ds-on-primary shadow-sm'
+                                        : 'text-app-muted hover:text-app-text'
                                     }`}
                             >
                                 {opt}
@@ -148,7 +148,7 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col gap-1 flex-grow min-w-[200px]">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Select Entity</label>
+                    <label className="text-xs font-semibold text-app-muted uppercase">Select Entity</label>
                     <Select
                         value={selectedEntityId}
                         onChange={(e) => setSelectedEntityId(e.target.value)}
@@ -162,11 +162,11 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Time Period</label>
+                    <label className="text-xs font-semibold text-app-muted uppercase">Time Period</label>
                     <Select
                         value={dateRange}
                         onChange={(e) => setDateRange(e.target.value as any)}
-                        className="!w-40"
+                        className="ds-input-field !w-40"
                     >
                         <option value="all">All Time</option>
                         <option value="this_year">This Year</option>
@@ -177,43 +177,43 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-slate-500 text-sm font-medium">Total Invoiced</div>
-                    <div className="text-2xl font-bold text-slate-900 mt-1">{CURRENCY} {summary.totalInvoiced.toLocaleString()}</div>
-                    <div className="text-xs text-slate-400 mt-1">Gross potential rent</div>
+                <div className="bg-app-card p-5 rounded-xl border border-app-border shadow-ds-card">
+                    <div className="text-app-muted text-sm font-medium">Total Invoiced</div>
+                    <div className="text-2xl font-bold text-app-text mt-1">{CURRENCY} {summary.totalInvoiced.toLocaleString()}</div>
+                    <div className="text-xs text-app-muted mt-1">Gross potential rent</div>
                 </div>
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-slate-500 text-sm font-medium">Total Collected</div>
-                    <div className="text-2xl font-bold text-emerald-600 mt-1">{CURRENCY} {summary.totalPaid.toLocaleString()}</div>
-                    <div className="text-xs text-slate-400 mt-1">Actual revenue received</div>
+                <div className="bg-app-card p-5 rounded-xl border border-app-border shadow-ds-card">
+                    <div className="text-app-muted text-sm font-medium">Total Collected</div>
+                    <div className="text-2xl font-bold text-ds-success mt-1">{CURRENCY} {summary.totalPaid.toLocaleString()}</div>
+                    <div className="text-xs text-app-muted mt-1">Actual revenue received</div>
                 </div>
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-slate-500 text-sm font-medium">Outstanding Balance</div>
-                    <div className="text-2xl font-bold text-rose-600 mt-1">{CURRENCY} {summary.outstanding.toLocaleString()}</div>
-                    <div className="text-xs text-slate-400 mt-1">Unpaid invoices</div>
+                <div className="bg-app-card p-5 rounded-xl border border-app-border shadow-ds-card">
+                    <div className="text-app-muted text-sm font-medium">Outstanding Balance</div>
+                    <div className="text-2xl font-bold text-ds-danger mt-1">{CURRENCY} {summary.outstanding.toLocaleString()}</div>
+                    <div className="text-xs text-app-muted mt-1">Unpaid invoices</div>
                 </div>
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-slate-500 text-sm font-medium">Collection Rate</div>
-                    <div className={`text-2xl font-bold mt-1 ${summary.collectionRate >= 90 ? 'text-emerald-600' : summary.collectionRate >= 75 ? 'text-amber-500' : 'text-rose-600'}`}>
+                <div className="bg-app-card p-5 rounded-xl border border-app-border shadow-ds-card">
+                    <div className="text-app-muted text-sm font-medium">Collection Rate</div>
+                    <div className={`text-2xl font-bold mt-1 ${summary.collectionRate >= 90 ? 'text-ds-success' : summary.collectionRate >= 75 ? 'text-ds-warning' : 'text-ds-danger'}`}>
                         {summary.collectionRate.toFixed(1)}%
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">Performance metric</div>
+                    <div className="text-xs text-app-muted mt-1">Performance metric</div>
                 </div>
             </div>
 
             {/* Charts Row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-80">
-                <div className="lg:col-span-2 bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 className="text-sm font-bold text-slate-700 mb-4">Financial Trends</h3>
+                <div className="lg:col-span-2 bg-app-card p-4 rounded-xl border border-app-border shadow-ds-card flex flex-col">
+                    <h3 className="text-sm font-bold text-app-text mb-4">Financial Trends</h3>
                     <div className="flex-grow w-full min-h-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} tick={{ fill: '#64748B' }} />
-                                <YAxis axisLine={false} tickLine={false} fontSize={12} tick={{ fill: '#64748B' }} tickFormatter={(val) => `${val / 1000}k`} />
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} tick={{ fill: 'var(--text-muted)' }} />
+                                <YAxis axisLine={false} tickLine={false} fontSize={12} tick={{ fill: 'var(--text-muted)' }} tickFormatter={(val) => `${val / 1000}k`} />
                                 <Tooltip
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                                    cursor={{ fill: '#F1F5F9' }}
+                                    contentStyle={{ borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)' }}
+                                    cursor={{ fill: 'var(--layer-surface)' }}
                                 />
                                 <Legend wrapperStyle={{ fontSize: '12px' }} />
                                 <Bar dataKey="invoiced" name="Invoiced" fill="#94A3B8" radius={[4, 4, 0, 0]} maxBarSize={50} />
@@ -222,8 +222,8 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
                         </ResponsiveContainer>
                     </div>
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 className="text-sm font-bold text-slate-700 mb-4">Payment Status Dist.</h3>
+                <div className="bg-app-card p-4 rounded-xl border border-app-border shadow-ds-card flex flex-col">
+                    <h3 className="text-sm font-bold text-app-text mb-4">Payment Status Dist.</h3>
                     <div className="flex-grow w-full min-h-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
@@ -249,49 +249,49 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
             </div>
 
             {/* Detailed Table */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col flex-grow">
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-                    <h3 className="text-sm font-bold text-slate-700">Detailed Invoice List</h3>
+            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex flex-col flex-grow">
+                <div className="p-4 border-b border-app-border bg-app-toolbar/40">
+                    <h3 className="text-sm font-bold text-app-text">Detailed Invoice List</h3>
                 </div>
                 <div className="overflow-auto flex-grow">
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 text-slate-500 font-medium sticky top-0 z-10">
+                        <thead className="bg-app-toolbar/40 text-app-muted font-medium sticky top-0 z-10">
                             <tr>
-                                <th className="p-3 border-b border-slate-200">Date</th>
-                                <th className="p-3 border-b border-slate-200">Invoice #</th>
-                                <th className="p-3 border-b border-slate-200">Entity</th>
-                                <th className="p-3 border-b border-slate-200 text-right">Amount</th>
-                                <th className="p-3 border-b border-slate-200 text-right">Paid</th>
-                                <th className="p-3 border-b border-slate-200 text-right">Balance</th>
-                                <th className="p-3 border-b border-slate-200 text-center">Status</th>
+                                <th className="p-3 border-b border-app-border">Date</th>
+                                <th className="p-3 border-b border-app-border">Invoice #</th>
+                                <th className="p-3 border-b border-app-border">Entity</th>
+                                <th className="p-3 border-b border-app-border text-right">Amount</th>
+                                <th className="p-3 border-b border-app-border text-right">Paid</th>
+                                <th className="p-3 border-b border-app-border text-right">Balance</th>
+                                <th className="p-3 border-b border-app-border text-center">Status</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-app-border bg-app-card">
                             {filteredInvoices.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-slate-400 italic">
+                                    <td colSpan={7} className="p-8 text-center text-app-muted italic">
                                         No invoices found for the selected criteria.
                                     </td>
                                 </tr>
                             ) : (
                                 filteredInvoices.map(inv => (
-                                    <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="p-3 text-slate-600">{format(new Date(inv.issueDate), 'dd MMM yyyy')}</td>
-                                        <td className="p-3 font-medium text-slate-700">#{inv.invoiceNumber}</td>
-                                        <td className="p-3 text-slate-600">
+                                    <tr key={inv.id} className="hover:bg-app-toolbar/30 transition-colors">
+                                        <td className="p-3 text-app-muted">{format(new Date(inv.issueDate), 'dd MMM yyyy')}</td>
+                                        <td className="p-3 font-medium text-app-text">#{inv.invoiceNumber}</td>
+                                        <td className="p-3 text-app-muted">
                                             {groupBy === 'tenant' ? state.contacts.find(c => c.id === inv.contactId)?.name
                                                 : groupBy === 'owner' ? state.properties.find(p => p.id === inv.propertyId)?.name
                                                     : state.contacts.find(c => c.id === inv.contactId)?.name}
                                         </td>
-                                        <td className="p-3 text-slate-700 text-right font-medium">{CURRENCY} {inv.amount.toLocaleString()}</td>
-                                        <td className="p-3 text-emerald-600 text-right">{CURRENCY} {inv.paidAmount.toLocaleString()}</td>
-                                        <td className="p-3 text-rose-600 text-right font-medium">{CURRENCY} {(inv.amount - inv.paidAmount).toLocaleString()}</td>
+                                        <td className="p-3 text-app-text text-right font-medium">{CURRENCY} {inv.amount.toLocaleString()}</td>
+                                        <td className="p-3 text-ds-success text-right">{CURRENCY} {inv.paidAmount.toLocaleString()}</td>
+                                        <td className="p-3 text-ds-danger text-right font-medium">{CURRENCY} {(inv.amount - inv.paidAmount).toLocaleString()}</td>
                                         <td className="p-3 text-center">
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase
-                                                ${inv.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
-                                                    inv.status === 'Overdue' ? 'bg-rose-100 text-rose-700' :
-                                                        inv.status === 'Partially Paid' ? 'bg-amber-100 text-amber-700' :
-                                                            'bg-slate-100 text-slate-600'}`}>
+                                                ${inv.status === 'Paid' ? 'bg-ds-success/15 text-ds-success' :
+                                                    inv.status === 'Overdue' ? 'bg-ds-danger/15 text-ds-danger' :
+                                                        inv.status === 'Partially Paid' ? 'bg-ds-warning/15 text-ds-warning' :
+                                                            'bg-app-toolbar text-app-muted'}`}>
                                                 {inv.status}
                                             </span>
                                         </td>

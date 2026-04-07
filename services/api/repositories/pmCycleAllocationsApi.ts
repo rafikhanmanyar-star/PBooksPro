@@ -17,6 +17,7 @@ export interface PMCycleAllocation {
   expenseTotal: number;
   feeRate: number;
   excludedCategoryIds?: string[];
+  version?: number;
 }
 
 export class PMCycleAllocationsApiRepository {
@@ -48,7 +49,8 @@ export class PMCycleAllocationsApiRepository {
     return apiClient.post<PMCycleAllocation>('/pm-cycle-allocations', { ...allocation, id });
   }
 
-  async delete(id: string): Promise<void> {
-    await apiClient.delete(`/pm-cycle-allocations/${id}`);
+  async delete(id: string, version?: number): Promise<void> {
+    const q = version != null && Number.isFinite(version) ? `?version=${encodeURIComponent(String(version))}` : '';
+    await apiClient.delete(`/pm-cycle-allocations/${id}${q}`);
   }
 }

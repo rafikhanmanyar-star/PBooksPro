@@ -1,6 +1,9 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
+import { useAuth } from '../../context/AuthContext';
+import { getAppStateApiService } from '../../services/api/appStateApi';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 import { Contact, Vendor, ContactType, TransactionType, LoanSubtype } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import Button from '../ui/Button';
@@ -11,7 +14,7 @@ import Input from '../ui/Input';
 import SettingsLedgerModal from '../settings/SettingsLedgerModal';
 import Tabs from '../ui/Tabs';
 import { ImportType } from '../../services/importService';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 
@@ -108,12 +111,14 @@ const ContactTreeSidebar: React.FC<{
 const ContactsPage: React.FC = () => {
     const dispatch = useDispatchOnly();
     const state = useStateSelector(s => s);
-    const { showConfirm, showAlert } = useNotification();
+    const { isAuthenticated } = useAuth();
+    const { showConfirm, showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
+    const [displayLimit, setDisplayLimit] = useState(200);
 
     // Tree sidebar (same style as Project Agreements)
     const [treeSearchQuery, setTreeSearchQuery] = useState('');
@@ -129,6 +134,11 @@ const ContactsPage: React.FC = () => {
     const isSubmittingRef = useRef(false);
 
     const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Vendors', 'Friends & Family'];
+
+    const vendorsMap = useMemo(
+        () => new Map((state.vendors || []).map(v => [v.id, v])),
+        [state.vendors]
+    );
 
     // Sync activeTab when tree type is selected
     useEffect(() => {
@@ -234,9 +244,13 @@ const ContactsPage: React.FC = () => {
         document.body.style.userSelect = 'none';
         window.addEventListener('mousemove', handleMouseMoveSidebar);
         window.addEventListener('mouseup', handleUp);
+        window.addEventListener('blur', handleUp);
+        document.addEventListener('visibilitychange', handleUp);
         return () => {
             window.removeEventListener('mousemove', handleMouseMoveSidebar);
             window.removeEventListener('mouseup', handleUp);
+            window.removeEventListener('blur', handleUp);
+            document.removeEventListener('visibilitychange', handleUp);
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
         };
@@ -252,8 +266,7 @@ const ContactsPage: React.FC = () => {
         let filtered = state.contacts.filter(c => c.type !== ContactType.STAFF);
 
         if (selectedTreeType === 'contact' && selectedTreeId) {
-            // Check both contacts and vendors for selection
-            const vendor = state.vendors?.find(v => v.id === selectedTreeId);
+            const vendor = vendorsMap.get(selectedTreeId);
             if (vendor) {
                 filtered = [vendor as unknown as Contact];
             } else {
@@ -296,7 +309,7 @@ const ContactsPage: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [state.contacts, state.vendors, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId]);
+    }, [state.contacts, state.vendors, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId, vendorsMap]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -311,7 +324,7 @@ const ContactsPage: React.FC = () => {
         </span>
     );
 
-    const handleSaveContact = (contactData: Omit<Contact, 'id'>) => {
+    const handleSaveContact = async (contactData: Omit<Contact, 'id'>) => {
         // Prevent multiple submissions
         if (isSubmittingRef.current) {
             return;
@@ -321,14 +334,40 @@ const ContactsPage: React.FC = () => {
         try {
             if (contactToEdit) {
                 if (contactToEdit.type === ContactType.VENDOR) {
-                    dispatch({ type: 'UPDATE_VENDOR', payload: { ...contactToEdit, ...contactData } as Vendor });
+                    let payload = { ...contactToEdit, ...contactData } as Vendor;
+                    if (!isLocalOnlyMode() && isAuthenticated) {
+                        try {
+                            const merged = await getAppStateApiService().updateVendor(payload.id, {
+                                ...payload,
+                                version: (contactToEdit as Vendor).version,
+                            });
+                            payload = { ...payload, ...merged };
+                        } catch (err: any) {
+                            showToast(err?.message || err?.error || 'Could not update vendor.', 'error');
+                            return;
+                        }
+                    }
+                    dispatch({ type: 'UPDATE_VENDOR', payload });
                 } else {
                     dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
                 }
             } else {
                 if (activeTab === 'Vendors' || (contactData as any).type === ContactType.VENDOR) {
-                    const vendorId = `vendor_${Date.now()}`; // Use vendor ID format
-                    dispatch({ type: 'ADD_VENDOR', payload: { ...contactData, id: vendorId, type: ContactType.VENDOR } as Vendor });
+                    const vendorId = `vendor_${Date.now()}`;
+                    let payload = { ...contactData, id: vendorId, type: ContactType.VENDOR } as Vendor;
+                    if (!isLocalOnlyMode() && isAuthenticated) {
+                        try {
+                            const merged = await getAppStateApiService().saveVendor({
+                                ...payload,
+                                userId: state.currentUser?.id,
+                            });
+                            payload = { ...payload, ...merged };
+                        } catch (err: any) {
+                            showToast(err?.message || err?.error || 'Could not save vendor.', 'error');
+                            return;
+                        }
+                    }
+                    dispatch({ type: 'ADD_VENDOR', payload });
                 } else {
                     // Generate a unique ID that includes timestamp and random component
                     const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -350,6 +389,19 @@ const ContactsPage: React.FC = () => {
         const confirmed = await showConfirm(`Are you sure you want to delete "${contactToEdit.name}"? This cannot be undone.`);
         if (confirmed) {
             if (contactToEdit.type === ContactType.VENDOR) {
+                if (!isLocalOnlyMode() && isAuthenticated) {
+                    try {
+                        await getAppStateApiService().deleteVendor(
+                            contactToEdit.id,
+                            (contactToEdit as Vendor).version
+                        );
+                    } catch (err: any) {
+                        if (err?.status !== 404) {
+                            showToast(err?.message || err?.error || 'Could not delete vendor.', 'error');
+                            return;
+                        }
+                    }
+                }
                 dispatch({ type: 'DELETE_VENDOR', payload: contactToEdit.id });
             } else {
                 dispatch({ type: 'DELETE_CONTACT', payload: contactToEdit.id });
@@ -381,7 +433,7 @@ const ContactsPage: React.FC = () => {
         setLedgerModal({ isOpen: true, contact });
     };
 
-    const handleSendWhatsApp = async (contact: Contact, e: React.MouseEvent) => {
+    const handleSendWhatsApp = (contact: Contact, e: React.MouseEvent) => {
         e.stopPropagation();
 
         if (!contact.contactNo) {
@@ -390,27 +442,14 @@ const ContactsPage: React.FC = () => {
         }
 
         try {
-            // Check if WhatsApp API is configured
-            const { WhatsAppChatService } = await import('../../services/whatsappChatService');
-            const isApiConfigured = await WhatsAppChatService.isConfigured();
-
-            if (isApiConfigured) {
-                // Open WhatsApp side panel (API connected)
-                openChat(contact, contact.contactNo);
-            } else {
-                // Use manual WhatsApp (wa.me) - old method
-                WhatsAppService.sendMessage({
-                    contact,
-                    message: `Hello ${contact.name}!`
-                });
-            }
+            const message = `Hello ${contact.name}!`;
+            sendOrOpenWhatsApp(
+                { contact, message, phoneNumber: contact.contactNo },
+                () => state.whatsAppMode,
+                openChat
+            );
         } catch (error) {
-            // Fallback to manual WhatsApp if check fails
-            console.warn('WhatsApp API check failed, using manual method:', error);
-            WhatsAppService.sendMessage({
-                contact,
-                message: `Hello ${contact.name}!`
-            });
+            showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
     };
 
@@ -562,7 +601,7 @@ const ContactsPage: React.FC = () => {
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {contacts.length > 0 ? (
-                                        contacts.map((contact, index) => {
+                                        contacts.slice(0, displayLimit).map((contact, index) => {
                                             const balance = contactBalances.get(contact.id) || 0;
                                             return (
                                                 <tr
@@ -626,6 +665,18 @@ const ContactsPage: React.FC = () => {
                                                     <div className="w-12 h-12 opacity-20 mb-2">{ICONS.users}</div>
                                                     <p>No contacts found.</p>
                                                 </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {contacts.length > displayLimit && (
+                                        <tr>
+                                            <td colSpan={7} className="text-center py-3">
+                                                <button
+                                                    onClick={() => setDisplayLimit(prev => prev + 200)}
+                                                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                                                >
+                                                    Showing {displayLimit} of {contacts.length} — Load more
+                                                </button>
                                             </td>
                                         </tr>
                                     )}

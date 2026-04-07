@@ -1,15 +1,22 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { flushSync } from 'react-dom';
+import { useAppContext, _getAppState } from '../../context/AppContext';
 import { Contact, TransactionType, Transaction, AccountType } from '../../types';
+import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
+import Textarea from '../ui/Textarea';
 import Button from '../ui/Button';
 import { CURRENCY, ICONS } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface BrokerPayoutModalProps {
     isOpen: boolean;
@@ -37,7 +44,8 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
     const [items, setItems] = useState<CommissionItem[]>([]);
-    const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+    const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
+    const [paymentParticulars, setPaymentParticulars] = useState('');
     const [accountId, setAccountId] = useState('');
     const [showWhatsAppConfirm, setShowWhatsAppConfirm] = useState(false);
     const [lastPaidAmount, setLastPaidAmount] = useState(0);
@@ -49,6 +57,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
         if (isOpen && broker) {
             const cashAccount = userSelectableAccounts.find(a => a.name === 'Cash');
             setAccountId(cashAccount?.id || userSelectableAccounts[0]?.id || '');
+            setPaymentParticulars('');
             
             const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
             const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
@@ -57,9 +66,10 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
 
             const newItems: CommissionItem[] = [];
 
-            // 1. Rental Agreements
+            // 1. Rental Agreements (exclude renewed agreements so broker is not charged again on renewal)
             if (!context || context === 'Rental') {
                 state.rentalAgreements.forEach(ra => {
+                    if (ra.previousAgreementId) return;
                     if (ra.brokerId === broker.id && (ra.brokerFee || 0) > 0) {
                         const property = state.properties.find(p => p.id === ra.propertyId);
                         const owner = state.contacts.find(c => c.id === property?.ownerId);
@@ -165,33 +175,72 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
         const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
         
         const selectedItems = items.filter(i => i.isSelected && i.paymentAmount > 0);
+        const particularsNote = paymentParticulars.trim();
 
-        // Create individual transactions per agreement
-        selectedItems.forEach(item => {
-             const categoryId = item.type === 'Project' ? (rebateCategory?.id || brokerFeeCategory?.id) : brokerFeeCategory?.id;
-             
-             if (!categoryId) {
-                 console.warn("Missing category for broker fee payment");
-                 return;
-             }
-
-             const payoutTransaction: Omit<Transaction, 'id'> = {
+        const newTransactions: Transaction[] = [];
+        for (const item of selectedItems) {
+            const categoryId = item.type === 'Project' ? (rebateCategory?.id || brokerFeeCategory?.id) : brokerFeeCategory?.id;
+            if (!categoryId) {
+                await showAlert('Missing Broker Fee / Rebate category. Add categories in Settings, then try again.');
+                return;
+            }
+            const baseDescription = `Broker Commission for ${item.entityName}`;
+            const description = particularsNote
+                ? `${baseDescription} — ${particularsNote}`
+                : baseDescription;
+            const payoutTransaction: Omit<Transaction, 'id'> = {
                 type: TransactionType.EXPENSE,
                 amount: item.paymentAmount,
                 date: paymentDate,
-                description: `Broker Commission for ${item.entityName}`,
+                description,
                 accountId: payoutAccount.id,
                 contactId: broker.id,
-                categoryId: categoryId,
+                categoryId,
                 agreementId: item.agreementId,
                 propertyId: item.type === 'Rental' ? item.entityId : undefined,
                 projectId: item.type === 'Project' ? item.entityId : undefined,
                 buildingId: item.type === 'Rental' ? state.properties.find(p => p.id === item.entityId)?.buildingId : undefined
             };
-            dispatch({ type: 'ADD_TRANSACTION', payload: { ...payoutTransaction, id: Date.now().toString() + Math.random() } });
-        });
+            newTransactions.push({
+                ...payoutTransaction,
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+            });
+        }
 
-        // Show WhatsApp confirmation
+        if (isLocalOnlyMode()) {
+            flushSync(() => {
+                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: newTransactions });
+            });
+            try {
+                await flushAppStateToDatabase(_getAppState());
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                await showAlert(`Could not save payment to the database: ${msg}`);
+                return;
+            }
+        } else {
+            // LAN/API: save first (normalized rows + server version), then merge into state once — matches bulk bill / PM payout migration.
+            try {
+                const api = getAppStateApiService();
+                const savedTransactions: Transaction[] = [];
+                for (const tx of newTransactions) {
+                    const saved = await api.saveTransaction(tx);
+                    savedTransactions.push(saved as Transaction);
+                }
+                flushSync(() => {
+                    dispatch({
+                        type: 'BATCH_ADD_TRANSACTIONS',
+                        payload: savedTransactions,
+                        _isRemote: true,
+                    } as any);
+                });
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                await showAlert(`Failed to record commission payment: ${msg}`);
+                return;
+            }
+        }
+
         setLastPaidAmount(totalToPay);
         setShowWhatsAppConfirm(true);
     };
@@ -202,7 +251,11 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
         const message = WhatsAppService.generatePayoutConfirmation(
             template, broker, lastPaidAmount, 'Broker Commission'
         );
-        openChat(broker, broker.contactNo || '', message);
+        sendOrOpenWhatsApp(
+            { contact: broker, message, phoneNumber: broker.contactNo || undefined },
+            () => state.whatsAppMode,
+            openChat
+        );
         setShowWhatsAppConfirm(false);
         onClose();
     };
@@ -224,16 +277,16 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
         return (
             <Modal isOpen={isOpen} onClose={handleSkipWhatsApp} title="Commission Payment Recorded">
                 <div className="space-y-4">
-                    <div className="p-4 bg-emerald-50 rounded-lg text-center">
-                        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-                            <div className="w-6 h-6 text-emerald-600">{ICONS.check}</div>
+                    <div className="p-4 bg-app-toolbar border border-app-border rounded-lg text-center">
+                        <div className="w-12 h-12 rounded-full bg-[color:var(--badge-paid-bg)] border border-ds-success/30 flex items-center justify-center mx-auto mb-3">
+                            <div className="w-6 h-6 text-ds-success">{ICONS.check}</div>
                         </div>
-                        <p className="font-semibold text-emerald-800">
+                        <p className="font-semibold text-app-text">
                             {CURRENCY} {lastPaidAmount.toLocaleString()} paid to {broker.name}
                         </p>
-                        <p className="text-sm text-emerald-600 mt-1">Broker Commission Payment</p>
+                        <p className="text-sm text-ds-success mt-1">Broker Commission Payment</p>
                     </div>
-                    <p className="text-sm text-slate-600 text-center">
+                    <p className="text-sm text-app-muted text-center">
                         Would you like to send a payment confirmation via WhatsApp?
                     </p>
                     <div className="flex justify-center gap-3 pt-2">
@@ -241,8 +294,9 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
                             Skip
                         </Button>
                         <button
+                            type="button"
                             onClick={handleSendWhatsAppConfirmation}
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 transition-colors"
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-ds-on-primary bg-ds-success hover:opacity-90 transition-colors duration-ds"
                         >
                             <div className="w-4 h-4">{ICONS.whatsapp}</div>
                             Send via WhatsApp
@@ -267,18 +321,25 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
                         />
                     </div>
                      <div className="flex-grow">
-                         <Input 
+                         <DatePicker
                             label="Payment Date"
-                            type="date"
                             value={paymentDate}
-                            onChange={e => setPaymentDate(e.target.value)}
+                            onChange={d => setPaymentDate(toLocalDateString(d))}
                             required
                         />
                     </div>
                 </div>
 
-                <div className="border rounded-lg overflow-hidden">
-                    <div className="bg-slate-100 px-4 py-2 font-semibold text-sm text-slate-700 grid grid-cols-12 gap-2">
+                <Textarea
+                    label="Description / Particulars"
+                    placeholder="Optional notes for this payment (e.g. bank reference, cheque #). Shown on broker ledger and project broker reports."
+                    value={paymentParticulars}
+                    onChange={e => setPaymentParticulars(e.target.value)}
+                    rows={2}
+                />
+
+                <div className="border border-app-border rounded-lg overflow-hidden bg-app-card">
+                    <div className="bg-app-table-header px-4 py-2 font-semibold text-sm text-app-muted grid grid-cols-12 gap-2 border-b border-app-border">
                         <div className="col-span-1 text-center">Select</div>
                         <div className="col-span-4">Reference (Unit/Project)</div>
                         <div className="col-span-2 text-right">Total Fee</div>
@@ -288,49 +349,51 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
                     <div className="max-h-60 overflow-y-auto">
                         {items.length > 0 ? (
                             items.map((item, idx) => (
-                                <div key={item.agreementId} className={`grid grid-cols-12 gap-2 px-4 py-3 border-b text-sm items-center ${item.isSelected ? 'bg-indigo-50' : ''}`}>
+                                <div key={item.agreementId} className={`grid grid-cols-12 gap-2 px-4 py-3 border-b border-app-border text-sm items-center transition-colors duration-ds ${item.isSelected ? 'bg-nav-active/50' : 'bg-app-card'}`}>
                                     <div className="col-span-1 text-center">
                                         <input 
                                             type="checkbox" 
                                             checked={item.isSelected} 
                                             onChange={() => handleToggle(idx)}
-                                            className="w-4 h-4 text-accent rounded focus:ring-accent"
+                                            className="w-4 h-4 rounded border-app-border text-primary focus:ring-primary/30"
+                                            aria-label={`Select ${item.entityName} for payout`}
                                         />
                                     </div>
                                     <div className="col-span-4">
-                                        <div className="font-medium text-slate-800 truncate" title={item.entityName}>
-                                            {item.type === 'Project' && <span className="text-[10px] bg-slate-200 px-1 rounded mr-1">PROJ</span>}
+                                        <div className="font-medium text-app-text truncate" title={item.entityName}>
+                                            {item.type === 'Project' && <span className="text-[10px] bg-app-toolbar px-1 rounded mr-1 border border-app-border text-app-muted">PROJ</span>}
                                             {item.entityName}
                                         </div>
-                                        <div className="text-xs text-slate-500 truncate" title={item.ownerName}>Client: {item.ownerName}</div>
+                                        <div className="text-xs text-app-muted truncate" title={item.ownerName}>Client: {item.ownerName}</div>
                                     </div>
-                                    <div className="col-span-2 text-right text-slate-600">
+                                    <div className="col-span-2 text-right text-app-muted tabular-nums">
                                         {item.totalFee.toLocaleString()}
                                     </div>
-                                    <div className="col-span-2 text-right font-medium text-slate-800">
+                                    <div className="col-span-2 text-right font-medium text-app-text tabular-nums">
                                         {item.remaining.toLocaleString()}
                                     </div>
                                     <div className="col-span-3">
                                         <input 
                                             type="number" 
-                                            className="w-full border rounded px-2 py-1 text-right text-sm focus:ring-2 focus:ring-accent/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            className="ds-input-field w-full rounded px-2 py-1 text-right text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
                                             value={item.paymentAmount}
                                             onChange={(e) => handleAmountChange(idx, e.target.value)}
                                             onKeyDown={(e) => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
                                             disabled={!item.isSelected}
+                                            aria-label={`Pay now amount for ${item.entityName}`}
                                         />
                                     </div>
                                 </div>
                             ))
                         ) : (
-                            <div className="p-4 text-center text-slate-500">No commissions due for this broker in this section.</div>
+                            <div className="p-4 text-center text-app-muted">No commissions due for this broker in this section.</div>
                         )}
                     </div>
                 </div>
 
-                <div className="p-4 bg-slate-50 rounded-lg flex justify-between items-center">
-                    <span className="font-semibold text-slate-700">Total Payment:</span>
-                    <span className="font-bold text-xl text-accent">{CURRENCY} {totalToPay.toLocaleString()}</span>
+                <div className="p-4 bg-app-toolbar border border-app-border rounded-lg flex justify-between items-center">
+                    <span className="font-semibold text-app-text">Total Payment:</span>
+                    <span className="font-bold text-xl text-primary">{CURRENCY} {totalToPay.toLocaleString()}</span>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">

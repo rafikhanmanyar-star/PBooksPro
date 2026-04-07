@@ -141,7 +141,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
     const SortIndicator = ({ column }: { column: SortKey }) => {
         const isActive = sortConfig.key === column;
         return (
-            <div className={`ml-1 transition-opacity ${isActive ? 'text-indigo-600 opacity-100' : 'text-slate-300 opacity-50'}`}>
+            <div className={`ml-1 transition-opacity ${isActive ? 'text-primary opacity-100' : 'text-app-muted opacity-50'}`}>
                 {isActive ? (sortConfig.direction === 'asc' ? ICONS.arrowUp : ICONS.arrowDown) : ICONS.arrowUpDown}
             </div>
         );
@@ -163,25 +163,25 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
             ) || { in: 0, out: 0 };
 
             return (
-                <div style={style} className="flex items-center px-4 bg-slate-50 border-b border-slate-200">
+                <div style={style} className="flex items-center px-4 bg-app-toolbar border-b border-app-border">
                     <div className="flex items-center gap-2 flex-1">
-                        <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">{row.groupTitle}</span>
-                        <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        <span className="text-[10px] font-bold text-primary uppercase tracking-wider">{row.groupTitle}</span>
+                        <span className="text-[9px] font-bold text-app-muted bg-app-surface-2 px-1.5 py-0.5 rounded border border-app-border">
                             {row.totalInGroup} RECORDS
                         </span>
                     </div>
                     <div className="flex items-center gap-4 text-xs font-bold tabular-nums">
                         <div className="flex flex-col items-end">
-                            <span className="text-[8px] text-slate-400 leading-none mb-0.5 uppercase">IN</span>
-                            <span className="text-emerald-600">+{CURRENCY}{summary.in.toLocaleString()}</span>
+                            <span className="text-[8px] text-app-muted leading-none mb-0.5 uppercase">IN</span>
+                            <span className="text-ds-success">+{CURRENCY}{summary.in.toLocaleString()}</span>
                         </div>
                         <div className="flex flex-col items-end">
-                            <span className="text-[8px] text-slate-400 leading-none mb-0.5 uppercase">OUT</span>
-                            <span className="text-rose-600">-{CURRENCY}{summary.out.toLocaleString()}</span>
+                            <span className="text-[8px] text-app-muted leading-none mb-0.5 uppercase">OUT</span>
+                            <span className="text-ds-danger">-{CURRENCY}{summary.out.toLocaleString()}</span>
                         </div>
-                        <div className="flex flex-col items-end border-l border-slate-200 pl-4 ml-2">
-                            <span className="text-[8px] text-slate-400 leading-none mb-0.5 uppercase">NET</span>
-                            <span className={summary.in - summary.out >= 0 ? 'text-slate-700' : 'text-rose-600'}>
+                        <div className="flex flex-col items-end border-l border-app-border pl-4 ml-2">
+                            <span className="text-[8px] text-app-muted leading-none mb-0.5 uppercase">NET</span>
+                            <span className={summary.in - summary.out >= 0 ? 'text-app-text' : 'text-ds-danger'}>
                                 {CURRENCY}{(summary.in - summary.out).toLocaleString()}
                             </span>
                         </div>
@@ -193,23 +193,24 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
         const tx = row.data;
         const isIncome = tx.type === TransactionType.INCOME;
         const isExpense = tx.type === TransactionType.EXPENSE;
+        const isLoan = tx.type === TransactionType.LOAN;
         const isChild = row.type === 'child';
         const isExpanded = expandedRowIds.has(tx.id);
 
         return (
             <div
                 style={style}
-                className={`flex items-center group cursor-pointer border-b border-slate-100 hover:bg-slate-50 transition-colors ${isChild ? 'bg-slate-50/50' : 'bg-white'}`}
+                className={`flex items-center group cursor-pointer border-b border-app-border hover:bg-app-toolbar/80 transition-colors duration-ds ${isChild ? 'bg-app-toolbar/40' : 'bg-app-card'}`}
                 onClick={() => !isChild && onRowClick(tx)}
             >
-                <div className="w-[85px] flex-shrink-0 px-3 text-[11px] text-slate-500 font-mono py-1 border-r border-slate-100 bg-inherit uppercase">
+                <div className="w-[85px] flex-shrink-0 px-3 text-[11px] text-app-muted font-mono py-1 border-r border-app-border bg-inherit uppercase">
                     {formatDate(tx.date)}
                 </div>
 
                 <div className="w-[80px] flex-shrink-0 px-3 py-1">
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${isIncome ? 'text-emerald-700 bg-emerald-50 border-emerald-100' :
-                        isExpense ? 'text-rose-700 bg-rose-50 border-rose-100' :
-                            'text-indigo-700 bg-indigo-50 border-indigo-100'
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${isIncome ? 'ds-pill-type ds-pill-type-payment' :
+                        isExpense ? 'border border-ds-danger/30 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)]' :
+                            isLoan ? 'ds-pill-type ds-pill-type-security' : 'ds-pill-type ds-pill-type-installment'
                         }`}>
                         {tx.type.substring(0, 3)}
                     </span>
@@ -219,20 +220,20 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                     {!isChild && tx.children && tx.children.length > 0 && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onToggleExpand(tx.id); }}
-                            className={`p-0.5 rounded hover:bg-slate-200 transition-colors ${isExpanded ? 'rotate-90 text-indigo-600' : 'text-slate-400'}`}
+                            className={`p-0.5 rounded hover:bg-app-toolbar transition-colors duration-ds ${isExpanded ? 'rotate-90 text-primary' : 'text-app-muted'}`}
                         >
                             {ICONS.chevronRight}
                         </button>
                     )}
-                    <span className={`text-[11px] font-semibold truncate ${isChild ? 'text-slate-500 italic ml-4' : 'text-slate-800'}`}>
+                    <span className={`text-[11px] font-semibold truncate ${isChild ? 'text-app-muted italic ml-4' : 'text-app-text'}`}>
                         {tx.description || '-'}
                         {tx.children && tx.children.length > 0 && (
-                            <span className="text-[10px] font-bold text-indigo-600 ml-1 opacity-70">[{tx.children.length}]</span>
+                            <span className="text-[10px] font-bold text-primary ml-1 opacity-70">[{tx.children.length}]</span>
                         )}
                     </span>
                 </div>
 
-                <div className="w-[140px] flex-shrink-0 px-3 text-[10px] text-slate-500 truncate py-1">
+                <div className="w-[140px] flex-shrink-0 px-3 text-[10px] text-app-muted truncate py-1">
                     {tx.type === TransactionType.TRANSFER ? (
                         `${getAccountName(tx.fromAccountId)} → ${getAccountName(tx.toAccountId)}`
                     ) : (
@@ -241,31 +242,31 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                 </div>
 
                 <div className="w-[120px] flex-shrink-0 px-3 py-1">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase truncate max-w-full">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold bg-app-toolbar text-app-muted border border-app-border uppercase truncate max-w-full">
                         {getCategoryName(tx.categoryId)}
                     </span>
                 </div>
 
-                <div className="w-[120px] flex-shrink-0 px-3 text-[10px] text-slate-500 truncate py-1">
+                <div className="w-[120px] flex-shrink-0 px-3 text-[10px] text-app-muted truncate py-1">
                     {getContactName(tx.contactId)}
                 </div>
 
                 <div className="w-[110px] flex-shrink-0 px-3 text-right text-[11px] font-bold tabular-nums py-1">
-                    <span className={isIncome ? 'text-emerald-600' : isExpense ? 'text-rose-600' : 'text-slate-700'}>
+                    <span className={isIncome ? 'text-ds-success' : isExpense ? 'text-ds-danger' : isLoan ? 'text-ds-warning' : 'text-primary'}>
                         <span className="text-[9px] opacity-60 mr-0.5 font-normal">{CURRENCY}</span>
                         {tx.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
                     </span>
                 </div>
 
-                <div className="w-[120px] flex-shrink-0 px-3 text-right text-[11px] font-bold tabular-nums border-l border-slate-100 bg-inherit py-1">
-                    <span className="text-slate-900">
+                <div className="w-[120px] flex-shrink-0 px-3 text-right text-[11px] font-bold tabular-nums border-l border-app-border bg-inherit py-1">
+                    <span className="text-app-text">
                         <span className="text-[9px] opacity-40 mr-0.5 font-normal">{CURRENCY}</span>
                         {(tx.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
                     </span>
                 </div>
 
                 <div className="w-[40px] flex-shrink-0 flex items-center justify-center py-1">
-                    <button className="p-1 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-all opacity-0 group-hover:opacity-100">
+                    <button type="button" className="p-1 text-app-muted hover:text-primary hover:bg-nav-active rounded transition-all duration-ds opacity-0 group-hover:opacity-100">
                         {ICONS.chevronRight}
                     </button>
                 </div>
@@ -275,26 +276,26 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
 
     if (!groups?.length || !flatRows.length) {
         return (
-            <div className="flex flex-col items-center justify-center p-20 text-slate-300 bg-white rounded-xl border border-slate-100 shadow-sm mt-4">
-                <div className="p-4 bg-slate-50 rounded-2xl mb-4 border border-slate-100">{ICONS.fileText}</div>
-                <h3 className="text-sm font-bold text-slate-900">No transactions match</h3>
-                <p className="text-[11px] text-slate-500 mt-1">Try refining your filters or search terms</p>
+            <div className="flex flex-col items-center justify-center p-20 text-app-muted bg-app-card rounded-xl border border-app-border shadow-ds-card mt-4">
+                <div className="p-4 bg-app-toolbar rounded-2xl mb-4 border border-app-border">{ICONS.fileText}</div>
+                <h3 className="text-sm font-bold text-app-text">No transactions match</h3>
+                <p className="text-[11px] text-app-muted mt-1">Try refining your filters or search terms</p>
             </div>
         );
     }
 
     return (
-        <div ref={containerRef} className="w-full flex-1 flex flex-col bg-white overflow-hidden">
-            <div className="overflow-x-auto bg-slate-50 border-b border-slate-200 scrollbar-hide">
-                <div className="flex items-center h-8 min-w-[1000px] text-[10px] font-bold uppercase tracking-wider text-slate-500 px-0">
-                    <div className="w-[85px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 border-r border-slate-200 flex items-center justify-between bg-slate-50" onClick={() => onSort('date')}>DATE <SortIndicator column="date" /></div>
-                    <div className="w-[80px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('type')}>TYPE <SortIndicator column="type" /></div>
-                    <div className="flex-1 min-w-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('description')}>DESCRIPTION <SortIndicator column="description" /></div>
-                    <div className="w-[140px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('account')}>ACCOUNT <SortIndicator column="account" /></div>
-                    <div className="w-[120px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('category')}>CATEGORY <SortIndicator column="category" /></div>
-                    <div className="w-[120px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('contact')}>CONTACT <SortIndicator column="contact" /></div>
-                    <div className="w-[110px] flex-shrink-0 px-3 py-2 text-right cursor-pointer hover:bg-slate-100 flex items-center justify-end gap-1" onClick={() => onSort('amount')}>AMOUNT <SortIndicator column="amount" /></div>
-                    <div className="w-[120px] flex-shrink-0 px-3 py-2 text-right cursor-pointer hover:bg-slate-100 border-l border-slate-200 flex items-center justify-end gap-1 bg-slate-50" onClick={() => onSort('balance')}>BALANCE <SortIndicator column="balance" /></div>
+        <div ref={containerRef} className="w-full flex-1 flex flex-col bg-app-card overflow-hidden">
+            <div className="overflow-x-auto bg-app-table-header border-b border-app-border scrollbar-hide">
+                <div className="flex items-center h-8 min-w-[1000px] text-[10px] font-bold uppercase tracking-wider text-app-muted px-0">
+                    <div className="w-[85px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-app-toolbar border-r border-app-border flex items-center justify-between bg-app-table-header" onClick={() => onSort('date')}>DATE <SortIndicator column="date" /></div>
+                    <div className="w-[80px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-app-toolbar flex items-center justify-between" onClick={() => onSort('type')}>TYPE <SortIndicator column="type" /></div>
+                    <div className="flex-1 min-w-0 px-3 py-2 cursor-pointer hover:bg-app-toolbar flex items-center justify-between" onClick={() => onSort('description')}>DESCRIPTION <SortIndicator column="description" /></div>
+                    <div className="w-[140px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-app-toolbar flex items-center justify-between" onClick={() => onSort('account')}>ACCOUNT <SortIndicator column="account" /></div>
+                    <div className="w-[120px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-app-toolbar flex items-center justify-between" onClick={() => onSort('category')}>CATEGORY <SortIndicator column="category" /></div>
+                    <div className="w-[120px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-app-toolbar flex items-center justify-between" onClick={() => onSort('contact')}>CONTACT <SortIndicator column="contact" /></div>
+                    <div className="w-[110px] flex-shrink-0 px-3 py-2 text-right cursor-pointer hover:bg-app-toolbar flex items-center justify-end gap-1" onClick={() => onSort('amount')}>AMOUNT <SortIndicator column="amount" /></div>
+                    <div className="w-[120px] flex-shrink-0 px-3 py-2 text-right cursor-pointer hover:bg-app-toolbar border-l border-app-border flex items-center justify-end gap-1 bg-app-table-header" onClick={() => onSort('balance')}>BALANCE <SortIndicator column="balance" /></div>
                     <div className="w-[40px] flex-shrink-0 px-3 py-2"></div>
                 </div>
             </div>
@@ -308,14 +309,14 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                     rowComponent={Row}
                     rowProps={{}}
                     style={{ height: dimensions.height, width: dimensions.width }}
-                    className="scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300 scrollbar-track-transparent"
+                    className="scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 hover:dark:scrollbar-thumb-slate-500 scrollbar-track-transparent"
                     onRowsRendered={handleRowsRendered}
                 />
 
                 {/* Footer Loading Indicator */}
                 {isLoading && (
-                    <div className="flex items-center justify-center py-4 bg-slate-50/50 border-t border-slate-100 italic text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                        <div className="w-3 h-3 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mr-2"></div>
+                    <div className="flex items-center justify-center py-4 bg-app-toolbar/50 border-t border-app-border italic text-[10px] text-app-muted font-bold uppercase tracking-widest">
+                        <div className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2"></div>
                         Fetching more records...
                     </div>
                 )}

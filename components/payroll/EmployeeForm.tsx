@@ -11,7 +11,6 @@ import {
   Building2, 
   DollarSign, 
   AlertCircle,
-  Calendar,
   User,
   ChevronDown,
   ChevronUp,
@@ -29,16 +28,30 @@ import {
   PayrollEmployee, 
   EmploymentStatus, 
   ProjectAllocation, 
+  BuildingAllocation,
   PayrollProject,
   EmployeeFormProps,
 } from './types';
 import { storageService } from './services/storageService';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
+import { useAppContext } from '../../context/AppContext';
 import { formatCurrency } from './utils/formatters';
+import {
+  allocationChanged,
+  allocationChangeOnlyAffectsFutureAllocations,
+  getLatestPayslipPeriodEndYyyyMmDd,
+  normalizeAllocationsTotal,
+  redistributeProjectBuildingShares,
+} from './utils/allocationPercentages';
+import { mapAppProjectsToPayroll } from './utils/projectUtils';
+import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
+import DatePicker from '../ui/DatePicker';
 
 const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee }) => {
   const { user, tenant } = useAuth();
+  const { state: appState } = useAppContext();
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
 
@@ -74,50 +87,48 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     fetchConfig();
   }, [tenantId]);
 
-  // Projects state - fetched from main application's settings
+  // Projects state - from Settings → Assets → Projects (AppContext in local-only, API otherwise)
   const [globalProjects, setGlobalProjects] = useState<PayrollProject[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
 
-  // Fetch projects from main application API
+  // In local-only mode, use projects from AppContext (same as Settings → Assets → Projects)
   useEffect(() => {
+    if (!isLocalOnlyMode() || !appState.projects) return;
+    const payrollProjects = mapAppProjectsToPayroll(appState.projects, tenantId);
+    const activeProjects = payrollProjects.filter(p => p.status === 'ACTIVE');
+    setGlobalProjects(activeProjects);
+    if (payrollProjects.length > 0) {
+      storageService.setProjectsCache(payrollProjects);
+    }
+  }, [tenantId, appState.projects]);
+
+  // When not local-only, fetch projects from main application API
+  useEffect(() => {
+    if (isLocalOnlyMode() || !tenantId) return;
     const fetchProjects = async () => {
-      if (!tenantId) return;
       setIsLoadingProjects(true);
       try {
-        // Always fetch fresh from API to get latest projects
         const projects = await payrollApi.getMainAppProjects();
         if (projects.length > 0) {
-          // Show all projects (ACTIVE, COMPLETED, ON_HOLD) - user can choose
-          // Filter to ACTIVE only for assignment
           const activeProjects = projects.filter(p => p.status === 'ACTIVE');
           setGlobalProjects(activeProjects);
-          // Cache all projects for reference
           storageService.setProjectsCache(projects);
         } else {
-          // Fallback to localStorage
           setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
         }
       } catch (error) {
         console.error('Error fetching projects:', error);
-        // Fallback to localStorage
         setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
       } finally {
         setIsLoadingProjects(false);
       }
     };
     fetchProjects();
-    
-    // Refresh projects when component becomes visible (handles new project creation)
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchProjects();
-      }
+      if (!document.hidden) fetchProjects();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [tenantId]);
 
   const [isPersonalInfoOpen, setIsPersonalInfoOpen] = useState(false);
@@ -129,12 +140,15 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     designation: employee?.designation || '',
     department: employee?.department || 'General',
     grade: employee?.grade || '',
-    joiningDate: employee?.joining_date || new Date().toISOString().split('T')[0],
+    joiningDate: employee?.joining_date || toLocalDateString(new Date()),
     basicSalary: employee?.salary?.basic || 0,
   });
 
   const [assignedProjects, setAssignedProjects] = useState<ProjectAllocation[]>(
     employee?.projects || []
+  );
+  const [assignedBuildings, setAssignedBuildings] = useState<BuildingAllocation[]>(
+    employee?.buildings || []
   );
 
   // Update department/grade defaults when config loads (new employees only)
@@ -164,10 +178,25 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
   };
 
   const removeProjectAssignment = (index: number) => {
-    setAssignedProjects(assignedProjects.filter((_, i) => i !== index));
+    const nextProjects = assignedProjects.filter((_, i) => i !== index);
+    const { projects, buildings } = normalizeAllocationsTotal(nextProjects, assignedBuildings);
+    setAssignedProjects(projects);
+    setAssignedBuildings(buildings);
   };
 
   const updateProjectAssignment = (index: number, field: keyof ProjectAllocation, value: any) => {
+    if (field === 'percentage') {
+      const num = typeof value === 'number' ? value : parseInt(String(value), 10);
+      const { projects, buildings } = redistributeProjectBuildingShares(
+        assignedProjects,
+        assignedBuildings,
+        { type: 'project', index },
+        num
+      );
+      setAssignedProjects(projects);
+      setAssignedBuildings(buildings);
+      return;
+    }
     const updated = [...assignedProjects];
     if (field === 'project_id') {
       const gp = globalProjects.find(p => p.id === value);
@@ -181,7 +210,56 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     setAssignedProjects(updated);
   };
 
-  const totalAllocation = assignedProjects.reduce((sum, p) => sum + p.percentage, 0);
+  const totalProjectAllocation = assignedProjects.reduce((sum, p) => sum + p.percentage, 0);
+  const totalBuildingAllocation = assignedBuildings.reduce((sum, b) => sum + b.percentage, 0);
+  const totalAllocation = totalProjectAllocation + totalBuildingAllocation;
+
+  const globalBuildings = useMemo(() => (appState.buildings || []).map(b => ({ id: b.id, name: b.name })), [appState.buildings]);
+
+  const addBuildingAssignment = () => {
+    if (globalBuildings.length === 0) return;
+    const building = globalBuildings[0];
+    const newAlloc: BuildingAllocation = {
+      building_id: building.id,
+      building_name: building.name,
+      percentage: assignedBuildings.length === 0 ? (assignedProjects.length > 0 ? 0 : 100) : 0,
+      start_date: formData.joiningDate,
+    };
+    setAssignedBuildings([...assignedBuildings, newAlloc]);
+  };
+
+  const removeBuildingAssignment = (index: number) => {
+    const nextBuildings = assignedBuildings.filter((_, i) => i !== index);
+    const { projects, buildings } = normalizeAllocationsTotal(assignedProjects, nextBuildings);
+    setAssignedProjects(projects);
+    setAssignedBuildings(buildings);
+  };
+
+  const updateBuildingAssignment = (index: number, field: keyof BuildingAllocation, value: any) => {
+    if (field === 'percentage') {
+      const num = typeof value === 'number' ? value : parseInt(String(value), 10);
+      const { projects, buildings } = redistributeProjectBuildingShares(
+        assignedProjects,
+        assignedBuildings,
+        { type: 'building', index },
+        num
+      );
+      setAssignedProjects(projects);
+      setAssignedBuildings(buildings);
+      return;
+    }
+    const updated = [...assignedBuildings];
+    if (field === 'building_id') {
+      const b = globalBuildings.find(x => x.id === value);
+      if (b) {
+        updated[index].building_id = b.id;
+        updated[index].building_name = b.name;
+      }
+    } else {
+      (updated[index] as any)[field] = value;
+    }
+    setAssignedBuildings(updated);
+  };
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -203,6 +281,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     try {
       if (employee) {
         // Update existing employee
+        const selectedDeptId = availableDepartments.find(d => d.name === formData.department)?.id ?? employee.department_id ?? null;
         const updateData = {
           name: formData.name,
           email: formData.email,
@@ -210,12 +289,36 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           address: formData.address,
           designation: formData.designation,
           department: formData.department,
+          department_id: selectedDeptId,
           grade: formData.grade,
           joining_date: formData.joiningDate,
           salary: salaryData,
           projects: assignedProjects,
+          buildings: assignedBuildings,
           adjustments: employee.adjustments
         };
+
+        const proposedEmployee = { ...employee, ...updateData } as PayrollEmployee;
+        if (allocationChanged(employee, proposedEmployee)) {
+          const pays = storageService.getPayslips(tenantId).filter((p) => p.employee_id === employee.id);
+          if (pays.length > 0) {
+            const lockedEnd = getLatestPayslipPeriodEndYyyyMmDd(
+              pays,
+              storageService.getPayrollRuns(tenantId),
+              employee.id
+            );
+            const allowFutureOnly =
+              lockedEnd != null &&
+              allocationChangeOnlyAffectsFutureAllocations(employee, proposedEmployee, lockedEnd);
+            if (!allowFutureOnly) {
+              setSaveError(
+                'This employee has payslips on record. Delete their payslips in Payroll Cycle before changing project or building assignments or effective dates that affect past payroll periods.'
+              );
+              setIsSaving(false);
+              return;
+            }
+          }
+        }
 
         // Try API first
         try {
@@ -233,6 +336,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
       } else {
         // Create new employee - generate ID upfront so API and localStorage use same ID (enables sync on later update)
         const newEmployeeId = `emp-${Date.now()}`;
+        const selectedDeptId = availableDepartments.find(d => d.name === formData.department)?.id ?? null;
         const createData = {
           id: newEmployeeId,
           name: formData.name,
@@ -241,18 +345,22 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           address: formData.address,
           designation: formData.designation,
           department: formData.department,
+          department_id: selectedDeptId,
           grade: formData.grade,
           joining_date: formData.joiningDate,
           salary: salaryData,
-          projects: assignedProjects
+          projects: assignedProjects,
+          buildings: assignedBuildings
         };
 
         // Try API first to save to cloud database
         try {
           const createdEmployee = await payrollApi.createEmployee(createData as any);
           if (createdEmployee) {
-            // Also update localStorage cache for offline access
-            storageService.addEmployee(tenantId, createdEmployee, userId);
+            // Update localStorage cache only when using API (in local-only, createEmployee already added to storage)
+            if (!isLocalOnlyMode()) {
+              storageService.addEmployee(tenantId, createdEmployee, userId);
+            }
           }
         } catch (apiError) {
           console.warn('API create failed, falling back to localStorage:', apiError);
@@ -281,6 +389,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
             address: formData.address,
             designation: formData.designation,
             department: formData.department,
+            department_id: selectedDeptId ?? undefined,
             grade: formData.grade,
             status: EmploymentStatus.ACTIVE,
             joining_date: formData.joiningDate,
@@ -288,6 +397,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
             salary: salaryData,
             adjustments: [],
             projects: assignedProjects,
+            buildings: assignedBuildings,
             created_by: userId
           };
           storageService.addEmployee(tenantId, employeeData, userId);
@@ -340,8 +450,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           <button 
             type="button"
             onClick={() => setIsPersonalInfoOpen(!isPersonalInfoOpen)}
-            className="w-full px-8 py-5 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-transparent"
-            style={{ borderBottomColor: isPersonalInfoOpen ? '#f1f5f9' : 'transparent' }}
+            className={`w-full px-8 py-5 flex items-center justify-between hover:bg-slate-50 transition-colors border-b ${isPersonalInfoOpen ? 'border-slate-100' : 'border-transparent'}`}
           >
             <div className="flex items-center gap-3">
               <div className={`p-2 rounded-xl transition-colors ${isPersonalInfoOpen ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
@@ -429,6 +538,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                 value={formData.department}
                 onChange={e => setFormData({...formData, department: e.target.value})}
                 className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none bg-white font-medium text-sm"
+                aria-label="Department"
               >
                 {availableDepartments.length > 0 ? (
                   availableDepartments.map(d => (
@@ -454,6 +564,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                 value={formData.grade}
                 onChange={e => setFormData({...formData, grade: e.target.value})}
                 className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none bg-white font-medium text-sm"
+                aria-label="Grade Level"
               >
                 {availableGrades.length > 0 ? (
                   availableGrades.map((g: any) => (
@@ -476,14 +587,12 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
               )}
             </div>
             <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
-                <Calendar size={12} className="text-slate-400" /> Joining Date
-              </label>
-              <input 
-                type="date" required
+              <DatePicker
+                label="Joining Date"
                 value={formData.joiningDate}
-                onChange={e => setFormData({...formData, joiningDate: e.target.value})}
-                className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium text-sm"
+                onChange={(d) => setFormData({ ...formData, joiningDate: toLocalDateString(d) })}
+                required
+                className="!rounded-xl !border-slate-200 !font-medium !text-sm"
               />
             </div>
           </div>
@@ -524,6 +633,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                           type="button"
                           onClick={() => removeProjectAssignment(idx)}
                           className="md:hidden text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
+                          aria-label="Remove project assignment"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -532,6 +642,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                         value={p.project_id}
                         onChange={(e) => updateProjectAssignment(idx, 'project_id', e.target.value)}
                         className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white font-black text-sm text-slate-700 outline-none focus:ring-4 ring-indigo-500/10 transition-all"
+                        aria-label="Select Active Project"
                       >
                         {globalProjects.map(gp => (
                           <option key={gp.id} value={gp.id}>{gp.name}</option>
@@ -554,6 +665,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                           value={p.percentage}
                           onChange={(e) => updateProjectAssignment(idx, 'percentage', parseInt(e.target.value))}
                           className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                          aria-label="Project cost share percentage"
                         />
                         <div className="flex justify-between gap-1">
                           {QUICK_PERCENTAGES.map((val) => (
@@ -573,11 +685,21 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                         </div>
                       </div>
                     </div>
+
+                    <div className="w-full md:w-52 shrink-0">
+                      <DatePicker
+                        label="Effective from"
+                        value={parseStoredDateToYyyyMmDdInput(p.start_date || formData.joiningDate)}
+                        onChange={(d) => updateProjectAssignment(idx, 'start_date', toLocalDateString(d))}
+                        className="!rounded-xl !border-slate-200 !font-bold !text-sm"
+                      />
+                    </div>
                     
                     <button 
                       type="button"
                       onClick={() => removeProjectAssignment(idx)}
                       className="hidden md:flex p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all self-center mt-6"
+                      aria-label="Remove project assignment"
                     >
                       <Trash2 size={20} />
                     </button>
@@ -590,8 +712,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                       {totalAllocation === 100 ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
                     </div>
                     <div>
-                      <p className="text-xs font-black text-indigo-900 uppercase tracking-widest">Total Combined Allocation</p>
-                      <p className="text-[10px] font-bold text-indigo-600/70 uppercase">Allocation must sum to exactly 100%</p>
+                      <p className="text-xs font-black text-indigo-900 uppercase tracking-widest">Total Combined Allocation (Projects + Buildings)</p>
+                      <p className="text-[10px] font-bold text-indigo-600/70 uppercase">Must sum to exactly 100%</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -599,6 +721,103 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                       {totalAllocation}%
                     </span>
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Building Allocation */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-8 py-5 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                <Building2 size={14} className="text-slate-600" /> Building Allocation
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Assign employee cost to buildings (Settings → Buildings)</p>
+            </div>
+            <button 
+              type="button"
+              onClick={addBuildingAssignment}
+              disabled={globalBuildings.length === 0}
+              className="px-4 py-2 bg-slate-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-700 transition-all shadow-lg shadow-slate-100 disabled:opacity-50"
+            >
+              <Plus size={14} className="inline mr-1" /> Assign Building
+            </button>
+          </div>
+          <div className="p-8 space-y-6">
+            {assignedBuildings.length === 0 ? (
+              <div className="text-center py-10 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                <Building2 size={32} className="mx-auto text-slate-300 mb-2 opacity-50" />
+                <p className="text-slate-400 text-sm font-medium">No buildings assigned. Add buildings in Settings if needed.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {assignedBuildings.map((b, idx) => (
+                  <div key={idx} className="group relative flex flex-col md:flex-row items-start gap-6 p-6 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-slate-200 transition-all">
+                    <div className="flex-1 w-full space-y-4">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Building</label>
+                        <button type="button" onClick={() => removeBuildingAssignment(idx)} className="md:hidden text-red-500 hover:bg-red-50 p-1.5 rounded-lg" aria-label="Remove building assignment">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      <select 
+                        value={b.building_id}
+                        onChange={(e) => updateBuildingAssignment(idx, 'building_id', e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white font-black text-sm text-slate-700 outline-none focus:ring-4 ring-slate-500/10"
+                        aria-label="Select Building"
+                      >
+                        {globalBuildings.map(gb => (
+                          <option key={gb.id} value={gb.id}>{gb.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-full md:w-80 space-y-4">
+                      <div className="flex justify-between items-end">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost Share</label>
+                        <span className="text-xl font-black text-slate-600">{b.percentage}%</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="100" step="5"
+                        value={b.percentage}
+                        onChange={(e) => updateBuildingAssignment(idx, 'percentage', parseInt(e.target.value))}
+                        className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-slate-600"
+                        aria-label="Building cost share percentage"
+                      />
+                      <div className="flex justify-between gap-1">
+                        {QUICK_PERCENTAGES.map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => updateBuildingAssignment(idx, 'percentage', val)}
+                            className={`flex-1 py-1.5 text-[10px] font-black rounded-lg transition-all border ${
+                              b.percentage === val ? 'bg-slate-600 text-white border-slate-600' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-200'
+                            }`}
+                          >
+                            {val}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="w-full md:w-52 shrink-0">
+                      <DatePicker
+                        label="Effective from"
+                        value={parseStoredDateToYyyyMmDdInput(b.start_date || formData.joiningDate)}
+                        onChange={(d) => updateBuildingAssignment(idx, 'start_date', toLocalDateString(d))}
+                        className="!rounded-xl !border-slate-200 !font-bold !text-sm"
+                      />
+                    </div>
+
+                    <button type="button" onClick={() => removeBuildingAssignment(idx)} className="hidden md:flex p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl self-center mt-6" aria-label="Remove building assignment">
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between p-6 bg-slate-50/50 rounded-3xl border border-slate-100 mt-8">
+                  <p className="text-xs font-black text-slate-700 uppercase tracking-widest">Projects + Buildings total</p>
+                  <span className={`text-2xl font-black ${totalAllocation === 100 ? 'text-green-600' : 'text-amber-600'}`}>{totalAllocation}%</span>
                 </div>
               </div>
             )}
@@ -636,6 +855,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                     readOnly
                     value={netSalary.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     className="w-full pl-12 pr-4 py-3 rounded-xl border outline-none transition-all font-black text-lg cursor-not-allowed bg-emerald-50 border-emerald-200 text-emerald-700"
+                    aria-label="Net Payable"
                   />
                 </div>
               </div>
@@ -674,7 +894,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
             </button>
             <button 
               type="submit"
-              disabled={isSaving || (assignedProjects.length > 0 && totalAllocation !== 100)}
+              disabled={isSaving || ((assignedProjects.length > 0 || assignedBuildings.length > 0) && totalAllocation !== 100)}
               className="flex-1 lg:flex-none px-4 sm:px-10 py-2.5 sm:py-3 bg-blue-600 text-white font-black rounded-xl sm:rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:translate-y-0 text-sm"
             >
               {isSaving ? (

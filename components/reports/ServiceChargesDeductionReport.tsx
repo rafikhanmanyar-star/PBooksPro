@@ -15,7 +15,7 @@ import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -77,11 +77,11 @@ const ServiceChargesDeductionReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (option === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (option === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -251,7 +251,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
     };
 
     const SortIcon = ({ column }: { column: keyof ReportRow }) => {
-        if (sortConfig?.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
+        if (sortConfig?.key !== column) return <span className="text-app-muted opacity-50 ml-1 text-[10px]">↕</span>;
         return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
 
@@ -260,19 +260,19 @@ const ServiceChargesDeductionReport: React.FC = () => {
             <style>{STANDARD_PRINT_STYLES}</style>
             
             {/* Custom Toolbar - All controls in first row */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+            <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                 {/* First Row: Dates, Filters, and Actions */}
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Date Range Pills */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                    <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
                         {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                             <button
                                 key={opt}
                                 onClick={() => handleRangeChange(opt)}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
                                     dateRange === opt 
-                                    ? 'bg-white text-accent shadow-sm font-bold' 
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                    ? 'bg-primary text-ds-on-primary shadow-sm font-bold' 
+                                    : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                 }`}
                             >
                                 {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
@@ -283,9 +283,9 @@ const ServiceChargesDeductionReport: React.FC = () => {
                     {/* Custom Date Pickers */}
                     {dateRange === 'custom' && (
                         <div className="flex items-center gap-2 animate-fade-in">
-                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
-                            <span className="text-slate-400">-</span>
-                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(toLocalDateString(d), endDate)} />
+                            <span className="text-app-muted">-</span>
+                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, toLocalDateString(d))} />
                         </div>
                     )}
 
@@ -313,19 +313,19 @@ const ServiceChargesDeductionReport: React.FC = () => {
 
                     {/* Search Input */}
                     <div className="relative flex-grow min-w-[180px]">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <span className="h-4 w-4">{ICONS.search}</span>
                         </div>
                         <Input 
                             placeholder="Search report..." 
                             value={searchQuery} 
                             onChange={(e) => setSearchQuery(e.target.value)} 
-                            className="pl-9 py-1.5 text-sm"
+                            className="ds-input-field pl-9 py-1.5 text-sm"
                         />
                         {searchQuery && (
                             <button 
                                 onClick={() => setSearchQuery('')} 
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
                             >
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
@@ -334,7 +334,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
 
                     {/* Actions Group */}
                     <div className="flex items-center gap-2 ml-auto">
-                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
                             <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                         </Button>
                         <PrintButton
@@ -351,12 +351,12 @@ const ServiceChargesDeductionReport: React.FC = () => {
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">
-                        <h3 className="text-2xl font-bold text-slate-800">Service Charges Deduction Report</h3>
-                        <p className="text-sm text-slate-500">
+                        <h3 className="text-2xl font-bold text-app-text">Service Charges Deduction Report</h3>
+                        <p className="text-sm text-app-muted">
                             {formatDate(startDate)} - {formatDate(endDate)}
                         </p>
                         {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all') && (
-                            <p className="text-xs text-slate-400 mt-1">
+                            <p className="text-xs text-app-muted mt-1">
                                 Filters: 
                                 {selectedBuildingId !== 'all' && ` Building: ${state.buildings.find(b=>b.id===selectedBuildingId)?.name} `}
                                 {selectedOwnerId !== 'all' && ` Owner: ${state.contacts.find(c=>c.id===selectedOwnerId)?.name}`}
@@ -365,43 +365,43 @@ const ServiceChargesDeductionReport: React.FC = () => {
                     </div>
                     
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-toolbar/40 sticky top-0 z-10">
                                 <tr>
-                                    <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Date <SortIcon column="date"/></th>
-                                    <th onClick={() => handleSort('buildingName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Building <SortIcon column="buildingName"/></th>
-                                    <th onClick={() => handleSort('propertyName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Property <SortIcon column="propertyName"/></th>
-                                    <th onClick={() => handleSort('ownerName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Owner <SortIcon column="ownerName"/></th>
-                                    <th onClick={() => handleSort('particulars')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Particulars <SortIcon column="particulars"/></th>
-                                    <th onClick={() => handleSort('amount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Amount <SortIcon column="amount"/></th>
+                                    <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Date <SortIcon column="date"/></th>
+                                    <th onClick={() => handleSort('buildingName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Building <SortIcon column="buildingName"/></th>
+                                    <th onClick={() => handleSort('propertyName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Property <SortIcon column="propertyName"/></th>
+                                    <th onClick={() => handleSort('ownerName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Owner <SortIcon column="ownerName"/></th>
+                                    <th onClick={() => handleSort('particulars')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Particulars <SortIcon column="particulars"/></th>
+                                    <th onClick={() => handleSort('amount')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Amount <SortIcon column="amount"/></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {reportData.map(item => {
                                     const transaction = state.transactions.find(t => t.id === item.entityId);
                                     return (
                                         <tr 
                                             key={item.id} 
-                                            className="hover:bg-slate-50 transition-colors cursor-pointer"
+                                            className="hover:bg-app-toolbar/30 transition-colors cursor-pointer"
                                             onClick={() => transaction && setTransactionToEdit(transaction)}
                                             title="Click to edit"
                                         >
-                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(item.date)}</td>
-                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700">{item.buildingName}</td>
-                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700">{item.propertyName}</td>
-                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700">{item.ownerName}</td>
-                                            <td className="px-3 py-2 max-w-xs truncate" title={item.particulars}>{item.particulars}</td>
-                                            <td className="px-3 py-2 text-right font-medium text-slate-800">{CURRENCY} {(item.amount || 0).toLocaleString()}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">{formatDate(item.date)}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">{item.buildingName}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">{item.propertyName}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">{item.ownerName}</td>
+                                            <td className="px-3 py-2 max-w-xs truncate text-app-muted" title={item.particulars}>{item.particulars}</td>
+                                            <td className="px-3 py-2 text-right font-medium text-app-text">{CURRENCY} {(item.amount || 0).toLocaleString()}</td>
                                         </tr>
                                     );
                                 })}
                                 {reportData.length === 0 && (
-                                    <tr><td colSpan={6} className="text-center py-8 text-slate-500">No records found for the selected criteria.</td></tr>
+                                    <tr><td colSpan={6} className="text-center py-8 text-app-muted">No records found for the selected criteria.</td></tr>
                                 )}
                             </tbody>
-                            <tfoot className="bg-slate-50 font-bold sticky bottom-0 border-t border-slate-300">
+                            <tfoot className="bg-app-toolbar/40 font-bold sticky bottom-0 border-t border-app-border">
                                 <tr>
-                                    <td colSpan={5} className="px-3 py-2 text-right">Total Deductions</td>
+                                    <td colSpan={5} className="px-3 py-2 text-right text-app-text">Total Deductions</td>
                                     <td className="px-3 py-2 text-right text-sm">{CURRENCY} {(totalAmount || 0).toLocaleString()}</td>
                                 </tr>
                             </tfoot>

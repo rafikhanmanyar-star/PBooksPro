@@ -4,7 +4,13 @@ import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState
 import { useNotification } from '../../context/NotificationContext';
 import { usePrintContext } from '../../context/PrintContext';
 import type { BillPrintData } from '../print/BillPrintTemplate';
-import { Invoice, Bill, InvoiceStatus, Contact, Property, InvoiceType, ContactType, RentalAgreement, Project, TransactionType, Category, Unit, ProjectAgreement, Building, RecurringInvoiceTemplate, ProjectAgreementStatus, ContractStatus, ContractExpenseCategoryItem } from '../../types';
+import { Invoice, Bill, InvoiceStatus, Contact, Property, InvoiceType, ContactType, RentalAgreement, Project, TransactionType, Category, Unit, ProjectAgreement, Building, RecurringInvoiceTemplate, ProjectAgreementStatus, ContractStatus, Contract, ContractExpenseCategoryItem, Vendor } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { getAppStateApiService } from '../../services/api/appStateApi';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
+import RecordLockBanner from '../recordLock/RecordLockBanner';
+import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
@@ -16,6 +22,8 @@ import DatePicker from '../ui/DatePicker';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { uploadEntityDocument, openDocumentById } from '../../services/documentUploadService';
+import { getFirstOfNextMonthLocal, parseStoredDateToYyyyMmDdInput, parseYyyyMmDdToLocalDate, toLocalDateString } from '../../utils/dateUtils';
+import { sumExpenseLinkedToBill } from '../../utils/billLinkedPayments';
 
 interface InvoiceBillFormProps {
   onClose: () => void;
@@ -37,18 +45,42 @@ type RootBillType = 'project' | 'building' | 'staff';
 const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemToEdit, invoiceTypeForNew, agreementForInvoice, initialContactId, initialVendorId, rentalContext, onDuplicate, initialData, projectContext = false }) => {
   const state = useStateSelector(s => s);
   const dispatch = useDispatchOnly();
+  const { isAuthenticated } = useAuth();
   const { showToast, showAlert, showConfirm } = useNotification();
   const { print: triggerPrint } = usePrintContext();
   const { rentalInvoiceSettings, projectInvoiceSettings } = state;
+
+  const recordLock = useRecordLock({
+    recordType: 'invoice',
+    recordId: type === 'invoice' ? itemToEdit?.id : undefined,
+    enabled: type === 'invoice' && Boolean(itemToEdit?.id) && !isLocalOnlyMode(),
+    currentUserId: state.currentUser?.id,
+    currentUserName: state.currentUser?.name,
+    userRole: state.currentUser?.role,
+  });
+
+  const handleForceInvoiceLock = async () => {
+    const ok = await showConfirm(
+      'Take over editing? The other user may lose unsaved changes.',
+      { title: 'Force edit' }
+    );
+    if (ok) await recordLock.forceTakeover();
+  };
+
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [isDirty, setIsDirty] = useState(false);
+  /** When saving, also create a recurring template (rental invoices only; hidden if one already exists). */
+  const [addToRecurring, setAddToRecurring] = useState(false);
   const entityFormModal = useEntityFormModal();
 
   // Merge itemToEdit with initialData for defaults (initialData used when duplicating)
   const defaults = itemToEdit || initialData || {};
 
-  const invoiceType = itemToEdit ? (itemToEdit as Invoice).invoiceType : invoiceTypeForNew;
+  /** Editing uses the record; new/duplicate uses prop or falls back to initialData so type (e.g. RENTAL vs SECURITY_DEPOSIT) is never lost. */
+  const invoiceType = itemToEdit
+    ? (itemToEdit as Invoice).invoiceType
+    : (invoiceTypeForNew ?? (initialData as Invoice | undefined)?.invoiceType);
 
   // --- Initialization Logic ---
   const getInitialRootType = (): RootBillType => {
@@ -192,10 +224,10 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       setContractId(bill.contractId || '');
       setCategoryId(bill.categoryId || '');
       if (bill.issueDate) {
-        setIssueDate(bill.issueDate.split('T')[0]);
+        setIssueDate(parseStoredDateToYyyyMmDdInput(String(bill.issueDate)));
       }
       if (bill.dueDate) {
-        setDueDate(bill.dueDate.split('T')[0]);
+        setDueDate(parseStoredDateToYyyyMmDdInput(String(bill.dueDate)));
       } else {
         setDueDate('');
       }
@@ -283,7 +315,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const [projectId, setProjectId] = useState(
     (defaults && 'projectId' in defaults ? defaults.projectId : '') ||
     agreementForInvoice?.projectId ||
-    (type === 'bill' && !itemToEdit ? (state.defaultProjectId || '') : '')
+    (type === 'bill' && !itemToEdit && !rentalContext ? (state.defaultProjectId || '') : '')
   );
 
   // For Building flow: buildingId might come from defaults, or be derived from propertyId. 
@@ -312,25 +344,37 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   // Get initial date: use preserved date if option is enabled and creating new record, otherwise use defaults or current date
   const getInitialIssueDate = () => {
     if (defaults.issueDate) {
-      return (defaults.issueDate as string).split('T')[0];
+      return parseStoredDateToYyyyMmDdInput(String(defaults.issueDate));
     }
     if (state.enableDatePreservation && state.lastPreservedDate && !itemToEdit) {
       return state.lastPreservedDate;
     }
-    return new Date().toISOString().split('T')[0];
+    return toLocalDateString(new Date());
   };
 
   const [issueDate, setIssueDate] = useState(getInitialIssueDate());
-  const [dueDate, setDueDate] = useState(defaults && 'dueDate' in defaults && defaults.dueDate ? (defaults.dueDate as string).split('T')[0] : '');
+  const [dueDate, setDueDate] = useState(
+    defaults && 'dueDate' in defaults && defaults.dueDate ? parseStoredDateToYyyyMmDdInput(String((defaults as Invoice | Bill).dueDate)) : ''
+  );
 
   // Save date to preserved date when changed (if option is enabled)
   const handleIssueDateChange = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateString(date);
     setIssueDate(dateStr);
     if (state.enableDatePreservation && !itemToEdit) {
       dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: dateStr });
     }
   };
+
+  // Keep issue/due in sync when switching which invoice is edited (same as bill effect for bills).
+  useEffect(() => {
+    if (type !== 'invoice' || !itemToEdit) return;
+    const inv = itemToEdit as Invoice;
+    if (inv.issueDate) setIssueDate(parseStoredDateToYyyyMmDdInput(String(inv.issueDate)));
+    if (inv.dueDate) setDueDate(parseStoredDateToYyyyMmDdInput(String(inv.dueDate)));
+    else setDueDate('');
+  }, [itemToEdit?.id, type]);
+
   const [description, setDescription] = useState(defaults.description || '');
 
   const [agreementId, setAgreementId] = useState(
@@ -349,15 +393,31 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const isPartiallyPaid = itemToEdit ? itemToEdit.paidAmount > 0 : false;
 
-  const initialRentForEdit = useMemo(() => (defaults && 'invoiceType' in defaults && (defaults.invoiceType === InvoiceType.RENTAL || defaults.invoiceType === InvoiceType.SECURITY_DEPOSIT))
-    ? String(defaults.amount! - (defaults.securityDepositCharge || 0))
-    : '0', [defaults]);
+  const initialRentForEdit = useMemo(() => {
+    if (!defaults || !('invoiceType' in defaults)) return '0';
+    const inv = defaults as Invoice;
+    if (inv.invoiceType !== InvoiceType.RENTAL && inv.invoiceType !== InvoiceType.SECURITY_DEPOSIT) return '0';
+    const rent =
+      (inv.amount ?? 0) - (inv.securityDepositCharge || 0) - (inv.serviceCharges || 0);
+    return String(rent);
+  }, [defaults]);
 
   const [rentAmount, setRentAmount] = useState(initialRentForEdit);
   const [securityDepositCharge, setSecurityDepositCharge] = useState(defaults && 'securityDepositCharge' in defaults ? String(defaults.securityDepositCharge || '0') : '0');
   const [gracePeriodDays, setGracePeriodDays] = useState('0');
 
-  const calculatedAmount = (parseFloat(rentAmount) || 0) + (parseFloat(securityDepositCharge) || 0);
+  /** Source invoice (edit or duplicate prefill) — used to preserve fields not shown as inputs (e.g. serviceCharges). */
+  const sourceInvoice = useMemo((): Invoice | undefined => {
+    if (type !== 'invoice') return undefined;
+    return (itemToEdit as Invoice | undefined) ?? (initialData as Invoice | undefined);
+  }, [type, itemToEdit, initialData]);
+
+  const preservedServiceCharges = sourceInvoice?.serviceCharges ?? 0;
+
+  const calculatedAmount =
+    (parseFloat(rentAmount) || 0) +
+    (parseFloat(securityDepositCharge) || 0) +
+    (preservedServiceCharges || 0);
   const [amount, setAmount] = useState(defaults.amount?.toString() || '');
   const [isContactLockedByUnit, setIsContactLockedByUnit] = useState(false);
   const isLocked = !!(defaults && 'agreementId' in defaults && defaults.agreementId);
@@ -452,9 +512,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     setIsDirty(false);
   }, []);
 
-  // Validate contractId when vendor or project changes, and auto-set projectId from contract
+  // Validate contractId when vendor or project changes, and auto-set projectId from contract (only for project allocation)
   useEffect(() => {
-    if (contractId && vendorId && type === 'bill') {
+    if (contractId && vendorId && type === 'bill' && rootAllocationType === 'project') {
       const contract = state.contracts.find(c => c.id === contractId);
       if (contract) {
         // If contract exists but vendor doesn't match, clear the contract link
@@ -476,7 +536,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         }
       }
     }
-  }, [vendorId, contractId, state.contracts, type, projectId]);
+    // When in building allocation, contracts are project-scoped so clear contract and avoid setting projectId
+    if (type === 'bill' && rootAllocationType === 'building' && contractId) {
+      const contract = state.contracts.find(c => c.id === contractId);
+      if (contract?.projectId) {
+        setContractId('');
+      }
+    }
+  }, [vendorId, contractId, state.contracts, type, projectId, rootAllocationType]);
 
   // Auto-set issue date to agreement start date if this is the first invoice for the agreement
   useEffect(() => {
@@ -485,7 +552,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       if (agreement) {
         const hasInvoices = state.invoices.some(inv => inv.agreementId === agreement.id);
         if (!hasInvoices && agreement.startDate) {
-          setIssueDate(agreement.startDate.split('T')[0]);
+          setIssueDate(parseStoredDateToYyyyMmDdInput(String(agreement.startDate)));
         }
       }
     }
@@ -510,23 +577,17 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   useEffect(() => {
     if (!defaults.id) {
-      // Validate date before creating object to prevent crashes
-      const timestamp = Date.parse(issueDate);
-      if (isNaN(timestamp)) return;
-
-      const issue = new Date(issueDate + 'T00:00:00');
-      // Double check validity
+      const issue = parseYyyyMmDdToLocalDate(issueDate);
       if (isNaN(issue.getTime())) return;
 
       if (type === 'invoice') {
-        const nextWeek = new Date(issue);
+        const nextWeek = new Date(issue.getFullYear(), issue.getMonth(), issue.getDate());
         nextWeek.setDate(nextWeek.getDate() + 7);
-        setDueDate(nextWeek.toISOString().split('T')[0]);
-      }
-      else if (type === 'bill') {
-        const nextMonth = new Date(issue);
+        setDueDate(toLocalDateString(nextWeek));
+      } else if (type === 'bill') {
+        const nextMonth = new Date(issue.getFullYear(), issue.getMonth(), issue.getDate());
         nextMonth.setMonth(nextMonth.getMonth() + 1);
-        setDueDate(nextMonth.toISOString().split('T')[0]);
+        setDueDate(toLocalDateString(nextMonth));
       }
     }
   }, [issueDate, type, defaults]);
@@ -585,9 +646,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   useEffect(() => {
     if (type !== 'bill' || contractId || !vendorId || !projectId || itemToEdit) return;
     if (availableContracts.length === 1) {
-      setContractId(availableContracts[0].id);
+      const contractIdToSet = availableContracts[0].id;
+      setContractId(contractIdToSet);
+      const contract = state.contracts.find(c => c.id === contractIdToSet);
+      if (contract) applyContractExpenseCategoriesToBill(contract);
     }
-  }, [availableContracts, type, contractId, vendorId, projectId, itemToEdit]);
+  }, [availableContracts, type, contractId, vendorId, projectId, itemToEdit, state.contracts]);
 
   const incomeCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.INCOME), [state.categories]);
   const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
@@ -604,6 +668,18 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     if (type !== 'bill') return 0;
     return expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
   }, [expenseCategoryItems, type]);
+
+  /** When creating a new bill and user links a contract, pre-fill expense categories and total from contract. */
+  const applyContractExpenseCategoriesToBill = (contract: Contract) => {
+    if (type !== 'bill' || itemToEdit || !contract.expenseCategoryItems || contract.expenseCategoryItems.length === 0) return;
+    const cloned = contract.expenseCategoryItems.map((item, i) => ({
+      ...item,
+      id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`,
+    }));
+    setExpenseCategoryItems(cloned);
+    const total = cloned.reduce((s, i) => s + (i.netValue ?? 0), 0);
+    setAmount(total.toString());
+  };
 
   // Add new expense category item
   const handleAddExpenseCategory = (category: { id: string; name: string } | null) => {
@@ -656,13 +732,26 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     }));
   };
 
-  const handleContactSubmit = (data: Omit<Contact, 'id'> | Omit<Vendor, 'id'>) => {
-    const newId = Date.now().toString();
+  const handleContactSubmit = async (data: Omit<Contact, 'id'> | Omit<Vendor, 'id'>) => {
     if (type === 'bill') {
-      const newVendor = { ...data, id: newId } as Vendor;
+      const newId = `vendor_${Date.now()}`;
+      let newVendor = { ...data, id: newId } as Vendor;
+      if (!isLocalOnlyMode() && isAuthenticated) {
+        try {
+          const merged = await getAppStateApiService().saveVendor({
+            ...newVendor,
+            userId: state.currentUser?.id,
+          });
+          newVendor = { ...newVendor, ...merged };
+        } catch (e: any) {
+          showToast(e?.message || e?.error || 'Could not save vendor.', 'error');
+          return;
+        }
+      }
       dispatch({ type: 'ADD_VENDOR', payload: newVendor });
-      setVendorId(newId);
+      setVendorId(newVendor.id);
     } else {
+      const newId = Date.now().toString();
       const newContact = { ...data, id: newId } as Contact;
       dispatch({ type: 'ADD_CONTACT', payload: newContact });
       setContactId(newId);
@@ -679,8 +768,42 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     return state.rentalAgreements.filter(ra => ra.contactId === targetId);
   }, [contactId, tenantId, invoiceType, state.rentalAgreements]);
 
+  /** Same matching rules as InvoiceDetailView — used to hide "add to recurring" when a template already exists. */
+  const existingRecurringTemplate = useMemo(() => {
+    if (invoiceType !== InvoiceType.RENTAL) return undefined;
+    const templates = (state.recurringInvoiceTemplates || []).filter(t => !t.deletedAt);
+    let resolvedPropId = propertyId;
+    if (!resolvedPropId && agreementId) {
+      resolvedPropId = state.rentalAgreements.find(ra => ra.id === agreementId)?.propertyId;
+    }
+    return templates.find(
+      t =>
+        (agreementId &&
+          t.agreementId === agreementId &&
+          (t.invoiceType || InvoiceType.RENTAL) === invoiceType) ||
+        (!agreementId &&
+          resolvedPropId &&
+          t.propertyId === resolvedPropId &&
+          t.contactId === contactId &&
+          (t.invoiceType || InvoiceType.RENTAL) === invoiceType)
+    );
+  }, [
+    invoiceType,
+    agreementId,
+    contactId,
+    propertyId,
+    state.recurringInvoiceTemplates,
+    state.rentalAgreements,
+  ]);
+
+  useEffect(() => {
+    setAddToRecurring(false);
+  }, [itemToEdit?.id, agreementId, contactId]);
+
   useEffect(() => {
     if (itemToEdit) return;
+    // Duplicate / prefill from initialData: keep rent, description, and dates from the source invoice
+    if (initialData) return;
     if (invoiceType !== InvoiceType.RENTAL && invoiceType !== InvoiceType.SECURITY_DEPOSIT) return;
 
     const selectedAgreement = state.rentalAgreements.find(ra => ra.id === agreementId);
@@ -689,7 +812,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       return;
     }
 
-    const dateObj = new Date(issueDate);
+    const dateObj = parseYyyyMmDdToLocalDate(issueDate);
     if (isNaN(dateObj.getTime())) return;
 
     const year = dateObj.getFullYear();
@@ -723,15 +846,16 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
       setSecurityDepositCharge(String(selectedAgreement.securityDeposit || 0));
 
-      const newDueDate = new Date(issueDate);
+      const issueBase = parseYyyyMmDdToLocalDate(issueDate);
+      const newDueDate = new Date(issueBase.getFullYear(), issueBase.getMonth(), issueBase.getDate());
       newDueDate.setDate(selectedAgreement.rentDueDate);
-      if (newDueDate < new Date(issueDate)) {
+      if (newDueDate < issueBase) {
         newDueDate.setMonth(newDueDate.getMonth() + 1);
       }
-      setDueDate(newDueDate.toISOString().split('T')[0]);
+      setDueDate(toLocalDateString(newDueDate));
     }
 
-  }, [agreementId, issueDate, gracePeriodDays, invoiceType, itemToEdit, state.rentalAgreements, state.properties]);
+  }, [agreementId, issueDate, gracePeriodDays, invoiceType, itemToEdit, initialData, state.rentalAgreements, state.properties]);
 
 
   const availableUnitsForProject = useMemo(() => {
@@ -804,13 +928,39 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const handleDelete = async () => {
     if (!itemToEdit) return;
+    if (type === 'invoice' && !isLocalOnlyMode() && recordLock.viewOnly) {
+      await showAlert('This invoice is open in view-only mode.', { title: 'Cannot delete' });
+      return;
+    }
     if (itemToEdit.paidAmount > 0) {
+      const linkedPay =
+        type === 'bill' ? sumExpenseLinkedToBill(state.transactions, (itemToEdit as Bill).id) : 0;
+      if (type === 'bill' && linkedPay < 0.01) {
+        const ok = await showConfirm(
+          `This bill is marked paid (${CURRENCY} ${(itemToEdit as Bill).paidAmount.toLocaleString()}) but there are no expense transactions linked to it in the ledger — the record is inconsistent.\n\nDelete this bill anyway? (PM cycle links will be removed if present.)`,
+          { title: 'Delete bill without ledger payments', confirmLabel: 'Delete', cancelLabel: 'Cancel' }
+        );
+        if (!ok) return;
+        const alloc = state.pmCycleAllocations?.find((a) => a.billId === itemToEdit.id);
+        if (alloc) {
+          dispatch({ type: 'DELETE_PM_CYCLE_ALLOCATION', payload: alloc.id });
+        }
+        dispatch({ type: 'DELETE_BILL', payload: itemToEdit.id });
+        onClose();
+        showToast('Bill deleted successfully.', 'info');
+        return;
+      }
       await showAlert(`Cannot delete this ${type} because it has associated payments (${CURRENCY} ${itemToEdit.paidAmount.toLocaleString()}).\n\nPlease delete the payment transactions from the ledger first.`, { title: 'Deletion Blocked' });
       return;
     }
     if (await showConfirm(`Are you sure you want to delete this ${type}?`, { title: `Delete ${type === 'invoice' ? 'Invoice' : 'Bill'}`, confirmLabel: 'Delete', cancelLabel: 'Cancel' })) {
-      if (type === 'invoice') dispatch({ type: 'DELETE_INVOICE', payload: itemToEdit.id });
-      else dispatch({ type: 'DELETE_BILL', payload: itemToEdit.id });
+      if (type === 'invoice') {
+        dispatch({ type: 'DELETE_INVOICE', payload: itemToEdit.id });
+      } else {
+        const alloc = state.pmCycleAllocations?.find((a) => a.billId === itemToEdit.id);
+        if (alloc) dispatch({ type: 'DELETE_PM_CYCLE_ALLOCATION', payload: alloc.id });
+        dispatch({ type: 'DELETE_BILL', payload: itemToEdit.id });
+      }
       onClose();
       showToast(`${type === 'invoice' ? 'Invoice' : 'Bill'} deleted successfully.`, 'info');
     }
@@ -827,27 +977,39 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       finalAmount = parseFloat(amount) || 0;
     }
 
+    const issueYmd = parseStoredDateToYyyyMmDdInput(issueDate || toLocalDateString(new Date()));
+    const dueYmd = dueDate ? parseStoredDateToYyyyMmDdInput(dueDate) : undefined;
+
+    const srcInv = type === 'invoice' ? sourceInvoice : undefined;
+    const rentalMonthResolved =
+      invoiceType === InvoiceType.RENTAL
+        ? issueYmd.slice(0, 7)
+        : invoiceType === InvoiceType.SECURITY_DEPOSIT
+          ? srcInv?.rentalMonth ?? issueYmd.slice(0, 7)
+          : srcInv?.rentalMonth;
+
     return {
       contactId: type === 'bill' ? undefined : (contactId || ''),
       vendorId: type === 'bill' ? (vendorId || contactId || '') : undefined,
       propertyId: propertyId || undefined,
       projectId: projectId || undefined,
       amount: finalAmount,
-      issueDate: issueDate || new Date().toISOString().split('T')[0], // Ensure issueDate is always set
+      issueDate: issueYmd,
       description: description || undefined, // Preserve empty strings as undefined for optional fields
       invoiceNumber: number,
       billNumber: number,
-      dueDate: dueDate || undefined,
+      dueDate: dueYmd,
       invoiceType: invoiceType!,
       buildingId: buildingId || undefined,
       categoryId: (type === 'bill' && expenseCategoryItems.length > 0) ? undefined : (categoryId || undefined), // Don't save categoryId if using expenseCategoryItems
       agreementId: agreementId || undefined,
       securityDepositCharge: parseFloat(securityDepositCharge) || undefined,
       unitId: unitId || undefined,
-      serviceCharges: undefined,
+      serviceCharges: srcInv?.serviceCharges,
       staffId: staffId || undefined,
       contractId: contractId || undefined,
-      rentalMonth: invoiceType === InvoiceType.RENTAL ? new Date(issueDate).toISOString().slice(0, 7) : undefined,
+      rentalMonth: rentalMonthResolved,
+      userId: srcInv?.userId,
       expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : undefined,
       // Note: documentPath is handled separately in handleSubmit
     };
@@ -855,6 +1017,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const handleSubmit = async (e: React.FormEvent, skipClose = false) => {
     if (e) e.preventDefault();
+
+    if (type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.viewOnly) {
+      await showAlert('This invoice is open in view-only mode.', { title: 'Cannot save' });
+      return;
+    }
 
     if (!number || !number.trim()) {
       await showAlert(`${type === 'invoice' ? 'Invoice' : 'Bill'} number is required.`);
@@ -923,6 +1090,36 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       return;
     }
 
+    if (addToRecurring && type === 'invoice' && invoiceType === InvoiceType.RENTAL) {
+      if (existingRecurringTemplate) {
+        setAddToRecurring(false);
+      } else {
+        let resolvedPropId = propertyId;
+        if (!resolvedPropId && agreementId) {
+          resolvedPropId = state.rentalAgreements.find(r => r.id === agreementId)?.propertyId;
+        }
+        if (!resolvedPropId) {
+          await showAlert(
+            'Cannot add to recurring: the property could not be determined. Ensure an agreement is selected.'
+          );
+          return;
+        }
+        if (!contactId) {
+          await showAlert('Cannot add to recurring: a tenant is required.');
+          return;
+        }
+        const rentAmt = parseFloat(rentAmount) || 0;
+        if (rentAmt <= 0) {
+          await showAlert('Rent amount must be greater than zero to create a recurring schedule.');
+          return;
+        }
+        if (description?.includes('[Security]')) {
+          await showAlert('This invoice cannot be added to recurring rent while marked as security.');
+          return;
+        }
+      }
+    }
+
     const finalDocumentPath = documentPath;
     const billId = itemToEdit?.id || Date.now().toString();
     let finalDocumentId = documentId || undefined;
@@ -936,6 +1133,48 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     }
 
     const formData = getFormData();
+
+    const maybeAddRecurringAfterInvoiceSave = (inv: Invoice) => {
+      if (!addToRecurring || type !== 'invoice' || invoiceType !== InvoiceType.RENTAL) return;
+      if (existingRecurringTemplate) {
+        setAddToRecurring(false);
+        return;
+      }
+      if (inv.description?.includes('[Security]')) {
+        setAddToRecurring(false);
+        return;
+      }
+      let resolvedPropId = inv.propertyId;
+      if (!resolvedPropId && inv.agreementId) {
+        resolvedPropId = state.rentalAgreements.find(r => r.id === inv.agreementId)?.propertyId;
+      }
+      const rentAmountVal = inv.amount - (inv.securityDepositCharge || 0) - (inv.serviceCharges || 0);
+      if (!resolvedPropId || !inv.contactId || rentAmountVal <= 0) {
+        setAddToRecurring(false);
+        return;
+      }
+      const issueNorm = parseStoredDateToYyyyMmDdInput(String(inv.issueDate));
+      const issueDateObj = parseYyyyMmDdToLocalDate(issueNorm);
+      const nextDueDateStr = getFirstOfNextMonthLocal(issueDateObj);
+      const newTemplate: RecurringInvoiceTemplate = {
+        id: `rec-${Date.now()}`,
+        contactId: inv.contactId,
+        propertyId: resolvedPropId,
+        buildingId: inv.buildingId || (state.properties.find(p => p.id === resolvedPropId)?.buildingId ?? ''),
+        amount: rentAmountVal,
+        descriptionTemplate: `Rent for {Month}`,
+        dayOfMonth: 1,
+        nextDueDate: nextDueDateStr,
+        active: true,
+        agreementId: inv.agreementId,
+        invoiceType: inv.invoiceType,
+        autoGenerate: true,
+        frequency: 'Monthly',
+      };
+      dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: newTemplate });
+      showToast('Memorized for recurring.', 'success');
+      setAddToRecurring(false);
+    };
 
     if (itemToEdit) {
       if (type === 'invoice') {
@@ -972,6 +1211,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
         dispatch({ type: 'UPDATE_INVOICE', payload: merged });
         showToast("Invoice updated successfully");
+        maybeAddRecurringAfterInvoiceSave(merged);
       } else {
         // Compute expenseBearerType for rental bills
         const expenseBearerType = (rentalContext && type === 'bill' && rootAllocationType === 'building' && ['building', 'owner', 'tenant'].includes(billAllocationType))
@@ -988,6 +1228,10 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           documentId: type === 'bill' ? (finalDocumentId ?? (itemToEdit as Bill).documentId) : undefined,
           expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : ((itemToEdit as Bill).expenseCategoryItems || undefined),
         };
+        if (type === 'bill' && rootAllocationType === 'building') {
+          updatedBill.projectId = undefined;
+          updatedBill.contractId = undefined;
+        }
         dispatch({ type: 'UPDATE_BILL', payload: updatedBill });
         showToast("Bill updated successfully");
       }
@@ -1046,6 +1290,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         };
         dispatch({ type: 'ADD_INVOICE', payload: newInvoice });
         showToast("Invoice created successfully");
+        maybeAddRecurringAfterInvoiceSave(newInvoice);
       } else {
         const expenseBearerType = (rentalContext && type === 'bill' && rootAllocationType === 'building' && ['building', 'owner', 'tenant'].includes(billAllocationType))
           ? (billAllocationType as 'building' | 'owner' | 'tenant') : undefined;
@@ -1058,6 +1303,10 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           documentPath: type === 'bill' ? (finalDocumentPath || undefined) : undefined,
           documentId: type === 'bill' ? finalDocumentId : undefined
         };
+        if (type === 'bill' && rootAllocationType === 'building') {
+          newBill.projectId = undefined;
+          newBill.contractId = undefined;
+        }
         dispatch({ type: 'ADD_BILL', payload: newBill });
         showToast("Bill created successfully");
       }
@@ -1073,7 +1322,6 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const handleDuplicateClick = async () => {
     if (onDuplicate) {
-      const currentData = getFormData();
       const label = type === 'invoice' ? 'invoice' : 'bill';
 
       if (isDirty && itemToEdit) {
@@ -1089,7 +1337,13 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           return;
         }
       }
-      onDuplicate(currentData);
+      const payload =
+        itemToEdit && type === 'bill'
+          ? { ...(itemToEdit as Bill), ...getFormData() }
+          : itemToEdit && type === 'invoice'
+            ? { ...(itemToEdit as Invoice), ...getFormData() }
+            : getFormData();
+      onDuplicate(payload);
     }
   };
 
@@ -1215,7 +1469,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   <p className="text-xs text-slate-500 mb-1">Pro-rata Calculation:</p>
                   <p className="text-sm font-medium text-slate-700">
                     {(() => {
-                      const d = new Date(issueDate);
+                      const d = parseYyyyMmDdToLocalDate(issueDate);
                       if (isNaN(d.getTime())) return "Invalid date";
                       const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
                       const remaining = daysInMonth - d.getDate() + 1;
@@ -1236,7 +1490,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             <DatePicker
               label="Due Date"
               value={dueDate}
-              onChange={d => setDueDate(d.toISOString().split('T')[0])}
+              onChange={d => setDueDate(toLocalDateString(d))}
               required
               disabled={isAgreementCancelled}
             />
@@ -1247,6 +1501,31 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               {numberError && <p className="text-danger text-xs mt-1">{numberError}</p>}
             </div>
             <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} disabled={isAgreementCancelled} />
+
+            {invoiceType === InvoiceType.RENTAL && (parseFloat(rentAmount) || 0) > 0 && !description?.includes('[Security]') && (
+              <>
+                {existingRecurringTemplate ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/90 p-3 text-sm text-slate-600">
+                    A recurring schedule already exists for this agreement or property. You can change it under Rental → Invoices → Recurring Templates.
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={addToRecurring}
+                        onChange={e => setAddToRecurring(e.target.checked)}
+                        disabled={isAgreementCancelled}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 h-5 w-5 border-slate-300 mt-0.5 shrink-0"
+                      />
+                      <span className="font-medium text-indigo-900 leading-snug">
+                        Memorize this invoice for recurring (next invoice on the 1st of the following month)
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         ) : (
           <div className="text-center p-8 text-slate-500 border-2 border-dashed rounded-lg">
@@ -1286,15 +1565,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 items={filteredContacts}
                 selectedId={type === 'bill' ? (vendorId || contactId) : contactId}
                 onSelect={handleContactSelect}
-                placeholder={`Select ${contactLabel}...`}
+                placeholder={type === 'bill' ? 'Select vendor or type to add...' : `Select ${contactLabel}...`}
                 required
                 disabled={isContactLockedByUnit || !!agreementForInvoice || isAgreementCancelled}
-                entityType="contact"
+                entityType={type === 'bill' ? 'vendor' : 'contact'}
                 onAddNew={(entityType, name) => {
-                  if (type === 'bill') {
-                    sessionStorage.setItem('addNewVendor', 'true');
-                    dispatch({ type: 'SET_PAGE', payload: 'vendorDirectory' });
-                    onClose();
+                  if (type === 'bill' || entityType === 'vendor') {
+                    setNewItemName(name || '');
+                    setIsContactModalOpen(true);
                   } else {
                     entityFormModal.openForm('contact', name, fixedContactTypeForNew, undefined, (newId) => {
                       setContactId(newId);
@@ -1325,7 +1603,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               <DatePicker
                 label="Due Date"
                 value={dueDate}
-                onChange={d => setDueDate(d.toISOString().split('T')[0])}
+                onChange={d => setDueDate(toLocalDateString(d))}
                 required
                 disabled={isAgreementCancelled}
               />
@@ -1394,6 +1672,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                         if (contract.projectId && !projectId) {
                           setProjectId(contract.projectId);
                         }
+                        applyContractExpenseCategoriesToBill(contract);
                       } else {
                         setContractId('');
                       }
@@ -1497,6 +1776,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                               if (contract.projectId && !projectId) {
                                 setProjectId(contract.projectId);
                               }
+                              applyContractExpenseCategoriesToBill(contract);
                             } else {
                               setContractId('');
                             }
@@ -1887,7 +2167,21 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   return (
     <>
+      <RecordLockConflictModal
+        isOpen={recordLock.showConflictModal}
+        lockedByName={recordLock.lockedByName ?? 'Another user'}
+        isAdmin={isAdminRole(state.currentUser?.role)}
+        onViewOnly={recordLock.chooseViewOnly}
+        onForceEdit={handleForceInvoiceLock}
+        onDismiss={recordLock.dismissModal}
+      />
       <form onSubmit={handleSubmit} className="flex flex-col h-full" style={formStyle}>
+        {type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && (
+          <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
+        )}
+        {type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
+          <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
+        )}
         {isPartiallyPaid && type === 'bill' && (
           <div className="bg-amber-50 text-amber-800 p-1.5 rounded border border-amber-200 text-[10px] font-medium mb-2 flex-shrink-0">
             This bill has associated payments recorded. You can edit expense categories and amounts, but the supplier cannot be changed. To change the supplier, please delete all payments first.
@@ -1903,17 +2197,27 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             This invoice belongs to a cancelled agreement and cannot be updated.
           </div>
         )}
-        <div className="flex-grow min-h-0 overflow-y-auto pr-1 -mr-1">
+        <div
+          className={`flex-grow min-h-0 overflow-y-auto pr-1 -mr-1 ${
+            type === 'invoice' && recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''
+          }`}
+        >
           <div className="space-y-3">
             {(invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) ? renderRentalInvoiceForm()
               : renderStandardForm()}
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 mt-3 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 mt-3 flex-shrink-0 pointer-events-auto">
           <div className="flex flex-wrap gap-2">
             {itemToEdit && (
-              <Button type="button" variant="danger" onClick={handleDelete} disabled={isAgreementCancelled} className="w-full sm:w-auto text-sm py-2">
+              <Button
+                type="button"
+                variant="danger"
+                onClick={handleDelete}
+                disabled={isAgreementCancelled || (type === 'invoice' && recordLock.viewOnly)}
+                className="w-full sm:w-auto text-sm py-2"
+              >
                 Delete
               </Button>
             )}
@@ -1931,7 +2235,13 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           </div>
           <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
             <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
-            <Button type="submit" disabled={!!numberError || isAgreementCancelled} className="w-full sm:w-auto text-sm py-2">{itemToEdit ? 'Update' : 'Save'}</Button>
+            <Button
+              type="submit"
+              disabled={!!numberError || isAgreementCancelled || (type === 'invoice' && Boolean(itemToEdit) && recordLock.viewOnly)}
+              className="w-full sm:w-auto text-sm py-2"
+            >
+              {itemToEdit ? 'Update' : 'Save'}
+            </Button>
           </div>
         </div>
       </form>

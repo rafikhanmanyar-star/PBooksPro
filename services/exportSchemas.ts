@@ -55,6 +55,7 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
             { Key: 'ShowSystemTransactions', Value: helpers.safeJson(state.showSystemTransactions) },
             { Key: 'EnableColorCoding', Value: helpers.safeJson(state.enableColorCoding) },
             { Key: 'EnableBeepOnSave', Value: helpers.safeJson(state.enableBeepOnSave) },
+            { Key: 'WhatsAppMode', Value: helpers.safeJson(state.whatsAppMode ?? 'manual') },
             { Key: 'LastServiceChargeRun', Value: helpers.safeJson(state.lastServiceChargeRun ?? '') },
         ]
     };

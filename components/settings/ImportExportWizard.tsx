@@ -1,10 +1,16 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { getApiBaseUrl } from '../../config/apiUrl';
+import { getApiBaseUrl, isLocalOnlyMode } from '../../config/apiUrl';
 import { useAppContext } from '../../context/AppContext';
+import { useProgress } from '../../context/ProgressContext';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
+import Tabs from '../ui/Tabs';
 import { apiClient } from '../../services/api/client';
 import { getAppStateApiService } from '../../services/api/appStateApi';
+import { exportToExcel } from '../../services/exportService';
+import { importFromExcel, runImportProcess, generateImportTemplate } from '../../services/importService';
+import { ImportType, ImportLogEntry } from '../../types';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface SheetResult {
   sheet: string;
@@ -50,6 +56,12 @@ interface ImportResult {
     vendors?: { count: number; skipped: number };
     purchaseBills?: { count: number; skipped: number };
     purchaseBillItems?: { count: number; skipped: number };
+    invoices?: { count: number; skipped: number };
+    rentalInvoicePayments?: { count: number; skipped: number };
+    contracts?: { count: number; skipped: number };
+    projectBills?: { count: number; skipped: number };
+    projectBillPayments?: { count: number; skipped: number };
+    budgets?: { count: number; skipped: number };
   };
   summary: {
     totalRows: number;
@@ -75,17 +87,107 @@ const IMPORT_ORDER = [
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
   { name: 'ProjectSellingAgreements', dependencies: ['Projects', 'Units', 'Contacts'], description: 'Import project selling agreements / installment plans (depends on Projects, Units, and Contacts)' },
   { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
-  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to your cloud account and will appear on refresh or next login.' },
+  { name: 'RentalInvoicePayments', dependencies: ['RentalInvoices', 'Accounts'], description: 'Import rental invoice payments (depends on Rental Invoices and Accounts). Data is saved to your local database.' },
+  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to your local database.' },
   { name: 'InventoryItems', dependencies: [], description: 'Import inventory items (name, unit type, price per unit). Supports parent-child hierarchy via parentItemName.' },
   { name: 'Vendors', dependencies: [], description: 'Import vendors (name, contact info, address)' },
   { name: 'PurchaseBills', dependencies: ['Vendors'], description: 'Import purchase bills (depends on Vendors)' },
-  { name: 'PurchaseBillItems', dependencies: ['PurchaseBills', 'InventoryItems'], description: 'Import purchase bill line items (depends on Purchase Bills and Inventory Items)' }
+  { name: 'PurchaseBillItems', dependencies: ['PurchaseBills', 'InventoryItems'], description: 'Import purchase bill line items (depends on Purchase Bills and Inventory Items)' },
+  { name: 'Contracts', dependencies: ['Projects', 'Contacts'], description: 'Import project contracts (depends on Projects and Contacts/Vendors)' },
+  { name: 'ProjectBills', dependencies: ['Contracts', 'Projects', 'Categories', 'Contacts'], description: 'Import project bills (depends on Contracts, Projects, Categories, and Contacts)' },
+  { name: 'ProjectBillPayments', dependencies: ['ProjectBills', 'Accounts'], description: 'Import project bill payments (depends on Project Bills and Accounts)' },
+  { name: 'Budgets', dependencies: ['Categories'], description: 'Import budgets by category and optional project' }
 ];
 
-const ImportExportWizard: React.FC = () => {
+// Map sheet names to ImportType enum values
+const SHEET_TO_IMPORT_TYPE: Record<string, ImportType> = {
+  'Accounts': ImportType.ACCOUNTS,
+  'Contacts': ImportType.CONTACTS,
+  'Categories': ImportType.CATEGORIES,
+  'Projects': ImportType.PROJECTS,
+  'Buildings': ImportType.BUILDINGS,
+  'Properties': ImportType.PROPERTIES,
+  'Units': ImportType.UNITS,
+  'RentalAgreements': ImportType.RENTAL_AGREEMENTS,
+  'ProjectSellingAgreements': ImportType.PROJECT_AGREEMENTS,
+  'RentalInvoices': ImportType.RENTAL_INVOICES,
+  'RentalInvoicePayments': ImportType.RENTAL_INVOICE_PAYMENTS,
+  'LoanTransactions': ImportType.LOAN_TRANSACTIONS,
+  'InventoryItems': ImportType.FULL, // Uses FULL import type
+  'Vendors': ImportType.VENDORS,
+  'PurchaseBills': ImportType.BILLS, // Uses BILLS import type
+  'PurchaseBillItems': ImportType.FULL, // Uses FULL import type
+  'Contracts': ImportType.CONTRACTS,
+  'ProjectBills': ImportType.PROJECT_BILLS,
+  'ProjectBillPayments': ImportType.PROJECT_BILL_PAYMENTS,
+  'Budgets': ImportType.BUDGETS,
+};
+
+// UI grouping for Import Data page (Existing = wired to current import; New = Phase 2)
+interface ImportCategoryItem {
+  label: string;
+  sheetName: string | null; // null for New (Phase 2)
+  existing: boolean;
+}
+const IMPORT_CATEGORIES: { title: string; items: ImportCategoryItem[] }[] = [
+  {
+    title: 'Rental',
+    items: [
+      { label: 'Properties', sheetName: 'Properties', existing: true },
+      { label: 'Rental agreements', sheetName: 'RentalAgreements', existing: true },
+      { label: 'Rental invoices', sheetName: 'RentalInvoices', existing: true },
+      { label: 'Invoice payments', sheetName: 'RentalInvoicePayments', existing: true },
+      { label: 'Rental Bills', sheetName: null, existing: false },
+      { label: 'Rental bills payments', sheetName: null, existing: false },
+    ],
+  },
+  {
+    title: 'Project construction',
+    items: [
+      { label: 'Project contracts', sheetName: 'Contracts', existing: true },
+      { label: 'Project bills', sheetName: 'ProjectBills', existing: true },
+      { label: 'Project bills payment', sheetName: 'ProjectBillPayments', existing: true },
+      { label: 'Budget', sheetName: 'Budgets', existing: true },
+    ],
+  },
+  {
+    title: 'Project selling',
+    items: [
+      { label: 'Units', sheetName: 'Units', existing: true },
+      { label: 'Project agreements', sheetName: null, existing: false },
+      { label: 'Project invoices', sheetName: null, existing: false },
+      { label: 'Project payment', sheetName: null, existing: false },
+    ],
+  },
+  {
+    title: 'General',
+    items: [
+      { label: 'Accounts', sheetName: 'Accounts', existing: true },
+      { label: 'Contacts', sheetName: 'Contacts', existing: true },
+      { label: 'Categories', sheetName: 'Categories', existing: true },
+      { label: 'Vendors', sheetName: 'Vendors', existing: true },
+      { label: 'Projects', sheetName: 'Projects', existing: true },
+      { label: 'Buildings', sheetName: 'Buildings', existing: true },
+      { label: 'Loan transaction', sheetName: 'LoanTransactions', existing: true },
+      { label: 'Transfer transactions (Account to Account transfer)', sheetName: null, existing: false },
+    ],
+  },
+];
+
+export interface ImportExportWizardProps {
+  /** When true, wizard is embedded (e.g. in Settings Backup & Restore). No full-page chrome. */
+  embedded?: boolean;
+  /** When true with embedded, start directly at the Import Data step. */
+  startAtImport?: boolean;
+  /** Called when user clicks Back on the import step while embedded (e.g. switch tab). */
+  onBack?: () => void;
+}
+
+const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, startAtImport, onBack }) => {
   const { dispatch, state } = useAppContext();
-  const [currentStep, setCurrentStep] = useState<WizardStep>('choose');
-  const [stepHistory, setStepHistory] = useState<WizardStep[]>(['choose']);
+  const progress = useProgress();
+  const [currentStep, setCurrentStep] = useState<WizardStep>(embedded && startAtImport ? 'import' : 'choose');
+  const [stepHistory, setStepHistory] = useState<WizardStep[]>(embedded && startAtImport ? ['import'] : ['choose']);
   const [actionType, setActionType] = useState<ActionType>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>('');
@@ -93,6 +195,7 @@ const ImportExportWizard: React.FC = () => {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
   const [importedSheets, setImportedSheets] = useState<Set<string>>(new Set());
+  const [activeImportTab, setActiveImportTab] = useState<string>(IMPORT_CATEGORIES[0].title);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const goBack = () => dispatch({ type: 'SET_PAGE', payload: 'settings' });
@@ -103,6 +206,10 @@ const ImportExportWizard: React.FC = () => {
   };
 
   const goToPreviousStep = () => {
+    if (embedded && stepHistory.length <= 1 && onBack) {
+      onBack();
+      return;
+    }
     if (stepHistory.length > 1) {
       const newHistory = [...stepHistory];
       newHistory.pop(); // Remove current step
@@ -153,6 +260,54 @@ const ImportExportWizard: React.FC = () => {
   const handleDownloadTemplate = async (sheetName?: string) => {
     try {
       setIsLoading(true);
+      if (isLocalOnlyMode()) {
+        if (sheetName === 'Vendors') {
+          generateImportTemplate(ImportType.VENDORS);
+          setIsLoading(false);
+          return;
+        }
+        if (sheetName === 'RentalAgreements') {
+          generateImportTemplate(ImportType.RENTAL_AGREEMENTS);
+          setIsLoading(false);
+          return;
+        }
+        if (sheetName === 'RentalInvoices') {
+          generateImportTemplate(ImportType.RENTAL_INVOICES);
+          setIsLoading(false);
+          return;
+        }
+        if (sheetName === 'RentalInvoicePayments') {
+          generateImportTemplate(ImportType.RENTAL_INVOICE_PAYMENTS);
+          setIsLoading(false);
+          return;
+        }
+        if (sheetName === 'Contracts') {
+          generateImportTemplate(ImportType.CONTRACTS);
+          setIsLoading(false);
+          return;
+        }
+        if (sheetName === 'ProjectBills') {
+          generateImportTemplate(ImportType.PROJECT_BILLS);
+          setIsLoading(false);
+          return;
+        }
+        if (sheetName === 'ProjectBillPayments') {
+          generateImportTemplate(ImportType.PROJECT_BILL_PAYMENTS);
+          setIsLoading(false);
+          return;
+        }
+        if (sheetName === 'Budgets') {
+          generateImportTemplate(ImportType.BUDGETS);
+          setIsLoading(false);
+          return;
+        }
+        const filename = sheetName
+          ? `import-template-${sheetName.toLowerCase()}.xlsx`
+          : `import-template-${toLocalDateString(new Date())}.xlsx`;
+        exportToExcel(state, filename, progress, dispatch);
+        setIsLoading(false);
+        return;
+      }
       // Use same host as app so works when opened from another PC
       const baseUrl = getApiBaseUrl();
       const token = localStorage.getItem('auth_token') || '';
@@ -217,6 +372,12 @@ const ImportExportWizard: React.FC = () => {
   const handleExportData = async () => {
     try {
       setIsLoading(true);
+      if (isLocalOnlyMode()) {
+        const filename = `export-data-${toLocalDateString(new Date())}.xlsx`;
+        exportToExcel(state, filename, progress, dispatch);
+        setIsLoading(false);
+        return;
+      }
       // Use same host as app so works when opened from another PC
       const baseUrl = getApiBaseUrl();
       const token = localStorage.getItem('auth_token') || '';
@@ -259,7 +420,7 @@ const ImportExportWizard: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `export-data-${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.download = `export-data-${toLocalDateString(new Date())}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -327,6 +488,152 @@ const ImportExportWizard: React.FC = () => {
     try {
       setIsLoading(true);
 
+      if (isLocalOnlyMode()) {
+        // Local-only mode: Import directly from Excel file
+        progress.startProgress(`Importing ${selectedSheet}...`);
+        
+        try {
+          // Read Excel file
+          progress.updateProgress(10, 'Reading Excel file...');
+          const sheets = await importFromExcel(selectedFile);
+          
+          // Get the selected sheet data
+          const sheetData = sheets[selectedSheet];
+          if (!sheetData || sheetData.length === 0) {
+            throw new Error(`Sheet "${selectedSheet}" not found or is empty in the Excel file.`);
+          }
+          
+          // Map sheet name to ImportType
+          const importType = SHEET_TO_IMPORT_TYPE[selectedSheet];
+          if (!importType) {
+            throw new Error(`Import type not supported for sheet "${selectedSheet}".`);
+          }
+          
+          // Filter sheets to only include the selected sheet
+          const filteredSheets: { [key: string]: any[] } = {};
+          filteredSheets[selectedSheet] = sheetData;
+          
+          // Create import log callback
+          const importLogs: ImportLogEntry[] = [];
+          const onLog = (entry: ImportLogEntry) => {
+            importLogs.push(entry);
+            const progressMsg = entry.status === 'Success' 
+              ? `Imported row ${entry.row}...`
+              : entry.status === 'Error'
+              ? `Error at row ${entry.row}: ${entry.message}`
+              : `Skipped row ${entry.row}...`;
+            progress.updateProgress(30 + (importLogs.length / sheetData.length) * 60, progressMsg);
+          };
+          
+          // Run import process
+          progress.updateProgress(30, 'Processing data...');
+          const result = await runImportProcess(
+            filteredSheets,
+            state,
+            dispatch,
+            progress,
+            onLog,
+            importType
+          );
+          
+          // Format result to match API response format
+          const formattedResult: ImportResult = {
+            success: result.success > 0,
+            canProceed: result.errors === 0,
+            validationErrors: importLogs
+              .filter(log => log.status === 'Error')
+              .map(log => ({
+                sheet: log.sheet,
+                row: log.row,
+                field: '',
+                value: '',
+                message: log.message || 'Unknown error'
+              })),
+            duplicates: importLogs
+              .filter(log => log.status === 'Skipped')
+              .map(log => ({
+                sheet: log.sheet,
+                row: log.row,
+                name: '',
+                reason: log.message || 'Duplicate or skipped'
+              })),
+            imported: {
+              contacts: { count: (selectedSheet === 'Contacts' || selectedSheet === 'Vendors') ? result.success : 0, skipped: (selectedSheet === 'Contacts' || selectedSheet === 'Vendors') ? result.skipped : 0 },
+              projects: { count: selectedSheet === 'Projects' ? result.success : 0, skipped: selectedSheet === 'Projects' ? result.skipped : 0 },
+              buildings: { count: selectedSheet === 'Buildings' ? result.success : 0, skipped: selectedSheet === 'Buildings' ? result.skipped : 0 },
+              properties: { count: selectedSheet === 'Properties' ? result.success : 0, skipped: selectedSheet === 'Properties' ? result.skipped : 0 },
+              units: { count: selectedSheet === 'Units' ? result.success : 0, skipped: selectedSheet === 'Units' ? result.skipped : 0 },
+              categories: { count: selectedSheet === 'Categories' ? result.success : 0, skipped: selectedSheet === 'Categories' ? result.skipped : 0 },
+              accounts: { count: selectedSheet === 'Accounts' ? result.success : 0, skipped: selectedSheet === 'Accounts' ? result.skipped : 0 },
+              inventoryItems: { count: selectedSheet === 'InventoryItems' ? result.success : 0, skipped: selectedSheet === 'InventoryItems' ? result.skipped : 0 },
+              vendors: { count: selectedSheet === 'Vendors' ? result.success : 0, skipped: selectedSheet === 'Vendors' ? result.skipped : 0 },
+              purchaseBills: { count: selectedSheet === 'PurchaseBills' ? result.success : 0, skipped: selectedSheet === 'PurchaseBills' ? result.skipped : 0 },
+              purchaseBillItems: { count: selectedSheet === 'PurchaseBillItems' ? result.success : 0, skipped: selectedSheet === 'PurchaseBillItems' ? result.skipped : 0 },
+              invoices: { count: (selectedSheet === 'RentalInvoices' || selectedSheet === 'Invoices') ? result.success : 0, skipped: (selectedSheet === 'RentalInvoices' || selectedSheet === 'Invoices') ? result.skipped : 0 },
+              rentalInvoicePayments: { count: selectedSheet === 'RentalInvoicePayments' ? result.success : 0, skipped: selectedSheet === 'RentalInvoicePayments' ? result.skipped : 0 },
+              contracts: { count: selectedSheet === 'Contracts' ? result.success : 0, skipped: selectedSheet === 'Contracts' ? result.skipped : 0 },
+              projectBills: { count: selectedSheet === 'ProjectBills' ? result.success : 0, skipped: selectedSheet === 'ProjectBills' ? result.skipped : 0 },
+              projectBillPayments: { count: selectedSheet === 'ProjectBillPayments' ? result.success : 0, skipped: selectedSheet === 'ProjectBillPayments' ? result.skipped : 0 },
+              budgets: { count: selectedSheet === 'Budgets' ? result.success : 0, skipped: selectedSheet === 'Budgets' ? result.skipped : 0 },
+            },
+            summary: {
+              totalRows: sheetData.length,
+              validRows: result.success,
+              errorRows: result.errors,
+              duplicateRows: result.skipped,
+              importedRows: result.success
+            }
+          };
+          
+          setImportResult(formattedResult);
+          
+          // Reload state from database to ensure UI reflects saved data
+          if (formattedResult.success && formattedResult.canProceed) {
+            progress.updateProgress(99, 'Reloading data from database...');
+            try {
+              const { AppStateRepository } = await import('../../services/database/repositories/index');
+              const appStateRepo = new AppStateRepository();
+              const reloadedState = await appStateRepo.loadState();
+              dispatch({ type: 'SET_STATE', payload: reloadedState });
+              console.log('[Import] Reloaded state from database after import:', {
+                contacts: reloadedState.contacts?.length || 0,
+                accounts: reloadedState.accounts?.length || 0,
+                transactions: reloadedState.transactions?.length || 0
+              });
+            } catch (reloadError) {
+              console.error('[Import] Failed to reload state from database:', reloadError);
+              // Continue anyway - the dispatch in runImportProcess should have updated the UI
+            }
+          }
+          
+          progress.finishProgress('Import completed successfully');
+          
+          // If successful, mark sheet as imported
+          if (formattedResult.success && formattedResult.canProceed) {
+            setImportedSheets(prev => new Set([...prev, currentSheet.name]));
+            
+            // Clear selection and file, show success
+            setSelectedFile(null);
+            setFileName('');
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+            alert(`✅ ${currentSheet.name} imported successfully! ${result.success} rows imported, ${result.skipped} skipped, ${result.errors} errors.`);
+            goToStep('results');
+          } else {
+            // Show errors
+            goToStep('results');
+          }
+        } catch (error: any) {
+          progress.errorProgress(error.message || 'Import failed');
+          throw error;
+        }
+        
+        setIsLoading(false);
+        return;
+      }
+
+      // Cloud mode: Use API
       // Convert file to base64
       const base64Data = await convertFileToBase64(selectedFile);
 
@@ -522,20 +829,81 @@ const ImportExportWizard: React.FC = () => {
           <div className="max-w-2xl mx-auto">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-blue-900 mb-2">Template Information</h3>
+              <p className="text-sm text-blue-800 mb-3">
+                Download a template to prepare your data, then import it from the Import step.
+                <strong> Single-sheet templates</strong> (Vendors, Rental Agreements, Rental Invoices, Rental Invoice Payments, Contracts, Project Bills, Project Bill Payments, Budgets) contain only that sheet with required columns and sample rows. Imported data is saved to your local database.
+              </p>
               <p className="text-sm text-blue-800">
-                The template includes sheets for: Contacts, Projects, Buildings, Properties, Units, Categories, Accounts, and Loan Transactions.
-                Each sheet contains column headers. For <strong>Loan Transactions</strong>, use the <strong>bankAccountName</strong> column with a Bank-type account name (required).
-                Fill in your data and import the file. Imported data is saved to your cloud account and will appear on refresh or next login.
+                The full template includes all sheets (Contacts, Projects, Buildings, Properties, Units, etc.). For <strong>Loan Transactions</strong>, use <strong>bankAccountName</strong> (Bank-type account required).
               </p>
             </div>
 
-            <Button
-              onClick={() => handleDownloadTemplate()}
-              disabled={isLoading}
-              className="w-full"
-            >
-              {isLoading ? 'Downloading...' : 'Download Template'}
-            </Button>
+            <div className="space-y-2">
+              <Button
+                onClick={() => handleDownloadTemplate('Vendors')}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Vendors Template'}
+              </Button>
+              <Button
+                onClick={() => handleDownloadTemplate('RentalAgreements')}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Rental Agreements Template'}
+              </Button>
+              <Button
+                onClick={() => handleDownloadTemplate('RentalInvoices')}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Rental Invoices Template'}
+              </Button>
+              <Button
+                onClick={() => handleDownloadTemplate('RentalInvoicePayments')}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Rental Invoice Payments Template'}
+              </Button>
+              <Button
+                onClick={() => handleDownloadTemplate('Contracts')}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Contracts Template'}
+              </Button>
+              <Button
+                onClick={() => handleDownloadTemplate('ProjectBills')}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Project Bills Template'}
+              </Button>
+              <Button
+                onClick={() => handleDownloadTemplate('ProjectBillPayments')}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Project Bill Payments Template'}
+              </Button>
+              <Button
+                onClick={() => handleDownloadTemplate('Budgets')}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Budgets Template'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleDownloadTemplate()}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Full Template (all sheets)'}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -588,82 +956,123 @@ const ImportExportWizard: React.FC = () => {
 
     return (
       <div className="flex flex-col h-full bg-white">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">
-              Settings › {getBreadcrumb()}
+        {!embedded && (
+          <div className="flex items-center justify-between p-4 border-b border-slate-200">
+            <div className="flex-1">
+              <div className="text-sm text-slate-500 mb-1">
+                Settings › {getBreadcrumb()}
+              </div>
+              <h1 className="text-2xl font-bold text-slate-800">Import Data</h1>
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">Import Data</h1>
+            <Button variant="ghost" onClick={goToPreviousStep}>
+              <div className="w-4 h-4">{ICONS.chevronLeft}</div>
+              <span className="hidden sm:inline">Back</span>
+            </Button>
           </div>
-          <Button variant="ghost" onClick={goToPreviousStep}>
-            <div className="w-4 h-4">{ICONS.chevronLeft}</div>
-            <span className="hidden sm:inline">Back</span>
-          </Button>
-        </div>
+        )}
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className={`flex-1 overflow-y-auto ${embedded ? 'p-4' : 'p-6'}`}>
           <div className="max-w-2xl mx-auto">
-            {/* Sheet Selection List */}
+            {/* Tabs: one section visible at a time */}
             <div className="mb-6">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Select Sheet to Import</h3>
-              <div className="space-y-2">
-                {IMPORT_ORDER.map((sheet, idx) => {
-                  const isSelected = selectedSheet === sheet.name;
-                  const isImported = importedSheets.has(sheet.name);
-                  const hasUnmetDependencies = sheet.dependencies.length > 0 && !sheet.dependencies.every(dep => importedSheets.has(dep));
-                  const unmetDeps = sheet.dependencies.filter(dep => !importedSheets.has(dep));
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Select data type to import</h3>
+              <Tabs
+                variant="browser"
+                tabs={IMPORT_CATEGORIES.map(c => c.title)}
+                activeTab={activeImportTab}
+                onTabClick={setActiveImportTab}
+                className="mb-0"
+              />
+              <div className="border border-t-0 border-slate-200 rounded-b-lg overflow-hidden bg-white">
+                {IMPORT_CATEGORIES.filter(c => c.title === activeImportTab).map((category, catIdx) => (
+                  <div key={catIdx} className="divide-y divide-slate-100">
+                    {category.items.map((item, itemIdx) => {
+                      if (item.existing && item.sheetName) {
+                        const sheet = IMPORT_ORDER.find(s => s.name === item.sheetName);
+                        const isSelected = selectedSheet === item.sheetName;
+                        const isImported = sheet ? importedSheets.has(item.sheetName) : false;
+                        const hasUnmetDependencies = sheet && sheet.dependencies.length > 0 && !sheet.dependencies.every(dep => importedSheets.has(dep));
+                        const unmetDeps = sheet ? sheet.dependencies.filter(dep => !importedSheets.has(dep)) : [];
 
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => !isImported && handleSheetSelect(sheet.name)}
-                      className={`flex items-center p-3 rounded-lg border transition-all ${isImported
-                        ? 'bg-green-50 border-green-300 cursor-default'
-                        : isSelected
-                          ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-400 cursor-pointer'
-                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100 cursor-pointer'
-                        }`}
-                    >
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm ${isSelected
-                        ? 'bg-blue-600 text-white'
-                        : isImported
-                          ? 'bg-green-600 text-white'
-                          : 'bg-slate-400 text-white'
-                        }`}>
-                        {isImported ? '✓' : idx + 1}
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-slate-800">{sheet.name}</div>
-                        <div className="text-xs text-slate-600">{sheet.description}</div>
-                        {sheet.dependencies.length > 0 && (
-                          <div className={`text-xs mt-1 ${hasUnmetDependencies ? 'text-amber-600' : 'text-green-600'
-                            }`}>
-                            Depends on: {sheet.dependencies.join(', ')}
-                            {hasUnmetDependencies && (
-                              <span className="text-amber-700 font-semibold ml-1">
-                                ⚠️ Warning: {unmetDeps.join(', ')} not imported yet
-                              </span>
+                        return (
+                          <div
+                            key={itemIdx}
+                            onClick={() => !isImported && handleSheetSelect(item.sheetName!)}
+                            className={`flex items-center p-3 transition-all ${isImported
+                              ? 'bg-green-50 cursor-default'
+                              : isSelected
+                                ? 'bg-blue-50 ring-inset ring-2 ring-blue-400 cursor-pointer'
+                                : 'hover:bg-slate-50 cursor-pointer'
+                              }`}
+                          >
+                            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm ${isSelected
+                              ? 'bg-blue-600 text-white'
+                              : isImported
+                                ? 'bg-green-600 text-white'
+                                : 'bg-slate-400 text-white'
+                              }`}>
+                              {isImported ? '✓' : itemIdx + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-slate-800">{item.label}</div>
+                              {sheet && (
+                                <>
+                                  <div className="text-xs text-slate-600">{sheet.description}</div>
+                                  {sheet.dependencies.length > 0 && (
+                                    <div className={`text-xs mt-1 ${hasUnmetDependencies ? 'text-amber-600' : 'text-green-600'}`}>
+                                      Depends on: {sheet.dependencies.join(', ')}
+                                      {hasUnmetDependencies && (
+                                        <span className="text-amber-700 font-semibold ml-1">
+                                          ⚠️ {unmetDeps.join(', ')} not imported yet
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                            {isImported && (
+                              <span className="text-green-600 font-semibold text-sm shrink-0">✓ Done</span>
+                            )}
+                            {isSelected && !isImported && (
+                              <span className="text-blue-600 font-semibold text-sm shrink-0">Selected</span>
                             )}
                           </div>
-                        )}
-                      </div>
-                      {isImported && (
-                        <div className="text-green-600 font-semibold text-sm">✓ Done</div>
-                      )}
-                      {isSelected && !isImported && (
-                        <div className="text-blue-600 font-semibold text-sm">Selected</div>
-                      )}
-                    </div>
-                  );
-                })}
+                        );
+                      }
+                      // New (Phase 2) — show as disabled with badge
+                      return (
+                        <div
+                          key={itemIdx}
+                          className="flex items-center p-3 bg-slate-50/80 cursor-not-allowed opacity-80"
+                        >
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm bg-slate-300 text-slate-500">
+                            —
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-slate-600">{item.label}</div>
+                            <div className="text-xs text-slate-500">
+                              {item.label === 'Budget' ? 'Template and import for budget — Phase 2' : 'Import/export coming in Phase 2'}
+                            </div>
+                          </div>
+                          <span className="text-xs font-medium text-slate-500 bg-slate-200 px-2 py-0.5 rounded shrink-0">Phase 2</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
 
             {/* Selected Sheet Info */}
-            {selectedSheetData && (
+            {selectedSheetData && (() => {
+              const displayLabel = IMPORT_CATEGORIES.flatMap(c => c.items).find(
+                i => i.existing && i.sheetName === selectedSheetData.name
+              )?.label ?? selectedSheetData.name;
+              return (
               <>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-blue-900 mb-2">Selected: {selectedSheetData.name}</h3>
+                  <h3 className="font-semibold text-blue-900 mb-2">Selected: {displayLabel}</h3>
                   <p className="text-sm text-blue-800 mb-3">
                     {selectedSheetData.description}
                   </p>
@@ -678,7 +1087,7 @@ const ImportExportWizard: React.FC = () => {
                     disabled={isLoading}
                     className="w-full"
                   >
-                    {isLoading ? 'Downloading...' : `Download ${selectedSheetData.name} Template`}
+                    {isLoading ? 'Downloading...' : `Download ${displayLabel} Template`}
                   </Button>
                 </div>
 
@@ -691,7 +1100,8 @@ const ImportExportWizard: React.FC = () => {
                   </p>
                 </div>
               </>
-            )}
+              );
+            })()}
 
             {!selectedSheet && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
@@ -707,6 +1117,8 @@ const ImportExportWizard: React.FC = () => {
               accept=".xlsx,.xls"
               onChange={handleFileSelect}
               className="hidden"
+              aria-label="Select Excel file to import"
+              title="Select Excel file to import"
             />
 
             <div
@@ -738,7 +1150,7 @@ const ImportExportWizard: React.FC = () => {
                   disabled={!selectedFile || isLoading}
                   className="w-full"
                 >
-                  {isLoading ? 'Importing...' : `Import ${selectedSheetData?.name || selectedSheet}`}
+                  {isLoading ? 'Importing...' : `Import ${IMPORT_CATEGORIES.flatMap(c => c.items).find(i => i.existing && i.sheetName === selectedSheet)?.label ?? selectedSheetData?.name ?? selectedSheet}`}
                 </Button>
               </>
             )}
@@ -948,6 +1360,54 @@ const ImportExportWizard: React.FC = () => {
                             {importResult.imported.purchaseBillItems.count}
                           </div>
                           <div className="text-sm text-slate-600">Purchase Bill Items</div>
+                        </div>
+                      )}
+                      {importResult.imported.invoices && importResult.imported.invoices.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.invoices.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Invoices</div>
+                        </div>
+                      )}
+                      {importResult.imported.rentalInvoicePayments && importResult.imported.rentalInvoicePayments.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.rentalInvoicePayments.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Rental Invoice Payments</div>
+                        </div>
+                      )}
+                      {importResult.imported.contracts && importResult.imported.contracts.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.contracts.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Contracts</div>
+                        </div>
+                      )}
+                      {importResult.imported.projectBills && importResult.imported.projectBills.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.projectBills.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Project Bills</div>
+                        </div>
+                      )}
+                      {importResult.imported.projectBillPayments && importResult.imported.projectBillPayments.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.projectBillPayments.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Project Bill Payments</div>
+                        </div>
+                      )}
+                      {importResult.imported.budgets && importResult.imported.budgets.count > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-2xl font-bold text-slate-800">
+                            {importResult.imported.budgets.count}
+                          </div>
+                          <div className="text-sm text-slate-600">Budgets</div>
                         </div>
                       )}
                     </div>

@@ -70,22 +70,24 @@ const TreeItem: React.FC<{
     <>
       <div
         onClick={handleSelect}
-        className={`group flex items-center gap-1 px-2 py-1.5 cursor-pointer transition-colors text-sm border-b border-slate-100 ${
+        className={`group flex items-center gap-1 px-2 py-1.5 cursor-pointer transition-colors text-sm border-b border-app-border ${
           isSelected
-            ? 'bg-indigo-600 text-white'
+            ? 'bg-primary/15 text-app-text border-l-2 border-l-primary'
             : isSearchMatch
-              ? 'bg-amber-50 hover:bg-amber-100'
+              ? 'bg-ds-warning/10 hover:bg-ds-warning/15'
               : hasOverdue
-                ? 'hover:bg-rose-50/50'
-                : 'hover:bg-slate-50'
+                ? 'hover:bg-ds-danger/5'
+                : 'hover:bg-app-toolbar/50'
         }`}
         style={{ paddingLeft: `${level * 20 + 8}px` }}
       >
         {hasChildren ? (
           <button
+            type="button"
             onClick={handleToggle}
+            aria-label={isExpanded ? 'Collapse' : 'Expand'}
             className={`flex items-center justify-center w-4 h-4 rounded flex-shrink-0 transition-colors ${
-              isSelected ? 'text-white/80 hover:bg-white/20' : 'text-slate-400 hover:bg-slate-200'
+              isSelected ? 'text-primary hover:bg-primary/20' : 'text-app-muted hover:bg-app-toolbar'
             }`}
           >
             <svg
@@ -103,10 +105,10 @@ const TreeItem: React.FC<{
           <span className="truncate font-medium" title={node.name}>
             {node.name}
           </span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 tabular-nums ${
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 tabular-nums border ${
             isSelected
-              ? 'bg-white/20 text-white/90'
-              : 'bg-slate-100 text-slate-500'
+              ? 'bg-primary/20 text-primary border-primary/30'
+              : 'bg-app-toolbar text-app-muted border-app-border'
           }`}>
             {node.invoiceCount}
           </span>
@@ -114,7 +116,7 @@ const TreeItem: React.FC<{
 
         {showSecondary && (
           <div className={`w-16 flex-shrink-0 text-right text-xs tabular-nums ${
-            isSelected ? 'text-white/70' : 'text-slate-500'
+            isSelected ? 'text-app-muted' : 'text-app-muted'
           }`}>
             {(node.secondary || 0) > 0 ? formatAmount(node.secondary!) : '—'}
           </div>
@@ -122,13 +124,13 @@ const TreeItem: React.FC<{
 
         <div className="flex-shrink-0 text-right ml-2">
           <div className={`text-xs font-semibold tabular-nums ${
-            isSelected ? 'text-white' : 'text-slate-800'
+            isSelected ? 'text-app-text' : 'text-app-text'
           }`}>
             {formatAmount(node.outstanding)}
           </div>
           {hasOverdue && (
             <div className={`text-[10px] tabular-nums ${
-              isSelected ? 'text-rose-200' : 'text-rose-600'
+              isSelected ? 'text-ds-danger' : 'text-ds-danger'
             }`}>
               {formatAmount(node.overdue)} {overdueLabel}
             </div>
@@ -242,17 +244,17 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
   );
 
   const SortIcon = ({ column }: { column: SortKey }) => (
-    <span className="ml-0.5 text-[9px] text-slate-400">
+    <span className="ml-0.5 text-[9px] text-app-muted">
       {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
     </span>
   );
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+    <div className="flex flex-col h-full bg-app-card rounded-lg border border-app-border shadow-ds-card overflow-hidden">
       {/* Header */}
-      <div className="flex items-center border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex-shrink-0">
+      <div className="flex items-center border-b border-app-border bg-app-table-header text-[11px] font-semibold text-app-muted uppercase tracking-wider flex-shrink-0">
         <div
-          className="flex-1 px-2 py-1.5 cursor-pointer hover:bg-slate-100 select-none"
+          className="flex-1 px-2 py-1.5 cursor-pointer hover:bg-app-toolbar/60 select-none"
           onClick={() => handleSort('name')}
         >
           Entity <SortIcon column="name" />
@@ -263,7 +265,7 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
           </div>
         )}
         <div
-          className="w-24 px-2 py-1.5 text-right cursor-pointer hover:bg-slate-100 select-none"
+          className="w-24 px-2 py-1.5 text-right cursor-pointer hover:bg-app-toolbar/60 select-none"
           onClick={() => handleSort('outstanding')}
         >
           {amountLabel} <SortIcon column="outstanding" />
@@ -273,7 +275,7 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
       {/* Tree Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {sortedTreeData.length === 0 ? (
-          <div className="p-4 text-center text-slate-400 text-sm italic">
+          <div className="p-4 text-center text-app-muted text-sm italic">
             {emptyText}
           </div>
         ) : (
@@ -295,19 +297,19 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
       </div>
 
       {/* Footer Total */}
-      <div className="flex items-center border-t border-slate-200 bg-slate-50 px-2 py-1.5 flex-shrink-0">
-        <div className="flex-1 text-xs font-bold text-slate-700">Total</div>
+      <div className="flex items-center border-t border-app-border bg-app-toolbar/40 px-2 py-1.5 flex-shrink-0">
+        <div className="flex-1 text-xs font-bold text-app-text">Total</div>
         {showSecondary && (
-          <div className="w-16 text-right text-xs font-bold text-slate-600 tabular-nums">
+          <div className="w-16 text-right text-xs font-bold text-app-muted tabular-nums">
             {formatAmount(totalSecondary)}
           </div>
         )}
         <div className="text-right ml-2">
-          <div className="text-xs font-bold text-slate-800 tabular-nums">
+          <div className="text-xs font-bold text-app-text tabular-nums">
             {CURRENCY} {totalOutstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
           {totalOverdue > 0 && (
-            <div className="text-[10px] font-semibold text-rose-600 tabular-nums">
+            <div className="text-[10px] font-semibold text-ds-danger tabular-nums">
               {CURRENCY} {totalOverdue.toLocaleString(undefined, { maximumFractionDigits: 0 })} {overdueLabel}
             </div>
           )}

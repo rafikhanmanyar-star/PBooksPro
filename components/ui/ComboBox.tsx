@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { ICONS } from '../../constants';
 
@@ -19,7 +19,7 @@ interface ComboBoxProps {
   required?: boolean;
   id?: string;
   name?: string;
-  entityType?: 'contact' | 'project' | 'building' | 'category' | 'account' | 'property' | 'unit' | 'contract' | 'report'; // 'report' means don't show add option
+  entityType?: 'contact' | 'vendor' | 'project' | 'building' | 'category' | 'account' | 'property' | 'unit' | 'contract' | 'report'; // 'report' = no add option; 'vendor' = vendor (e.g. in bill form)
   onAddNew?: (entityType: string, name: string) => void; // Callback to open form modal
   className?: string;
   compact?: boolean;
@@ -29,17 +29,22 @@ interface ComboBoxProps {
 const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect, onQueryChange, placeholder, disabled = false, allowAddNew = true, required = false, id, name, entityType, onAddNew, className = '', compact = false, horizontal = false }) => {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [mounted, setMounted] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLUListElement>(null);
+  const listItemRefs = useRef<(HTMLLIElement | null)[]>([]);
   const shouldSelectOnFocusRef = useRef(true);
   const lastUserTypedValueRef = useRef<string | null>(null);
   const mouseDownOnInputRef = useRef(false);
+  const reactId = useId().replace(/:/g, '');
 
-  // Generate an id if not provided (for accessibility)
-  const inputId = id || (label ? `combobox-${name || label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
+  // Generate an id if not provided (for accessibility; useId avoids duplicate ids when label is omitted)
+  const inputId =
+    id ||
+    (label ? `combobox-${name || label.toLowerCase().replace(/\s+/g, '-')}` : `combobox-${reactId}`);
 
   const selectedItem = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId]);
 
@@ -245,6 +250,33 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
     }
   };
 
+  const optionCount = filteredItems.length + (shouldShowAddOption ? 1 : 0);
+
+  // When dropdown opens, set highlighted index to 0; when it closes, reset
+  useEffect(() => {
+    if (isOpen && optionCount > 0) {
+      setHighlightedIndex(0);
+    } else if (!isOpen) {
+      setHighlightedIndex(-1);
+    }
+  }, [isOpen, optionCount]);
+
+  // Keep highlighted index in bounds when list changes
+  useEffect(() => {
+    if (highlightedIndex >= optionCount && optionCount > 0) {
+      setHighlightedIndex(optionCount - 1);
+    }
+  }, [optionCount, highlightedIndex]);
+
+  // Scroll highlighted item into view when highlighted index changes
+  useEffect(() => {
+    if (!isOpen || highlightedIndex < 0) return;
+    const el = listItemRefs.current[highlightedIndex];
+    if (el) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [isOpen, highlightedIndex]);
+
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     if (!disabled) {
       // Only open and select-all when focus came from keyboard (tab). When focus came from mouse (mousedown),
@@ -261,9 +293,56 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // When user starts typing, disable text selection to prevent interference
-    // This ensures the first typed character appears correctly
     if (shouldSelectOnFocusRef.current && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       shouldSelectOnFocusRef.current = false;
+    }
+
+    // Keyboard navigation when dropdown is open or when opening with Arrow keys
+    if (e.key === 'Escape') {
+      if (isOpen) {
+        setIsOpen(false);
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      if (!isOpen && !disabled) {
+        setIsOpen(true);
+        setHighlightedIndex(0);
+        e.preventDefault();
+        return;
+      }
+      if (isOpen && optionCount > 0) {
+        setHighlightedIndex((prev) => (prev < optionCount - 1 ? prev + 1 : prev));
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      if (!isOpen && !disabled) {
+        setIsOpen(true);
+        setHighlightedIndex(optionCount > 0 ? optionCount - 1 : 0);
+        e.preventDefault();
+        return;
+      }
+      if (isOpen && optionCount > 0) {
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === 'Enter' && isOpen && optionCount > 0) {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < filteredItems.length) {
+        handleSelect(filteredItems[highlightedIndex]);
+      } else if (shouldShowAddOption && highlightedIndex === filteredItems.length) {
+        handleAddNew();
+      }
+      return;
     }
   };
 
@@ -323,6 +402,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
       required={required && !selectedId}
       autoComplete="off"
       spellCheck={true}
+      data-pbooks-skip-focus-recovery=""
     />
   );
 
@@ -354,30 +434,36 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
             top: `${dropdownPosition.top}px`,
             left: `${dropdownPosition.left}px`,
             width: `${dropdownPosition.width}px`,
-            // Ensure dropdown appears above everything
             position: 'fixed'
           }}
         >
-          {filteredItems.length > 0 && filteredItems.map(item => (
+          {filteredItems.length > 0 && filteredItems.map((item, index) => (
             <li
               key={item.id}
-              className="px-3 py-2 cursor-pointer hover:bg-gray-50 transition-colors"
+              ref={(el) => { listItemRefs.current[index] = el; }}
+              className={`px-3 py-2 cursor-pointer transition-colors ${highlightedIndex === index ? 'bg-green-50 ring-inset ring-1 ring-green-200' : 'hover:bg-gray-50'}`}
               onClick={() => handleSelect(item)}
+              onMouseEnter={() => setHighlightedIndex(index)}
             >
               {item.name}
             </li>
           ))}
           {shouldShowAddOption && (
             <li
-              className="px-3 py-2 cursor-pointer hover:bg-green-50 flex items-center gap-2 text-green-600 font-medium border-t border-gray-200 transition-colors"
+              ref={(el) => { listItemRefs.current[filteredItems.length] = el; }}
+              className={`px-3 py-2 cursor-pointer flex items-center gap-2 text-green-600 font-medium border-t border-gray-200 transition-colors ${highlightedIndex === filteredItems.length ? 'bg-green-100 ring-inset ring-1 ring-green-300' : 'hover:bg-green-50'}`}
               onMouseDown={(e) => {
                 e.preventDefault(); // Prevent input blur
                 handleAddNew();
               }}
+              onMouseEnter={() => setHighlightedIndex(filteredItems.length)}
+              onClick={() => handleAddNew()}
             >
               <div className="w-4 h-4">{ICONS.plus}</div> {query.trim()}
               {entityType && entityType !== 'report' && (
-                <span className="text-xs text-green-500 ml-1">({entityType})</span>
+                <span className="text-xs text-green-500 ml-1">
+                  {entityType === 'vendor' ? '— Add as new vendor' : `(${entityType})`}
+                </span>
               )}
             </li>
           )}

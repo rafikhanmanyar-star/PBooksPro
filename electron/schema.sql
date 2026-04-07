@@ -1,6 +1,5 @@
 
--- Enable foreign keys
-PRAGMA foreign_keys = ON;
+-- PBooksPro Schema (PRAGMAs set in sqliteBridge.cjs)
 
 -- Metadata table for schema version and app settings
 CREATE TABLE IF NOT EXISTS metadata (
@@ -9,7 +8,14 @@ CREATE TABLE IF NOT EXISTS metadata (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Tenants table (minimal stub for FK refs from supplier_registration_requests, registered_suppliers; aligned with PostgreSQL)
+-- Canonical schema version row for startup validation (single row id=1)
+CREATE TABLE IF NOT EXISTS schema_meta (
+    id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+    version INTEGER NOT NULL,
+    last_updated TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Tenants table (minimal stub for FK refs from registered_suppliers; aligned with PostgreSQL)
 CREATE TABLE IF NOT EXISTS tenants (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL DEFAULT '',
@@ -28,9 +34,18 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     login_status INTEGER NOT NULL DEFAULT 0,
+    force_password_change INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(tenant_id, username)
+);
+
+-- Company settings (multi-company local-only mode)
+CREATE TABLE IF NOT EXISTS company_settings (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    company_name TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Accounts table (aligned with PostgreSQL)
@@ -93,8 +108,10 @@ CREATE TABLE IF NOT EXISTS categories (
     type TEXT NOT NULL,
     is_permanent INTEGER NOT NULL DEFAULT 0,
     is_rental INTEGER NOT NULL DEFAULT 0,
+    is_hidden INTEGER NOT NULL DEFAULT 0,
     parent_category_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     version INTEGER NOT NULL DEFAULT 1,
     deleted_at TEXT,
     FOREIGN KEY (parent_category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -147,6 +164,22 @@ CREATE TABLE IF NOT EXISTS properties (
     FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE RESTRICT
 );
 
+-- Property ownership history (one active row per property: ownership_end_date IS NULL)
+CREATE TABLE IF NOT EXISTS property_ownership_history (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    property_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    ownership_start_date TEXT NOT NULL,
+    ownership_end_date TEXT,
+    transfer_reference TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+    FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT
+);
+
 -- Units table (aligned with PostgreSQL)
 CREATE TABLE IF NOT EXISTS units (
     id TEXT PRIMARY KEY,
@@ -195,6 +228,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     contract_id TEXT,
     agreement_id TEXT,
     batch_id TEXT,
+    project_asset_id TEXT,
+    owner_id TEXT,
     is_system INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -259,7 +294,7 @@ CREATE TABLE IF NOT EXISTS bills (
     project_agreement_id TEXT,
     contract_id TEXT,
     staff_id TEXT,
-    bill_version INTEGER DEFAULT 1,
+    bill_version INTEGER NOT NULL DEFAULT 1,
     expense_category_items TEXT,
     document_path TEXT,
     document_id TEXT,
@@ -362,7 +397,7 @@ CREATE TABLE IF NOT EXISTS installment_plans (
     selected_amenities TEXT,
     amenities_total REAL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     version INTEGER NOT NULL DEFAULT 1,
     deleted_at TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -389,10 +424,10 @@ CREATE TABLE IF NOT EXISTS documents (
     uploaded_by TEXT
 );
 
--- Rental Agreements table (aligned with PostgreSQL: uses org_id for tenant isolation)
+-- Rental Agreements table (tenant_id for organization, same as other tables; contact_id = rental tenant)
 CREATE TABLE IF NOT EXISTS rental_agreements (
     id TEXT PRIMARY KEY,
-    org_id TEXT NOT NULL DEFAULT '',
+    tenant_id TEXT NOT NULL DEFAULT '',
     agreement_number TEXT NOT NULL,
     contact_id TEXT NOT NULL,
     property_id TEXT NOT NULL,
@@ -413,7 +448,7 @@ CREATE TABLE IF NOT EXISTS rental_agreements (
     deleted_at TEXT,
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE RESTRICT,
-    UNIQUE(org_id, agreement_number)
+    UNIQUE(tenant_id, agreement_number)
 );
 
 -- Project Agreements table (aligned with PostgreSQL)
@@ -493,6 +528,36 @@ CREATE TABLE IF NOT EXISTS sales_returns (
 
 CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_id ON sales_returns(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
+
+-- Project received assets (non-cash payments: plot, car, etc.) — long-term assets until sold
+CREATE TABLE IF NOT EXISTS project_received_assets (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL,
+    invoice_id TEXT,
+    description TEXT NOT NULL,
+    asset_type TEXT NOT NULL,
+    recorded_value REAL NOT NULL,
+    received_date TEXT NOT NULL,
+    sold_date TEXT,
+    sale_amount REAL,
+    sale_account_id TEXT,
+    notes TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL,
+    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
+    FOREIGN KEY (sale_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_received_assets_project ON project_received_assets(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_received_assets_contact ON project_received_assets(contact_id);
+CREATE INDEX IF NOT EXISTS idx_project_received_assets_invoice ON project_received_assets(invoice_id);
 
 -- Contracts table (aligned with PostgreSQL)
 CREATE TABLE IF NOT EXISTS contracts (
@@ -642,77 +707,42 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     read_at TEXT
 );
 
--- Tasks table
-CREATE TABLE IF NOT EXISTS tasks (
+-- Personal categories (income/expense for Personal transactions, separate from main categories)
+CREATE TABLE IF NOT EXISTS personal_categories (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT,
-    type TEXT NOT NULL CHECK (type IN ('Personal', 'Assigned')),
-    category TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('Not Started', 'In Progress', 'Review', 'Completed')),
-    start_date TEXT NOT NULL,
-    hard_deadline TEXT NOT NULL,
-    kpi_goal TEXT,
-    kpi_target_value REAL,
-    kpi_current_value REAL NOT NULL DEFAULT 0,
-    kpi_unit TEXT,
-    kpi_progress_percentage REAL NOT NULL DEFAULT 0 CHECK (kpi_progress_percentage >= 0 AND kpi_progress_percentage <= 100),
-    assigned_by_id TEXT,
-    assigned_to_id TEXT,
-    created_by_id TEXT NOT NULL,
-    user_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('Income', 'Expense')),
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Task updates/comment history table
-CREATE TABLE IF NOT EXISTS task_updates (
+-- Personal transactions (links to main app accounts and personal_categories)
+CREATE TABLE IF NOT EXISTS personal_transactions (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    task_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    update_type TEXT NOT NULL CHECK (update_type IN ('Status Change', 'KPI Update', 'Comment', 'Check-in')),
-    status_before TEXT,
-    status_after TEXT,
-    kpi_value_before REAL,
-    kpi_value_after REAL,
-    comment TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    account_id TEXT NOT NULL,
+    personal_category_id TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('Income', 'Expense')),
+    amount REAL NOT NULL,
+    transaction_date TEXT NOT NULL,
+    description TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-);
-
--- Task performance scores table (for leaderboard)
-CREATE TABLE IF NOT EXISTS task_performance_scores (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    period_start TEXT NOT NULL,
-    period_end TEXT NOT NULL,
-    total_tasks INTEGER NOT NULL DEFAULT 0,
-    completed_tasks INTEGER NOT NULL DEFAULT 0,
-    on_time_completions INTEGER NOT NULL DEFAULT 0,
-    overdue_tasks INTEGER NOT NULL DEFAULT 0,
-    average_kpi_achievement REAL NOT NULL DEFAULT 0,
-    completion_rate REAL NOT NULL DEFAULT 0 CHECK (completion_rate >= 0 AND completion_rate <= 100),
-    deadline_adherence_rate REAL NOT NULL DEFAULT 0 CHECK (deadline_adherence_rate >= 0 AND deadline_adherence_rate <= 100),
-    performance_score REAL NOT NULL DEFAULT 0,
-    calculated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(tenant_id, user_id, period_start, period_end)
-);
-
--- Task performance configuration (Admin-configurable weights)
-CREATE TABLE IF NOT EXISTS task_performance_config (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL UNIQUE,
-    completion_rate_weight REAL NOT NULL DEFAULT 0.33 CHECK (completion_rate_weight >= 0 AND completion_rate_weight <= 1),
-    deadline_adherence_weight REAL NOT NULL DEFAULT 0.33 CHECK (deadline_adherence_weight >= 0 AND deadline_adherence_weight <= 1),
-    kpi_achievement_weight REAL NOT NULL DEFAULT 0.34 CHECK (kpi_achievement_weight >= 0 AND kpi_achievement_weight <= 1),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    CHECK (ABS((completion_rate_weight + deadline_adherence_weight + kpi_achievement_weight) - 1.0) < 0.01)
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (personal_category_id) REFERENCES personal_categories(id) ON DELETE RESTRICT
 );
 
--- Create indexes for better query performance
+-- =====================================================
+-- PERFORMANCE INDEXES (single-tenant, local-only)
+-- =====================================================
+
+-- Transactions
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
@@ -720,78 +750,123 @@ CREATE INDEX IF NOT EXISTS idx_transactions_project_date ON transactions(project
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_bill ON transactions(bill_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_contact ON transactions(contact_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_building ON transactions(building_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_property ON transactions(property_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_unit ON transactions(unit_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_tenant ON transactions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_owner ON transactions(owner_id);
+
+-- Invoices
 CREATE INDEX IF NOT EXISTS idx_invoices_contact ON invoices(contact_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_project_date ON invoices(project_id, issue_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_issue_date ON invoices(issue_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_number);
+CREATE INDEX IF NOT EXISTS idx_invoices_due_status ON invoices(due_date, status);
+CREATE INDEX IF NOT EXISTS idx_invoices_agreement ON invoices(agreement_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_property_type ON invoices(property_id, invoice_type);
+CREATE INDEX IF NOT EXISTS idx_invoices_contact_type ON invoices(contact_id, invoice_type);
+CREATE INDEX IF NOT EXISTS idx_invoices_building ON invoices(building_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_unit ON invoices(unit_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant ON invoices(tenant_id);
+
+-- Bills
 CREATE INDEX IF NOT EXISTS idx_bills_contact ON bills(contact_id);
+CREATE INDEX IF NOT EXISTS idx_bills_vendor ON bills(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_bills_status ON bills(status);
 CREATE INDEX IF NOT EXISTS idx_bills_project_date ON bills(project_id, issue_date);
+CREATE INDEX IF NOT EXISTS idx_bills_issue_date ON bills(issue_date);
+CREATE INDEX IF NOT EXISTS idx_bills_building ON bills(building_id);
+CREATE INDEX IF NOT EXISTS idx_bills_property ON bills(property_id);
+CREATE INDEX IF NOT EXISTS idx_bills_tenant ON bills(tenant_id);
+
+-- Contacts
+CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);
+CREATE INDEX IF NOT EXISTS idx_contacts_tenant ON contacts(tenant_id);
+
+-- Soft-delete filter indexes
+CREATE INDEX IF NOT EXISTS idx_accounts_deleted ON accounts(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_deleted ON contacts(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_deleted ON transactions(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_invoices_deleted ON invoices(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_bills_deleted ON bills(deleted_at);
+
+-- Quotations
 CREATE INDEX IF NOT EXISTS idx_quotations_vendor ON quotations(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_date ON quotations(date);
+
+-- Documents
 CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
+
+-- PM Cycle Allocations
 CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_project_id ON pm_cycle_allocations(project_id);
 CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_cycle_id ON pm_cycle_allocations(cycle_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_project_id ON pm_cycle_allocations(project_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_cycle_id ON pm_cycle_allocations(cycle_id);
+
+-- Recurring Invoice Templates
+CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_agreement ON recurring_invoice_templates(agreement_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant ON recurring_invoice_templates(tenant_id);
+
+-- Documents
+CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents(tenant_id);
+
+-- Contracts
+CREATE INDEX IF NOT EXISTS idx_contracts_tenant ON contracts(tenant_id);
+
+-- Chat
 CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON chat_messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_recipient ON chat_messages(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
 
--- Indexes for tenant_id and user_id (multi-tenant support)
-CREATE INDEX IF NOT EXISTS idx_accounts_tenant_id ON accounts(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
-CREATE INDEX IF NOT EXISTS idx_contacts_tenant_id ON contacts(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);
-CREATE INDEX IF NOT EXISTS idx_vendors_tenant_id ON vendors(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_vendors_user_id ON vendors(user_id);
-CREATE INDEX IF NOT EXISTS idx_categories_tenant_id ON categories(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
-CREATE INDEX IF NOT EXISTS idx_projects_tenant_id ON projects(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
-CREATE INDEX IF NOT EXISTS idx_buildings_tenant_id ON buildings(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_buildings_user_id ON buildings(user_id);
-CREATE INDEX IF NOT EXISTS idx_properties_tenant_id ON properties(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_properties_user_id ON properties(user_id);
-CREATE INDEX IF NOT EXISTS idx_units_tenant_id ON units(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_units_user_id ON units(user_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_tenant_id ON transactions(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_tenant_user ON transactions(tenant_id, user_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_id ON invoices(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
-CREATE INDEX IF NOT EXISTS idx_bills_tenant_id ON bills(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_bills_user_id ON bills(user_id);
-CREATE INDEX IF NOT EXISTS idx_budgets_tenant_id ON budgets(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id);
-CREATE INDEX IF NOT EXISTS idx_quotations_tenant_id ON quotations(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_quotations_user_id ON quotations(user_id);
-CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_id ON rental_agreements(tenant_id);
+-- Rental & Project Agreements
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_contact_id ON rental_agreements(contact_id);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_user_id ON rental_agreements(user_id);
-CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_id ON project_agreements(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_project_agreements_user_id ON project_agreements(user_id);
-CREATE INDEX IF NOT EXISTS idx_contracts_tenant_id ON contracts(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_contracts_user_id ON contracts(user_id);
-CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant_id ON recurring_invoice_templates(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_user_id ON recurring_invoice_templates(user_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to_id ON tasks(assigned_to_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_created_by_id ON tasks(created_by_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-CREATE INDEX IF NOT EXISTS idx_tasks_hard_deadline ON tasks(hard_deadline);
-CREATE INDEX IF NOT EXISTS idx_tasks_type ON tasks(type);
-CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
-CREATE INDEX IF NOT EXISTS idx_task_updates_task_id ON task_updates(task_id);
-CREATE INDEX IF NOT EXISTS idx_task_updates_tenant_id ON task_updates(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_task_updates_user_id ON task_updates(user_id);
-CREATE INDEX IF NOT EXISTS idx_task_performance_scores_tenant_id ON task_performance_scores(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_task_performance_scores_user_id ON task_performance_scores(user_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_property_id ON rental_agreements(property_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant ON rental_agreements(tenant_id);
+
+-- Sales Returns
+CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
+
+-- Properties
+CREATE INDEX IF NOT EXISTS idx_properties_building ON properties(building_id);
+CREATE INDEX IF NOT EXISTS idx_properties_owner ON properties(owner_id);
+CREATE INDEX IF NOT EXISTS idx_properties_tenant ON properties(tenant_id);
+
+-- Property ownership history
+CREATE INDEX IF NOT EXISTS idx_property_ownership_history_property ON property_ownership_history(property_id);
+CREATE INDEX IF NOT EXISTS idx_property_ownership_history_owner ON property_ownership_history(owner_id);
+CREATE INDEX IF NOT EXISTS idx_property_ownership_history_start ON property_ownership_history(ownership_start_date);
+CREATE INDEX IF NOT EXISTS idx_property_ownership_history_property_end ON property_ownership_history(property_id, ownership_end_date);
+
+-- Units
+CREATE INDEX IF NOT EXISTS idx_units_project ON units(project_id);
+CREATE INDEX IF NOT EXISTS idx_units_contact ON units(contact_id);
+CREATE INDEX IF NOT EXISTS idx_units_tenant ON units(tenant_id);
+
+-- Projects
+CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects(tenant_id);
+
+-- Vendors
+CREATE INDEX IF NOT EXISTS idx_vendors_tenant ON vendors(tenant_id);
+
+-- Categories
+CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories(tenant_id);
+
+-- Buildings
+CREATE INDEX IF NOT EXISTS idx_buildings_tenant ON buildings(tenant_id);
+
+-- Accounts
+CREATE INDEX IF NOT EXISTS idx_accounts_tenant ON accounts(tenant_id);
+
+-- Personal categories & transactions
+CREATE INDEX IF NOT EXISTS idx_personal_categories_tenant ON personal_categories(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_personal_categories_type ON personal_categories(type);
+CREATE INDEX IF NOT EXISTS idx_personal_transactions_tenant ON personal_transactions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_personal_transactions_account ON personal_transactions(account_id);
+CREATE INDEX IF NOT EXISTS idx_personal_transactions_date ON personal_transactions(transaction_date);
+CREATE INDEX IF NOT EXISTS idx_personal_transactions_category ON personal_transactions(personal_category_id);
 
 -- ============================================================================
--- P2P (PROCUREMENT-TO-PAY) SYSTEM
+-- P2P (PROCUREMENT-TO-PAY) SYSTEM - Purchase Orders only (p2p_invoices/bills/audit_trail removed)
 -- ============================================================================
 
 -- Purchase Orders table
@@ -820,109 +895,11 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     UNIQUE(tenant_id, po_number)
 );
 
--- P2P Invoices table
-CREATE TABLE IF NOT EXISTS p2p_invoices (
-    id TEXT PRIMARY KEY,
-    invoice_number TEXT NOT NULL,
-    po_id TEXT NOT NULL,
-    buyer_tenant_id TEXT NOT NULL,
-    supplier_tenant_id TEXT NOT NULL,
-    amount REAL NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('PENDING', 'UNDER_REVIEW', 'APPROVED', 'REJECTED')) DEFAULT 'PENDING',
-    items TEXT NOT NULL, -- JSON array matching PO items
-    reviewed_by TEXT,
-    reviewed_at TEXT,
-    rejected_reason TEXT,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT,
-    UNIQUE(tenant_id, invoice_number)
-);
-
--- P2P Bills table
-CREATE TABLE IF NOT EXISTS p2p_bills (
-    id TEXT PRIMARY KEY,
-    bill_number TEXT NOT NULL,
-    invoice_id TEXT NOT NULL,
-    po_id TEXT NOT NULL,
-    buyer_tenant_id TEXT NOT NULL,
-    supplier_tenant_id TEXT NOT NULL,
-    amount REAL NOT NULL,
-    due_date TEXT NOT NULL,
-    payment_status TEXT NOT NULL CHECK (payment_status IN ('UNPAID', 'PARTIALLY_PAID', 'PAID', 'OVERDUE')) DEFAULT 'UNPAID',
-    paid_amount REAL NOT NULL DEFAULT 0,
-    paid_at TEXT,
-    payment_account_id TEXT,
-    transaction_id TEXT,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (invoice_id) REFERENCES p2p_invoices(id) ON DELETE RESTRICT,
-    FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT,
-    FOREIGN KEY (payment_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
-    UNIQUE(tenant_id, bill_number)
-);
-
--- P2P Audit Trail table
-CREATE TABLE IF NOT EXISTS p2p_audit_trail (
-    id TEXT PRIMARY KEY,
-    entity_type TEXT NOT NULL CHECK (entity_type IN ('PO', 'INVOICE', 'BILL')),
-    entity_id TEXT NOT NULL,
-    action TEXT NOT NULL, -- 'STATUS_CHANGE', 'CREATED', 'APPROVED', 'REJECTED'
-    from_status TEXT,
-    to_status TEXT,
-    performed_by TEXT,
-    performed_at TEXT NOT NULL DEFAULT (datetime('now')),
-    notes TEXT,
-    tenant_id TEXT NOT NULL
-);
-
--- P2P Indexes
+-- P2P Indexes (purchase_orders only)
 CREATE INDEX IF NOT EXISTS idx_po_buyer_tenant ON purchase_orders(buyer_tenant_id);
 CREATE INDEX IF NOT EXISTS idx_po_supplier_tenant ON purchase_orders(supplier_tenant_id);
 CREATE INDEX IF NOT EXISTS idx_po_status ON purchase_orders(status);
 CREATE INDEX IF NOT EXISTS idx_po_tenant_id ON purchase_orders(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_p2p_invoices_po_id ON p2p_invoices(po_id);
-CREATE INDEX IF NOT EXISTS idx_p2p_invoices_status ON p2p_invoices(status);
-CREATE INDEX IF NOT EXISTS idx_p2p_invoices_buyer_tenant ON p2p_invoices(buyer_tenant_id);
-CREATE INDEX IF NOT EXISTS idx_p2p_invoices_supplier_tenant ON p2p_invoices(supplier_tenant_id);
-CREATE INDEX IF NOT EXISTS idx_p2p_invoices_tenant_id ON p2p_invoices(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_p2p_bills_invoice_id ON p2p_bills(invoice_id);
-CREATE INDEX IF NOT EXISTS idx_p2p_bills_due_date ON p2p_bills(due_date);
-CREATE INDEX IF NOT EXISTS idx_p2p_bills_payment_status ON p2p_bills(payment_status);
-CREATE INDEX IF NOT EXISTS idx_p2p_bills_tenant_id ON p2p_bills(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_p2p_audit_trail_entity ON p2p_audit_trail(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_p2p_audit_trail_tenant_id ON p2p_audit_trail(tenant_id);
-
--- Supplier Registration Requests table
-CREATE TABLE IF NOT EXISTS supplier_registration_requests (
-    id TEXT PRIMARY KEY,
-    supplier_tenant_id TEXT NOT NULL,
-    buyer_tenant_id TEXT NOT NULL,
-    buyer_organization_email TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')) DEFAULT 'PENDING',
-    supplier_message TEXT,
-    buyer_comments TEXT,
-    requested_at TEXT NOT NULL DEFAULT (datetime('now')),
-    reviewed_at TEXT,
-    reviewed_by TEXT,
-    tenant_id TEXT NOT NULL,
-    reg_supplier_name TEXT,
-    reg_supplier_company TEXT,
-    reg_supplier_contact_no TEXT,
-    reg_supplier_address TEXT,
-    reg_supplier_description TEXT,
-    FOREIGN KEY (supplier_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (buyer_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_supplier ON supplier_registration_requests(supplier_tenant_id);
-CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_buyer ON supplier_registration_requests(buyer_tenant_id);
-CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_status ON supplier_registration_requests(status);
-CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_tenant_id ON supplier_registration_requests(tenant_id);
 
 -- Registered Suppliers table (Track approved supplier-buyer relationships)
 CREATE TABLE IF NOT EXISTS registered_suppliers (
@@ -1105,53 +1082,7 @@ CREATE TABLE IF NOT EXISTS payroll_salary_components (
 CREATE INDEX IF NOT EXISTS idx_payroll_components_tenant ON payroll_salary_components(tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_components_unique ON payroll_salary_components(tenant_id, name, type);
 
--- Sync outbox: persistent change log for offline writes (source of truth for upstream sync)
-CREATE TABLE IF NOT EXISTS sync_outbox (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    entity_type TEXT NOT NULL,
-    action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
-    entity_id TEXT NOT NULL,
-    payload_json TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    synced_at TEXT,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'syncing', 'synced', 'failed')),
-    retry_count INTEGER NOT NULL DEFAULT 0,
-    error_message TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_sync_outbox_tenant_status ON sync_outbox(tenant_id, status);
-CREATE INDEX IF NOT EXISTS idx_sync_outbox_created ON sync_outbox(created_at);
-
--- Sync metadata: last_synced_at per tenant for incremental downstream sync
-CREATE TABLE IF NOT EXISTS sync_metadata (
-    tenant_id TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    last_synced_at TEXT NOT NULL,
-    last_pull_at TEXT,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (tenant_id, entity_type)
-);
-
--- Sync Conflicts table: logs all conflict resolutions for audit trail
-CREATE TABLE IF NOT EXISTS sync_conflicts (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id TEXT NOT NULL,
-    local_version INTEGER,
-    remote_version INTEGER,
-    local_data TEXT,
-    remote_data TEXT,
-    resolution TEXT NOT NULL,
-    resolved_by TEXT,
-    device_id TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_sync_conflicts_tenant ON sync_conflicts(tenant_id, entity_type, created_at);
-
--- WhatsApp menu sessions (aligned with PostgreSQL 20260210; for offline/sync)
+-- WhatsApp menu sessions
 CREATE TABLE IF NOT EXISTS whatsapp_menu_sessions (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL DEFAULT '',
@@ -1161,81 +1092,83 @@ CREATE TABLE IF NOT EXISTS whatsapp_menu_sessions (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(tenant_id, phone_number)
 );
-CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_tenant_phone ON whatsapp_menu_sessions(tenant_id, phone_number);
-CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_last_interaction ON whatsapp_menu_sessions(tenant_id, last_interaction_at);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_menu_sessions_phone ON whatsapp_menu_sessions(phone_number);
 
--- Composite indexes for tenant + soft-delete filtering (covers WHERE tenant_id = ? AND deleted_at IS NULL)
-CREATE INDEX IF NOT EXISTS idx_accounts_tenant_deleted ON accounts(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_contacts_tenant_deleted ON contacts(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_vendors_tenant_deleted ON vendors(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_categories_tenant_deleted ON categories(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_projects_tenant_deleted ON projects(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_buildings_tenant_deleted ON buildings(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_properties_tenant_deleted ON properties(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_units_tenant_deleted ON units(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_transactions_tenant_deleted ON transactions(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_deleted ON invoices(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_bills_tenant_deleted ON bills(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_budgets_tenant_deleted ON budgets(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_quotations_tenant_deleted ON quotations(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_documents_tenant_deleted ON documents(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_contracts_tenant_deleted ON contracts(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_deleted ON rental_agreements(org_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_deleted ON project_agreements(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_installment_plans_tenant_deleted ON installment_plans(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_recurring_templates_tenant_deleted ON recurring_invoice_templates(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_deleted ON pm_cycle_allocations(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_deleted ON sales_returns(tenant_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_plan_amenities_tenant_deleted ON plan_amenities(tenant_id, deleted_at);
+-- =============================================================================
+-- DOUBLE-ENTRY JOURNAL (immutable; legacy \`transactions\` table unchanged)
+-- =============================================================================
 
--- Composite indexes for efficient tenant-scoped lookups (tenant_id, id)
-CREATE INDEX IF NOT EXISTS idx_accounts_tenant_pk ON accounts(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_contacts_tenant_pk ON contacts(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_vendors_tenant_pk ON vendors(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_categories_tenant_pk ON categories(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_projects_tenant_pk ON projects(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_buildings_tenant_pk ON buildings(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_properties_tenant_pk ON properties(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_units_tenant_pk ON units(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_transactions_tenant_pk ON transactions(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_pk ON invoices(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_bills_tenant_pk ON bills(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_budgets_tenant_pk ON budgets(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_quotations_tenant_pk ON quotations(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_documents_tenant_pk ON documents(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_contracts_tenant_pk ON contracts(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_pk ON rental_agreements(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_pk ON project_agreements(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_installment_plans_tenant_pk ON installment_plans(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant_pk ON recurring_invoice_templates(tenant_id, id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_pk ON pm_cycle_allocations(tenant_id, id);
+CREATE TABLE IF NOT EXISTS journal_entries (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    entry_date TEXT NOT NULL,
+    reference TEXT NOT NULL DEFAULT '',
+    description TEXT,
+    source_module TEXT,
+    source_id TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
--- Composite indexes for delta sync queries (tenant_id, updated_at)
-CREATE INDEX IF NOT EXISTS idx_transactions_tenant_updated ON transactions(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_updated ON invoices(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_bills_tenant_updated ON bills(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_contacts_tenant_updated ON contacts(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_accounts_tenant_updated ON accounts(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_categories_tenant_updated ON categories(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_vendors_tenant_updated ON vendors(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_buildings_tenant_updated ON buildings(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_properties_tenant_updated ON properties(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_units_tenant_updated ON units(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_budgets_tenant_updated ON budgets(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_contracts_tenant_updated ON contracts(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_updated ON rental_agreements(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_updated ON project_agreements(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_installment_plans_tenant_updated ON installment_plans(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_quotations_tenant_updated ON quotations(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_documents_tenant_updated ON documents(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_updated ON sales_returns(tenant_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_recurring_templates_tenant_updated ON recurring_invoice_templates(tenant_id, updated_at);
+CREATE TABLE IF NOT EXISTS journal_lines (
+    id TEXT PRIMARY KEY,
+    journal_entry_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    debit_amount REAL NOT NULL DEFAULT 0,
+    credit_amount REAL NOT NULL DEFAULT 0,
+    line_number INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+    CHECK (debit_amount >= 0 AND credit_amount >= 0),
+    CHECK (
+        (debit_amount > 0 AND credit_amount = 0)
+        OR (credit_amount > 0 AND debit_amount = 0)
+    )
+);
 
--- Invoice aging / AR indexes for local queries
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_due_status ON invoices(tenant_id, due_date, status);
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_property_type ON invoices(tenant_id, property_id, invoice_type);
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_contact_type ON invoices(tenant_id, contact_id, invoice_type);
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_agreement ON invoices(tenant_id, agreement_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_tenant_date ON transactions(tenant_id, date);
-CREATE INDEX IF NOT EXISTS idx_properties_tenant_building ON properties(tenant_id, building_id);
-CREATE INDEX IF NOT EXISTS idx_properties_tenant_owner ON properties(tenant_id, owner_id);
+CREATE INDEX IF NOT EXISTS idx_journal_entries_tenant_date ON journal_entries(tenant_id, entry_date);
+CREATE INDEX IF NOT EXISTS idx_journal_entries_source ON journal_entries(source_module, source_id);
+CREATE INDEX IF NOT EXISTS idx_journal_lines_entry ON journal_lines(journal_entry_id);
+CREATE INDEX IF NOT EXISTS idx_journal_lines_account ON journal_lines(account_id);
+
+CREATE TABLE IF NOT EXISTS journal_reversals (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    original_journal_entry_id TEXT NOT NULL,
+    reversal_journal_entry_id TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by TEXT,
+    FOREIGN KEY (original_journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
+    FOREIGN KEY (reversal_journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
+    UNIQUE(original_journal_entry_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_journal_reversals_reversal ON journal_reversals(reversal_journal_entry_id);
+
+CREATE TABLE IF NOT EXISTS accounting_audit_log (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    user_id TEXT,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    old_value TEXT,
+    new_value TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_accounting_audit_entity ON accounting_audit_log(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_accounting_audit_ts ON accounting_audit_log(timestamp);
+
+CREATE TRIGGER IF NOT EXISTS journal_entries_immutable_upd BEFORE UPDATE ON journal_entries
+BEGIN SELECT RAISE(ABORT, 'journal_entries are immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS journal_entries_immutable_del BEFORE DELETE ON journal_entries
+BEGIN SELECT RAISE(ABORT, 'journal_entries cannot be deleted'); END;
+
+CREATE TRIGGER IF NOT EXISTS journal_lines_immutable_upd BEFORE UPDATE ON journal_lines
+BEGIN SELECT RAISE(ABORT, 'journal_lines are immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS journal_lines_immutable_del BEFORE DELETE ON journal_lines
+BEGIN SELECT RAISE(ABORT, 'journal_lines cannot be deleted'); END;

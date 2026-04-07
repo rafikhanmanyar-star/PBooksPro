@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { useAppContext } from '../../context/AppContext';
-import { Transaction, Invoice, Bill, TransactionType, InvoiceType, ContactType } from '../../types';
+import { Transaction, Invoice, Bill, TransactionType, InvoiceType, ContactType, RentalAgreementStatus, InvoiceStatus } from '../../types';
 import { CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import Select from '../ui/Select';
@@ -113,6 +113,46 @@ const PropertyHistoryModal: React.FC<PropertyHistoryModalProps> = ({ isOpen, onC
         return items;
     }, [propertyId, state.invoices, state.bills, state.transactions, state.contacts, state.categories]);
 
+    const unitSummary = useMemo(() => {
+        if (!propertyId) return null;
+        const property = state.properties.find(p => p.id === propertyId);
+        if (!property) return null;
+        const building = state.buildings.find(b => b.id === property.buildingId);
+        const owner = state.contacts.find(c => c.id === property.ownerId);
+        const activeAgreement = state.rentalAgreements.find(
+            ra => ra.propertyId === propertyId && ra.status === RentalAgreementStatus.ACTIVE
+        );
+        const tenant = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.contactId) : null;
+
+        const propertyInvoices = state.invoices.filter(inv => inv.propertyId === propertyId);
+        const monthlyAmountDue = propertyInvoices
+            .filter(inv => inv.status !== InvoiceStatus.PAID)
+            .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
+        const securityDue = propertyInvoices
+            .filter(inv => inv.status !== InvoiceStatus.PAID && inv.securityDepositCharge)
+            .reduce((sum, inv) => {
+                const outstanding = inv.amount - inv.paidAmount;
+                const securityRatio = inv.securityDepositCharge / inv.amount;
+                return sum + (outstanding * securityRatio);
+            }, 0);
+
+        const monthlyRent = activeAgreement?.monthlyRent ?? 0;
+        const securityDeposit = activeAgreement?.securityDeposit ?? 0;
+        const monthlyServiceCharge = property.monthlyServiceCharge ?? 0;
+
+        return {
+            buildingName: building?.name ?? '—',
+            propertyName: property.name,
+            ownerName: owner?.name ?? '—',
+            tenantName: tenant?.name ?? 'Vacant',
+            monthlyRent,
+            securityDeposit,
+            monthlyServiceCharge,
+            monthlyAmountDue,
+            securityDue,
+        };
+    }, [propertyId, state.properties, state.buildings, state.contacts, state.rentalAgreements, state.invoices]);
+
     const filteredData = useMemo(() => {
         let data = historyData;
         if (filterType !== 'All') {
@@ -151,9 +191,61 @@ const PropertyHistoryModal: React.FC<PropertyHistoryModalProps> = ({ isOpen, onC
     );
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`History: ${propertyName}`} size="xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={`Unit details: ${propertyName}`} size="xl">
             <div className="flex flex-col h-[70vh]">
-                <div className="flex justify-between items-center mb-4 p-1">
+                {unitSummary && (
+                    <div className="mb-4 space-y-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Building</div>
+                                <div className="font-medium text-slate-800">{unitSummary.buildingName}</div>
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Property / Unit</div>
+                                <div className="font-medium text-slate-800">{unitSummary.propertyName}</div>
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Owner</div>
+                                <div className="font-medium text-slate-800">{unitSummary.ownerName}</div>
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Tenant</div>
+                                <div className="font-medium text-slate-800">{unitSummary.tenantName}</div>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 text-sm border-t border-slate-200 pt-3">
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Monthly rent</div>
+                                <div className="font-semibold text-slate-800 tabular-nums">{CURRENCY} {unitSummary.monthlyRent.toLocaleString()}</div>
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Security deposit</div>
+                                <div className="font-semibold text-slate-800 tabular-nums">{CURRENCY} {unitSummary.securityDeposit.toLocaleString()}</div>
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Monthly service charges</div>
+                                <div className="font-semibold text-slate-800 tabular-nums">{CURRENCY} {unitSummary.monthlyServiceCharge.toLocaleString()}</div>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 text-sm border-t border-slate-200 pt-3">
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Current status — Monthly amount due</div>
+                                <div className={`font-bold tabular-nums ${unitSummary.monthlyAmountDue > 0 ? 'text-rose-600' : 'text-slate-600'}`}>
+                                    {CURRENCY} {unitSummary.monthlyAmountDue.toLocaleString()}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Current status — Security due</div>
+                                <div className={`font-bold tabular-nums ${unitSummary.securityDue > 0 ? 'text-rose-600' : 'text-slate-600'}`}>
+                                    {CURRENCY} {unitSummary.securityDue.toLocaleString()}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <h3 className="text-sm font-bold text-slate-700 mb-2">Historical monthly-wise payment transactions (sortable by date)</h3>
+                <div className="flex justify-between items-center mb-2 p-1">
                     <div className="w-48">
                         <Select 
                             value={filterType} 

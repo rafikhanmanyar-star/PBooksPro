@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: ['selector', '[data-theme="dark"]'],
   content: [
     "./index.html",
     "./index.tsx",
@@ -15,17 +16,83 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Nunito', 'Work Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', 'sans-serif'],
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
         barcode: ['IDAutomationHC39M', 'monospace'],
       },
+      fontSize: {
+        'ds-h1': ['var(--text-h1-size)', { lineHeight: 'var(--leading-tight)', fontWeight: 'var(--font-weight-bold)' }],
+        'ds-h2': ['var(--text-h2-size)', { lineHeight: 'var(--leading-tight)', fontWeight: 'var(--font-weight-semibold)' }],
+        'ds-h3': ['var(--text-h3-size)', { lineHeight: 'var(--leading-tight)', fontWeight: 'var(--font-weight-semibold)' }],
+        'ds-body': ['var(--text-body-size)', { lineHeight: 'var(--leading-normal)' }],
+        'ds-small': ['var(--text-small-size)', { lineHeight: 'var(--leading-normal)' }],
+      },
+      spacing: {
+        'ds-xs': 'var(--space-xs)',
+        'ds-sm': 'var(--space-sm)',
+        'ds-md': 'var(--space-md)',
+        'ds-lg': 'var(--space-lg)',
+        'ds-xl': 'var(--space-xl)',
+        'ds-xxl': 'var(--space-xxl)',
+      },
+      borderRadius: {
+        'ds-sm': 'var(--radius-sm)',
+        'ds-md': 'var(--radius-md)',
+        'ds-lg': 'var(--radius-lg)',
+      },
+      boxShadow: {
+        'ds-card': 'var(--shadow-card)',
+        'ds-modal': 'var(--shadow-modal)',
+        'ds-header': 'var(--shadow-header)',
+      },
+      transitionDuration: {
+        'ds': '150ms',
+      },
       colors: {
-        primary: '#374151', // gray-700 (QuickBooks dark gray)
-        secondary: '#6b7280', // gray-500
-        accent: '#10b981', // green-500 (QuickBooks green)
-        danger: '#ef4444', // red-500
-        success: '#10b981', // green-500 (QuickBooks green)
-        warning: '#f59e0b', // amber-500
-        background: '#ffffff', // white (QuickBooks white)
+        /** Legacy Tailwind names — map to DS tokens where possible */
+        primary: 'var(--color-primary)',
+        secondary: 'var(--text-secondary)',
+        accent: 'var(--color-success)',
+        danger: 'var(--color-danger)',
+        success: 'var(--color-success)',
+        warning: 'var(--color-warning)',
+        /** Page / shell */
+        background: 'var(--bg-primary)',
+        /** Semantic app theme tokens (CSS variables) */
+        'app-bg': 'var(--bg-primary)',
+        'app-text': 'var(--text-primary)',
+        'app-muted': 'var(--text-muted)',
+        'app-card': 'var(--card-bg)',
+        'app-border': 'var(--border-color)',
+        'app-header': 'var(--header-bg)',
+        'app-input': 'var(--input-bg)',
+        'app-input-border': 'var(--input-border)',
+        'app-modal': 'var(--modal-bg)',
+        'app-table-header': 'var(--table-header-bg)',
+        'app-table-hover': 'var(--table-row-hover)',
+        'app-sidebar': 'var(--sidebar-bg)',
+        'app-sidebar-border': 'var(--sidebar-border)',
+        'app-surface-2': 'var(--layer-surface-elevated)',
+        'app-toolbar': 'var(--toolbar-bg)',
+        'app-table-selected': 'var(--table-row-selected)',
+        'nav-active': 'var(--nav-item-active-bg)',
+        'segment-bg': 'var(--segment-bg)',
+        'segment-active': 'var(--segment-active-bg)',
+        'badge-paid': 'var(--badge-paid-text)',
+        'badge-partial': 'var(--badge-partial-text)',
+        'badge-unpaid': 'var(--badge-unpaid-text)',
+        'app-focus-ring': 'var(--focus-ring)',
+        'app-error': 'var(--error-text)',
+        'app-error-bg': 'var(--error-bg)',
+        /** Explicit DS aliases for new components */
+        'ds-primary': 'var(--color-primary)',
+        'ds-primary-hover': 'var(--color-primary-hover)',
+        'ds-primary-active': 'var(--color-primary-active)',
+        'ds-on-primary': 'var(--color-on-primary)',
+        'ds-success': 'var(--color-success)',
+        'ds-warning': 'var(--color-warning)',
+        'ds-danger': 'var(--color-danger)',
+        'ds-surface-1': 'var(--surface-primary)',
+        'ds-surface-2': 'var(--surface-secondary)',
       }
     },
   },

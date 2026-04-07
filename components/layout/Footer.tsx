@@ -33,7 +33,7 @@ const Footer: React.FC<FooterProps> = ({ isPanelOpen, onNavigate }) => {
   ];
 
   return (
-    <footer className={`fixed bottom-0 right-0 bg-white shadow-top border-t border-gray-200 z-40 transition-all duration-300 ease-in-out ${isPanelOpen ? 'md:left-80' : 'left-0'}`}>
+    <footer className={`fixed bottom-0 right-0 bg-app-header shadow-top border-t border-app-border z-40 transition-all duration-300 ease-in-out ${isPanelOpen ? 'md:left-80' : 'left-0'}`}>
       <nav className="flex justify-around items-center h-16 overflow-x-auto no-scrollbar">
         {navItems.map((item) => (
           <button
@@ -43,11 +43,11 @@ const Footer: React.FC<FooterProps> = ({ isPanelOpen, onNavigate }) => {
               ${
                 currentPage === item.page
                   ? 'text-green-600 font-semibold'
-                  : 'text-gray-600 hover:text-gray-900 active:bg-gray-50'
+                  : 'text-app-muted hover:text-app-text active:bg-app-card'
               }`}
             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
           >
-            <div className={`w-6 h-6 ${currentPage === item.page ? 'text-green-600' : 'text-gray-500'}`}>{item.icon}</div>
+            <div className={`w-6 h-6 ${currentPage === item.page ? 'text-green-600' : 'text-app-muted'}`}>{item.icon}</div>
             <span className="text-[10px] sm:text-xs mt-1 truncate w-full text-center px-1">{item.label}</span>
           </button>
         ))}

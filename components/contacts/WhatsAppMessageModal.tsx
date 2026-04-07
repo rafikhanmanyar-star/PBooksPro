@@ -4,7 +4,8 @@ import { Contact } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { ICONS } from '../../constants';
 
@@ -112,10 +113,11 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
 
     setIsLoading(true);
     try {
-      WhatsAppService.sendMessage({
-        contact,
-        message: message.trim()
-      });
+      sendOrOpenWhatsApp(
+        { contact, message: message.trim(), phoneNumber: contact.contactNo },
+        () => state.whatsAppMode,
+        openChat
+      );
       // Small delay to ensure WhatsApp opens before closing modal
       setTimeout(() => {
         onClose();

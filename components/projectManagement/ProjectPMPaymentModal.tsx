@@ -4,13 +4,15 @@ import { useAppContext } from '../../context/AppContext';
 import { TransactionType, Transaction, AccountType, Project, Bill, InvoiceStatus } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import Select from '../ui/Select';
 import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY } from '../../constants';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { getAppStateApiService } from '../../services/api/appStateApi';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 
 interface PMLedgerItem {
     id: string;
@@ -48,7 +50,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
     // State
     const [selectedAllocations, setSelectedAllocations] = useState<Set<string>>(new Set());
     const [paymentMode, setPaymentMode] = useState<'CASH' | 'EQUITY'>('CASH');
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(toLocalDateString(new Date()));
     const [description, setDescription] = useState('');
     
     // Cash Mode State
@@ -103,7 +105,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
             // Reset selections when modal opens
             setSelectedAllocations(new Set());
             setPaymentMode('CASH');
-            setDate(new Date().toISOString().split('T')[0]);
+            setDate(toLocalDateString(new Date()));
             setDescription('');
         }
     }, [isOpen, unpaidAllocations]);
@@ -206,67 +208,78 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 }
             });
 
-            try {
-                // Try to save transactions via API first to catch conflicts early
-                const apiService = getAppStateApiService();
-                const savedTransactions: Transaction[] = [];
-                const failedBills: { billId: string; error: any }[] = [];
+            if (isLocalOnlyMode()) {
+                // Local-only: persist via dispatch (reducer updates bills via applyTransactionEffect; UPDATE_BILL syncs PM allocations)
+                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
+                billsToUpdate.forEach(bill => {
+                    dispatch({ type: 'UPDATE_BILL', payload: bill });
+                    const relatedAllocation = state.pmCycleAllocations?.find(a => a.billId === bill.id);
+                    if (relatedAllocation) {
+                        dispatch({
+                            type: 'UPDATE_PM_CYCLE_ALLOCATION',
+                            payload: {
+                                ...relatedAllocation,
+                                paidAmount: bill.paidAmount || 0,
+                                status: bill.status === InvoiceStatus.PAID ? 'paid' : bill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
+                            }
+                        });
+                    }
+                });
+                showToast(`Payment recorded for ${transactions.length} allocation(s).`, "success");
+            } else {
+                try {
+                    const apiService = getAppStateApiService();
+                    const savedTransactions: Transaction[] = [];
+                    const failedBills: { billId: string; error: any }[] = [];
 
-                // Process each transaction individually to handle errors per bill
-                for (const tx of transactions) {
-                    try {
-                        const saved = await apiService.saveTransaction(tx);
-                        savedTransactions.push(saved as Transaction);
-                    } catch (error: any) {
-                        if (tx.billId) {
-                            failedBills.push({ billId: tx.billId, error });
-                        }
-                        if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
-                            console.warn(`Payment conflict for bill ${tx.billId}:`, error.message);
-                        } else if (error.status === 400 && error.code === 'PAYMENT_OVERPAYMENT') {
-                            console.error(`Overpayment for bill ${tx.billId}:`, error.message);
+                    for (const tx of transactions) {
+                        try {
+                            const saved = await apiService.saveTransaction(tx);
+                            savedTransactions.push(saved as Transaction);
+                        } catch (error: any) {
+                            if (tx.billId) failedBills.push({ billId: tx.billId, error });
+                            if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
+                                console.warn(`Payment conflict for bill ${tx.billId}:`, error.message);
+                            } else if (error.status === 400 && error.code === 'PAYMENT_OVERPAYMENT') {
+                                console.error(`Overpayment for bill ${tx.billId}:`, error.message);
+                            }
                         }
                     }
-                }
 
-                if (savedTransactions.length === 0) {
-                    const firstError = failedBills[0]?.error;
-                    if (firstError?.status === 409 || firstError?.code === 'BILL_LOCKED' || firstError?.code === 'BILL_VERSION_MISMATCH') {
-                        await showAlert(
-                            `Payment conflict detected. One or more bills are being processed by another user. Please refresh and try again.`
-                        );
-                    } else if (firstError?.status === 400 && firstError?.code === 'PAYMENT_OVERPAYMENT') {
-                        await showAlert(
-                            `Overpayment detected. ${firstError.message || 'One or more payments exceed the bill amount.'}`
-                        );
-                    } else {
-                        await showAlert(
-                            `Failed to process payments: ${firstError?.message || 'Unknown error occurred'}`
-                        );
+                    if (savedTransactions.length === 0) {
+                        const firstError = failedBills[0]?.error;
+                        if (firstError?.status === 409 || firstError?.code === 'BILL_LOCKED' || firstError?.code === 'BILL_VERSION_MISMATCH') {
+                            await showAlert(
+                                `Payment conflict detected. One or more bills are being processed by another user. Please refresh and try again.`
+                            );
+                        } else if (firstError?.status === 400 && firstError?.code === 'PAYMENT_OVERPAYMENT') {
+                            await showAlert(
+                                `Overpayment detected. ${firstError.message || 'One or more payments exceed the bill amount.'}`
+                            );
+                        } else {
+                            await showAlert(
+                                `Failed to process payments: ${firstError?.message || 'Unknown error occurred'}`
+                            );
+                        }
+                        return;
                     }
-                    return;
-                }
 
-                if (savedTransactions.length > 0) {
                     dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
-                    // Only update bills that had successful transactions
                     const successfulBillIds = new Set(savedTransactions.map(tx => tx.billId).filter(Boolean));
                     billsToUpdate.filter(bill => successfulBillIds.has(bill.id)).forEach(bill => {
                         dispatch({ type: 'UPDATE_BILL', payload: bill });
-                        
-                        // Update related PM cycle allocation to sync paid amount
                         const relatedAllocation = state.pmCycleAllocations?.find(a => a.billId === bill.id);
                         if (relatedAllocation) {
-                            const updatedAllocation = {
-                                ...relatedAllocation,
-                                paidAmount: bill.paidAmount || 0,
-                                status: bill.status === InvoiceStatus.PAID ? 'paid' : 
-                                       bill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
-                            };
-                            dispatch({ type: 'UPDATE_PM_CYCLE_ALLOCATION', payload: updatedAllocation });
+                            dispatch({
+                                type: 'UPDATE_PM_CYCLE_ALLOCATION',
+                                payload: {
+                                    ...relatedAllocation,
+                                    paidAmount: bill.paidAmount || 0,
+                                    status: bill.status === InvoiceStatus.PAID ? 'paid' : bill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
+                                }
+                            });
                         }
                     });
-                    
                     if (failedBills.length > 0) {
                         showToast(
                             `Payment recorded for ${savedTransactions.length} allocation(s). ${failedBills.length} payment(s) failed due to conflicts. Please refresh and try again.`,
@@ -275,11 +288,11 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     } else {
                         showToast(`Payment recorded for ${savedTransactions.length} allocation(s).`, "success");
                     }
+                } catch (error: any) {
+                    console.error('Error processing PM payment:', error);
+                    await showAlert(`Payment failed: ${error.message || 'An unexpected error occurred while processing payments.'}`);
+                    return;
                 }
-            } catch (error: any) {
-                console.error('Error processing PM payment:', error);
-                await showAlert(`Payment failed: ${error.message || 'An unexpected error occurred while processing payments.'}`);
-                return;
             }
 
         } else {
@@ -364,55 +377,53 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 });
             });
 
-            try {
-                // Try to save transactions via API first to catch conflicts early
-                const apiService = getAppStateApiService();
-                const savedTransactions: Transaction[] = [];
-                const failedBills: { billId: string; error: any }[] = [];
+            if (isLocalOnlyMode()) {
+                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
+                billsToUpdate.forEach(bill => dispatch({ type: 'UPDATE_BILL', payload: bill }));
+                showToast(`Transferred ${transactions.length / 2} allocation(s) to PM equity.`, "success");
+            } else {
+                try {
+                    const apiService = getAppStateApiService();
+                    const savedTransactions: Transaction[] = [];
+                    const failedBills: { billId: string; error: any }[] = [];
 
-                // Process each transaction individually to handle errors per bill
-                for (const tx of transactions) {
-                    try {
-                        const saved = await apiService.saveTransaction(tx);
-                        savedTransactions.push(saved as Transaction);
-                    } catch (error: any) {
-                        if (tx.billId) {
-                            failedBills.push({ billId: tx.billId, error });
-                        }
-                        if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
-                            console.warn(`Payment conflict for bill ${tx.billId}:`, error.message);
-                        } else if (error.status === 400 && error.code === 'PAYMENT_OVERPAYMENT') {
-                            console.error(`Overpayment for bill ${tx.billId}:`, error.message);
+                    for (const tx of transactions) {
+                        try {
+                            const saved = await apiService.saveTransaction(tx);
+                            savedTransactions.push(saved as Transaction);
+                        } catch (error: any) {
+                            if (tx.billId) failedBills.push({ billId: tx.billId, error });
+                            if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
+                                console.warn(`Payment conflict for bill ${tx.billId}:`, error.message);
+                            } else if (error.status === 400 && error.code === 'PAYMENT_OVERPAYMENT') {
+                                console.error(`Overpayment for bill ${tx.billId}:`, error.message);
+                            }
                         }
                     }
-                }
 
-                if (savedTransactions.length === 0) {
-                    const firstError = failedBills[0]?.error;
-                    if (firstError?.status === 409 || firstError?.code === 'BILL_LOCKED' || firstError?.code === 'BILL_VERSION_MISMATCH') {
-                        await showAlert(
-                            `Payment conflict detected. One or more bills are being processed by another user. Please refresh and try again.`
-                        );
-                    } else if (firstError?.status === 400 && firstError?.code === 'PAYMENT_OVERPAYMENT') {
-                        await showAlert(
-                            `Overpayment detected. ${firstError.message || 'One or more payments exceed the bill amount.'}`
-                        );
-                    } else {
-                        await showAlert(
-                            `Failed to process transfers: ${firstError?.message || 'Unknown error occurred'}`
-                        );
+                    if (savedTransactions.length === 0) {
+                        const firstError = failedBills[0]?.error;
+                        if (firstError?.status === 409 || firstError?.code === 'BILL_LOCKED' || firstError?.code === 'BILL_VERSION_MISMATCH') {
+                            await showAlert(
+                                `Payment conflict detected. One or more bills are being processed by another user. Please refresh and try again.`
+                            );
+                        } else if (firstError?.status === 400 && firstError?.code === 'PAYMENT_OVERPAYMENT') {
+                            await showAlert(
+                                `Overpayment detected. ${firstError.message || 'One or more payments exceed the bill amount.'}`
+                            );
+                        } else {
+                            await showAlert(
+                                `Failed to process transfers: ${firstError?.message || 'Unknown error occurred'}`
+                            );
+                        }
+                        return;
                     }
-                    return;
-                }
 
-                if (savedTransactions.length > 0) {
                     dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
-                    // Only update bills that had successful transactions
-                    const successfulBillIds = new Set(savedTransactions.filter(tx => tx.billId).map(tx => tx.billId));
+                    const successfulBillIds = new Set(savedTransactions.filter(tx => tx.billId).map(tx => tx.billId!));
                     billsToUpdate.filter(bill => successfulBillIds.has(bill.id)).forEach(bill => {
                         dispatch({ type: 'UPDATE_BILL', payload: bill });
                     });
-                    
                     if (failedBills.length > 0) {
                         showToast(
                             `Transferred ${savedTransactions.length / 2} allocation(s) to PM equity. ${failedBills.length} transfer(s) failed due to conflicts. Please refresh and try again.`,
@@ -421,11 +432,11 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     } else {
                         showToast(`Transferred ${savedTransactions.length / 2} allocation(s) to PM equity.`, "success");
                     }
+                } catch (error: any) {
+                    console.error('Error processing PM equity transfer:', error);
+                    await showAlert(`Transfer failed: ${error.message || 'An unexpected error occurred while processing transfers.'}`);
+                    return;
                 }
-            } catch (error: any) {
-                console.error('Error processing PM equity transfer:', error);
-                await showAlert(`Transfer failed: ${error.message || 'An unexpected error occurred while processing transfers.'}`);
-                return;
             }
         }
 
@@ -437,15 +448,15 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`PM Fee Payout: ${project.name}`} size="lg">
             <div className="space-y-6">
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                    <span className="text-sm text-slate-500 block">Total Outstanding Balance</span>
-                    <span className="text-xl font-bold text-slate-800">{CURRENCY} {balanceDue.toLocaleString()}</span>
+                <div className="bg-app-toolbar/60 p-4 rounded-lg border border-app-border">
+                    <span className="text-sm text-app-muted block">Total Outstanding Balance</span>
+                    <span className="text-xl font-bold text-app-text tabular-nums">{CURRENCY} {balanceDue.toLocaleString()}</span>
                 </div>
 
                 {/* Unpaid Allocations List */}
-                <div className="border rounded-lg">
-                    <div className="p-3 bg-slate-50 border-b flex justify-between items-center">
-                        <h4 className="font-semibold text-slate-700">Unpaid Allocations</h4>
+                <div className="border border-app-border rounded-lg overflow-hidden">
+                    <div className="p-3 bg-app-toolbar border-b border-app-border flex justify-between items-center">
+                        <h4 className="font-semibold text-app-text">Unpaid Allocations</h4>
                         <Button 
                             variant="secondary" 
                             size="sm" 
@@ -456,30 +467,30 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     </div>
                     <div className="max-h-64 overflow-y-auto">
                         {unpaidAllocations.length === 0 ? (
-                            <div className="p-8 text-center text-slate-500 italic">
+                            <div className="p-8 text-center text-app-muted italic">
                                 No unpaid allocations found.
                             </div>
                         ) : (
-                            <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead className="bg-slate-50 sticky top-0">
+                            <table className="min-w-full divide-y divide-app-border text-sm">
+                                <thead className="bg-app-table-header border-b border-app-border sticky top-0">
                                     <tr>
                                         <th className="px-4 py-2 w-12">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedAllocations.size === unpaidAllocations.length && unpaidAllocations.length > 0}
                                                 onChange={handleToggleAll}
-                                                className="rounded border-slate-300"
+                                                className="rounded border-app-border"
                                             />
                                         </th>
-                                        <th className="px-4 py-2 text-left font-semibold text-slate-600">Cycle</th>
-                                        <th className="px-4 py-2 text-right font-semibold text-slate-600">Outstanding</th>
+                                        <th className="px-4 py-2 text-left font-semibold text-app-muted">Cycle</th>
+                                        <th className="px-4 py-2 text-right font-semibold text-app-muted">Outstanding</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100">
+                                <tbody className="divide-y divide-app-border bg-app-card">
                                     {unpaidAllocations.map(item => (
                                         <tr 
                                             key={item.id} 
-                                            className={`hover:bg-slate-50 cursor-pointer ${selectedAllocations.has(item.id) ? 'bg-blue-50' : ''}`}
+                                            className={`hover:bg-app-toolbar/60 cursor-pointer ${selectedAllocations.has(item.id) ? 'bg-primary/10' : ''}`}
                                             onClick={() => handleToggleAllocation(item.id)}
                                         >
                                             <td className="px-4 py-2">
@@ -488,11 +499,11 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                                                     checked={selectedAllocations.has(item.id)}
                                                     onChange={() => handleToggleAllocation(item.id)}
                                                     onClick={(e) => e.stopPropagation()}
-                                                    className="rounded border-slate-300"
+                                                    className="rounded border-app-border"
                                                 />
                                             </td>
-                                            <td className="px-4 py-2 text-slate-700 font-medium">{item.cycleLabel}</td>
-                                            <td className="px-4 py-2 text-right font-mono text-rose-600 font-bold">
+                                            <td className="px-4 py-2 text-app-text font-medium">{item.cycleLabel}</td>
+                                            <td className="px-4 py-2 text-right font-mono text-ds-danger font-bold tabular-nums">
                                                 {CURRENCY} {item.netBalance.toLocaleString()}
                                             </td>
                                         </tr>
@@ -502,12 +513,12 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                         )}
                     </div>
                     {selectedAllocations.size > 0 && (
-                        <div className="p-3 bg-indigo-50 border-t">
+                        <div className="p-3 bg-app-toolbar border-t border-app-border">
                             <div className="flex justify-between items-center">
-                                <span className="text-sm font-medium text-indigo-700">
+                                <span className="text-sm font-medium text-primary">
                                     {selectedAllocations.size} allocation(s) selected
                                 </span>
-                                <span className="text-lg font-bold text-indigo-800">
+                                <span className="text-lg font-bold text-app-text tabular-nums">
                                     Total: {CURRENCY} {totalSelectedAmount.toLocaleString()}
                                 </span>
                             </div>
@@ -516,13 +527,13 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 </div>
 
                 <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Payout Mode</label>
+                    <label className="block text-sm font-bold text-app-text mb-2">Payout Mode</label>
                     <div className="grid grid-cols-2 gap-4">
-                        <label className={`flex items-center justify-center p-3 rounded-lg border cursor-pointer transition-all ${paymentMode === 'CASH' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-bold' : 'bg-white border-slate-200 text-slate-600'}`}>
+                        <label className={`flex items-center justify-center p-3 rounded-lg border cursor-pointer transition-all duration-ds ${paymentMode === 'CASH' ? 'border-ds-success bg-[color:var(--badge-paid-bg)] text-ds-success font-bold' : 'bg-app-card border-app-border text-app-muted'}`}>
                             <input type="radio" checked={paymentMode === 'CASH'} onChange={() => setPaymentMode('CASH')} className="hidden" />
                             Bank Payment
                         </label>
-                        <label className={`flex items-center justify-center p-3 rounded-lg border cursor-pointer transition-all ${paymentMode === 'EQUITY' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white border-slate-200 text-slate-600'}`}>
+                        <label className={`flex items-center justify-center p-3 rounded-lg border cursor-pointer transition-all duration-ds ${paymentMode === 'EQUITY' ? 'border-primary bg-primary/10 text-primary font-bold' : 'bg-app-card border-app-border text-app-muted'}`}>
                             <input type="radio" checked={paymentMode === 'EQUITY'} onChange={() => setPaymentMode('EQUITY')} className="hidden" />
                             Transfer to PM Equity
                         </label>
@@ -541,13 +552,13 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                         />
                     ) : (
                         <>
-                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                <p className="text-sm font-medium text-blue-800 mb-2">PM Project:</p>
-                                <p className="text-sm text-blue-700">
+                            <div className="p-3 bg-app-toolbar rounded-lg border border-app-border">
+                                <p className="text-sm font-medium text-app-text mb-2">PM Project:</p>
+                                <p className="text-sm text-app-muted">
                                     {pmProject ? (
-                                        <span className="font-semibold">{pmProject.name}</span>
+                                        <span className="font-semibold text-app-text">{pmProject.name}</span>
                                     ) : (
-                                        <span className="text-rose-600">Not found. Please create a project named "Project Management".</span>
+                                        <span className="text-ds-danger">Not found. Please create a project named "Project Management".</span>
                                     )}
                                 </p>
                             </div>
@@ -559,7 +570,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                                 placeholder="Select PM Equity Account" 
                                 required 
                             />
-                            <p className="text-xs text-slate-500 bg-yellow-50 p-2 rounded border border-yellow-100">
+                            <p className="text-xs text-ds-warning bg-app-toolbar p-2 rounded border border-ds-warning/30">
                                 This will record expenses in the source project and increase equity in the Project Management project. 
                                 PM expenses can later be paid from this equity.
                             </p>
@@ -578,7 +589,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                         ))}
                     </Select>
                     
-                    <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+                    <DatePicker label="Date" value={date} onChange={d => setDate(toLocalDateString(d))} required />
                     <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional details..." />
                 </div>
 

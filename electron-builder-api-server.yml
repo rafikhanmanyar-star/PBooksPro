@@ -1,0 +1,62 @@
+# Electron wrapper for Express + PostgreSQL API (status UI, tray, GitHub updates).
+# Output: release-api-server/ — installers are uploaded to the same GitHub release as the desktop client
+# (see scripts/upload-api-server-to-github-release.cjs) so client latest.yml is not overwritten.
+extends: null
+npmRebuild: false
+appId: com.pbookspro.api.server
+productName: PBooks Pro API Server
+extraMetadata:
+  main: electron/server-main.cjs
+compression: maximum
+directories:
+  output: release-api-server
+files:
+  - electron/server-main.cjs
+  - electron/server-preload.cjs
+  - electron/server-ui.html
+  - electron/server-ui.js
+  - electron/assets/icon.ico
+  - package.json
+  - "node_modules/electron-updater/**"
+  - "node_modules/builder-util-runtime/**"
+  - "node_modules/debug/**"
+  - "node_modules/ms/**"
+  - "node_modules/supports-color/**"
+  - "node_modules/has-flag/**"
+  - "node_modules/fs-extra/**"
+  - "node_modules/graceful-fs/**"
+  - "node_modules/jsonfile/**"
+  - "node_modules/universalify/**"
+  - "node_modules/js-yaml/**"
+  - "node_modules/lazy-val/**"
+  - "node_modules/lodash.escaperegexp/**"
+  - "node_modules/lodash.isequal/**"
+  - "node_modules/sax/**"
+  - "node_modules/semver/**"
+  - "node_modules/tiny-typed-emitter/**"
+  - "!node_modules/**/{test,tests,__tests__,docs,doc,example,examples}/**"
+  - "!node_modules/**/*.{md,ts,map}"
+asarUnpack:
+  - "node_modules/electron-updater/**"
+extraResources:
+  - from: build/electron-api-server
+    to: .
+asar: true
+win:
+  target:
+    - nsis
+  icon: electron/assets/icon.ico
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  shortcutName: PBooks Pro API Server
+  artifactName: PBooks-Pro-API-Server-Setup-${version}.${ext}
+# Match electron-builder-api-client.yml so app-update.yml + blockmaps are generated like the client.
+# channel api-server → release-api-server/api-server.yml (same name electron-updater expects for autoUpdater.channel = 'api-server').
+publish:
+  - provider: github
+    releaseType: release
+    channel: api-server

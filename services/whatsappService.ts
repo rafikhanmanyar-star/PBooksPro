@@ -286,3 +286,33 @@ export class WhatsAppService {
   }
 }
 
+export type WhatsAppMode = 'api' | 'manual';
+
+export interface SendOrOpenWhatsAppOptions {
+  contact: Contact | Vendor;
+  message: string;
+  phoneNumber?: string;
+}
+
+/**
+ * Routes WhatsApp action based on Settings > General whatsAppMode.
+ * - manual: opens wa.me with pre-filled message (user sends in WhatsApp).
+ * - api: opens in-app chat panel with pre-filled message.
+ */
+export function sendOrOpenWhatsApp(
+  options: SendOrOpenWhatsAppOptions,
+  getMode: () => WhatsAppMode,
+  openChat: (contact: Contact | Vendor | null, phoneNumber?: string, initialMessage?: string) => void
+): void {
+  const { contact, message, phoneNumber } = options;
+  const phone = phoneNumber ?? contact.contactNo;
+  if (!phone) {
+    throw new Error(`Contact "${contact.name}" does not have a phone number`);
+  }
+  if (getMode() === 'manual') {
+    WhatsAppService.sendMessage({ contact, message, phoneNumber: phone });
+  } else {
+    openChat(contact, phone, message);
+  }
+}
+

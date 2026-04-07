@@ -4,7 +4,7 @@ import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '..
 import { useNotification } from '../../context/NotificationContext';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { getWebSocketClient } from '../../services/websocketClient';
+const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: () => {} });
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
 

@@ -63,10 +63,11 @@ export class PlanAmenitiesApiRepository {
   }
 
   /**
-   * Delete a plan amenity
+   * Delete a plan amenity (optional version for optimistic concurrency)
    */
-  async delete(id: string): Promise<void> {
-    await apiClient.delete(`/plan-amenities/${id}`);
+  async delete(id: string, version?: number): Promise<void> {
+    const q = version != null ? `?version=${encodeURIComponent(String(version))}` : '';
+    await apiClient.delete(`/plan-amenities/${id}${q}`);
   }
 
   /**

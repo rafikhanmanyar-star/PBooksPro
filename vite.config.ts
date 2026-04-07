@@ -33,8 +33,10 @@ const suppressSqlJsWarnings = () => {
   };
 };
 
+const isElectronBuild = process.env.VITE_ELECTRON_BUILD === 'true';
+
 // Use relative base for Electron (file://) compatibility; also works for web deployment
-const base = process.env.VITE_ELECTRON_BUILD === 'true' ? './' : process.env.VITE_BASE || '/';
+const base = isElectronBuild ? './' : process.env.VITE_BASE || '/';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -53,10 +55,10 @@ export default defineConfig({
     // Inject application version at build time
     'import.meta.env.APP_VERSION': JSON.stringify(packageJson.version),
   },
-  assetsInclude: ['**/*.wasm'], // Include WASM files as assets
+  assetsInclude: isElectronBuild ? [] : ['**/*.wasm'],
   optimizeDeps: {
-    exclude: ['sql.js'], // Exclude sql.js from pre-bundling
-    include: ['react', 'react-dom', 'socket.io-client'], // Ensure React and socket.io-client are pre-bundled
+    exclude: isElectronBuild ? [] : ['sql.js'],
+    include: ['react', 'react-dom'],
     esbuildOptions: {
       define: {
         global: 'globalThis',
@@ -64,52 +66,45 @@ export default defineConfig({
     },
   },
   resolve: {
-    // Let Vite handle sql.js resolution naturally
-    // Node.js modules (fs, path, crypto) are externalized by sql.js internally
-    dedupe: ['react', 'react-dom'], // Ensure single React instance
+    alias: {
+      '@': resolve(__dirname, './'),
+    },
+    dedupe: ['react', 'react-dom'],
   },
-  // Handle CommonJS modules
   build: {
-    // PERFORMANCE: Enable CSS code splitting so each lazy-loaded chunk gets its own CSS.
-    // Previously all CSS was bundled into a single file loaded upfront.
     cssCodeSplit: true,
     commonjsOptions: {
-      include: [/sql\.js/, /socket\.io-client/, /node_modules/],
+      include: isElectronBuild ? [/node_modules/] : [/sql\.js/, /node_modules/],
       transformMixedEsModules: true,
       esmExternals: true
     },
-    // Copy icon.ico to dist folder after build
     rollupOptions: {
+      // In Electron builds, externalize sql.js (loaded separately). Do not externalize socket.io-client:
+      // AppContext/useRecordLock import core/socket; a bare "socket.io-client" import breaks in the renderer.
+      external: isElectronBuild ? ['sql.js'] : [],
       onwarn(warning, warn) {
-        // Suppress specific warnings if needed
         if (warning.code === 'UNUSED_EXTERNAL_IMPORT') return
         warn(warning)
       },
       output: {
-        // PERFORMANCE OPTIMIZATION: Manual chunk splitting for better caching and parallel loading
         manualChunks: (id) => {
-          // Large vendors
           if (id.includes('node_modules')) {
             if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
-            if (id.includes('sql.js')) return 'vendor-db';
+            if (!isElectronBuild && id.includes('sql.js')) return 'vendor-db';
             if (id.includes('xlsx')) return 'vendor-xlsx';
             if (id.includes('google/genai')) return 'vendor-ai';
             return 'vendor-base';
           }
         },
-        // Optimize chunk size warnings
         chunkFileNames: 'assets/[name]-[hash].js',
         entryFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     },
-    // Increase chunk size warning limit if needed (optional)
-    // chunkSizeWarningLimit: 1000
   },
-  // Plugin to copy icon.ico to dist after build
   plugins: [
     react(),
-    suppressSqlJsWarnings(),
+    ...(isElectronBuild ? [] : [suppressSqlJsWarnings()]),
     {
       name: 'remove-external-resources',
       transformIndexHtml(html) {
@@ -127,7 +122,7 @@ export default defineConfig({
         const distDir = join(process.cwd(), 'dist');
         if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
         const apiUrl = process.env.VITE_API_URL || '';
-        const isStaging = apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com');
+        const isStaging = process.env.VITE_STAGING === 'true' || apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com');
         writeFileSync(
           join(distDir, 'env-config.json'),
           JSON.stringify({ apiUrl, isStaging }, null, 2)
@@ -160,6 +155,7 @@ export default defineConfig({
     },
   ],
   server: {
+    port: 5174,
     host: true, // Listen on 0.0.0.0 so other devices on the network can connect
     fs: {
       // Allow serving files from node_modules

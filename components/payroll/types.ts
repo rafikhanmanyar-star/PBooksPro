@@ -5,6 +5,8 @@
  * using snake_case for database fields and proper tenant/user isolation.
  */
 
+import { coercePayslipAmounts } from './utils/payslipPaymentState';
+
 // ==================== ENUMS ====================
 
 export enum EmploymentStatus {
@@ -142,6 +144,20 @@ export interface ProjectAllocation {
   end_date?: string;
 }
 
+export interface BuildingAllocation {
+  building_id: string;
+  building_name: string;
+  percentage: number;
+  start_date?: string;
+  end_date?: string;
+}
+
+/** Project/building shares copied from the employee at payslip generation (immutable for that row). */
+export interface PayslipAssignmentSnapshot {
+  projects?: ProjectAllocation[];
+  buildings?: BuildingAllocation[];
+}
+
 // ==================== ADJUSTMENTS ====================
 
 export interface SalaryAdjustment {
@@ -179,10 +195,11 @@ export interface PayrollEmployee {
   joining_date: string;
   termination_date?: string;
   
-  // Salary & Projects (stored as JSONB in DB)
+  // Salary & Assignments (stored as JSONB in DB)
   salary: SalaryStructure;
   adjustments: SalaryAdjustment[];
   projects: ProjectAllocation[];
+  buildings?: BuildingAllocation[];
   
   // Audit
   created_by: string;
@@ -238,9 +255,13 @@ export interface Payslip {
   allowance_details: EmployeeSalaryComponent[];
   deduction_details: EmployeeSalaryComponent[];
   adjustment_details: SalaryAdjustment[];
+  /** Captured when the payslip was generated; used for display and payment splits instead of the employee's current assignments. */
+  assignment_snapshot?: PayslipAssignmentSnapshot;
   
-  // Status
+  // Status and partial payment
   is_paid: boolean;
+  /** Total amount paid so far (for partial payments). Fully paid when paid_amount >= net_pay. */
+  paid_amount?: number;
   paid_at?: string;
   transaction_id?: string;
   
@@ -285,6 +306,7 @@ export interface PayrollEmployeeUpdateRequest extends Partial<PayrollEmployeeCre
   adjustments?: SalaryAdjustment[];
   termination_date?: string;
   photo?: string;
+  buildings?: BuildingAllocation[];
 }
 
 export interface PayrollRunCreateRequest {
@@ -327,6 +349,8 @@ export interface EmployeeProfileProps {
   employee: PayrollEmployee;
   onBack: () => void;
   onUpdate?: (employee: PayrollEmployee) => void;
+  /** Increment when payroll data in storage changes (e.g. SQLite hydrate or API sync) so payslip lists recompute. */
+  payrollStorageRevision?: number;
 }
 
 // ==================== LEGACY COMPATIBILITY ====================
@@ -348,6 +372,7 @@ export function normalizeEmployee(emp: any): PayrollEmployee {
   const salary = safeJsonParse(emp.salary, { basic: 0, allowances: [], deductions: [] });
   const rawAdjustments = safeJsonParse(emp.adjustments, []);
   const rawProjects = safeJsonParse(emp.projects, []);
+  const rawBuildings = safeJsonParse(emp.buildings, []);
 
   return {
     id: emp.id,
@@ -387,6 +412,13 @@ export function normalizeEmployee(emp: any): PayrollEmployee {
       percentage: p.percentage,
       start_date: p.start_date || p.startDate,
       end_date: p.end_date || p.endDate
+    })),
+    buildings: (Array.isArray(rawBuildings) ? rawBuildings : []).map((b: any) => ({
+      building_id: b.building_id || b.buildingId,
+      building_name: b.building_name || b.buildingName,
+      percentage: b.percentage,
+      start_date: b.start_date || b.startDate,
+      end_date: b.end_date || b.endDate
     })),
     created_by: emp.created_by || emp.createdBy || '',
     updated_by: emp.updated_by || emp.updatedBy,
@@ -435,5 +467,87 @@ export function normalizePayrollRun(run: any): PayrollRun {
     paid_at: run.paid_at || run.paidAt,
     created_at: run.created_at || run.createdAt,
     updated_at: run.updated_at || run.updatedAt
+  };
+}
+
+/** Used when hydrating payslips from SQLite/API JSON. */
+export function parseAssignmentSnapshotFromApi(raw: unknown): PayslipAssignmentSnapshot | undefined {
+  if (raw == null) return undefined;
+  let o: unknown = raw;
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) return undefined;
+    try {
+      o = JSON.parse(t);
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof o !== 'object' || o === null) return undefined;
+  const obj = o as Record<string, unknown>;
+  const has = (k: string) => Object.prototype.hasOwnProperty.call(obj, k);
+  let projects: ProjectAllocation[] | undefined;
+  let buildings: BuildingAllocation[] | undefined;
+  if (has('projects')) {
+    projects = Array.isArray(obj.projects)
+      ? (obj.projects as any[]).map((p) => ({
+          project_id: p.project_id || p.projectId,
+          project_name: p.project_name || p.projectName,
+          percentage: Number(p.percentage) || 0,
+          start_date: p.start_date || p.startDate || '',
+          end_date: p.end_date || p.endDate,
+        }))
+      : [];
+  }
+  if (has('buildings')) {
+    buildings = Array.isArray(obj.buildings)
+      ? (obj.buildings as any[]).map((b) => ({
+          building_id: b.building_id || b.buildingId,
+          building_name: b.building_name || b.buildingName,
+          percentage: Number(b.percentage) || 0,
+          start_date: b.start_date || b.startDate,
+          end_date: b.end_date || b.endDate,
+        }))
+      : [];
+  }
+  if (projects === undefined && buildings === undefined) return undefined;
+  const snap: PayslipAssignmentSnapshot = {};
+  if (projects !== undefined) snap.projects = projects;
+  if (buildings !== undefined) snap.buildings = buildings;
+  return snap;
+}
+
+export function normalizePayslip(ps: any): Payslip {
+  const allowanceDetails = safeJsonParse(ps.allowance_details, []);
+  const deductionDetails = safeJsonParse(ps.deduction_details, []);
+  const adjustmentDetails = safeJsonParse(ps.adjustment_details, []);
+  const rawNet = ps.net_pay ?? ps.netPay ?? 0;
+  const rawPaid = ps.paid_amount ?? ps.paidAmount ?? 0;
+  const rawIsPaid = ps.is_paid ?? ps.isPaid ?? false;
+  const payment = coercePayslipAmounts(rawNet, rawPaid, rawIsPaid);
+  const assignment_snapshot = parseAssignmentSnapshotFromApi(
+    ps.assignment_snapshot ?? ps.assignmentSnapshot
+  );
+  return {
+    id: ps.id,
+    tenant_id: ps.tenant_id || ps.tenantId || '',
+    payroll_run_id: ps.payroll_run_id || ps.payrollRunId || '',
+    employee_id: ps.employee_id || ps.employeeId || '',
+    basic_pay: ps.basic_pay ?? ps.basicPay ?? 0,
+    total_allowances: ps.total_allowances ?? ps.totalAllowances ?? 0,
+    total_deductions: ps.total_deductions ?? ps.totalDeductions ?? 0,
+    total_adjustments: ps.total_adjustments ?? ps.totalAdjustments ?? 0,
+    gross_pay: ps.gross_pay ?? ps.grossPay ?? 0,
+    net_pay: payment.net_pay,
+    allowance_details: Array.isArray(allowanceDetails) ? allowanceDetails : [],
+    deduction_details: Array.isArray(deductionDetails) ? deductionDetails : [],
+    adjustment_details: Array.isArray(adjustmentDetails) ? adjustmentDetails : [],
+    ...(assignment_snapshot !== undefined ? { assignment_snapshot } : {}),
+    is_paid: payment.is_paid,
+    paid_amount: payment.paid_amount,
+    paid_at: ps.paid_at || ps.paidAt,
+    transaction_id: ps.transaction_id || ps.transactionId,
+    created_at: ps.created_at || ps.createdAt,
+    updated_at: ps.updated_at || ps.updatedAt
   };
 }

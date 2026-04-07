@@ -1,13 +1,14 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { RecurringInvoiceTemplate, Invoice, InvoiceType, InvoiceStatus } from '../../types';
+import { RecurringInvoiceTemplate, Invoice, InvoiceType, InvoiceStatus, RentalAgreementStatus } from '../../types';
 import Button from '../ui/Button';
 import { ICONS, CURRENCY } from '../../constants';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, fixRecurringNextDueWhenDayOneIsLastDayOfMonth, getDayOfNextMonthLocal, getNextRecurringDueDate, parseStoredDateToYyyyMmDdInput, parseYyyyMmDdToLocalDate, toLocalDateString } from '../../utils/dateUtils';
 import Select from '../ui/Select';
 
 type SortKey = 'property' | 'amount' | 'nextDue' | 'status';
@@ -36,8 +37,17 @@ const RecurringInvoicesList: React.FC = () => {
     const [editInvoiceType, setEditInvoiceType] = useState<InvoiceType>(InvoiceType.RENTAL);
     const [editActive, setEditActive] = useState(true);
 
-    // --- Data --- (exclude soft-deleted templates)
-    const templates = useMemo(() => (state.recurringInvoiceTemplates || []).filter(t => !t.deletedAt), [state.recurringInvoiceTemplates]);
+    // --- Data --- (exclude soft-deleted and templates for terminated/renewed/expired agreements)
+    const templates = useMemo(() => {
+        const list = (state.recurringInvoiceTemplates || []).filter(t => !t.deletedAt);
+        const agreements = state.rentalAgreements || [];
+        return list.filter(t => {
+            if (!t.agreementId) return true; // standalone template, keep
+            const agreement = agreements.find(a => a.id === t.agreementId);
+            if (!agreement) return true; // agreement missing (e.g. deleted), show so user can clean up
+            return agreement.status === RentalAgreementStatus.ACTIVE;
+        });
+    }, [state.recurringInvoiceTemplates, state.rentalAgreements]);
 
     const today = useMemo(() => {
         const d = new Date();
@@ -45,7 +55,10 @@ const RecurringInvoicesList: React.FC = () => {
         return d;
     }, []);
 
-    const todayStr = useMemo(() => today.toISOString().split('T')[0], [today]);
+    const todayStr = useMemo(() => toLocalDateString(today), [today]);
+
+    const effectiveNextDue = useCallback((t: RecurringInvoiceTemplate) =>
+        fixRecurringNextDueWhenDayOneIsLastDayOfMonth(t.nextDueDate, t.dayOfMonth || 1), []);
 
     // --- Filtering & Sorting ---
     const filteredTemplates = useMemo(() => {
@@ -74,7 +87,7 @@ const RecurringInvoicesList: React.FC = () => {
 
             switch (sortConfig.key) {
                 case 'amount': valA = a.amount; valB = b.amount; break;
-                case 'nextDue': valA = new Date(a.nextDueDate).getTime(); valB = new Date(b.nextDueDate).getTime(); break;
+                case 'nextDue': valA = parseYyyyMmDdToLocalDate(effectiveNextDue(a)).getTime(); valB = parseYyyyMmDdToLocalDate(effectiveNextDue(b)).getTime(); break;
                 case 'status': valA = a.active ? 1 : 0; valB = b.active ? 1 : 0; break;
                 case 'property':
                     valA = state.properties.find(p => p.id === a.propertyId)?.name || '';
@@ -91,12 +104,12 @@ const RecurringInvoicesList: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [templates, searchQuery, buildingFilter, sortConfig, state.contacts, state.properties]);
+    }, [templates, searchQuery, buildingFilter, sortConfig, state.contacts, state.properties, effectiveNextDue]);
 
     // Overdue templates: active, nextDueDate <= today
     const overdueTemplates = useMemo(() => {
-        return filteredTemplates.filter(t => t.active && t.nextDueDate <= todayStr);
-    }, [filteredTemplates, todayStr]);
+        return filteredTemplates.filter(t => t.active && effectiveNextDue(t) <= todayStr);
+    }, [filteredTemplates, todayStr, effectiveNextDue]);
 
     const activeCount = useMemo(() => filteredTemplates.filter(t => t.active).length, [filteredTemplates]);
 
@@ -104,7 +117,8 @@ const RecurringInvoicesList: React.FC = () => {
 
     const getDateStatus = (dateStr: string, isActive: boolean): 'upcoming' | 'due' | 'overdue' | 'paused' => {
         if (!isActive) return 'paused';
-        const diff = Math.floor((new Date(dateStr).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const anchor = parseYyyyMmDdToLocalDate(parseStoredDateToYyyyMmDdInput(dateStr));
+        const diff = Math.floor((anchor.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         if (diff > 0) return 'upcoming';
         if (diff >= -7) return 'due';
         return 'overdue';
@@ -128,17 +142,6 @@ const RecurringInvoicesList: React.FC = () => {
         }
     };
 
-    const calculateNextMonthDate = (currentDate: Date, dayOfMonth: number): Date => {
-        const nextDate = new Date(currentDate);
-        nextDate.setMonth(nextDate.getMonth() + 1);
-        const targetMonth = nextDate.getMonth();
-        const targetYear = nextDate.getFullYear();
-        const daysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
-        const targetDay = Math.min(dayOfMonth, daysInTargetMonth);
-        nextDate.setDate(targetDay);
-        return nextDate;
-    };
-
     const getNextInvoiceNumber = useCallback(() => {
         const { rentalInvoiceSettings } = state;
         const { prefix, nextNumber, padding } = rentalInvoiceSettings;
@@ -158,11 +161,11 @@ const RecurringInvoicesList: React.FC = () => {
     // --- Generate a single invoice from a template ---
     const generateSingleInvoice = useCallback((template: RecurringInvoiceTemplate, invoiceNum: number, prefix: string, padding: number): Invoice => {
         const invoiceNumber = `${prefix}${String(invoiceNum).padStart(padding, '0')}`;
-        const issueDate = template.nextDueDate;
-        const dueDateObj = new Date(issueDate);
+        const issueDate = fixRecurringNextDueWhenDayOneIsLastDayOfMonth(template.nextDueDate, template.dayOfMonth || 1);
+        const dueDateObj = parseYyyyMmDdToLocalDate(issueDate);
         dueDateObj.setDate(dueDateObj.getDate() + 7);
 
-        const issueDateObj = new Date(issueDate);
+        const issueDateObj = parseYyyyMmDdToLocalDate(issueDate);
         const monthYear = issueDateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
         const description = template.descriptionTemplate.replace('{Month}', monthYear);
 
@@ -179,7 +182,7 @@ const RecurringInvoicesList: React.FC = () => {
             paidAmount: 0,
             status: InvoiceStatus.UNPAID,
             issueDate,
-            dueDate: dueDateObj.toISOString(),
+            dueDate: toLocalDateString(dueDateObj),
             description,
             categoryId: rentalIncomeCategory?.id,
             agreementId: template.agreementId,
@@ -190,7 +193,7 @@ const RecurringInvoicesList: React.FC = () => {
 
     // --- Generate all due invoices (bulk) ---
     const handleGenerateAllDue = useCallback(async () => {
-        const dueTemplates = templates.filter(t => t.active && !t.deletedAt && t.nextDueDate <= todayStr);
+        const dueTemplates = templates.filter(t => t.active && !t.deletedAt && effectiveNextDue(t) <= todayStr);
         if (dueTemplates.length === 0) return;
 
         const confirmed = await showConfirm(
@@ -207,7 +210,11 @@ const RecurringInvoicesList: React.FC = () => {
 
         for (const template of dueTemplates) {
             let currentTemplate = { ...template };
-            let loopDate = new Date(currentTemplate.nextDueDate);
+            let issueDate = fixRecurringNextDueWhenDayOneIsLastDayOfMonth(
+                currentTemplate.nextDueDate,
+                currentTemplate.dayOfMonth || 1
+            );
+            let loopDate = parseYyyyMmDdToLocalDate(issueDate);
             loopDate.setHours(0, 0, 0, 0);
             const SAFE_LIMIT = 60;
             let count = 0;
@@ -235,7 +242,12 @@ const RecurringInvoicesList: React.FC = () => {
                     break;
                 }
 
-                const invoice = generateSingleInvoice(currentTemplate, maxNum, prefix, padding);
+                const invoice = generateSingleInvoice(
+                    { ...currentTemplate, nextDueDate: issueDate },
+                    maxNum,
+                    prefix,
+                    padding
+                );
                 dispatch({ type: 'ADD_INVOICE', payload: invoice });
 
                 maxNum++;
@@ -244,8 +256,16 @@ const RecurringInvoicesList: React.FC = () => {
                 currentTemplate.generatedCount = (currentTemplate.generatedCount || 0) + 1;
                 currentTemplate.lastGeneratedDate = new Date().toISOString();
 
-                loopDate = calculateNextMonthDate(loopDate, currentTemplate.dayOfMonth);
-                currentTemplate.nextDueDate = loopDate.toISOString().split('T')[0];
+                currentTemplate.nextDueDate = getNextRecurringDueDate(
+                    issueDate,
+                    currentTemplate.dayOfMonth || 1
+                );
+                issueDate = fixRecurringNextDueWhenDayOneIsLastDayOfMonth(
+                    currentTemplate.nextDueDate,
+                    currentTemplate.dayOfMonth || 1
+                );
+                loopDate = parseYyyyMmDdToLocalDate(issueDate);
+                loopDate.setHours(0, 0, 0, 0);
             }
 
             dispatch({ type: 'UPDATE_RECURRING_TEMPLATE', payload: currentTemplate });
@@ -259,40 +279,52 @@ const RecurringInvoicesList: React.FC = () => {
             showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
         }
         setIsGenerating(false);
-    }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, state.rentalAgreements, showConfirm, showToast]);
+    }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, state.rentalAgreements, showConfirm, showToast, effectiveNextDue]);
 
     // --- Generate for a single template (from row or modal) ---
     const handleGenerateSingle = useCallback(async (template: RecurringInvoiceTemplate) => {
         // Do not generate if invoice date would exceed agreement end date
+        const issueDateForGen = fixRecurringNextDueWhenDayOneIsLastDayOfMonth(
+            template.nextDueDate,
+            template.dayOfMonth || 1
+        );
+
         if (template.agreementId) {
             const agreement = state.rentalAgreements?.find((ra) => ra.id === template.agreementId);
             if (agreement?.endDate) {
-                const nextDue = new Date(template.nextDueDate);
+                const nextDue = parseYyyyMmDdToLocalDate(issueDateForGen);
                 nextDue.setHours(0, 0, 0, 0);
                 const endDate = new Date(agreement.endDate);
                 endDate.setHours(0, 0, 0, 0);
                 if (nextDue > endDate) {
-                    showToast(`Cannot generate: invoice date ${formatDate(template.nextDueDate)} is after agreement end date ${formatDate(agreement.endDate)}.`, 'error');
+                    showToast(`Cannot generate: invoice date ${formatDate(issueDateForGen)} is after agreement end date ${formatDate(agreement.endDate)}.`, 'error');
                     return;
                 }
             }
         }
 
         const confirmed = await showConfirm(
-            `Generate invoice for ${CURRENCY} ${template.amount.toLocaleString()} due on ${formatDate(template.nextDueDate)}?`,
+            `Generate invoice for ${CURRENCY} ${template.amount.toLocaleString()} due on ${formatDate(issueDateForGen)}?`,
             { title: 'Generate Invoice', confirmLabel: 'Generate' }
         );
         if (!confirmed) return;
 
         let { maxNum, prefix, padding } = getNextInvoiceNumber();
-        const invoice = generateSingleInvoice(template, maxNum, prefix, padding);
+        const invoice = generateSingleInvoice(
+            { ...template, nextDueDate: issueDateForGen },
+            maxNum,
+            prefix,
+            padding
+        );
         dispatch({ type: 'ADD_INVOICE', payload: invoice });
         dispatch({
             type: 'UPDATE_RENTAL_INVOICE_SETTINGS',
             payload: { ...state.rentalInvoiceSettings, nextNumber: maxNum + 1 }
         });
 
-        const nextDate = calculateNextMonthDate(new Date(template.nextDueDate), template.dayOfMonth);
+        const nextDueStr = getNextRecurringDueDate(issueDateForGen, template.dayOfMonth || 1);
+        const nextDate = parseYyyyMmDdToLocalDate(nextDueStr);
+        nextDate.setHours(0, 0, 0, 0);
         const newCount = (template.generatedCount || 0) + 1;
         let isActive = template.active;
         if (template.maxOccurrences && newCount >= template.maxOccurrences) {
@@ -312,7 +344,7 @@ const RecurringInvoicesList: React.FC = () => {
 
         const updatedTemplate: RecurringInvoiceTemplate = {
             ...template,
-            nextDueDate: nextDate.toISOString().split('T')[0],
+            nextDueDate: nextDueStr,
             lastGeneratedDate: new Date().toISOString(),
             generatedCount: newCount,
             active: isActive,
@@ -340,12 +372,25 @@ const RecurringInvoicesList: React.FC = () => {
         }));
     };
 
+    /** Normalize next due for edit/save; legacy bad rows (day 1 stored as last day of month) are corrected first. */
+    const normalizeNextDueDate = (dateStr: string, dayOfMonth: number): string => {
+        const s = fixRecurringNextDueWhenDayOneIsLastDayOfMonth(dateStr, dayOfMonth);
+        const d = parseYyyyMmDdToLocalDate(s);
+        if (isNaN(d.getTime())) return dateStr;
+        if (d < today) {
+            return getDayOfNextMonthLocal(today, dayOfMonth);
+        }
+        return s;
+    };
+
     // --- Edit Modal ---
     const openEditModal = (template: RecurringInvoiceTemplate) => {
+        const day = template.dayOfMonth || 1;
+        const normalizedNext = normalizeNextDueDate(template.nextDueDate, day);
         setTemplateToEdit(template);
         setEditAmount(String(template.amount));
-        setEditDay(String(template.dayOfMonth || 1));
-        setEditNextDate(template.nextDueDate);
+        setEditDay(String(day));
+        setEditNextDate(normalizedNext);
         setEditDesc(template.descriptionTemplate);
         setEditInvoiceType(template.invoiceType || InvoiceType.RENTAL);
         setEditActive(template.active);
@@ -355,11 +400,14 @@ const RecurringInvoicesList: React.FC = () => {
     const handleSaveEdit = async () => {
         if (!templateToEdit) return;
 
+        const dayOfMonth = Math.max(1, Math.min(28, parseInt(editDay) || 1));
+        const nextDueDateNormalized = normalizeNextDueDate(editNextDate, dayOfMonth);
+
         const updated: RecurringInvoiceTemplate = {
             ...templateToEdit,
             amount: parseFloat(editAmount) || 0,
-            dayOfMonth: Math.max(1, Math.min(28, parseInt(editDay) || 1)),
-            nextDueDate: editNextDate,
+            dayOfMonth,
+            nextDueDate: nextDueDateNormalized,
             descriptionTemplate: editDesc,
             invoiceType: editInvoiceType,
             active: editActive,
@@ -455,6 +503,7 @@ const RecurringInvoicesList: React.FC = () => {
                     value={buildingFilter}
                     onChange={(e) => setBuildingFilter(e.target.value)}
                     className="px-3 py-2 text-sm border border-slate-300 rounded-lg shadow-sm bg-white focus:ring-2 focus:ring-accent/50 focus:border-accent"
+                    aria-label="Filter by building"
                 >
                     <option value="all">All Buildings</option>
                     {state.buildings.map(b => (
@@ -493,7 +542,8 @@ const RecurringInvoicesList: React.FC = () => {
                             {filteredTemplates.length > 0 ? filteredTemplates.map(template => {
                                 const tenantName = state.contacts.find(c => c.id === template.contactId)?.name || 'Unknown';
                                 const propertyName = state.properties.find(p => p.id === template.propertyId)?.name || 'Unknown';
-                                const dateStatus = getDateStatus(template.nextDueDate, template.active);
+                                const nextDueDisplay = effectiveNextDue(template);
+                                const dateStatus = getDateStatus(nextDueDisplay, template.active);
                                 const isOverdue = dateStatus === 'overdue' || dateStatus === 'due';
 
                                 return (
@@ -523,7 +573,7 @@ const RecurringInvoicesList: React.FC = () => {
                                         {/* Next Invoice */}
                                         <td className="px-4 py-3">
                                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getDateBadgeClasses(dateStatus)}`}>
-                                                {getDateLabel(dateStatus, template.nextDueDate)}
+                                                {getDateLabel(dateStatus, nextDueDisplay)}
                                             </span>
                                         </td>
 
@@ -541,7 +591,7 @@ const RecurringInvoicesList: React.FC = () => {
                                         {/* Actions */}
                                         <td className="px-4 py-3 text-center">
                                             <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                                {template.active && template.nextDueDate <= todayStr && (
+                                                {template.active && effectiveNextDue(template) <= todayStr && (
                                                     <button
                                                         onClick={() => handleGenerateSingle(template)}
                                                         className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
@@ -657,6 +707,8 @@ const RecurringInvoicesList: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => setEditActive(!editActive)}
+                                    title={editActive ? 'Disable auto-generate invoices' : 'Enable auto-generate invoices'}
+                                    aria-label={editActive ? 'Auto-generate invoices is on' : 'Auto-generate invoices is off'}
                                     className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${editActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
                                 >
                                     <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${editActive ? 'translate-x-5' : 'translate-x-0'}`} />
@@ -665,25 +717,33 @@ const RecurringInvoicesList: React.FC = () => {
 
                             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Create on day</label>
+                                    <label htmlFor="recurring-edit-day" className="block text-sm font-medium text-slate-700 mb-1">Create on day</label>
                                     <input
+                                        id="recurring-edit-day"
                                         type="number"
                                         min="1"
                                         max="28"
                                         value={editDay}
-                                        onChange={e => setEditDay(e.target.value)}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setEditDay(val);
+                                            const day = Math.max(1, Math.min(28, parseInt(val) || 1));
+                                            setEditNextDate(getDayOfNextMonthLocal(today, day));
+                                        }}
                                         className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white"
+                                        title="Day of month (1-28) when invoices are created"
                                     />
-                                    <p className="text-xs text-slate-400 mt-1">Day of month (1-28)</p>
+                                    <p className="text-xs text-slate-400 mt-1">Day of month (1-28). Next run will be that day in the next month.</p>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Next scheduled date</label>
-                                    <input
-                                        type="date"
+                                    <DatePicker
+                                        id="recurring-edit-next-date"
+                                        label="Next scheduled date"
                                         value={editNextDate}
-                                        onChange={e => setEditNextDate(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white"
+                                        onChange={(d) => setEditNextDate(toLocalDateString(d))}
+                                        className="!text-sm !py-2"
                                     />
+                                    <p className="text-xs text-slate-400 mt-1">1st of next month when Create on day = 1</p>
                                 </div>
                             </div>
 

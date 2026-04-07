@@ -12,7 +12,7 @@ import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
@@ -63,11 +63,11 @@ const BuildingAccountsReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (option === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (option === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -271,7 +271,7 @@ const BuildingAccountsReport: React.FC = () => {
     const { print: triggerPrint } = usePrintContext();
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -281,19 +281,19 @@ const BuildingAccountsReport: React.FC = () => {
             <style>{STANDARD_PRINT_STYLES}</style>
 
             {/* Custom Toolbar - All controls in first row */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+            <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                 {/* First Row: Dates, Filters, and Actions */}
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Date Range Pills */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                    <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
                         {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                             <button
                                 key={opt}
                                 onClick={() => handleRangeChange(opt)}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
                                     dateRange === opt 
-                                    ? 'bg-white text-accent shadow-sm font-bold' 
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                    ? 'bg-primary text-ds-on-primary shadow-sm font-bold' 
+                                    : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                 }`}
                             >
                                 {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
@@ -304,9 +304,9 @@ const BuildingAccountsReport: React.FC = () => {
                     {/* Custom Date Pickers */}
                     {dateRange === 'custom' && (
                         <div className="flex items-center gap-2 animate-fade-in">
-                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
-                            <span className="text-slate-400">-</span>
-                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(toLocalDateString(d), endDate)} />
+                            <span className="text-app-muted">-</span>
+                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, toLocalDateString(d))} />
                         </div>
                     )}
 
@@ -323,19 +323,19 @@ const BuildingAccountsReport: React.FC = () => {
 
                     {/* Search Input */}
                     <div className="relative flex-grow min-w-[180px]">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <span className="h-4 w-4">{ICONS.search}</span>
                         </div>
                         <Input 
                             placeholder="Search report..." 
                             value={searchQuery} 
                             onChange={(e) => setSearchQuery(e.target.value)} 
-                            className="pl-9 py-1.5 text-sm"
+                            className="ds-input-field pl-9 py-1.5 text-sm"
                         />
                         {searchQuery && (
                             <button 
                                 onClick={() => setSearchQuery('')} 
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
                             >
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
@@ -344,7 +344,7 @@ const BuildingAccountsReport: React.FC = () => {
 
                     {/* Actions Group */}
                     <div className="flex items-center gap-2 ml-auto">
-                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
                             <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                         </Button>
                         <PrintButton
@@ -362,85 +362,85 @@ const BuildingAccountsReport: React.FC = () => {
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">
-                        <h3 className="text-2xl font-bold text-slate-800">Detailed Building Analysis</h3>
-                        <p className="text-sm text-slate-500">
+                        <h3 className="text-2xl font-bold text-app-text">Detailed Building Analysis</h3>
+                        <p className="text-sm text-app-muted">
                             {formatDate(startDate)} - {formatDate(endDate)}
                         </p>
                     </div>
                     
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-toolbar/40 sticky top-0 z-10">
                                 <tr>
-                                    <th rowSpan={2} className="px-3 py-2 text-left font-bold text-slate-700 border-r border-slate-200 cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('buildingName')}>
+                                    <th rowSpan={2} className="px-3 py-2 text-left font-bold text-app-text border-r border-app-border cursor-pointer hover:bg-app-toolbar/60 select-none" onClick={() => handleSort('buildingName')}>
                                         Building <SortIcon column="buildingName"/>
                                     </th>
-                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-slate-600 border-b border-r border-slate-200 bg-blue-50/50">Rents</th>
-                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-slate-600 border-b border-r border-slate-200 bg-purple-50/50">Security</th>
-                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-slate-600 border-b border-r border-slate-200 bg-amber-50/50">Services</th>
-                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-slate-600 border-b border-r border-slate-200 bg-emerald-50/50">Paid Out</th>
-                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-slate-600 border-b border-r border-slate-200 bg-rose-50/50">Expenses</th>
-                                    <th rowSpan={2} className="px-3 py-2 text-right font-bold text-slate-700 cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('netFlow')}>
+                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-app-muted border-b border-r border-app-border bg-primary/15">Rents</th>
+                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-app-muted border-b border-r border-app-border bg-violet-500/15">Security</th>
+                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-app-muted border-b border-r border-app-border bg-ds-warning/10">Services</th>
+                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-app-muted border-b border-r border-app-border bg-ds-success/10">Paid Out</th>
+                                    <th colSpan={2} className="px-2 py-1 text-center font-semibold text-app-muted border-b border-r border-app-border bg-ds-danger/10">Expenses</th>
+                                    <th rowSpan={2} className="px-3 py-2 text-right font-bold text-app-text cursor-pointer hover:bg-app-toolbar/60 select-none" onClick={() => handleSort('netFlow')}>
                                         Net Flow <SortIcon column="netFlow"/>
                                     </th>
                                 </tr>
                                 <tr>
                                     {/* Sub Headers */}
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-blue-50/30 border-r border-slate-100 cursor-pointer hover:bg-blue-100/30" onClick={() => handleSort('rentCollected')}>Col <SortIcon column="rentCollected"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-blue-50/30 border-r border-slate-200 cursor-pointer hover:bg-blue-100/30" onClick={() => handleSort('rentArrears')}>Arr <SortIcon column="rentArrears"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-purple-50/30 border-r border-slate-100 cursor-pointer hover:bg-purple-100/30" onClick={() => handleSort('securityCollected')}>Col <SortIcon column="securityCollected"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-purple-50/30 border-r border-slate-200 cursor-pointer hover:bg-purple-100/30" onClick={() => handleSort('securityArrears')}>Arr <SortIcon column="securityArrears"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-amber-50/30 border-r border-slate-100 cursor-pointer hover:bg-amber-100/30" onClick={() => handleSort('serviceCollected')}>Col <SortIcon column="serviceCollected"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-amber-50/30 border-r border-slate-200 cursor-pointer hover:bg-amber-100/30" onClick={() => handleSort('serviceArrears')}>Arr <SortIcon column="serviceArrears"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-emerald-50/30 border-r border-slate-100 cursor-pointer hover:bg-emerald-100/30" onClick={() => handleSort('rentPaidOut')}>Rent <SortIcon column="rentPaidOut"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-emerald-50/30 border-r border-slate-200 cursor-pointer hover:bg-emerald-100/30" onClick={() => handleSort('securityPaidOut')}>Sec <SortIcon column="securityPaidOut"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-rose-50/30 border-r border-slate-100 cursor-pointer hover:bg-rose-100/30" onClick={() => handleSort('ownerExpenses')}>Own <SortIcon column="ownerExpenses"/></th>
-                                    <th className="px-2 py-1 text-right font-medium text-slate-500 bg-rose-50/30 border-r border-slate-200 cursor-pointer hover:bg-rose-100/30" onClick={() => handleSort('tenantExpenses')}>Ten <SortIcon column="tenantExpenses"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-primary/10 border-r border-app-border cursor-pointer hover:bg-primary/20" onClick={() => handleSort('rentCollected')}>Col <SortIcon column="rentCollected"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-primary/10 border-r border-app-border cursor-pointer hover:bg-primary/20" onClick={() => handleSort('rentArrears')}>Arr <SortIcon column="rentArrears"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-violet-500/10 border-r border-app-border cursor-pointer hover:bg-violet-500/20" onClick={() => handleSort('securityCollected')}>Col <SortIcon column="securityCollected"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-violet-500/10 border-r border-app-border cursor-pointer hover:bg-violet-500/20" onClick={() => handleSort('securityArrears')}>Arr <SortIcon column="securityArrears"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-warning/10 border-r border-app-border cursor-pointer hover:bg-ds-warning/20" onClick={() => handleSort('serviceCollected')}>Col <SortIcon column="serviceCollected"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-warning/10 border-r border-app-border cursor-pointer hover:bg-ds-warning/20" onClick={() => handleSort('serviceArrears')}>Arr <SortIcon column="serviceArrears"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-success/10 border-r border-app-border cursor-pointer hover:bg-ds-success/20" onClick={() => handleSort('rentPaidOut')}>Rent <SortIcon column="rentPaidOut"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-success/10 border-r border-app-border cursor-pointer hover:bg-ds-success/20" onClick={() => handleSort('securityPaidOut')}>Sec <SortIcon column="securityPaidOut"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-danger/10 border-r border-app-border cursor-pointer hover:bg-ds-danger/20" onClick={() => handleSort('ownerExpenses')}>Own <SortIcon column="ownerExpenses"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-danger/10 border-r border-app-border cursor-pointer hover:bg-ds-danger/20" onClick={() => handleSort('tenantExpenses')}>Ten <SortIcon column="tenantExpenses"/></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {filteredData.map(row => (
-                                    <tr key={row.buildingId} className="hover:bg-slate-50">
-                                        <td className="px-3 py-2 font-medium text-slate-800 border-r border-slate-100 min-w-[150px] whitespace-normal break-words">{row.buildingName}</td>
+                                    <tr key={row.buildingId} className="hover:bg-app-toolbar/30">
+                                        <td className="px-3 py-2 font-medium text-app-text border-r border-app-border min-w-[150px] whitespace-normal break-words">{row.buildingName}</td>
                                         
-                                        <td className="px-2 py-2 text-right text-slate-700 bg-blue-50/10 whitespace-nowrap">{row.rentCollected.toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-rose-500 bg-blue-50/10 border-r border-slate-100 whitespace-nowrap">{row.rentArrears > 0 ? row.rentArrears.toLocaleString() : '-'}</td>
+                                        <td className="px-2 py-2 text-right text-app-text bg-primary/5 whitespace-nowrap">{row.rentCollected.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-ds-danger bg-primary/5 border-r border-app-border whitespace-nowrap">{row.rentArrears > 0 ? row.rentArrears.toLocaleString() : '-'}</td>
                                         
-                                        <td className="px-2 py-2 text-right text-slate-700 bg-purple-50/10 whitespace-nowrap">{row.securityCollected.toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-rose-500 bg-purple-50/10 border-r border-slate-100 whitespace-nowrap">{row.securityArrears > 0 ? row.securityArrears.toLocaleString() : '-'}</td>
+                                        <td className="px-2 py-2 text-right text-app-text bg-violet-500/5 whitespace-nowrap">{row.securityCollected.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-ds-danger bg-violet-500/5 border-r border-app-border whitespace-nowrap">{row.securityArrears > 0 ? row.securityArrears.toLocaleString() : '-'}</td>
                                         
-                                        <td className="px-2 py-2 text-right text-slate-700 bg-amber-50/10 whitespace-nowrap">{row.serviceCollected.toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-rose-500 bg-amber-50/10 border-r border-slate-100 whitespace-nowrap">{row.serviceArrears > 0 ? row.serviceArrears.toLocaleString() : '-'}</td>
+                                        <td className="px-2 py-2 text-right text-app-text bg-ds-warning/5 whitespace-nowrap">{row.serviceCollected.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-ds-danger bg-ds-warning/5 border-r border-app-border whitespace-nowrap">{row.serviceArrears > 0 ? row.serviceArrears.toLocaleString() : '-'}</td>
                                         
-                                        <td className="px-2 py-2 text-right text-slate-600 bg-emerald-50/10 whitespace-nowrap">{row.rentPaidOut.toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-slate-600 bg-emerald-50/10 border-r border-slate-100 whitespace-nowrap">{row.securityPaidOut.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-app-muted bg-ds-success/5 whitespace-nowrap">{row.rentPaidOut.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-app-muted bg-ds-success/5 border-r border-app-border whitespace-nowrap">{row.securityPaidOut.toLocaleString()}</td>
                                         
-                                        <td className="px-2 py-2 text-right text-slate-600 bg-rose-50/10 whitespace-nowrap">{row.ownerExpenses.toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-slate-600 bg-rose-50/10 border-r border-slate-100 whitespace-nowrap">{row.tenantExpenses.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-app-muted bg-ds-danger/5 whitespace-nowrap">{row.ownerExpenses.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-app-muted bg-ds-danger/5 border-r border-app-border whitespace-nowrap">{row.tenantExpenses.toLocaleString()}</td>
                                         
-                                        <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${row.netFlow >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                        <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${row.netFlow >= 0 ? 'text-ds-success' : 'text-ds-danger'}`}>
                                             {row.netFlow.toLocaleString()}
                                         </td>
                                     </tr>
                                 ))}
                                 {filteredData.length === 0 && (
-                                    <tr><td colSpan={12} className="text-center py-8 text-slate-500">No data found.</td></tr>
+                                    <tr><td colSpan={12} className="text-center py-8 text-app-muted">No data found.</td></tr>
                                 )}
                             </tbody>
-                            <tfoot className="bg-slate-100 font-bold border-t border-slate-300 sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
+                            <tfoot className="bg-app-toolbar/50 font-bold border-t border-app-border sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.15)]">
                                 <tr>
-                                    <td className="px-3 py-2 border-r border-slate-200">TOTALS</td>
+                                    <td className="px-3 py-2 border-r border-app-border text-app-text">TOTALS</td>
                                     <td className="px-2 py-2 text-right whitespace-nowrap">{totals.rentCollected.toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right text-rose-600 border-r border-slate-200 whitespace-nowrap">{totals.rentArrears.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right text-ds-danger border-r border-app-border whitespace-nowrap">{totals.rentArrears.toLocaleString()}</td>
                                     <td className="px-2 py-2 text-right whitespace-nowrap">{totals.securityCollected.toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right text-rose-600 border-r border-slate-200 whitespace-nowrap">{totals.securityArrears.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right text-ds-danger border-r border-app-border whitespace-nowrap">{totals.securityArrears.toLocaleString()}</td>
                                     <td className="px-2 py-2 text-right whitespace-nowrap">{totals.serviceCollected.toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right text-rose-600 border-r border-slate-200 whitespace-nowrap">{totals.serviceArrears.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right text-ds-danger border-r border-app-border whitespace-nowrap">{totals.serviceArrears.toLocaleString()}</td>
                                     <td className="px-2 py-2 text-right whitespace-nowrap">{totals.rentPaidOut.toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right border-r border-slate-200 whitespace-nowrap">{totals.securityPaidOut.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right border-r border-app-border whitespace-nowrap">{totals.securityPaidOut.toLocaleString()}</td>
                                     <td className="px-2 py-2 text-right whitespace-nowrap">{totals.ownerExpenses.toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right border-r border-slate-200 whitespace-nowrap">{totals.tenantExpenses.toLocaleString()}</td>
-                                    <td className={`px-3 py-2 text-right whitespace-nowrap ${totals.netFlow >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>{totals.netFlow.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right border-r border-app-border whitespace-nowrap">{totals.tenantExpenses.toLocaleString()}</td>
+                                    <td className={`px-3 py-2 text-right whitespace-nowrap ${totals.netFlow >= 0 ? 'text-ds-success' : 'text-ds-danger'}`}>{totals.netFlow.toLocaleString()}</td>
                                 </tr>
                             </tfoot>
                         </table>

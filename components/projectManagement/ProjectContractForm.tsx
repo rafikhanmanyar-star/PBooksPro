@@ -13,6 +13,7 @@ import { CURRENCY, ICONS } from '../../constants';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { uploadEntityDocument, openDocumentById } from '../../services/documentUploadService';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface ProjectContractFormProps {
     onClose: () => void;
@@ -50,7 +51,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
         if (state.enableDatePreservation && state.lastPreservedDate && !contractToEdit) {
             return state.lastPreservedDate;
         }
-        return new Date().toISOString().split('T')[0];
+        return toLocalDateString(new Date());
     };
 
     const [startDate, setStartDate] = useState(getInitialStartDate());
@@ -58,7 +59,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
 
     // Save date to preserved date when changed (if option is enabled)
     const handleStartDateChange = (date: Date) => {
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = toLocalDateString(date);
         setStartDate(dateStr);
         if (state.enableDatePreservation && !contractToEdit) {
             dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: dateStr });
@@ -75,6 +76,21 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
     const [expenseCategoryItems, setExpenseCategoryItems] = useState<ContractExpenseCategoryItem[]>(
         contractToEdit?.expenseCategoryItems || []
     );
+
+    // Sync expense categories when contractToEdit changes (e.g. modal opened with contract from state)
+    useEffect(() => {
+        if (contractToEdit?.id) {
+            const items = contractToEdit.expenseCategoryItems ?? (contractToEdit as any).expense_category_items;
+            if (items) {
+                const parsed = typeof items === 'string' && items.trim().length > 0
+                    ? (() => { try { return JSON.parse(items); } catch { return []; } })()
+                    : Array.isArray(items) ? items : [];
+                setExpenseCategoryItems(parsed.length ? parsed : []);
+            } else {
+                setExpenseCategoryItems([]);
+            }
+        }
+    }, [contractToEdit?.id, contractToEdit?.expenseCategoryItems]);
 
     const vendors = useMemo(() => {
         const list = state.vendors || [];
@@ -150,7 +166,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
             if (!isNaN(d.getTime())) {
                 d.setFullYear(d.getFullYear() + 1);
                 d.setDate(d.getDate() - 1);
-                setEndDate(d.toISOString().split('T')[0]);
+                setEndDate(toLocalDateString(d));
             }
         }
     }, [startDate, contractToEdit]);
@@ -231,7 +247,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
             <form onSubmit={handleSubmit} className="space-y-4" style={formBackgroundStyle}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Input label="Contract Number" value={contractNumber} onChange={e => setContractNumber(e.target.value)} required />
-                    <Input label="Contract Title" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Grey Structure" required />
+                    <Input id="project-contract-title-input" label="Contract Title" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Grey Structure" required disabled={false} autoComplete="off" />
                     <ComboBox
                         label="Project"
                         items={state.projects}
@@ -260,7 +276,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                         }}
                     />
                     <DatePicker label="Start Date" value={startDate} onChange={handleStartDateChange} required />
-                    <DatePicker label="End Date (Est.)" value={endDate} onChange={d => setEndDate(d.toISOString().split('T')[0])} />
+                    <DatePicker label="End Date (Est.)" value={endDate} onChange={d => setEndDate(toLocalDateString(d))} />
                 </div>
 
                 {/* Track Expense Category Section */}

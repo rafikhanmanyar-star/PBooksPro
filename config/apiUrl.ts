@@ -5,11 +5,21 @@
  * the API is derived from the same host on port 3000 (e.g. http://192.168.1.105:3000/api),
  * so no IP needs to be hardcoded.
  *
- * Set VITE_API_URL to a full URL (e.g. https://pbookspro-api-staging.onrender.com/api for staging)
- * to use a remote API instead (production/staging).
+ * Set VITE_API_URL for remote API (not used in local-only mode).
  */
 
-const API_PORT = 3000;
+/** Default HTTP port for LAN API (must match backend). */
+export const DEFAULT_LAN_API_PORT = 3000;
+
+const API_PORT = DEFAULT_LAN_API_PORT;
+
+/** Persisted by the API login screen / setBaseUrl so Electron (file://) can reach a LAN server without rebuilding. */
+export const PBOOKS_API_BASE_STORAGE_KEY = 'pbooks_api_base_url';
+
+function normalizeApiBaseUrl(url: string): string {
+  const u = url.trim().replace(/\/?$/, '');
+  return u.endsWith('/api') ? u : `${u}/api`;
+}
 
 function isRemoteApiUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false;
@@ -17,6 +27,16 @@ function isRemoteApiUrl(url: string): boolean {
     url.includes('onrender.com') ||
     (url.startsWith('https://') && !url.includes('localhost') && !url.includes('127.0.0.1'))
   );
+}
+
+/** True when the resolved API base targets a LAN/self-hosted server (discover + reconnect apply). Hosted cloud URLs skip this. */
+export function isLanBackendApi(): boolean {
+  return !isRemoteApiUrl(getApiBaseUrl());
+}
+
+/** Strip `/api` suffix to get server root (e.g. `http://192.168.1.10:3000`). */
+export function getApiRootUrl(): string {
+  return getApiBaseUrl().replace(/\/api\/?$/i, '');
 }
 
 /**
@@ -27,6 +47,15 @@ function isRemoteApiUrl(url: string): boolean {
  * In Electron (file:// protocol), VITE_API_URL must be set or defaults to production.
  */
 export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(PBOOKS_API_BASE_STORAGE_KEY);
+      if (stored?.trim()) return normalizeApiBaseUrl(stored);
+    } catch {
+      /* ignore */
+    }
+  }
+
   const env = import.meta.env.VITE_API_URL as string | undefined;
   if (env && isRemoteApiUrl(env)) return env.endsWith('/api') ? env : env.replace(/\/?$/, '') + '/api';
   if (typeof window !== 'undefined') {
@@ -57,4 +86,13 @@ export function getWsServerUrl(): string {
 export function isStagingEnvironment(): boolean {
   const apiUrl = (import.meta.env.VITE_API_URL as string) || '';
   return apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com');
+}
+
+/**
+ * Local-only: SQLite + Electron (default when VITE_LOCAL_ONLY is unset or not "false").
+ * LAN / API: set `VITE_LOCAL_ONLY=false` and run against `getApiBaseUrl()` (e.g. npm run dev:backend).
+ */
+export function isLocalOnlyMode(): boolean {
+  const v = import.meta.env.VITE_LOCAL_ONLY;
+  return v !== 'false' && v !== false;
 }

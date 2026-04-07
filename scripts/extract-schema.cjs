@@ -18,3 +18,9 @@ if (start <= 0 || end <= start) {
 const sql = content.substring(start, end);
 fs.writeFileSync(outPath, sql);
 console.log('Extracted schema:', sql.length, 'chars to electron/schema.sql');
+
+const verMatch = content.match(/export const SCHEMA_VERSION = (\d+)/);
+const schemaVersion = verMatch ? parseInt(verMatch[1], 10) : 1;
+const verPath = path.join(__dirname, '../electron/schemaVersion.json');
+fs.writeFileSync(verPath, JSON.stringify({ version: schemaVersion }, null, 0) + '\n');
+console.log('Wrote electron/schemaVersion.json version:', schemaVersion);

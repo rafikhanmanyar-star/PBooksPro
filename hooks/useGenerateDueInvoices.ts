@@ -2,6 +2,12 @@ import { useMemo, useCallback, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { useNotification } from '../context/NotificationContext';
 import { RecurringInvoiceTemplate, Invoice, InvoiceType, InvoiceStatus } from '../types';
+import {
+  fixRecurringNextDueWhenDayOneIsLastDayOfMonth,
+  getNextRecurringDueDate,
+  parseYyyyMmDdToLocalDate,
+  toLocalDateString,
+} from '../utils/dateUtils';
 
 export function useGenerateDueInvoices() {
   const { state, dispatch } = useAppContext();
@@ -12,7 +18,7 @@ export function useGenerateDueInvoices() {
   const todayStr = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    return d.toISOString().split('T')[0];
+    return toLocalDateString(d);
   }, []);
   const today = useMemo(() => {
     const d = new Date();
@@ -21,20 +27,15 @@ export function useGenerateDueInvoices() {
   }, []);
 
   const overdueTemplates = useMemo(
-    () => templates.filter(t => t.active && !t.deletedAt && t.nextDueDate <= todayStr),
+    () =>
+      templates.filter(
+        t =>
+          t.active &&
+          !t.deletedAt &&
+          fixRecurringNextDueWhenDayOneIsLastDayOfMonth(t.nextDueDate, t.dayOfMonth || 1) <= todayStr
+      ),
     [templates, todayStr]
   );
-
-  const calculateNextMonthDate = (currentDate: Date, dayOfMonth: number): Date => {
-    const nextDate = new Date(currentDate);
-    nextDate.setMonth(nextDate.getMonth() + 1);
-    const targetMonth = nextDate.getMonth();
-    const targetYear = nextDate.getFullYear();
-    const daysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
-    const targetDay = Math.min(dayOfMonth, daysInTargetMonth);
-    nextDate.setDate(targetDay);
-    return nextDate;
-  };
 
   const getNextInvoiceNumber = useCallback(() => {
     const { rentalInvoiceSettings } = state;
@@ -55,10 +56,13 @@ export function useGenerateDueInvoices() {
   const generateSingleInvoice = useCallback(
     (template: RecurringInvoiceTemplate, invoiceNum: number, prefix: string, padding: number): Invoice => {
       const invoiceNumber = `${prefix}${String(invoiceNum).padStart(padding, '0')}`;
-      const issueDate = template.nextDueDate;
-      const dueDateObj = new Date(issueDate);
+      const issueDate = fixRecurringNextDueWhenDayOneIsLastDayOfMonth(
+        template.nextDueDate,
+        template.dayOfMonth || 1
+      );
+      const dueDateObj = parseYyyyMmDdToLocalDate(issueDate);
       dueDateObj.setDate(dueDateObj.getDate() + 7);
-      const monthYear = new Date(issueDate).toLocaleString('default', { month: 'long', year: 'numeric' });
+      const monthYear = parseYyyyMmDdToLocalDate(issueDate).toLocaleString('default', { month: 'long', year: 'numeric' });
       const description = template.descriptionTemplate.replace('{Month}', monthYear);
       const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
       return {
@@ -72,7 +76,7 @@ export function useGenerateDueInvoices() {
         paidAmount: 0,
         status: InvoiceStatus.UNPAID,
         issueDate,
-        dueDate: dueDateObj.toISOString(),
+        dueDate: toLocalDateString(dueDateObj),
         description,
         categoryId: rentalIncomeCategory?.id,
         agreementId: template.agreementId,
@@ -84,7 +88,12 @@ export function useGenerateDueInvoices() {
   );
 
   const handleGenerateAllDue = useCallback(async () => {
-    const dueTemplates = templates.filter(t => t.active && !t.deletedAt && t.nextDueDate <= todayStr);
+    const dueTemplates = templates.filter(
+      t =>
+        t.active &&
+        !t.deletedAt &&
+        fixRecurringNextDueWhenDayOneIsLastDayOfMonth(t.nextDueDate, t.dayOfMonth || 1) <= todayStr
+    );
     if (dueTemplates.length === 0) return;
 
     const confirmed = await showConfirm(
@@ -101,7 +110,11 @@ export function useGenerateDueInvoices() {
 
     for (const template of dueTemplates) {
       let currentTemplate = { ...template };
-      let loopDate = new Date(currentTemplate.nextDueDate);
+      let issueDate = fixRecurringNextDueWhenDayOneIsLastDayOfMonth(
+        currentTemplate.nextDueDate,
+        currentTemplate.dayOfMonth || 1
+      );
+      let loopDate = parseYyyyMmDdToLocalDate(issueDate);
       loopDate.setHours(0, 0, 0, 0);
       const SAFE_LIMIT = 60;
       let count = 0;
@@ -128,15 +141,28 @@ export function useGenerateDueInvoices() {
           currentTemplate.active = false;
           break;
         }
-        const invoice = generateSingleInvoice(currentTemplate, maxNum, prefix, padding);
+        const invoice = generateSingleInvoice(
+          { ...currentTemplate, nextDueDate: issueDate },
+          maxNum,
+          prefix,
+          padding
+        );
         dispatch({ type: 'ADD_INVOICE', payload: invoice });
         maxNum++;
         count++;
         totalCreated++;
         currentTemplate.generatedCount = (currentTemplate.generatedCount || 0) + 1;
         currentTemplate.lastGeneratedDate = new Date().toISOString();
-        loopDate = calculateNextMonthDate(loopDate, currentTemplate.dayOfMonth || 1);
-        currentTemplate.nextDueDate = loopDate.toISOString().split('T')[0];
+        currentTemplate.nextDueDate = getNextRecurringDueDate(
+          issueDate,
+          currentTemplate.dayOfMonth || 1
+        );
+        issueDate = fixRecurringNextDueWhenDayOneIsLastDayOfMonth(
+          currentTemplate.nextDueDate,
+          currentTemplate.dayOfMonth || 1
+        );
+        loopDate = parseYyyyMmDdToLocalDate(issueDate);
+        loopDate.setHours(0, 0, 0, 0);
       }
       dispatch({ type: 'UPDATE_RECURRING_TEMPLATE', payload: currentTemplate });
     }

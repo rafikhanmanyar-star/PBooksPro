@@ -1,15 +1,15 @@
 import React, { useState, useMemo, useEffect, useCallback, memo, useRef, useTransition } from 'react';
 import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import { useDebounce } from '../../hooks/useDebounce';
-import { Transaction, TransactionType, InvoiceType, Account, Category, Contact, LedgerSortKey as SortKey, SortDirection, FilterCriteria, ImportType } from '../../types';
+import { Transaction, TransactionType, InvoiceType, LedgerSortKey as SortKey, SortDirection, FilterCriteria, ImportType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { useProgress } from '../../context/ProgressContext';
-import { exportToExcel } from '../../services/exportService';
+import { exportJsonToExcel } from '../../services/exportService';
 // ImportType moved to types.ts
 import TransactionDetailDrawer from './TransactionDetailDrawer';
 import LedgerTable from './LedgerTable';
@@ -447,9 +447,33 @@ const EnhancedLedgerPage: React.FC = () => {
     }, []);
 
     const handleExport = useCallback(() => {
-        const filename = `Ledger_${new Date().toISOString().split('T')[0]}.xlsx`;
-        exportToExcel(state, filename, progress, dispatch);
-    }, [state, progress, dispatch]);
+        if (transactionsWithBalance.length === 0) {
+            progress.errorProgress('No transactions to export. Apply different filters or ensure data is loaded.');
+            return;
+        }
+        const getAccountDisplay = (tx: Transaction & { balance?: number }) => {
+            if (tx.type === TransactionType.TRANSFER) {
+                const fromName = lookupMaps.accounts.get(tx.fromAccountId)?.name ?? '';
+                const toName = lookupMaps.accounts.get(tx.toAccountId)?.name ?? '';
+                return fromName && toName ? `${fromName} → ${toName}` : fromName || toName || '';
+            }
+            return lookupMaps.accounts.get(tx.accountId)?.name ?? '';
+        };
+        const rows = transactionsWithBalance.map(tx => ({
+            Date: tx.date,
+            Type: tx.type,
+            Description: tx.description ?? '',
+            Account: getAccountDisplay(tx),
+            Category: lookupMaps.categories.get(tx.categoryId)?.name ?? '',
+            Contact: lookupMaps.contacts.get(tx.contactId)?.name ?? '',
+            'Amount (IN)': tx.type === TransactionType.INCOME ? tx.amount : '',
+            'Amount (OUT)': (tx.type === TransactionType.EXPENSE || tx.type === TransactionType.TRANSFER || tx.type === TransactionType.LOAN) ? tx.amount : '',
+            Balance: (tx as Transaction & { balance?: number }).balance ?? 0,
+        }));
+        const filename = `Ledger_${toLocalDateString(new Date())}.xlsx`;
+        exportJsonToExcel(rows, filename, 'Transactions');
+        progress.finishProgress(`Exported ${rows.length} transaction(s) to ${filename}`);
+    }, [transactionsWithBalance, lookupMaps, progress]);
 
     const handleClearFilters = useCallback(() => {
         startFilterTransition(() => {
@@ -487,39 +511,41 @@ const EnhancedLedgerPage: React.FC = () => {
     }, [filters]);
 
     return (
-        <div className="flex flex-col min-h-full bg-slate-50/50 gap-2 sm:gap-4">
+        <div className="flex flex-col min-h-full bg-background gap-2 sm:gap-4">
             {/* Control Bar - All options in one row: period, type, search, filters, actions */}
-            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-3 flex-shrink-0">
+            <div className="bg-app-card p-3 rounded-xl border border-app-border shadow-ds-card flex flex-wrap items-center gap-3 flex-shrink-0 transition-shadow duration-ds">
                 {/* Period: Monthly / All Time + Month picker */}
                 {!filters.startDate && !filters.endDate && (
                     <>
-                        <div className="flex bg-slate-100/80 p-1 rounded-xl flex-shrink-0">
+                        <div className="ds-segment-track flex p-1 rounded-xl flex-shrink-0">
                             <button
+                                type="button"
                                 onClick={() => setViewMode('month')}
-                                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${viewMode === 'month' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`ds-segment-item px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg ${viewMode === 'month' ? 'ds-segment-item-active shadow-sm' : 'text-app-muted hover:text-app-text'}`}
                             >
                                 Monthly
                             </button>
                             <button
+                                type="button"
                                 onClick={() => setViewMode('all')}
-                                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${viewMode === 'all' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`ds-segment-item px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg ${viewMode === 'all' ? 'ds-segment-item-active shadow-sm' : 'text-app-muted hover:text-app-text'}`}
                             >
                                 All Time
                             </button>
                         </div>
                         {viewMode === 'month' && (
-                            <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden flex items-center h-8 flex-shrink-0">
+                            <div className="bg-app-toolbar rounded-lg border border-app-border overflow-hidden flex items-center h-8 flex-shrink-0">
                                 <MonthNavigator currentDate={currentDate} onDateChange={setCurrentDate} />
                             </div>
                         )}
-                        <div className="w-px h-6 bg-slate-200 flex-shrink-0 hidden sm:block"></div>
+                        <div className="w-px h-6 bg-app-border flex-shrink-0 hidden sm:block"></div>
                     </>
                 )}
 
                 {/* Type filter buttons */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Type:</span>
-                    <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-xl">
+                    <span className="text-[10px] font-bold text-app-muted uppercase tracking-widest">Type:</span>
+                    <div className="flex flex-wrap gap-1.5 p-1 bg-app-toolbar rounded-xl border border-app-border/80">
                         {[
                             { value: '', label: 'All' },
                             { value: 'Income', label: 'Income' },
@@ -530,18 +556,18 @@ const EnhancedLedgerPage: React.FC = () => {
                             <button
                                 key={value || 'all'}
                                 onClick={() => startFilterTransition(() => setFilters(prev => ({ ...prev, type: value, categoryId: '' })))}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-ds ${
                                     (filters.type || '') === value
                                         ? value === 'Income'
-                                            ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                                            ? 'bg-ds-success text-white shadow-sm shadow-ds-success/25'
                                             : value === 'Expense'
-                                            ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/30'
+                                            ? 'bg-ds-danger text-white shadow-sm shadow-ds-danger/25'
                                             : value === 'Transfer'
-                                            ? 'bg-indigo-500 text-white shadow-sm shadow-indigo-500/30'
+                                            ? 'bg-primary text-ds-on-primary shadow-sm'
                                             : value === 'Loan'
-                                            ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30'
-                                            : 'bg-slate-700 text-white shadow-sm'
-                                        : 'text-slate-600 hover:bg-white hover:text-slate-800 hover:shadow-sm'
+                                            ? 'bg-ds-warning text-slate-900 shadow-sm'
+                                            : 'bg-primary text-ds-on-primary shadow-sm'
+                                        : 'text-app-muted hover:bg-app-surface-2 hover:text-app-text hover:shadow-sm'
                                 }`}
                             >
                                 {label}
@@ -550,11 +576,11 @@ const EnhancedLedgerPage: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="w-px h-6 bg-slate-200 flex-shrink-0 hidden sm:block"></div>
+                <div className="w-px h-6 bg-app-border flex-shrink-0 hidden sm:block"></div>
 
                 {/* Search */}
                 <div className="relative flex-1 min-w-[160px] max-w-xs">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                         <div className="w-4 h-4">{ICONS.search}</div>
                     </div>
                     <input
@@ -562,10 +588,10 @@ const EnhancedLedgerPage: React.FC = () => {
                         placeholder="Filter by reference or name..."
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
-                        className="pl-9 pr-8 py-1.5 w-full text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
+                        className="ds-input-field pl-9 pr-8 py-1.5 w-full text-sm rounded-lg placeholder:text-app-muted"
                     />
                     {searchInput && (
-                        <button onClick={() => setSearchInput('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-rose-500">
+                        <button type="button" onClick={() => setSearchInput('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-ds-danger">
                             <div className="w-4 h-4">{ICONS.x}</div>
                         </button>
                     )}
@@ -574,37 +600,39 @@ const EnhancedLedgerPage: React.FC = () => {
                 {/* Filter Button */}
                 <button
                     onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-                    className={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border flex-shrink-0 ${activeFiltersCount > 0
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm font-bold'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
+                    type="button"
+                    className={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-ds flex items-center gap-2 border flex-shrink-0 ${activeFiltersCount > 0
+                        ? 'bg-nav-active border-primary text-primary shadow-sm font-bold'
+                        : 'bg-app-toolbar border-app-border text-app-muted hover:bg-app-surface-2 hover:border-app-border'
                         }`}
                 >
                     <div className="w-4 h-4 opacity-70">{ICONS.filter}</div>
                     <span>Filters</span>
                     {activeFiltersCount > 0 && (
-                        <span className="bg-indigo-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+                        <span className="bg-primary text-ds-on-primary text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
                             {activeFiltersCount}
                         </span>
                     )}
                 </button>
 
-                <div className="w-px h-6 bg-slate-200 flex-shrink-0 hidden sm:block"></div>
+                <div className="w-px h-6 bg-app-border flex-shrink-0 hidden sm:block"></div>
 
                 {/* Action icons: Print, Export, Import + New Transaction - right-aligned on wide screens */}
                 <div className="flex gap-2 items-center ml-auto flex-shrink-0">
-                <div className="flex gap-1 items-center bg-slate-100/50 p-1 rounded-lg">
-                    <button onClick={handlePrint} className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Print Ledger">
+                <div className="flex gap-1 items-center bg-app-toolbar p-1 rounded-lg border border-app-border">
+                    <button type="button" onClick={handlePrint} className="p-1.5 text-app-muted hover:text-app-text hover:bg-app-surface-2 rounded-md transition-all duration-ds" title="Print Ledger">
                         <div className="w-4 h-4">{ICONS.fileText}</div>
                     </button>
-                    <button onClick={handleExport} className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Export to Excel">
+                    <button type="button" onClick={handleExport} className="p-1.5 text-app-muted hover:text-app-text hover:bg-app-surface-2 rounded-md transition-all duration-ds" title="Export to Excel">
                         <div className="w-4 h-4">{ICONS.download}</div>
                     </button>
                     <button
+                        type="button"
                         onClick={() => {
                             dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.PAYMENTS });
                             dispatch({ type: 'SET_PAGE', payload: 'import' });
                         }}
-                        className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Import Data"
+                        className="p-1.5 text-app-muted hover:text-app-text hover:bg-app-surface-2 rounded-md transition-all duration-ds" title="Import Data"
                     >
                         <div className="w-4 h-4">{ICONS.upload}</div>
                     </button>
@@ -613,7 +641,7 @@ const EnhancedLedgerPage: React.FC = () => {
                 {/* New Transaction */}
                 <Button
                     onClick={() => { setSelectedTransaction(null); setIsAddModalOpen(true); }}
-                    className="!px-4 !py-2 !rounded-xl !text-sm !bg-indigo-600 hover:!bg-indigo-700 !text-white transition-all shadow-md shadow-indigo-500/20"
+                    className="!px-4 !py-2 !rounded-xl !text-sm !bg-primary hover:!bg-ds-primary-hover !text-ds-on-primary transition-all duration-ds shadow-ds-card"
                 >
                     <div className="w-4 h-4 mr-2">{ICONS.plus}</div> New Transaction
                 </Button>
@@ -640,22 +668,22 @@ const EnhancedLedgerPage: React.FC = () => {
             <div className="flex flex-col gap-2 sm:gap-4 flex-grow min-h-0 printable-area" id="printable-area">
                 <ReportHeader />
                 {/* Summary Area */}
-                <div className="flex-shrink-0 p-4 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/60 shadow-lg relative overflow-hidden printable-area">
-                    <div className="absolute top-0 right-0 p-3 opacity-[0.06] pointer-events-none text-white">
+                <div className="flex-shrink-0 p-4 rounded-xl bg-app-toolbar border border-app-border shadow-ds-card relative overflow-hidden printable-area">
+                    <div className="absolute top-0 right-0 p-3 opacity-[0.08] pointer-events-none text-app-muted">
                         <div className="w-24 h-24">{ICONS.barChart}</div>
                     </div>
                     <LedgerSummary transactions={transactionsWithBalance} />
                 </div>
 
                 {/* Main Table Area */}
-                <div className="min-h-[400px] md:min-h-[500px] bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col relative printable-area">
+                <div className="min-h-[400px] md:min-h-[500px] bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex flex-col relative printable-area transition-shadow duration-ds">
                 {isLoadingTransactions && paginatedTransactions.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/10">
+                    <div className="flex-1 flex flex-col items-center justify-center bg-app-toolbar/30">
                         <div className="relative w-12 h-12 mb-4">
-                            <div className="absolute inset-0 rounded-full border-4 border-slate-100"></div>
-                            <div className="absolute inset-0 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin"></div>
+                            <div className="absolute inset-0 rounded-full border-4 border-app-border"></div>
+                            <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
                         </div>
-                        <p className="text-sm font-medium text-slate-500">Retrieving ledger data...</p>
+                        <p className="text-sm font-medium text-app-muted">Retrieving ledger data...</p>
                     </div>
                 ) : (
                     <div className="flex-1 overflow-auto p-1 custom-scrollbar">
@@ -688,20 +716,20 @@ const EnhancedLedgerPage: React.FC = () => {
                 )}
 
                 {/* Status Bar */}
-                <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest flex-shrink-0">
+                <div className="px-3 py-1.5 bg-app-toolbar border-t border-app-border flex items-center justify-between text-[9px] font-bold text-app-muted uppercase tracking-widest flex-shrink-0">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-1.5">
                             <div className={`w-1.5 h-1.5 rounded-full ${isUsingNative ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`}></div>
                             <span>Backend: {isUsingNative ? 'High Perf (Native)' : 'Standard (SQL.js)'}</span>
                         </div>
-                        <div className="w-px h-3 bg-slate-200"></div>
+                        <div className="w-px h-3 bg-app-border"></div>
                         <span>
                             Records: {paginatedTransactions.length}
                             {totalCount !== null && ` of ${totalCount}`}
                             {totalCount === null && ` of ${state.transactions.length}`}
                         </span>
                         {isUsingNative && totalCount !== null && totalCount > paginatedTransactions.length && (
-                            <span className="text-indigo-500 normal-case font-medium ml-2">
+                            <span className="text-primary normal-case font-medium ml-2">
                                 (Scroll for more)
                             </span>
                         )}
@@ -710,7 +738,7 @@ const EnhancedLedgerPage: React.FC = () => {
                         {isNativeEnabled && !isUsingNative && (
                             <span className="text-amber-500 animate-pulse">Switching to native recommended for large data</span>
                         )}
-                        <span className="text-slate-300">|</span>
+                        <span className="text-app-border">|</span>
                         <span>V1.1.2</span>
                     </div>
                 </div>

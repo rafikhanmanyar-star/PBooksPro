@@ -22,6 +22,8 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTab, onTabClick, variant = 'def
         case 'Tools & Utilities':
         case 'Backup and Restore':
         case 'Import and Export':
+        case 'Import':
+        case 'Selective Export':
             return 'text-indigo-600';
         default: return 'text-gray-700';
     }
@@ -32,7 +34,7 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTab, onTabClick, variant = 'def
     return (
       <div className={`flex flex-col ${className}`} aria-label="Tabs">
         <nav
-          className="flex rounded-t-lg overflow-hidden bg-slate-200 pt-1.5 px-1.5 pb-0 gap-0.5"
+          className="flex rounded-t-lg overflow-hidden bg-app-toolbar pt-1.5 px-1.5 pb-0 gap-0.5 border-b border-app-border"
           role="tablist"
         >
           {tabs.map((tab) => {
@@ -42,13 +44,13 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTab, onTabClick, variant = 'def
                 key={tab}
                 type="button"
                 role="tab"
-                aria-selected={isActive}
+                {...(isActive ? { 'aria-selected': 'true' } : { 'aria-selected': 'false' })}
                 onClick={() => onTabClick(tab)}
-                className={`whitespace-nowrap py-2 px-4 text-sm font-medium transition-all duration-200 flex-shrink-0 select-none focus:outline-none
-                  rounded-t-lg border-t border-x border-transparent
+                className={`whitespace-nowrap py-2 px-4 text-sm font-medium transition-all duration-ds flex-shrink-0 select-none focus:outline-none
+                  rounded-t-lg border-t border-x
                   ${isActive
-                    ? 'bg-white text-slate-900 border-slate-300 shadow-[0_-1px_0_0_rgba(255,255,255,1)] -mb-px z-10'
-                    : 'bg-slate-100 text-slate-600 hover:text-slate-800 hover:bg-slate-200/80 border-transparent'
+                    ? 'bg-app-card text-app-text border-app-border shadow-[0_-1px_0_0_var(--layer-surface)] -mb-px z-10'
+                    : 'bg-transparent text-app-muted hover:text-app-text border-transparent hover:bg-app-surface-2/80'
                   }`}
               >
                 {tab}
@@ -75,7 +77,7 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTab, onTabClick, variant = 'def
                 key={tab}
                 type="button"
                 role="tab"
-                aria-selected={isActive}
+                {...(isActive ? { 'aria-selected': 'true' } : { 'aria-selected': 'false' })}
                 onClick={() => onTabClick(tab)}
                 className={`whitespace-nowrap py-2 px-4 text-sm transition-all duration-200 flex-shrink-0 select-none focus:outline-none rounded-full
                   ${isActive

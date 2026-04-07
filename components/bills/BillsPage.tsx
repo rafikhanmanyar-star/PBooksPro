@@ -11,9 +11,9 @@ import { BillTreeNode } from '../bills/BillTreeView';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import Select from '../ui/Select';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
@@ -199,6 +199,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const [dateRange, setDateRange] = useLocalStorage<DateRangeOption>('bills_dateRange', 'all');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [displayLimit, setDisplayLimit] = useState(200);
     const [projectFilter, setProjectFilter] = useLocalStorage<string>('bills_projectFilter', state.defaultProjectId || 'all');
     const [sortConfig, setSortConfig] = useLocalStorage<{ key: SortKey; direction: 'asc' | 'desc' }>('bills_sort', { key: 'issueDate', direction: 'desc' });
 
@@ -229,6 +230,12 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     // --- Computed: Projects List for Dropdown ---
     const projects = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
 
+    const projectMap = useMemo(() => new Map(state.projects.map(p => [p.id, p])), [state.projects]);
+    const vendorMap = useMemo(() => new Map((state.vendors ?? []).map(v => [v.id, v])), [state.vendors]);
+    const contractMap = useMemo(() => new Map(state.contracts.map(c => [c.id, c])), [state.contracts]);
+    const billMap = useMemo(() => new Map(state.bills.map(b => [String(b.id), b])), [state.bills]);
+    const accountMap = useMemo(() => new Map(state.accounts.map(a => [a.id, a])), [state.accounts]);
+
     // --- Date Range Logic ---
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -239,13 +246,13 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         } else if (option === 'thisMonth') {
             const first = new Date(now.getFullYear(), now.getMonth(), 1);
             const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            setStartDate(first.toISOString().split('T')[0]);
-            setEndDate(last.toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(first));
+            setEndDate(toLocalDateString(last));
         } else if (option === 'lastMonth') {
             const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
             const last = new Date(now.getFullYear(), now.getMonth(), 0);
-            setStartDate(first.toISOString().split('T')[0]);
-            setEndDate(last.toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(first));
+            setEndDate(toLocalDateString(last));
         }
     };
 
@@ -267,13 +274,13 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         const billId = sessionStorage.getItem('openBillId');
         if (billId) {
             sessionStorage.removeItem('openBillId');
-            const bill = state.bills.find(b => b.id === billId);
+            const bill = billMap.get(billId);
             if (bill) {
                 setBillToEdit(bill);
                 setIsCreateModalOpen(true);
             }
         }
-    }, [state.bills]);
+    }, [billMap]);
 
     // --- Filter Logic (Raw Bills) ---
     const baseBills = useMemo(() => {
@@ -293,10 +300,10 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     // --- Tree Data Generation ---
     const treeData = useMemo<BillTreeNode[]>(() => {
         const groupMap = new Map<string, BillTreeNode>();
+        const groupVendorMap = new Map<string, Map<string, BillTreeNode>>();
 
-        // If a specific project is selected, only show that project in tree
         if (projectFilter !== 'all') {
-            const project = state.projects.find(p => p.id === projectFilter);
+            const project = projectMap.get(projectFilter);
             if (project) {
                 groupMap.set(project.id, {
                     id: project.id,
@@ -307,10 +314,10 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     amount: 0,
                     balance: 0
                 });
+                groupVendorMap.set(project.id, new Map());
             }
         } else {
-            // Initialize with Projects
-            state.projects.forEach(p => {
+            projectMap.forEach((p, id) => {
                 groupMap.set(p.id, {
                     id: p.id,
                     name: p.name,
@@ -320,9 +327,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     amount: 0,
                     balance: 0
                 });
+                groupVendorMap.set(p.id, new Map());
             });
-
-            // Add "Unassigned" group for general bills (only when showing all projects)
             groupMap.set('unassigned', {
                 id: 'unassigned',
                 name: 'General / Unassigned',
@@ -332,6 +338,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 amount: 0,
                 balance: 0
             });
+            groupVendorMap.set('unassigned', new Map());
         }
 
         baseBills.forEach(bill => {
@@ -344,14 +351,12 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 group.amount += bill.amount;
                 group.balance += balance;
 
-                // Find or create Vendor node
                 const vendorId = bill.vendorId;
                 if (!vendorId) return;
 
-                let vendorNode = group.children.find(c => c.id === vendorId);
+                let vendorNode = groupVendorMap.get(groupId)?.get(vendorId);
                 if (!vendorNode) {
-                    // Load vendor from vendors table only
-                    const vendor = state.vendors?.find(v => v.id === vendorId);
+                    const vendor = vendorMap.get(vendorId);
                     vendorNode = {
                         id: vendorId,
                         name: vendor?.name || 'Unknown Vendor',
@@ -362,6 +367,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                         balance: 0
                     };
                     group.children.push(vendorNode);
+                    groupVendorMap.get(groupId)!.set(vendorId, vendorNode);
                 }
                 vendorNode.count++;
                 vendorNode.amount += bill.amount;
@@ -373,7 +379,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             .filter(g => g.count > 0) // Only show groups with bills
             .sort((a, b) => a.name.localeCompare(b.name));
 
-    }, [baseBills, state.projects, state.vendors, projectFilter]);
+    }, [baseBills, projectMap, vendorMap, projectFilter]);
 
     // --- Unified Table Data (Bills + Payments) ---
     const tableRows = useMemo<TableRow[]>(() => {
@@ -382,10 +388,10 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         // Add bill rows
         if (typeFilter === 'All' || typeFilter === 'Bills') {
             baseBills.forEach(bill => {
-                const project = state.projects.find(p => p.id === bill.projectId);
+                const project = bill.projectId ? projectMap.get(bill.projectId) : undefined;
                 const vendorId = bill.vendorId;
-                const vendor = state.vendors?.find(v => v.id === vendorId);
-                const contract = state.contracts.find(c => c.id === bill.contractId);
+                const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
+                const contract = bill.contractId ? contractMap.get(bill.contractId) : undefined;
                 const balance = bill.amount - bill.paidAmount;
 
                 rows.push({
@@ -411,13 +417,14 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 .filter(tx => tx.type === TransactionType.EXPENSE && (tx.billId ?? (tx as any).bill_id))
                 .forEach(payment => {
                     const pid = String(payment.billId ?? (payment as any).bill_id ?? '');
-                    const bill = state.bills.find(b => String(b.id) === pid);
-                    if (!bill || !baseBills.includes(bill)) return; // Only include payments for bills in our base list
+                    const bill = billMap.get(pid);
+                    if (!bill || !baseBills.includes(bill)) return;
 
-                    const project = state.projects.find(p => p.id === bill.projectId);
+                    const project = bill.projectId ? projectMap.get(bill.projectId) : undefined;
                     const vendorId = payment.vendorId || bill.vendorId;
-                    const vendor = state.vendors?.find(v => v.id === vendorId);
-                    const contract = state.contracts.find(c => c.id === payment.contractId || bill.contractId);
+                    const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
+                    const contractId = payment.contractId || bill.contractId;
+                    const contract = contractId ? contractMap.get(contractId) : undefined;
 
                     rows.push({
                         id: `payment-${payment.id}`,
@@ -437,7 +444,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         }
 
         return rows;
-    }, [baseBills, state.transactions, state.bills, state.projects, state.vendors, state.contracts, typeFilter]);
+    }, [baseBills, state.transactions, billMap, projectMap, vendorMap, contractMap, typeFilter]);
 
     // --- Filtered Table Rows ---
     const filteredRows = useMemo(() => {
@@ -453,7 +460,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             } else if (selectedNode.type === 'vendor') {
                 const parentGroupId = selectedNode.parentId || 'unassigned';
                 result = result.filter(row => {
-                    const bill = row.bill || (row.payment ? state.bills.find(b => String(b.id) === String(row.payment?.billId ?? (row.payment as any)?.bill_id ?? '')) : null);
+                    const bill = row.bill || (row.payment ? billMap.get(String(row.payment?.billId ?? (row.payment as any)?.bill_id ?? '')) : null);
                     if (!bill) return false;
                     const vendorId = bill.vendorId;
                     if (parentGroupId === 'unassigned') {
@@ -529,7 +536,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             return 0;
         });
 
-    }, [tableRows, selectedNode, startDate, endDate, searchQuery, sortConfig, state.bills]);
+    }, [tableRows, selectedNode, startDate, endDate, searchQuery, sortConfig, billMap]);
 
     // --- Sidebar Resize: container-relative width to prevent jumping ---
     const handleMouseMoveSidebar = useCallback((e: MouseEvent) => {
@@ -550,9 +557,13 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         document.body.style.userSelect = 'none';
         window.addEventListener('mousemove', handleMouseMoveSidebar);
         window.addEventListener('mouseup', handleUp);
+        window.addEventListener('blur', handleUp);
+        document.addEventListener('visibilitychange', handleUp);
         return () => {
             window.removeEventListener('mousemove', handleMouseMoveSidebar);
             window.removeEventListener('mouseup', handleUp);
+            window.removeEventListener('blur', handleUp);
+            document.removeEventListener('visibilitychange', handleUp);
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
         };
@@ -639,7 +650,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
         e.stopPropagation();
         const vendorId = bill.vendorId;
-        const vendor = state.vendors?.find(v => v.id === vendorId);
+        const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
         if (!vendor?.contactNo) {
             showAlert("This vendor does not have a phone number saved.");
             return;
@@ -653,9 +664,11 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 bill.billNumber,
                 bill.paidAmount
             );
-
-            // Open WhatsApp side panel with pre-filled message
-            openChat(vendor, vendor.contactNo, message);
+            sendOrOpenWhatsApp(
+                { contact: vendor, message, phoneNumber: vendor.contactNo },
+                () => state.whatsAppMode,
+                openChat
+            );
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
@@ -756,9 +769,9 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
                     {dateRange === 'custom' && (
                         <div className="flex items-center gap-2 animate-fade-in">
-                            <DatePicker label="" value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} className="!py-1 !px-2 !text-xs !w-28" />
+                            <DatePicker label="" value={startDate} onChange={(d) => handleCustomDateChange(toLocalDateString(d), endDate)} className="!py-1 !px-2 !text-xs !w-28" />
                             <span className="text-slate-400 text-xs font-bold">-</span>
-                            <DatePicker label="" value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} className="!py-1 !px-2 !text-xs !w-28" />
+                            <DatePicker label="" value={endDate} onChange={(d) => handleCustomDateChange(startDate, toLocalDateString(d))} className="!py-1 !px-2 !text-xs !w-28" />
                         </div>
                     )}
                 </div>
@@ -860,7 +873,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {filteredRows.length > 0 ? filteredRows.map((row, index) => {
+                                {filteredRows.length > 0 ? filteredRows.slice(0, displayLimit).map((row, index) => {
                                     const isBill = row.type === 'bill';
                                     const isPayment = row.type === 'payment';
                                     const bill = row.bill;
@@ -973,7 +986,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                             </tr>
                                         );
                                     } else if (isPayment && payment && bill) {
-                                        const account = state.accounts.find(a => a.id === payment.accountId);
+                                        const account = payment.accountId ? accountMap.get(payment.accountId) : undefined;
                                         return (
                                             <tr
                                                 key={row.id}
@@ -1016,6 +1029,18 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                 <p className="text-sm font-medium">No records matching your filters</p>
                                                 <p className="text-xs mt-1">Try adjusting the period, project, or search query</p>
                                             </div>
+                                        </td>
+                                    </tr>
+                                )}
+                                {filteredRows.length > displayLimit && (
+                                    <tr>
+                                        <td colSpan={10} className="text-center py-3">
+                                            <button
+                                                onClick={() => setDisplayLimit(prev => prev + 200)}
+                                                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                                            >
+                                                Showing {displayLimit} of {filteredRows.length} — Load more
+                                            </button>
                                         </td>
                                     </tr>
                                 )}
@@ -1067,7 +1092,9 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                         id: '',
                         type: TransactionType.EXPENSE,
                         amount: paymentBill ? (paymentBill.amount - paymentBill.paidAmount) : 0,
-                        date: paymentBill?.issueDate ? new Date(paymentBill.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                        date: paymentBill?.issueDate
+                            ? parseStoredDateToYyyyMmDdInput(paymentBill.issueDate)
+                            : toLocalDateString(new Date()),
                         accountId: '',
                         billId: paymentBill?.id,
                         contactId: paymentBill?.contactId,

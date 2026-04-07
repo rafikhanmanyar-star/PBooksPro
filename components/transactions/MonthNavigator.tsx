@@ -19,12 +19,12 @@ const MonthNavigator: React.FC<MonthNavigatorProps> = ({ currentDate, onDateChan
   });
 
   return (
-    <div className="flex items-center justify-between bg-white p-0.5 rounded-lg shadow-sm border border-slate-200/80 w-full sm:w-auto min-w-[180px]">
-      <button onClick={() => changeMonth(-1)} className="p-1 rounded-md hover:bg-slate-100 text-slate-600 transition-colors flex-shrink-0">
+    <div className="flex items-center justify-between bg-app-surface-2 p-0.5 rounded-lg border border-app-border w-full sm:w-auto min-w-[180px]">
+      <button type="button" onClick={() => changeMonth(-1)} className="p-1 rounded-md hover:bg-app-toolbar text-app-muted hover:text-app-text transition-colors duration-ds flex-shrink-0">
         <div className="w-4 h-4">{ICONS.chevronLeft}</div>
       </button>
-      <h3 className="text-xs font-semibold text-slate-800 text-center px-2 truncate">{formattedDate}</h3>
-      <button onClick={() => changeMonth(1)} className="p-1 rounded-md hover:bg-slate-100 text-slate-600 transition-colors flex-shrink-0">
+      <h3 className="text-xs font-semibold text-app-text text-center px-2 truncate">{formattedDate}</h3>
+      <button type="button" onClick={() => changeMonth(1)} className="p-1 rounded-md hover:bg-app-toolbar text-app-muted hover:text-app-text transition-colors duration-ds flex-shrink-0">
         <div className="w-4 h-4">{ICONS.chevronRight}</div>
       </button>
     </div>

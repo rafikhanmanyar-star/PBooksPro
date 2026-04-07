@@ -7,6 +7,8 @@ import { X, TrendingUp, MapPin, Skull, Save } from 'lucide-react';
 import { PayrollEmployee, EmploymentStatus, Department } from '../types';
 import { storageService } from '../services/storageService';
 import { useAuth } from '../../../context/AuthContext';
+import { toLocalDateString } from '../../../utils/dateUtils';
+import DatePicker from '../../ui/DatePicker';
 
 interface ActionModalProps {
   isOpen: boolean;
@@ -31,7 +33,7 @@ export const ActionModal: React.FC<ActionModalProps> = ({ isOpen, onClose, emplo
     grade: employee.grade,
     // Convert to number if string (handles database DECIMAL types)
     basicSalary: typeof employee.salary.basic === 'string' ? parseFloat(employee.salary.basic) : employee.salary.basic,
-    effectiveDate: new Date().toISOString().split('T')[0],
+    effectiveDate: toLocalDateString(new Date()),
     reason: '',
   });
 
@@ -133,10 +135,11 @@ export const ActionModal: React.FC<ActionModalProps> = ({ isOpen, onClose, emplo
           {type === 'transfer' && (
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Target Department</label>
-              <select 
-                value={formData.department} 
-                onChange={e => setFormData({...formData, department: e.target.value})} 
+              <select
+                value={formData.department}
+                onChange={e => setFormData({...formData, department: e.target.value})}
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 ring-blue-500/20 bg-white"
+                aria-label="Target Department"
               >
                 {availableDepartments.length > 0 ? (
                   availableDepartments.map(d => (
@@ -161,13 +164,12 @@ export const ActionModal: React.FC<ActionModalProps> = ({ isOpen, onClose, emplo
           {type === 'terminate' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Effective Date</label>
-                <input 
-                  type="date" 
-                  required 
-                  value={formData.effectiveDate} 
-                  onChange={e => setFormData({...formData, effectiveDate: e.target.value})} 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 ring-red-500/20" 
+                <DatePicker
+                  label="Effective Date"
+                  value={formData.effectiveDate}
+                  onChange={(d) => setFormData({ ...formData, effectiveDate: toLocalDateString(d) })}
+                  required
+                  className="!rounded-xl !border-slate-200"
                 />
               </div>
               <div>

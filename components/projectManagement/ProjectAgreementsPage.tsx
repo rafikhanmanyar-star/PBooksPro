@@ -7,7 +7,7 @@ import { ICONS, CURRENCY } from '../../constants';
 import Modal from '../ui/Modal';
 import ProjectAgreementForm from './ProjectAgreementForm';
 import CancelAgreementModal from './CancelAgreementModal';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { TreeNode } from '../ui/TreeView';
 import DatePicker from '../ui/DatePicker';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -45,31 +45,32 @@ const AgreementTreeSidebar: React.FC<{
         const initials = node.label.slice(0, 2).toUpperCase();
 
         return (
-            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
+            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-app-border pl-3' : ''}>
                 <div
-                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all duration-ds cursor-pointer ${
                         isSelected
-                            ? 'bg-orange-500/10 text-orange-700'
-                            : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                            ? 'bg-nav-active text-primary border border-primary/20'
+                            : 'hover:bg-app-toolbar/80 text-app-text hover:text-app-text'
                     }`}
                     onClick={() => onSelect(node.id, nodeType, level > 0 ? parentId : undefined)}
                 >
                     {hasChildren ? (
                         <button
+                            type="button"
                             onClick={(e) => { e.stopPropagation(); toggleExpanded(node.id); }}
-                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-app-muted hover:text-app-text transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
                         >
                             <div className="w-3.5 h-3.5">{ICONS.chevronRight}</div>
                         </button>
                     ) : (
                         <span className="w-5 flex-shrink-0" />
                     )}
-                    <span className="flex-shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold flex items-center justify-center">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-md bg-app-toolbar text-app-text text-[10px] font-bold flex items-center justify-center border border-app-border">
                         {initials}
                     </span>
                     <span className="flex-1 text-xs font-medium truncate">{node.label}</span>
                     {node.value !== undefined && typeof node.value === 'number' && node.value > 0 && (
-                        <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-orange-600' : 'text-slate-500'}`}>
+                        <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-primary' : 'text-app-muted'}`}>
                             {node.value}
                         </span>
                     )}
@@ -85,7 +86,7 @@ const AgreementTreeSidebar: React.FC<{
 
     if (!nodes || nodes.length === 0) {
         return (
-            <div className="text-xs text-slate-400 italic p-2">No directories match your search</div>
+            <div className="text-xs text-app-muted italic p-2">No directories match your search</div>
         );
     }
 
@@ -132,13 +133,13 @@ const ProjectAgreementsPage: React.FC = () => {
         } else if (option === 'thisMonth') {
             const first = new Date(now.getFullYear(), now.getMonth(), 1);
             const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            setStartDate(first.toISOString().split('T')[0]);
-            setEndDate(last.toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(first));
+            setEndDate(toLocalDateString(last));
         } else if (option === 'lastMonth') {
             const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
             const last = new Date(now.getFullYear(), now.getMonth(), 0);
-            setStartDate(first.toISOString().split('T')[0]);
-            setEndDate(last.toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(first));
+            setEndDate(toLocalDateString(last));
         }
     };
 
@@ -169,9 +170,13 @@ const ProjectAgreementsPage: React.FC = () => {
         document.body.style.userSelect = 'none';
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleUp);
+        window.addEventListener('blur', handleUp);
+        document.addEventListener('visibilitychange', handleUp);
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleUp);
+            window.removeEventListener('blur', handleUp);
+            document.removeEventListener('visibilitychange', handleUp);
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
         };
@@ -402,6 +407,16 @@ const ProjectAgreementsPage: React.FC = () => {
 
     }, [dateFilteredAgreements, state.projects, state.contacts, state.units, state.invoices, searchQuery, selectedTreeId, selectedTreeType, selectedTreeParentId, sortConfig]);
 
+    // Summary for cards: same scope as table (date + tree + search). When tree item selected, shows that project/owner/unit summary.
+    const summaryStats = useMemo(() => {
+        const totalValue = filteredAgreements.reduce((sum, a) => sum + (a.sellingPrice || 0), 0);
+        const totalPaid = filteredAgreements.reduce((sum, a) => sum + (a.paid || 0), 0);
+        const totalOutstanding = filteredAgreements.reduce((sum, a) => sum + (a.balance || 0), 0);
+        const totalAgreements = filteredAgreements.length;
+        const totalUnits = filteredAgreements.reduce((sum, a) => sum + (Array.isArray(a.unitIds) ? a.unitIds.length : 0), 0);
+        return { totalValue, totalPaid, totalOutstanding, totalAgreements, totalUnits };
+    }, [filteredAgreements]);
+
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
             key,
@@ -410,7 +425,7 @@ const ProjectAgreementsPage: React.FC = () => {
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className={`ml-1.5 inline-flex flex-shrink-0 transition-opacity duration-200 ${sortConfig.key === column ? 'opacity-100 text-indigo-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`}>
+        <span className={`ml-1.5 inline-flex flex-shrink-0 transition-opacity duration-200 ${sortConfig.key === column ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100 text-app-muted'}`}>
             <div className="w-3 h-3 transform scale-90">
                 {sortConfig.key === column
                     ? (sortConfig.direction === 'asc' ? ICONS.arrowUp : ICONS.arrowDown)
@@ -425,19 +440,44 @@ const ProjectAgreementsPage: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">
-            {/* Search and filter bar (with Import & Create New) */}
-            <div className="flex-shrink-0">
-                <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center">
+        <div className="flex flex-col h-full bg-background p-2 sm:p-3 gap-2 sm:gap-3">
+            {/* Summary cards: default = all; when tree item selected = project/owner/unit summary */}
+            <div className="flex-shrink-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                <div className="bg-app-card rounded-lg border border-app-border shadow-ds-card p-2 transition-shadow duration-ds">
+                    <p className="text-[10px] font-semibold text-app-muted uppercase tracking-wider">Total Agreement Value</p>
+                    <p className="text-lg font-bold text-app-text tabular-nums mt-0.5">{CURRENCY} {summaryStats.totalValue.toLocaleString()}</p>
+                </div>
+                <div className="bg-app-card rounded-lg border border-app-border shadow-ds-card p-2 transition-shadow duration-ds">
+                    <p className="text-[10px] font-semibold text-app-muted uppercase tracking-wider">Total Payment Received</p>
+                    <p className="text-lg font-bold text-ds-success tabular-nums mt-0.5">{CURRENCY} {summaryStats.totalPaid.toLocaleString()}</p>
+                </div>
+                <div className="bg-app-card rounded-lg border border-app-border shadow-ds-card p-2 transition-shadow duration-ds">
+                    <p className="text-[10px] font-semibold text-app-muted uppercase tracking-wider">Total Outstanding</p>
+                    <p className="text-lg font-bold text-primary tabular-nums mt-0.5">{CURRENCY} {summaryStats.totalOutstanding.toLocaleString()}</p>
+                </div>
+                <div className="bg-app-card rounded-lg border border-app-border shadow-ds-card p-2 transition-shadow duration-ds">
+                    <p className="text-[10px] font-semibold text-app-muted uppercase tracking-wider">Total Agreements</p>
+                    <p className="text-lg font-bold text-app-text tabular-nums mt-0.5">{summaryStats.totalAgreements}</p>
+                </div>
+                <div className="bg-app-card rounded-lg border border-app-border shadow-ds-card p-2 col-span-2 sm:col-span-1 transition-shadow duration-ds">
+                    <p className="text-[10px] font-semibold text-app-muted uppercase tracking-wider">Total Units</p>
+                    <p className="text-lg font-bold text-app-text tabular-nums mt-0.5">{summaryStats.totalUnits}</p>
+                </div>
+            </div>
+
+            {/* Filter row */}
+            <div className="flex-shrink-0 mt-2">
+                <div className="bg-app-card p-1.5 rounded-lg border border-app-border shadow-ds-card flex flex-col md:flex-row gap-2 items-center transition-shadow duration-ds">
                     {/* Date Controls */}
-                    <div className="flex bg-slate-100/80 p-1 rounded-lg flex-shrink-0 self-stretch md:self-auto overflow-x-auto">
+                    <div className="ds-segment-track flex p-1 rounded-lg flex-shrink-0 self-stretch md:self-auto overflow-x-auto">
                         {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                             <button
+                                type="button"
                                 key={opt}
                                 onClick={() => handleRangeChange(opt)}
-                                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap capitalize ${dateRange === opt
-                                        ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                className={`ds-segment-item px-4 py-1.5 text-xs font-semibold rounded-md transition-all duration-ds whitespace-nowrap capitalize ${dateRange === opt
+                                        ? 'ds-segment-item-active shadow-sm'
+                                        : 'text-app-muted hover:text-app-text hover:bg-app-surface-2'
                                     }`}
                             >
                                 {opt === 'all' ? 'All Time' : opt.replace(/([A-Z])/g, ' $1')}
@@ -446,18 +486,18 @@ const ProjectAgreementsPage: React.FC = () => {
                     </div>
 
                     {dateRange === 'custom' && (
-                        <div className="flex items-center gap-2 animate-fade-in px-2 border-l border-slate-100">
-                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} className="!py-1.5 !text-xs !w-32" />
-                            <span className="text-slate-300">to</span>
-                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} className="!py-1.5 !text-xs !w-32" />
+                        <div className="flex items-center gap-2 animate-fade-in px-2 border-l border-app-border">
+                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(toLocalDateString(d), endDate)} className="!py-1.5 !text-xs !w-32" />
+                            <span className="text-app-muted">to</span>
+                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, toLocalDateString(d))} className="!py-1.5 !text-xs !w-32" />
                         </div>
                     )}
 
-                    <div className="hidden md:block w-px h-6 bg-slate-200 mx-1"></div>
+                    <div className="hidden md:block w-px h-6 bg-app-border mx-1"></div>
 
                     {/* Search */}
                     <div className="relative flex-grow w-full md:w-auto min-w-0">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <div className="w-4 h-4">{ICONS.search}</div>
                         </div>
                         <input
@@ -465,20 +505,20 @@ const ProjectAgreementsPage: React.FC = () => {
                             placeholder="Search agreements, projects, or owners..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="block w-full pl-9 pr-8 py-1.5 text-sm border-0 bg-transparent focus:ring-0 placeholder:text-slate-400 text-slate-700"
+                            className="block w-full pl-9 pr-8 py-1.5 text-sm border-0 bg-transparent focus:ring-0 placeholder:text-app-muted text-app-text"
                         />
                         {searchQuery && (
                             <button
                                 type="button"
                                 onClick={() => setSearchQuery('')}
-                                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-rose-500 transition-colors"
+                                className="absolute inset-y-0 right-0 flex items-center pr-3 text-app-muted hover:text-ds-danger transition-colors duration-ds"
                             >
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
                         )}
                     </div>
 
-                    <div className="hidden md:block w-px h-6 bg-slate-200 mx-1"></div>
+                    <div className="hidden md:block w-px h-6 bg-app-border mx-1"></div>
 
                     {/* Import & Create New */}
                     <div className="flex items-center gap-2 flex-shrink-0 w-full md:w-auto justify-end">
@@ -488,14 +528,14 @@ const ProjectAgreementsPage: React.FC = () => {
                                 dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.PROJECT_AGREEMENTS });
                                 dispatch({ type: 'SET_PAGE', payload: 'import' });
                             }}
-                            className="flex-1 md:flex-none justify-center !px-4 !py-2 !rounded-xl border-slate-200 bg-white hover:border-indigo-300 hover:text-indigo-600 shadow-sm text-xs sm:text-sm"
+                            className="flex-1 md:flex-none justify-center !px-4 !py-2 !rounded-xl border-app-border bg-app-toolbar hover:bg-app-surface-2 hover:border-primary/40 hover:text-primary shadow-sm text-xs sm:text-sm transition-all duration-ds"
                         >
                             <div className="w-4 h-4 mr-2 opacity-70">{ICONS.download}</div>
                             Import
                         </Button>
                         <Button
                             onClick={() => { setAgreementToEdit(null); setIsCreateModalOpen(true); }}
-                            className="flex-1 md:flex-none justify-center !px-4 !py-2 !rounded-xl shadow-md shadow-indigo-500/20 text-xs sm:text-sm"
+                            className="flex-1 md:flex-none justify-center !px-4 !py-2 !rounded-xl !bg-primary hover:!bg-ds-primary-hover !text-ds-on-primary shadow-ds-card text-xs sm:text-sm transition-all duration-ds"
                         >
                             <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
                             Create New
@@ -507,40 +547,38 @@ const ProjectAgreementsPage: React.FC = () => {
             {/* Main Split View: flex container with overflow-hidden */}
             <div ref={containerRef} className="flex-grow flex flex-col md:flex-row overflow-hidden min-h-0">
 
-                {/* Left: Resizable Tree Sidebar */}
+                {/* Left: Resizable Tree Sidebar - no labels, compact for more table space */}
                 <aside
-                    className="hidden md:flex flex-col flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    className="hidden md:flex flex-col flex-shrink-0 bg-app-card rounded-lg border border-app-border shadow-ds-card overflow-hidden transition-shadow duration-ds"
                     style={{ width: `${sidebarWidth}px` }}
                 >
-                    <div className="flex-shrink-0 p-3 border-b border-slate-100 bg-slate-50/50">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Directories</span>
-                    </div>
-                    <div className="flex-shrink-0 px-3 py-2 border-b border-slate-100 bg-slate-50/30">
-                        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Group by</span>
-                        <div className="flex bg-slate-100 p-1 rounded-lg mt-1.5">
+                    <div className="flex-shrink-0 px-2 py-1.5 border-b border-app-border">
+                        <div className="ds-segment-track flex gap-0.5 p-0.5 rounded-md">
                             <button
+                                type="button"
                                 onClick={() => setTreeGroupBy('owner')}
-                                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${treeGroupBy === 'owner'
-                                    ? 'bg-white text-orange-600 shadow-sm font-bold ring-1 ring-black/5'
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                className={`ds-segment-item flex-1 px-2 py-1 text-xs font-medium rounded transition-all duration-ds capitalize ${treeGroupBy === 'owner'
+                                    ? 'ds-segment-item-active shadow-sm font-semibold'
+                                    : 'text-app-muted hover:text-app-text hover:bg-app-surface-2'
                                 }`}
                             >
                                 Owner
                             </button>
                             <button
+                                type="button"
                                 onClick={() => setTreeGroupBy('unit')}
-                                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${treeGroupBy === 'unit'
-                                    ? 'bg-white text-orange-600 shadow-sm font-bold ring-1 ring-black/5'
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                className={`ds-segment-item flex-1 px-2 py-1 text-xs font-medium rounded transition-all duration-ds capitalize ${treeGroupBy === 'unit'
+                                    ? 'ds-segment-item-active shadow-sm font-semibold'
+                                    : 'text-app-muted hover:text-app-text hover:bg-app-surface-2'
                                 }`}
                             >
                                 Unit
                             </button>
                         </div>
                     </div>
-                    <div className="flex-shrink-0 px-2 pt-2 pb-1 border-b border-slate-100">
+                    <div className="flex-shrink-0 px-2 py-1 border-b border-app-border">
                         <div className="relative">
-                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-slate-400">
+                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-app-muted">
                                 <div className="w-3.5 h-3.5">{ICONS.search}</div>
                             </div>
                             <input
@@ -548,20 +586,20 @@ const ProjectAgreementsPage: React.FC = () => {
                                 placeholder="Search projects, owners, units..."
                                 value={treeSearchQuery}
                                 onChange={(e) => setTreeSearchQuery(e.target.value)}
-                                className="w-full pl-8 pr-6 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50/80 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 placeholder:text-slate-400 transition-all"
+                                className="ds-input-field w-full pl-7 pr-6 py-1 text-xs rounded-md placeholder:text-app-muted"
                             />
                             {treeSearchQuery && (
                                 <button
                                     type="button"
                                     onClick={() => setTreeSearchQuery('')}
-                                    className="absolute inset-y-0 right-2 flex items-center text-slate-400 hover:text-rose-500"
+                                    className="absolute inset-y-0 right-2 flex items-center text-app-muted hover:text-ds-danger transition-colors duration-ds"
                                 >
                                     <div className="w-3.5 h-3.5">{ICONS.x}</div>
                                 </button>
                             )}
                         </div>
                     </div>
-                    <div className="flex-grow overflow-y-auto overflow-x-hidden p-2 min-h-0">
+                    <div className="flex-grow overflow-y-auto overflow-x-hidden p-1.5 min-h-0">
                         <AgreementTreeSidebar
                             nodes={filteredTreeData}
                             selectedId={selectedTreeId}
@@ -582,78 +620,78 @@ const ProjectAgreementsPage: React.FC = () => {
                     </div>
                 </aside>
 
-                {/* Resize Handle: larger hit area, col-resize, hover highlight */}
+                {/* Resize Handle */}
                 <div
-                    className="hidden md:flex items-center justify-center flex-shrink-0 w-2 cursor-col-resize select-none touch-none group hover:bg-blue-500/10 transition-colors"
+                    className="hidden md:flex items-center justify-center flex-shrink-0 w-1 cursor-col-resize select-none touch-none group hover:bg-primary/10 transition-colors duration-ds"
                     onMouseDown={startResizing}
                     title="Drag to resize sidebar"
                 >
-                    <div className="w-0.5 h-12 rounded-full bg-slate-200 group-hover:bg-blue-500 group-hover:w-1 transition-all" />
+                    <div className="w-px h-8 rounded-full bg-app-border group-hover:bg-primary transition-all duration-ds" />
                 </div>
 
-                {/* Right Data Grid: flex-1 min-w-0 to avoid horizontal scroll */}
-                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
+                {/* Right Data Grid */}
+                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-app-card rounded-lg border border-app-border shadow-ds-card transition-shadow duration-ds">
                     <div className="flex-grow overflow-auto">
-                        <table className="min-w-full divide-y divide-slate-100">
-                            <thead className="bg-slate-50 sticky top-0 z-10">
+                        <table className="min-w-full divide-y divide-app-border">
+                            <thead className="bg-app-table-header sticky top-0 z-10">
                                 <tr>
-                                    <th onClick={() => handleSort('agreementNumber')} className="group px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 w-24">ID <SortIcon column="agreementNumber" /></th>
-                                    <th onClick={() => handleSort('owner')} className="group px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Owner <SortIcon column="owner" /></th>
-                                    <th onClick={() => handleSort('project')} className="group px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Project <SortIcon column="project" /></th>
-                                    <th onClick={() => handleSort('units')} className="group px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Units <SortIcon column="units" /></th>
-                                    <th onClick={() => handleSort('price')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Price <SortIcon column="price" /></th>
-                                    <th onClick={() => handleSort('paid')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Paid <SortIcon column="paid" /></th>
-                                    <th onClick={() => handleSort('balance')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Balance <SortIcon column="balance" /></th>
-                                    <th onClick={() => handleSort('status')} className="group px-4 py-2.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Status <SortIcon column="status" /></th>
-                                    <th onClick={() => handleSort('date')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Date <SortIcon column="date" /></th>
+                                    <th onClick={() => handleSort('agreementNumber')} className="group px-3 py-1.5 text-left text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border w-24">ID <SortIcon column="agreementNumber" /></th>
+                                    <th onClick={() => handleSort('owner')} className="group px-3 py-1.5 text-left text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border">Owner <SortIcon column="owner" /></th>
+                                    <th onClick={() => handleSort('project')} className="group px-3 py-1.5 text-left text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border">Project <SortIcon column="project" /></th>
+                                    <th onClick={() => handleSort('units')} className="group px-3 py-1.5 text-left text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border">Units <SortIcon column="units" /></th>
+                                    <th onClick={() => handleSort('price')} className="group px-3 py-1.5 text-right text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border">Price <SortIcon column="price" /></th>
+                                    <th onClick={() => handleSort('paid')} className="group px-3 py-1.5 text-right text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border">Paid <SortIcon column="paid" /></th>
+                                    <th onClick={() => handleSort('balance')} className="group px-3 py-1.5 text-right text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border">Balance <SortIcon column="balance" /></th>
+                                    <th onClick={() => handleSort('status')} className="group px-3 py-1.5 text-center text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border">Status <SortIcon column="status" /></th>
+                                    <th onClick={() => handleSort('date')} className="group px-3 py-1.5 text-right text-xs font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-toolbar select-none border-b border-app-border">Date <SortIcon column="date" /></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-app-border">
                                 {filteredAgreements.length > 0 ? filteredAgreements.map((agreement, index) => (
                                     <tr
                                         key={agreement.id}
                                         onClick={() => handleEdit(agreement)}
-                                        className={`cursor-pointer transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
+                                        className={`cursor-pointer transition-colors duration-ds group ${index % 2 === 0 ? 'bg-app-card' : 'bg-app-toolbar/40'} hover:bg-app-table-hover`}
                                     >
-                                        <td className="px-4 py-2 whitespace-nowrap">
-                                            <span className="font-mono text-[10px] sm:text-xs font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200 group-hover:border-indigo-200 group-hover:text-indigo-600 transition-colors">
+                                        <td className="px-3 py-1.5 whitespace-nowrap">
+                                            <span className="font-mono text-[10px] sm:text-xs font-medium text-app-muted bg-app-toolbar px-1.5 py-0.5 rounded border border-app-border group-hover:border-primary/40 group-hover:text-primary transition-colors duration-ds">
                                                 {agreement.agreementNumber}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-2 text-xs font-medium text-slate-800 truncate max-w-[140px]" title={agreement.ownerName}>
+                                        <td className="px-3 py-1.5 text-xs font-medium text-app-text truncate max-w-[140px]" title={agreement.ownerName}>
                                             <div className="flex items-center gap-2">
-                                                <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-bold">
+                                                <div className="w-5 h-5 rounded-full bg-nav-active text-primary flex items-center justify-center text-[10px] font-bold border border-app-border">
                                                     {agreement.ownerName.charAt(0)}
                                                 </div>
                                                 {agreement.ownerName}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-2 text-xs text-slate-600 truncate max-w-[140px]" title={agreement.projectName}>{agreement.projectName}</td>
-                                        <td className="px-4 py-2 text-xs text-slate-500 truncate max-w-[100px]" title={agreement.unitNames}>{agreement.unitNames}</td>
-                                        <td className="px-4 py-2 text-xs text-right font-medium text-slate-700 tabular-nums">{CURRENCY} {(agreement.sellingPrice || 0).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-xs text-right text-emerald-600 tabular-nums font-medium">{CURRENCY} {(agreement.paid || 0).toLocaleString()}</td>
-                                        <td className={`px-4 py-2 text-xs text-right font-bold tabular-nums ${(agreement.balance || 0) > 0 ? 'text-slate-700' : 'text-slate-400'}`}>{CURRENCY} {(agreement.balance || 0).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-center whitespace-nowrap">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${agreement.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                                    agreement.status === ProjectAgreementStatus.COMPLETED ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
-                                                        agreement.status === 'Cancelled' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                                                            'bg-slate-100 text-slate-600 border border-slate-200'
+                                        <td className="px-3 py-1.5 text-xs text-app-muted truncate max-w-[140px]" title={agreement.projectName}>{agreement.projectName}</td>
+                                        <td className="px-3 py-1.5 text-xs text-app-muted truncate max-w-[100px]" title={agreement.unitNames}>{agreement.unitNames}</td>
+                                        <td className="px-3 py-1.5 text-xs text-right font-medium text-app-text tabular-nums">{CURRENCY} {(agreement.sellingPrice || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-1.5 text-xs text-right text-ds-success tabular-nums font-medium">{CURRENCY} {(agreement.paid || 0).toLocaleString()}</td>
+                                        <td className={`px-3 py-1.5 text-xs text-right font-bold tabular-nums ${(agreement.balance || 0) > 0 ? 'text-app-text' : 'text-app-muted'}`}>{CURRENCY} {(agreement.balance || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-1.5 text-center whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${agreement.status === 'Active' ? 'border border-ds-success/30 bg-[color:var(--badge-paid-bg)] text-ds-success' :
+                                                    agreement.status === ProjectAgreementStatus.COMPLETED ? 'ds-pill-type ds-pill-type-installment !rounded-full' :
+                                                        agreement.status === 'Cancelled' ? 'border border-ds-danger/30 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)]' :
+                                                            'bg-app-toolbar text-app-muted border border-app-border'
                                                 }`}>
-                                                {agreement.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>}
+                                                {agreement.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-ds-success mr-1.5 animate-pulse"></span>}
                                                 {agreement.status}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-2 text-xs text-right text-slate-400 whitespace-nowrap">{formatDate(agreement.issueDate)}</td>
+                                        <td className="px-4 py-2 text-xs text-right text-app-muted whitespace-nowrap">{formatDate(agreement.issueDate)}</td>
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan={9} className="px-4 py-16 text-center">
-                                            <div className="flex flex-col items-center justify-center opacity-40">
-                                                <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
-                                                    <div className="transform scale-150 text-slate-400">{ICONS.fileText}</div>
+                                        <td colSpan={9} className="px-3 py-12 text-center">
+                                            <div className="flex flex-col items-center justify-center opacity-90">
+                                                <div className="w-16 h-16 bg-app-toolbar rounded-2xl border border-app-border flex items-center justify-center mb-4">
+                                                    <div className="transform scale-150 text-app-muted">{ICONS.fileText}</div>
                                                 </div>
-                                                <p className="text-sm font-semibold text-slate-600">No agreements found</p>
-                                                <p className="text-xs text-slate-500 mt-1">Try adjusting your search or date filters</p>
+                                                <p className="text-sm font-semibold text-app-text">No agreements found</p>
+                                                <p className="text-xs text-app-muted mt-1">Try adjusting your search or date filters</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -661,13 +699,13 @@ const ProjectAgreementsPage: React.FC = () => {
                             </tbody>
                         </table>
                     </div>
-                    <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/50 backdrop-blur-sm flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-medium text-slate-600">
+                    <div className="px-3 py-2 border-t border-app-border bg-app-toolbar flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-medium text-app-muted">
                         <div className="flex items-center gap-2">
-                            <span className="bg-white border border-slate-200 px-2 py-0.5 rounded-md shadow-sm">{filteredAgreements.length} Agreements</span>
+                            <span className="bg-app-card border border-app-border px-2 py-0.5 rounded-md shadow-ds-card text-app-text">{filteredAgreements.length} Agreements</span>
                         </div>
                         <div className="flex items-center gap-4">
-                            <span>Total Value: <span className="text-slate-900 font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + (a.sellingPrice || 0), 0).toLocaleString()}</span></span>
-                            <span>Outstanding: <span className="text-indigo-600 font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + ((a.sellingPrice || 0) - (a.paid || 0)), 0).toLocaleString()}</span></span>
+                            <span>Total Value: <span className="text-app-text font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + (a.sellingPrice || 0), 0).toLocaleString()}</span></span>
+                            <span>Outstanding: <span className="text-primary font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + ((a.sellingPrice || 0) - (a.paid || 0)), 0).toLocaleString()}</span></span>
                         </div>
                     </div>
                 </div>

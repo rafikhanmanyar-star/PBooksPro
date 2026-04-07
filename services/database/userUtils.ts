@@ -2,17 +2,17 @@
  * User Utilities
  * 
  * Provides utilities for getting the current user ID from authentication context.
- * This is used to track which user created/modified records in the local database.
+ * In local-only mode, always returns 'local-user'.
  */
 
+import { isLocalOnlyMode } from '../../config/apiUrl';
+
 /**
- * Get the current user ID from localStorage or AppState
- * Returns null if no user is logged in
- * 
- * Reads directly from localStorage to avoid circular dependency issues during module initialization.
- * This matches how apiClient.getTenantId() works, but avoids importing apiClient.
+ * Get the current user ID from localStorage
+ * In local-only mode, returns 'local-user' always.
  */
 export function getCurrentUserId(): string | null {
+    if (isLocalOnlyMode()) return 'local-user';
     try {
         if (typeof window !== 'undefined') {
             // Try to get from localStorage first (set during login)

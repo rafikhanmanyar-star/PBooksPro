@@ -7,8 +7,10 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getApiBaseUrl } from '../config/apiUrl';
+import { isLocalOnlyMode } from '../config/apiUrl';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
+import { useCompanyOptional } from './CompanyContext';
 
 export interface User {
   id: string;
@@ -23,6 +25,20 @@ export interface Tenant {
   name: string;
   companyName: string;
 }
+
+const LOCAL_USER: User = {
+  id: 'local-user',
+  username: 'admin',
+  name: 'Administrator',
+  role: 'Admin',
+  tenantId: 'local',
+};
+
+const LOCAL_TENANT: Tenant = {
+  id: 'local',
+  name: 'Local',
+  companyName: 'Local',
+};
 
 export interface AuthState {
   isAuthenticated: boolean;
@@ -51,6 +67,8 @@ export interface TenantRegistrationData {
   adminPassword: string;
   adminName: string;
   isSupplier?: boolean;
+  /** Optional; server validates uniqueness and format. */
+  requestedTenantId?: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -64,6 +82,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     error: null,
   });
 
+  // Multi-company integration: derive user from CompanyContext in local-only mode
+  const companyCtx = useCompanyOptional();
+
   // Flag to prevent heartbeat from re-creating sessions during logout
   const loggingOutRef = React.useRef(false);
 
@@ -72,6 +93,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Shows login page immediately so the user can type credentials while save/API/cleanup run in the background.
    */
   const logout = useCallback(async () => {
+    // Local-only: save all data to SQLite first, then clear state (prevents loss of agreements etc. on logout)
+    if (isLocalOnlyMode()) {
+      if (typeof window !== 'undefined') {
+        try {
+          logger.logCategory('auth', '💾 Saving data to SQLite before logout (local-only)...');
+          await new Promise<void>((resolve) => {
+            const handleSaveComplete = () => {
+              window.removeEventListener('state-saved-for-logout', handleSaveComplete);
+              resolve();
+            };
+            window.addEventListener('state-saved-for-logout', handleSaveComplete);
+            window.dispatchEvent(new CustomEvent('save-state-before-logout'));
+            setTimeout(() => {
+              window.removeEventListener('state-saved-for-logout', handleSaveComplete);
+              logger.warnCategory('auth', '⚠️ State save timeout, proceeding with logout');
+              resolve();
+            }, 30000);
+          });
+          logger.logCategory('auth', '✅ Data saved, clearing session');
+        } catch (e) {
+          logger.errorCategory('auth', 'Save before logout failed:', e);
+        }
+      }
+      setState({
+        isAuthenticated: false,
+        user: null,
+        tenant: null,
+        isLoading: false,
+        error: null,
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('tenant_id');
+        localStorage.removeItem('user_id');
+      }
+      return;
+    }
+
     // Set flag FIRST to prevent heartbeat from re-creating sessions
     loggingOutRef.current = true;
     apiClient.setLoggingOut(true);
@@ -103,7 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             window.removeEventListener('state-saved-for-logout', handleSaveComplete);
             logger.warnCategory('auth', '⚠️ State save timeout, proceeding with logout');
             resolve();
-          }, 5000);
+          }, 15000);
         });
         await savePromise;
         logger.logCategory('auth', '✅ Data saved, proceeding with logout');
@@ -113,51 +171,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (error) {
         logger.errorCategory('auth', 'Logout API error:', error);
       } finally {
-        // SECURITY: Clear all sync queues BEFORE clearing auth to prevent cross-tenant data bleed
-        try {
-          if (currentTenantId) {
-            const { getDatabaseService } = await import('../services/database/databaseService');
-            const db = getDatabaseService();
-            if (db.isReady()) {
-              db.execute(
-                "DELETE FROM sync_outbox WHERE tenant_id = ? AND status IN ('pending', 'failed')",
-                [currentTenantId]
-              );
-              db.save();
-              logger.logCategory('auth', 'Cleared sync_outbox for tenant on logout');
-            }
-          }
-        } catch (e) {
-          logger.warnCategory('auth', 'Failed to clear sync_outbox on logout:', e);
-        }
-
-        try {
-          if (currentTenantId) {
-            const { getSyncQueue } = await import('../services/syncQueue');
-            const syncQueue = getSyncQueue();
-            await syncQueue.clearAll(currentTenantId);
-            logger.logCategory('auth', 'Cleared IndexedDB sync queue for tenant on logout');
-          }
-        } catch (e) {
-          logger.warnCategory('auth', 'Failed to clear IndexedDB sync queue on logout:', e);
-        }
-
-        try {
-          const { getSyncManager } = await import('../services/sync/syncManager');
-          await getSyncManager().clearAll();
-          logger.logCategory('auth', 'Cleared SyncManager queue on logout');
-        } catch (e) {
-          logger.warnCategory('auth', 'Failed to clear SyncManager queue on logout:', e);
-        }
-
-        localStorage.removeItem('sync_queue');
         apiClient.clearAuth();
         localStorage.removeItem('user_id');
-
-        try {
-          const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
-          getBidirectionalSyncService().stop();
-        } catch (_) { }
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('pbooks_api_last_sync_at');
+        }
         apiClient.setLoggingOut(false);
       }
     })();
@@ -167,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Heartbeat mechanism - keeps session alive by updating last_activity
    */
   useEffect(() => {
-    if (!state.isAuthenticated) return;
+    if (!state.isAuthenticated || isLocalOnlyMode()) return;
 
     // Reset logout flag on fresh login so heartbeat works normally
     loggingOutRef.current = false;
@@ -208,42 +226,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [state.isAuthenticated]);
 
-  /**
-   * Start bi-directional sync when authenticated (connectivity-driven + run once).
-   * Delay so AppContext background sync (2s) can load and display data first; then run bidir in background.
-   */
-  const bidirSyncTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!state.isAuthenticated || !state.tenant?.id) return;
-    const tenantId = state.tenant!.id;
-    bidirSyncTimeoutRef.current = null;
-    (async () => {
-      try {
-        const { isMobileDevice } = await import('../utils/platformDetection');
-        if (isMobileDevice()) return;
-        const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
-        const bidir = getBidirectionalSyncService();
-        bidir.start(tenantId);
-        const BIDIR_SYNC_DELAY_MS = 1000;
-        bidirSyncTimeoutRef.current = setTimeout(() => {
-          bidirSyncTimeoutRef.current = null;
-          void bidir.runSync(tenantId);
-        }, BIDIR_SYNC_DELAY_MS);
-      } catch (_) { }
-    })();
-    return () => {
-      if (bidirSyncTimeoutRef.current != null) {
-        clearTimeout(bidirSyncTimeoutRef.current);
-        bidirSyncTimeoutRef.current = null;
-      }
-    };
-  }, [state.isAuthenticated, state.tenant?.id]);
+  // Bi-directional sync removed -- local-only architecture
 
   /**
    * Handle app close/refresh - attempt to logout gracefully
    */
   useEffect(() => {
-    if (!state.isAuthenticated) return;
+    if (!state.isAuthenticated || isLocalOnlyMode()) return;
 
     const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
       // Attempt to logout when app is closing
@@ -293,7 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Network disconnect detection
    */
   useEffect(() => {
-    if (!state.isAuthenticated) return;
+    if (!state.isAuthenticated || isLocalOnlyMode()) return;
 
     const handleOnline = () => {
       logger.logCategory('auth', 'Network connection restored');
@@ -336,6 +325,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const checkAuth = async () => {
       try {
+        // Local-only mode: derive user from CompanyContext (multi-company)
+        if (isLocalOnlyMode()) {
+          const companyUser = companyCtx?.authenticatedUser;
+          const activeCompany = companyCtx?.activeCompany;
+          // Only authenticated when user has logged in via company login (select company → login)
+          const isAuthenticated = !!companyUser;
+
+          const user: User | null = companyUser
+            ? { id: companyUser.id, username: companyUser.username, name: companyUser.name, role: companyUser.role, tenantId: 'local' }
+            : null;
+
+          const tenant: Tenant | null = activeCompany
+            ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
+            : null;
+
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('tenant_id', 'local');
+            if (user) localStorage.setItem('user_id', user.id);
+            else localStorage.removeItem('user_id');
+          }
+          if (isMounted) {
+            setState({
+              isAuthenticated,
+              user,
+              tenant,
+              isLoading: false,
+              error: null,
+            });
+          }
+          return;
+        }
+
         const token = apiClient.getToken();
         const tenantId = apiClient.getTenantId();
 
@@ -380,7 +401,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         window.removeEventListener('auth:expired', handleAuthExpired);
       }
     };
-  }, [logout]);
+  }, [logout, companyCtx?.authenticatedUser, companyCtx?.activeCompany]);
 
   /**
    * Lookup tenants by organization email (Step 1 of login flow)
@@ -415,6 +436,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Smart login - requires tenantId (Step 2 of login flow)
    */
   const smartLogin = useCallback(async (username: string, password: string, tenantId: string) => {
+    if (isLocalOnlyMode()) {
+      const companyUser = companyCtx?.authenticatedUser;
+      const activeCompany = companyCtx?.activeCompany;
+      const user: User = companyUser
+        ? { id: companyUser.id, username: companyUser.username, name: companyUser.name, role: companyUser.role, tenantId: 'local' }
+        : LOCAL_USER;
+      const tenant: Tenant = activeCompany
+        ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
+        : LOCAL_TENANT;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tenant_id', 'local');
+        localStorage.setItem('user_id', user.id);
+      }
+      setState({
+        isAuthenticated: true,
+        user,
+        tenant,
+        isLoading: false,
+        error: null,
+      });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:login-success'));
+      }
+      return;
+    }
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     logger.logCategory('auth', '🔐 Starting smart login:', { username: username.substring(0, 10) + '...', hasPassword: !!password, tenantId });
 
@@ -447,6 +493,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
 
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('pbooks_api_last_sync_at');
+        }
+
         // Verify token is valid by checking it can be decoded
         try {
           const parts = response.token.split('.');
@@ -477,46 +527,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           window.dispatchEvent(new CustomEvent('auth:login-success'));
         }
 
-        // Sync runs after 2s delay so app can mount and DB can initialize (sync needs local SQLite)
-        try {
-          const { isMobileDevice } = await import('../utils/platformDetection');
-          if (!isMobileDevice()) {
-            const runSync = () => {
-              logger.logCategory('auth', '🔄 Syncing pending operations after login...');
-              import('../services/sync/syncManager').then(({ getSyncManager }) =>
-                getSyncManager().syncOnLogin().catch((e: unknown) =>
-                  logger.warnCategory('auth', '⚠️ Sync on login failed:', e))
-              );
-            };
-            setTimeout(runSync, 2000);
-          }
-        } catch (syncError) {
-          logger.warnCategory('auth', '⚠️ Failed to schedule sync on login:', syncError);
-        }
-
-        // Load settings from cloud database after successful login
-        try {
-          logger.logCategory('auth', '📥 Loading settings from cloud database...');
-          const { settingsSyncService } = await import('../services/settingsSyncService');
-          const cloudSettings = await settingsSyncService.syncFromCloud();
-
-          // Dispatch settings to AppContext if available
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('load-cloud-settings', {
-              detail: cloudSettings
-            }));
-          }
-
-          logger.logCategory('auth', '✅ Settings loaded from cloud database');
-        } catch (settingsError) {
-          logger.warnCategory('auth', '⚠️ Failed to load settings from cloud, will use local settings:', settingsError);
-        }
       } else {
-        logger.errorCategory('auth', '❌ Invalid response from server:', { response });
+        logger.errorCategory('auth', 'Invalid response from server:', { response });
         throw new Error('Invalid response from server - missing token, user, or tenant');
       }
     } catch (error: any) {
-      logger.errorCategory('auth', '❌ Login error caught:', {
+      logger.errorCategory('auth', 'Login error caught:', {
         error: error,
         message: error?.message,
         status: error?.status,
@@ -538,6 +554,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Unified login - takes organizationEmail, username, and password all at once
    */
   const unifiedLogin = useCallback(async (organizationEmail: string, username: string, password: string) => {
+    if (isLocalOnlyMode()) {
+      const companyUser = companyCtx?.authenticatedUser;
+      const activeCompany = companyCtx?.activeCompany;
+      const user: User = companyUser
+        ? { id: companyUser.id, username: companyUser.username, name: companyUser.name, role: companyUser.role, tenantId: 'local' }
+        : LOCAL_USER;
+      const tenant: Tenant = activeCompany
+        ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
+        : LOCAL_TENANT;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tenant_id', 'local');
+        localStorage.setItem('user_id', user.id);
+      }
+      setState({
+        isAuthenticated: true,
+        user,
+        tenant,
+        isLoading: false,
+        error: null,
+      });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:login-success'));
+      }
+      return;
+    }
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     logger.logCategory('auth', '🔐 Starting unified login:', {
       orgEmail: organizationEmail.substring(0, 15) + '...',
@@ -574,6 +615,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
+
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('pbooks_api_last_sync_at');
+        }
 
         // Verify token is valid by checking it can be decoded
         try {
@@ -617,28 +662,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           })
           .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
 
-        // Sync runs after 2s delay so app can mount and DB can initialize (sync needs local SQLite)
+        // Cloud settings sync removed -- local-only architecture
         try {
-          const { isMobileDevice } = await import('../utils/platformDetection');
-          if (!isMobileDevice()) {
-            const runSync = () => {
-              logger.logCategory('auth', '🔄 Syncing pending operations after login...');
-              import('../services/sync/syncManager').then(({ getSyncManager }) =>
-                getSyncManager().syncOnLogin().catch((e: unknown) =>
-                  logger.warnCategory('auth', '⚠️ Sync on login failed:', e))
-              );
-            };
-            setTimeout(runSync, 2000);
-          }
-        } catch (syncError) {
-          logger.warnCategory('auth', '⚠️ Failed to schedule sync on login:', syncError);
-        }
-
-        // Load settings from cloud database after successful login
-        try {
-          logger.logCategory('auth', '📥 Loading settings from cloud database...');
-          const { settingsSyncService } = await import('../services/settingsSyncService');
-          const cloudSettings = await settingsSyncService.syncFromCloud();
+          const cloudSettings: any = null;
 
           // Dispatch settings to AppContext if available
           if (typeof window !== 'undefined') {
@@ -679,6 +705,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Defined before login/unifiedLogin so they can reference it in their dependency arrays.
    */
   const checkLicenseStatus = useCallback(async () => {
+    if (isLocalOnlyMode()) {
+      return {
+        isValid: true,
+        daysRemaining: 999,
+        licenseType: 'perpetual',
+        licenseStatus: 'active',
+        isExpired: false,
+        modules: ['real_estate', 'rental', 'shop'],
+      };
+    }
     const response = await apiClient.get<{
       isValid?: boolean;
       licenseType?: string;
@@ -717,6 +753,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Set authentication
       apiClient.setAuth(response.token, response.tenant.id);
+
+      // Force a full API load on next sync (fresh baseline after login; incremental sync covers ongoing changes)
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pbooks_api_last_sync_at');
+      }
 
       setState({
         isAuthenticated: true,

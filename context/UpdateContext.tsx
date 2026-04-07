@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import type { SpellCheckerSettings } from './SpellCheckerContext';
 
 interface UpdateInfo {
   version: string;
@@ -15,6 +16,7 @@ interface UpdateStatusPayload {
   message?: string;
   version?: string;
   percent?: number;
+  releasesUrl?: string;
 }
 
 interface UpdateContextType {
@@ -25,9 +27,12 @@ interface UpdateContextType {
   updateInfo: UpdateInfo | null;
   downloadProgress: DownloadProgress | null;
   error: string | null;
+  /** When set, update check is unavailable (e.g. dev build) but user can open this URL for releases. */
+  unavailableReleasesUrl: string | null;
   checkForUpdates: () => void;
   startDownload: () => void;
-  installUpdate: () => void;
+  /** Saves state to SQLite first, then quits and installs. Returns { ok, error }; never quits if save fails. */
+  installUpdate: () => Promise<{ ok: boolean; error?: string }>;
   isElectronUpdate: boolean;
 }
 
@@ -42,6 +47,8 @@ declare global {
       onUpdateStatus: (cb: (payload: UpdateStatusPayload) => void) => () => void;
       startUpdateDownload: () => Promise<void>;
       quitAndInstall: () => Promise<void>;
+      spellGetSettings?: () => Promise<SpellCheckerSettings>;
+      spellSetSettings?: (partial: Partial<SpellCheckerSettings>) => Promise<SpellCheckerSettings>;
     };
   }
 }
@@ -56,6 +63,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [unavailableReleasesUrl, setUnavailableReleasesUrl] = useState<string | null>(null);
 
   const isElectronUpdate = typeof window !== 'undefined' && !!window.electronAPI;
 
@@ -72,6 +80,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         case 'checking':
           setIsChecking(true);
           setError(null);
+          setUnavailableReleasesUrl(null);
           break;
         case 'available':
           setIsChecking(false);
@@ -98,6 +107,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setUpdateAvailable(false);
           setDownloadProgress(null);
           setError(payload.message || 'Unknown update error');
+          setUnavailableReleasesUrl(payload.releasesUrl || null);
           break;
       }
     });
@@ -108,6 +118,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const checkForUpdates = useCallback(() => {
     if (!window.electronAPI) return;
     setError(null);
+    setUnavailableReleasesUrl(null);
     window.electronAPI.checkForUpdates();
   }, []);
 
@@ -116,9 +127,38 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     window.electronAPI.startUpdateDownload();
   }, []);
 
-  const installUpdate = useCallback(() => {
-    if (!window.electronAPI) return;
-    window.electronAPI.quitAndInstall();
+  const installUpdate = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!window.electronAPI) return { ok: false, error: 'Update not available' };
+    // Save all data to SQLite before restart — never quit until save succeeds (prevents data loss on version upgrade)
+    const saveResult = await new Promise<{ success: boolean }>((resolve) => {
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout>;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        window.removeEventListener('state-saved-for-logout', done);
+        resolve({ success: ok });
+      };
+      const done = (e: Event) => {
+        const ev = e as CustomEvent<{ success?: boolean }>;
+        // AppContext dispatches detail: { success: true } after saveNow + WAL flush
+        finish(ev.detail?.success === true);
+      };
+      window.addEventListener('state-saved-for-logout', done);
+      window.dispatchEvent(new CustomEvent('save-state-before-logout'));
+      timeoutId = window.setTimeout(() => {
+        finish(false);
+      }, 120000);
+    });
+    if (!saveResult.success) {
+      return {
+        ok: false,
+        error: 'Data could not be saved in time. Please try again, or create a backup before updating.',
+      };
+    }
+    await window.electronAPI.quitAndInstall();
+    return { ok: true };
   }, []);
 
   return (
@@ -131,6 +171,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         updateInfo,
         downloadProgress,
         error,
+        unavailableReleasesUrl,
         checkForUpdates,
         startDownload,
         installUpdate,

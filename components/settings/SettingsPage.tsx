@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useOffline } from '../../context/OfflineContext';
@@ -21,21 +21,27 @@ import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
 import { Project, ContactType, TransactionType, AccountType, ProjectAgreementStatus, AgreementSettings, InvoiceSettings } from '../../types';
 import SettingsLedgerModal from './SettingsLedgerModal';
-import UserManagement from './UserManagement';
 import DatabaseAnalyzer from './DatabaseAnalyzer';
 import UpdateCheck from './UpdateCheck';
-import { ImportType } from '../../services/importService';
-import BackupRestorePage from './BackupRestorePage';
+import { CompanyManagementSection } from '../company/CompanyManagementSection';
+import DbHealthPanel from '../diagnostics/DbHealthPanel';
+import ManualJournalEntrySection from './ManualJournalEntrySection';
 import PropertyTransferModal from './PropertyTransferModal';
-import MigratAIWizard from './MigratAIWizard';
 import LicenseManagement from '../license/LicenseManagement';
 import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
 import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
 import { getDatabaseService } from '../../services/database/databaseService';
-import { apiClient } from '../../services/api/client';
-import ContactsManagement from './ContactsManagement';
-import AssetsManagement from './AssetsManagement';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useCompanyOptional } from '../../context/CompanyContext';
+import { useSpellCheckerOptional, SPELLCHECK_LANGUAGE_OPTIONS } from '../../context/SpellCheckerContext';
+import { useTheme } from '../../context/ThemeContext';
+import { getDisplayTimeZone, setDisplayTimeZone } from '../../utils/dateUtils';
+
+const UserManagement = lazy(() => import('./UserManagement'));
+const BackupRestorePage = lazy(() => import('./BackupRestorePage'));
+const ContactsManagement = lazy(() => import('./ContactsManagement'));
+const AssetsManagement = lazy(() => import('./AssetsManagement'));
 interface TableRowData {
     id: string;
     [key: string]: any;
@@ -57,6 +63,9 @@ const SettingsPage: React.FC = () => {
     const { showConfirm, showToast, showAlert } = useNotification();
     const { setVisibleKpiIds } = useKpis();
     const { isOffline } = useOffline();
+    const companyCtx = useCompanyOptional();
+    const spellCtx = useSpellCheckerOptional();
+    const { theme, setTheme } = useTheme();
 
     // Detect Mobile
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -82,24 +91,6 @@ const SettingsPage: React.FC = () => {
         return () => window.removeEventListener('open-backup-restore-section', handleOpenBackup);
     }, []);
 
-    // Fetch current tenant supplier status
-    useEffect(() => {
-        const fetchSupplierStatus = async () => {
-            if (isOffline) return;
-            try {
-                setIsCheckingSupplierStatus(true);
-                const tenantInfo = await apiClient.get<{ is_supplier?: boolean }>('/tenants/me');
-                const supplierStatus = !!tenantInfo.is_supplier;
-                setIsSupplier(supplierStatus);
-            } catch (error) {
-                console.error('Error fetching supplier status:', error);
-            } finally {
-                setIsCheckingSupplierStatus(false);
-            }
-        };
-        fetchSupplierStatus();
-    }, [isOffline]);
-
     // Close dropdown and reset filter when navigating away from accounts view
     useEffect(() => {
         if (activeCategory !== 'accounts') {
@@ -118,41 +109,60 @@ const SettingsPage: React.FC = () => {
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'asc' });
     const [ledgerModalState, setLedgerModalState] = useState<{ isOpen: boolean; entityId: string; entityType: 'account' | 'category' | 'contact' | 'project' | 'building' | 'property' | 'unit'; entityName: string } | null>(null);
     const [propertyToTransfer, setPropertyToTransfer] = useState<Property | null>(null);
-    const [isSupplier, setIsSupplier] = useState<boolean>(false);
-    const [isCheckingSupplierStatus, setIsCheckingSupplierStatus] = useState<boolean>(false);
-    const [isUpgradingToSupplier, setIsUpgradingToSupplier] = useState<boolean>(false);
-    const [isMigrationWizardOpen, setIsMigrationWizardOpen] = useState(false);
     const [isAddNewMenuOpen, setIsAddNewMenuOpen] = useState(false);
     const [isClearTransactionsModalOpen, setIsClearTransactionsModalOpen] = useState(false);
+    const [displayTz, setDisplayTz] = useState<string>(() => getDisplayTimeZone() ?? 'auto');
 
-    // Check if user is admin - use AuthContext user (cloud auth) or fallback to AppContext currentUser (local)
-    const isAdmin = authUser?.role === 'Admin' || state.currentUser?.role === 'Admin';
+    useEffect(() => {
+        const sync = () => setDisplayTz(getDisplayTimeZone() ?? 'auto');
+        window.addEventListener('pbooks-display-timezone-change', sync);
+        return () => window.removeEventListener('pbooks-display-timezone-change', sync);
+    }, []);
+
+    const ianaTimeZones = useMemo(() => {
+        try {
+            if (typeof Intl !== 'undefined' && typeof (Intl as any).supportedValuesOf === 'function') {
+                return [...((Intl as any).supportedValuesOf('timeZone') as string[])].sort();
+            }
+        } catch {
+            /* ignore */
+        }
+        return [] as string[];
+    }, []);
+
+    // Check if user is admin - use AuthContext user (cloud auth), AppContext currentUser (local), or CompanyContext (local-only company login)
+    const isAdmin = authUser?.role === 'Admin' || state.currentUser?.role === 'Admin' || companyCtx?.authenticatedUser?.role === 'SUPER_ADMIN';
+
+    // User Management: visible when admin (cloud/local) OR when in local-only mode with a company open (user created company and is logged in)
+    const showUserManagement = isAdmin || (isLocalOnlyMode() && !!companyCtx?.activeCompany);
 
     // Grouped Categories for Sidebar
     const categoryGroups = [
+        ...(isLocalOnlyMode() ? [{
+            title: 'Company',
+            items: [
+                { id: 'company-manage', label: 'Company Management', icon: ICONS.briefcase || '🏢' },
+                { id: 'db-health', label: 'Database Health', icon: ICONS.archive },
+            ]
+        }] : []),
         {
             title: 'General',
             items: [
                 { id: 'preferences', label: 'Preferences', icon: ICONS.settings },
                 { id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' },
-                ...(isAdmin ? [
-                    { id: 'users', label: 'Users & Access', icon: ICONS.users },
+                ...(showUserManagement ? [
+                    { id: 'users', label: 'User Management', icon: ICONS.users },
                 ] : []),
                 { id: 'backup', label: 'Backup & Restore', icon: ICONS.download },
-                { id: 'data', label: 'Data Management', icon: ICONS.trash }, // Changed Icon
+                { id: 'data', label: 'Data Management', icon: ICONS.trash },
                 { id: 'help', label: 'Help & Guide', icon: ICONS.fileText },
-            ]
-        },
-        {
-            title: 'Operations',
-            items: [
-                { id: 'projects', label: 'Projects', icon: ICONS.briefcase },
             ]
         },
         {
             title: 'Financial',
             items: [
                 { id: 'accounts', label: 'Chart of Accounts', icon: ICONS.wallet },
+                ...(isLocalOnlyMode() ? [{ id: 'gl-journal', label: 'Journal entry (GL)', icon: ICONS.fileText }] : []),
             ]
         },
         {
@@ -173,7 +183,7 @@ const SettingsPage: React.FC = () => {
 
     const settingCategories = useMemo(() => {
         return flatCategories;
-    }, [isAdmin, flatCategories]);
+    }, [showUserManagement, flatCategories]);
 
     // --- Data Preparation Logic (Preserved) ---
     const columnConfig: Record<string, ColumnDef[]> = {
@@ -219,7 +229,12 @@ const SettingsPage: React.FC = () => {
         units: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'area', label: 'Area (sq ft)', isNumeric: true }, { key: 'floor', label: 'Floor' }, { key: 'project', label: 'Project' }, { key: 'owner', label: 'Owner' }, { key: 'salePrice', label: 'Price', isNumeric: true }, { key: 'balance', label: 'Balance', isNumeric: true }]
     };
 
+    const TABLE_CATEGORIES = ['accounts', 'projects', 'buildings', 'properties', 'units'] as const;
+    const isTableViewCategory = TABLE_CATEGORIES.includes(activeCategory as typeof TABLE_CATEGORIES[number]);
+
     const tableData = useMemo<TableRowData[]>(() => {
+        if (!isTableViewCategory) return [];
+
         const balances = new Map<string, number>();
 
         state.transactions.forEach(tx => {
@@ -247,7 +262,7 @@ const SettingsPage: React.FC = () => {
         if (activeCategory === 'accounts') {
             const accountMap = new Map<string, any>();
             state.accounts.forEach(acc => accountMap.set(acc.id, { ...acc, children: [], balance: acc.balance }));
-            state.categories.forEach(cat => accountMap.set(cat.id, { ...cat, children: [], balance: balances.get(cat.id) || 0 }));
+            state.categories.filter(cat => !cat.isHidden).forEach(cat => accountMap.set(cat.id, { ...cat, children: [], balance: balances.get(cat.id) || 0 }));
             const rootItems: any[] = [];
             accountMap.forEach(item => {
                 const parentId = (item as any).parentAccountId || (item as any).parentCategoryId;
@@ -363,7 +378,7 @@ const SettingsPage: React.FC = () => {
                 return 0;
             });
         }
-    }, [state, activeCategory, searchQuery, sortConfig, accountsTypeFilter]);
+    }, [state, activeCategory, searchQuery, sortConfig, accountsTypeFilter, isTableViewCategory]);
 
     const handleSort = (key: string) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
@@ -426,26 +441,36 @@ const SettingsPage: React.FC = () => {
         try {
             console.log('🗑️ Starting clear transactions process...');
 
-            // Step 1: Clear from cloud database (server)
-            console.log('📡 Clearing transactions from cloud database...');
-            const result = await dataManagementApi.clearTransactions();
-            console.log('✅ Cloud database cleared:', result.details);
-
-            // Step 2: Clear from local database
-            console.log('💾 Clearing transactions from local database...');
             const dbService = getDatabaseService();
-            if (dbService.isReady()) {
+            if (!dbService.isReady()) {
+                showAlert('Local database is not ready. Please try again.', { title: 'Error' });
+                throw new Error('Database not ready');
+            }
+
+            if (isLocalOnlyMode()) {
+                // Local-only: clear only local SQLite; no API
+                console.log('💾 Clearing transactions from local database...');
+                dbService.clearTransactionData();
+                console.log('✅ Local database cleared');
+            } else {
+                // With API: clear cloud first, then local
+                console.log('📡 Clearing transactions from cloud database...');
+                const result = await dataManagementApi.clearTransactions();
+                console.log('✅ Cloud database cleared:', result.details);
+                console.log('💾 Clearing transactions from local database...');
                 dbService.clearTransactionData();
                 console.log('✅ Local database cleared');
             }
 
-            // Step 3: Update in-memory state
+            // Update in-memory state
             console.log('🔄 Updating application state...');
             dispatch({ type: 'RESET_TRANSACTIONS' });
             console.log('✅ Application state updated');
 
             showToast(
-                `Successfully cleared ${result.details.recordsDeleted} transaction records from local and cloud databases.`,
+                isLocalOnlyMode()
+                    ? 'Successfully cleared transaction data from local database.'
+                    : 'Successfully cleared transaction data from local and cloud databases.',
                 'success'
             );
         } catch (error: any) {
@@ -465,33 +490,6 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const handleUpgradeToSupplier = async () => {
-        if (isSupplier) {
-            await showAlert('This organization is already a supplier.');
-            return;
-        }
-
-        const confirmed = await showConfirm(
-            'Upgrade this organization to supplier? This will enable supplier features and allow you to participate in procurement-to-pay transactions. This action cannot be undone.',
-            { title: 'Upgrade to Supplier', confirmLabel: 'Upgrade', cancelLabel: 'Cancel' }
-        );
-
-        if (!confirmed) return;
-
-        try {
-            setIsUpgradingToSupplier(true);
-            await apiClient.put('/tenants/me', { isSupplier: true });
-            setIsSupplier(true);
-            showToast('Organization successfully upgraded to supplier!', 'success');
-        } catch (error: any) {
-            console.error('Error upgrading to supplier:', error);
-            await showAlert(error.message || error.error || 'Failed to upgrade to supplier. Please try again.');
-        } finally {
-            setIsUpgradingToSupplier(false);
-        }
-    };
-
-    const isTableViewCategory = !!columnConfig[activeCategory];
     const SortHeader: React.FC<{ label: string; sortKey: string; align?: string }> = ({ label, sortKey, align = 'left' }) => (
         <th className={`px-4 py-3 text-${align} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors select-none sticky top-0 bg-white z-10 border-b border-slate-200`} onClick={() => handleSort(sortKey)}>
             <div className={`flex items-center gap-2 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
@@ -524,10 +522,10 @@ const SettingsPage: React.FC = () => {
                                             </td>
                                         ))}
                                         <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className={`flex justify-end gap-2 transition-opacity ${activeCategory === 'properties' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                                                 <button onClick={(e) => handleEdit(e, item)} className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 p-1.5 rounded-md transition-colors" title="Edit"><div className="w-4 h-4">{ICONS.edit}</div></button>
                                                 {activeCategory === 'properties' && (
-                                                    <button onClick={(e) => handleTransferProperty(e, item)} className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded-md transition-colors" title="Transfer"><div className="w-4 h-4">{ICONS.arrowRight}</div></button>
+                                                    <button onClick={(e) => handleTransferProperty(e, item)} className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded-md transition-colors" title="Transfer ownership"><div className="w-4 h-4">{ICONS.arrowRight}</div></button>
                                                 )}
                                             </div>
                                         </td>
@@ -579,7 +577,7 @@ const SettingsPage: React.FC = () => {
                 <p className="text-sm text-slate-500 mt-1">{description}</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" />
+                <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" aria-label={label} />
                 <div className="w-12 h-7 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
             </label>
         </div>
@@ -587,10 +585,141 @@ const SettingsPage: React.FC = () => {
 
     const renderGeneralSettings = () => (
         <div className="space-y-4">
+            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
+                <h4 className="font-semibold text-slate-800 mb-1">Appearance</h4>
+                <p className="text-sm text-slate-500 mb-4">Choose light or dark theme. The same setting is available from the header (moon / sun). Your choice is saved on this device.</p>
+                <div className="flex flex-wrap items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setTheme('light')}
+                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${theme === 'light' ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
+                    >
+                        Light
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTheme('dark')}
+                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${theme === 'dark' ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
+                    >
+                        Dark
+                    </button>
+                    <span className="text-xs text-slate-500">Header: {theme === 'dark' ? '☀️' : '🌙'} toggles the same setting.</span>
+                </div>
+            </div>
+            {spellCtx?.isElectronSpell && (
+                <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <div>
+                        <h4 className="font-semibold text-slate-800 text-lg">Spelling (desktop app)</h4>
+                        <p className="text-sm text-slate-500 mt-1">
+                            Uses the built-in offline dictionary. Right-click a highlighted word for suggestions or to add it to your dictionary. Settings are stored on this computer.
+                        </p>
+                    </div>
+                    {renderToggle(
+                        'Enable spell checking',
+                        'Underline misspelled words in text fields and show suggestions in the right-click menu.',
+                        spellCtx.settings.spellcheckEnabled,
+                        (val) => void spellCtx.updateSettings({ spellcheckEnabled: val })
+                    )}
+                    {renderToggle(
+                        'Auto-correct common typos',
+                        'Fixes a small set of common mistakes when you press Space or leave a field (e.g. teh → the). Does not call the network.',
+                        spellCtx.settings.autocorrectEnabled,
+                        (val) => void spellCtx.updateSettings({ autocorrectEnabled: val })
+                    )}
+                    <div className="pt-1">
+                        <label htmlFor="spellchecker-language" className="block text-sm font-medium text-slate-700 mb-2">
+                            Spell check language
+                        </label>
+                        <select
+                            id="spellchecker-language"
+                            className="block w-full max-w-md border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                            value={spellCtx.settings.spellcheckerLanguage}
+                            onChange={(e) => void spellCtx.updateSettings({ spellcheckerLanguage: e.target.value })}
+                            disabled={spellCtx.loading}
+                            aria-label="Spell check language"
+                        >
+                            {SPELLCHECK_LANGUAGE_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            )}
             {renderToggle('Show System Transactions', 'Display automated system entries (like service charge deductions) in the main ledger.', state.showSystemTransactions, (val) => dispatch({ type: 'TOGGLE_SYSTEM_TRANSACTIONS', payload: val }))}
             {renderToggle('Enable Color Coding', 'Use project/building specific colors in lists and forms for better visual distinction.', state.enableColorCoding, (val) => dispatch({ type: 'TOGGLE_COLOR_CODING', payload: val }))}
             {renderToggle('Enable Beep on Save', 'Play a sound notification when transactions or records are saved successfully.', state.enableBeepOnSave, (val) => dispatch({ type: 'TOGGLE_BEEP_ON_SAVE', payload: val }))}
             {renderToggle('Date Preservation', 'Remember the last used date in forms to speed up data entry for past records.', state.enableDatePreservation, (val) => dispatch({ type: 'TOGGLE_DATE_PRESERVATION', payload: val }))}
+
+            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
+                <h4 className="font-semibold text-slate-800 mb-1">Date display time zone</h4>
+                <p className="text-sm text-slate-500 mb-2">
+                    When dates are stored with a time from the server (for example UTC), the app picks the calendar day in this time zone so lists and forms match what you selected (fixes a one-day shift in many regions).
+                    {typeof Intl !== 'undefined' && Intl.DateTimeFormat ? (
+                        <span className="block mt-1 text-xs text-slate-600">
+                            This device: {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                        </span>
+                    ) : null}
+                </p>
+                <label htmlFor="display-timezone" className="block text-sm font-medium text-slate-700 mb-2">
+                    Calendar dates
+                </label>
+                <select
+                    id="display-timezone"
+                    className="block w-full max-w-lg border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                    value={displayTz}
+                    onChange={(e) => {
+                        const v = e.target.value;
+                        setDisplayTz(v);
+                        setDisplayTimeZone(v === 'auto' ? null : v);
+                        showToast('Time zone saved. Navigate away or refresh the page to refresh all date columns.', 'info');
+                    }}
+                    aria-label="Date display time zone"
+                >
+                    <option value="auto">Use device (browser local time)</option>
+                    {ianaTimeZones.map((tz) => (
+                        <option key={tz} value={tz}>
+                            {tz}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
+                <h4 className="font-semibold text-slate-800 mb-2">WhatsApp sending</h4>
+                <p className="text-sm text-slate-500 mb-4">Choose how WhatsApp actions work across the app: use the in-app chat panel (API) or open WhatsApp so you can send the message yourself (manual).</p>
+                <div className="space-y-3" role="radiogroup" aria-label="WhatsApp sending mode">
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:border-indigo-200 transition-colors">
+                        <input
+                            type="radio"
+                            name="whatsapp-mode"
+                            value="api"
+                            checked={state.whatsAppMode === 'api'}
+                            onChange={() => dispatch({ type: 'SET_WHATSAPP_MODE', payload: 'api' })}
+                            className="mt-1 rounded-full text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                        />
+                        <div>
+                            <span className="font-medium text-slate-800">WhatsApp API</span>
+                            <p className="text-xs text-slate-500 mt-0.5">Use WhatsApp Business API and the in-app chat panel to send and receive messages.</p>
+                        </div>
+                    </label>
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:border-indigo-200 transition-colors">
+                        <input
+                            type="radio"
+                            name="whatsapp-mode"
+                            value="manual"
+                            checked={state.whatsAppMode === 'manual'}
+                            onChange={() => dispatch({ type: 'SET_WHATSAPP_MODE', payload: 'manual' })}
+                            className="mt-1 rounded-full text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                        />
+                        <div>
+                            <span className="font-medium text-slate-800">Manual WhatsApp</span>
+                            <p className="text-xs text-slate-500 mt-0.5">Create the message and open WhatsApp (desktop or web) so you can send it yourself.</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
 
             <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
                 <h4 className="font-semibold text-slate-800 mb-2">Default Project</h4>
@@ -604,43 +733,6 @@ const SettingsPage: React.FC = () => {
                     allowAddNew={false}
                 />
             </div>
-
-            {!isSupplier && (
-                <div className="p-5 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200 shadow-sm">
-                    <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                            <h4 className="font-semibold text-indigo-900 mb-1 text-lg">Upgrade to Supplier</h4>
-                            <p className="text-sm text-indigo-700 mb-4">
-                                Enable supplier features to participate in procurement-to-pay transactions. As a supplier, you can receive purchase orders, send invoices, and manage your business relationships with buyers.
-                            </p>
-                        </div>
-                    </div>
-                    <Button
-                        variant="primary"
-                        onClick={handleUpgradeToSupplier}
-                        disabled={isUpgradingToSupplier || isOffline}
-                        className="w-full"
-                    >
-                        {isUpgradingToSupplier ? 'Upgrading...' : 'Upgrade to Supplier'}
-                    </Button>
-                </div>
-            )}
-
-            {isSupplier && (
-                <div className="p-5 bg-green-50 rounded-xl border-2 border-green-200 shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-green-100 rounded-lg text-green-600">
-                            {ICONS.checkCircle}
-                        </div>
-                        <div className="flex-1">
-                            <h4 className="font-semibold text-green-900 mb-1">Supplier Status Active</h4>
-                            <p className="text-sm text-green-700">
-                                This organization is registered as a supplier and can participate in procurement-to-pay transactions.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 
@@ -739,28 +831,13 @@ const SettingsPage: React.FC = () => {
                 <UpdateCheck />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                     <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                         <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><div className="w-5 h-5">{ICONS.trendingUp}</div></div>
                         Database Health
                     </h4>
                     <DatabaseAnalyzer />
                 </div>
-
-                <div className="bg-gradient-to-br from-indigo-50 to-white rounded-xl border border-indigo-100 shadow-sm p-6 relative overflow-hidden">
-                    <div className="relative z-10">
-                        <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">Data Migration</h4>
-                        <p className="text-sm text-slate-600 mb-6">Import data from Excel or CSV with AI-powered mapping.</p>
-                        <Button onClick={() => setIsMigrationWizardOpen(true)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md border-0">
-                            Open Migration Wizard
-                        </Button>
-                    </div>
-                    <div className="absolute -bottom-4 -right-4 text-indigo-100 opacity-50 transform rotate-12">
-                        <svg width="120" height="120" viewBox="0 0 24 24" fill="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                    </div>
-                </div>
-            </div>
 
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                 <h4 className="font-bold text-slate-800 mb-4 text-lg">Transaction Audits & Logs</h4>
@@ -970,22 +1047,47 @@ const SettingsPage: React.FC = () => {
                             </div>
                         )}
                         {isTableViewCategory ? renderTable() : null}
-                        {activeCategory === 'users' && <UserManagement />}
+                        {activeCategory === 'users' && (
+                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                                <UserManagement />
+                            </Suspense>
+                        )}
                         {activeCategory === 'preferences' && renderPreferences()}
                         {activeCategory === 'license' && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                                 <LicenseManagement />
                             </div>
                         )}
-                        {activeCategory === 'backup' && <BackupRestorePage />}
+                        {activeCategory === 'backup' && (
+                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                                <BackupRestorePage />
+                            </Suspense>
+                        )}
                         {activeCategory === 'data' && renderDataManagement()}
                         {activeCategory === 'help' && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                                 <HelpSection />
                             </div>
                         )}
-                        {activeCategory === 'contacts' && <ContactsManagement />}
-                        {activeCategory === 'assets' && <AssetsManagement />}
+                        {activeCategory === 'contacts' && (
+                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                                <ContactsManagement />
+                            </Suspense>
+                        )}
+                        {activeCategory === 'assets' && (
+                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                                <AssetsManagement />
+                            </Suspense>
+                        )}
+                        {activeCategory === 'company-manage' && isLocalOnlyMode() && companyCtx && (
+                            <CompanyManagementSection />
+                        )}
+                        {activeCategory === 'db-health' && isLocalOnlyMode() && (
+                            <DbHealthPanel />
+                        )}
+                        {activeCategory === 'gl-journal' && isLocalOnlyMode() && (
+                            <ManualJournalEntrySection />
+                        )}
                     </div>
                 </div>
             </div>
@@ -1017,12 +1119,6 @@ const SettingsPage: React.FC = () => {
 
             <Modal isOpen={activePreferenceModal === 'whatsapp-menu'} onClose={() => setActivePreferenceModal(null)} title="WhatsApp Auto-Reply Menu" size="xl">
                 <WhatsAppMenuForm />
-            </Modal>
-
-            <Modal isOpen={isMigrationWizardOpen} onClose={() => setIsMigrationWizardOpen(false)} title="Data Migration Wizard" size="xl">
-                <div className="h-[80vh]">
-                    <MigratAIWizard onClose={() => setIsMigrationWizardOpen(false)} />
-                </div>
             </Modal>
 
             <ClearTransactionsModal

@@ -19,7 +19,7 @@ interface ProjectPMConfigFormProps {
 
 const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClose, project, onSave }) => {
     const { state } = useAppContext();
-    const { showConfirm } = useNotification();
+    const { showConfirm, showToast } = useNotification();
     const [rate, setRate] = useState(project.pmConfig?.rate?.toString() || '0');
     const [frequency, setFrequency] = useState<'Monthly' | 'Weekly' | 'Yearly'>(project.pmConfig?.frequency || 'Monthly');
     const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set(project.pmConfig?.excludedCategoryIds || []));
@@ -112,6 +112,11 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
             return;
         }
 
+        if (!vendorId?.trim()) {
+            showToast('Please select a vendor that belongs to Project management.', 'error');
+            return;
+        }
+
         // Check if configuration has changed
         const rateChanged = project.pmConfig?.rate !== numRate;
         const frequencyChanged = project.pmConfig?.frequency !== frequency;
@@ -142,14 +147,14 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
             }
         }
 
-        // Only save if user confirmed or no warning was needed
+        // Only save if user confirmed or no warning was needed (vendorId is required)
         const updatedProject: Project = {
             ...project,
             pmConfig: {
                 rate: numRate,
                 frequency,
                 excludedCategoryIds: Array.from(excludedIds),
-                vendorId: vendorId || undefined
+                vendorId: vendorId.trim()
             }
         };
         onSave(updatedProject);
@@ -159,11 +164,34 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
         c.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const vendorSummaryLabel = useMemo(() => {
+        if (!vendorId) return '—';
+        const v = (state.vendors || []).find((x) => x.id === vendorId);
+        if (!v) return '—';
+        return v.companyName ? `${v.name} (${v.companyName})` : v.name;
+    }, [vendorId, state.vendors]);
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`PM Configuration: ${project.name}`}>
             <div className="space-y-6">
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                    <p className="text-sm text-slate-600 mb-4">
+                <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm bg-app-card border border-app-border rounded-lg px-4 py-3">
+                    <span>
+                        <span className="text-app-muted font-medium">Fee rate: </span>
+                        <span className="font-bold text-app-text">{rate || '0'}%</span>
+                    </span>
+                    <span className="text-app-border hidden sm:inline">|</span>
+                    <span>
+                        <span className="text-app-muted font-medium">Cycle: </span>
+                        <span className="font-bold text-app-text">{frequency}</span>
+                    </span>
+                    <span className="text-app-border hidden sm:inline">|</span>
+                    <span className="min-w-0">
+                        <span className="text-app-muted font-medium">Vendor: </span>
+                        <span className="font-bold text-app-text break-words">{vendorSummaryLabel}</span>
+                    </span>
+                </div>
+                <div className="bg-app-toolbar/60 p-4 rounded-lg border border-app-border">
+                    <p className="text-sm text-app-text mb-4">
                         Define the Project Management fee structure.
                     </p>
                     
@@ -197,48 +225,48 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
                             items={vendorOptions}
                             selectedId={vendorId}
                             onSelect={(item) => setVendorId(item?.id || '')}
-                            placeholder="Select vendor from directory (optional)"
+                            placeholder="Select vendor from directory"
                             allowAddNew={false}
                         />
-                        <p className="text-xs text-slate-500 mt-1">When the cycle runs, new bills will use this vendor. Leave empty to use the default PM contact.</p>
+                        <p className="text-xs text-app-muted mt-1">Please select vendor belongs to Project management.</p>
                     </div>
                 </div>
 
-                <div className="border rounded-lg overflow-hidden">
-                    <div className="bg-slate-100 p-3 border-b border-slate-200">
-                        <label className="block text-sm font-bold text-slate-700 mb-1">Excluded Cost Categories</label>
-                        <p className="text-xs text-slate-500 mb-2">Select expense categories that should NOT contribute to the PM Fee calculation.</p>
+                <div className="border border-app-border rounded-lg overflow-hidden">
+                    <div className="bg-app-toolbar p-3 border-b border-app-border">
+                        <label className="block text-sm font-bold text-app-text mb-1">Excluded Cost Categories</label>
+                        <p className="text-xs text-app-muted mb-2">Select expense categories that should NOT contribute to the PM Fee calculation.</p>
                         <div className="relative">
                             <input 
                                 type="text" 
                                 placeholder="Search categories..." 
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                className="ds-input-field w-full pl-8 pr-3 py-1.5 text-sm rounded-lg placeholder:text-app-muted"
                             />
-                            <div className="absolute left-2.5 top-1.5 text-slate-400">
+                            <div className="absolute left-2.5 top-1.5 text-app-muted">
                                 <div className="w-4 h-4">{ICONS.search}</div>
                             </div>
                         </div>
                     </div>
-                    <div className="max-h-60 overflow-y-auto p-2 bg-white">
+                    <div className="max-h-60 overflow-y-auto p-2 bg-app-card">
                         {filteredCategories.map(cat => (
-                            <label key={cat.id} className="flex items-center p-2 hover:bg-slate-50 rounded cursor-pointer">
+                            <label key={cat.id} className="flex items-center p-2 hover:bg-app-toolbar/60 rounded cursor-pointer">
                                 <input 
                                     type="checkbox" 
                                     checked={excludedIds.has(cat.id)} 
                                     onChange={() => handleToggleCategory(cat.id)}
-                                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 border-gray-300"
+                                    className="rounded text-primary focus:ring-primary h-4 w-4 border-app-border bg-app-input"
                                 />
-                                <span className="ml-3 text-sm text-slate-700">{cat.name}</span>
+                                <span className="ml-3 text-sm text-app-text">{cat.name}</span>
                             </label>
                         ))}
                         {filteredCategories.length === 0 && (
-                            <p className="text-center text-xs text-slate-400 py-4">No categories found.</p>
+                            <p className="text-center text-xs text-app-muted py-4">No categories found.</p>
                         )}
                     </div>
-                    <div className="bg-slate-50 p-2 text-right border-t border-slate-200">
-                        <span className="text-xs font-semibold text-indigo-600">
+                    <div className="bg-app-toolbar p-2 text-right border-t border-app-border">
+                        <span className="text-xs font-semibold text-primary">
                             {excludedIds.size} categories excluded
                         </span>
                     </div>

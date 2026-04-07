@@ -1,128 +1,60 @@
 /**
  * Base Repository
- * 
+ *
  * Provides common CRUD operations for all repositories.
+ * Single-tenant, local-only SQLite architecture -- no tenant filtering,
+ * no sync queueing, no cloud outbox.
  */
 
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat, dbToObjectFormat, camelToSnake } from '../columnMapper';
-import { getCurrentTenantId, shouldFilterByTenant } from '../tenantUtils';
 import { getCurrentUserId, shouldTrackUserId } from '../userUtils';
-import { isMobileDevice } from '../../../utils/platformDetection';
-import { getSyncOutboxService } from '../../sync/syncOutboxService';
 
-interface PendingSyncOperation {
-    type: 'create' | 'update' | 'delete';
-    entityId: string;
-    data: any;
-    tableName: string;
+export interface SqlOp {
+    type: 'query' | 'run';
+    sql: string;
+    params?: unknown[];
 }
 
 export abstract class BaseRepository<T> {
-    protected tableName: string;
+    readonly tableName: string;
     protected primaryKey: string;
-    /** Column for tenant isolation (default tenant_id). rental_agreements uses org_id to match PostgreSQL. */
-    protected tenantColumn: string;
     private tableColumns: Set<string> | null = null;
 
-    // Static tracker for pending sync operations during transactions
-    private static pendingSyncOperations: PendingSyncOperation[] = [];
-
-    // Flag to disable sync queueing when syncing FROM cloud TO local
-    // This prevents creating sync operations for data that's already in the cloud
-    private static syncQueueingDisabled = false;
-
-    constructor(tableName: string, primaryKey: string = 'id', tenantColumn: string = 'tenant_id') {
+    constructor(tableName: string, primaryKey: string = 'id') {
         this.tableName = tableName;
         this.primaryKey = primaryKey;
-        this.tenantColumn = tenantColumn;
-    }
-
-    /**
-     * Get all pending sync operations and clear the tracker
-     * Called after transaction successfully commits
-     */
-    static flushPendingSyncOperations(): PendingSyncOperation[] {
-        const operations = [...BaseRepository.pendingSyncOperations];
-        BaseRepository.pendingSyncOperations = [];
-        return operations;
-    }
-
-    /**
-     * Clear pending sync operations (called on rollback)
-     */
-    static clearPendingSyncOperations(): void {
-        BaseRepository.pendingSyncOperations = [];
-    }
-
-    /**
-     * Disable sync queueing (used when syncing FROM cloud TO local)
-     * This prevents creating unnecessary sync operations for data already in cloud
-     */
-    static disableSyncQueueing(): void {
-        BaseRepository.syncQueueingDisabled = true;
-        // Sync queueing disabled when syncing from cloud
-    }
-
-    /**
-     * Enable sync queueing (normal operation)
-     */
-    static enableSyncQueueing(): void {
-        BaseRepository.syncQueueingDisabled = false;
-        // Sync queueing enabled (normal operation)
-    }
-
-    /**
-     * Check if sync queueing is currently disabled
-     */
-    static isSyncQueueingDisabled(): boolean {
-        return BaseRepository.syncQueueingDisabled;
     }
 
     protected get db() {
-        // BaseRepository is for local SQLite operations (desktop only)
-        // Mobile devices should use API repositories instead
-        if (isMobileDevice()) {
-            throw new Error(
-                `BaseRepository (local SQLite) is not available on mobile devices. ` +
-                `Use API repositories (e.g., ${this.tableName}ApiRepository) instead.`
-            );
-        }
         return getDatabaseService();
     }
 
     /**
      * Check if this table supports soft delete (has deleted_at column).
-     * Tables without deleted_at use hard delete.
      */
-    protected tableSupportsSoftDelete(): boolean {
+    tableSupportsSoftDelete(): boolean {
         const columnsSet = this.ensureTableColumns();
         return columnsSet.has('deleted_at');
     }
 
-    /**
-     * Add soft-delete filter to SQL if table supports it.
-     * Returns SQL fragment and params to append.
-     */
     private softDeleteFilter(): { sql: string; params: any[] } {
         if (!this.tableSupportsSoftDelete()) return { sql: '', params: [] };
         return { sql: ' AND (deleted_at IS NULL OR deleted_at = \'\')', params: [] };
     }
 
-    /** Large columns excluded from list queries by default to reduce memory and speed up reads. */
+    /** Large columns excluded from list queries by default. */
     private static readonly HEAVY_COLUMNS = new Set([
-        'file_data', 'items', 'expense_category_items', 'payload_json',
+        'file_data', 'items', 'payload_json',
         'salary', 'adjustments', 'projects',
     ]);
 
-    /** Safety cap to prevent unbounded queries from loading entire tables. */
     private static readonly DEFAULT_LIMIT = 50_000;
 
     /**
      * Build a column-selection clause, excluding heavy columns when requested.
-     * Falls back to `*` when column introspection is unavailable.
      */
-    private buildSelectColumns(excludeHeavy: boolean): string {
+    buildSelectColumns(excludeHeavy: boolean): string {
         if (!excludeHeavy) return '*';
         const columnsSet = this.ensureTableColumns();
         if (columnsSet.size === 0) return '*';
@@ -131,12 +63,8 @@ export abstract class BaseRepository<T> {
     }
 
     /**
-     * Find all records with options
-     * Tenant isolation: if table is tenant-scoped but no tenant in context, return empty (never return other tenants' data).
+     * Find all records with options.
      * When soft delete is supported, excludes deleted records.
-     *
-     * @param options.excludeHeavyColumns  When true, omits large blob/JSON columns (file_data, items, etc.) from the SELECT.
-     *                                     Defaults to false for backward compatibility.
      */
     findAll(options: {
         limit?: number;
@@ -149,34 +77,16 @@ export abstract class BaseRepository<T> {
     } = {}): T[] {
         const { limit, offset, orderBy, orderDir = 'DESC', condition, params = [], excludeHeavyColumns = false } = options;
 
-        if (this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (!tenantId) {
-                return [];
-            }
-        }
-
         const cols = this.buildSelectColumns(excludeHeavyColumns);
         let sql = `SELECT ${cols} FROM ${this.tableName}`;
         const whereConditions: string[] = [];
         const whereParams: any[] = [];
 
-        // Add tenant_id filter if tenant is logged in
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (tenantId) {
-                whereConditions.push(`${this.tenantColumn} = ?`);
-                whereParams.push(tenantId);
-            }
-        }
-
-        // Add custom condition if provided
         if (condition) {
             whereConditions.push(condition);
             whereParams.push(...params);
         }
 
-        // Exclude soft-deleted records when table supports it
         const softFilter = this.softDeleteFilter();
         if (softFilter.sql) {
             whereConditions.push(softFilter.sql.trim().replace(/^AND\s+/, ''));
@@ -203,75 +113,13 @@ export abstract class BaseRepository<T> {
     }
 
     /**
-     * Check if this table should be filtered by tenant_id
-     * Override in subclasses if needed
-     */
-    protected shouldFilterByTenant(): boolean {
-        // Filter by tenant for all tables except global ones
-        const globalTables = ['metadata', 'error_log', 'app_settings', 'license_settings'];
-        return !globalTables.includes(this.tableName);
-    }
-
-    /**
-     * Find records changed since a given timestamp.
-     * Uses (tenant_id, updated_at) index for efficient delta queries.
-     */
-    findChangedSince(since: string, options: { limit?: number } = {}): T[] {
-        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
-            return [];
-        }
-
-        const cols = this.buildSelectColumns(false);
-        let sql = `SELECT ${cols} FROM ${this.tableName}`;
-        const whereConditions: string[] = [];
-        const whereParams: any[] = [];
-
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (tenantId) {
-                whereConditions.push(`${this.tenantColumn} = ?`);
-                whereParams.push(tenantId);
-            }
-        }
-
-        whereConditions.push(`updated_at > ?`);
-        whereParams.push(since);
-
-        if (whereConditions.length > 0) {
-            sql += ` WHERE ${whereConditions.join(' AND ')}`;
-        }
-
-        sql += ` ORDER BY updated_at ASC`;
-
-        const effectiveLimit = options.limit ?? 50000;
-        sql += ` LIMIT ${effectiveLimit}`;
-
-        const results = this.db.query<Record<string, any>>(sql, whereParams);
-        return results.map(row => dbToObjectFormat<T>(row));
-    }
-
-    /**
      * Find by primary key
-     * Tenant isolation: if table is tenant-scoped but no tenant in context, return null.
      */
     findById(id: string): T | null {
-        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
-            return null;
-        }
-        let sql = `SELECT * FROM ${this.tableName} WHERE ${camelToSnake(this.primaryKey)} = ?`;
+        const cols = this.buildSelectColumns(false);
+        let sql = `SELECT ${cols} FROM ${this.tableName} WHERE ${camelToSnake(this.primaryKey)} = ?`;
         const params: any[] = [id];
 
-        // Add tenant_id filter if tenant is logged in
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (tenantId) {
-                const tenantColumn = this.tenantColumn;
-                sql += ` AND ${tenantColumn} = ?`;
-                params.push(tenantId);
-            }
-        }
-
-        // Exclude soft-deleted records when table supports it
         const softFilter = this.softDeleteFilter();
         if (softFilter.sql) {
             sql += ` AND (deleted_at IS NULL OR deleted_at = '')`;
@@ -283,26 +131,12 @@ export abstract class BaseRepository<T> {
 
     /**
      * Find by condition
-     * Tenant isolation: if table is tenant-scoped but no tenant in context, return empty.
      */
     findBy(condition: string, params: any[] = []): T[] {
-        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
-            return [];
-        }
-        let sql = `SELECT * FROM ${this.tableName} WHERE ${condition}`;
+        const cols = this.buildSelectColumns(false);
+        let sql = `SELECT ${cols} FROM ${this.tableName} WHERE ${condition}`;
         const queryParams = [...params];
 
-        // Add tenant_id filter if tenant is logged in
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (tenantId) {
-                const tenantColumn = this.tenantColumn;
-                sql += ` AND ${tenantColumn} = ?`;
-                queryParams.push(tenantId);
-            }
-        }
-
-        // Exclude soft-deleted records when table supports it
         if (this.tableSupportsSoftDelete()) {
             sql += ` AND (deleted_at IS NULL OR deleted_at = '')`;
         }
@@ -315,56 +149,48 @@ export abstract class BaseRepository<T> {
      * Lazily load table columns to filter out non-existent fields
      */
     protected ensureTableColumns(): Set<string> {
-        // Check if database is ready - if not, try to trigger initialization
         if (!this.db.isReady()) {
-            console.warn(`⚠️ Database not ready for table columns check: ${this.tableName}`);
-            // Try to trigger initialization synchronously - the DB might just need a nudge
             try {
-                // Trigger async initialization but don't await - it sets isInitialized = true synchronously at the end
                 this.db.initialize().catch(() => { });
             } catch {
-                // Ignore - initialization might already be in progress
+                // Ignore
             }
-            // Re-check after potential initialization trigger
             if (!this.db.isReady()) {
-                // Still not ready - return empty set but mark this so callers can differentiate
-                // between "no columns" and "DB not ready"
                 return new Set();
             }
         }
 
-        // Check if table exists before querying PRAGMA
         const tableExists = this.db.query<{ name: string }>(
             `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
             [this.tableName]
         );
 
         if (tableExists.length === 0) {
-            console.warn(`⚠️ Table ${this.tableName} does not exist yet. Attempting to create it...`);
-            // Try to ensure table exists
             try {
                 this.db.ensureAllTablesExist();
-                // Check again after ensuring tables exist
                 const tableExistsAfter = this.db.query<{ name: string }>(
                     `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
                     [this.tableName]
                 );
                 if (tableExistsAfter.length === 0) {
-                    console.error(`❌ Table ${this.tableName} still does not exist after ensureAllTablesExist()`);
+                    if (this.db.isReady()) {
+                        console.error(`Table ${this.tableName} still does not exist after ensureAllTablesExist()`);
+                    }
                     return new Set();
                 }
             } catch (error) {
-                console.error(`❌ Error ensuring table ${this.tableName} exists:`, error);
+                const msg = error instanceof Error ? error.message : String(error);
+                if (msg.includes('No database open')) {
+                    (this.db as { invalidateConnection?: () => void }).invalidateConnection?.();
+                } else if (this.db.isReady()) {
+                    console.error(`Error ensuring table ${this.tableName} exists:`, error);
+                }
                 return new Set();
             }
         }
 
-        // Always refresh column cache to ensure we have latest columns after schema changes
-        // This is critical - if columns are added after cache is created, we need fresh data
         const rows = this.db.query<{ name: string }>(`PRAGMA table_info(${this.tableName})`);
-
         if (rows.length === 0) {
-            console.warn(`⚠️ PRAGMA table_info(${this.tableName}) returned no columns. Table may not exist or be empty.`);
             return new Set();
         }
 
@@ -372,50 +198,26 @@ export abstract class BaseRepository<T> {
         return this.tableColumns;
     }
 
-    /**
-     * Clear column cache (useful after schema changes)
-     */
     clearColumnCache(): void {
         this.tableColumns = null;
     }
 
     /**
-     * Insert a new record
+     * Insert a new record.
+     * Automatically sets tenant_id to 'local' if column exists.
      */
     insert(data: Partial<T>): void {
         try {
             const dbData = objectToDbFormat(data as Record<string, any>);
-            let columnsSet = this.ensureTableColumns();
+            const columnsSet = this.ensureTableColumns();
 
-            // If column set is empty and DB wasn't ready, this is a race condition.
-            // The downstream sync already verified DB readiness, but the check can flicker.
-            // Retry once after a micro-delay to give initialization a chance to complete.
             if (columnsSet.size === 0 && !this.db.isReady()) {
-                console.warn(`⚠️ [${this.tableName}] Columns empty & DB not ready during insert - will skip this record gracefully`);
-                // Don't throw - just skip this record. The downstream sync will catch and log it.
-                // This prevents a cascade of 3500 error logs when sync starts before DB is fully initialized.
-                throw new Error(`Database not ready for ${this.tableName} insert - will retry on next sync`);
+                throw new Error(`Database not ready for ${this.tableName} insert`);
             }
 
-            // Add tenant_id if not present and tenant is logged in
-            if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                const tenantId = getCurrentTenantId();
-                if (tenantId) {
-                    const tenantColumn = this.tenantColumn;
-                    if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
-                        dbData[tenantColumn] = tenantId;
-                    }
-                }
-            }
-
-            // Debug logging for contacts to diagnose column mapping issues
-            if (this.tableName === 'contacts') {
-                console.log('🔍 Inserting contact:', {
-                    originalData: data,
-                    dbData: dbData,
-                    availableColumns: Array.from(columnsSet),
-                    dbDataKeys: Object.keys(dbData)
-                });
+            // Always set tenant_id to 'local' for compatibility
+            if (columnsSet.has('tenant_id') && !dbData['tenant_id']) {
+                dbData['tenant_id'] = 'local';
             }
 
             const keys = Object.keys(dbData)
@@ -425,58 +227,22 @@ export abstract class BaseRepository<T> {
             const columns = keys.join(', ');
 
             if (keys.length === 0) {
-                const errorMsg = `No valid columns to insert for ${this.tableName}. Available columns: ${Array.from(columnsSet).join(', ')}, Data keys after conversion: ${Object.keys(dbData).join(', ')}`;
-                console.error(`❌ ${errorMsg}`);
-                console.error('Original data:', data);
-                console.error('Converted data:', dbData);
+                const errorMsg = `No valid columns to insert for ${this.tableName}. Available columns: ${Array.from(columnsSet).join(', ')}, Data keys: ${Object.keys(dbData).join(', ')}`;
+                console.error(errorMsg);
                 throw new Error(errorMsg);
             }
 
-            // Debug logging for contacts
-            if (this.tableName === 'contacts') {
-                console.log('✅ Inserting contact with columns:', columns);
-                console.log('✅ Values:', values);
-            }
+            this.db.execute(
+                `INSERT INTO ${this.tableName} (${columns}) VALUES (${placeholders})`,
+                values
+            );
 
-            try {
-                this.db.execute(
-                    `INSERT INTO ${this.tableName} (${columns}) VALUES (${placeholders})`,
-                    values
-                );
-
-                // Debug logging for contacts
-                if (this.tableName === 'contacts') {
-                    console.log('✅ Contact insert SQL executed successfully');
-                    // Don't verify inside transaction - it might cause issues
-                    // Verification will happen after transaction commits
-                }
-
-                if (!this.db.isInTransaction()) {
-                    this.db.save();
-                    // Queue for sync to cloud (desktop only) - get ID from data
-                    const entityId = (data as any)?.id || (dbData as any)?.id;
-                    if (entityId) {
-                        this.queueForSync('create', entityId, data);
-                    }
-                }
-            } catch (executeError: any) {
-                // Check if this is a transaction-related error
-                const errorMsg = (executeError?.message || String(executeError)).toLowerCase();
-                console.error(`❌ SQL execution error for ${this.tableName}:`, executeError);
-                console.error(`SQL: INSERT INTO ${this.tableName} (${columns}) VALUES (${placeholders})`);
-                console.error(`Values:`, values);
-
-                // If it's a transaction error, the transaction might already be rolled back
-                if (errorMsg.includes('no transaction') || errorMsg.includes('transaction')) {
-                    console.error('⚠️ Transaction may have been auto-rolled back by sql.js');
-                }
-
-                throw executeError; // Re-throw so transaction can handle rollback
+            if (!this.db.isInTransaction()) {
+                this.db.save();
             }
         } catch (error) {
-            console.error(`❌ Error inserting into ${this.tableName}:`, error);
-            console.error('Data:', data);
-            throw error; // Re-throw so transaction can rollback
+            console.error(`Error inserting into ${this.tableName}:`, error);
+            throw error;
         }
     }
 
@@ -484,22 +250,9 @@ export abstract class BaseRepository<T> {
      * Update a record
      */
     update(id: string, data: Partial<T>): void {
-        // Convert camelCase to snake_case for database
         const dbData = objectToDbFormat(data as Record<string, any>);
         const columnsSet = this.ensureTableColumns();
 
-        // Add tenant_id if updating and column exists
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (tenantId) {
-                const tenantColumn = this.tenantColumn;
-                if (columnsSet.has(tenantColumn)) {
-                    dbData[tenantColumn] = tenantId;
-                }
-            }
-        }
-
-        // Add user_id if updating and column exists
         if (shouldTrackUserId() && columnsSet.has('user_id')) {
             const userId = getCurrentUserId();
             if (userId) {
@@ -521,106 +274,39 @@ export abstract class BaseRepository<T> {
         }
         values.push(id);
 
-        // Add tenant_id filter if tenant is logged in
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (tenantId) {
-                const tenantColumn = this.tenantColumn;
-                sql += ` AND ${tenantColumn} = ?`;
-                values.push(tenantId);
-            }
-        }
-
         this.db.execute(sql, values);
 
-        // Track or queue sync operation
-        if (this.db.isInTransaction()) {
-            // Track for later queueing after transaction commits
-            BaseRepository.pendingSyncOperations.push({
-                type: 'update',
-                entityId: id,
-                data,
-                tableName: this.tableName
-            });
-        } else {
-            // Queue immediately if not in transaction
-            this.db.save();
-            this.queueForSync('update', id, data);
-        }
-    }
-
-    /**
-     * Delete a record.
-     * Uses soft delete (UPDATE SET deleted_at) when table has deleted_at column;
-     * otherwise uses hard delete (DELETE FROM).
-     */
-    delete(id: string): void {
-        const primaryKeyColumn = camelToSnake(this.primaryKey);
-        const tenantFilter = shouldFilterByTenant() && this.shouldFilterByTenant();
-        const tenantId = tenantFilter ? getCurrentTenantId() : null;
-
-        if (this.tableSupportsSoftDelete()) {
-            const columnsSet = this.ensureTableColumns();
-            const updatedAtClause = columnsSet.has('updated_at') ? ", updated_at = datetime('now')" : '';
-            let sql = `UPDATE ${this.tableName} SET deleted_at = datetime('now')${updatedAtClause} WHERE ${primaryKeyColumn} = ?`;
-            const params: any[] = [id];
-            if (tenantId) {
-                sql += ` AND tenant_id = ?`;
-                params.push(tenantId);
-            }
-            this.db.execute(sql, params);
-        } else {
-            // Hard delete for tables without deleted_at (e.g. users, metadata)
-            let sql = `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`;
-            const params: any[] = [id];
-            if (tenantId) {
-                sql += ` AND tenant_id = ?`;
-                params.push(tenantId);
-            }
-            this.db.execute(sql, params);
-        }
-
-        // Track or queue sync operation
-        if (this.db.isInTransaction()) {
-            // Track for later queueing after transaction commits
-            BaseRepository.pendingSyncOperations.push({
-                type: 'delete',
-                entityId: id,
-                data: null,
-                tableName: this.tableName
-            });
-        } else {
-            // Queue immediately if not in transaction
-            this.db.save();
-            this.queueForSync('delete', id, null);
-        }
-    }
-
-    /**
-     * Delete all records (filtered by tenant if tenant is logged in)
-     */
-    deleteAll(): void {
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (tenantId) {
-                const tenantColumn = this.tenantColumn;
-                this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-            } else {
-                this.db.execute(`DELETE FROM ${this.tableName}`);
-            }
-        } else {
-            this.db.execute(`DELETE FROM ${this.tableName}`);
-        }
         if (!this.db.isInTransaction()) {
             this.db.save();
         }
     }
 
     /**
-     * Delete all records without tenant filtering
-     * Used when switching tenants to ensure clean state
+     * Delete a record.
+     * Uses soft delete when table has deleted_at column; otherwise hard delete.
      */
-    deleteAllUnfiltered(): void {
+    delete(id: string): void {
+        const primaryKeyColumn = camelToSnake(this.primaryKey);
+
+        if (this.tableSupportsSoftDelete()) {
+            const columnsSet = this.ensureTableColumns();
+            const updatedAtClause = columnsSet.has('updated_at') ? ", updated_at = datetime('now')" : '';
+            const sql = `UPDATE ${this.tableName} SET deleted_at = datetime('now')${updatedAtClause} WHERE ${primaryKeyColumn} = ?`;
+            this.db.execute(sql, [id]);
+        } else {
+            const sql = `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`;
+            this.db.execute(sql, [id]);
+        }
+
+        if (!this.db.isInTransaction()) {
+            this.db.save();
+        }
+    }
+
+    /**
+     * Delete all records
+     */
+    deleteAll(): void {
         this.db.execute(`DELETE FROM ${this.tableName}`);
         if (!this.db.isInTransaction()) {
             this.db.save();
@@ -628,82 +314,32 @@ export abstract class BaseRepository<T> {
     }
 
     /**
+     * Delete all records (alias kept for compatibility)
+     */
+    deleteAllUnfiltered(): void {
+        this.deleteAll();
+    }
+
+    /**
      * Count records
-     * Tenant isolation: if table is tenant-scoped but no tenant in context, return 0.
      */
     count(): number {
-        // Check if database is ready before querying
         if (!this.db.isReady()) {
-            // Return 0 silently if database not ready (avoids console warnings during initialization)
-            return 0;
-        }
-        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
             return 0;
         }
         let sql = `SELECT COUNT(*) as count FROM ${this.tableName}`;
-        const params: any[] = [];
-
-        // Add tenant_id filter if tenant is logged in
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
-            if (tenantId) {
-                const tenantColumn = this.tenantColumn;
-                sql += ` WHERE ${tenantColumn} = ?`;
-                params.push(tenantId);
-            }
-        }
-        // Exclude soft-deleted records when table supports it
         if (this.tableSupportsSoftDelete()) {
-            sql += (params.length > 0 ? ' AND' : ' WHERE') + ` (deleted_at IS NULL OR deleted_at = '')`;
+            sql += ` WHERE (deleted_at IS NULL OR deleted_at = '')`;
         }
-
-        const results = this.db.query<{ count: number }>(sql, params);
+        const results = this.db.query<{ count: number }>(sql);
         return results[0]?.count || 0;
-    }
-
-    private static syncQueueErrorCount = 0;
-    private static syncQueueErrorLogged = false;
-
-    /**
-     * Queue operation for sync to cloud (desktop only)
-     * Skips queueing if sync queueing is disabled (e.g., when syncing from cloud)
-     */
-    private queueForSync(type: 'create' | 'update' | 'delete', entityId: string, data: any): void {
-        if (isMobileDevice()) {
-            return;
-        }
-
-        if (BaseRepository.syncQueueingDisabled) {
-            return;
-        }
-
-        try {
-            const tenantId = getCurrentTenantId();
-            const userId = getCurrentUserId();
-            if (tenantId && this.db.isReady()) {
-                const outbox = getSyncOutboxService();
-                outbox.enqueue(tenantId, this.tableName, type, entityId, data || {}, userId ?? undefined);
-            }
-            BaseRepository.syncQueueErrorCount = 0;
-            BaseRepository.syncQueueErrorLogged = false;
-        } catch (error) {
-            BaseRepository.syncQueueErrorCount++;
-            if (!BaseRepository.syncQueueErrorLogged) {
-                console.warn(`[BaseRepository] Failed to queue sync for ${this.tableName}:${entityId}:`, error);
-                BaseRepository.syncQueueErrorLogged = true;
-            } else if (BaseRepository.syncQueueErrorCount % 100 === 0) {
-                console.warn(`[BaseRepository] Sync queue failures: ${BaseRepository.syncQueueErrorCount} total (suppressing repeated logs)`);
-            }
-        }
     }
 
     /**
      * Check if record exists
      */
     exists(id: string): boolean {
-        // Check if database is ready before querying
         if (!this.db.isReady()) {
-            // Return false silently if database not ready (avoids console warnings during initialization)
             return false;
         }
 
@@ -718,14 +354,18 @@ export abstract class BaseRepository<T> {
     }
 
     /**
-     * Save all records (delete existing and insert new)
-     * For tables with UNIQUE constraints (like users), use INSERT OR REPLACE
+     * Save all records (upsert + orphan cleanup).
+     * IMPORTANT: when records is empty we do NOT delete existing rows.
+     * An empty in-memory array usually means the state hasn't been loaded yet
+     * (e.g. app just started), not that the user deleted everything.
+     * Explicit deletion uses deleteAll() instead.
      */
-    saveAll(records: T[]): void {
+    saveAll(records: T[], options: { skipOrphanCleanup?: boolean } = {}): void {
+        if (records.length === 0) {
+            return;
+        }
+
         try {
-            // For certain tables, use INSERT OR REPLACE
-            // This prevents UNIQUE constraint violations when saving the same records multiple times
-            // and avoids cross-tenant collisions for system IDs (e.g., sys-acc-*, sys-cat-*)
             const useInsertOrReplace = this.tableName === 'users'
                 || this.tableName === 'salary_components'
                 || this.tableName === 'invoices'
@@ -745,111 +385,284 @@ export abstract class BaseRepository<T> {
                 || this.tableName === 'purchase_bill_items'
                 || this.tableName === 'purchase_bill_payments'
                 || this.tableName === 'inventory_stock'
-                || this.tableName === 'transactions';
+                || this.tableName === 'transactions'
+                || this.tableName === 'project_agreements'
+                || this.tableName === 'rental_agreements'
+                || this.tableName === 'contracts'
+                || this.tableName === 'quotations'
+                || this.tableName === 'budgets'
+                || this.tableName === 'documents'
+                || this.tableName === 'pm_cycle_allocations'
+                || this.tableName === 'recurring_invoice_templates'
+                || this.tableName === 'installment_plans'
+                || this.tableName === 'plan_amenities'
+                || this.tableName === 'project_received_assets'
+                || this.tableName === 'personal_categories'
+                || this.tableName === 'personal_transactions';
 
             if (useInsertOrReplace) {
-                // For users, use INSERT OR REPLACE instead of DELETE + INSERT
-                // This handles UNIQUE constraint on (tenant_id, username) gracefully
-                if (records.length > 0) {
-                    records.forEach((record, index) => {
-                        try {
-                            this.insertOrReplace(record);
-                        } catch (insertError) {
-                            console.error(`❌ Error inserting/replacing record ${index} into ${this.tableName}:`, insertError);
-                            console.error('Failed record:', record);
-                            throw insertError; // Re-throw to stop the process and rollback transaction
-                        }
-                    });
+                const columnsSet = this.ensureTableColumns();
+                if (columnsSet.size === 0) return;
 
-                    // Clean up orphaned records: remove rows for this tenant that are
-                    // no longer in the state array. Without this, deleted entities
-                    // (e.g. accounts) persist in local SQLite and reappear on reload.
-                    if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                        const tenantId = getCurrentTenantId();
-                        if (tenantId) {
-                            const primaryKeyColumn = camelToSnake(this.primaryKey);
-                            const idsToKeep = new Set(
-                                records.map(r => {
-                                    const rec = r as Record<string, any>;
-                                    return rec[this.primaryKey] || rec.id;
-                                }).filter(Boolean)
-                            );
+                // Use ALL table columns as the fixed key set so INSERT OR REPLACE
+                // never omits a column and silently nullifies existing data.
+                const allTableKeys = Array.from(columnsSet);
 
-                            const existing = this.db.query<Record<string, any>>(
-                                `SELECT ${primaryKeyColumn} as _pk FROM ${this.tableName} WHERE ${this.tenantColumn} = ?`,
-                                [tenantId]
-                            );
+                const BATCH_SIZE = 100;
+                for (let i = 0; i < records.length; i += BATCH_SIZE) {
+                    const batch = records.slice(i, i + BATCH_SIZE);
 
-                            const idsToDelete = existing
-                                .map(row => row._pk as string)
-                                .filter(id => !idsToKeep.has(id));
+                    const columns = allTableKeys.join(', ');
+                    const singlePlaceholder = `(${allTableKeys.map(() => '?').join(', ')})`;
 
-                            if (idsToDelete.length > 0) {
-                                const BATCH = 500;
-                                for (let i = 0; i < idsToDelete.length; i += BATCH) {
-                                    const batch = idsToDelete.slice(i, i + BATCH);
-                                    const placeholders = batch.map(() => '?').join(',');
-                                    this.db.execute(
-                                        `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} IN (${placeholders})`,
-                                        batch
-                                    );
-                                }
-                                console.log(`🧹 Cleaned up ${idsToDelete.length} orphaned record(s) from ${this.tableName}`);
-                            }
-                        }
+                    const allValues: unknown[] = [];
+                    const placeholders: string[] = [];
+                    for (const record of batch) {
+                        const prepared = this.prepareRecordForDb(record, columnsSet, allTableKeys);
+                        if (!prepared) continue;
+                        allValues.push(...prepared.values);
+                        placeholders.push(singlePlaceholder);
                     }
 
-                    console.log(`✅ Completed inserting/replacing ${records.length} records to ${this.tableName}`);
-                } else {
-                    // When saving 0 records, delete to match desired state. FKs are disabled during
-                    // saveState transaction, so we can safely delete in dependency order.
-                    if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                        const tenantId = getCurrentTenantId();
-                        if (tenantId) {
-                            const tenantColumn = this.tenantColumn;
-                            this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                        } else {
-                            // IMPORTANT: If we are supposed to filter by tenant but NO tenant is in context,
-                            // we MUST NOT perform a global delete. This prevents accidental data loss
-                            // during app loading or when session expires.
-                            console.warn(`[BaseRepository] Skipping DELETE for ${this.tableName}: no tenantId in context`);
+                    if (placeholders.length > 0) {
+                        this.db.execute(
+                            `INSERT OR REPLACE INTO ${this.tableName} (${columns}) VALUES ${placeholders.join(', ')}`,
+                            allValues
+                        );
+                    }
+                }
+
+                if (!options.skipOrphanCleanup) {
+                    const primaryKeyColumn = camelToSnake(this.primaryKey);
+                    const idsToKeep = new Set(
+                        records.map(r => {
+                            const rec = r as Record<string, any>;
+                            return rec[this.primaryKey] || rec.id;
+                        }).filter(Boolean)
+                    );
+
+                    const existing = this.db.query<Record<string, any>>(
+                        `SELECT ${primaryKeyColumn} as _pk FROM ${this.tableName}`,
+                        []
+                    );
+
+                    const idsToDelete = existing
+                        .map(row => row._pk as string)
+                        .filter(id => !idsToKeep.has(id));
+
+                    if (idsToDelete.length > 0) {
+                        const BATCH = 500;
+                        for (let i = 0; i < idsToDelete.length; i += BATCH) {
+                            const batch = idsToDelete.slice(i, i + BATCH);
+                            const placeholders = batch.map(() => '?').join(',');
+                            this.db.execute(
+                                `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} IN (${placeholders})`,
+                                batch
+                            );
                         }
-                    } else {
-                        this.db.execute(`DELETE FROM ${this.tableName}`);
                     }
                 }
             } else {
-                // For other tables, use the original DELETE + INSERT approach
-                if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                    const tenantId = getCurrentTenantId();
-                    if (tenantId) {
-                        const tenantColumn = this.tenantColumn;
-                        this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                    } else {
-                        // Avoid global delete if no tenant context
-                        console.warn(`[BaseRepository] Skipping global DELETE for ${this.tableName}: no tenantId in context`);
-                    }
-                } else {
-                    this.db.execute(`DELETE FROM ${this.tableName}`);
-                }
+                this.db.execute(`DELETE FROM ${this.tableName}`);
+                const columnsSet = this.ensureTableColumns();
+                if (columnsSet.size === 0) return;
 
-                if (records.length > 0) {
-                    records.forEach((record, index) => {
-                        try {
-                            this.insert(record);
-                        } catch (insertError) {
-                            console.error(`❌ Error inserting record ${index} into ${this.tableName}:`, insertError);
-                            console.error('Failed record:', record);
-                            throw insertError; // Re-throw to stop the process and rollback transaction
-                        }
-                    });
+                const allTableKeys = Array.from(columnsSet);
+                const BATCH_SIZE = 100;
+                for (let i = 0; i < records.length; i += BATCH_SIZE) {
+                    const batch = records.slice(i, i + BATCH_SIZE);
+
+                    const columns = allTableKeys.join(', ');
+                    const singlePlaceholder = `(${allTableKeys.map(() => '?').join(', ')})`;
+
+                    const allValues: unknown[] = [];
+                    const placeholders: string[] = [];
+                    for (const record of batch) {
+                        const prepared = this.prepareRecordForDb(record, columnsSet, allTableKeys);
+                        if (!prepared) continue;
+                        allValues.push(...prepared.values);
+                        placeholders.push(singlePlaceholder);
+                    }
+
+                    if (placeholders.length > 0) {
+                        this.db.execute(
+                            `INSERT INTO ${this.tableName} (${columns}) VALUES ${placeholders.join(', ')}`,
+                            allValues
+                        );
+                    }
                 }
             }
         } catch (error) {
-            console.error(`❌ Error saving records to ${this.tableName}:`, error);
-            console.error(`Failed to save ${records.length} records to ${this.tableName}`);
-            throw error; // Re-throw so caller knows save failed and transaction can rollback
+            console.error(`Error saving records to ${this.tableName}:`, error);
+            throw error;
         }
+    }
+
+    /**
+     * Build SQL operations for a batch of records suitable for async transactionAsync.
+     * Uses multi-row INSERT OR REPLACE for dramatically fewer IPC round-trips.
+     * @param records - Records to upsert
+     * @param options - skipOrphanCleanup: skip SELECT+DELETE of orphaned rows
+     */
+    buildSaveAllOps(records: T[], options: { skipOrphanCleanup?: boolean } = {}): SqlOp[] {
+        if (records.length === 0) return [];
+        const ops: SqlOp[] = [];
+        const columnsSet = this.ensureTableColumns();
+        if (columnsSet.size === 0) return [];
+
+        const useInsertOrReplace = this.tableName === 'users'
+            || this.tableName === 'salary_components'
+            || this.tableName === 'invoices'
+            || this.tableName === 'bills'
+            || this.tableName === 'accounts'
+            || this.tableName === 'categories'
+            || this.tableName === 'buildings'
+            || this.tableName === 'projects'
+            || this.tableName === 'properties'
+            || this.tableName === 'units'
+            || this.tableName === 'contacts'
+            || this.tableName === 'inventory_items'
+            || this.tableName === 'warehouses'
+            || this.tableName === 'sales_returns'
+            || this.tableName === 'vendors'
+            || this.tableName === 'purchase_bills'
+            || this.tableName === 'purchase_bill_items'
+            || this.tableName === 'purchase_bill_payments'
+            || this.tableName === 'inventory_stock'
+            || this.tableName === 'transactions'
+            || this.tableName === 'project_agreements'
+            || this.tableName === 'rental_agreements'
+            || this.tableName === 'contracts'
+            || this.tableName === 'quotations'
+            || this.tableName === 'budgets'
+            || this.tableName === 'documents'
+            || this.tableName === 'pm_cycle_allocations'
+            || this.tableName === 'recurring_invoice_templates'
+            || this.tableName === 'installment_plans'
+            || this.tableName === 'plan_amenities'
+            || this.tableName === 'project_received_assets'
+            || this.tableName === 'personal_categories'
+            || this.tableName === 'personal_transactions';
+
+        if (useInsertOrReplace) {
+            ops.push(...this.buildBatchInsertOrReplaceOps(records, columnsSet));
+
+            if (!options.skipOrphanCleanup) {
+                const primaryKeyColumn = camelToSnake(this.primaryKey);
+                const idsToKeep = new Set(
+                    records.map(r => {
+                        const rec = r as Record<string, any>;
+                        return rec[this.primaryKey] || rec.id;
+                    }).filter(Boolean)
+                );
+                ops.push({ type: 'query', sql: `SELECT ${primaryKeyColumn} as _pk FROM ${this.tableName}`, params: [] });
+            }
+        } else {
+            ops.push({ type: 'run', sql: `DELETE FROM ${this.tableName}`, params: [] });
+            ops.push(...this.buildBatchInsertOps(records, columnsSet));
+        }
+        return ops;
+    }
+
+    /**
+     * Public wrapper for buildBatchInsertOrReplaceOps for use by AppStateRepository.
+     */
+    buildBatchInsertOrReplaceOps_public(records: T[]): SqlOp[] {
+        const columnsSet = this.ensureTableColumns();
+        if (columnsSet.size === 0) return [];
+        return this.buildBatchInsertOrReplaceOps(records, columnsSet);
+    }
+
+    /**
+     * Build multi-row INSERT OR REPLACE statements in batches of up to 100 rows.
+     */
+    private buildBatchInsertOrReplaceOps(records: T[], columnsSet: Set<string>): SqlOp[] {
+        const ops: SqlOp[] = [];
+        const allTableKeys = Array.from(columnsSet);
+        const BATCH_SIZE = 100;
+
+        for (let i = 0; i < records.length; i += BATCH_SIZE) {
+            const batch = records.slice(i, i + BATCH_SIZE);
+            const columns = allTableKeys.join(', ');
+            const singlePlaceholder = `(${allTableKeys.map(() => '?').join(', ')})`;
+
+            const allValues: unknown[] = [];
+            const placeholders: string[] = [];
+            for (const record of batch) {
+                const prepared = this.prepareRecordForDb(record, columnsSet, allTableKeys);
+                if (!prepared) continue;
+                allValues.push(...prepared.values);
+                placeholders.push(singlePlaceholder);
+            }
+
+            if (placeholders.length > 0) {
+                ops.push({
+                    type: 'run',
+                    sql: `INSERT OR REPLACE INTO ${this.tableName} (${columns}) VALUES ${placeholders.join(', ')}`,
+                    params: allValues,
+                });
+            }
+        }
+        return ops;
+    }
+
+    /**
+     * Build multi-row INSERT statements in batches.
+     */
+    private buildBatchInsertOps(records: T[], columnsSet: Set<string>): SqlOp[] {
+        const ops: SqlOp[] = [];
+        const allTableKeys = Array.from(columnsSet);
+        const BATCH_SIZE = 100;
+
+        for (let i = 0; i < records.length; i += BATCH_SIZE) {
+            const batch = records.slice(i, i + BATCH_SIZE);
+            const columns = allTableKeys.join(', ');
+            const singlePlaceholder = `(${allTableKeys.map(() => '?').join(', ')})`;
+
+            const allValues: unknown[] = [];
+            const placeholders: string[] = [];
+            for (const record of batch) {
+                const prepared = this.prepareRecordForDb(record, columnsSet, allTableKeys);
+                if (!prepared) continue;
+                allValues.push(...prepared.values);
+                placeholders.push(singlePlaceholder);
+            }
+
+            if (placeholders.length > 0) {
+                ops.push({
+                    type: 'run',
+                    sql: `INSERT INTO ${this.tableName} (${columns}) VALUES ${placeholders.join(', ')}`,
+                    params: allValues,
+                });
+            }
+        }
+        return ops;
+    }
+
+    /**
+     * Prepare a single record for database insertion.
+     * Returns the column keys and corresponding values.
+     * If fixedKeys is given, uses those keys (for multi-row batching consistency).
+     */
+    private prepareRecordForDb(data: T, columnsSet: Set<string>, fixedKeys?: string[]): { keys: string[]; values: unknown[] } | null {
+        const dbData = objectToDbFormat(data as Record<string, any>);
+
+        if (columnsSet.has('tenant_id') && !dbData['tenant_id']) {
+            dbData['tenant_id'] = 'local';
+        }
+
+        if (shouldTrackUserId() && columnsSet.has('user_id')) {
+            const userId = getCurrentUserId();
+            if (userId && !dbData['user_id']) {
+                dbData['user_id'] = userId;
+            }
+        }
+
+        const keys = fixedKeys ?? Object.keys(dbData).filter(k => dbData[k] !== undefined && columnsSet.has(k));
+        if (keys.length === 0) return null;
+
+        const values = keys.map(k => dbData[k] !== undefined ? dbData[k] : null);
+        return { keys, values };
     }
 
     /**
@@ -857,28 +670,18 @@ export abstract class BaseRepository<T> {
      */
     private insertOrReplace(data: T): void {
         try {
-            // Convert camelCase to snake_case for database
             const dbData = objectToDbFormat(data as Record<string, any>);
             const columnsSet = this.ensureTableColumns();
 
-            // If column set is empty and DB wasn't ready, this is a race condition.
             if (columnsSet.size === 0 && !this.db.isReady()) {
-                console.warn(`⚠️ [${this.tableName}] Columns empty & DB not ready during insertOrReplace - will skip this record gracefully`);
-                throw new Error(`Database not ready for ${this.tableName} insertOrReplace - will retry on next sync`);
+                throw new Error(`Database not ready for ${this.tableName} insertOrReplace`);
             }
 
-            // Add tenant_id if needed
-            if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                const tenantId = getCurrentTenantId();
-                if (tenantId) {
-                    const tenantColumn = this.tenantColumn;
-                    if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
-                        dbData[tenantColumn] = tenantId;
-                    }
-                }
+            // Always set tenant_id to 'local' for compatibility
+            if (columnsSet.has('tenant_id') && !dbData['tenant_id']) {
+                dbData['tenant_id'] = 'local';
             }
 
-            // Add user_id if needed
             if (shouldTrackUserId() && columnsSet.has('user_id')) {
                 const userId = getCurrentUserId();
                 if (userId && !dbData['user_id']) {
@@ -893,54 +696,21 @@ export abstract class BaseRepository<T> {
             const columns = keys.join(', ');
 
             if (keys.length === 0) {
-                const errorMsg = `No valid columns to insert for ${this.tableName}. Available columns: ${Array.from(columnsSet).join(', ')}, Data keys after conversion: ${Object.keys(dbData).join(', ')}`;
-                console.error(`❌ ${errorMsg}`);
-                console.error('Original data:', data);
-                console.error('Converted data:', dbData);
+                const errorMsg = `No valid columns to insert for ${this.tableName}. Available columns: ${Array.from(columnsSet).join(', ')}, Data keys: ${Object.keys(dbData).join(', ')}`;
+                console.error(errorMsg);
                 throw new Error(errorMsg);
             }
 
-            try {
-                // Use INSERT OR REPLACE to handle UNIQUE constraints
-                this.db.execute(
-                    `INSERT OR REPLACE INTO ${this.tableName} (${columns}) VALUES (${placeholders})`,
-                    values
-                );
+            this.db.execute(
+                `INSERT OR REPLACE INTO ${this.tableName} (${columns}) VALUES (${placeholders})`,
+                values
+            );
 
-                // Track or queue sync operation
-                const entityId = (data as any)?.id || (dbData as any)?.id;
-                if (entityId) {
-                    if (this.db.isInTransaction()) {
-                        // Track for later queueing after transaction commits
-                        BaseRepository.pendingSyncOperations.push({
-                            type: 'create',
-                            entityId,
-                            data,
-                            tableName: this.tableName
-                        });
-                    } else {
-                        // Queue immediately if not in transaction
-                        this.db.save();
-                        this.queueForSync('create', entityId, data);
-                    }
-                } else if (!this.db.isInTransaction()) {
-                    this.db.save();
-                }
-            } catch (executeError: any) {
-                const errorMsg = (executeError?.message || String(executeError)).toLowerCase();
-                console.error(`❌ SQL execution error for ${this.tableName}:`, executeError);
-                console.error(`SQL: INSERT OR REPLACE INTO ${this.tableName} (${columns}) VALUES (${placeholders})`);
-                console.error(`Values:`, values);
-
-                if (errorMsg.includes('no transaction') || errorMsg.includes('transaction')) {
-                    console.error('⚠️ Transaction may have been auto-rolled back by sql.js');
-                }
-
-                throw executeError;
+            if (!this.db.isInTransaction()) {
+                this.db.save();
             }
         } catch (error) {
-            console.error(`❌ Error inserting/replacing into ${this.tableName}:`, error);
-            console.error('Data:', data);
+            console.error(`Error inserting/replacing into ${this.tableName}:`, error);
             throw error;
         }
     }

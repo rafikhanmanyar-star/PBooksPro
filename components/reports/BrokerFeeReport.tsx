@@ -13,8 +13,8 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { useNotification } from '../../context/NotificationContext';
-import { formatDate } from '../../utils/dateUtils';
-import { WhatsAppService } from '../../services/whatsappService';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { usePrintContext } from '../../context/PrintContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -53,11 +53,11 @@ const BrokerFeeReport: React.FC = () => {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
         } else if (type === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (type === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -233,22 +233,12 @@ const BrokerFeeReport: React.FC = () => {
             message += `--------------------\n`;
             message += `Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
             message += `This is an automated summary from PBooksPro.`;
-        
-            // Check if WhatsApp API is configured, if yes use chat window, otherwise use wa.me
-            try {
-                const { WhatsAppChatService } = await import('../../services/whatsappChatService');
-                const isConfigured = await WhatsAppChatService.isConfigured();
-                if (isConfigured) {
-                    // Open chat window
-                    openChat(selectedBroker);
-                } else {
-                    // Fallback to wa.me URL scheme
-                    WhatsAppService.sendMessage({ contact: selectedBroker, message });
-                }
-            } catch (error) {
-                // Fallback to wa.me URL scheme if API check fails
-                WhatsAppService.sendMessage({ contact: selectedBroker, message });
-            }
+
+            sendOrOpenWhatsApp(
+                { contact: selectedBroker, message, phoneNumber: selectedBroker.contactNo },
+                () => state.whatsAppMode,
+                openChat
+            );
         } catch (error) {
             await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
@@ -257,7 +247,7 @@ const BrokerFeeReport: React.FC = () => {
     const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
 
     const SortIcon = ({ column }: { column: keyof ReportRow }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig?.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -268,19 +258,19 @@ const BrokerFeeReport: React.FC = () => {
             <div className="flex flex-col h-full space-y-4">
                 <div className="flex-shrink-0">
                 {/* Custom Toolbar - All controls in first row */}
-                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                     {/* First Row: Dates, Filters, and Actions */}
                     <div className="flex flex-wrap items-center gap-3">
                         {/* Date Range Pills */}
-                        <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                        <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
                             {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                                 <button
                                     key={opt}
                                     onClick={() => handleRangeChange(opt)}
                                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
                                         dateRangeType === opt 
-                                        ? 'bg-white text-accent shadow-sm font-bold' 
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                        ? 'bg-primary text-ds-on-primary shadow-sm font-bold' 
+                                        : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                     }`}
                                 >
                                     {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
@@ -291,9 +281,9 @@ const BrokerFeeReport: React.FC = () => {
                         {/* Custom Date Pickers */}
                         {dateRangeType === 'custom' && (
                             <div className="flex items-center gap-2 animate-fade-in">
-                                <DatePicker value={startDate} onChange={(d) => handleDateChange(d.toISOString().split('T')[0], endDate)} />
-                                <span className="text-slate-400">-</span>
-                                <DatePicker value={endDate} onChange={(d) => handleDateChange(startDate, d.toISOString().split('T')[0])} />
+                                <DatePicker value={startDate} onChange={(d) => handleDateChange(toLocalDateString(d), endDate)} />
+                                <span className="text-app-muted">-</span>
+                                <DatePicker value={endDate} onChange={(d) => handleDateChange(startDate, toLocalDateString(d))} />
                             </div>
                         )}
 
@@ -313,7 +303,8 @@ const BrokerFeeReport: React.FC = () => {
                             <select
                                 value={groupBy}
                                 onChange={(e) => setGroupBy(e.target.value)}
-                                className="block w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                                className="ds-input-field block w-full px-3 py-1.5 text-sm"
+                                aria-label="Group by"
                             >
                                 <option value="">No Grouping</option>
                                 <option value="broker">Group by Broker</option>
@@ -322,7 +313,7 @@ const BrokerFeeReport: React.FC = () => {
 
                         {/* Search Input */}
                         <div className="relative flex-grow min-w-[180px]">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                                 <span className="h-4 w-4">{ICONS.search}</span>
                             </div>
                             <Input 
@@ -334,7 +325,7 @@ const BrokerFeeReport: React.FC = () => {
                             {searchQuery && (
                                 <button 
                                     onClick={() => setSearchQuery('')} 
-                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
                                 >
                                     <div className="w-4 h-4">{ICONS.x}</div>
                                 </button>
@@ -348,11 +339,11 @@ const BrokerFeeReport: React.FC = () => {
                                 size="sm" 
                                 onClick={handleWhatsApp} 
                                 disabled={!selectedBrokerId || selectedBrokerId === 'all'}
-                                className="text-green-600 bg-green-50 hover:bg-green-100 border-green-200 whitespace-nowrap"
+                                className="text-ds-success bg-ds-success/10 hover:bg-ds-success/20 border-ds-success/30 whitespace-nowrap"
                             >
                                 <div className="w-4 h-4 mr-1">{ICONS.whatsapp}</div> Share
                             </Button>
-                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
                                 <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                             </Button>
                             <PrintButton
@@ -370,41 +361,41 @@ const BrokerFeeReport: React.FC = () => {
                     <Card className="min-h-full">
                         <ReportHeader />
                          <div className="text-center mb-6">
-                            <h3 className="text-2xl font-bold">Broker Fee Report</h3>
-                            <p className="text-sm text-slate-500">From {formatDate(startDate)} to {formatDate(endDate)}</p>
-                             <p className="text-sm text-slate-500 font-semibold">
+                            <h3 className="text-2xl font-bold text-app-text">Broker Fee Report</h3>
+                            <p className="text-sm text-app-muted">From {formatDate(startDate)} to {formatDate(endDate)}</p>
+                             <p className="text-sm text-app-muted font-semibold">
                                 Broker: {selectedBrokerId === 'all' ? 'All Brokers' : state.contacts.find(c => c.id === selectedBrokerId)?.name || 'Unknown'}
                             </p>
                         </div>
 
                          {reportData.length > 0 ? (
                             <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                    <thead className="bg-slate-50">
+                                <table className="min-w-full divide-y divide-app-border text-sm">
+                                    <thead className="bg-app-toolbar/40">
                                         <tr>
-                                            <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date"/></th>
-                                            <th onClick={() => handleSort('brokerName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Broker <SortIcon column="brokerName"/></th>
-                                            <th onClick={() => handleSort('particulars')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Particulars <SortIcon column="particulars"/></th>
-                                            <th onClick={() => handleSort('feeAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Fee Accrued <SortIcon column="feeAmount"/></th>
-                                            <th onClick={() => handleSort('paidAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Paid <SortIcon column="paidAmount"/></th>
-                                            <th onClick={() => handleSort('balance')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance"/></th>
+                                            <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Date <SortIcon column="date"/></th>
+                                            <th onClick={() => handleSort('brokerName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Broker <SortIcon column="brokerName"/></th>
+                                            <th onClick={() => handleSort('particulars')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none">Particulars <SortIcon column="particulars"/></th>
+                                            <th onClick={() => handleSort('feeAmount')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Fee Accrued <SortIcon column="feeAmount"/></th>
+                                            <th onClick={() => handleSort('paidAmount')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Paid <SortIcon column="paidAmount"/></th>
+                                            <th onClick={() => handleSort('balance')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap">Balance <SortIcon column="balance"/></th>
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white divide-y divide-slate-200">
+                                    <tbody className="bg-app-card divide-y divide-app-border">
                                         {reportData.map(item => (
                                             <tr key={item.id}>
-                                                <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.date)}</td>
-                                                <td className="px-3 py-2 whitespace-normal break-words">{item.brokerName}</td>
-                                                <td className="px-3 py-2 max-w-xs whitespace-normal break-words">{item.particulars}</td>
+                                                <td className="px-3 py-2 whitespace-nowrap text-app-text">{formatDate(item.date)}</td>
+                                                <td className="px-3 py-2 whitespace-normal break-words text-app-text">{item.brokerName}</td>
+                                                <td className="px-3 py-2 max-w-xs whitespace-normal break-words text-app-muted">{item.particulars}</td>
                                                 <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.feeAmount > 0 ? `${CURRENCY} ${(item.feeAmount || 0).toLocaleString()}` : '-'}</td>
                                                 <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{item.paidAmount > 0 ? `${CURRENCY} ${(item.paidAmount || 0).toLocaleString()}` : '-'}</td>
-                                                <td className={`px-3 py-2 text-right font-bold text-slate-800 whitespace-nowrap`}>{CURRENCY} {(item.balance || 0).toLocaleString()}</td>
+                                                <td className={`px-3 py-2 text-right font-bold text-app-text whitespace-nowrap`}>{CURRENCY} {(item.balance || 0).toLocaleString()}</td>
                                             </tr>
                                         ))}
                                     </tbody>
-                                    <tfoot className="bg-slate-50 font-bold sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
+                                    <tfoot className="bg-app-toolbar/40 font-bold sticky bottom-0 border-t border-app-border shadow-[0_-1px_3px_rgba(0,0,0,0.15)]">
                                         <tr>
-                                            <td colSpan={3} className="px-3 py-2 text-right">Totals</td>
+                                            <td colSpan={3} className="px-3 py-2 text-right text-app-text">Totals</td>
                                             <td className="px-3 py-2 text-right text-success whitespace-nowrap">{CURRENCY} {(totals.totalFees.toLocaleString())}</td>
                                             <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{CURRENCY} {(totals.totalPaid.toLocaleString())}</td>
                                             <td className={`px-3 py-2 text-right text-sm whitespace-nowrap`}>
@@ -416,7 +407,7 @@ const BrokerFeeReport: React.FC = () => {
                             </div>
                          ) : (
                              <div className="text-center py-16">
-                                <p className="text-slate-500">No broker fee data found for the selected criteria.</p>
+                                <p className="text-app-muted">No broker fee data found for the selected criteria.</p>
                             </div>
                         )}
                         <ReportFooter />

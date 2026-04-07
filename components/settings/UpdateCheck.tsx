@@ -3,7 +3,7 @@ import { usePWA } from '../../context/PWAContext';
 import { useUpdate } from '../../context/UpdateContext';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
-import { RefreshCw, CheckCircle, AlertCircle, Download, ArrowDownToLine, Copy } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, Download, ArrowDownToLine, Copy, ExternalLink } from 'lucide-react';
 import packageJson from '../../package.json';
 
 type UpdateStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
@@ -18,6 +18,7 @@ const UpdateCheck: React.FC = () => {
     updateInfo: electronUpdateInfo,
     downloadProgress: electronDownloadProgress,
     error: electronError,
+    unavailableReleasesUrl,
     checkForUpdates: electronCheckForUpdates,
     startDownload: electronStartDownload,
     installUpdate: electronInstallUpdate,
@@ -28,7 +29,8 @@ const UpdateCheck: React.FC = () => {
   const [status, setStatus] = useState<UpdateStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
-  const currentVersion = appVersion || packageJson.version;
+  // In Electron, use installed app version from main process; avoid showing build-time package version before load
+  const currentVersion = isElectronUpdate ? (appVersion ?? '...') : (appVersion || packageJson.version);
 
   useEffect(() => {
     if (!isElectronUpdate) return;
@@ -96,11 +98,14 @@ const UpdateCheck: React.FC = () => {
   const handleInstall = useCallback(async () => {
     if (isElectronUpdate) {
       const confirm = await showConfirm(
-        "The update has been downloaded. The app will restart to apply the update. Continue?",
+        "The update has been downloaded. Your data will be saved first, then the app will restart. Continue?",
         { title: "Install Update", confirmLabel: "Restart & Install" }
       );
       if (confirm) {
-        electronInstallUpdate();
+        const result = await electronInstallUpdate();
+        if (!result.ok && result.error) {
+          showToast(result.error, 'error');
+        }
       }
     } else {
       const confirm = await showConfirm("A new version of the app is available. Update now?", {
@@ -236,40 +241,73 @@ const UpdateCheck: React.FC = () => {
 
         {status === 'error' && (
           <div className="space-y-3">
-            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-              <div className="flex items-start gap-2 mb-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-rose-800 mb-1">
-                    {error || 'An error occurred while checking for updates.'}
+            {unavailableReleasesUrl || (error && (error.includes('development build') || error.includes('not available in this build'))) ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <div className="flex items-start gap-2 mb-2">
+                  <CheckCircle className="w-4 h-4 text-slate-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm text-slate-700">
+                      {error || 'Updates are only available in the installed app.'}
+                    </div>
                   </div>
-                  {errorDetails && (
-                    <pre className="text-xs text-rose-700 bg-rose-100 p-2 rounded mt-2 overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
-                      {errorDetails}
-                    </pre>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {unavailableReleasesUrl && (
+                    <Button
+                      onClick={() => window.open(unavailableReleasesUrl, '_blank', 'noopener,noreferrer')}
+                      variant="primary"
+                      className="text-xs py-1 px-2 h-auto"
+                    >
+                      <ExternalLink className="w-3 h-3 mr-1" />
+                      Open latest release
+                    </Button>
                   )}
+                  <Button
+                    onClick={handleCheckForUpdates}
+                    variant="secondary"
+                    className="text-xs py-1 px-2 h-auto"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Check again
+                  </Button>
                 </div>
               </div>
-              <div className="flex gap-2 mt-2">
-                <Button
-                  onClick={handleCopyError}
-                  variant="secondary"
-                  className="text-xs py-1 px-2 h-auto"
-                  title="Copy error details to clipboard"
-                >
-                  <Copy className="w-3 h-3 mr-1" />
-                  Copy Error Log
-                </Button>
-                <Button
-                  onClick={handleCheckForUpdates}
-                  variant="secondary"
-                  className="text-xs py-1 px-2 h-auto"
-                >
-                  <RefreshCw className="w-3 h-3 mr-1" />
-                  Try Again
-                </Button>
+            ) : (
+              <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+                <div className="flex items-start gap-2 mb-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-rose-800 mb-1">
+                      {error || 'An error occurred while checking for updates.'}
+                    </div>
+                    {errorDetails && (
+                      <pre className="text-xs text-rose-700 bg-rose-100 p-2 rounded mt-2 overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
+                        {errorDetails}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    onClick={handleCopyError}
+                    variant="secondary"
+                    className="text-xs py-1 px-2 h-auto"
+                    title="Copy error details to clipboard"
+                  >
+                    <Copy className="w-3 h-3 mr-1" />
+                    Copy Error Log
+                  </Button>
+                  <Button
+                    onClick={handleCheckForUpdates}
+                    variant="secondary"
+                    className="text-xs py-1 px-2 h-auto"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Try Again
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

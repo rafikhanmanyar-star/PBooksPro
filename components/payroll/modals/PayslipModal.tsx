@@ -3,18 +3,22 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Download, Printer, ShieldCheck, Building2, Plus, TrendingDown, Wallet, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { X, Download, Printer, ShieldCheck, Building2, Plus, TrendingDown, Wallet, CheckCircle2, Loader2, AlertCircle, MessageCircle } from 'lucide-react';
 import { PayrollEmployee, PayrollRun, Payslip } from '../types';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppContext } from '../../../context/AppContext';
 import { Account, Category, Project, Transaction, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
+import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { formatDate, formatCurrency, calculateAmount, roundToTwo } from '../utils/formatters';
+import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from '../utils/payslipPaymentState';
+import { resolvePayslipAssignment, formatPayslipAssignmentDisplay } from '../utils/payslipAssignment';
 import ComboBox from '../../../components/ui/ComboBox';
 import PrintButton from '../../../components/ui/PrintButton';
 import { usePrintContext } from '../../../context/PrintContext';
 import { PayslipPrintData } from '../../print/PayslipPrintTemplate';
+import { resolveSystemCategoryId } from '../../../services/systemEntityIds';
 
 interface PayslipModalProps {
   isOpen: boolean;
@@ -23,9 +27,11 @@ interface PayslipModalProps {
   run: PayrollRun;
   payslipData?: Payslip | null;
   onPaymentComplete?: () => void;
+  /** When 'print', trigger print dialog shortly after open (e.g. from Past Payslips Print button). */
+  initialAction?: 'view' | 'print';
 }
 
-const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete }) => {
+const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete, initialAction }) => {
   const { tenant } = useAuth();
   const { state, dispatch } = useAppContext();
   const { print: triggerPrint } = usePrintContext();
@@ -35,7 +41,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [isPaid, setIsPaid] = useState(payslipData?.is_paid || false);
+  const [isPaid, setIsPaid] = useState(() => (payslipData ? payslipIsFullyPaid(payslipData) : false));
 
   // Payment form data
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -43,8 +49,10 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [paymentAmount, setPaymentAmount] = useState<string>('');
 
-  // System category ID for Salary Expenses
-  const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
+  const salaryExpensesCategoryId = React.useMemo(
+    () => resolveSystemCategoryId(state.categories, 'sys-cat-sal-exp'),
+    [state.categories]
+  );
 
   // State for accounts fetched directly from API (fallback if AppContext doesn't have them)
   const [fetchedAccounts, setFetchedAccounts] = useState<Account[]>([]);
@@ -78,75 +86,49 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
     return state.projects;
   }, [state.projects]);
 
-  // Fetch accounts from API if AppContext doesn't have them, or refresh when payment form opens
+  /** Project/building split for this payslip: snapshot when present, else employee profile (legacy). */
+  const allocationForPayment = React.useMemo(
+    () => resolvePayslipAssignment(payslipData ?? null, employee),
+    [payslipData, employee]
+  );
+
+  // In local-only mode, accounts come from AppContext (local DB). Otherwise fetch from API if needed.
   useEffect(() => {
-    if (isOpen && (state.accounts.length === 0 || showPaymentForm) && !isLoadingAccounts) {
-      console.log('🔄 PayslipModal - Fetching accounts from API...', {
-        hasStateAccounts: state.accounts.length > 0,
-        showPaymentForm,
-        reason: state.accounts.length === 0 ? 'No accounts in state' : 'Payment form opened - refreshing'
-      });
-      setIsLoadingAccounts(true);
-
-      apiClient.get<Account[]>('/accounts')
-        .then(accountsData => {
-          console.log('✅ PayslipModal - API Response:', {
-            isArray: Array.isArray(accountsData),
-            length: accountsData?.length || 0,
-            data: accountsData
-          });
-
-          if (accountsData && Array.isArray(accountsData)) {
-            if (accountsData.length === 0) {
-              console.warn('⚠️ PayslipModal - API returned empty array. No accounts exist in database.');
-              console.warn('💡 This could mean:');
-              console.warn('   1. No accounts have been created yet');
-              console.warn('   2. System accounts were not initialized');
-              console.warn('   3. Tenant/authentication issue');
-              console.warn('💡 Solution: Go to Settings → Financial → Chart of Accounts and create a Bank or Cash account');
-              setPaymentError('No accounts found. Please create a Bank or Cash account in Settings → Financial → Chart of Accounts.');
-            } else {
-              console.log('✅ PayslipModal - Successfully loaded accounts from API:', accountsData.length);
-              console.log('✅ PayslipModal - Account IDs from API:', accountsData.map((a: any) => ({
-                id: a.id,
-                idType: typeof a.id,
-                name: a.name,
-                type: a.type
-              })));
-              setFetchedAccounts(accountsData);
-            }
-          } else {
-            console.error('❌ PayslipModal - Invalid accounts data from API:', accountsData);
-            setFetchedAccounts([]);
-            setPaymentError('Invalid account data received. Please refresh the page.');
-          }
-          setIsLoadingAccounts(false);
-        })
-        .catch(error => {
-          console.error('❌ PayslipModal - Error fetching accounts from API:', error);
-          console.error('Error details:', {
-            message: error.message,
-            status: error.status,
-            response: error.response
-          });
-          setFetchedAccounts([]);
-          setIsLoadingAccounts(false);
-
-          if (error.status === 401) {
-            setPaymentError('Session expired. Please refresh the page and login again.');
-          } else if (error.status === 0) {
-            setPaymentError('No internet connection. Please check your network.');
-          } else {
-            setPaymentError(`Failed to load accounts: ${error.message || 'Unknown error'}. Please refresh the page.`);
-          }
-        });
+    if (isLocalOnlyMode()) {
+      if (isOpen && state.accounts.length === 0) setIsLoadingAccounts(false);
+      return;
     }
-  }, [isOpen, state.accounts.length, isLoadingAccounts]);
+    if (!isOpen || isLoadingAccounts) return;
+    if (state.accounts.length > 0 && !showPaymentForm) return;
+
+    setIsLoadingAccounts(true);
+    apiClient.get<Account[]>('/accounts')
+      .then(accountsData => {
+        if (accountsData && Array.isArray(accountsData)) {
+          if (accountsData.length === 0) {
+            setPaymentError('No accounts found. Please create a Bank or Cash account in Settings → Financial → Chart of Accounts.');
+          } else {
+            setFetchedAccounts(accountsData);
+          }
+        } else {
+          setFetchedAccounts([]);
+          setPaymentError('Invalid account data received. Please refresh the page.');
+        }
+        setIsLoadingAccounts(false);
+      })
+      .catch(error => {
+        setFetchedAccounts([]);
+        setIsLoadingAccounts(false);
+        if (error?.status === 401) setPaymentError('Session expired. Please refresh the page and login again.');
+        else if (error?.status === 0) setPaymentError('No internet connection. Please check your network.');
+        else setPaymentError(`Failed to load accounts: ${error?.message || 'Unknown error'}. Please refresh the page.`);
+      });
+  }, [isOpen, state.accounts.length, showPaymentForm, isLoadingAccounts]);
 
   // Initialize form data when modal opens or when accounts become available
   useEffect(() => {
     if (isOpen) {
-      setIsPaid(payslipData?.is_paid || false);
+      setIsPaid(payslipData ? payslipIsFullyPaid(payslipData) : false);
       setPaymentError(null);
 
       console.log('🔍 PayslipModal opened - State check:', {
@@ -180,14 +162,15 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       }
 
       // Auto-select "Salary Expenses" system category as default
-      const salaryExpensesCat = expenseCategories.find(c => c.id === SALARY_EXPENSES_CATEGORY_ID);
+      const salaryExpensesCat = salaryExpensesCategoryId
+        ? expenseCategories.find(c => c.id === salaryExpensesCategoryId)
+        : undefined;
       if (salaryExpensesCat) {
         setSelectedCategoryId(salaryExpensesCat.id);
       }
 
-      // When employee has project allocation, leave project empty so backend splits cost across projects
-      // User can override by selecting a single project in the dropdown
-      if (employee.projects && employee.projects.length > 0) {
+      // When this payslip has project/building allocation, leave project empty so cost splits by allocation
+      if (allocationForPayment.projects.length > 0 || allocationForPayment.buildings.length > 0) {
         setSelectedProjectId(''); // Auto-split by allocation
       }
     } else {
@@ -199,7 +182,49 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       setFetchedAccounts([]);
       setIsLoadingAccounts(false);
     }
-  }, [isOpen, payslipData, paymentAccounts, expenseCategories, employee.projects, state.accounts, fetchedAccounts, isLoadingAccounts]);
+  }, [isOpen, payslipData, paymentAccounts, expenseCategories, allocationForPayment.projects, allocationForPayment.buildings, state.accounts, fetchedAccounts, isLoadingAccounts, salaryExpensesCategoryId]);
+
+  // When opened with initialAction 'print', trigger print dialog (e.g. from Past Payslips Print button)
+  React.useEffect(() => {
+    if (!isOpen || initialAction !== 'print' || !payslipData) return;
+    const buildPrintData = (): PayslipPrintData => {
+      const allowanceDetails = Array.isArray(payslipData.allowance_details) ? payslipData.allowance_details : [];
+      const deductionDetails = Array.isArray(payslipData.deduction_details) ? payslipData.deduction_details : [];
+      const adjDetails = Array.isArray(payslipData.adjustment_details) ? payslipData.adjustment_details : [];
+      const adjustmentEarnings = adjDetails.filter((a: any) => a.type === 'EARNING');
+      const adjustmentDeductions = adjDetails.filter((a: any) => a.type === 'DEDUCTION');
+      return {
+        companyName,
+        month: run.month,
+        year: run.year,
+        employee: {
+          name: employee.name,
+          employee_code: employee.employee_code,
+          id: employee.id,
+          designation: employee.designation,
+          joining_date: employee.joining_date
+        },
+        earnings: {
+          basic: payslipData.basic_pay,
+          allowances: allowanceDetails.map((a: any) => ({ name: a.name, amount: a.amount })),
+          adjustments: adjustmentEarnings.map((a: any) => ({ name: a.name, amount: a.amount })),
+          total: payslipData.gross_pay
+        },
+        deductions: {
+          regular: deductionDetails.map((d: any) => ({ name: d.name, amount: d.amount })),
+          adjustments: adjustmentDeductions.map((a: any) => ({ name: a.name, amount: a.amount })),
+          total: payslipData.total_deductions
+        },
+        netPay: payslipData.net_pay,
+        isPaid: payslipIsFullyPaid(payslipData),
+        paidAt: payslipData.paid_at
+      };
+    };
+    const t = setTimeout(() => {
+      triggerPrint('PAYSLIP', buildPrintData());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [isOpen, initialAction, payslipData, run, employee, companyName]);
 
   if (!isOpen) return null;
 
@@ -295,6 +320,20 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <a
+              href={(() => {
+                const text = encodeURIComponent(`Payslip for ${run.month} ${run.year}: Net Pay PKR ${formatCurrency(netPay)}. ${companyName}.`);
+                const phone = (employee.phone || '').replace(/\D/g, '');
+                const waNum = phone.startsWith('0') ? '92' + phone.slice(1) : phone.length >= 10 ? '92' + phone : '';
+                return waNum ? `https://wa.me/${waNum}?text=${text}` : `https://web.whatsapp.com/send?text=${text}`;
+              })()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 hover:bg-slate-200 rounded-lg text-emerald-600 transition-colors"
+              title="Send via WhatsApp"
+            >
+              <MessageCircle size={18} />
+            </a>
             <PrintButton
               onPrint={() => {
                 const printData: PayslipPrintData = {
@@ -320,7 +359,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     total: totalDeductions
                   },
                   netPay,
-                  isPaid,
+                  isPaid: payslipData ? payslipIsFullyPaid(payslipData) : isPaid,
                   paidAt: payslipData?.paid_at
                 };
                 triggerPrint('PAYSLIP', printData);
@@ -378,6 +417,14 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
             <div>
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Joining Date</p>
               <p className="font-bold text-slate-900 text-sm">{formatDate(employee.joining_date)}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Department</p>
+              <p className="font-bold text-slate-900 text-sm">{employee.department || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Grade</p>
+              <p className="font-bold text-slate-900 text-sm">{employee.grade || '—'}</p>
             </div>
           </div>
 
@@ -452,13 +499,21 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Net Payable Amount</p>
               <p className="text-2xl sm:text-3xl font-black">PKR {formatCurrency(netPay)}</p>
               {isPaid && (
-                <div className="flex items-center gap-2 mt-1 text-green-300">
-                  <CheckCircle2 size={14} />
-                  <span className="text-[10px] font-bold">PAID</span>
-                  {payslipData?.paid_at && (
-                    <span className="text-[10px] text-green-400">
-                      on {new Date(payslipData.paid_at).toLocaleDateString()}
-                    </span>
+                <div className="mt-2 space-y-0.5">
+                  <div className="flex items-center gap-2 text-green-300">
+                    <CheckCircle2 size={14} />
+                    <span className="text-[10px] font-bold">PAID</span>
+                    {payslipData?.paid_at && (
+                      <span className="text-[10px] text-green-400">
+                        on {new Date(payslipData.paid_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                  {payslipData && (
+                    <p className="text-[11px] font-bold text-green-200/95 tabular-nums">
+                      Amount paid: PKR {formatCurrency(payslipDisplayPaidAmount(payslipData))}
+                      <span className="font-semibold text-green-300/90"> · Remaining: PKR {formatCurrency(payslipRemainingAmount(payslipData))}</span>
+                    </p>
                   )}
                 </div>
               )}
@@ -466,23 +521,24 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
             <div className="text-right no-print">
               {!isPaid && !showPaymentForm && (
                 <button
-                  onClick={async () => {
-                    // Refresh accounts before opening payment form to ensure we have latest data
-                    if (state.accounts.length === 0 || fetchedAccounts.length === 0) {
+                  onClick={() => {
+                    // Local-only: accounts from AppContext. Non–local: already loaded or from useEffect.
+                    if (!isLocalOnlyMode() && (state.accounts.length === 0 || fetchedAccounts.length === 0)) {
                       setIsLoadingAccounts(true);
-                      try {
-                        const freshAccounts = await apiClient.get<Account[]>('/accounts');
-                        if (freshAccounts && Array.isArray(freshAccounts)) {
-                          setFetchedAccounts(freshAccounts);
-                          console.log('✅ Refreshed accounts before payment:', freshAccounts.length);
-                        }
-                      } catch (error) {
-                        console.error('Failed to refresh accounts:', error);
-                      } finally {
-                        setIsLoadingAccounts(false);
-                      }
+                      apiClient.get<Account[]>('/accounts')
+                        .then((fresh: Account[] | undefined) => {
+                          if (fresh && Array.isArray(fresh)) setFetchedAccounts(fresh);
+                        })
+                        .catch(() => {})
+                        .finally(() => setIsLoadingAccounts(false));
                     }
-                    setPaymentAmount(netPay != null ? String(netPay) : '');
+                    setPaymentAmount(
+                      payslipData != null
+                        ? String(payslipRemainingAmount(payslipData))
+                        : netPay != null
+                          ? String(netPay)
+                          : ''
+                    );
                     setShowPaymentForm(true);
                   }}
                   className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg flex items-center gap-2 transition-all text-sm"
@@ -653,12 +709,12 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     }))}
                     selectedId={selectedProjectId}
                     onSelect={(item) => setSelectedProjectId(item?.id || '')}
-                    placeholder={employee.projects?.length ? "Leave empty to split by employee allocation" : "Select Project (Optional)"}
+                    placeholder={(allocationForPayment.projects.length > 0 || allocationForPayment.buildings.length > 0) ? "Leave empty to split by payslip allocation" : "Select Project (Optional)"}
                     entityType="project"
                   />
-                  {employee.projects && employee.projects.length > 0 && !selectedProjectId && (
+                  {(allocationForPayment.projects.length > 0 || allocationForPayment.buildings.length > 0) && !selectedProjectId && (
                     <p className="text-[10px] text-emerald-600 mt-1">
-                      Cost will be split: {employee.projects.map(p => `${p.project_name} (${p.percentage}%)`).join(', ')}
+                      Cost will be split: {formatPayslipAssignmentDisplay(payslipData ?? undefined, employee)}
                     </p>
                   )}
                 </div>
@@ -672,11 +728,18 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     min="0"
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
-                    placeholder={String(netPay)}
+                    placeholder={payslipData != null ? String(payslipRemainingAmount(payslipData)) : String(netPay)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-900"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    Net pay: PKR {formatCurrency(netPay)} — edit to override
+                    {payslipData != null ? (
+                      <>
+                        Paid so far: PKR {formatCurrency(payslipDisplayPaidAmount(payslipData))} · Remaining: PKR{' '}
+                        {formatCurrency(payslipRemainingAmount(payslipData))}
+                      </>
+                    ) : (
+                      <>Net pay: PKR {formatCurrency(netPay)} — edit to override</>
+                    )}
                   </p>
                 </div>
               </div>

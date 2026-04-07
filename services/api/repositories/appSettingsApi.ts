@@ -22,6 +22,11 @@ export class AppSettingsApiRepository {
   }
 
   async deleteSetting(key: string): Promise<void> {
-    await apiClient.delete(`/app-settings/${key}`);
+    await apiClient.delete(`/app-settings/${encodeURIComponent(key)}`);
+  }
+
+  /** Upsert many tenant settings in one request (PostgreSQL API). */
+  async bulkUpsert(settings: Record<string, unknown>): Promise<void> {
+    await apiClient.post('/app-settings/bulk', { settings });
   }
 }

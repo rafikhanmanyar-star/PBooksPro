@@ -15,6 +15,7 @@ import ReportFooter from './ReportFooter';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface ProjectSummary {
     projectId: string;
@@ -214,8 +215,8 @@ const ProjectSummaryReport: React.FC = () => {
                             <MonthNavigator currentDate={currentDate} onDateChange={setCurrentDate} />
                         ) : (
                             <div className="flex flex-wrap items-center gap-2">
-                               <DatePicker label="Start Date" value={startDate.toISOString().split('T')[0]} onChange={setStartDate} />
-                               <DatePicker label="End Date" value={endDate.toISOString().split('T')[0]} onChange={setEndDate} />
+                               <DatePicker label="Start Date" value={toLocalDateString(startDate)} onChange={setStartDate} />
+                               <DatePicker label="End Date" value={toLocalDateString(endDate)} onChange={setEndDate} />
                             </div>
                         )}
                         <div className="flex gap-2">

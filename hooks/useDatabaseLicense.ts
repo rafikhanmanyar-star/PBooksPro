@@ -7,23 +7,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getDatabaseService } from '../services/database/databaseService';
 import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
+import { isLocalOnlyMode } from '../config/apiUrl';
 import { isMobileDevice } from '../utils/platformDetection';
 
 let dbInitialized = false;
 
 async function ensureDatabaseInitialized(): Promise<void> {
-    if (dbInitialized) return;
-    
-    // Initialize unified service first
-    const unifiedService = getUnifiedDatabaseService();
+  if (dbInitialized) return;
+  if (!isLocalOnlyMode()) return;
+
+  const unifiedService = getUnifiedDatabaseService();
     await unifiedService.initialize();
-    
-    // For desktop, also initialize local SQLite
+
     if (!isMobileDevice()) {
         const dbService = getDatabaseService();
         await dbService.initialize();
+        if (!dbService.isReady()) {
+            // No company DB open yet — silently skip; will retry on next call.
+            return;
+        }
     }
-    
+
     dbInitialized = true;
 }
 
@@ -38,16 +42,16 @@ export function useDatabaseLicense() {
 
         const loadSettings = async () => {
             try {
+                if (!isLocalOnlyMode()) return;
                 await ensureDatabaseInitialized();
                 if (!isMounted) return;
 
                 const dbService = getDatabaseService();
+                if (!dbService.isReady()) return;
                 
-                // Check if license_settings table exists and create if needed
                 try {
                     dbService.query('SELECT 1 FROM license_settings LIMIT 1');
                 } catch (error: any) {
-                    // Table might not exist or have wrong schema - try to ensure it exists
                     console.warn('License settings table check failed, ensuring table exists:', error?.message);
                 }
                 
@@ -82,6 +86,7 @@ export function useDatabaseLicense() {
     }, []);
 
     const setInstallDate = useCallback(async (value: string) => {
+        if (!isLocalOnlyMode()) return;
         try {
             await ensureDatabaseInitialized();
             const dbService = getDatabaseService();
@@ -111,6 +116,7 @@ export function useDatabaseLicense() {
     }, []);
 
     const setLicenseKey = useCallback(async (value: string) => {
+        if (!isLocalOnlyMode()) return;
         try {
             await ensureDatabaseInitialized();
             const dbService = getDatabaseService();
@@ -126,6 +132,7 @@ export function useDatabaseLicense() {
     }, []);
 
     const setDeviceId = useCallback(async (value: string) => {
+        if (!isLocalOnlyMode()) return;
         try {
             await ensureDatabaseInitialized();
             const dbService = getDatabaseService();

@@ -5,7 +5,6 @@ import UnitStatusReport from '../reports/UnitStatusReport';
 import TenantLedgerReport from '../reports/TenantLedgerReport';
 import BuildingAccountsReport from '../reports/BuildingAccountsReport';
 import VendorLedgerReport from '../reports/VendorLedgerReport';
-import { useAppContext } from '../../context/AppContext';
 import OwnerSecurityDepositReport from '../reports/OwnerSecurityDepositReport';
 import BrokerFeeReport from '../reports/BrokerFeeReport';
 import PropertyLayoutReport from '../reports/PropertyLayoutReport';
@@ -13,6 +12,7 @@ import ServiceChargesDeductionReport from '../reports/ServiceChargesDeductionRep
 import BMAnalysisReport from '../reports/BMAnalysisReport';
 import AgreementExpiryReport from '../reports/AgreementExpiryReport';
 import InvoicePaymentAnalysisReport from '../reports/InvoicePaymentAnalysisReport';
+import RentalReceivableReport from '../reports/RentalReceivableReport';
 
 const ALL_REPORTS = [
     'Visual Layout',
@@ -21,12 +21,13 @@ const ALL_REPORTS = [
     'Building Analysis',
     'BM Analysis',
     'Invoice & Payment Analysis',
-    'Owner Income',
+    'Owner Rental Income',
     'Service Charges Deduction',
     'Tenant Ledger',
     'Vendor Ledger',
     'Owner Security Deposit',
-    'Broker Fees'
+    'Broker Fees',
+    'Rental Receivable'
 ];
 
 interface RentalReportsPageProps {
@@ -81,7 +82,7 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                 return <BMAnalysisReport />;
             case 'Invoice & Payment Analysis':
                 return <InvoicePaymentAnalysisReport />;
-            case 'Owner Income':
+            case 'Owner Rental Income':
                 return <OwnerPayoutsReport />;
             case 'Service Charges Deduction':
                 return <ServiceChargesDeductionReport />;
@@ -93,19 +94,22 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                 return <OwnerSecurityDepositReport />;
             case 'Broker Fees':
                 return <BrokerFeeReport />;
+            case 'Rental Receivable':
+                return <RentalReceivableReport />;
             default:
-                return <p>Select a report to view.</p>;
+                return <p className="text-app-muted">Select a report to view.</p>;
         }
     };
 
     return (
         <div className="flex flex-col h-full space-y-4">
-            <div className="no-print flex flex-wrap items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+            <div className="no-print flex flex-wrap items-center gap-3 bg-app-card p-2 rounded-lg border border-app-border shadow-ds-card">
                 {/* Reports Menu Button */}
                 <div className="relative" ref={menuRef}>
                     <button
+                        type="button"
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        className="px-4 py-2 text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-300 transition-colors flex items-center gap-2"
+                        className="px-4 py-2 text-sm font-semibold bg-app-toolbar hover:bg-app-toolbar/80 text-app-text rounded-md border border-app-border transition-colors flex items-center gap-2"
                     >
                         <span>Reports</span>
                         <svg
@@ -120,15 +124,16 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
 
                     {/* Dropdown Menu */}
                     {isMenuOpen && (
-                        <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                        <div className="absolute top-full left-0 mt-1 w-56 bg-app-card border border-app-border rounded-lg shadow-ds-card z-50 max-h-96 overflow-y-auto">
                             <div className="py-1">
                                 {ALL_REPORTS.map((report) => (
                                     <button
+                                        type="button"
                                         key={report}
                                         onClick={() => handleReportSelect(report)}
-                                        className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-100 transition-colors ${activeReport === report
-                                            ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                                            : 'text-slate-700'
+                                        className={`w-full text-left px-4 py-2 text-sm hover:bg-app-toolbar/60 transition-colors ${activeReport === report
+                                            ? 'bg-primary/10 text-primary font-semibold'
+                                            : 'text-app-text'
                                             }`}
                                     >
                                         {report}
@@ -141,7 +146,7 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
 
                 {/* Active Report Badge */}
                 {activeReport && (
-                    <div className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs sm:text-sm font-bold rounded-full border border-indigo-100 whitespace-nowrap">
+                    <div className="px-3 py-1.5 bg-primary/10 text-primary text-xs sm:text-sm font-bold rounded-full border border-primary/25 whitespace-nowrap">
                         {activeReport}
                     </div>
                 )}

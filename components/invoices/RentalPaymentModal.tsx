@@ -9,8 +9,11 @@ import { CURRENCY } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
-import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
+import { accountIdMatchesLogical } from '../../services/systemEntityIds';
+import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 
 interface RentalPaymentModalProps {
     isOpen: boolean;
@@ -29,8 +32,9 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
 
     const [rentPaidAmount, setRentPaidAmount] = useState('0');
     const [securityDepositPaidAmount, setSecurityDepositPaidAmount] = useState('0');
-    const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+    const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
     const [accountId, setAccountId] = useState('');
+    const [description, setDescription] = useState('');
     const [editAmount, setEditAmount] = useState('');
     const [error, setError] = useState('');
 
@@ -43,8 +47,16 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         return null;
     }, [invoice, transactionToEdit?.invoiceId, state.invoices]);
 
-    // Filter for Bank Accounts (exclude Internal Clearing)
-    const depositAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
+    // Bank + Cash are valid deposit targets for rental receipts (Cash was wrongly excluded before, leaving the list empty when only the default Cash account exists).
+    const depositAccounts = useMemo(
+        () =>
+            state.accounts.filter(
+                a =>
+                    (a.type === AccountType.BANK || a.type === AccountType.CASH) &&
+                    a.name !== 'Internal Clearing'
+            ),
+        [state.accounts]
+    );
 
     const { rentRemaining, securityDepositRemaining, totalRemaining } = useMemo(() => {
         if (!effectiveInvoice) return { rentRemaining: 0, securityDepositRemaining: 0, totalRemaining: 0 };
@@ -70,14 +82,15 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
     useEffect(() => {
         if (isEditMode && transactionToEdit && isOpen) {
             setEditAmount(Math.abs(transactionToEdit.amount).toString());
-            setPaymentDate(new Date(transactionToEdit.date).toISOString().split('T')[0]);
+            setPaymentDate(parseStoredDateToYyyyMmDdInput(transactionToEdit.date));
             setAccountId(transactionToEdit.accountId || '');
+            setDescription(transactionToEdit.description || '');
             setError('');
         } else if (effectiveInvoice && isOpen) {
             setRentPaidAmount(String(rentRemaining));
             setSecurityDepositPaidAmount(String(securityDepositRemaining));
-            setPaymentDate(new Date().toISOString().split('T')[0]);
-
+            setPaymentDate(toLocalDateString(new Date()));
+            setDescription('');
             const cashAccount = depositAccounts.find(a => a.name === 'Cash');
             setAccountId(cashAccount?.id || depositAccounts[0]?.id || '');
 
@@ -125,7 +138,10 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                     ...transactionToEdit,
                     amount: numAmount,
                     accountId,
-                    date: new Date(paymentDate).toISOString(),
+                    date: /^\d{4}-\d{2}-\d{2}$/.test(paymentDate)
+                        ? `${paymentDate}T00:00:00.000Z`
+                        : new Date(paymentDate).toISOString(),
+                    description: description.trim() || undefined,
                 }
             });
             onClose();
@@ -140,13 +156,39 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
 
         if (totalPaidNow <= 0) return;
 
+        // Block overpayment: do not accept more than balance due
+        if (totalPaidNow > totalRemaining + 0.01) {
+            await showAlert(`Total payment (${CURRENCY} ${totalPaidNow.toLocaleString()}) cannot exceed the balance due on this invoice (${CURRENCY} ${totalRemaining.toLocaleString()}).`);
+            return;
+        }
+        if (rentPayment > rentRemaining + 0.01) {
+            await showAlert(`Rent payment cannot exceed remaining rent due (${CURRENCY} ${rentRemaining.toLocaleString()}).`);
+            return;
+        }
+        if (securityPayment > securityDepositRemaining + 0.01) {
+            await showAlert(`Security deposit payment cannot exceed remaining deposit due (${CURRENCY} ${securityDepositRemaining.toLocaleString()}).`);
+            return;
+        }
+
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
 
+        const property = effectiveInvoice.propertyId
+            ? state.properties.find(p => p.id === effectiveInvoice.propertyId)
+            : null;
+        const ownerId = effectiveInvoice.propertyId
+            ? getOwnerIdForPropertyOnDate(
+                effectiveInvoice.propertyId,
+                paymentDate,
+                state.propertyOwnershipHistory || [],
+                property?.ownerId
+            )
+            : undefined;
         const baseTransaction = {
             date: paymentDate,
             propertyId: effectiveInvoice.propertyId,
             buildingId: effectiveInvoice.buildingId,
+            ownerId,
         };
 
         if (!accountId) {
@@ -186,6 +228,9 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                 return;
             }
 
+            const rentDescription = (description && description.trim())
+                ? description.trim()
+                : `Rent payment for Invoice #${effectiveInvoice.invoiceNumber}`;
             // Create transaction for RENT portion with Rental Income category
             const tx: Omit<Transaction, 'id'> = {
                 ...baseTransaction,
@@ -194,27 +239,32 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                 amount: rentPayment,
                 categoryId: categoryId, // Rental Income category
                 accountId: accountId,
-                description: `Rent payment for Invoice #${effectiveInvoice.invoiceNumber}`,
+                description: rentDescription,
                 invoiceId: effectiveInvoice.id
             };
             dispatch({ type: 'ADD_TRANSACTION', payload: { ...tx, id: Date.now().toString() + Math.random() } });
         }
 
-        // Security Deposit Logic - Create separate transaction with Security Deposit category
+        // Security Deposit Logic - Credits both Bank and Security Liability
+        // Security deposits are liabilities (money held on behalf of tenant), not income.
+        // We use TRANSFER type: Bank receives money (toAccountId), Security Liability increases (tracked via category).
         if (securityPayment > 0) {
-            if (!securityDepositCategory) {
-                await showAlert("Critical Error: 'Security Deposit' income category not found. Please create it in Settings.");
+            const securityLiabilityAccount = state.accounts.find(a => accountIdMatchesLogical(a.id, 'sys-acc-sec-liability'));
+            if (!securityLiabilityAccount) {
+                await showAlert("Critical Error: 'Security Liability' account not found. Please check system accounts.");
                 return;
             }
-            // Create transaction for SECURITY DEPOSIT portion with Security Deposit category
+            const securityDescription = (description && description.trim())
+                ? description.trim()
+                : `Security Deposit for Invoice #${effectiveInvoice.invoiceNumber}`;
             const tx: Omit<Transaction, 'id'> = {
                 ...baseTransaction,
                 contactId: effectiveInvoice.contactId,
                 type: TransactionType.INCOME,
                 amount: securityPayment,
-                categoryId: securityDepositCategory.id, // Security Deposit category
+                categoryId: securityDepositCategory?.id,
                 accountId: accountId,
-                description: `Security Deposit for Invoice #${effectiveInvoice.invoiceNumber}`,
+                description: securityDescription,
                 invoiceId: effectiveInvoice.id
             };
             dispatch({ type: 'ADD_TRANSACTION', payload: { ...tx, id: Date.now().toString() + Math.random() } });
@@ -249,8 +299,11 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                         property?.name || ''
                     );
 
-                    // Open WhatsApp side panel with pre-filled message
-                    openChat(contact, contact.contactNo, message);
+                    sendOrOpenWhatsApp(
+                        { contact, message, phoneNumber: contact.contactNo },
+                        () => state.whatsAppMode,
+                        openChat
+                    );
                 } catch (error) {
                     await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
                 }
@@ -290,7 +343,17 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                             value={editAmount}
                             onChange={e => setEditAmount(e.target.value)}
                         />
-                        <DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(d.toISOString().split('T')[0])} required />
+                        <DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(toLocalDateString(d))} required />
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                            <textarea
+                                className="w-full min-h-[80px] px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Notes related to this payment (optional)"
+                                value={description}
+                                onChange={e => setDescription(e.target.value)}
+                                rows={3}
+                            />
+                        </div>
                         {error && <p className="text-sm text-danger">{error}</p>}
                         <div className="flex justify-between gap-2 pt-4">
                             <div>
@@ -345,7 +408,18 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                                 onChange={e => setSecurityDepositPaidAmount(e.target.value)}
                             />
                         )}
-                        <DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(d.toISOString().split('T')[0])} required />
+                        <DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(toLocalDateString(d))} required />
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                            <textarea
+                                className="w-full min-h-[80px] px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Notes related to this payment (optional)"
+                                value={description}
+                                onChange={e => setDescription(e.target.value)}
+                                rows={3}
+                            />
+                        </div>
 
                         {error && <p className="text-sm text-danger">{error}</p>}
 

@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { ICONS } from '../../constants';
 import Input from '../ui/Input';
 import packageJson from '../../package.json';
+import { useUpdate } from '../../context/UpdateContext';
 
 // --- MOCK UI ENGINE (For Generating "Screenshots") ---
 
@@ -46,8 +47,13 @@ interface HelpTopic {
     visual: React.ReactNode;
 }
 
-// Get app version from package.json
-const APP_VERSION = packageJson.version;
+// Display version from Electron main process when available (installed app version), else package.json
+const AppVersionDisplay: React.FC = () => {
+    const { appVersion, isElectronUpdate } = useUpdate();
+    const v = isElectronUpdate ? (appVersion ?? packageJson.version) : packageJson.version;
+    return <>{v}</>;
+};
+
 const APP_NAME = 'PBooks Pro';
 
 const HELP_TOPICS: HelpTopic[] = [
@@ -67,7 +73,7 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>Project Management:</strong> Advanced costing for construction projects, including installment plans and investor equity tracking.</li>
                     <li><strong>Reports & Analytics:</strong> Comprehensive reporting and KPI dashboard for real-time insights.</li>
                 </ul>
-                <p className="text-xs text-slate-400 mt-4 border-t pt-2">Version {APP_VERSION}</p>
+                <p className="text-xs text-slate-400 mt-4 border-t pt-2">Version <AppVersionDisplay /></p>
             </div>
         ),
         visual: (
@@ -77,7 +83,7 @@ const HELP_TOPICS: HelpTopic[] = [
                         PBP
                     </div>
                     <div className="font-bold text-slate-800 text-sm">{APP_NAME}</div>
-                    <div className="text-[9px] text-slate-500 font-mono bg-slate-200 px-2 py-0.5 rounded mt-1">v{APP_VERSION}</div>
+                    <div className="text-[9px] text-slate-500 font-mono bg-slate-200 px-2 py-0.5 rounded mt-1">v<AppVersionDisplay /></div>
                 </div>
             </MockWindow>
         )
@@ -329,7 +335,7 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>Payout Calculation:</strong> System calculates: Collected Rent + Service Charges - Deductions (maintenance, broker fees, etc.) = Owner Income.</li>
                     <li><strong>Creating Payouts:</strong> Owner Payouts tab &gt; Select owner &gt; Review calculated income &gt; Create payout transaction.</li>
                     <li><strong>Deductions:</strong> Expenses linked to property are automatically deducted. Service charges are added back to owner income.</li>
-                    <li><strong>Payout Reports:</strong> View Owner Income Report to see detailed breakdown by property, period, and owner.</li>
+                    <li><strong>Payout Reports:</strong> View Owner Rental Income report to see detailed breakdown by property, period, and owner (rental income/expense only; security is in Owner Security Deposit report).</li>
                     <li><strong>Security Deposit Tracking:</strong> Security deposits held for owners are tracked separately. Use Owner Security Deposit Report.</li>
                 </ul>
             </div>
@@ -594,7 +600,7 @@ const HELP_TOPICS: HelpTopic[] = [
             <div className="space-y-3 text-sm text-slate-600">
                 <p>Access comprehensive reports for all aspects of your business.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Rental Reports:</strong> Building Analysis, Property Status, Owner Income, Tenant Ledger, Vendor Ledger, Broker Fees, Service Charges, Security Deposits, Visual Layout.</li>
+                    <li><strong>Rental Reports:</strong> Building Analysis, Property Status, Owner Rental Income, Owner Rental Income Summary, Tenant Ledger, Vendor Ledger, Broker Fees, Service Charges, Owner Security Deposit, Visual Layout.</li>
                     <li><strong>Project Reports:</strong> Project Summary, Marketing Activity, Revenue Analysis, PM Cost, Income/Expense by Category, Unit Report, Client Ledger, Broker Report, Vendor Ledger, Contract Report, Visual Layout.</li>
                     <li><strong>General Reports:</strong> Transfer Statistics, Category Analysis, Account Statements (from General Ledger filters).</li>
                     <li><strong>Report Access:</strong> Reports are in respective modules (Rental/Project Management &gt; Reports tab) or via KPI Panel &gt; Reports tab.</li>
@@ -606,7 +612,7 @@ const HELP_TOPICS: HelpTopic[] = [
         visual: (
             <MockWindow title="Reports">
                 <div className="space-y-1 text-[10px]">
-                    <div>• Owner Income Report</div>
+                    <div>• Owner Rental Income</div>
                     <div>• Project Summary</div>
                     <div>• Tenant Ledger</div>
                     <div>• PM Cost Report</div>
@@ -618,12 +624,11 @@ const HELP_TOPICS: HelpTopic[] = [
         id: 'data-import-export',
         title: 'Data Import & Export',
         category: 'Advanced Tools',
-        keywords: ['import', 'export', 'migrate', 'excel', 'backup', 'data migration'],
+        keywords: ['import', 'export', 'excel', 'backup'],
         content: (
             <div className="space-y-3 text-sm text-slate-600">
                 <p>Import data from Excel or export for backup and analysis.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>MigratAI Import:</strong> Settings &gt; Import Data. Upload Excel file. System intelligently detects columns and maps to your data structure. Review mapping before importing.</li>
                     <li><strong>Supported Data:</strong> Import Contacts, Transactions, Invoices, Bills, Projects, Properties, and more.</li>
                     <li><strong>Export Transactions:</strong> General Ledger &gt; Use filters &gt; Export to Excel. Export any filtered transaction list.</li>
                     <li><strong>Export Reports:</strong> Most reports have Export button. Export to Excel or PDF format.</li>
@@ -683,7 +688,7 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>PWA Installation:</strong> Install app on mobile as Progressive Web App for app-like experience. Browser will prompt or use install option.</li>
                     <li><strong>Mobile Payments:</strong> Use Mobile Payments page for quick payment entry on mobile devices with optimized interface.</li>
                     <li><strong>Real-time Sync:</strong> Data automatically syncs in real-time across all devices when users are logged into the same organization account.</li>
-                    <li><strong>Offline Support:</strong> App works offline. Data syncs when connection is restored.</li>
+                    <li><strong>Offline-first:</strong> Your company data is stored in a local database on this machine. No cloud sync is required for day-to-day use.</li>
                 </ul>
             </div>
         ),
@@ -789,6 +794,7 @@ const HelpSection: React.FC = () => {
                         value={activeCategory}
                         onChange={(e) => setActiveCategory(e.target.value as any)}
                         className="w-full p-2 border rounded-lg bg-slate-50 text-slate-700 font-medium"
+                        aria-label="Help category"
                     >
                         {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                     </select>

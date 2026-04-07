@@ -20,6 +20,8 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
     const { showAlert } = useNotification();
     const [name, setName] = useState(projectToEdit?.name || initialName || '');
     const [description, setDescription] = useState(projectToEdit?.description || '');
+    const [location, setLocation] = useState(projectToEdit?.location || '');
+    const [projectType, setProjectType] = useState(projectToEdit?.projectType || '');
     const [color, setColor] = useState(projectToEdit?.color || '#4f46e5'); // Default indigo-600
     const [nameError, setNameError] = useState('');
 
@@ -43,7 +45,13 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
             await showAlert("Please fix the errors before submitting.");
             return;
         }
-        onSubmit({ name, description, color });
+        onSubmit({
+            name,
+            description,
+            color,
+            location: location.trim() || undefined,
+            projectType: projectType.trim() || undefined,
+        });
     };
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -62,6 +70,26 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
                             className="h-10 w-20 rounded-md cursor-pointer border border-slate-300 p-1 bg-white"
                         />
                     </div>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Location (Optional)" value={location} onChange={e => setLocation(e.target.value)} placeholder="Site / address" />
+                <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Project type</label>
+                    <select
+                        value={projectType}
+                        onChange={(e) => setProjectType(e.target.value)}
+                        className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        aria-label="Project type"
+                    >
+                        <option value="">— Select —</option>
+                        <option value="building">Building</option>
+                        <option value="society">Society</option>
+                        <option value="commercial">Commercial</option>
+                        <option value="mixed">Mixed</option>
+                        <option value="plot">Plot / land</option>
+                        <option value="other">Other</option>
+                    </select>
                 </div>
             </div>
             <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Project details, scope, etc." />

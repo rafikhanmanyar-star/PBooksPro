@@ -1,5 +1,6 @@
 /**
  * PaymentHistory - Historical archive of completed payment cycles
+ * Uses storage only (runs marked PAID from Payroll Cycle pay flow). No test/demo data.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -15,17 +16,30 @@ import {
   Loader2
 } from 'lucide-react';
 import { storageService } from './services/storageService';
-import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollRun, PayrollStatus } from './types';
 import { useAuth } from '../../context/AuthContext';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { payrollApi } from '../../services/api/payrollApi';
+import { syncPayrollFromServer } from './services/payrollSync';
 import { usePayrollContext } from '../../context/PayrollContext';
+import { usePrintContext } from '../../context/PrintContext';
 import { formatCurrency } from './utils/formatters';
+import { toLocalDateString } from '../../utils/dateUtils';
+
+function formatPaidAt(paidAt: string | undefined): string {
+  if (!paidAt) return '—';
+  try {
+    const d = new Date(paidAt);
+    return isNaN(d.getTime()) ? paidAt : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch {
+    return paidAt;
+  }
+}
 
 const PaymentHistory: React.FC = () => {
   const { tenant } = useAuth();
   const tenantId = tenant?.id || '';
   
-  // Use PayrollContext for preserving state across navigation
   const {
     historySearchTerm,
     setHistorySearchTerm,
@@ -33,42 +47,47 @@ const PaymentHistory: React.FC = () => {
     setHistoryFilterYear,
     selectedBatch,
     setSelectedBatch,
+    activeSubTab,
   } = usePayrollContext();
-  
+  const { print: triggerPrint } = usePrintContext();
+
   const [history, setHistory] = useState<PayrollRun[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchHistory = async () => {
-      if (!tenantId) {
-        setIsLoading(false);
-        return;
-      }
-      
-      setIsLoading(true);
+    if (!tenantId) {
+      setIsLoading(false);
+      return;
+    }
+    if (activeSubTab !== 'history') return;
+    setIsLoading(true);
+    const load = async () => {
       try {
-        // Fetch from cloud API first
-        const apiRuns = await payrollApi.getPayrollRuns();
-        if (apiRuns.length > 0) {
-          setHistory(apiRuns.filter(r => r.status === PayrollStatus.PAID));
-        } else {
-          // Fallback to localStorage
-          const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
-          setHistory(runs);
+        if (!isLocalOnlyMode()) {
+          await syncPayrollFromServer(tenantId);
         }
-      } catch (error) {
-        console.warn('Failed to fetch payment history from API:', error);
-        // Fallback to localStorage
-        const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
+        storageService.init(tenantId);
+        const allPaid = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
+        const emptyRunIds = allPaid.filter(r => r.employee_count === 0 || (r.total_amount ?? 0) === 0).map(r => r.id);
+        if (isLocalOnlyMode()) {
+          emptyRunIds.forEach(id => storageService.deletePayrollRun(tenantId, id));
+        } else {
+          for (const runId of emptyRunIds) {
+            await payrollApi.deletePayrollRun(runId);
+          }
+          if (emptyRunIds.length > 0) await syncPayrollFromServer(tenantId);
+        }
+        const runs = storageService
+          .getPayrollRuns(tenantId)
+          .filter(r => r.status === PayrollStatus.PAID && r.employee_count > 0 && (r.total_amount ?? 0) > 0);
         setHistory(runs);
       } finally {
         setIsLoading(false);
       }
     };
-    
-    fetchHistory();
-  }, [tenantId]);
+    void load();
+  }, [tenantId, activeSubTab]);
 
   const years = useMemo(() => {
     const uniqueYears = [...new Set(history.map(run => run.year.toString()))];
@@ -102,7 +121,7 @@ const PaymentHistory: React.FC = () => {
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
-      link.setAttribute("download", `Disbursement_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `Disbursement_Ledger_${toLocalDateString(new Date())}.csv`);
       link.click();
       setIsExporting(false);
     }, 800);
@@ -111,8 +130,8 @@ const PaymentHistory: React.FC = () => {
   if (!tenantId || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <Loader2 size={32} className="text-amber-600 animate-spin" />
-        <p className="text-slate-400 font-bold">Loading payment history...</p>
+        <Loader2 size={32} className="text-primary animate-spin" />
+        <p className="text-app-muted font-bold">Loading payment history...</p>
       </div>
     );
   }
@@ -122,34 +141,35 @@ const PaymentHistory: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-            <div className="p-2 bg-amber-100 text-amber-600 rounded-xl hidden sm:block"><History size={24} /></div>
+          <h1 className="text-xl sm:text-2xl font-black text-app-text tracking-tight flex items-center gap-3">
+            <div className="p-2 bg-ds-warning/15 text-ds-warning rounded-xl hidden sm:block"><History size={24} /></div>
             Disbursement Ledger
           </h1>
-          <p className="text-slate-500 text-xs sm:text-sm font-medium">Historical archive of all completed payment cycles.</p>
+          <p className="text-app-muted text-xs sm:text-sm font-medium">Historical archive of all completed payment cycles.</p>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-app-card rounded-2xl sm:rounded-3xl border border-app-border shadow-ds-card overflow-hidden">
         {/* Filters */}
-        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col gap-3 sm:gap-4 bg-slate-50/30 no-print">
+        <div className="p-4 sm:p-6 border-b border-app-border flex flex-col gap-3 sm:gap-4 bg-app-toolbar/30 no-print">
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" size={16} />
               <input 
                 type="text" 
                 placeholder="Search by month or year..." 
                 value={historySearchTerm} 
                 onChange={(e) => setHistorySearchTerm(e.target.value)} 
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 ring-blue-500/20" 
+                className="ds-input-field w-full pl-10 pr-4 py-2.5 rounded-xl text-sm font-medium" 
               />
             </div>
             <div className="flex gap-3">
-              <select 
-                value={historyFilterYear} 
+              <select
+                value={historyFilterYear}
                 onChange={(e) => setHistoryFilterYear(e.target.value)}
-                className="flex-1 sm:flex-none px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none"
+                className="ds-input-field flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-medium outline-none"
+                aria-label="Filter by year"
               >
                 {years.map(y => (
                   <option key={y} value={y}>{y === 'All' ? 'All Years' : y}</option>
@@ -158,7 +178,7 @@ const PaymentHistory: React.FC = () => {
               <button 
                 disabled={isExporting} 
                 onClick={handleExportCSV} 
-                className="px-4 sm:px-6 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800 shadow-lg disabled:opacity-50 shrink-0"
+                className="px-4 sm:px-6 py-2.5 bg-primary text-ds-on-primary rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 shadow-ds-card disabled:opacity-50 shrink-0"
               >
                 {isExporting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FileText size={14} />} 
                 <span className="hidden sm:inline">Export CSV</span>
@@ -173,21 +193,21 @@ const PaymentHistory: React.FC = () => {
             filteredHistory.map((run) => (
               <div 
                 key={run.id} 
-                className="bg-slate-50/50 rounded-xl border border-slate-100 p-4"
+                className="bg-app-toolbar/40 rounded-xl border border-app-border p-4"
                 onClick={() => setSelectedBatch(run)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <div className="font-bold text-slate-900">{run.month} {run.year}</div>
-                    <code className="text-[10px] font-mono text-slate-400">TXN-{run.id.split('-')[1]}</code>
+                    <div className="font-bold text-app-text">{run.month} {run.year}</div>
+                    <div className="text-[10px] text-app-muted">Paid {formatPaidAt(run.paid_at)}</div>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded uppercase tracking-widest border border-emerald-100">
-                    <BadgeCheck size={10} /> Confirmed
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-ds-success bg-ds-success/10 px-1.5 py-0.5 rounded uppercase tracking-widest border border-ds-success/20">
+                    <BadgeCheck size={10} /> Paid
                   </span>
                 </div>
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                  <span className="text-xs text-slate-500">{run.employee_count} Employees</span>
-                  <span className="font-black text-slate-900 text-sm">PKR {formatCurrency(run.total_amount)}</span>
+                <div className="flex items-center justify-between pt-3 border-t border-app-border">
+                  <span className="text-xs text-app-muted">{run.employee_count} employees</span>
+                  <span className="font-black text-app-text text-sm">PKR {formatCurrency(run.total_amount)}</span>
                 </div>
               </div>
             ))
@@ -204,42 +224,41 @@ const PaymentHistory: React.FC = () => {
         <div className="hidden md:block overflow-x-auto print-full">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">
+              <tr className="bg-app-toolbar/40 text-[10px] font-black text-app-muted uppercase tracking-[0.15em]">
                 <th className="px-6 lg:px-8 py-5">Period</th>
-                <th className="px-6 lg:px-8 py-5">Transaction ID</th>
+                <th className="px-6 lg:px-8 py-5">Paid on</th>
                 <th className="px-6 lg:px-8 py-5">Headcount</th>
-                <th className="px-6 lg:px-8 py-5">Net Disbursement</th>
-                <th className="px-6 lg:px-8 py-5">Verification</th>
+                <th className="px-6 lg:px-8 py-5">Net disbursement</th>
+                <th className="px-6 lg:px-8 py-5">Status</th>
                 <th className="px-6 lg:px-8 py-5 text-right no-print">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-app-border">
               {filteredHistory.length > 0 ? (
                 filteredHistory.map((run) => (
-                  <tr key={run.id} className="group hover:bg-slate-50/50 transition-colors">
+                  <tr key={run.id} className="group hover:bg-app-toolbar/30 transition-colors">
                     <td className="px-6 lg:px-8 py-5">
-                      <div className="font-bold text-slate-900">{run.month} {run.year}</div>
+                      <div className="font-bold text-app-text">{run.month} {run.year}</div>
+                    </td>
+                    <td className="px-6 lg:px-8 py-5 text-app-muted text-sm">
+                      {formatPaidAt(run.paid_at)}
                     </td>
                     <td className="px-6 lg:px-8 py-5">
-                      <code className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                        TXN-{run.id.split('-')[1]}
-                      </code>
+                      <span className="text-sm font-bold text-app-text">{run.employee_count} employees</span>
                     </td>
                     <td className="px-6 lg:px-8 py-5">
-                      <span className="text-sm font-bold text-slate-700">{run.employee_count} Employees</span>
+                      <span className="font-black text-app-text">PKR {formatCurrency(run.total_amount)}</span>
                     </td>
                     <td className="px-6 lg:px-8 py-5">
-                      <span className="font-black text-slate-900">PKR {formatCurrency(run.total_amount)}</span>
-                    </td>
-                    <td className="px-6 lg:px-8 py-5">
-                      <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-widest border border-emerald-100">
-                        <BadgeCheck size={12} /> Confirmed
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-ds-success bg-ds-success/10 px-2 py-1 rounded-lg uppercase tracking-widest border border-ds-success/20">
+                        <BadgeCheck size={12} /> Paid
                       </span>
                     </td>
                     <td className="px-6 lg:px-8 py-5 text-right no-print">
                       <button 
                         onClick={() => setSelectedBatch(run)} 
-                        className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+                        className="p-2 text-app-muted hover:text-primary transition-colors"
+                        aria-label="View batch"
                       >
                         <ExternalLink size={18} />
                       </button>
@@ -248,10 +267,10 @@ const PaymentHistory: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-8 py-20 text-center text-slate-400 font-medium">
+                  <td colSpan={6} className="px-8 py-20 text-center text-app-muted font-medium">
                     {historySearchTerm || historyFilterYear !== 'All' 
                       ? 'No matching payment records found.'
-                      : 'No completed payment cycles yet.'}
+                      : 'No completed payment cycles yet. Pay salary from the Payroll Cycle tab.'}
                   </td>
                 </tr>
               )}
@@ -262,41 +281,41 @@ const PaymentHistory: React.FC = () => {
 
       {/* Batch Detail Modal */}
       {selectedBatch && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 no-print-backdrop">
-          <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-8 py-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 no-print-backdrop">
+          <div className="bg-app-card w-full max-w-xl rounded-3xl shadow-ds-modal overflow-hidden animate-in zoom-in-95 duration-200 border border-app-border">
+            <div className="px-8 py-6 bg-app-toolbar/40 border-b border-app-border flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 text-blue-600 rounded-xl"><FileCheck size={20} /></div>
-                <h3 className="font-bold text-xl text-slate-900">Batch Summary</h3>
+                <div className="p-2 bg-primary/15 text-primary rounded-xl"><FileCheck size={20} /></div>
+                <h3 className="font-bold text-xl text-app-text">Payment summary</h3>
               </div>
-              <button onClick={() => setSelectedBatch(null)} className="p-2 hover:bg-slate-200 rounded-lg text-slate-400 transition-colors">
+              <button onClick={() => setSelectedBatch(null)} className="p-2 hover:bg-app-toolbar rounded-lg text-app-muted transition-colors" aria-label="Close">
                 <X size={20} />
               </button>
             </div>
             <div className="p-8 space-y-8">
-              <div className="bg-slate-900 rounded-2xl p-6 text-white space-y-4">
+              <div id="payment-history-printable-area" className="printable-area bg-slate-900 rounded-2xl p-6 text-white space-y-4">
                 <div className="flex justify-between items-center pb-4 border-b border-white/10">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Period</span>
                   <span className="text-lg font-black">{selectedBatch.month} {selectedBatch.year}</span>
                 </div>
                 <div className="flex justify-between items-center pb-4 border-b border-white/10">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Payout</span>
-                  <span className="text-2xl font-black">PKR {formatCurrency(selectedBatch.total_amount)}</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Paid on</span>
+                  <span className="text-lg font-black">{formatPaidAt(selectedBatch.paid_at)}</span>
                 </div>
                 <div className="flex justify-between items-center pb-4 border-b border-white/10">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Employees Paid</span>
-                  <span className="text-lg font-black">{selectedBatch.employee_count}</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total payout</span>
+                  <span className="text-2xl font-black">PKR {formatCurrency(selectedBatch.total_amount)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Transaction ID</span>
-                  <code className="text-sm font-mono bg-white/10 px-2 py-1 rounded">TXN-{selectedBatch.id.split('-')[1]}</code>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Employees paid</span>
+                  <span className="text-lg font-black">{selectedBatch.employee_count}</span>
                 </div>
               </div>
               <button 
-                onClick={() => window.print()} 
-                className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl hover:bg-slate-50 flex items-center justify-center gap-2"
+                onClick={() => triggerPrint('REPORT', { elementId: 'payment-history-printable-area' })} 
+                className="w-full py-4 bg-app-card border border-app-border text-app-text font-bold rounded-2xl hover:bg-app-toolbar flex items-center justify-center gap-2"
               >
-                <Printer size={18} /> Print Record
+                <Printer size={18} /> Print record
               </button>
             </div>
           </div>

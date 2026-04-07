@@ -9,6 +9,7 @@ import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import { ICONS } from '../../constants';
+import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 
 const MobilePaymentsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -97,7 +98,7 @@ const MobilePaymentsPage: React.FC = () => {
             id: '', // Will be generated
             type: isInvoice ? TransactionType.INCOME : TransactionType.EXPENSE,
             amount: due,
-            date: new Date().toISOString().split('T')[0],
+            date: todayLocalYyyyMmDd(),
             accountId: '', // User must select
             contactId: selectedItem.contactId,
             projectId: selectedItem.projectId,

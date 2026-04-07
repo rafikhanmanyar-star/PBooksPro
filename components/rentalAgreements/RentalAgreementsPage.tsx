@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, type SetStateAction } from 'react';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import Button from '../ui/Button';
 import { ICONS, CURRENCY } from '../../constants';
@@ -12,14 +12,44 @@ import RentalAgreementDetailPanel from './RentalAgreementDetailPanel';
 import RentalAgreementsDashboard from './RentalAgreementsDashboard';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import { usePairColumnResize } from '../../hooks/usePairColumnResize';
 import { ImportType } from '../../services/importService';
 
 type ViewMode = 'summary' | 'list';
 type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
 type SortKey = 'agreementNumber' | 'tenant' | 'owner' | 'property' | 'rent' | 'security' | 'startDate' | 'endDate' | 'status';
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
+
+const AGREEMENT_COL_ORDER = [
+    'agreementNumber', 'tenant', 'property', 'owner', 'rent', 'security', 'startDate', 'endDate', 'status',
+] as const;
+type AgreementColKey = (typeof AGREEMENT_COL_ORDER)[number];
+
+const AGREEMENT_COL_MIN: Record<AgreementColKey, number> = {
+    agreementNumber: 72,
+    tenant: 72,
+    property: 80,
+    owner: 64,
+    rent: 72,
+    security: 72,
+    startDate: 80,
+    endDate: 80,
+    status: 88,
+};
+
+const DEFAULT_AGREEMENT_COL_WIDTHS: Record<AgreementColKey, number> = {
+    agreementNumber: 100,
+    tenant: 140,
+    property: 160,
+    owner: 120,
+    rent: 96,
+    security: 100,
+    startDate: 96,
+    endDate: 96,
+    status: 112,
+};
 
 const RentalAgreementsPage: React.FC = () => {
     const dispatch = useDispatchOnly();
@@ -44,6 +74,54 @@ const RentalAgreementsPage: React.FC = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [sortConfig, setSortConfig] = useLocalStorage<{ key: SortKey; direction: 'asc' | 'desc' }>('rentalAgreements_sort', { key: 'startDate', direction: 'desc' });
+    const [colWidthsStored, setColWidths] = useLocalStorage<Record<AgreementColKey, number>>(
+        'rentalAgreements_tableColWidths',
+        DEFAULT_AGREEMENT_COL_WIDTHS
+    );
+    const colWidths = useMemo(
+        () => ({ ...DEFAULT_AGREEMENT_COL_WIDTHS, ...colWidthsStored }),
+        [colWidthsStored]
+    );
+
+    const setColWidthsMerged = useCallback(
+        (action: SetStateAction<Record<AgreementColKey, number>>) => {
+            setColWidths(prevRaw => {
+                const prev = { ...DEFAULT_AGREEMENT_COL_WIDTHS, ...prevRaw };
+                return typeof action === 'function' ? action(prev) : action;
+            });
+        },
+        [setColWidths]
+    );
+
+    const { startResize } = usePairColumnResize<AgreementColKey>(
+        setColWidthsMerged,
+        AGREEMENT_COL_MIN,
+        AGREEMENT_COL_ORDER
+    );
+
+    const canPairResize = useCallback(
+        (k: AgreementColKey) => AGREEMENT_COL_ORDER.indexOf(k) < AGREEMENT_COL_ORDER.length - 1,
+        []
+    );
+
+    const headerResizer = useCallback(
+        (column: AgreementColKey) =>
+            canPairResize(column) ? (
+                <div
+                    className="absolute right-0 top-0 bottom-0 w-3 flex justify-end pr-0 cursor-col-resize z-20 select-none group"
+                    onMouseDown={startResize(column)}
+                    onClick={e => e.stopPropagation()}
+                    role="separator"
+                    aria-orientation="vertical"
+                    title="Drag to resize column"
+                >
+                    <div className="w-px h-full bg-transparent group-hover:bg-primary/70" />
+                </div>
+            ) : null,
+        [canPairResize, startResize]
+    );
+
+    const thBase = 'px-3 py-1.5 text-[10px] font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap uppercase tracking-wider relative';
 
     // --- Helpers ---
     const today = useMemo(() => new Date(), []);
@@ -96,11 +174,11 @@ const RentalAgreementsPage: React.FC = () => {
         const now = new Date();
         if (option === 'all') { setStartDate(''); setEndDate(''); }
         else if (option === 'thisMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
         } else if (option === 'lastMonth') {
-            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
-            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
         }
     };
 
@@ -176,19 +254,20 @@ const RentalAgreementsPage: React.FC = () => {
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
 
     const getStatusBadge = (ra: RentalAgreement) => {
         const expiring = isExpiringSoon(ra);
-        if (expiring) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-800">Expiring</span>;
-        if (ra.status === RentalAgreementStatus.ACTIVE) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">Active</span>;
-        if (ra.status === RentalAgreementStatus.RENEWED) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-100 text-blue-800">Renewed</span>;
-        if (ra.status === RentalAgreementStatus.TERMINATED) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-100 text-rose-800">Terminated</span>;
-        if (ra.status === RentalAgreementStatus.EXPIRED) return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-200 text-slate-700">Expired</span>;
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-100 text-slate-600">{ra.status}</span>;
+        const pill = 'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border';
+        if (expiring) return <span className={`${pill} border-ds-warning/35 bg-app-toolbar text-ds-warning`}>Expiring</span>;
+        if (ra.status === RentalAgreementStatus.ACTIVE) return <span className={`${pill} border-ds-success/35 bg-[color:var(--badge-paid-bg)] text-ds-success`}>Active</span>;
+        if (ra.status === RentalAgreementStatus.RENEWED) return <span className={`${pill} border-primary/25 bg-app-toolbar text-primary`}>Renewed</span>;
+        if (ra.status === RentalAgreementStatus.TERMINATED) return <span className={`${pill} border-ds-danger/30 bg-[color:var(--badge-unpaid-bg)] text-ds-danger`}>Terminated</span>;
+        if (ra.status === RentalAgreementStatus.EXPIRED) return <span className={`${pill} border-app-border bg-app-toolbar text-app-muted`}>Expired</span>;
+        return <span className={`${pill} border-app-border bg-app-toolbar text-app-muted`}>{ra.status}</span>;
     };
 
     // --- Status tab counts ---
@@ -219,10 +298,10 @@ const RentalAgreementsPage: React.FC = () => {
     if (viewMode === 'summary') {
         return (
             <div className="flex flex-col h-full">
-                <div className="flex items-center justify-end px-3 py-1.5 bg-white border-b border-slate-200 flex-shrink-0">
-                    <div className="flex items-center bg-slate-100 rounded-md p-0.5">
-                        <button onClick={() => setViewMode('summary')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'summary' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Summary</button>
-                        <button onClick={() => setViewMode('list')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>List</button>
+                <div className="flex items-center justify-end px-3 py-1.5 bg-app-card border-b border-app-border flex-shrink-0">
+                    <div className="flex items-center bg-app-toolbar rounded-md p-0.5 border border-app-border">
+                        <button type="button" onClick={() => setViewMode('summary')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'summary' ? 'bg-app-card text-primary shadow-sm border border-primary/25' : 'text-app-muted hover:text-app-text'}`}>Summary</button>
+                        <button type="button" onClick={() => setViewMode('list')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'list' ? 'bg-app-card text-primary shadow-sm border border-primary/25' : 'text-app-muted hover:text-app-text'}`}>List</button>
                     </div>
                 </div>
                 <div className="flex-1 min-h-0 overflow-hidden">
@@ -236,9 +315,9 @@ const RentalAgreementsPage: React.FC = () => {
         <div className="flex flex-col h-full min-h-0 pt-2 px-3 sm:pt-3 sm:px-4 pb-1 gap-2">
             {/* View mode toggle */}
             <div className="flex justify-end flex-shrink-0">
-                <div className="flex items-center bg-slate-100 rounded-md p-0.5">
-                    <button onClick={() => setViewMode('summary')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'summary' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Summary</button>
-                    <button onClick={() => setViewMode('list')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>List</button>
+                <div className="flex items-center bg-app-toolbar rounded-md p-0.5 border border-app-border">
+                    <button type="button" onClick={() => setViewMode('summary')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'summary' ? 'bg-app-card text-primary shadow-sm border border-primary/25' : 'text-app-muted hover:text-app-text'}`}>Summary</button>
+                    <button type="button" onClick={() => setViewMode('list')} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${viewMode === 'list' ? 'bg-app-card text-primary shadow-sm border border-primary/25' : 'text-app-muted hover:text-app-text'}`}>List</button>
                 </div>
             </div>
             {/* === KPI Summary Cards - compact (match invoices/bills) === */}
@@ -283,10 +362,10 @@ const RentalAgreementsPage: React.FC = () => {
             </div>
 
             {/* === Filter Toolbar - compact (match invoices/bills) === */}
-            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex-shrink-0 space-y-1.5">
+            <div className="bg-app-card p-2 rounded-lg border border-app-border shadow-ds-card flex-shrink-0 space-y-1.5">
                 {/* Row 1: Status Tabs */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                    <div className="flex bg-slate-100 p-0.5 rounded-md flex-shrink-0 overflow-x-auto">
+                    <div className="flex bg-app-toolbar p-0.5 rounded-md flex-shrink-0 overflow-x-auto border border-app-border">
                         {([
                             { key: 'all' as StatusFilter, label: 'All', count: statusCounts.all },
                             { key: 'active' as StatusFilter, label: 'Active', count: statusCounts.active },
@@ -295,30 +374,32 @@ const RentalAgreementsPage: React.FC = () => {
                             { key: 'terminated' as StatusFilter, label: 'Ended', count: statusCounts.terminated },
                         ]).map(tab => (
                             <button
+                                type="button"
                                 key={tab.key}
                                 onClick={() => setStatusFilter(tab.key)}
                                 className={`px-2.5 py-1 text-xs font-medium rounded transition-all whitespace-nowrap flex items-center gap-1 ${
                                     statusFilter === tab.key
-                                        ? 'bg-white text-accent shadow-sm font-bold'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                        ? 'bg-app-card text-primary shadow-sm font-bold border border-primary/25'
+                                        : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                 }`}
                             >
                                 {tab.label}
                                 <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
-                                    statusFilter === tab.key ? 'bg-accent/10 text-accent' : 'bg-slate-200 text-slate-500'
+                                    statusFilter === tab.key ? 'bg-primary/15 text-primary' : 'bg-app-toolbar text-app-muted'
                                 }`}>{tab.count}</span>
                             </button>
                         ))}
                     </div>
 
                     {/* Date range filter */}
-                    <div className="flex bg-slate-100 p-0.5 rounded-md flex-shrink-0 ml-auto">
+                    <div className="flex bg-app-toolbar p-0.5 rounded-md flex-shrink-0 ml-auto border border-app-border">
                         {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                             <button
+                                type="button"
                                 key={opt}
                                 onClick={() => handleRangeChange(opt)}
                                 className={`px-2 py-1 text-[10px] font-medium rounded transition-all whitespace-nowrap capitalize ${
-                                    dateRange === opt ? 'bg-white text-accent shadow-sm font-bold' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                    dateRange === opt ? 'bg-app-card text-primary shadow-sm font-bold border border-primary/25' : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                 }`}
                             >
                                 {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
@@ -327,9 +408,9 @@ const RentalAgreementsPage: React.FC = () => {
                     </div>
                     {dateRange === 'custom' && (
                         <div className="flex items-center gap-1.5 animate-fade-in flex-shrink-0">
-                            <DatePicker value={startDate} onChange={(d) => { setStartDate(d.toISOString().split('T')[0]); setDateRange('custom'); }} />
-                            <span className="text-slate-400 text-xs">-</span>
-                            <DatePicker value={endDate} onChange={(d) => { setEndDate(d.toISOString().split('T')[0]); setDateRange('custom'); }} />
+                            <DatePicker value={startDate} onChange={(d) => { setStartDate(toLocalDateString(d)); setDateRange('custom'); }} />
+                            <span className="text-app-muted text-xs">-</span>
+                            <DatePicker value={endDate} onChange={(d) => { setEndDate(toLocalDateString(d)); setDateRange('custom'); }} />
                         </div>
                     )}
                 </div>
@@ -337,17 +418,17 @@ const RentalAgreementsPage: React.FC = () => {
                 {/* Row 2: Search + Building Filter + Actions */}
                 <div className="flex flex-wrap items-center gap-1.5">
                     <div className="relative flex-grow min-w-[180px] max-w-md">
-                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted">
                             <div className="w-4 h-4">{ICONS.search}</div>
                         </div>
                         <Input
                             placeholder="Search by tenant, owner, property, building..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            className="pl-9 py-1.5 text-sm border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400"
+                            className="ds-input-field pl-9 py-1.5 text-sm rounded-md placeholder:text-app-muted"
                         />
                         {searchQuery && (
-                            <button type="button" onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600">
+                            <button type="button" onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text">
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
                         )}
@@ -357,7 +438,8 @@ const RentalAgreementsPage: React.FC = () => {
                     <select
                         value={buildingFilter}
                         onChange={e => setBuildingFilter(e.target.value)}
-                        className="px-2.5 py-1.5 text-xs border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 min-w-[130px]"
+                        className="ds-input-field px-2.5 py-1.5 text-xs min-w-[130px]"
+                        aria-label="Filter by building"
                     >
                         <option value="">All Buildings</option>
                         {buildings.map(b => (
@@ -385,50 +467,117 @@ const RentalAgreementsPage: React.FC = () => {
             {/* === Main Content: Table + Detail Panel === */}
             <div className="flex-1 min-h-0 flex overflow-hidden gap-0">
                 {/* Data Grid */}
-                <div className={`flex-1 min-w-0 overflow-hidden flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm transition-all ${selectedAgreement ? 'mr-0 rounded-r-none border-r-0' : ''}`}>
+                <div className={`flex-1 min-w-0 overflow-hidden flex flex-col bg-app-card rounded-lg border border-app-border shadow-ds-card transition-all ${selectedAgreement ? 'mr-0 rounded-r-none border-r-0' : ''}`}>
                     <div className="flex-grow overflow-auto min-h-0">
-                        <table className="min-w-full divide-y divide-slate-100 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                        <table className="min-w-full table-fixed divide-y divide-app-border text-sm">
+                            <colgroup>
+                                {AGREEMENT_COL_ORDER.map(k => (
+                                    <col key={k} style={{ width: colWidths[k], minWidth: AGREEMENT_COL_MIN[k] }} />
+                                ))}
+                            </colgroup>
+                            <thead className="bg-app-table-header sticky top-0 z-10 shadow-sm">
                                 <tr>
-                                    <th onClick={() => handleSort('agreementNumber')} className="px-3 py-1.5 text-left text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">ID <SortIcon column="agreementNumber" /></th>
-                                    <th onClick={() => handleSort('tenant')} className="px-3 py-1.5 text-left text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">Tenant <SortIcon column="tenant" /></th>
-                                    <th onClick={() => handleSort('property')} className="px-3 py-1.5 text-left text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">Property <SortIcon column="property" /></th>
-                                    <th onClick={() => handleSort('owner')} className="px-3 py-1.5 text-left text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">Owner <SortIcon column="owner" /></th>
-                                    <th onClick={() => handleSort('rent')} className="px-3 py-1.5 text-right text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">Rent <SortIcon column="rent" /></th>
-                                    <th onClick={() => handleSort('security')} className="px-3 py-1.5 text-right text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">Security <SortIcon column="security" /></th>
-                                    <th onClick={() => handleSort('startDate')} className="px-3 py-1.5 text-left text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">Start <SortIcon column="startDate" /></th>
-                                    <th onClick={() => handleSort('endDate')} className="px-3 py-1.5 text-left text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">End <SortIcon column="endDate" /></th>
-                                    <th onClick={() => handleSort('status')} className="px-3 py-1.5 text-center text-[10px] font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap uppercase tracking-wider">Status <SortIcon column="status" /></th>
+                                    <th
+                                        style={{ width: colWidths.agreementNumber, minWidth: AGREEMENT_COL_MIN.agreementNumber }}
+                                        onClick={() => handleSort('agreementNumber')}
+                                        className={`${thBase} text-left`}
+                                    >
+                                        ID <SortIcon column="agreementNumber" />
+                                        {headerResizer('agreementNumber')}
+                                    </th>
+                                    <th
+                                        style={{ width: colWidths.tenant, minWidth: AGREEMENT_COL_MIN.tenant }}
+                                        onClick={() => handleSort('tenant')}
+                                        className={`${thBase} text-left`}
+                                    >
+                                        Tenant <SortIcon column="tenant" />
+                                        {headerResizer('tenant')}
+                                    </th>
+                                    <th
+                                        style={{ width: colWidths.property, minWidth: AGREEMENT_COL_MIN.property }}
+                                        onClick={() => handleSort('property')}
+                                        className={`${thBase} text-left`}
+                                    >
+                                        Property <SortIcon column="property" />
+                                        {headerResizer('property')}
+                                    </th>
+                                    <th
+                                        style={{ width: colWidths.owner, minWidth: AGREEMENT_COL_MIN.owner }}
+                                        onClick={() => handleSort('owner')}
+                                        className={`${thBase} text-left`}
+                                    >
+                                        Owner <SortIcon column="owner" />
+                                        {headerResizer('owner')}
+                                    </th>
+                                    <th
+                                        style={{ width: colWidths.rent, minWidth: AGREEMENT_COL_MIN.rent }}
+                                        onClick={() => handleSort('rent')}
+                                        className={`${thBase} text-right`}
+                                    >
+                                        Rent <SortIcon column="rent" />
+                                        {headerResizer('rent')}
+                                    </th>
+                                    <th
+                                        style={{ width: colWidths.security, minWidth: AGREEMENT_COL_MIN.security }}
+                                        onClick={() => handleSort('security')}
+                                        className={`${thBase} text-right`}
+                                    >
+                                        Security <SortIcon column="security" />
+                                        {headerResizer('security')}
+                                    </th>
+                                    <th
+                                        style={{ width: colWidths.startDate, minWidth: AGREEMENT_COL_MIN.startDate }}
+                                        onClick={() => handleSort('startDate')}
+                                        className={`${thBase} text-left`}
+                                    >
+                                        Start <SortIcon column="startDate" />
+                                        {headerResizer('startDate')}
+                                    </th>
+                                    <th
+                                        style={{ width: colWidths.endDate, minWidth: AGREEMENT_COL_MIN.endDate }}
+                                        onClick={() => handleSort('endDate')}
+                                        className={`${thBase} text-left`}
+                                    >
+                                        End <SortIcon column="endDate" />
+                                        {headerResizer('endDate')}
+                                    </th>
+                                    <th
+                                        style={{ width: colWidths.status, minWidth: AGREEMENT_COL_MIN.status }}
+                                        onClick={() => handleSort('status')}
+                                        className="px-3 py-1.5 text-center text-[10px] font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap uppercase tracking-wider relative"
+                                    >
+                                        Status <SortIcon column="status" />
+                                    </th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-app-border">
                                 {filteredAgreements.length > 0 ? filteredAgreements.map((agreement, index) => (
                                     <tr
                                         key={agreement.id}
                                         onClick={() => setSelectedAgreement(agreement)}
                                         className={`cursor-pointer transition-colors group ${
-                                            selectedAgreement?.id === agreement.id ? 'bg-orange-50 border-l-2 border-l-orange-400' :
-                                            index % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-100'
+                                            selectedAgreement?.id === agreement.id ? 'bg-primary/10 border-l-2 border-l-primary' :
+                                            index % 2 === 0 ? 'bg-app-card hover:bg-app-toolbar/60' : 'bg-app-toolbar/30 hover:bg-app-toolbar/60'
                                         }`}
                                     >
-                                        <td className="px-3 py-1.5 font-mono text-xs font-medium text-slate-600">{agreement.agreementNumber}</td>
-                                        <td className="px-3 py-1.5 font-medium text-slate-800 truncate max-w-[140px]" title={agreement.tenantName}>{agreement.tenantName}</td>
-                                        <td className="px-3 py-1.5 text-slate-600 truncate max-w-[140px]" title={`${agreement.propertyName} (${agreement.buildingName})`}>
+                                        <td style={{ width: colWidths.agreementNumber, minWidth: AGREEMENT_COL_MIN.agreementNumber }} className="px-3 py-1.5 font-mono text-xs font-medium text-app-muted truncate" title={agreement.agreementNumber}>{agreement.agreementNumber}</td>
+                                        <td style={{ width: colWidths.tenant, minWidth: AGREEMENT_COL_MIN.tenant }} className="px-3 py-1.5 font-medium text-app-text truncate" title={agreement.tenantName}>{agreement.tenantName}</td>
+                                        <td style={{ width: colWidths.property, minWidth: AGREEMENT_COL_MIN.property }} className="px-3 py-1.5 text-app-text truncate" title={`${agreement.propertyName} (${agreement.buildingName})`}>
                                             <span>{agreement.propertyName}</span>
-                                            <span className="text-slate-400 text-[10px] ml-1">({agreement.buildingName})</span>
+                                            <span className="text-app-muted text-[10px] ml-1">({agreement.buildingName})</span>
                                         </td>
-                                        <td className="px-3 py-1.5 text-slate-500 truncate max-w-[120px]">{agreement.ownerName}</td>
-                                        <td className="px-3 py-1.5 text-right font-medium text-slate-700 tabular-nums">{CURRENCY} {(parseFloat(String(agreement.monthlyRent)) || 0).toLocaleString()}</td>
-                                        <td className="px-3 py-1.5 text-right text-slate-500 tabular-nums">{agreement.securityDeposit ? `${CURRENCY} ${(parseFloat(String(agreement.securityDeposit)) || 0).toLocaleString()}` : '-'}</td>
-                                        <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap text-xs">{formatDate(agreement.startDate)}</td>
-                                        <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap text-xs">{formatDate(agreement.endDate)}</td>
-                                        <td className="px-3 py-1.5 text-center">{getStatusBadge(agreement)}</td>
+                                        <td style={{ width: colWidths.owner, minWidth: AGREEMENT_COL_MIN.owner }} className="px-3 py-1.5 text-app-muted truncate" title={agreement.ownerName}>{agreement.ownerName}</td>
+                                        <td style={{ width: colWidths.rent, minWidth: AGREEMENT_COL_MIN.rent }} className="px-3 py-1.5 text-right font-medium text-app-text tabular-nums whitespace-nowrap">{CURRENCY} {(parseFloat(String(agreement.monthlyRent)) || 0).toLocaleString()}</td>
+                                        <td style={{ width: colWidths.security, minWidth: AGREEMENT_COL_MIN.security }} className="px-3 py-1.5 text-right text-app-muted tabular-nums whitespace-nowrap">{agreement.securityDeposit ? `${CURRENCY} ${(parseFloat(String(agreement.securityDeposit)) || 0).toLocaleString()}` : '-'}</td>
+                                        <td style={{ width: colWidths.startDate, minWidth: AGREEMENT_COL_MIN.startDate }} className="px-3 py-1.5 text-app-text whitespace-nowrap text-xs">{formatDate(agreement.startDate)}</td>
+                                        <td style={{ width: colWidths.endDate, minWidth: AGREEMENT_COL_MIN.endDate }} className="px-3 py-1.5 text-app-text whitespace-nowrap text-xs">{formatDate(agreement.endDate)}</td>
+                                        <td style={{ width: colWidths.status, minWidth: AGREEMENT_COL_MIN.status }} className="px-3 py-1.5 text-center">{getStatusBadge(agreement)}</td>
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                                        <td colSpan={9} className="px-4 py-8 text-center text-app-muted">
                                             <div className="flex flex-col items-center gap-1.5">
-                                                <div className="w-9 h-9 text-slate-300">{ICONS.fileText}</div>
+                                                <div className="w-9 h-9 text-app-border">{ICONS.fileText}</div>
                                                 <span className="text-sm">No agreements found matching your criteria.</span>
                                                 <Button onClick={() => setIsCreateModalOpen(true)} size="sm" className="mt-1 !text-xs">
                                                     <div className="w-3.5 h-3.5 mr-1">{ICONS.plus}</div> Create New Agreement
@@ -440,7 +589,7 @@ const RentalAgreementsPage: React.FC = () => {
                             </tbody>
                         </table>
                     </div>
-                    <div className="flex-shrink-0 px-3 py-1.5 border-t border-slate-200 bg-slate-50/80 text-xs font-medium text-slate-600 flex items-center justify-between">
+                    <div className="flex-shrink-0 px-3 py-1.5 border-t border-app-border bg-app-toolbar/40 text-xs font-medium text-app-muted flex items-center justify-between">
                         <span>Showing {filteredAgreements.length} of {rentalAgreements.length} agreements</span>
                         <span className="tabular-nums">Total Rent: {CURRENCY} {filteredAgreements.reduce((s, a) => s + (parseFloat(String(a.monthlyRent)) || 0), 0).toLocaleString()}</span>
                     </div>

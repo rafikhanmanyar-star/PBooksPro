@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { normalizeNameForComparison } from '../utils/stringUtils';
 import { IMPORT_SCHEMAS } from './importSchemas';
 import { AppStateRepository } from './database/repositories/appStateRepository';
+import { toLocalDateString } from '../utils/dateUtils';
 
 type ProgressReporter = ProgressContextType;
 type LogFunction = (entry: ImportLogEntry) => void;
@@ -311,11 +312,11 @@ export const generateImportTemplate = (importType: ImportType): void => {
 
             case ImportType.VENDORS:
                 return [{
-                    sheetName: 'Contacts',
-                    headers: ['name', 'type', 'description', 'contactNo', 'companyName', 'address'],
+                    sheetName: 'Vendors',
+                    headers: ['name', 'contactNo', 'companyName', 'address', 'description'],
                     exampleRows: [
-                        { name: 'ABC Company', type: 'Vendor', description: 'Material supplier', contactNo: '+1234567891', companyName: 'ABC Company', address: '456 Business Ave' },
-                        { name: 'XYZ Services', type: 'Vendor', description: 'Service provider', contactNo: '+1234567892', companyName: 'XYZ Services', address: '789 Service Rd' }
+                        { name: 'ABC Supplies Ltd', contactNo: '+1234567890', companyName: 'ABC Supplies Ltd', address: '123 Trade Street, City', description: 'Material supplier' },
+                        { name: 'XYZ Services', contactNo: '+1234567891', companyName: 'XYZ Services', address: '456 Service Road', description: 'Maintenance and repairs' }
                     ]
                 }];
 
@@ -362,10 +363,10 @@ export const generateImportTemplate = (importType: ImportType): void => {
             case ImportType.UNITS:
                 return [{
                     sheetName: 'Units',
-                    headers: ['name', 'projectName', 'ownerName', 'salePrice', 'description'],
+                    headers: ['name', 'projectName', 'ownerName', 'salePrice', 'type', 'area', 'floor', 'description'],
                     exampleRows: [
-                        { name: 'Unit 201', projectName: 'Project Alpha', ownerName: 'John Doe', salePrice: '500000', description: '2BHK unit' },
-                        { name: 'Unit 202', projectName: 'Project Alpha', ownerName: 'Jane Smith', salePrice: '750000', description: '3BHK unit' }
+                        { name: 'Unit 201', projectName: 'Project Alpha', ownerName: 'John Doe', salePrice: '500000', type: '2BHK', area: '1200', floor: '2nd floor', description: '2BHK unit' },
+                        { name: 'Unit 202', projectName: 'Project Alpha', ownerName: 'Jane Smith', salePrice: '750000', type: '3BHK', area: '1500', floor: '3rd floor', description: '3BHK unit' }
                     ]
                 }];
 
@@ -526,6 +527,15 @@ export const generateImportTemplate = (importType: ImportType): void => {
                     ]
                 }];
 
+            case ImportType.RENTAL_INVOICES:
+                return [{
+                    sheetName: 'RentalInvoices',
+                    headers: ['invoiceNumber', 'contactName', 'amount', 'issueDate', 'dueDate', 'invoiceType', 'description', 'buildingName', 'propertyName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth'],
+                    exampleRows: [
+                        { invoiceNumber: 'RINV-001', contactName: 'Tenant One', amount: '10000', issueDate: '2024-01-01', dueDate: '2024-01-31', invoiceType: 'Rental', description: 'Monthly rent', buildingName: 'Building A', propertyName: 'Property 101', agreementNumber: 'RA-001', securityDepositCharge: '0', serviceCharges: '500', rentalMonth: '2024-01' }
+                    ]
+                }];
+
             case ImportType.BILLS:
                 return [{
                     sheetName: 'Bills',
@@ -613,9 +623,9 @@ export const generateImportTemplate = (importType: ImportType): void => {
             case ImportType.RENTAL_INVOICE_PAYMENTS:
                 return [{
                     sheetName: 'RentalInvoicePayments',
-                    headers: ['invoiceNumber', 'accountName', 'amount', 'date', 'description', 'contactName', 'categoryName', 'projectName', 'buildingName', 'propertyName', 'unitName', 'contractNumber', 'agreementNumber'],
+                    headers: ['invoiceNumber', 'accountName', 'amount', 'date', 'description'],
                     exampleRows: [
-                        { invoiceNumber: 'INV-RENT-001', accountName: 'Bank Account', amount: '10000', date: '2024-01-05', description: 'Rental invoice payment', contactName: 'Tenant One', categoryName: '', projectName: '', buildingName: 'Building A', propertyName: 'Property 101', unitName: '', contractNumber: '', agreementNumber: 'RA-001' }
+                        { invoiceNumber: 'RINV-001', accountName: 'Bank Account', amount: '10000', date: '2024-01-05', description: 'Rental invoice payment' }
                     ]
                 }];
 
@@ -726,7 +736,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
             { sheetName: 'Projects', headers: ['name', 'description', 'color', 'status'] },
             { sheetName: 'Buildings', headers: ['name', 'description', 'color'] },
             { sheetName: 'Properties', headers: ['name', 'ownerName', 'buildingName', 'description', 'monthlyServiceCharge'] },
-            { sheetName: 'Units', headers: ['name', 'projectName', 'ownerName', 'salePrice', 'description'] },
+            { sheetName: 'Units', headers: ['name', 'projectName', 'ownerName', 'salePrice', 'type', 'area', 'floor', 'description'] },
             { sheetName: 'RentalAgreements', headers: ['agreementNumber', 'tenantName', 'propertyName', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate'] },
             { sheetName: 'ProjectAgreements', headers: ['agreementNumber', 'clientName', 'projectName', 'sellingPrice', 'issueDate'] },
             { sheetName: 'Invoices', headers: ['invoiceNumber', 'contactName', 'amount', 'issueDate', 'dueDate', 'invoiceType'] },
@@ -791,6 +801,7 @@ export const runImportVendors = async (
 ): Promise<{ success: number; skipped: number; errors: number }> => {
     // Vendors are contacts with type VENDOR, so use contacts import
     const filteredSheets: { [key: string]: any[] } = {
+        Vendors: sheets.Vendors || [],
         Contacts: sheets.Contacts || []
     };
     return runImportProcess(filteredSheets, originalState, dispatch, progress, onLog, ImportType.VENDORS);
@@ -1269,8 +1280,10 @@ export const runImportProcess = async (
             orderedSheets = ['Accounts'];
             break;
         case ImportType.CONTACTS:
-        case ImportType.VENDORS:
             orderedSheets = ['Contacts'];
+            break;
+        case ImportType.VENDORS:
+            orderedSheets = ['Vendors'];
             break;
         case ImportType.CATEGORIES:
             orderedSheets = ['Categories'];
@@ -1301,6 +1314,9 @@ export const runImportProcess = async (
             break;
         case ImportType.INVOICES:
             orderedSheets = ['Invoices'];
+            break;
+        case ImportType.RENTAL_INVOICES:
+            orderedSheets = ['RentalInvoices'];
             break;
         case ImportType.BILLS:
             orderedSheets = ['Bills'];
@@ -1435,6 +1451,7 @@ export const runImportProcess = async (
                                 'ShowSystemTransactions': 'TOGGLE_SYSTEM_TRANSACTIONS',
                                 'EnableColorCoding': 'TOGGLE_COLOR_CODING',
                                 'EnableBeepOnSave': 'TOGGLE_BEEP_ON_SAVE',
+                                'WhatsAppMode': 'SET_WHATSAPP_MODE',
                                 'LastServiceChargeRun': 'SET_LAST_SERVICE_CHARGE_RUN'
                             };
 
@@ -1507,6 +1524,31 @@ export const runImportProcess = async (
                     tempState.accounts.push(newAccount);
                     maps.accounts.set(normalizeNameForComparison(newAccount.name), newAccount.id);
                     log(sheetName, rowNum, 'Success', `Added Account: ${newAccount.name}`);
+                }
+
+                // --- VENDORS (dedicated sheet: name, contactNo, companyName, address, description) ---
+                else if (sheetName === 'Vendors') {
+                    const missing = validateRecord(row, ['name']);
+                    if (missing.length > 0) {
+                        const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
+                        log(sheetName, rowNum, 'Error', errorMsg, row);
+                        continue;
+                    }
+                    if (maps.vendors.has(normalizeNameForComparison(row.name))) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A vendor with the name "${row.name}" already exists.`, row);
+                        continue;
+                    }
+                    const newVendor: Vendor = {
+                        id: generateImportId('ven', index),
+                        name: row.name,
+                        description: row.description ?? '',
+                        contactNo: row.contactNo ?? '',
+                        companyName: row.companyName ?? '',
+                        address: row.address ?? ''
+                    };
+                    (tempState.vendors ||= []).push(newVendor);
+                    maps.vendors.set(normalizeNameForComparison(newVendor.name), newVendor.id);
+                    log(sheetName, rowNum, 'Success', `Added Vendor: ${newVendor.name}`);
                 }
 
                 // --- CONTACTS ---
@@ -1739,16 +1781,18 @@ export const runImportProcess = async (
                         continue;
                     }
 
+                    const salePriceRaw = row.salePrice ?? row.SalePrice ?? '';
+                    const areaRaw = row.area ?? row.Area ?? '';
                     const newUnit: Unit = {
                         id: generateImportId('unit', index),
                         name: row.name,
                         projectId,
                         contactId: ownerId,
-                        salePrice: row.salePrice ? parseFloat(row.salePrice) : undefined,
-                        description: row.description || undefined,
-                        type: row.type || undefined,
-                        area: row.area ? parseFloat(row.area) : undefined,
-                        floor: row.floor || undefined
+                        salePrice: salePriceRaw !== '' && salePriceRaw != null ? parseFloat(String(salePriceRaw)) : undefined,
+                        description: row.description ?? row.Description ?? undefined,
+                        type: row.type ?? row.Type ?? undefined,
+                        area: areaRaw !== '' && areaRaw != null ? parseFloat(String(areaRaw)) : undefined,
+                        floor: row.floor ?? row.Floor ?? undefined
                     };
                     tempState.units.push(newUnit);
                     maps.units.set(normalizeNameForComparison(newUnit.name), newUnit.id);
@@ -1990,7 +2034,7 @@ export const runImportProcess = async (
                 }
 
                 // --- INVOICES & BILLS ---
-                else if (sheetName === 'Invoices') {
+                else if (sheetName === 'Invoices' || sheetName === 'RentalInvoices') {
                     if (maps.invoices.has(normalizeNameForComparison(row.invoiceNumber))) continue;
                     const contactId = resolveId(maps.contacts, row, 'contactName', 'ContactName', 'contact', 'Contact');
                     const projectId = resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
@@ -2227,7 +2271,7 @@ export const runImportProcess = async (
                             amount: parseFloat(row.amount),
                             descriptionTemplate: row.descriptionTemplate,
                             dayOfMonth: parseInt(row.dayOfMonth),
-                            nextDueDate: new Date(row.nextDueDate).toISOString().split('T')[0],
+                            nextDueDate: toLocalDateString(new Date(row.nextDueDate)),
                             active: row.active === true || String(row.active).toLowerCase() === 'true',
                             agreementId: resolveId(maps.rentalAgreements, row, 'agreementNumber', 'AgreementNumber', 'agreementId'),
                             invoiceType: (row.invoiceType as InvoiceType) || InvoiceType.RENTAL
@@ -2432,11 +2476,19 @@ export const runImportProcess = async (
                         // accountId is required by model; store fromAccountId as accountId for transfers
                         accountId = fromAccountId;
                     } else {
-                        accountId = resolveId(maps.accounts, row, 'accountName', 'AccountName', 'account', 'Account');
+                        // For LoanTransactions, check bankAccountName/BankAccountName first (as per schema)
+                        // Then fall back to accountName/AccountName/account/Account for other transaction types
+                        if (sheetName === 'LoanTransactions') {
+                            accountId = resolveId(maps.accounts, row, 'bankAccountName', 'BankAccountName', 'accountName', 'AccountName', 'account', 'Account');
+                        } else {
+                            accountId = resolveId(maps.accounts, row, 'accountName', 'AccountName', 'account', 'Account');
+                        }
                         if (!accountId) {
-                            const accountValue = row.accountName || row.AccountName || row.account || row.Account || '';
+                            const accountValue = sheetName === 'LoanTransactions' 
+                                ? (row.bankAccountName || row.BankAccountName || row.accountName || row.AccountName || row.account || row.Account || '')
+                                : (row.accountName || row.AccountName || row.account || row.Account || '');
                             const invalidRefs = [{
-                                field: 'Account',
+                                field: sheetName === 'LoanTransactions' ? 'BankAccount' : 'Account',
                                 value: accountValue,
                                 suggestions: findSimilarNames(accountValue, maps.accounts)
                             }];
@@ -2681,6 +2733,23 @@ export const runImportProcess = async (
     progress.updateProgress(98, 'Saving to database...');
     const appStateRepo = new AppStateRepository();
     await appStateRepo.saveState(tempState);
+    
+    // Ensure database persistence is complete (especially important for Electron)
+    progress.updateProgress(99, 'Finalizing database save...');
+    try {
+      // Get the database instance from the repository to ensure we're saving the same instance
+      const repoDb = (appStateRepo as any).db;
+      if (repoDb && typeof repoDb.saveAsync === 'function') {
+        await repoDb.saveAsync();
+        console.log('[Import] Database save completed successfully');
+      } else if (dbService && typeof dbService.saveAsync === 'function') {
+        await dbService.saveAsync();
+        console.log('[Import] Database save completed successfully (via dbService)');
+      }
+    } catch (saveError) {
+      console.error('[Import] Database save error:', saveError);
+      // Continue anyway - the transaction should have committed
+    }
 
     // Also dispatch to update UI
     dispatch({ type: 'SET_STATE', payload: tempState });

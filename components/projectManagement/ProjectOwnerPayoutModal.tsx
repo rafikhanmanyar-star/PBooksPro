@@ -1,13 +1,20 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { flushSync } from 'react-dom';
+import { useAppContext, _getAppState } from '../../context/AppContext';
 import { Contact, TransactionType, Transaction, SalesReturnStatus } from '../../types';
+import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
 import { CURRENCY } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
+import { findSalesReturnCategory, getSalesReturnRefundCategoryIdSet } from '../../constants/salesReturnSystemCategories';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface ProjectOwnerPayoutModalProps {
     isOpen: boolean;
@@ -21,7 +28,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
     const { showAlert } = useNotification();
 
     const [amount, setAmount] = useState('');
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(toLocalDateString(new Date()));
     const [accountId, setAccountId] = useState('');
     const [projectId, setProjectId] = useState(state.defaultProjectId || '');
     const [description, setDescription] = useState('');
@@ -31,31 +38,38 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
     const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
     const incomeCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.INCOME), [state.categories]);
     
-    // Find Unit Selling Income category for refund payouts
-    // Refunds reduce revenue, not expenses - so we use Unit Selling Income category
-    const unitSellingCategory = useMemo(() => {
-        return state.categories.find(c => c.name === 'Unit Selling Income');
+    /** Prefer dedicated sales-return refund category; fall back to Unit Selling Income (legacy). */
+    const refundRevenueCategory = useMemo(() => {
+        return (
+            findSalesReturnCategory(state.categories, 'REFUND_REVENUE_REDUCTION') ??
+            state.categories.find((c) => c.id === 'sys-cat-unit-sell' || c.id.endsWith('__sys-cat-unit-sell')) ??
+            state.categories.find((c) => c.name === 'Unit Selling Income')
+        );
     }, [state.categories]);
+
+    const refundCategoryIdSet = useMemo(
+        () => getSalesReturnRefundCategoryIdSet(state.categories),
+        [state.categories]
+    );
 
     useEffect(() => {
         if (isOpen) {
             setAmount(balanceDue ? balanceDue.toString() : '');
-            setDate(new Date().toISOString().split('T')[0]);
+            setDate(toLocalDateString(new Date()));
             const cashAccount = state.accounts.find(a => a.name === 'Cash');
             setAccountId(cashAccount?.id || userSelectableAccounts[0]?.id || '');
             setProjectId('');
             setDescription('');
             
-            // For refund payouts (from Sales Returns), use Unit Selling Income category
-            // This ensures the refund reduces revenue (not an expense)
-            if (unitSellingCategory) {
-                setCategoryId(unitSellingCategory.id);
+            // Refund payouts: sales-return refund category or Unit Selling Income (revenue reduction)
+            if (refundRevenueCategory) {
+                setCategoryId(refundRevenueCategory.id);
             } else {
                 const defaultCat = state.categories.find(c => c.name === 'Owner Payout' || c.name === 'Security Deposit Refund');
                 setCategoryId(defaultCat?.id || '');
             }
         }
-    }, [isOpen, userSelectableAccounts, state.accounts, state.categories, balanceDue, unitSellingCategory]);
+    }, [isOpen, userSelectableAccounts, state.accounts, state.categories, balanceDue, refundRevenueCategory]);
 
     const handleSubmit = async () => {
         if (!client) return;
@@ -90,7 +104,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
             const totalRefunded = state.transactions
                 .filter(tx => 
                     tx.contactId === client.id &&
-                    tx.categoryId === unitSellingCategory?.id &&
+                    (tx.categoryId ? refundCategoryIdSet.has(tx.categoryId) : false) &&
                     tx.description?.includes(`Sales Return #${sr.returnNumber}`)
                 )
                 .reduce((sum, tx) => sum + tx.amount, 0);
@@ -112,9 +126,9 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
         // Refunds are NOT expenses - they are revenue reductions
         // IMPORTANT: Must use Unit Selling Income category to reduce revenue in P&L
         // IMPORTANT: Must have projectId for P&L to include the transaction
-        const finalCategoryId = (balanceDue !== undefined && unitSellingCategory) 
-            ? unitSellingCategory.id 
-            : (categoryId || unitSellingCategory?.id || '');
+        const finalCategoryId = (balanceDue !== undefined && refundRevenueCategory) 
+            ? refundRevenueCategory.id 
+            : (categoryId || refundRevenueCategory?.id || '');
         
         // Get projectId from sales return's agreement if not provided
         let finalProjectId = projectId;
@@ -124,7 +138,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
         
         // Ensure we have both categoryId and projectId for refunds
         if (!finalCategoryId || !finalProjectId) {
-            await showAlert('Error: Missing category or project information for refund. Please ensure Unit Selling Income category exists and agreement has a project.');
+            await showAlert('Error: Missing category or project information for refund. Please ensure Sales Return Refund (revenue reduction) or Unit Selling Income exists and agreement has a project.');
             return;
         }
         
@@ -142,33 +156,71 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
         };
 
         const transactionId = Date.now().toString();
-        dispatch({ type: 'ADD_TRANSACTION', payload: { ...refundTransaction, id: transactionId } });
-        
-        // Update sales return status if fully refunded
-        if (salesReturn) {
-            // Calculate total refunded including this payment (rounded to whole number)
-            const totalRefunded = Math.round(state.transactions
-                .filter(tx => 
-                    tx.contactId === client.id &&
-                    tx.categoryId === unitSellingCategory?.id &&
-                    tx.description?.includes(`Sales Return #${salesReturn.returnNumber}`)
-                )
-                .reduce((sum, tx) => sum + tx.amount, 0) + numAmount);
-            
-            const isFullyRefunded = totalRefunded >= salesReturn.refundAmount - 0.001;
-            
-            if (isFullyRefunded && salesReturn.status !== SalesReturnStatus.REFUNDED) {
-                dispatch({
-                    type: 'MARK_RETURN_REFUNDED',
-                    payload: {
-                        returnId: salesReturn.id,
-                        refundDate: date,
+        const newTx: Transaction = { ...refundTransaction, id: transactionId };
+
+        if (isLocalOnlyMode()) {
+            flushSync(() => {
+                dispatch({ type: 'ADD_TRANSACTION', payload: newTx });
+                if (salesReturn) {
+                    const totalRefunded = Math.round(
+                        state.transactions
+                            .filter(
+                                (tx) =>
+                                    tx.contactId === client.id &&
+                                    (tx.categoryId ? refundCategoryIdSet.has(tx.categoryId) : false) &&
+                                    tx.description?.includes(`Sales Return #${salesReturn.returnNumber}`)
+                            )
+                            .reduce((sum, tx) => sum + tx.amount, 0) + numAmount
+                    );
+                    const isFullyRefunded = totalRefunded >= salesReturn.refundAmount - 0.001;
+                    if (isFullyRefunded && salesReturn.status !== SalesReturnStatus.REFUNDED) {
+                        dispatch({
+                            type: 'MARK_RETURN_REFUNDED',
+                            payload: { returnId: salesReturn.id, refundDate: date },
+                        });
+                    }
+                }
+            });
+            try {
+                await flushAppStateToDatabase(_getAppState());
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                await showAlert(`Could not save refund to the database: ${msg}`);
+                return;
+            }
+        } else {
+            try {
+                const api = getAppStateApiService();
+                const saved = await api.saveTransaction(newTx);
+                flushSync(() => {
+                    dispatch({ type: 'ADD_TRANSACTION', payload: saved as Transaction, _isRemote: true } as any);
+                    if (salesReturn) {
+                        const totalRefunded = Math.round(
+                            state.transactions
+                                .filter(
+                                    (tx) =>
+                                        tx.contactId === client.id &&
+                                        (tx.categoryId ? refundCategoryIdSet.has(tx.categoryId) : false) &&
+                                        tx.description?.includes(`Sales Return #${salesReturn.returnNumber}`)
+                                )
+                                .reduce((sum, tx) => sum + tx.amount, 0) + numAmount
+                        );
+                        const isFullyRefunded = totalRefunded >= salesReturn.refundAmount - 0.001;
+                        if (isFullyRefunded && salesReturn.status !== SalesReturnStatus.REFUNDED) {
+                            dispatch({
+                                type: 'MARK_RETURN_REFUNDED',
+                                payload: { returnId: salesReturn.id, refundDate: date },
+                            });
+                        }
                     }
                 });
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                await showAlert(`Failed to save refund: ${msg}`);
+                return;
             }
         }
-        
-        // Close modal after a small delay to ensure state updates are processed
+
         setTimeout(() => {
             onClose();
         }, 150);
@@ -213,15 +265,15 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
                 
                 <ComboBox 
                     label="Category"
-                    items={balanceDue !== undefined && unitSellingCategory ? [unitSellingCategory, ...expenseCategories] : expenseCategories}
+                    items={balanceDue !== undefined && refundRevenueCategory ? [refundRevenueCategory, ...expenseCategories] : expenseCategories}
                     selectedId={categoryId}
                     onSelect={(item) => setCategoryId(item?.id || '')}
-                    placeholder={balanceDue !== undefined ? "Unit Selling Income (reduces revenue)" : "Select Category (e.g. Owner Payout)"}
+                    placeholder={balanceDue !== undefined ? "Sales return refund / Unit Selling Income (reduces revenue)" : "Select Category (e.g. Owner Payout)"}
                     required
                 />
-                {balanceDue !== undefined && unitSellingCategory && categoryId === unitSellingCategory.id && (
+                {balanceDue !== undefined && refundRevenueCategory && categoryId === refundRevenueCategory.id && (
                     <p className="text-xs text-amber-600 -mt-2">
-                        ✓ Using "Unit Selling Income" category - this will reduce realized revenue instead of showing as expense.
+                        ✓ Using sales return refund (or Unit Selling Income) — reduces realized revenue instead of showing as a generic expense.
                     </p>
                 )}
 
@@ -234,13 +286,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
                     allowAddNew={false}
                 />
                 
-                <Input 
-                    label="Date"
-                    type="date"
-                    value={date}
-                    onChange={e => setDate(e.target.value)}
-                    required
-                />
+                <DatePicker label="Date" value={date} onChange={d => setDate(toLocalDateString(d))} required />
                 
                 <Input 
                     label="Description / Note"

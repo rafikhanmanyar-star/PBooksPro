@@ -7,8 +7,10 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import DatePicker from '../ui/DatePicker';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface PMProjectBalance {
     projectId: string;
@@ -25,7 +27,7 @@ const ProjectPMPayouts: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentAccount, setPaymentAccount] = useState('');
-    const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+    const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
 
     const balances = useMemo<PMProjectBalance[]>(() => {
         // Add safety checks for undefined arrays
@@ -193,7 +195,7 @@ const ProjectPMPayouts: React.FC = () => {
                     </div>
                     <Input label="Payment Amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
                     <ComboBox label="Pay From Account" items={accounts} selectedId={paymentAccount} onSelect={item => setPaymentAccount(item?.id || '')} placeholder="Select account" />
-                    <Input label="Date" type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+                    <DatePicker label="Date" value={paymentDate} onChange={d => setPaymentDate(toLocalDateString(d))} />
                     <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                         <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
                         <Button onClick={handlePayment}>Confirm Payment</Button>
