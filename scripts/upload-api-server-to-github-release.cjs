@@ -125,10 +125,18 @@ async function main() {
   const channelYml = path.join(releaseDir, 'api-server.yml');
   const latestYml = path.join(releaseDir, 'latest.yml');
   const updateYml = fs.existsSync(channelYml) ? channelYml : latestYml;
+  if (!fs.existsSync(updateYml)) {
+    console.error(
+      '[upload-api-server] Missing update metadata (expected api-server.yml or latest.yml) in',
+      releaseDir,
+      '\nRebuild with: npm run electron:installer:api-server (or your deploy step) so electron-builder emits the channel yml + blockmap.'
+    );
+    process.exit(1);
+  }
   /** @type {{ name: string, file: string }[]} */
   const uploads = [{ name: `${base}.exe`, file: exe }];
   if (fs.existsSync(blockmap)) uploads.push({ name: `${base}.exe.blockmap`, file: blockmap });
-  if (fs.existsSync(updateYml)) uploads.push({ name: 'api-server.yml', file: updateYml });
+  uploads.push({ name: 'api-server.yml', file: updateYml });
 
   for (const { name } of uploads) {
     const existing = (release.assets || []).find((a) => a.name === name);

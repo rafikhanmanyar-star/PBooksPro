@@ -25,6 +25,7 @@ if (app.isPackaged) {
     autoUpdater.logger = console;
     // NSIS full installer (not web installer): required for reliable blockmap / differential downloads.
     autoUpdater.disableWebInstaller = true;
+    autoUpdater.disableDifferentialDownload = false;
   } catch (err) {
     console.error('[API Server AutoUpdater] Failed to load electron-updater:', err && err.message ? err.message : err);
   }
@@ -346,6 +347,20 @@ ipcMain.handle('server:check-update', async () => {
 ipcMain.handle('server:download-and-install', async () => {
   if (!autoUpdater) {
     return { ok: false, message: 'Updater is not available in this build.' };
+  }
+  // Refresh update metadata right before downloading so `updateInfoAndProvider` is set; otherwise
+  // electron-updater can fall back to a full installer GET instead of blockmap + differential download.
+  try {
+    const check = await autoUpdater.checkForUpdates();
+    if (!check || !check.isUpdateAvailable) {
+      return {
+        ok: false,
+        message: 'No update is available to download. Use “Check for updates” first.',
+      };
+    }
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    return { ok: false, message: msg };
   }
   const onProgress = (p) => {
     emitDownloadProgress({

@@ -6,7 +6,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import Button from '../ui/Button';
@@ -183,6 +182,8 @@ const PersonalTransactionsTab: React.FC = () => {
   const [importPasteOpen, setImportPasteOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sort, setSort] = useState<{ col: SortableCol; dir: SortDir }>({ col: 'date', dir: 'desc' });
+  const [chartShowIncome, setChartShowIncome] = useState(true);
+  const [chartShowExpense, setChartShowExpense] = useState(true);
   const [widths, setWidths] = useState<Record<Exclude<ColId, 'actions'>, number>>(() => ({ ...DEFAULT_WIDTHS }));
   const resizeRef = useRef<{ colId: keyof typeof DEFAULT_WIDTHS; startX: number; startW: number } | null>(null);
 
@@ -433,9 +434,45 @@ const PersonalTransactionsTab: React.FC = () => {
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0 xl:justify-end">
           <div className="w-full sm:flex-1 min-w-0 max-w-full xl:max-w-[min(100%,28rem)] border border-gray-200 rounded-lg bg-white px-2 pt-1 pb-0.5 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 px-1 mb-0.5">
-              Monthly income vs expenses (last 12 months)
-            </p>
+            <div className="flex flex-col gap-1 px-1 mb-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                Monthly income vs expenses (last 12 months)
+              </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <label className="inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    checked={chartShowIncome}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      if (!next && !chartShowExpense) return;
+                      setChartShowIncome(next);
+                    }}
+                  />
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-green-600 shrink-0" aria-hidden />
+                    Income
+                  </span>
+                </label>
+                <label className="inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                    checked={chartShowExpense}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      if (!next && !chartShowIncome) return;
+                      setChartShowExpense(next);
+                    }}
+                  />
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-red-600 shrink-0" aria-hidden />
+                    Expenses
+                  </span>
+                </label>
+              </div>
+            </div>
             <div className="h-[120px] w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyBarChartData} margin={{ top: 2, right: 4, left: 0, bottom: 0 }} barGap={2}>
@@ -463,9 +500,12 @@ const PersonalTransactionsTab: React.FC = () => {
                     labelStyle={{ fontSize: 12 }}
                     contentStyle={{ fontSize: 12, borderRadius: 8 }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 2 }} iconType="square" />
-                  <Bar dataKey="income" name="Income" fill="#16a34a" radius={[3, 3, 0, 0]} maxBarSize={14} />
-                  <Bar dataKey="expense" name="Expenses" fill="#dc2626" radius={[3, 3, 0, 0]} maxBarSize={14} />
+                  {chartShowIncome && (
+                    <Bar dataKey="income" name="Income" fill="#16a34a" radius={[3, 3, 0, 0]} maxBarSize={14} />
+                  )}
+                  {chartShowExpense && (
+                    <Bar dataKey="expense" name="Expenses" fill="#dc2626" radius={[3, 3, 0, 0]} maxBarSize={14} />
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </div>

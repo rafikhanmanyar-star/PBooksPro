@@ -22,6 +22,7 @@ function money(n: number): string {
 }
 
 const TrialBalanceReport: React.FC = () => {
+  const { state } = useAppContext();
   const { print: triggerPrint } = usePrintContext();
   const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
   const [startDate, setStartDate] = useState(() => {

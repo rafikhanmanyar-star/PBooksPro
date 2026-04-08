@@ -2,6 +2,9 @@
 # Output: release-api-server/ — installers are uploaded to the same GitHub release as the desktop client
 # (see scripts/upload-api-server-to-github-release.cjs) so client latest.yml is not overwritten.
 extends: null
+# Ensures latest.yml / channel yml uses the `files[]` format with per-file size + sha512 so electron-updater
+# can apply NSIS differential downloads (blockmaps + ranged GETs) instead of always re-downloading the full exe.
+electronUpdaterCompatibility: '>= 2.16'
 npmRebuild: false
 appId: com.pbookspro.api.server
 productName: PBooks Pro API Server
