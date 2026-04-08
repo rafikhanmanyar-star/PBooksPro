@@ -220,6 +220,17 @@ export interface Account {
   parentAccountId?: string;
   children?: Account[];
   version?: number;
+  /** Optional: balance sheet classification override (PostgreSQL / SQLite migration 034). */
+  bsPosition?: 'asset' | 'liability' | 'equity' | null;
+  bsTerm?: 'current' | 'non_current' | null;
+  /** Line key for IFRS-style grouping (e.g. ppe, bank_accounts). */
+  bsGroupKey?: string | null;
+  /** Optional chart code; unique per company when set (migration 037). */
+  accountCode?: string | null;
+  /** Optional sub-classification: current, non_current, revenue, cogs, opex, etc. */
+  accountSubType?: string | null;
+  /** False = hide from new postings; journal history may still reference the account. */
+  isActive?: boolean;
 }
 
 export interface Contact {
@@ -253,6 +264,24 @@ export interface Vendor {
   version?: number;
 }
 
+/** IAS 7 cash flow section (from cashflow_category_mapping). */
+export type CashflowStatementSection = 'operating' | 'investing' | 'financing';
+
+export interface CashflowCategoryMappingEntry {
+  id?: string;
+  accountId: string;
+  category: CashflowStatementSection;
+}
+
+/** P&L statement bucket (from pl_category_mapping); optional — inferred from category type when unset. */
+export type ProfitLossSubType =
+  | 'revenue'
+  | 'cost_of_sales'
+  | 'operating_expense'
+  | 'other_income'
+  | 'finance_cost'
+  | 'tax';
+
 export interface Category {
   id: string;
   name: string;
@@ -262,6 +291,8 @@ export interface Category {
   isRental?: boolean;
   parentCategoryId?: string;
   isHidden?: boolean;
+  /** Loaded from pl_category_mapping (SQLite / API); not a column on categories. */
+  plSubType?: ProfitLossSubType;
 }
 
 export interface Building {
@@ -889,6 +920,9 @@ export interface AppState {
   personalCategories: PersonalCategoryEntry[];
   /** Admin personal module: cashbook lines. */
   personalTransactions: PersonalTransactionEntry[];
+
+  /** Optional chart account overrides for cash flow classification (local SQLite / API). */
+  cashFlowCategoryMappings?: CashflowCategoryMappingEntry[];
 
   recurringInvoiceTemplates: RecurringInvoiceTemplate[];
   pmCycleAllocations: PMCycleAllocation[];

@@ -1,4 +1,14 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import Button from '../ui/Button';
 import { CURRENCY, ICONS } from '../../constants';
 import { useAppContext } from '../../context/AppContext';
@@ -45,6 +55,35 @@ const DEFAULT_WIDTHS: Record<Exclude<ColId, 'actions'>, number> = {
   expense: 108,
   net: 128,
 };
+
+/** First day of the month, 12 months ago through today (rolling window for header chart). */
+function getRolling12MonthsDateFrom(): string {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const y = start.getFullYear();
+  const m = String(start.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}-01`;
+}
+
+/** YYYY-MM keys for the last 12 months, oldest first. */
+function getLast12MonthKeys(): string[] {
+  const keys: string[] = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    keys.push(`${y}-${m}`);
+  }
+  return keys;
+}
+
+function monthKeyToShortLabel(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  if (!y || !m) return ym;
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+}
 
 function getDateRangeForPeriod(period: PersonalTxPeriodFilter): { dateFrom?: string; dateTo?: string } {
   const now = new Date();
@@ -154,6 +193,40 @@ const PersonalTransactionsTab: React.FC = () => {
   }, []);
 
   const dateRange = useMemo(() => getDateRangeForPeriod(periodFilter), [periodFilter]);
+
+  const chartTransactions = useMemo(
+    () =>
+      listPersonalTransactions(
+        {
+          dateFrom: getRolling12MonthsDateFrom(),
+          limit: 10000,
+        },
+        !isLocalOnlyMode() ? state.personalTransactions : undefined
+      ),
+    [refreshKey, state.personalTransactions]
+  );
+
+  const monthlyBarChartData = useMemo(() => {
+    const keys = getLast12MonthKeys();
+    const totals = new Map<string, { income: number; expense: number }>();
+    for (const k of keys) totals.set(k, { income: 0, expense: 0 });
+    for (const tx of chartTransactions) {
+      const ym = tx.transactionDate?.slice(0, 7);
+      if (!ym || !totals.has(ym)) continue;
+      const amt = typeof tx.amount === 'number' ? tx.amount : 0;
+      const cur = totals.get(ym)!;
+      if (amt > 0) cur.income += amt;
+      else if (amt < 0) cur.expense += Math.abs(amt);
+    }
+    return keys.map((k) => {
+      const t = totals.get(k)!;
+      return {
+        label: monthKeyToShortLabel(k),
+        income: t.income,
+        expense: t.expense,
+      };
+    });
+  }, [chartTransactions]);
 
   const categoryIdToName = useMemo(() => {
     const map = new Map<string, string>();
@@ -353,19 +426,59 @@ const PersonalTransactionsTab: React.FC = () => {
         onImported={() => handleSaved()}
       />
 
-      <div className="flex-shrink-0 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
-        <div>
+      <div className="flex-shrink-0 flex flex-col xl:flex-row xl:items-center gap-4 mb-6">
+        <div className="shrink-0 min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
           <p className="text-sm text-gray-500 mt-0.5">View and manage all your income and expenses.</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleExportReport}
-          className="flex items-center gap-2 self-start sm:self-center"
-        >
-          {React.cloneElement(ICONS.download as React.ReactElement<any>, { width: 18, height: 18 })}
-          Export Report
-        </Button>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0 xl:justify-end">
+          <div className="w-full sm:flex-1 min-w-0 max-w-full xl:max-w-[min(100%,28rem)] border border-gray-200 rounded-lg bg-white px-2 pt-1 pb-0.5 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 px-1 mb-0.5">
+              Monthly income vs expenses (last 12 months)
+            </p>
+            <div className="h-[120px] w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyBarChartData} margin={{ top: 2, right: 4, left: 0, bottom: 0 }} barGap={2}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 9, fill: '#6b7280' }}
+                    interval={0}
+                    height={36}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: '#6b7280' }}
+                    width={44}
+                    tickFormatter={(v) => {
+                      if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+                      if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
+                      return String(v);
+                    }}
+                  />
+                  <Tooltip
+                    formatter={(value: number | string) => {
+                      const n = typeof value === 'number' ? value : Number(value);
+                      return `${sym}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    }}
+                    labelStyle={{ fontSize: 12 }}
+                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 2 }} iconType="square" />
+                  <Bar dataKey="income" name="Income" fill="#16a34a" radius={[3, 3, 0, 0]} maxBarSize={14} />
+                  <Bar dataKey="expense" name="Expenses" fill="#dc2626" radius={[3, 3, 0, 0]} maxBarSize={14} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleExportReport}
+            className="flex items-center gap-2 shrink-0 self-start sm:self-center w-full sm:w-auto justify-center"
+          >
+            {React.cloneElement(ICONS.download as React.ReactElement<any>, { width: 18, height: 18 })}
+            Export Report
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

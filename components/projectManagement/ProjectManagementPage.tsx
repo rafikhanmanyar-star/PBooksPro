@@ -34,6 +34,7 @@ const ProjectContractReport = React.lazy(() => import('../reports/ProjectContrac
 const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetReport'));
 const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
 const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
+const TrialBalanceReport = React.lazy(() => import('../reports/TrialBalanceReport'));
 const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
 const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
 
@@ -49,13 +50,13 @@ type ProjectView =
     | 'Visual Layout' | 'Tabular View'
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
-    | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Investor Distribution' | 'Contract Report'
+    | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Trial Balance' | 'Investor Distribution' | 'Contract Report'
     | 'Budget vs Actual' | 'Cash Flows' | 'Marketing Activity';
 
 /** Project selling — operational tabs (persistent mount) */
 const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Assets', 'Sales Returns'];
 
-const SELLING_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Cash Flows', 'Investor Distribution'];
+const SELLING_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'];
 
 const SELLING_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -70,7 +71,7 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
 /** Project construction */
 const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Contracts', 'Bills'];
 
-const CONSTRUCTION_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Cash Flows', 'Investor Distribution'];
+const CONSTRUCTION_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'];
 
 const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -117,7 +118,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Visual Layout', 'Tabular View',
         'Project Summary', 'Marketing Activity', 'Revenue Analysis',
         'Owner Ledger', 'Broker Report', 'Income by Category', 'Expense by Category',
-        'Profit & Loss', 'Balance Sheet', 'Cash Flows', 'Investor Distribution'
+        'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'
     ];
 
     const allowedConstructionViews = [
@@ -125,7 +126,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Project Summary', 'Budget vs Actual', 'Contract Report',
         'PM Cost Report', 'Material Report', 'Vendor Ledger',
         'Owner Ledger', 'Income by Category', 'Expense by Category',
-        'Profit & Loss', 'Balance Sheet', 'Cash Flows', 'Investor Distribution'
+        'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'
     ];
 
     useEffect(() => {
@@ -180,6 +181,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Marketing Activity': return <MarketingActivityReport />;
             case 'Profit & Loss': return isAdmin ? <ProjectProfitLossReport /> : null;
             case 'Balance Sheet': return isAdmin ? <ProjectBalanceSheetReport /> : null;
+            case 'Trial Balance': return isAdmin ? <TrialBalanceReport /> : null;
             case 'Cash Flows': return isAdmin ? <ProjectCashFlowReport /> : null;
             case 'Investor Distribution': return isAdmin ? <ProjectInvestorReport /> : null;
             default: return null;

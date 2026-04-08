@@ -8,7 +8,7 @@
 
 // Aligned with PostgreSQL (postgresql-schema.sql + hardening). PostgreSQL is source of truth.
 // Bump when schema changes; keep electron/schemaVersion.json in sync (npm run electron:extract-schema).
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 20;
 
 export const CREATE_SCHEMA_SQL = `
 -- PBooksPro Schema (PRAGMAs set in sqliteBridge.cjs)
@@ -75,6 +75,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     version INTEGER NOT NULL DEFAULT 1,
     deleted_at TEXT,
+    bs_position TEXT,
+    bs_term TEXT,
+    bs_group_key TEXT,
+    account_code TEXT,
+    sub_type TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (parent_account_id) REFERENCES accounts(id) ON DELETE SET NULL
 );
 
@@ -128,6 +134,43 @@ CREATE TABLE IF NOT EXISTS categories (
     deleted_at TEXT,
     FOREIGN KEY (parent_category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
+
+-- P&L classification: maps categories (natural P&L lines) to IFRS/GAAP buckets (no name-based rules in reports).
+CREATE TABLE IF NOT EXISTS pl_category_mapping (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    category_id TEXT NOT NULL,
+    pl_type TEXT NOT NULL CHECK (pl_type IN (
+        'revenue',
+        'cost_of_sales',
+        'operating_expense',
+        'other_income',
+        'finance_cost',
+        'tax'
+    )),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (tenant_id, category_id),
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pl_category_mapping_tenant ON pl_category_mapping(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_pl_category_mapping_category ON pl_category_mapping(category_id);
+
+-- Cash flow statement (IAS 7): optional account → operating | investing | financing overrides.
+CREATE TABLE IF NOT EXISTS cashflow_category_mapping (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    account_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('operating', 'investing', 'financing')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (tenant_id, account_id),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_cashflow_cat_map_tenant ON cashflow_category_mapping(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_cashflow_cat_map_account ON cashflow_category_mapping(account_id);
 
 -- Projects table (aligned with PostgreSQL)
 CREATE TABLE IF NOT EXISTS projects (
@@ -883,6 +926,7 @@ CREATE INDEX IF NOT EXISTS idx_buildings_tenant ON buildings(tenant_id);
 
 -- Accounts
 CREATE INDEX IF NOT EXISTS idx_accounts_tenant ON accounts(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_tenant_account_code_unique ON accounts(tenant_id, account_code) WHERE account_code IS NOT NULL AND deleted_at IS NULL;
 
 -- Personal categories & transactions
 CREATE INDEX IF NOT EXISTS idx_personal_categories_tenant ON personal_categories(tenant_id);

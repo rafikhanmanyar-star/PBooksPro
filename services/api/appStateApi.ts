@@ -53,6 +53,17 @@ function normalizeAccountFromApi(a: any): Account {
     description: a.description || undefined,
     parentAccountId: a.parent_account_id || a.parentAccountId || undefined,
     version: typeof a.version === 'number' ? a.version : a.version != null ? parseInt(String(a.version), 10) : undefined,
+    bsPosition: a.bs_position ?? a.bsPosition ?? undefined,
+    bsTerm: a.bs_term ?? a.bsTerm ?? undefined,
+    bsGroupKey: a.bs_group_key ?? a.bsGroupKey ?? undefined,
+    accountCode: a.account_code ?? a.accountCode ?? undefined,
+    accountSubType: a.sub_type ?? a.accountSubType ?? undefined,
+    isActive:
+      a.is_active === false || a.is_active === 0 || a.isActive === false
+        ? false
+        : a.is_active === true || a.is_active === 1 || a.isActive === true
+          ? true
+          : undefined,
   };
 }
 

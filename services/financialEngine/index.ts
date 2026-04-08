@@ -34,5 +34,24 @@ export {
   reverseTransaction,
 } from './journalEngine';
 
-export type { TrialBalanceRow, GeneralLedgerRow, AccountStatementRow } from './ledgerReports';
-export { getTrialBalance, getGeneralLedger, getAccountStatement } from './ledgerReports';
+export type {
+  TrialBalanceRow,
+  GeneralLedgerRow,
+  AccountStatementRow,
+  TrialBalanceReportResult,
+  FetchTrialBalanceOptions,
+} from './ledgerReports';
+export { fetchTrialBalanceReport, getTrialBalance, getGeneralLedger, getAccountStatement } from './ledgerReports';
+
+export type {
+  TrialBalanceBasis,
+  TrialBalanceReportPayload,
+  TrialBalanceAccountLine,
+  TrialBalanceRawRow,
+} from './trialBalanceCore';
+export {
+  buildTrialBalanceReport,
+  netColumnsFromGross,
+  compareTrialBalanceType,
+  isTrialBalanceBalanced,
+} from './trialBalanceCore';

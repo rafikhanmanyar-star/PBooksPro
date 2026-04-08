@@ -412,6 +412,39 @@ function initSchema() {
     }
   } catch (_) {}
 
+  // Balance sheet classification tags (matches database/migrations/034_accounts_balance_sheet_tags.sql intent)
+  try {
+    const accCols = d.prepare('PRAGMA table_info(accounts)').all();
+    if (accCols.length > 0) {
+      if (!accCols.some((c) => c.name === 'bs_position')) {
+        d.exec('ALTER TABLE accounts ADD COLUMN bs_position TEXT');
+        console.log('[SQLiteBridge] Migrated: added bs_position to accounts');
+      }
+      if (!accCols.some((c) => c.name === 'bs_term')) {
+        d.exec('ALTER TABLE accounts ADD COLUMN bs_term TEXT');
+        console.log('[SQLiteBridge] Migrated: added bs_term to accounts');
+      }
+      if (!accCols.some((c) => c.name === 'bs_group_key')) {
+        d.exec('ALTER TABLE accounts ADD COLUMN bs_group_key TEXT');
+        console.log('[SQLiteBridge] Migrated: added bs_group_key to accounts');
+      }
+      if (!accCols.some((c) => c.name === 'account_code')) {
+        d.exec('ALTER TABLE accounts ADD COLUMN account_code TEXT');
+        console.log('[SQLiteBridge] Migrated: added account_code to accounts');
+      }
+      if (!accCols.some((c) => c.name === 'sub_type')) {
+        d.exec('ALTER TABLE accounts ADD COLUMN sub_type TEXT');
+        console.log('[SQLiteBridge] Migrated: added sub_type to accounts');
+      }
+      if (!accCols.some((c) => c.name === 'is_active')) {
+        d.exec('ALTER TABLE accounts ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
+        console.log('[SQLiteBridge] Migrated: added is_active to accounts');
+      }
+    }
+  } catch (e) {
+    console.warn('[SQLiteBridge] accounts bs_* columns migration skipped:', e && e.message);
+  }
+
   // Execute schema statement-by-statement
   const stripped = schema.replace(/--[^\n]*/g, '');
   const statements = stripped.split(';').map(s => s.trim()).filter(s => s.length > 0);

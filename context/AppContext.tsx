@@ -226,6 +226,7 @@ const initialState: AppState = {
     budgets: [],
     personalCategories: [],
     personalTransactions: [],
+    cashFlowCategoryMappings: [],
     recurringInvoiceTemplates: [],
     printSettings: {
         companyName: 'My Company',

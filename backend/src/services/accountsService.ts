@@ -46,6 +46,12 @@ export type AccountRow = {
   deleted_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  bs_position?: string | null;
+  bs_term?: string | null;
+  bs_group_key?: string | null;
+  account_code?: string | null;
+  sub_type?: string | null;
+  is_active?: boolean | null;
 };
 
 export function rowToAccountApi(row: AccountRow): Record<string, unknown> {
@@ -61,6 +67,12 @@ export function rowToAccountApi(row: AccountRow): Record<string, unknown> {
     version: row.version,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    bsPosition: row.bs_position ?? undefined,
+    bsTerm: row.bs_term ?? undefined,
+    bsGroupKey: row.bs_group_key ?? undefined,
+    accountCode: row.account_code ?? undefined,
+    accountSubType: row.sub_type ?? undefined,
+    isActive: row.is_active === null || row.is_active === undefined ? undefined : Boolean(row.is_active),
   };
   if (row.deleted_at) {
     base.deletedAt =
@@ -89,7 +101,9 @@ function pickBody(body: Record<string, unknown>) {
 
 export async function listAccounts(client: pg.PoolClient, tenantId: string): Promise<AccountRow[]> {
   const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at
+    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
+            a.bs_position, a.bs_term, a.bs_group_key,
+            a.account_code, a.sub_type, a.is_active
      FROM accounts a
      WHERE (a.tenant_id = $1 OR a.tenant_id = $2) AND a.deleted_at IS NULL ORDER BY a.name ASC`,
     [tenantId, GLOBAL_SYSTEM_TENANT_ID]
@@ -103,7 +117,9 @@ export async function getAccountById(
   id: string
 ): Promise<AccountRow | null> {
   const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at
+    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
+            a.bs_position, a.bs_term, a.bs_group_key,
+            a.account_code, a.sub_type, a.is_active
      FROM accounts a
      WHERE a.id = $1 AND (a.tenant_id = $2 OR a.tenant_id = $3) AND a.deleted_at IS NULL`,
     [id, tenantId, GLOBAL_SYSTEM_TENANT_ID]
@@ -117,7 +133,9 @@ export async function getAccountByIdIncludingDeleted(
   id: string
 ): Promise<AccountRow | null> {
   const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at
+    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
+            a.bs_position, a.bs_term, a.bs_group_key,
+            a.account_code, a.sub_type, a.is_active
      FROM accounts a
      WHERE a.id = $1 AND (a.tenant_id = $2 OR a.tenant_id = $3)`,
     [id, tenantId, GLOBAL_SYSTEM_TENANT_ID]
@@ -303,7 +321,8 @@ export async function listAccountsChangedSince(
   since: Date
 ): Promise<AccountRow[]> {
   const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at
+    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
+            a.bs_position, a.bs_term, a.bs_group_key
      FROM accounts a
      WHERE (a.tenant_id = $1 OR a.tenant_id = $2) AND a.updated_at > $3
      ORDER BY a.updated_at ASC`,

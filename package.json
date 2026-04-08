@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.181",
+  "version": "1.2.182",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -54,6 +54,8 @@
     "verify:financial-engine": "node scripts/verify-financial-engine.mjs",
     "verify:equity-ledger": "node scripts/verify-equity-ledger.mjs",
     "test:date-only": "tsx tests/dateOnlySerialization.test.ts",
+    "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",
+    "test:cash-flow": "tsx tests/cashFlowEngine.test.ts",
     "dev:backend": "npm run dev --prefix backend",
     "start:backend": "npm run start --prefix backend",
     "build:backend": "npm run build --prefix backend",
@@ -78,6 +80,7 @@
     "electron": "33.4.11",
     "electron-builder": "^25.1.8",
     "electron-rebuild": "^3.2.9",
+    "esbuild": "^0.25.12",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.555.0",
     "pg": "^8.19.0",

@@ -40,6 +40,10 @@ import { planAmenitiesRouter } from './routes/planAmenitiesRoutes.js';
 import { installmentPlansRouter } from './routes/installmentPlansRoutes.js';
 import { locksRouter } from './routes/locksRoutes.js';
 import { chatRouter } from './routes/chatRoutes.js';
+import { balanceSheetRouter } from './routes/balanceSheetRoutes.js';
+import { profitLossRouter } from './routes/profitLossRoutes.js';
+import { cashFlowRouter } from './routes/cashFlowRoutes.js';
+import { trialBalanceRouter } from './routes/trialBalanceRoutes.js';
 import { authMiddleware } from './middleware/authMiddleware.js';
 import { seedDevIfEnabled } from './seed.js';
 import { sendFailure, sendSuccess } from './utils/apiResponse.js';
@@ -122,6 +126,14 @@ app.use('/api', authRouter);
 app.use('/api', authMiddleware, optionalFeatureRouter);
 
 app.use('/api', authMiddleware, chatRouter);
+
+app.use('/api', authMiddleware, balanceSheetRouter);
+
+app.use('/api', authMiddleware, profitLossRouter);
+
+app.use('/api', authMiddleware, cashFlowRouter);
+
+app.use('/api', authMiddleware, trialBalanceRouter);
 
 app.use('/api', authMiddleware, accountsRouter);
 

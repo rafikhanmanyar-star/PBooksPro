@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "node ../scripts/ensure-balance-sheet-engine.mjs && node ../scripts/ensure-profit-loss-engine.mjs && node ../scripts/ensure-cash-flow-engine.mjs && tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "dev": "node ../scripts/ensure-balance-sheet-engine.mjs && node ../scripts/ensure-profit-loss-engine.mjs && node ../scripts/ensure-cash-flow-engine.mjs && tsx watch src/index.ts",
     "migrate": "tsx src/migrate.ts",
     "reset-pm-cycle": "tsx src/scripts/runResetPmCycle.ts",
     "test": "node --import tsx --test src/utils/dateOnly.test.ts"

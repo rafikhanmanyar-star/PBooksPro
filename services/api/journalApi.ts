@@ -75,6 +75,44 @@ export const journalApi = {
     );
   },
 
+  /** Canonical double-entry trial balance: GET /api/reports/trial-balance */
+  async getTrialBalanceCanonical(options: {
+    from: string;
+    to: string;
+    basis?: 'period' | 'cumulative';
+  }): Promise<{
+    from: string;
+    to: string;
+    basis: string;
+    accounts: Array<{
+      id: string;
+      name: string;
+      code: string | null;
+      type: string;
+      sub_type: string | null;
+      parent_id: string | null;
+      is_active: boolean;
+      gross_debit: number;
+      gross_credit: number;
+      net_balance: number;
+      debit: number;
+      credit: number;
+    }>;
+    totals: {
+      total_debit: number;
+      total_credit: number;
+      gross_debit: number;
+      gross_credit: number;
+    };
+    is_balanced: boolean;
+  }> {
+    const q = new URLSearchParams();
+    q.set('from', options.from);
+    q.set('to', options.to);
+    if (options.basis) q.set('basis', options.basis);
+    return apiClient.get(`/reports/trial-balance?${q.toString()}`);
+  },
+
   /** PostgreSQL-backed account ledger (LAN/API). */
   async getGeneralLedgerReport(
     accountId: string,

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Category, TransactionType } from '../../types';
+import { Category, TransactionType, ProfitLossSubType } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
@@ -23,7 +23,8 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
     const [description, setDescription] = useState(categoryToEdit?.description || '');
     const [type, setType] = useState<TransactionType>(categoryToEdit?.type || fixedTypeForNew || TransactionType.EXPENSE);
     const [parentCategoryId, setParentCategoryId] = useState(categoryToEdit?.parentCategoryId || '');
-    
+    const [plSubType, setPlSubType] = useState<string>(categoryToEdit?.plSubType || '');
+
     const isEditing = !!categoryToEdit;
     const isPermanent = categoryToEdit?.isPermanent;
     const showTypeSelector = !isEditing && !fixedTypeForNew;
@@ -33,6 +34,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
             setParentCategoryId('');
         }
     }, [type, categoryToEdit]);
+
+    useEffect(() => {
+        setPlSubType(categoryToEdit?.plSubType || '');
+    }, [categoryToEdit]);
 
     const availableParents = useMemo(() => {
         return state.categories.filter(cat => 
@@ -49,7 +54,8 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
             name, 
             type, 
             description, 
-            parentCategoryId: parentCategoryId || undefined 
+            parentCategoryId: parentCategoryId || undefined,
+            plSubType: (plSubType || undefined) as ProfitLossSubType | undefined,
         });
     };
     
@@ -92,6 +98,25 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
             </div>
             
             <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g., 'All utility bills like water, electricity'" disabled={isPermanent} />
+
+            <Select
+                label="P&L classification (IFRS / GAAP)"
+                value={plSubType}
+                onChange={(e) => setPlSubType(e.target.value)}
+                disabled={isPermanent}
+            >
+                <option value="">Infer from category type (default)</option>
+                <option value="revenue">Revenue</option>
+                <option value="cost_of_sales">Cost of sales</option>
+                <option value="operating_expense">Operating expense</option>
+                <option value="other_income">Other income</option>
+                <option value="finance_cost">Finance costs</option>
+                <option value="tax">Tax</option>
+            </Select>
+            <p className="text-xs text-slate-500 -mt-2">
+                Maps this category to a Profit &amp; Loss line. Leave as default to classify by Income vs Expense type.
+            </p>
+
             <div className="flex justify-between items-center pt-4">
                 <div>
                     {categoryToEdit && onDelete && (

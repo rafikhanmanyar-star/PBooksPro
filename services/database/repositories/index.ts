@@ -35,6 +35,25 @@ export class CategoriesRepository extends BaseRepository<any> {
     constructor() { super('categories'); }
 }
 
+export class PlCategoryMappingRepository extends BaseRepository<any> {
+    constructor() { super('pl_category_mapping'); }
+}
+
+export class CashflowCategoryMappingRepository extends BaseRepository<any> {
+    constructor() {
+        super('cashflow_category_mapping');
+    }
+
+    /** Rows for tenant (includes legacy tenant_id = '' for single-tenant SQLite). */
+    findAllForTenant(tenantId: string): { accountId: string; category: string }[] {
+        const rows = this.db.query<{ account_id: string; category: string }>(
+            `SELECT account_id, category FROM cashflow_category_mapping WHERE tenant_id = ? OR tenant_id = ''`,
+            [tenantId]
+        );
+        return rows.map((r) => ({ accountId: r.account_id, category: r.category }));
+    }
+}
+
 export class ProjectsRepository extends BaseRepository<any> {
     constructor() { super('projects'); }
 }

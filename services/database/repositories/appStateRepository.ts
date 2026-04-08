@@ -7,6 +7,8 @@
 
 import {
     AppState,
+    CashflowCategoryMappingEntry,
+    ProfitLossSubType,
     Bill,
     Invoice,
     Transaction,
@@ -21,7 +23,8 @@ import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat } from '../columnMapper';
 import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigration';
 import {
-    UsersRepository, AccountsRepository, ContactsRepository, CategoriesRepository,
+    UsersRepository, AccountsRepository, ContactsRepository, CategoriesRepository, PlCategoryMappingRepository,
+    CashflowCategoryMappingRepository,
     ProjectsRepository, BuildingsRepository, PropertiesRepository, PropertyOwnershipHistoryRepository,
     UnitsRepository, TransactionsRepository, InvoicesRepository, BillsRepository, BudgetsRepository,
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
@@ -71,6 +74,8 @@ export class AppStateRepository {
     private accountsRepo = new AccountsRepository();
     private contactsRepo = new ContactsRepository();
     private categoriesRepo = new CategoriesRepository();
+    private plCategoryMappingRepo = new PlCategoryMappingRepository();
+    private cashflowCategoryMappingRepo = new CashflowCategoryMappingRepository();
     private projectsRepo = new ProjectsRepository();
     private buildingsRepo = new BuildingsRepository();
     private propertiesRepo = new PropertiesRepository();
@@ -138,6 +143,7 @@ export class AppStateRepository {
         let categories = this.categoriesRepo.findAll();
         ensureMandatorySystemCategoriesPersisted(this.categoriesRepo, categories);
         categories = this.categoriesRepo.findAll();
+        categories = this.mergePlSubtypesFromMapping(categories);
         // Projects & units: source of truth is PostgreSQL API — not loaded from SQLite (see AppStateApiService / GET /projects, /units).
         const projects: AppState['projects'] = [];
         const buildings = this.buildingsRepo.findAll();
@@ -189,6 +195,18 @@ export class AppStateRepository {
             ...p,
             monthlyServiceCharge: p.monthlyServiceCharge != null ? Number(p.monthlyServiceCharge) : 0,
         }));
+
+        let cashFlowCategoryMappings: CashflowCategoryMappingEntry[] = [];
+        try {
+            cashFlowCategoryMappings = this.cashflowCategoryMappingRepo
+                .findAllForTenant(getCurrentTenantId())
+                .map((r) => ({
+                    accountId: r.accountId,
+                    category: r.category as CashflowCategoryMappingEntry['category'],
+                }));
+        } catch (e) {
+            console.warn('[LocalDB] cashflow_category_mapping load skipped:', e);
+        }
 
         const rawSettings = this.appSettingsRepo.loadAllSettings();
         // In API/LAN mode, tenant-wide settings come from PostgreSQL (GET /app-settings); keep only device-local keys in SQLite.
@@ -393,6 +411,7 @@ export class AppStateRepository {
                     updatedAt: r.updatedAt ?? r.updated_at,
                 })
             ),
+            cashFlowCategoryMappings,
 
             transactionLog,
             errorLog,
@@ -1342,6 +1361,7 @@ export class AppStateRepository {
                                     return c;
                                 });
                                 this.categoriesRepo.saveAll(categoriesOrdered, skipOrphan);
+                                this.syncPlCategoryMappings(categoriesOrdered as AppState['categories']);
                             } catch (e) {
                                 console.error('❌ Failed to save categories:', e);
                                 throw e;
@@ -1833,5 +1853,52 @@ export class AppStateRepository {
             personal_transactions: this.personalTransactionsRepo,
         };
         return map[entityKey] ?? null;
+    }
+
+    private mergePlSubtypesFromMapping(categories: AppState['categories']): AppState['categories'] {
+        try {
+            const rows = this.plCategoryMappingRepo.findAll() as Array<Record<string, unknown>>;
+            if (!rows.length) return categories;
+            const byCat = new Map<string, ProfitLossSubType>();
+            const allowed: ProfitLossSubType[] = [
+                'revenue',
+                'cost_of_sales',
+                'operating_expense',
+                'other_income',
+                'finance_cost',
+                'tax',
+            ];
+            for (const r of rows) {
+                const cid = (r.category_id ?? r.categoryId) as string | undefined;
+                const pt = (r.pl_type ?? r.plType) as string | undefined;
+                if (cid && pt && allowed.includes(pt as ProfitLossSubType)) {
+                    byCat.set(cid, pt as ProfitLossSubType);
+                }
+            }
+            return categories.map((c) => ({
+                ...c,
+                plSubType: byCat.get(c.id) ?? c.plSubType,
+            }));
+        } catch (e) {
+            console.warn('[AppStateRepository] mergePlSubtypesFromMapping failed:', e);
+            return categories;
+        }
+    }
+
+    private syncPlCategoryMappings(categories: AppState['categories']): void {
+        try {
+            const tenantId = getCurrentTenantId() || '';
+            this.db.run(`DELETE FROM pl_category_mapping WHERE tenant_id = ?`, [tenantId]);
+            for (const c of categories) {
+                if (!c.plSubType) continue;
+                const id = `plmap-${tenantId}-${c.id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+                this.db.run(
+                    `INSERT OR REPLACE INTO pl_category_mapping (id, tenant_id, category_id, pl_type, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+                    [id, tenantId, c.id, c.plSubType]
+                );
+            }
+        } catch (e) {
+            console.warn('[AppStateRepository] syncPlCategoryMappings failed:', e);
+        }
     }
 }
