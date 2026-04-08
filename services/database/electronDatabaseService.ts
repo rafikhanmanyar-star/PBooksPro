@@ -385,6 +385,7 @@ export class ElectronDatabaseService {
       'quotations', 'plan_amenities', 'installment_plans', 'documents',
       'rental_agreements', 'project_agreements', 'sales_returns', 'project_received_assets', 'contracts',
       'recurring_invoice_templates', 'pm_cycle_allocations', 'users',
+      'journal_entries', 'journal_reversals', 'accounting_audit_log',
     ];
     let tablesUpdated = 0;
     for (const table of tables) {

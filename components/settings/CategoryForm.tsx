@@ -28,6 +28,9 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
     const isEditing = !!categoryToEdit;
     const isPermanent = categoryToEdit?.isPermanent;
     const showTypeSelector = !isEditing && !fixedTypeForNew;
+    /** System categories: only P&L classification may be changed (stored in pl_category_mapping). */
+    const savedPlSub = categoryToEdit?.plSubType || '';
+    const plSubDirty = plSubType !== savedPlSub;
 
     useEffect(() => {
         if (categoryToEdit && type !== categoryToEdit.type) {
@@ -49,7 +52,17 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (isPermanent) return;
+        if (isPermanent && categoryToEdit) {
+            if (!plSubDirty) return;
+            onSubmit({
+                name: categoryToEdit.name,
+                type: categoryToEdit.type,
+                description: categoryToEdit.description,
+                parentCategoryId: categoryToEdit.parentCategoryId,
+                plSubType: (plSubType || undefined) as ProfitLossSubType | undefined,
+            });
+            return;
+        }
         onSubmit({ 
             name, 
             type, 
@@ -63,7 +76,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
         <form onSubmit={handleSubmit} className="space-y-4">
             {isPermanent && (
                 <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg">
-                    <p><strong>Read-only:</strong> This is a system category and cannot be edited or deleted.</p>
+                    <p><strong>System category:</strong> Name, type, parent, and description are fixed. You can still set <strong>P&amp;L classification</strong> below for the Profit &amp; Loss report. This category cannot be deleted.</p>
                 </div>
             )}
             <Input label="Category Name" value={name} onChange={e => setName(e.target.value)} required autoFocus disabled={isPermanent} />
@@ -103,7 +116,6 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
                 label="P&L classification (IFRS / GAAP)"
                 value={plSubType}
                 onChange={(e) => setPlSubType(e.target.value)}
-                disabled={isPermanent}
             >
                 <option value="">Infer from category type (default)</option>
                 <option value="revenue">Revenue</option>
@@ -125,7 +137,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
                 </div>
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                    <Button type="submit" disabled={isPermanent}>{categoryToEdit ? 'Update' : 'Save'} Category</Button>
+                    <Button type="submit" disabled={!!isPermanent && !plSubDirty}>{categoryToEdit ? 'Update' : 'Save'} Category</Button>
                 </div>
             </div>
         </form>

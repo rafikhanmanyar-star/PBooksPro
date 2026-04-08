@@ -93,7 +93,8 @@ const ManualJournalEntrySection: React.FC = () => {
     setSubmitting(true);
     try {
       const { journalEntryId } = await createJournalEntry({
-        tenantId: '',
+        tenantId:
+          typeof window !== 'undefined' ? localStorage.getItem('tenant_id')?.trim() || 'local' : 'local',
         entryDate,
         reference: reference.trim() || 'Manual',
         description: description.trim() || undefined,

@@ -9,10 +9,13 @@ import { journalApi } from '../api/journalApi';
 import {
   buildTrialBalanceReport,
   compareTrialBalanceType,
+  ledgerTenantIdsForLocalQuery,
   type TrialBalanceBasis,
   type TrialBalanceRawRow,
   type TrialBalanceReportPayload,
 } from './trialBalanceCore';
+import { buildTrialBalanceRawRowsFromTransactions } from './trialBalanceFromTransactions';
+import type { Account, Transaction } from '../../types';
 
 function getBridge() {
   if (typeof window === 'undefined' || !window.sqliteBridge?.query) {
@@ -34,12 +37,22 @@ export type FetchTrialBalanceOptions = {
   from: string;
   to: string;
   basis?: TrialBalanceBasis;
+  /**
+   * When the GL journal has no lines in range, build synthetic TB from legacy `transactions`
+   * (Income/Expense/Transfer/Loan) so the report is not empty in local-only mode.
+   */
+  ledgerFallback?: {
+    transactions: Transaction[];
+    accounts: Account[];
+  };
 };
 
 export type TrialBalanceReportResult = TrialBalanceReportPayload & {
   from: string;
   to: string;
   basis: TrialBalanceBasis;
+  /** `transactions_fallback` = derived from operational transactions; `journal` = journal_lines only. */
+  dataSource?: 'journal' | 'transactions_fallback';
 };
 
 function mapApiToTrialBalanceResult(raw: {
@@ -95,6 +108,7 @@ function mapApiToTrialBalanceResult(raw: {
       grossCredit: roundMoney(Number(raw.totals.gross_credit)),
     },
     isBalanced: raw.is_balanced,
+    dataSource: 'journal',
   };
 }
 
@@ -117,7 +131,9 @@ export async function fetchTrialBalanceReport(
 
   const bridge = getBridge();
   let dateCond = '';
-  const params: unknown[] = [tenantId];
+  const tenantIds = ledgerTenantIdsForLocalQuery(tenantId);
+  const tenantPlaceholders = tenantIds.map(() => '?').join(', ');
+  const params: unknown[] = [...tenantIds];
   if (basis === 'cumulative') {
     dateCond = ` AND je.entry_date <= ?`;
     params.push(to);
@@ -140,7 +156,7 @@ export async function fetchTrialBalanceReport(
     FROM journal_lines jl
     INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
     INNER JOIN accounts a ON a.id = jl.account_id
-    WHERE je.tenant_id = ?
+    WHERE je.tenant_id IN (${tenantPlaceholders})
       AND a.deleted_at IS NULL
       ${dateCond}
     GROUP BY jl.account_id, a.name, a.type, a.parent_account_id, a.account_code, a.sub_type, a.is_active
@@ -149,7 +165,7 @@ export async function fetchTrialBalanceReport(
   const r = await bridge.query(sql, params);
   if (!r.ok) throw new Error(r.error || 'Trial balance query failed');
 
-  const rawRows: TrialBalanceRawRow[] = (r.rows || []).map((row: Record<string, unknown>) => ({
+  let rawRows: TrialBalanceRawRow[] = (r.rows || []).map((row: Record<string, unknown>) => ({
     accountId: String(row.account_id),
     accountName: String(row.account_name),
     accountType: String(row.account_type),
@@ -160,6 +176,23 @@ export async function fetchTrialBalanceReport(
     grossDebit: roundMoney(Number(row.gross_debit)),
     grossCredit: roundMoney(Number(row.gross_credit)),
   }));
+
+  let dataSource: 'journal' | 'transactions_fallback' = 'journal';
+
+  if (
+    rawRows.length === 0 &&
+    options.ledgerFallback?.transactions?.length &&
+    options.ledgerFallback.accounts?.length
+  ) {
+    rawRows = buildTrialBalanceRawRowsFromTransactions(
+      options.ledgerFallback.transactions,
+      options.ledgerFallback.accounts,
+      from,
+      to,
+      basis
+    );
+    dataSource = 'transactions_fallback';
+  }
 
   rawRows.sort((x, y) => {
     const c = compareTrialBalanceType(x.accountType, y.accountType);
@@ -175,6 +208,7 @@ export async function fetchTrialBalanceReport(
     from,
     to,
     basis,
+    dataSource,
   };
 }
 

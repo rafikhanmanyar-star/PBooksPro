@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useAppContext } from '../../context/AppContext';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
 import ReportHeader from './ReportHeader';
@@ -38,8 +39,8 @@ const TrialBalanceReport: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const tenantId = useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    return localStorage.getItem('tenant_id') || '';
+    if (typeof window === 'undefined') return 'local';
+    return localStorage.getItem('tenant_id')?.trim() || 'local';
   }, []);
 
   useEffect(() => {
@@ -48,7 +49,15 @@ const TrialBalanceReport: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const r = await fetchTrialBalanceReport(tenantId, { from: startDate, to: endDate, basis });
+        const r = await fetchTrialBalanceReport(tenantId, {
+          from: startDate,
+          to: endDate,
+          basis,
+          ledgerFallback: {
+            transactions: state.transactions,
+            accounts: state.accounts,
+          },
+        });
         if (!cancelled) setData(r);
       } catch (e) {
         if (!cancelled) {
@@ -62,7 +71,7 @@ const TrialBalanceReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, startDate, endDate, basis]);
+  }, [tenantId, startDate, endDate, basis, state.transactions, state.accounts]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -204,6 +213,14 @@ const TrialBalanceReport: React.FC = () => {
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 px-3 py-2 text-sm text-red-800 dark:text-red-200">
               {error}
+            </div>
+          )}
+
+          {data?.dataSource === 'transactions_fallback' && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+              No posted <strong>journal</strong> lines in this range — amounts are reconstructed from your{' '}
+              <strong>transaction ledger</strong> (Income, Expense, Transfer, Loan) with a balancing clearing line.
+              Post journals from Settings → Journal entry (GL) for immutable double-entry in the database.
             </div>
           )}
 

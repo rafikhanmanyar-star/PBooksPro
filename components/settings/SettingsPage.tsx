@@ -19,7 +19,7 @@ import WhatsAppMenuForm from './WhatsAppMenuForm';
 import HelpSection from './HelpSection';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
-import { Project, ContactType, TransactionType, AccountType, ProjectAgreementStatus, AgreementSettings, InvoiceSettings } from '../../types';
+import { Project, ContactType, TransactionType, AccountType, ProjectAgreementStatus, AgreementSettings, InvoiceSettings, ProfitLossSubType } from '../../types';
 import SettingsLedgerModal from './SettingsLedgerModal';
 import DatabaseAnalyzer from './DatabaseAnalyzer';
 import UpdateCheck from './UpdateCheck';
@@ -42,6 +42,16 @@ const UserManagement = lazy(() => import('./UserManagement'));
 const BackupRestorePage = lazy(() => import('./BackupRestorePage'));
 const ContactsManagement = lazy(() => import('./ContactsManagement'));
 const AssetsManagement = lazy(() => import('./AssetsManagement'));
+
+const PL_CLASSIFICATION_LABELS: Record<ProfitLossSubType, string> = {
+    revenue: 'Revenue',
+    cost_of_sales: 'Cost of sales',
+    operating_expense: 'Operating expense',
+    other_income: 'Other income',
+    finance_cost: 'Finance costs',
+    tax: 'Tax',
+};
+
 interface TableRowData {
     id: string;
     [key: string]: any;
@@ -197,6 +207,18 @@ const SettingsPage: React.FC = () => {
                 )
             },
             { key: 'type', label: 'Type' },
+            {
+                key: 'plClassification',
+                label: 'P&L classification',
+                render: (val, row) =>
+                    row.entityKind !== 'CATEGORY' ? (
+                        <span className="text-slate-400">—</span>
+                    ) : val === 'Default (inferred)' ? (
+                        <span className="text-slate-500 italic">Default (inferred)</span>
+                    ) : (
+                        val
+                    ),
+            },
             { key: 'isSystem', label: 'System', render: (val) => val ? 'Yes' : 'No' },
             { key: 'balance', label: 'Balance', isNumeric: true }
         ],
@@ -296,13 +318,20 @@ const SettingsPage: React.FC = () => {
                 items.forEach(item => {
                     let displayBalance = item.totalBalance;
                     if (item.type === AccountType.LIABILITY || item.type === AccountType.EQUITY) displayBalance = -displayBalance;
+                    const entityKind: 'ACCOUNT' | 'CATEGORY' = 'balance' in item && !('parentCategoryId' in item) ? 'ACCOUNT' : 'CATEGORY';
+                    const plSub = (item as { plSubType?: ProfitLossSubType }).plSubType;
+                    const plClassification =
+                        entityKind === 'CATEGORY'
+                            ? (plSub ? (PL_CLASSIFICATION_LABELS[plSub] ?? plSub) : 'Default (inferred)')
+                            : '—';
                     flattened.push({
                         id: item.id,
                         name: item.name,
                         type: item.type || (item.entityKind === 'CATEGORY' ? 'Category' : AccountType.ASSET),
                         isSystem: !!item.isPermanent,
                         balance: displayBalance,
-                        entityKind: 'balance' in item && !('parentCategoryId' in item) ? 'ACCOUNT' : 'CATEGORY',
+                        entityKind,
+                        plClassification,
                         originalItem: item,
                         level
                     });

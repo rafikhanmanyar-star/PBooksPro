@@ -110,3 +110,15 @@ export function compareTrialBalanceType(a: string, b: string): number {
   if (sa !== sb) return sa - sb;
   return a.localeCompare(b);
 }
+
+/**
+ * SQLite local DB may store tenant_id as '', 'local', or a UUID; journal rows must match app data.
+ */
+export function ledgerTenantIdsForLocalQuery(raw: string | undefined | null): string[] {
+  const set = new Set<string>();
+  const t = (raw ?? '').trim();
+  set.add(t);
+  set.add('local');
+  set.add('');
+  return [...set];
+}
