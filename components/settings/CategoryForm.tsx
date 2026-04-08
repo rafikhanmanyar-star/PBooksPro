@@ -59,17 +59,17 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
                 type: categoryToEdit.type,
                 description: categoryToEdit.description,
                 parentCategoryId: categoryToEdit.parentCategoryId,
-                plSubType: (plSubType || undefined) as ProfitLossSubType | undefined,
-            });
+                plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null,
+            } as Omit<Category, 'id'>);
             return;
         }
-        onSubmit({ 
-            name, 
-            type, 
-            description, 
+        onSubmit({
+            name,
+            type,
+            description,
             parentCategoryId: parentCategoryId || undefined,
-            plSubType: (plSubType || undefined) as ProfitLossSubType | undefined,
-        });
+            plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null,
+        } as Omit<Category, 'id'>);
     };
     
     return (

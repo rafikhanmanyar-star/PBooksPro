@@ -11,6 +11,7 @@ import {
   AccountType,
   Bill,
   Category,
+  ProfitLossSubType,
   InvoiceStatus,
   ProjectAgreementStatus,
   normalizeProjectAgreementStatus,
@@ -85,6 +86,11 @@ function normalizeCategoryTypeFromApi(raw: unknown): TransactionType {
 }
 
 function normalizeCategoryFromApi(c: any): Category {
+  const plRaw = c.plSubType ?? c.pl_sub_type;
+  const plSubType: ProfitLossSubType | undefined =
+    typeof plRaw === 'string' && String(plRaw).trim() !== ''
+      ? (String(plRaw).trim() as ProfitLossSubType)
+      : undefined;
   return {
     id: c.id,
     name: c.name || '',
@@ -94,6 +100,7 @@ function normalizeCategoryFromApi(c: any): Category {
     isRental: c.is_rental === true || c.is_rental === 1 || c.isRental === true || false,
     isHidden: c.is_hidden === true || c.is_hidden === 1 || c.isHidden === true || false,
     parentCategoryId: c.parent_category_id || c.parentCategoryId || undefined,
+    ...(plSubType ? { plSubType } : {}),
   };
 }
 

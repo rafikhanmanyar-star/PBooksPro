@@ -2,6 +2,92 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 
+const ALLOWED_PL_TYPES = new Set([
+  'revenue',
+  'cost_of_sales',
+  'operating_expense',
+  'other_income',
+  'finance_cost',
+  'tax',
+]);
+
+/** `preserve` = body did not include plSubType — leave DB unchanged. */
+export type PlSubTypePick = 'preserve' | string | null;
+
+export function pickPlSubType(body: Record<string, unknown>): PlSubTypePick {
+  if (!('plSubType' in body) && !('pl_sub_type' in body)) return 'preserve';
+  const v = body.plSubType ?? body.pl_sub_type;
+  if (v === null || v === undefined || v === '') return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (!ALLOWED_PL_TYPES.has(s)) {
+    throw new Error(`Invalid plSubType: ${s}`);
+  }
+  return s;
+}
+
+export async function syncPlCategoryMappingFromPick(
+  client: pg.PoolClient,
+  tenantId: string,
+  categoryId: string,
+  pick: PlSubTypePick
+): Promise<void> {
+  if (pick === 'preserve') return;
+  if (pick === null) {
+    await client.query(
+      `DELETE FROM pl_category_mapping WHERE tenant_id = $1 AND category_id = $2`,
+      [tenantId, categoryId]
+    );
+    return;
+  }
+  await client.query(
+    `INSERT INTO pl_category_mapping (tenant_id, category_id, pl_type, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (tenant_id, category_id) DO UPDATE SET pl_type = EXCLUDED.pl_type, updated_at = NOW()`,
+    [tenantId, categoryId, pick]
+  );
+}
+
+/** Tenant row wins over global system tenant when both exist. */
+export async function fetchPlSubTypesForTenant(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<Map<string, string>> {
+  const r = await client.query<{ category_id: string; pl_type: string; tenant_id: string }>(
+    `SELECT category_id, pl_type, tenant_id FROM pl_category_mapping WHERE tenant_id = $1 OR tenant_id = $2`,
+    [tenantId, GLOBAL_SYSTEM_TENANT_ID]
+  );
+  const fromGlobal = new Map<string, string>();
+  const fromTenant = new Map<string, string>();
+  for (const row of r.rows) {
+    if (row.tenant_id === tenantId) {
+      fromTenant.set(row.category_id, row.pl_type);
+    } else {
+      fromGlobal.set(row.category_id, row.pl_type);
+    }
+  }
+  const merged = new Map<string, string>(fromGlobal);
+  for (const [k, v] of fromTenant) {
+    merged.set(k, v);
+  }
+  return merged;
+}
+
+export async function getPlSubTypeForCategory(
+  client: pg.PoolClient,
+  tenantId: string,
+  categoryId: string
+): Promise<string | undefined> {
+  const r = await client.query<{ pl_type: string }>(
+    `SELECT pl_type FROM pl_category_mapping
+     WHERE category_id = $1 AND (tenant_id = $2 OR tenant_id = $3)
+     ORDER BY CASE WHEN tenant_id = $2 THEN 0 ELSE 1 END
+     LIMIT 1`,
+    [categoryId, tenantId, GLOBAL_SYSTEM_TENANT_ID]
+  );
+  return r.rows[0]?.pl_type;
+}
+
 export type CategoryRow = {
   id: string;
   tenant_id: string;
@@ -18,7 +104,7 @@ export type CategoryRow = {
   updated_at: Date;
 };
 
-export function rowToCategoryApi(row: CategoryRow): Record<string, unknown> {
+export function rowToCategoryApi(row: CategoryRow, plSubType?: string | null): Record<string, unknown> {
   const base: Record<string, unknown> = {
     id: row.id,
     name: row.name,
@@ -35,6 +121,9 @@ export function rowToCategoryApi(row: CategoryRow): Record<string, unknown> {
   if (row.deleted_at) {
     base.deletedAt =
       row.deleted_at instanceof Date ? row.deleted_at.toISOString() : row.deleted_at;
+  }
+  if (plSubType) {
+    base.plSubType = plSubType;
   }
   return base;
 }
@@ -124,7 +213,12 @@ export async function createCategory(
       p.parent_category_id && String(p.parent_category_id).trim() ? String(p.parent_category_id).trim() : null,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  const plPick = pickPlSubType(body);
+  if (plPick !== 'preserve') {
+    await syncPlCategoryMappingFromPick(client, tenantId, row.id, plPick);
+  }
+  return row;
 }
 
 export async function updateCategory(
@@ -167,7 +261,12 @@ export async function updateCategory(
       if (!exists) return { row: null, conflict: false };
       return { row: null, conflict: true };
     }
-    return { row: u.rows[0], conflict: false };
+    const updated = u.rows[0];
+    const plPick = pickPlSubType(body);
+    if (plPick !== 'preserve') {
+      await syncPlCategoryMappingFromPick(client, tenantId, id, plPick);
+    }
+    return { row: updated, conflict: false };
   }
 
   const u = await client.query<CategoryRow>(
@@ -178,7 +277,14 @@ export async function updateCategory(
      RETURNING id, tenant_id, name, type, description, is_permanent, is_rental, is_hidden, parent_category_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId, ...vals]
   );
-  return { row: u.rows[0] ?? null, conflict: false };
+  const updated = u.rows[0] ?? null;
+  if (updated) {
+    const plPick = pickPlSubType(body);
+    if (plPick !== 'preserve') {
+      await syncPlCategoryMappingFromPick(client, tenantId, id, plPick);
+    }
+  }
+  return { row: updated, conflict: false };
 }
 
 export async function upsertCategory(
@@ -201,6 +307,10 @@ export async function upsertCategory(
   if (existing.tenant_id === GLOBAL_SYSTEM_TENANT_ID) {
     const row = await getCategoryById(client, tenantId, id);
     if (!row) throw new Error('System category not found.');
+    const plPick = pickPlSubType(body as Record<string, unknown>);
+    if (plPick !== 'preserve') {
+      await syncPlCategoryMappingFromPick(client, tenantId, id, plPick);
+    }
     return { row, conflict: false, wasInsert: false };
   }
 
@@ -229,6 +339,10 @@ export async function upsertCategory(
   );
   const row = u.rows[0];
   if (!row) throw new Error('Category upsert failed.');
+  const plPick = pickPlSubType(body as Record<string, unknown>);
+  if (plPick !== 'preserve') {
+    await syncPlCategoryMappingFromPick(client, tenantId, id, plPick);
+  }
   return { row, conflict: false, wasInsert: false };
 }
 

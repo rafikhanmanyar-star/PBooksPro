@@ -4,7 +4,9 @@ import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../db/pool.js';
 import {
   getCategoryById,
+  getPlSubTypeForCategory,
   listCategories,
+  fetchPlSubTypesForTenant,
   rowToCategoryApi,
   softDeleteCategory,
   updateCategory,
@@ -25,7 +27,8 @@ categoriesRouter.get('/categories', async (req: AuthedRequest, res) => {
     const client = await pool.connect();
     try {
       const rows = await listCategories(client, tenantId);
-      sendSuccess(res, rows.map((r) => rowToCategoryApi(r)));
+      const plMap = await fetchPlSubTypesForTenant(client, tenantId);
+      sendSuccess(res, rows.map((r) => rowToCategoryApi(r, plMap.get(r.id))));
     } finally {
       client.release();
     }
@@ -50,7 +53,8 @@ categoriesRouter.get('/categories/:id', async (req: AuthedRequest, res) => {
         sendFailure(res, 404, 'NOT_FOUND', 'Category not found');
         return;
       }
-      sendSuccess(res, rowToCategoryApi(row));
+      const pl = await getPlSubTypeForCategory(client, tenantId, id);
+      sendSuccess(res, rowToCategoryApi(row, pl));
     } finally {
       client.release();
     }
@@ -73,7 +77,15 @@ categoriesRouter.post('/categories', async (req: AuthedRequest, res) => {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
       return;
     }
-    const apiRow = rowToCategoryApi(result.row);
+    const pool = getPool();
+    const c2 = await pool.connect();
+    let pl: string | undefined;
+    try {
+      pl = await getPlSubTypeForCategory(c2, tenantId, result.row.id);
+    } finally {
+      c2.release();
+    }
+    const apiRow = rowToCategoryApi(result.row, pl);
     const action = result.wasInsert ? 'created' : 'updated';
     emitEntityEvent(tenantId, action, 'category', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, result.wasInsert ? 201 : 200);
@@ -105,7 +117,15 @@ categoriesRouter.put('/categories/:id', async (req: AuthedRequest, res) => {
       sendFailure(res, 404, 'NOT_FOUND', 'Category not found');
       return;
     }
-    const apiRow = rowToCategoryApi(result.row);
+    const pool = getPool();
+    const c2 = await pool.connect();
+    let pl: string | undefined;
+    try {
+      pl = await getPlSubTypeForCategory(c2, tenantId, result.row.id);
+    } finally {
+      c2.release();
+    }
+    const apiRow = rowToCategoryApi(result.row, pl);
     emitEntityEvent(tenantId, 'updated', 'category', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow);
   } catch (e) {

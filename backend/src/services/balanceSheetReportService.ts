@@ -4,7 +4,7 @@ import fs from 'fs';
 import type pg from 'pg';
 import { listAccounts, rowToAccountApi } from './accountsService.js';
 import { listTransactions, rowToTransactionApi } from './transactionsService.js';
-import { listCategories, rowToCategoryApi } from './categoriesService.js';
+import { listCategories, rowToCategoryApi, fetchPlSubTypesForTenant } from './categoriesService.js';
 import { listInvoices, rowToInvoiceApi } from './invoicesService.js';
 import { listBills, rowToBillApi } from './billsService.js';
 import { listProjectAgreementsWithUnits, rowToProjectAgreementApi } from './projectAgreementsService.js';
@@ -41,20 +41,22 @@ function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>)
  */
 /** Exported for profit-loss and other reports that share the same minimal state shape. */
 export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId: string, asOfDate: string) {
-  const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits] = await Promise.all([
-    listAccounts(client, tenantId),
-    listTransactions(client, tenantId, { endDate: asOfDate, limit: 500000, offset: 0 }),
-    listCategories(client, tenantId),
-    listInvoices(client, tenantId),
-    listBills(client, tenantId),
-    listProjectReceivedAssets(client, tenantId),
-    listUnits(client, tenantId),
-    listProjectAgreementsWithUnits(client, tenantId),
-  ]);
+  const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap] =
+    await Promise.all([
+      listAccounts(client, tenantId),
+      listTransactions(client, tenantId, { endDate: asOfDate, limit: 500000, offset: 0 }),
+      listCategories(client, tenantId),
+      listInvoices(client, tenantId),
+      listBills(client, tenantId),
+      listProjectReceivedAssets(client, tenantId),
+      listUnits(client, tenantId),
+      listProjectAgreementsWithUnits(client, tenantId),
+      fetchPlSubTypesForTenant(client, tenantId),
+    ]);
 
   const accounts = accountRows.map((r) => asRecord(rowToAccountApi(r)));
   const transactions = txRows.map((r) => asRecord(rowToTransactionApi(r)));
-  const categories = catRows.map((r) => asRecord(rowToCategoryApi(r)));
+  const categories = catRows.map((r) => asRecord(rowToCategoryApi(r, plMap.get(r.id))));
   const invoices = invRows.map((r) => asRecord(rowToInvoiceApi(r)));
   const bills = billRows.map((r) => asRecord(rowToBillApi(r)));
   const projectReceivedAssets = praRows.map((r) => asRecord(rowToProjectReceivedAssetApi(r)));

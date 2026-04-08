@@ -14,7 +14,11 @@ import {
 import { listInvoicesChangedSince, rowToInvoiceApi } from './invoicesService.js';
 import { listAccountsChangedSince, rowToAccountApi } from './accountsService.js';
 import { listTransactionsChangedSince, rowToTransactionApi } from './transactionsService.js';
-import { listCategoriesChangedSince, rowToCategoryApi } from './categoriesService.js';
+import {
+  listCategoriesChangedSince,
+  rowToCategoryApi,
+  fetchPlSubTypesForTenant,
+} from './categoriesService.js';
 import { listBillsChangedSince, rowToBillApi } from './billsService.js';
 import {
   listRecurringInvoiceTemplatesChangedSince,
@@ -150,6 +154,7 @@ export async function getStateChanges(
     listPlanAmenitiesChangedSince(client, tenantId, since),
     listInstallmentPlansChangedSince(client, tenantId, since),
   ]);
+  const plMap = await fetchPlSubTypesForTenant(client, tenantId);
   const projectAgreementEnriched = await enrichRowsWithUnitIds(client, projectAgreementRowsRaw);
   const entities: Record<string, unknown[]> = {
     vendors: vendorRows.map((r) => rowToVendorApi(r)),
@@ -161,7 +166,7 @@ export async function getStateChanges(
     invoices: invoiceRows.map((r) => rowToInvoiceApi(r)),
     accounts: accountRows.map((r) => rowToAccountApi(r)),
     transactions: transactionRows.map((r) => rowToTransactionApi(r)),
-    categories: categoryRows.map((r) => rowToCategoryApi(r)),
+    categories: categoryRows.map((r) => rowToCategoryApi(r, plMap.get(r.id))),
     bills: billRows.map((r) => rowToBillApi(r)),
     pm_cycle_allocations: pmCycleAllocationRows.map((r) => rowToPmCycleAllocationApi(r)),
     recurring_invoice_templates: recurringTemplateRows.map((r) => rowToRecurringInvoiceTemplateApi(r)),
