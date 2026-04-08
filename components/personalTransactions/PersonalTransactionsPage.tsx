@@ -1,11 +1,11 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
-import Button from '../ui/Button';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
 import { useCompanyOptional } from '../../context/CompanyContext';
-import PersonalCategoriesModal from './PersonalCategoriesModal';
+import PersonalCategoriesSettingsPanel from './PersonalCategoriesSettingsPanel';
 import PersonalTransactionsTab from './PersonalTransactionsTab';
 import MyWalletsTab from './MyWalletsTab';
+import MyTasksTab from './MyTasksTab';
 import { seedPersonalCategoriesIfEmpty } from './personalCategoriesService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -29,8 +29,6 @@ function personalNavLabelShort(label: string): string {
 const PersonalTransactionsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useLocalStorage<TabId>('personalTransactions_activeTab', 'Transactions');
   const subNav = useCollapsibleSubNav('subnav_personal_tx');
-  const [incomeCategoriesModalOpen, setIncomeCategoriesModalOpen] = useState(false);
-  const [expenseCategoriesModalOpen, setExpenseCategoriesModalOpen] = useState(false);
 
   const { user } = useAuth();
   const { state } = useAppContext();
@@ -55,6 +53,15 @@ const PersonalTransactionsPage: React.FC = () => {
     }
   }, [activeTab, setActiveTab]);
 
+  useEffect(() => {
+    const onTab = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab?: TabId }>).detail?.tab;
+      if (tab && TABS.includes(tab)) setActiveTab(tab);
+    };
+    window.addEventListener('pb:set-personal-tab', onTab);
+    return () => window.removeEventListener('pb:set-personal-tab', onTab);
+  }, [setActiveTab]);
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'Transactions':
@@ -72,7 +79,7 @@ const PersonalTransactionsPage: React.FC = () => {
       case 'My Tasks':
         return (
           <div className="p-4 h-full overflow-auto">
-            <p className="text-sm text-gray-600 dark:text-slate-400">My Tasks — coming soon.</p>
+            <MyTasksTab />
           </div>
         );
       case 'Loan manager':
@@ -85,36 +92,8 @@ const PersonalTransactionsPage: React.FC = () => {
         );
       case 'Settings':
         return (
-          <div className="p-4 max-w-lg">
-            <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
-              Manage categories used only for Personal transactions. They are separate from the main app income and expense categories.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setIncomeCategoriesModalOpen(true)}
-                className="flex-1"
-              >
-                Income categories
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setExpenseCategoriesModalOpen(true)}
-                className="flex-1"
-              >
-                Expense categories
-              </Button>
-            </div>
-            <PersonalCategoriesModal
-              isOpen={incomeCategoriesModalOpen}
-              onClose={() => setIncomeCategoriesModalOpen(false)}
-              type="Income"
-            />
-            <PersonalCategoriesModal
-              isOpen={expenseCategoriesModalOpen}
-              onClose={() => setExpenseCategoriesModalOpen(false)}
-              type="Expense"
-            />
+          <div className="p-4 md:p-6 h-full min-h-0 overflow-hidden flex flex-col bg-slate-50/80 dark:bg-slate-900/30">
+            <PersonalCategoriesSettingsPanel />
           </div>
         );
       default:

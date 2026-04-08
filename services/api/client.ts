@@ -471,7 +471,8 @@ export class ApiClient {
                                     endpoint.includes('/pm-cycle-allocations') ||
                                     endpoint.includes('/transaction-audit') ||
                                     endpoint.includes('/personal-categories') ||
-                                    endpoint.includes('/personal-transactions');
+                                    endpoint.includes('/personal-transactions') ||
+                                    endpoint.includes('/tasks');
           
           if (isValidationEndpoint) {
             // Silent fail for validation endpoints - expected if token is invalid during app init

@@ -10,6 +10,7 @@ import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
+import { fetchUpcomingTasks } from '../../components/personalTransactions/personalTasksService';
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: () => {}, connect: () => {}, disconnect: () => {} });
 import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
 import { useTheme } from '../../context/ThemeContext';
@@ -43,6 +44,9 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const { openChat } = useWhatsApp();
   const [isWhatsappDropdownOpen, setIsWhatsappDropdownOpen] = useState(false);
   const [unreadConversations, setUnreadConversations] = useState<UnreadConversation[]>([]);
+  const [taskBellRows, setTaskBellRows] = useState<
+    { id: string; title: string; targetDate: string; status: string; updatedAt?: string; createdAt?: string }[]
+  >([]);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const whatsappDropdownRef = useRef<HTMLDivElement>(null);
   const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
@@ -60,7 +64,8 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     };
     action:
     | { type: 'installment_plan'; planId: string }
-    | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string };
+    | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string }
+    | { type: 'personal_task'; taskId: string };
   };
 
   // Load dismissed notifications from localStorage on mount
@@ -231,7 +236,36 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return matches;
     };
 
-    const items: NotificationItem[] = (state.installmentPlans || []).flatMap(plan => {
+    const todayLocal = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+
+    const taskItems: NotificationItem[] = taskBellRows.map((task) => {
+      const td = task.targetDate.slice(0, 10);
+      let badgeLabel = 'Upcoming';
+      let tone: NotificationBadgeTone = 'orange';
+      if (td < todayLocal) {
+        badgeLabel = 'Overdue';
+        tone = 'red';
+      } else if (td === todayLocal) {
+        badgeLabel = 'Due today';
+        tone = 'orange';
+      } else {
+        badgeLabel = `Due ${td}`;
+        tone = 'blue';
+      }
+      return {
+        id: `task:${task.id}`,
+        title: 'Task deadline',
+        message: task.title,
+        time: task.updatedAt || task.createdAt || new Date().toISOString(),
+        badge: { label: badgeLabel, tone },
+        action: { type: 'personal_task' as const, taskId: task.id },
+      };
+    });
+
+    const planItems: NotificationItem[] = (state.installmentPlans || []).flatMap(plan => {
       const time = plan.updatedAt || plan.createdAt || '';
       const normalizedStatus = (plan.status || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
       const isPendingApproval = normalizedStatus === 'pending approval';
@@ -291,12 +325,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return results;
     });
 
+    const items: NotificationItem[] = [...taskItems, ...planItems];
+
     // Filter out dismissed notifications - ensure they never reappear
     // Note: WhatsApp notifications are excluded from bell icon - they use the dedicated WhatsApp icon
     const activeNotifications = items.filter(item => !dismissedNotifications.has(item.id));
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
-  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications]);
+  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, taskBellRows]);
 
   const handleNotificationClick = useCallback((notification: NotificationItem) => {
     console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
@@ -306,6 +342,15 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
     // Close notification dropdown
     setIsNotificationsOpen(false);
+
+    if (notification.action.type === 'personal_task') {
+      window.dispatchEvent(new CustomEvent('pb:set-personal-tab', { detail: { tab: 'My Tasks' } }));
+      window.dispatchEvent(
+        new CustomEvent('pb:open-personal-task', { detail: { taskId: notification.action.taskId } })
+      );
+      dispatch({ type: 'SET_PAGE', payload: 'personalTransactions' });
+      return;
+    }
 
     if (notification.action.type === 'installment_plan') {
       const planId = notification.action.planId;
@@ -356,6 +401,43 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isNotificationsOpen, isWhatsappDropdownOpen]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !state.currentUser?.id) {
+      setTaskBellRows([]);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rows = await fetchUpcomingTasks(state.currentUser!.id, 7);
+        if (cancelled) return;
+        setTaskBellRows(
+          rows.map((r) => ({
+            id: r.id,
+            title: r.title,
+            targetDate: r.targetDate,
+            status: r.status,
+            updatedAt: r.updatedAt,
+            createdAt: r.createdAt,
+          }))
+        );
+      } catch {
+        if (!cancelled) setTaskBellRows([]);
+      }
+    };
+    void load();
+    const interval = window.setInterval(load, 5 * 60_000);
+    const onTasksChanged = () => {
+      void load();
+    };
+    window.addEventListener('pb:tasks-changed', onTasksChanged);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('pb:tasks-changed', onTasksChanged);
+    };
+  }, [isAuthenticated, state.currentUser?.id]);
 
   useEffect(() => {
     if (isLocalOnlyMode()) {

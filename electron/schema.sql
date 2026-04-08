@@ -738,6 +738,21 @@ CREATE TABLE IF NOT EXISTS personal_transactions (
     FOREIGN KEY (personal_category_id) REFERENCES personal_categories(id) ON DELETE RESTRICT
 );
 
+-- Personal tasks (My Tasks; filtered by user_id in app)
+CREATE TABLE IF NOT EXISTS personal_tasks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    created_date TEXT NOT NULL,
+    target_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+    progress INTEGER NOT NULL DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+    priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- =====================================================
 -- PERFORMANCE INDEXES (single-tenant, local-only)
 -- =====================================================
@@ -864,6 +879,9 @@ CREATE INDEX IF NOT EXISTS idx_personal_transactions_tenant ON personal_transact
 CREATE INDEX IF NOT EXISTS idx_personal_transactions_account ON personal_transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_personal_transactions_date ON personal_transactions(transaction_date);
 CREATE INDEX IF NOT EXISTS idx_personal_transactions_category ON personal_transactions(personal_category_id);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON personal_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_target_date ON personal_tasks(target_date);
 
 -- ============================================================================
 -- P2P (PROCUREMENT-TO-PAY) SYSTEM - Purchase Orders only (p2p_invoices/bills/audit_trail removed)

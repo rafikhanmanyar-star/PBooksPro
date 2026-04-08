@@ -39,14 +39,6 @@ interface LoanSidebarProps {
   appliedCount: number;
 }
 
-const QUICK_FILTERS: { key: QuickFilterKey; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'to_receive', label: 'To Receive' },
-  { key: 'to_return', label: 'To Return' },
-  { key: 'overdue', label: 'Overdue' },
-  { key: 'completed', label: 'Completed' },
-];
-
 export const LoanSidebar: React.FC<LoanSidebarProps> = ({
   items,
   selectedContactId,
@@ -176,25 +168,6 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
             </button>
           )}
         </div>
-      </div>
-
-      {/* Quick filters */}
-      <div className="px-3 py-2 flex flex-wrap gap-2 shrink-0">
-        {QUICK_FILTERS.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => onQuickFilterChange(key)}
-            className={`
-              px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-              ${quickFilter === key
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}
-            `}
-          >
-            {label}
-          </button>
-        ))}
       </div>
 
       {/* Advanced filter trigger */}

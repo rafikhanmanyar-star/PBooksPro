@@ -6,7 +6,8 @@ import DatePicker from '../ui/DatePicker';
 import { useAppContext } from '../../context/AppContext';
 import { AccountType } from '../../types';
 import { getPersonalIncomeCategories, getPersonalExpenseCategories, addPersonalCategory } from './personalCategoriesService';
-import { addPersonalTransaction } from './personalTransactionsService';
+import { addPersonalTransaction, updatePersonalTransaction } from './personalTransactionsService';
+import type { PersonalTransactionRow } from './personalTransactionsService';
 import { CURRENCY } from '../../constants';
 import { toLocalDateString } from '../../utils/dateUtils';
 
@@ -23,12 +24,15 @@ interface AddPersonalTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /** When set, the modal updates this row instead of creating a new transaction. */
+  editTransaction?: PersonalTransactionRow | null;
 }
 
 const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = ({
   isOpen,
   onClose,
   onSaved,
+  editTransaction = null,
 }) => {
   const { state } = useAppContext();
   const [step, setStep] = useState(1);
@@ -48,11 +52,32 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
   const [categoryHighlightedIndex, setCategoryHighlightedIndex] = useState(-1);
 
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    if (editTransaction) {
       setStep(1);
+      setType(editTransaction.type);
+      setAccountId(editTransaction.accountId);
+      setCategoryId(editTransaction.personalCategoryId);
+      setAmount(String(Math.abs(editTransaction.amount)));
+      setTransactionDate(editTransaction.transactionDate || toLocalDateString(new Date()));
+      setDescription(editTransaction.description ?? '');
+      setError('');
+      const cats = editTransaction.type === 'Income' ? getPersonalIncomeCategories() : getPersonalExpenseCategories();
+      const cn = cats.find((c) => c.id === editTransaction.personalCategoryId)?.name ?? '';
+      setCategorySearch(cn);
+      setCategoryDropdownOpen(false);
+    } else {
+      setStep(1);
+      setType('Expense');
+      setAccountId('');
+      setCategoryId('');
+      setCategorySearch('');
+      setAmount('');
       setTransactionDate(toLocalDateString(new Date()));
+      setDescription('');
+      setError('');
     }
-  }, [isOpen]);
+  }, [isOpen, editTransaction, state.personalCategories]);
 
   const bankAndCashAccounts = useMemo(
     () =>
@@ -216,14 +241,29 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
     }
     setSaving(true);
     try {
-      await addPersonalTransaction({
-        accountId,
-        personalCategoryId: categoryId,
-        type,
-        amount: numAmount,
-        transactionDate,
-        description: description.trim() || undefined,
-      });
+      if (editTransaction) {
+        await updatePersonalTransaction(
+          editTransaction.id,
+          {
+            accountId,
+            personalCategoryId: categoryId,
+            type,
+            amount: numAmount,
+            transactionDate,
+            description: description.trim() || undefined,
+          },
+          editTransaction.version
+        );
+      } else {
+        await addPersonalTransaction({
+          accountId,
+          personalCategoryId: categoryId,
+          type,
+          amount: numAmount,
+          transactionDate,
+          description: description.trim() || undefined,
+        });
+      }
       onSaved();
       handleClose();
     } catch (err) {
@@ -512,7 +552,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Add transaction" size="md">
+    <Modal isOpen={isOpen} onClose={handleClose} title={editTransaction ? 'Edit transaction' : 'Add transaction'} size="md">
       <div className="space-y-6" onKeyDown={handleKeyDown}>
         {/* Step indicator */}
         <div className="flex items-center justify-between">
@@ -578,7 +618,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
               </Button>
             ) : (
               <Button type="button" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save transaction'}
+                {saving ? 'Saving...' : editTransaction ? 'Save changes' : 'Save transaction'}
               </Button>
             )}
           </div>

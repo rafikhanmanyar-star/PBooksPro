@@ -34,6 +34,7 @@ import { entityListStubsRouter } from './routes/entityListStubsRoutes.js';
 import { recurringInvoiceTemplatesRouter } from './routes/recurringInvoiceTemplatesRoutes.js';
 import { payrollRouter } from './routes/payrollRoutes.js';
 import { personalFinanceRouter } from './routes/personalFinanceRoutes.js';
+import { tasksRouter } from './routes/tasksRoutes.js';
 import { pmCycleAllocationsRouter } from './routes/pmCycleAllocationsRoutes.js';
 import { planAmenitiesRouter } from './routes/planAmenitiesRoutes.js';
 import { installmentPlansRouter } from './routes/installmentPlansRoutes.js';
@@ -178,6 +179,8 @@ app.use('/api', authMiddleware, locksRouter);
 app.use('/api', authMiddleware, payrollRouter);
 
 app.use('/api', authMiddleware, personalFinanceRouter);
+
+app.use('/api', authMiddleware, tasksRouter);
 
 /** Empty list stubs for entities not yet ported to this API (avoids HTML 404 on loadState). */
 app.use('/api', authMiddleware, entityListStubsRouter);

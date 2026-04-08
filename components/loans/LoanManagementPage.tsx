@@ -25,9 +25,17 @@ import {
   getLoanStatusUI,
   getTreeGroup,
   defaultAdvancedFilter,
+  formatPKR,
+  PKR_SYMBOL,
   type QuickFilterKey,
   type AdvancedFilterState,
 } from './loanManager/loanManagerUtils';
+
+function formatSignedPKR(value: number): string {
+  if (Math.abs(value) < 0.005) return `${PKR_SYMBOL} 0`;
+  const sign = value < 0 ? '-' : '';
+  return `${PKR_SYMBOL} ${sign}${Math.abs(value).toLocaleString('en-PK')}`;
+}
 
 interface LoanSummary {
   contactId: string;
@@ -122,6 +130,22 @@ const LoanManagementPage: React.FC = () => {
       };
     });
   }, [loanSummaries, state.transactions]);
+
+  const loanDashboardStats = useMemo(() => {
+    let netLoan = 0;
+    let totalToReceive = 0;
+    let totalToReturn = 0;
+    let totalOverdue = 0;
+    let completedCount = 0;
+    for (const s of sidebarItems) {
+      netLoan += s.netBalance;
+      if (s.treeGroup === 'to_receive') totalToReceive += Math.abs(s.netBalance);
+      else if (s.treeGroup === 'to_return') totalToReturn += Math.abs(s.netBalance);
+      else if (s.treeGroup === 'completed') completedCount += 1;
+      if (s.statusUI === 'Overdue') totalOverdue += Math.abs(s.netBalance);
+    }
+    return { netLoan, totalToReceive, totalToReturn, totalOverdue, completedCount };
+  }, [sidebarItems]);
 
   const selectedSummary = useMemo(
     () => loanSummaries.find(s => s.contactId === selectedContactId),
@@ -248,16 +272,77 @@ const LoanManagementPage: React.FC = () => {
     <div className="h-full min-h-0 flex flex-col">
       <style>{STANDARD_PRINT_STYLES}</style>
 
-      {/* Top bar: Analysis Report + New Loan */}
-      <div className="flex-shrink-0 flex flex-wrap items-center justify-end gap-2 p-3 bg-white border-b border-slate-200 no-print">
-        <Button variant="secondary" onClick={() => setIsReportOpen(true)}>
-          <span className="w-4 h-4 mr-2">{ICONS.barChart}</span>
-          Analysis Report
-        </Button>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <span className="w-4 h-4 mr-2">{ICONS.plus}</span>
-          New Loan
-        </Button>
+      {/* Summary cards + Analysis Report + New Loan (same row) */}
+      <div className="flex-shrink-0 flex flex-wrap items-stretch gap-2 p-3 bg-white border-b border-slate-200 no-print">
+        <div className="flex flex-wrap items-stretch gap-2 flex-1 min-w-0">
+          {(
+            [
+              {
+                key: 'all' as const,
+                label: 'All',
+                sub: 'Net loan',
+                value: formatSignedPKR(loanDashboardStats.netLoan),
+                valueClass: 'text-slate-800',
+              },
+              {
+                key: 'to_receive' as const,
+                label: 'To Receive',
+                sub: 'Total to receive',
+                value: formatPKR(loanDashboardStats.totalToReceive),
+                valueClass: 'text-emerald-700',
+              },
+              {
+                key: 'to_return' as const,
+                label: 'To Return',
+                sub: 'Total to return',
+                value: formatPKR(loanDashboardStats.totalToReturn),
+                valueClass: 'text-rose-700',
+              },
+              {
+                key: 'overdue' as const,
+                label: 'Overdue',
+                sub: 'Total overdue',
+                value: formatPKR(loanDashboardStats.totalOverdue),
+                valueClass: 'text-red-700',
+              },
+              {
+                key: 'completed' as const,
+                label: 'Completed',
+                sub: 'Settled loans',
+                value: String(loanDashboardStats.completedCount),
+                valueClass: 'text-slate-800',
+              },
+            ] as const
+          ).map(card => (
+            <button
+              key={card.key}
+              type="button"
+              onClick={() => setQuickFilter(card.key)}
+              title={`${card.label}: ${card.sub}`}
+              className={`
+                flex flex-col items-start justify-center min-w-[100px] flex-1 sm:flex-none sm:min-w-[112px]
+                px-3 py-2 rounded-xl border text-left transition-all
+                ${quickFilter === card.key
+                  ? 'border-blue-600 bg-blue-50 shadow-sm ring-1 ring-blue-200'
+                  : 'border-slate-200 bg-slate-50/80 hover:bg-slate-100 hover:border-slate-300'}
+              `}
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{card.label}</span>
+              <span className={`text-sm font-bold tabular-nums mt-0.5 ${card.valueClass}`}>{card.value}</span>
+              <span className="text-[10px] text-slate-400 mt-0.5 leading-tight">{card.sub}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0 self-center">
+          <Button variant="secondary" onClick={() => setIsReportOpen(true)}>
+            <span className="w-4 h-4 mr-2">{ICONS.barChart}</span>
+            Analysis Report
+          </Button>
+          <Button onClick={() => setIsModalOpen(true)}>
+            <span className="w-4 h-4 mr-2">{ICONS.plus}</span>
+            New Loan
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">

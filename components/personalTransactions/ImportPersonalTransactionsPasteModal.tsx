@@ -4,7 +4,11 @@ import Button from '../ui/Button';
 import { useAppContext } from '../../context/AppContext';
 import { AccountType } from '../../types';
 import { CURRENCY } from '../../constants';
-import { getPersonalIncomeCategories, getPersonalExpenseCategories } from './personalCategoriesService';
+import {
+  addPersonalCategory,
+  getPersonalIncomeCategories,
+  getPersonalExpenseCategories,
+} from './personalCategoriesService';
 import { bulkImportPersonalTransactions, listPersonalTransactions } from './personalTransactionsService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
@@ -55,6 +59,9 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const [lastSummary, setLastSummary] = useState<ImportSummary | null>(null);
+  const [creatingCategoryLine, setCreatingCategoryLine] = useState<number | null>(null);
+  /** Bumped after creating a category so preview re-validates even if parent does not listen for the global event. */
+  const [localCategoryRevision, setLocalCategoryRevision] = useState(0);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -65,6 +72,8 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
     setParseError('');
     setImportError('');
     setLastSummary(null);
+    setCreatingCategoryLine(null);
+    setLocalCategoryRevision(0);
   }, [isOpen]);
 
   const bankCashAccounts = useMemo(
@@ -96,7 +105,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
       expenseCategories: getPersonalExpenseCategories().map((c) => ({ id: c.id, name: c.name })),
       existingTransactions,
     }),
-    [bankCashAccounts, existingTransactions, dataRevision, state.personalCategories]
+    [bankCashAccounts, existingTransactions, dataRevision, localCategoryRevision, state.personalCategories]
   );
 
   const previewRows = useMemo(
@@ -156,6 +165,23 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
       return next;
     });
   }, []);
+
+  const handleCreateCategoryFromPaste = useCallback(
+    async (lineIndex: number, type: 'Income' | 'Expense', name: string) => {
+      setImportError('');
+      setCreatingCategoryLine(lineIndex);
+      try {
+        await addPersonalCategory(type, name);
+        setLocalCategoryRevision((k) => k + 1);
+        window.dispatchEvent(new Event('pbooks-personal-categories-changed'));
+      } catch (e) {
+        setImportError(e instanceof Error ? e.message : 'Could not create category.');
+      } finally {
+        setCreatingCategoryLine(null);
+      }
+    },
+    []
+  );
 
   const handleImport = useCallback(async () => {
     setImportError('');
@@ -322,6 +348,24 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
                           <p className="text-[10px] mt-0.5 opacity-90">
                             Suggested: {r.categorySuggestions.slice(0, 2).map((s) => s.name).join(', ')}
                           </p>
+                        )}
+                        {r.needsCategoryCreate && r.typeNormalized && (
+                          <button
+                            type="button"
+                            disabled={creatingCategoryLine !== null}
+                            onClick={() =>
+                              handleCreateCategoryFromPaste(
+                                r.lineIndex,
+                                r.typeNormalized!,
+                                r.categoryRaw.trim()
+                              )
+                            }
+                            className="mt-1 block w-full max-w-[200px] text-left text-[10px] font-medium text-green-700 dark:text-green-400 hover:underline disabled:opacity-50 disabled:no-underline"
+                          >
+                            {creatingCategoryLine === r.lineIndex
+                              ? 'Creating…'
+                              : `Create “${r.categoryRaw.trim()}” as ${r.typeNormalized} category`}
+                          </button>
                         )}
                       </td>
                       <td className="py-1.5 px-2 align-top max-w-[140px] truncate" title={r.note}>

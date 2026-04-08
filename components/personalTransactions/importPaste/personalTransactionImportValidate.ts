@@ -31,6 +31,8 @@ export interface ImportPreviewRow {
   messages: { level: 'error' | 'warning'; text: string }[];
   status: ImportRowStatus;
   duplicateOfExisting: boolean;
+  /** Pasted category text has no match; user can create this name as a new category for the row type. */
+  needsCategoryCreate: boolean;
 }
 
 export interface ValidateImportContext {
@@ -202,6 +204,9 @@ export function validateImportRows(
       }
     }
 
+    const needsCategoryCreate =
+      !!typeNormalized && !!categoryRaw.trim() && !personalCategoryId;
+
     let duplicateOfExisting = false;
     if (
       normalizedDate &&
@@ -241,6 +246,7 @@ export function validateImportRows(
       messages,
       status,
       duplicateOfExisting,
+      needsCategoryCreate,
     };
   });
 }
