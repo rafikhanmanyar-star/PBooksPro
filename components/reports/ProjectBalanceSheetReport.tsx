@@ -145,24 +145,24 @@ const ProjectBalanceSheetReport: React.FC = () => {
     const total = lines.reduce((s, l) => s + l.amount, 0);
 
     return (
-      <div className="mb-4 rounded-xl border border-app-border overflow-hidden bg-app-card shadow-ds-card">
+      <div className="mb-2 rounded-lg border border-app-border overflow-hidden bg-app-card shadow-ds-card">
         <button
           type="button"
-          className={`w-full flex justify-between items-center text-left text-sm font-bold ${color} uppercase tracking-wider p-3 bg-app-table-header border-b border-app-border`}
+          className={`w-full flex justify-between items-center text-left text-xs font-bold ${color} uppercase tracking-wide py-1.5 px-2 bg-app-table-header border-b border-app-border`}
           onClick={() => toggleGroup(sectionKey)}
         >
           <span>{title}</span>
-          <span className="text-app-muted font-mono text-xs">{openGroups[sectionKey] !== false ? '▼' : '▶'}</span>
+          <span className="text-app-muted font-mono text-[10px]">{openGroups[sectionKey] !== false ? '▼' : '▶'}</span>
         </button>
         {openGroups[sectionKey] !== false && (
-          <div className="p-3 space-y-3 text-sm">
+          <div className="p-2 space-y-1.5 text-xs leading-snug">
             {keys.map((gk) => {
               const groupLines = byKey.get(gk) ?? [];
               const subtotal = groupLines.reduce((s, l) => s + l.amount, 0);
               if (hideZeros && Math.abs(subtotal) < 0.01) return null;
               return (
-                <div key={gk} className="border border-app-border/60 rounded-lg overflow-hidden">
-                  <div className="px-2 py-1 bg-app-toolbar/80 text-xs font-semibold text-app-muted">
+                <div key={gk} className="border border-app-border/60 rounded-md overflow-hidden">
+                  <div className="px-1.5 py-0.5 bg-app-toolbar/80 text-[11px] font-semibold text-app-muted leading-tight">
                     {BS_GROUP_LABELS[gk] ?? gk}
                   </div>
                   {groupLines.map((line) => {
@@ -170,7 +170,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
                     return (
                       <div
                         key={line.id}
-                        className="flex justify-between py-1.5 px-2 hover:bg-app-toolbar/50 rounded cursor-pointer"
+                        className="flex justify-between py-0.5 px-1.5 hover:bg-app-toolbar/50 rounded cursor-pointer"
                         onClick={() => {
                           if (line.accountId) setLedger({ id: line.accountId, name: line.name });
                         }}
@@ -186,7 +186,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
             })}
           </div>
         )}
-        <div className="flex justify-between p-3 bg-app-toolbar border-t border-app-border font-bold text-base text-app-text">
+        <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border-t border-app-border font-bold text-sm text-app-text">
           <span>Subtotal {title}</span>
           <span className="tabular-nums">
             {CURRENCY}{' '}
@@ -198,7 +198,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full space-y-4 bg-background">
+    <div className="flex flex-col h-full space-y-2 bg-background">
       <style>{STANDARD_PRINT_STYLES}</style>
       <div className="flex-shrink-0">
         <ReportToolbar
@@ -213,6 +213,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
           onRangeChange={handleRangeChange}
           hideSearch={true}
           singleDateMode={true}
+          compact
         >
           <div className="w-40 sm:w-48 flex-shrink-0">
             <ComboBox
@@ -226,7 +227,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
         </ReportToolbar>
       </div>
 
-      <div className="flex flex-wrap gap-2 px-1 text-xs">
+      <div className="flex flex-wrap gap-1.5 px-1 text-xs leading-none">
         <label className="flex items-center gap-2 cursor-pointer text-app-muted">
           <input
             type="checkbox"
@@ -242,24 +243,26 @@ const ProjectBalanceSheetReport: React.FC = () => {
       </div>
 
       <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-        <Card className="min-h-full p-4 md:p-6">
+        <Card className="min-h-full p-2 sm:p-3">
           <ReportHeader />
-          <div className="text-center mb-8">
-            <h3 className="text-2xl font-bold text-app-text uppercase tracking-wide">Statement of Financial Position</h3>
-            <p className="text-sm text-app-muted font-medium mt-1">
+          <div className="text-center mb-2">
+            <h3 className="text-lg font-bold text-app-text uppercase tracking-wide leading-tight">
+              Statement of Financial Position
+            </h3>
+            <p className="text-xs text-app-muted font-medium mt-0.5 leading-tight">
               {selectedProjectId === 'all'
                 ? 'All Projects'
                 : state.projects.find((p) => p.id === selectedProjectId)?.name}
             </p>
-            <p className="text-xs text-app-muted/90">As of {formatDate(asOfDate)}</p>
+            <p className="text-[11px] text-app-muted/90 leading-tight">As of {formatDate(asOfDate)}</p>
           </div>
 
-          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
             <div>
-              <h4 className="text-lg font-bold text-ds-success mb-2">Assets</h4>
+              <h4 className="text-sm font-bold text-ds-success mb-1">Assets</h4>
               {renderSection('Current assets', report.assets.current, 'asset', 'assets-current')}
               {renderSection('Non-current assets', report.assets.non_current, 'asset', 'assets-nc')}
-              <div className="flex justify-between p-3 bg-app-toolbar border border-ds-success/35 rounded-xl font-bold text-app-text">
+              <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border border-ds-success/35 rounded-lg font-bold text-sm text-app-text">
                 <span className="text-ds-success">Total assets</span>
                 <span className="tabular-nums font-mono">
                   {formatMoney(report.totals.assets, false)}
@@ -268,17 +271,17 @@ const ProjectBalanceSheetReport: React.FC = () => {
             </div>
 
             <div>
-              <h4 className="text-lg font-bold text-ds-danger mb-2">Liabilities</h4>
+              <h4 className="text-sm font-bold text-ds-danger mb-1">Liabilities</h4>
               {renderSection('Current liabilities', report.liabilities.current, 'liability', 'liab-c')}
               {renderSection('Non-current liabilities', report.liabilities.non_current, 'liability', 'liab-nc')}
-              <div className="flex justify-between p-3 mb-6 bg-app-toolbar border border-ds-danger/25 rounded-xl font-bold">
+              <div className="flex justify-between py-1.5 px-2 mb-2 bg-app-toolbar border border-ds-danger/25 rounded-lg font-bold text-sm">
                 <span className="text-ds-danger">Total liabilities</span>
                 <span className="tabular-nums font-mono">{formatMoney(report.totals.liabilities, false)}</span>
               </div>
 
-              <h4 className="text-lg font-bold text-primary mb-2">Equity</h4>
+              <h4 className="text-sm font-bold text-primary mb-1">Equity</h4>
               {renderSection("Shareholders' equity", report.equity.items, 'equity', 'eq')}
-              <div className="flex justify-between p-3 bg-app-toolbar border border-primary/25 rounded-xl font-bold">
+              <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border border-primary/25 rounded-lg font-bold text-sm">
                 <span className="text-primary">Total equity</span>
                 <span className="tabular-nums font-mono">{formatMoney(report.totals.equity, false)}</span>
               </div>
@@ -286,41 +289,45 @@ const ProjectBalanceSheetReport: React.FC = () => {
           </div>
 
           {report.supplemental.marketInventoryMemo > 0.01 && (
-            <div className="max-w-7xl mx-auto mt-6 p-4 rounded-xl border border-app-border bg-app-toolbar/50 text-sm text-app-muted">
+            <div className="max-w-7xl mx-auto mt-2 p-2 rounded-lg border border-app-border bg-app-toolbar/50 text-xs text-app-muted leading-snug">
               <strong className="text-app-text">Supplemental (non-GAAP):</strong> aggregate list price of unsold units —{' '}
               {formatMoney(report.supplemental.marketInventoryMemo, false)}. Not recognized as inventory until sale.
             </div>
           )}
 
-          <div className="max-w-7xl mx-auto mt-8 border-t-2 border-app-border pt-6">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-app-toolbar p-4 rounded-xl border border-app-border shadow-ds-card">
-              <div className="text-center md:text-left mb-4 md:mb-0">
-                <p className="text-xs text-app-muted font-bold uppercase tracking-widest mb-1">Accounting equation</p>
-                <p className="text-sm font-medium text-app-text">Assets = Liabilities + Equity</p>
+          <div className="max-w-7xl mx-auto mt-2 border-t border-app-border pt-2">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-2 bg-app-toolbar p-2 rounded-lg border border-app-border shadow-ds-card">
+              <div className="text-center md:text-left mb-0">
+                <p className="text-[10px] text-app-muted font-bold uppercase tracking-wide mb-0.5">Accounting equation</p>
+                <p className="text-xs font-medium text-app-text leading-tight">Assets = Liabilities + Equity</p>
               </div>
 
-              <div className="flex items-center gap-4 text-lg sm:text-xl font-bold font-mono tabular-nums flex-wrap justify-center">
+              <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base font-bold font-mono tabular-nums flex-wrap justify-center">
                 <div className="text-ds-success">
-                  <span className="text-xs text-app-muted block font-sans font-normal text-center">Assets</span>
+                  <span className="text-[10px] text-app-muted block font-sans font-normal text-center leading-none">
+                    Assets
+                  </span>
                   {formatMoney(report.totals.assets, false)}
                 </div>
-                <div className="text-app-muted">=</div>
+                <div className="text-app-muted text-sm">=</div>
                 <div className="text-app-text">
-                  <span className="text-xs text-app-muted block font-sans font-normal text-center">Liab + Equity</span>
+                  <span className="text-[10px] text-app-muted block font-sans font-normal text-center leading-none">
+                    Liab + Equity
+                  </span>
                   {formatMoney(report.totals.liabilities + report.totals.equity, false)}
                 </div>
               </div>
 
               {report.isBalanced ? (
-                <div className="flex items-center gap-2 border border-ds-success/40 bg-[color:var(--badge-paid-bg)] text-ds-success px-3 py-1 rounded-full text-xs font-bold">
+                <div className="flex items-center gap-1.5 border border-ds-success/40 bg-[color:var(--badge-paid-bg)] text-ds-success px-2 py-0.5 rounded-full text-[11px] font-bold">
                   <span>✓</span> Balanced
                 </div>
               ) : (
-                <div className="flex flex-col items-end gap-1">
-                  <div className="flex items-center gap-2 border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)] px-3 py-1 rounded-full text-xs font-bold">
+                <div className="flex flex-col items-end gap-0.5">
+                  <div className="flex items-center gap-1.5 border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)] px-2 py-0.5 rounded-full text-[11px] font-bold">
                     <span>⚠</span> Discrepancy: {formatMoney(report.discrepancy, false)}
                   </div>
-                  <span className="text-[10px] text-app-muted max-w-xs text-right">
+                  <span className="text-[9px] text-app-muted max-w-xs text-right leading-tight">
                     Review validation messages and debug detail. Common causes: unreconciled Internal Clearing, or data
                     entry timing.
                   </span>

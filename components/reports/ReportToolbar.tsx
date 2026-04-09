@@ -34,6 +34,8 @@ interface ReportToolbarProps {
     activeDateRange?: ReportDateRange;
     onRangeChange?: (range: ReportDateRange) => void;
     singleDateMode?: boolean; // For balance sheet "As of" date
+    /** Tighter padding and gaps so the report body fits more of the viewport. */
+    compact?: boolean;
 }
 
 const ReportToolbar: React.FC<ReportToolbarProps> = ({
@@ -57,11 +59,16 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
     showDatePickersWithPills,
     activeDateRange,
     onRangeChange,
-    singleDateMode
+    singleDateMode,
+    compact
 }) => {
     return (
-        <div className="bg-app-card p-2 sm:p-3 rounded-lg border border-app-border shadow-ds-card no-print space-y-3">
-            <div className="flex flex-col xl:flex-row gap-3 justify-between items-start xl:items-center">
+        <div
+            className={`bg-app-card rounded-lg border border-app-border shadow-ds-card no-print ${
+                compact ? 'p-1.5 sm:p-2 space-y-1.5' : 'p-2 sm:p-3 space-y-3'
+            }`}
+        >
+            <div className={`flex flex-col xl:flex-row justify-between items-start xl:items-center ${compact ? 'gap-2' : 'gap-3'}`}>
                 <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
                     {/* Date Pills */}
                     {showDateFilterPills && onRangeChange && (

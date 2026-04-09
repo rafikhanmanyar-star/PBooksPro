@@ -81,4 +81,29 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   assert.ok(r.isBalanced);
 }
 
+/** P&L excludes Internal Clearing legs; statement still balances by closing RE as residual. */
+{
+  const state = minimalState({
+    categories: [{ id: 'cat-opex', name: 'Operating expense', type: TransactionType.EXPENSE }],
+    transactions: [
+      {
+        id: 'clearing-exp',
+        type: TransactionType.EXPENSE,
+        amount: 100,
+        date: '2024-06-01',
+        description: 'Expense via clearing (excluded from P&L)',
+        accountId: 'sys-acc-clearing',
+        projectId: 'p1',
+        categoryId: 'cat-opex',
+      } as AppState['transactions'][0],
+    ],
+  });
+  const r = computeBalanceSheetReport(state, { asOfDate: '2024-12-31', selectedProjectId: 'all' });
+  assert.ok(r.isBalanced, `expected balanced, got diff ${r.totals.difference}`);
+  assert.ok(Math.abs(r.retainedEarningsFromPL) < 0.01, 'P&L should exclude clearing expense');
+  const reLine = r.equity.items.find((l) => l.id === 'computed-retained-earnings');
+  assert.ok(reLine && Math.abs(reLine.amount + 100) < 0.01, `expected RE ≈ -100, got ${reLine?.amount}`);
+  assert.ok(r.validation.some((v) => v.code === 'RE_DIFFERS_FROM_PL'), 'expected RE vs P&L warning');
+}
+
 console.log('balanceSheetEngine.test.ts: OK');

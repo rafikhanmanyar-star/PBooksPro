@@ -606,21 +606,6 @@ export function computeBalanceSheetReport(
     debugLines.push(ocLine);
   }
 
-  const finalRetainedEarnings = Math.abs(retainedEarningsFromPL) > 0.01 ? retainedEarningsFromPL : 0;
-  if (Math.abs(finalRetainedEarnings) > 0.01) {
-    const reLine: BalanceSheetLine = {
-      id: 'computed-retained-earnings',
-      name: 'Retained earnings (cumulative net profit per P&L)',
-      amount: finalRetainedEarnings,
-      groupKey: 'retained_earnings',
-      position: 'equity',
-      term: 'non_current',
-      source: 'computed',
-    };
-    equityLines.push(reLine);
-    debugLines.push(reLine);
-  }
-
   const finalReceivedAssetsEquityOffset = Math.abs(receivedAssetsEquityOffset) > 0.01 ? receivedAssetsEquityOffset : 0;
   if (Math.abs(finalReceivedAssetsEquityOffset) > 0.01) {
     const raLine: BalanceSheetLine = {
@@ -658,10 +643,44 @@ export function computeBalanceSheetReport(
 
   const sumAssets = assetLines.reduce((s, l) => s + l.amount, 0);
   const sumLiab = liabilityLines.reduce((s, l) => s + l.amount, 0);
+  /** Equity before retained earnings — owner capital, in-kind, contributions, etc. */
+  const sumEqBeforeRe = equityLines.reduce((s, l) => s + l.amount, 0);
+
+  /**
+   * Closing retained earnings as the accounting residual so A = L + E always holds.
+   * P&L excludes Internal Clearing (and other) legs that still move the GL; using P&L net alone
+   * for RE breaks the balance sheet equation when clearing has a non-zero balance.
+   */
+  const retainedEarningsClosing = sumAssets - sumLiab - sumEqBeforeRe;
+  const finalRetainedEarnings = Math.abs(retainedEarningsClosing) > 0.01 ? retainedEarningsClosing : 0;
+
+  if (Math.abs(finalRetainedEarnings) > 0.01) {
+    const reLine: BalanceSheetLine = {
+      id: 'computed-retained-earnings',
+      name: 'Retained earnings (closing balance)',
+      amount: finalRetainedEarnings,
+      groupKey: 'retained_earnings',
+      position: 'equity',
+      term: 'non_current',
+      source: 'computed',
+    };
+    equityLines.push(reLine);
+    debugLines.push(reLine);
+  }
+
   const sumEq = equityLines.reduce((s, l) => s + l.amount, 0);
 
   const difference = sumAssets - (sumLiab + sumEq);
   const isBalanced = Math.abs(difference) < 1;
+
+  const retainedEarningsVsPlDelta = retainedEarningsClosing - retainedEarningsFromPL;
+  if (Math.abs(retainedEarningsVsPlDelta) > 1) {
+    validation.push({
+      code: 'RE_DIFFERS_FROM_PL',
+      message: `Closing retained earnings differ from cumulative P&L net profit by ${retainedEarningsVsPlDelta.toFixed(2)}. Common causes: bill payments via Internal Clearing, profit distribution, or other P&L-excluded clearing legs — see Project P&L for activity-based net profit.`,
+      severity: 'warning',
+    });
+  }
 
   if (!isBalanced) {
     console.warn('[BalanceSheet] Equation imbalance', {

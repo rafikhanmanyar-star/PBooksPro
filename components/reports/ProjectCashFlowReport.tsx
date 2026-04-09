@@ -18,6 +18,7 @@ import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import {
     computeCashFlowReport,
     cashFlowCategoryMapFromEntries,
+    partitionFinancingEquityTransferPayout,
     type CashFlowLine,
     type CashFlowSectionResult,
     type CashFlowAuditRow,
@@ -26,20 +27,71 @@ import type { Transaction } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 
+/** Include paired batch legs (e.g. inter-project MOVE_OUT + MOVE_IN) when drilling down. */
+function buildCashFlowDrillRows(
+    lines: CashFlowLine[],
+    transactionsById: Map<string, Transaction>,
+    allTransactions: Transaction[]
+): { tx: Transaction; lineLabel: string }[] {
+    const byBatch = new Map<string, Transaction[]>();
+    for (const t of allTransactions) {
+        if (!t.batchId) continue;
+        const arr = byBatch.get(t.batchId) ?? [];
+        arr.push(t);
+        byBatch.set(t.batchId, arr);
+    }
+    const seen = new Set<string>();
+    const out: { tx: Transaction; lineLabel: string }[] = [];
+    for (const line of lines) {
+        for (const id of line.transactionIds) {
+            const tx = transactionsById.get(id);
+            if (!tx) continue;
+            if (tx.batchId) {
+                const mates = byBatch.get(tx.batchId);
+                if (mates && mates.length > 0) {
+                    for (const m of [...mates].sort(
+                        (a, b) =>
+                            String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id))
+                    )) {
+                        if (seen.has(m.id)) continue;
+                        seen.add(m.id);
+                        out.push({ tx: m, lineLabel: line.label });
+                    }
+                }
+            } else {
+                if (seen.has(tx.id)) continue;
+                seen.add(tx.id);
+                out.push({ tx, lineLabel: line.label });
+            }
+        }
+    }
+    out.sort(
+        (a, b) =>
+            String(a.tx.date).localeCompare(String(b.tx.date)) || String(a.tx.id).localeCompare(String(b.tx.id))
+    );
+    return out;
+}
+
 function CashFlowDrillModal({
     open,
     onClose,
     title,
     lines,
     transactionsById,
+    allTransactions,
 }: {
     open: boolean;
     onClose: () => void;
     title: string;
     lines: CashFlowLine[];
     transactionsById: Map<string, Transaction>;
+    /** When set, batch-related transactions (e.g. equity transfers) are expanded in the detail list. */
+    allTransactions: Transaction[];
 }) {
     const rows = useMemo(() => {
+        if (allTransactions.length > 0) {
+            return buildCashFlowDrillRows(lines, transactionsById, allTransactions);
+        }
         const out: { tx: Transaction; lineLabel: string }[] = [];
         for (const line of lines) {
             for (const id of line.transactionIds) {
@@ -49,7 +101,7 @@ function CashFlowDrillModal({
         }
         out.sort((a, b) => String(a.tx.date).localeCompare(String(b.tx.date)));
         return out;
-    }, [lines, transactionsById]);
+    }, [lines, transactionsById, allTransactions]);
 
     return (
         <Modal isOpen={open} onClose={onClose} title={title} size="xl">
@@ -58,6 +110,7 @@ function CashFlowDrillModal({
                     <thead>
                         <tr className="border-b border-slate-200 text-left text-slate-500">
                             <th className="py-2 pr-2">Date</th>
+                            <th className="py-2 pr-2">Subtype</th>
                             <th className="py-2 pr-2">Line</th>
                             <th className="py-2 pr-2">Description</th>
                             <th className="py-2 text-right">Amount</th>
@@ -67,6 +120,9 @@ function CashFlowDrillModal({
                         {rows.map(({ tx, lineLabel }) => (
                             <tr key={tx.id} className="border-b border-slate-100">
                                 <td className="py-2 pr-2 tabular-nums text-slate-700">{formatDate(tx.date)}</td>
+                                <td className="py-2 pr-2 text-xs text-slate-500 font-mono">
+                                    {tx.subtype != null ? String(tx.subtype) : '—'}
+                                </td>
                                 <td className="py-2 pr-2 text-slate-600">{lineLabel}</td>
                                 <td className="py-2 pr-2 text-slate-800">{tx.description || tx.type}</td>
                                 <td className="py-2 text-right tabular-nums font-medium text-slate-900">
@@ -180,13 +236,31 @@ const ProjectCashFlowReport: React.FC = () => {
         [report]
     );
 
+    const financingDisplay = useMemo(
+        () => partitionFinancingEquityTransferPayout(report.financing.items),
+        [report.financing.items]
+    );
+
     const handleExport = () => {
         const exportData: { Category: string; Amount: number | string }[] = [];
 
         for (const { title, data } of sections) {
             exportData.push({ Category: title.toUpperCase(), Amount: '' });
-            for (const item of data.items) {
-                exportData.push({ Category: item.label, Amount: item.amount });
+            if (title === 'Financing Activities') {
+                const { mainLines, equityTransferPayoutSummary } = partitionFinancingEquityTransferPayout(data.items);
+                for (const item of mainLines) {
+                    exportData.push({ Category: item.label, Amount: item.amount });
+                }
+                if (equityTransferPayoutSummary) {
+                    exportData.push({
+                        Category: 'Equity transfers & payouts (summary)',
+                        Amount: equityTransferPayoutSummary.total,
+                    });
+                }
+            } else {
+                for (const item of data.items) {
+                    exportData.push({ Category: item.label, Amount: item.amount });
+                }
             }
             exportData.push({
                 Category: `Net cash from ${SECTION_SHORT[title] ?? title}`,
@@ -246,7 +320,9 @@ const ProjectCashFlowReport: React.FC = () => {
                                         {item.label}
                                         {item.isNonCash && (
                                             <span className="block text-xs font-normal text-slate-500 mt-0.5">
-                                                Non-cash (equity allocation — excluded from net cash)
+                                                {title === 'Financing Activities'
+                                                    ? 'Non-cash equity movement (included in net financing total)'
+                                                    : 'Non-cash (excluded from this section total)'}
                                             </span>
                                         )}
                                     </td>
@@ -267,6 +343,115 @@ const ProjectCashFlowReport: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
+                            <tr className="bg-slate-50 font-bold border-t border-slate-200">
+                                <td className="py-3 px-2 text-slate-900">
+                                    Net cash from {SECTION_SHORT[title] ?? title} activities
+                                </td>
+                                <td
+                                    className={`py-3 px-2 text-right tabular-nums ${
+                                        section.total >= 0 ? 'text-emerald-800' : 'text-red-700'
+                                    }`}
+                                >
+                                    {CURRENCY}{' '}
+                                    {section.total.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                )}
+            </div>
+        );
+    };
+
+    const renderFinancingSection = () => {
+        const title = 'Financing Activities';
+        const section = report.financing;
+        const { mainLines, equityTransferPayoutSummary } = financingDisplay;
+        const isCollapsed = collapsed['financing'];
+        const borderColor = 'border-indigo-100 text-indigo-800';
+
+        return (
+            <div className="mb-6">
+                <button
+                    type="button"
+                    className={`flex w-full items-center justify-between text-left text-lg font-bold uppercase tracking-wide pb-2 mb-2 border-b-2 ${borderColor}`}
+                    onClick={() => toggleSection('financing')}
+                >
+                    <span>{title}</span>
+                    <span className="text-xs font-normal normal-case text-slate-500">{isCollapsed ? 'Show' : 'Hide'}</span>
+                </button>
+                {!isCollapsed && (
+                    <table className="w-full text-sm">
+                        <tbody>
+                            {mainLines.map((item, index) => (
+                                <tr
+                                    key={`${item.key}-${item.label}-${index}`}
+                                    className="cursor-pointer hover:bg-slate-50"
+                                    onClick={() =>
+                                        setDrilldown({
+                                            sectionTitle: `${title}: ${item.label}`,
+                                            lines: [item],
+                                        })
+                                    }
+                                >
+                                    <td className="py-2 px-2 text-slate-700 pl-4">
+                                        {item.label}
+                                        {item.isNonCash && (
+                                            <span className="block text-xs font-normal text-slate-500 mt-0.5">
+                                                Non-cash equity movement (included in net financing total)
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td
+                                        className={`py-2 px-2 text-right font-medium tabular-nums ${
+                                            item.isNonCash
+                                                ? 'text-slate-600'
+                                                : item.amount >= 0
+                                                  ? 'text-emerald-700'
+                                                  : 'text-red-600'
+                                        }`}
+                                    >
+                                        {CURRENCY}{' '}
+                                        {item.amount.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                        })}
+                                    </td>
+                                </tr>
+                            ))}
+                            {equityTransferPayoutSummary && (
+                                <tr
+                                    className="cursor-pointer hover:bg-indigo-50 border-t border-indigo-100 bg-indigo-50/40"
+                                    onClick={() =>
+                                        setDrilldown({
+                                            sectionTitle: `${title}: Equity transfers & payouts (detail)`,
+                                            lines: equityTransferPayoutSummary.lines,
+                                        })
+                                    }
+                                >
+                                    <td className="py-2 px-2 text-slate-800 pl-4 font-medium">
+                                        Equity transfers & payouts
+                                        <span className="block text-xs font-normal text-slate-600 mt-0.5">
+                                            Drill-down detail — may mix non-cash inter-project entries with cash payouts. “Net
+                                        cash from Financing” below is cash-only and ties to the balance sheet.
+                                        </span>
+                                    </td>
+                                    <td
+                                        className={`py-2 px-2 text-right font-semibold tabular-nums ${
+                                            equityTransferPayoutSummary.total >= 0 ? 'text-emerald-800' : 'text-red-700'
+                                        }`}
+                                    >
+                                        {CURRENCY}{' '}
+                                        {equityTransferPayoutSummary.total.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                        })}
+                                    </td>
+                                </tr>
+                            )}
                             <tr className="bg-slate-50 font-bold border-t border-slate-200">
                                 <td className="py-3 px-2 text-slate-900">
                                     Net cash from {SECTION_SHORT[title] ?? title} activities
@@ -387,7 +572,7 @@ const ProjectCashFlowReport: React.FC = () => {
 
                             {renderSection('Operating Activities', report.operating, 'operating')}
                             {renderSection('Investing Activities', report.investing, 'investing')}
-                            {renderSection('Financing Activities', report.financing, 'financing')}
+                            {renderFinancingSection()}
 
                             <div className="mt-8 space-y-3 border-t-2 border-slate-400 pt-6">
                                 <div className="flex justify-between items-center py-2">
@@ -442,6 +627,7 @@ const ProjectCashFlowReport: React.FC = () => {
                 title={drilldown?.sectionTitle ?? ''}
                 lines={drilldown?.lines ?? []}
                 transactionsById={transactionsById}
+                allTransactions={state.transactions}
             />
 
             <CashFlowAuditModal

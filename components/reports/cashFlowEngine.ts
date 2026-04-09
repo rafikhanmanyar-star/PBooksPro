@@ -22,6 +22,10 @@ import { computeBalanceSheetReport, type BalanceSheetReportResult } from './bala
 import { resolvePlTypeForCategory } from './profitLossEngine';
 import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../../services/database/resolveProfitDistributionExpenseCategory';
 
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 /**
  * Profit distribution posts (1) an EXPENSE on Internal Clearing and (2) a paired TRANSFER
  * (PROFIT_SHARE) from clearing to investor equity. Neither is a real cash movement because
@@ -45,6 +49,7 @@ export interface CashFlowEngineOptions {
 }
 
 export interface CashFlowLine {
+  /** Stable bucket id from the engine (e.g. inter_proj_out_<txId>, capital_payout). */
   key: string;
   label: string;
   /** Signed: inflow positive, outflow negative (presentation). */
@@ -57,6 +62,10 @@ export interface CashFlowLine {
   isNonCash?: boolean;
   /** e.g. linked project name for inter-project equity moves */
   note?: string;
+  /**
+   * Lines that roll up into a single “Equity transfers & payouts” summary row on the cash flow statement.
+   */
+  detailGroup?: 'equity_transfer_payout';
 }
 
 export interface CashFlowSectionResult {
@@ -200,21 +209,63 @@ function ensureBucket(
   }
 }
 
+function detailGroupForBucketKey(mapKey: string): CashFlowLine['detailGroup'] | undefined {
+  if (mapKey.startsWith('inter_proj_') || mapKey === 'capital_payout') {
+    return 'equity_transfer_payout';
+  }
+  return undefined;
+}
+
 function bucketsToLines(buckets: LineBucket): CashFlowLine[] {
   const lines: CashFlowLine[] = [];
-  for (const [, v] of [...buckets.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label))) {
+  for (const [mapKey, v] of [...buckets.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label))) {
     lines.push({
-      key: '',
+      key: mapKey,
       label: v.label,
       amount: v.amount,
       transactionIds: [...v.ids],
       isNonCash: v.isNonCash,
+      detailGroup: detailGroupForBucketKey(mapKey),
     });
   }
   return lines;
 }
 
-/** Totals only lines that represent actual cash (IAS 7 reconciliation). */
+/**
+ * Splits financing lines into those shown individually vs one summary row (inter-project + capital payout).
+ */
+export function partitionFinancingEquityTransferPayout(items: CashFlowLine[]): {
+  mainLines: CashFlowLine[];
+  equityTransferPayoutSummary: { lines: CashFlowLine[]; total: number } | null;
+} {
+  const rolled: CashFlowLine[] = [];
+  const main: CashFlowLine[] = [];
+  for (const it of items) {
+    if (
+      it.detailGroup === 'equity_transfer_payout' ||
+      it.key.startsWith('inter_proj_') ||
+      it.key === 'capital_payout'
+    ) {
+      rolled.push(it);
+    } else {
+      main.push(it);
+    }
+  }
+  if (rolled.length === 0) {
+    return { mainLines: items, equityTransferPayoutSummary: null };
+  }
+  const total = roundMoney(rolled.reduce((s, x) => s + x.amount, 0));
+  return {
+    mainLines: main,
+    equityTransferPayoutSummary: { lines: rolled, total },
+  };
+}
+
+/**
+ * Operating / investing / financing: amounts that hit bank/cash in the period (IAS 7 reconciliation).
+ * Lines with isNonCash (e.g. inter-project book transfers via Internal Clearing) are shown for disclosure
+ * but excluded here so opening + net cash change ≈ closing cash on the balance sheet.
+ */
 function sectionTotal(lines: CashFlowLine[]): number {
   return lines.reduce((s, l) => s + (l.isNonCash ? 0 : l.amount), 0);
 }
@@ -408,8 +459,9 @@ export function computeCashFlowReport(
             tx.id,
             cashDelta
           );
+        } else if (st === EquityLedgerSubtype.CAPITAL_PAYOUT) {
+          ensureBucket(financing, 'capital_payout', 'Capital payout to investors', tx.id, cashDelta);
         } else if (
-          st === EquityLedgerSubtype.CAPITAL_PAYOUT ||
           st === EquityLedgerSubtype.WITHDRAWAL ||
           st === EquityLedgerSubtype.MOVE_OUT ||
           st === EquityLedgerSubtype.EQUITY_TRANSFER_BETWEEN

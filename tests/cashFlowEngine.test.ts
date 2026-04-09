@@ -257,4 +257,72 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   assert.strictEqual(r.financing.total, 0, 'no financing cash flow from clearing-based profit distribution');
 }
 
+{
+  // Financing section total must equal sum of all rows, including isNonCash inter-project lines.
+  const state = minimalState({
+    projects: [
+      { id: 'p1', name: 'Project A' },
+      { id: 'p2', name: 'Project B' },
+    ],
+    transactions: [
+      {
+        id: 'inv-big',
+        type: TransactionType.TRANSFER,
+        subtype: EquityLedgerSubtype.INVESTMENT,
+        amount: 66_000_000,
+        date: '2024-06-10',
+        accountId: 'eq1',
+        fromAccountId: 'eq1',
+        toAccountId: 'bank1',
+        projectId: 'p1',
+      } as AppState['transactions'][0],
+      {
+        id: 'move-out-1',
+        type: TransactionType.TRANSFER,
+        subtype: EquityLedgerSubtype.MOVE_OUT,
+        amount: 6_000_000,
+        date: '2024-06-12',
+        accountId: 'sys-acc-clearing',
+        fromAccountId: 'sys-acc-clearing',
+        toAccountId: 'eq1',
+        projectId: 'p1',
+        batchId: 'batch-ip-1',
+      } as AppState['transactions'][0],
+      {
+        id: 'move-in-1',
+        type: TransactionType.TRANSFER,
+        subtype: EquityLedgerSubtype.MOVE_IN,
+        amount: 6_000_000,
+        date: '2024-06-12',
+        accountId: 'eq1',
+        fromAccountId: 'eq1',
+        toAccountId: 'sys-acc-clearing',
+        projectId: 'p2',
+        batchId: 'batch-ip-1',
+      } as AppState['transactions'][0],
+    ],
+  });
+
+  const r = computeCashFlowReport(state, {
+    fromDate: '2024-06-01',
+    toDate: '2024-06-30',
+    selectedProjectId: 'p1',
+  });
+
+  const sumAllLines = r.financing.items.reduce((s, i) => s + i.amount, 0);
+  assert.ok(
+    r.financing.items.some((i) => i.label.includes('Inter-project') && i.isNonCash && i.amount < 0),
+    'inter-project line appears as non-cash financing'
+  );
+  assert.strictEqual(
+    r.financing.total,
+    66_000_000,
+    'net financing (cash) = contributions only; inter-project is non-cash disclosure'
+  );
+  assert.ok(
+    Math.abs(sumAllLines - (66_000_000 - 6_000_000)) < 0.02,
+    'full line sum still reflects disclosure amounts including non-cash inter-project'
+  );
+}
+
 console.log('cashFlowEngine.test.ts: OK');
