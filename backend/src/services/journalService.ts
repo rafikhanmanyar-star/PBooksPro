@@ -9,6 +9,8 @@ import {
   type JournalLineInput,
 } from '../financial/validation.js';
 
+export type InvestorTransactionType = 'investment' | 'profit_allocation' | 'withdrawal' | 'transfer';
+
 export type CreateJournalBody = {
   entryDate: string;
   reference?: string;
@@ -16,6 +18,11 @@ export type CreateJournalBody = {
   sourceModule?: string | null;
   sourceId?: string | null;
   createdBy?: string | null;
+  /** Entry-level project (mirrors primary line project for reporting). */
+  projectId?: string | null;
+  /** Investor equity account id (or contact id) for investor-module entries. */
+  investorId?: string | null;
+  investorTransactionType?: InvestorTransactionType | null;
   lines: JournalLineInput[];
 };
 
@@ -61,9 +68,15 @@ export async function insertJournalEntry(
 
   const journalEntryId = journalEntryIdOverride ?? newId();
 
+  const entryProjectId =
+    input.projectId != null && String(input.projectId).trim() !== '' ? String(input.projectId).trim() : null;
+  const entryInvestorId =
+    input.investorId != null && String(input.investorId).trim() !== '' ? String(input.investorId).trim() : null;
+  const entryInvType = input.investorTransactionType ?? null;
+
   await client.query(
-    `INSERT INTO journal_entries (id, tenant_id, entry_date, reference, description, source_module, source_id, created_by, created_at)
-     VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, NOW())`,
+    `INSERT INTO journal_entries (id, tenant_id, entry_date, reference, description, source_module, source_id, created_by, project_id, investor_id, investor_transaction_type, created_at)
+     VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
     [
       journalEntryId,
       tenantId,
@@ -73,6 +86,9 @@ export async function insertJournalEntry(
       input.sourceModule ?? null,
       input.sourceId ?? null,
       input.createdBy ?? null,
+      entryProjectId,
+      entryInvestorId,
+      entryInvType,
     ]
   );
 
@@ -81,10 +97,11 @@ export async function insertJournalEntry(
     const lineId = newId();
     const d = roundMoney(line.debitAmount);
     const c = roundMoney(line.creditAmount);
+    const pid = line.projectId != null && String(line.projectId).trim() !== '' ? String(line.projectId).trim() : null;
     await client.query(
-      `INSERT INTO journal_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, line_number)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [lineId, journalEntryId, line.accountId, d, c, idx]
+      `INSERT INTO journal_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, line_number, project_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [lineId, journalEntryId, line.accountId, d, c, idx, pid]
     );
   }
 
@@ -99,6 +116,7 @@ export async function insertJournalEntry(
       accountId: l.accountId,
       debitAmount: roundMoney(l.debitAmount),
       creditAmount: roundMoney(l.creditAmount),
+      projectId: l.projectId ?? null,
     })),
   });
   await client.query(
@@ -127,13 +145,14 @@ export async function getJournalWithLines(
   lines: Record<string, unknown>[];
 } | null> {
   const e = await client.query(
-    `SELECT id, tenant_id, entry_date, reference, description, source_module, source_id, created_by, created_at
+    `SELECT id, tenant_id, entry_date, reference, description, source_module, source_id, created_by, created_at,
+            project_id, investor_id, investor_transaction_type
      FROM journal_entries WHERE id = $1 AND tenant_id = $2`,
     [journalEntryId, tenantId]
   );
   if (e.rows.length === 0) return null;
   const l = await client.query(
-    `SELECT id, journal_entry_id, account_id, debit_amount, credit_amount, line_number
+    `SELECT id, journal_entry_id, account_id, debit_amount, credit_amount, line_number, project_id
      FROM journal_lines WHERE journal_entry_id = $1 ORDER BY line_number ASC`,
     [journalEntryId]
   );
@@ -171,6 +190,7 @@ export async function reverseJournalEntry(
     accountId: String(row.account_id),
     debitAmount: Number(row.debit_amount),
     creditAmount: Number(row.credit_amount),
+    projectId: row.project_id != null && String(row.project_id) !== '' ? String(row.project_id) : null,
   }));
   const swapped = swapLinesForReversal(lineInputs);
   const verr = validateBalanced(swapped);
@@ -182,6 +202,7 @@ export async function reverseJournalEntry(
     swapped.map((l) => l.accountId)
   );
 
+  const origEntry = existing.entry as Record<string, unknown>;
   const reversalJournalEntryId = newId();
   const reversalInput: CreateJournalBody = {
     entryDate: todayUtcYyyyMmDd(),
@@ -190,6 +211,9 @@ export async function reverseJournalEntry(
     sourceModule: 'reversal',
     sourceId: originalJournalEntryId,
     createdBy,
+    projectId: origEntry.project_id != null ? String(origEntry.project_id) : null,
+    investorId: origEntry.investor_id != null ? String(origEntry.investor_id) : null,
+    investorTransactionType: null,
     lines: swapped,
   };
 

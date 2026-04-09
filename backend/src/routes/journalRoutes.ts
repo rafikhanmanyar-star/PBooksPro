@@ -18,7 +18,10 @@ const lineSchema = z.object({
   accountId: z.string().min(1),
   debitAmount: z.number(),
   creditAmount: z.number(),
+  projectId: z.string().nullable().optional(),
 });
+
+const investorTxnTypeEnum = z.enum(['investment', 'profit_allocation', 'withdrawal', 'transfer']);
 
 const createBodySchema = z.object({
   entryDate: z.string().min(1),
@@ -27,6 +30,9 @@ const createBodySchema = z.object({
   sourceModule: z.string().nullable().optional(),
   sourceId: z.string().nullable().optional(),
   createdBy: z.string().nullable().optional(),
+  projectId: z.string().nullable().optional(),
+  investorId: z.string().nullable().optional(),
+  investorTransactionType: investorTxnTypeEnum.nullable().optional(),
   lines: z.array(lineSchema).min(2),
 });
 

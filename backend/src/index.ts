@@ -9,6 +9,7 @@ import { getConnectedClientsSnapshot, initRealtime } from './core/realtime.js';
 import { getLanIPv4, startDiscoveryUdpBroadcast } from './discoveryUdp.js';
 import { authRouter } from './routes/authRoutes.js';
 import { journalRouter } from './routes/journalRoutes.js';
+import { investorJournalRouter } from './routes/investorJournalRoutes.js';
 import { accountsRouter } from './routes/accountsRoutes.js';
 import { categoriesRouter } from './routes/categoriesRoutes.js';
 import { billsRouter } from './routes/billsRoutes.js';
@@ -173,6 +174,8 @@ app.use('/api', authMiddleware, invoicesRouter);
 
 /** GL journal routes use /transactions/journal — register before app ledger /transactions/:id */
 app.use('/api', authMiddleware, journalRouter);
+
+app.use('/api', authMiddleware, investorJournalRouter);
 
 app.use('/api', authMiddleware, transactionsRouter);
 

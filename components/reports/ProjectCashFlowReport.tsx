@@ -20,6 +20,7 @@ import {
     cashFlowCategoryMapFromEntries,
     type CashFlowLine,
     type CashFlowSectionResult,
+    type CashFlowAuditRow,
 } from './cashFlowEngine';
 import type { Transaction } from '../../types';
 import Modal from '../ui/Modal';
@@ -119,6 +120,8 @@ const ProjectCashFlowReport: React.FC = () => {
         sectionTitle: string;
         lines: CashFlowLine[];
     } | null>(null);
+
+    const [auditOpen, setAuditOpen] = useState(false);
 
     const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
 
@@ -239,10 +242,21 @@ const ProjectCashFlowReport: React.FC = () => {
                                         })
                                     }
                                 >
-                                    <td className="py-2 px-2 text-slate-700 pl-4">{item.label}</td>
+                                    <td className="py-2 px-2 text-slate-700 pl-4">
+                                        {item.label}
+                                        {item.isNonCash && (
+                                            <span className="block text-xs font-normal text-slate-500 mt-0.5">
+                                                Non-cash (equity allocation — excluded from net cash)
+                                            </span>
+                                        )}
+                                    </td>
                                     <td
                                         className={`py-2 px-2 text-right font-medium tabular-nums ${
-                                            item.amount >= 0 ? 'text-emerald-700' : 'text-red-600'
+                                            item.isNonCash
+                                                ? 'text-slate-600'
+                                                : item.amount >= 0
+                                                  ? 'text-emerald-700'
+                                                  : 'text-red-600'
                                         }`}
                                     >
                                         {CURRENCY}{' '}
@@ -307,6 +321,14 @@ const ProjectCashFlowReport: React.FC = () => {
                             />
                             Interest paid as operating (IAS 7 default)
                         </label>
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            className="ml-2 text-sm"
+                            onClick={() => setAuditOpen(true)}
+                        >
+                            Cash flow audit
+                        </Button>
                     </ReportToolbar>
                 </div>
 
@@ -421,8 +443,89 @@ const ProjectCashFlowReport: React.FC = () => {
                 lines={drilldown?.lines ?? []}
                 transactionsById={transactionsById}
             />
+
+            <CashFlowAuditModal
+                open={auditOpen}
+                onClose={() => setAuditOpen(false)}
+                rows={report.audit ?? []}
+            />
         </>
     );
 };
+
+function CashFlowAuditModal({
+    open,
+    onClose,
+    rows,
+}: {
+    open: boolean;
+    onClose: () => void;
+    rows: CashFlowAuditRow[];
+}) {
+    return (
+        <Modal isOpen={open} onClose={onClose} title="Cash flow audit" size="xl">
+            <p className="text-sm text-slate-600 mb-3">
+                Cash in/out reflect bank/cash legs only (IAS 7). Non-cash rows show notional equity amounts for
+                inter-project moves.
+            </p>
+            <div className="max-h-[65vh] overflow-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-xs md:text-sm">
+                    <thead className="bg-slate-50 sticky top-0 text-left text-slate-600">
+                        <tr>
+                            <th className="p-2">Date</th>
+                            <th className="p-2">Tx ID</th>
+                            <th className="p-2">Type / subtype</th>
+                            <th className="p-2">Section</th>
+                            <th className="p-2">Line</th>
+                            <th className="p-2 text-right">Cash in</th>
+                            <th className="p-2 text-right">Cash out</th>
+                            <th className="p-2 text-right">Notional</th>
+                            <th className="p-2">Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map((r) => (
+                            <tr
+                                key={`${r.transactionId}-${r.lineLabel ?? ''}-${r.date}`}
+                                className="border-t border-slate-100"
+                            >
+                                <td className="p-2 tabular-nums whitespace-nowrap">{formatDate(r.date)}</td>
+                                <td className="p-2 font-mono text-[10px] break-all max-w-[120px]">{r.transactionId}</td>
+                                <td className="p-2">
+                                    {r.transactionType}
+                                    {r.subtype ? (
+                                        <span className="block text-slate-500">{r.subtype}</span>
+                                    ) : null}
+                                </td>
+                                <td className="p-2 capitalize">{r.section}</td>
+                                <td className="p-2 text-slate-700">{r.lineLabel ?? '—'}</td>
+                                <td className="p-2 text-right tabular-nums">
+                                    {r.cashIn > 0 ? `${CURRENCY} ${r.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
+                                </td>
+                                <td className="p-2 text-right tabular-nums">
+                                    {r.cashOut > 0 ? `${CURRENCY} ${r.cashOut.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
+                                </td>
+                                <td className="p-2 text-right tabular-nums text-slate-600">
+                                    {r.notionalAmount != null
+                                        ? `${CURRENCY} ${r.notionalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                                        : '—'}
+                                </td>
+                                <td className="p-2 text-slate-600 max-w-[140px]">{r.sourceModule}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                {rows.length === 0 && (
+                    <p className="p-4 text-sm text-slate-500">No classified movements in this period.</p>
+                )}
+            </div>
+            <div className="mt-4 flex justify-end">
+                <Button variant="secondary" onClick={onClose}>
+                    Close
+                </Button>
+            </div>
+        </Modal>
+    );
+}
 
 export default ProjectCashFlowReport;

@@ -73,11 +73,13 @@ function buildInsertJournalOps(
     const lineId = newJournalId();
     const d = roundMoney(line.debitAmount);
     const c = roundMoney(line.creditAmount);
+    const pid =
+      line.projectId != null && String(line.projectId).trim() !== '' ? String(line.projectId).trim() : null;
     ops.push({
       type: 'run',
-      sql: `INSERT INTO journal_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, line_number)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-      params: [lineId, journalEntryId, line.accountId, d, c, idx],
+      sql: `INSERT INTO journal_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, line_number, project_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      params: [lineId, journalEntryId, line.accountId, d, c, idx, pid],
     });
   });
 

@@ -123,7 +123,7 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   });
 
   assert.ok(
-    r.financing.items.some((i) => i.label.includes('contributions') && i.amount > 0),
+    r.financing.items.some((i) => i.label.includes('Investor contributions') && i.amount > 0),
     'owner investment → financing inflow'
   );
   assert.ok(
@@ -186,7 +186,7 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
 
   const opex = r.operating.items.find((i) => i.label.includes('operating expenses'));
   assert.ok(!opex || Math.abs(opex.amount) < 0.02, 'profit distribution clearing expense must not appear as operating');
-  const dist = r.financing.items.find((i) => i.label.includes('Distributions and profit'));
+  const dist = r.financing.items.find((i) => i.label.includes('Cash profit distributions'));
   assert.ok(dist && dist.amount < 0, 'profit distribution cash must appear once under financing');
   // Reconciliation vs BS cash may still differ when both journal legs hit the same bank in test data;
   // production uses Internal Clearing for the expense leg (BS suspense, not “cash” in sumCashFromBalanceSheet).
@@ -252,7 +252,7 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
     selectedProjectId: 'p1',
   });
 
-  const dist = r.financing.items.find((i) => i.label.includes('Distributions and profit'));
+  const dist = r.financing.items.find((i) => i.label.includes('Cash profit distributions'));
   assert.ok(!dist, 'profit distribution via Internal Clearing must not appear in cash flow (non-cash allocation)');
   assert.strictEqual(r.financing.total, 0, 'no financing cash flow from clearing-based profit distribution');
 }

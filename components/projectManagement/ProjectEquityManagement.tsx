@@ -28,6 +28,9 @@ import {
 } from '../investmentManagement/equityLedgerClassification';
 import { computeProjectProfitLossTotals } from '../reports/projectProfitLossComputation';
 import { resolveProfitDistributionExpenseCategory } from '../../services/database/resolveProfitDistributionExpenseCategory';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { getAppStateApiService } from '../../services/api/appStateApi';
+import { investorJournalApi } from '../../services/api/investorJournalApi';
 
 interface InvestorDistribution {
     investorId: string;
@@ -91,7 +94,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
     const [searchQuery, setSearchQuery] = useState('');
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('projectEquity_sidebarWidth', 300);
     const [isActionModalOpen, setIsActionModalOpen] = useState(false);
-    
+    const [isRecordingInvestment, setIsRecordingInvestment] = useState(false);
+
     // Action Form
     const [formInvestorId, setFormInvestorId] = useState('');
     const [formProjectId, setFormProjectId] = useState(state.defaultProjectId || '');
@@ -738,40 +742,79 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         setIsActionModalOpen(true);
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!formInvestorId || !formProjectId || !formBankAccountId || !formAmount) {
             showAlert("Please fill in all fields.");
             return;
         }
-        
+
         const amount = parseFloat(formAmount);
         if (isNaN(amount) || amount <= 0) {
             showAlert("Invalid amount.");
             return;
         }
 
-        // Investment: Money flows FROM investor (equity) TO bank account
-        // This increases bank account (money received) and increases equity balance (investment recorded)
-        const fromId = formInvestorId;
-        const toId = formBankAccountId;
-        const desc = `Investment in ${state.projects.find(p=>p.id===formProjectId)?.name}`;
+        const desc = `Investment in ${state.projects.find((p) => p.id === formProjectId)?.name}`;
+        const entryDate = parseFlexibleDateToYyyyMmDd(formDate);
 
-        const tx: Transaction = {
-            id: `eq-tx-${Date.now()}`,
-            type: TransactionType.TRANSFER,
-            subtype: EquityLedgerSubtype.INVESTMENT,
-            amount,
-            date: parseFlexibleDateToYyyyMmDd(formDate),
-            description: formDescription || desc,
-            fromAccountId: fromId,
-            toAccountId: toId,
-            accountId: fromId,
-            projectId: formProjectId,
-        };
+        if (isLocalOnlyMode()) {
+            const fromId = formInvestorId;
+            const toId = formBankAccountId;
+            const tx: Transaction = {
+                id: `eq-tx-${Date.now()}`,
+                type: TransactionType.TRANSFER,
+                subtype: EquityLedgerSubtype.INVESTMENT,
+                amount,
+                date: entryDate,
+                description: formDescription || desc,
+                fromAccountId: fromId,
+                toAccountId: toId,
+                accountId: fromId,
+                projectId: formProjectId,
+            };
+            dispatch({ type: 'ADD_TRANSACTION', payload: tx });
+            showToast("Transaction recorded successfully.", "success");
+            setIsActionModalOpen(false);
+            return;
+        }
 
-        dispatch({ type: 'ADD_TRANSACTION', payload: tx });
-        showToast("Transaction recorded successfully.", "success");
-        setIsActionModalOpen(false);
+        setIsRecordingInvestment(true);
+        try {
+            await investorJournalApi.postContribution({
+                entryDate,
+                amount,
+                cashAccountId: formBankAccountId,
+                investorEquityAccountId: formInvestorId,
+                projectId: formProjectId,
+                description: formDescription || desc,
+            });
+            const api = getAppStateApiService();
+            let apiState: Partial<typeof state>;
+            try {
+                apiState = await api.loadStateBulk();
+            } catch {
+                apiState = await api.loadState();
+            }
+            if (apiState.accounts && apiState.accounts.length > 0) {
+                const mergeById = <T extends { id: string }>(current: T[], apiRows: T[]): T[] => {
+                    const merged = new Map<string, T>();
+                    current.forEach((item) => merged.set(item.id, item));
+                    apiRows.forEach((item) => merged.set(item.id, item));
+                    return Array.from(merged.values());
+                };
+                dispatch({
+                    type: 'SET_STATE',
+                    payload: { accounts: mergeById(state.accounts, apiState.accounts) },
+                });
+            }
+            showToast("Investment posted to the general ledger. Chart balances were refreshed.", "success");
+            setIsActionModalOpen(false);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            await showAlert(`Could not record investment: ${msg}`);
+        } finally {
+            setIsRecordingInvestment(false);
+        }
     };
     
     const handlePrint = () => {
@@ -1571,8 +1614,12 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                     <Input label="Description" value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Optional note" />
                     
                     <div className="flex justify-end gap-2 pt-4">
-                        <Button variant="secondary" onClick={() => setIsActionModalOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSubmit}>Confirm</Button>
+                        <Button variant="secondary" onClick={() => setIsActionModalOpen(false)} disabled={isRecordingInvestment}>
+                            Cancel
+                        </Button>
+                        <Button onClick={() => void handleSubmit()} disabled={isRecordingInvestment}>
+                            {isRecordingInvestment ? 'Posting…' : 'Confirm'}
+                        </Button>
                     </div>
                 </div>
             </Modal>

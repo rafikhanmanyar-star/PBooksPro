@@ -10,6 +10,7 @@ import { listBills, rowToBillApi } from './billsService.js';
 import { listProjectAgreementsWithUnits, rowToProjectAgreementApi } from './projectAgreementsService.js';
 import { listUnits, rowToUnitApi } from './unitsService.js';
 import { listProjectReceivedAssets, rowToProjectReceivedAssetApi } from './projectReceivedAssetsService.js';
+import { listProjects, rowToProjectApi } from './projectsService.js';
 
 type BalanceSheetEngineModule = {
   computeBalanceSheetReport: (
@@ -41,7 +42,7 @@ function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>)
  */
 /** Exported for profit-loss and other reports that share the same minimal state shape. */
 export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId: string, asOfDate: string) {
-  const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap] =
+  const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap, projectRows] =
     await Promise.all([
       listAccounts(client, tenantId),
       listTransactions(client, tenantId, { endDate: asOfDate, limit: 500000, offset: 0 }),
@@ -52,6 +53,7 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
       listUnits(client, tenantId),
       listProjectAgreementsWithUnits(client, tenantId),
       fetchPlSubTypesForTenant(client, tenantId),
+      listProjects(client, tenantId),
     ]);
 
   const accounts = accountRows.map((r) => asRecord(rowToAccountApi(r)));
@@ -61,6 +63,7 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
   const bills = billRows.map((r) => asRecord(rowToBillApi(r)));
   const projectReceivedAssets = praRows.map((r) => asRecord(rowToProjectReceivedAssetApi(r)));
   const units = unitRows.map((r) => asRecord(rowToUnitApi(r)));
+  const projects = projectRows.map((r) => asRecord(rowToProjectApi(r)));
   const projectAgreements = paWithUnits.map(({ row, unitIds }) => {
     const api = rowToProjectAgreementApi(row, unitIds) as Record<string, unknown>;
     return asRecord(api);
@@ -75,6 +78,7 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
     projectAgreements,
     projectReceivedAssets,
     units,
+    projects,
   };
 }
 

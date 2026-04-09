@@ -1193,6 +1193,7 @@ CREATE TABLE IF NOT EXISTS journal_lines (
     debit_amount REAL NOT NULL DEFAULT 0,
     credit_amount REAL NOT NULL DEFAULT 0,
     line_number INTEGER NOT NULL DEFAULT 0,
+    project_id TEXT,
     FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
     CHECK (debit_amount >= 0 AND credit_amount >= 0),

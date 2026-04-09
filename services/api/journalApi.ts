@@ -14,10 +14,14 @@ export const journalApi = {
       sourceModule: input.sourceModule ?? null,
       sourceId: input.sourceId ?? null,
       createdBy: input.createdBy ?? null,
+      projectId: input.projectId ?? null,
+      investorId: input.investorId ?? null,
+      investorTransactionType: input.investorTransactionType ?? null,
       lines: input.lines.map((l) => ({
         accountId: l.accountId,
         debitAmount: l.debitAmount,
         creditAmount: l.creditAmount,
+        projectId: l.projectId ?? null,
       })),
     };
     return apiClient.post<{ journalEntryId: string }>('/transactions/journal', body);

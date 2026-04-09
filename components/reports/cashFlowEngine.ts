@@ -50,11 +50,40 @@ export interface CashFlowLine {
   /** Signed: inflow positive, outflow negative (presentation). */
   amount: number;
   transactionIds: string[];
+  /**
+   * Equity allocations through Internal Clearing / book-only legs — shown for project analysis only.
+   * Excluded from net cash and from IAS 7 reconciliation (no cash/bank movement).
+   */
+  isNonCash?: boolean;
+  /** e.g. linked project name for inter-project equity moves */
+  note?: string;
 }
 
 export interface CashFlowSectionResult {
   items: CashFlowLine[];
   total: number;
+}
+
+/** Trace row for debugging classification (cash and material non-cash equity flows). */
+export interface CashFlowAuditRow {
+  transactionId: string;
+  transactionType: string;
+  subtype?: string;
+  date: string;
+  projectId?: string;
+  cashIn: number;
+  cashOut: number;
+  netCash: number;
+  /** UI / support hint */
+  sourceModule: string;
+  section: 'operating' | 'investing' | 'financing' | 'none';
+  lineLabel?: string;
+  isNonCashMovement: boolean;
+  linkedProjectId?: string;
+  linkedProjectName?: string;
+  batchId?: string;
+  /** Non-cash equity amount (e.g. inter-project book transfer) for disclosure. */
+  notionalAmount?: number;
 }
 
 export interface CashFlowReportResult {
@@ -76,9 +105,11 @@ export interface CashFlowReportResult {
   flags: {
     negative_opening_cash: boolean;
   };
+  /** Optional diagnostic list (same period / project scope as the statement). */
+  audit?: CashFlowAuditRow[];
 }
 
-type LineBucket = Map<string, { label: string; amount: number; ids: Set<string> }>;
+type LineBucket = Map<string, { label: string; amount: number; ids: Set<string>; isNonCash?: boolean }>;
 
 const EPS = 0.01;
 
@@ -156,14 +187,16 @@ function ensureBucket(
   key: string,
   label: string,
   txId: string,
-  signedAmount: number
+  signedAmount: number,
+  isNonCash = false
 ): void {
   const cur = buckets.get(key);
   if (!cur) {
-    buckets.set(key, { label, amount: signedAmount, ids: new Set([txId]) });
+    buckets.set(key, { label, amount: signedAmount, ids: new Set([txId]), isNonCash });
   } else {
     cur.amount += signedAmount;
     cur.ids.add(txId);
+    if (isNonCash) cur.isNonCash = true;
   }
 }
 
@@ -175,13 +208,46 @@ function bucketsToLines(buckets: LineBucket): CashFlowLine[] {
       label: v.label,
       amount: v.amount,
       transactionIds: [...v.ids],
+      isNonCash: v.isNonCash,
     });
   }
   return lines;
 }
 
+/** Totals only lines that represent actual cash (IAS 7 reconciliation). */
 function sectionTotal(lines: CashFlowLine[]): number {
-  return lines.reduce((s, l) => s + l.amount, 0);
+  return lines.reduce((s, l) => s + (l.isNonCash ? 0 : l.amount), 0);
+}
+
+function pushAuditRow(
+  rows: CashFlowAuditRow[],
+  tx: Transaction,
+  cashDelta: number,
+  section: CashFlowAuditRow['section'],
+  lineLabel: string,
+  sourceModule: string,
+  opts?: { isNonCash?: boolean; linkedProjectId?: string; linkedProjectName?: string }
+): void {
+  const isNc = opts?.isNonCash ?? false;
+  const cin = cashDelta > 0 ? cashDelta : 0;
+  const cout = cashDelta < 0 ? -cashDelta : 0;
+  rows.push({
+    transactionId: tx.id,
+    transactionType: String(tx.type),
+    subtype: tx.subtype ? String(tx.subtype) : undefined,
+    date: tx.date,
+    projectId: tx.projectId,
+    cashIn: cin,
+    cashOut: cout,
+    netCash: cashDelta,
+    sourceModule,
+    section,
+    lineLabel,
+    isNonCashMovement: isNc,
+    linkedProjectId: opts?.linkedProjectId,
+    linkedProjectName: opts?.linkedProjectName,
+    batchId: tx.batchId,
+  });
 }
 
 type StateIn = Pick<
@@ -194,7 +260,30 @@ type StateIn = Pick<
   | 'projectAgreements'
   | 'projectReceivedAssets'
   | 'units'
+  | 'projects'
 >;
+
+function findInterProjectPairedLeg(
+  tx: Transaction,
+  batchTxs: Transaction[] | undefined
+): Transaction | undefined {
+  if (!batchTxs?.length) return undefined;
+  if (tx.subtype === EquityLedgerSubtype.MOVE_OUT) {
+    const inv = tx.toAccountId;
+    if (!inv) return undefined;
+    return batchTxs.find(
+      (t) => t.subtype === EquityLedgerSubtype.MOVE_IN && t.fromAccountId === inv
+    );
+  }
+  if (tx.subtype === EquityLedgerSubtype.MOVE_IN) {
+    const inv = tx.fromAccountId;
+    if (!inv) return undefined;
+    return batchTxs.find(
+      (t) => t.subtype === EquityLedgerSubtype.MOVE_OUT && t.toAccountId === inv
+    );
+  }
+  return undefined;
+}
 
 export function cashFlowCategoryMapFromEntries(
   entries: CashflowCategoryMappingEntry[] | undefined
@@ -250,6 +339,15 @@ export function computeCashFlowReport(
     messages.push('Opening cash is negative — verify bank/cash ledger balances.');
   }
 
+  const txsByBatchId = new Map<string, Transaction[]>();
+  for (const t of state.transactions || []) {
+    if (!t.batchId) continue;
+    const arr = txsByBatchId.get(t.batchId) ?? [];
+    arr.push(t);
+    txsByBatchId.set(t.batchId, arr);
+  }
+  const projectsById = new Map((state.projects || []).map((p) => [p.id, p.name]));
+
   for (const tx of state.transactions || []) {
     if (!inPeriodInclusive(tx.date, fromDate, toDate)) continue;
 
@@ -302,63 +400,29 @@ export function computeCashFlowReport(
       const touchesEquity =
         (fromA && equityIds.has(fromA.id)) || (toA && equityIds.has(toA.id));
       if (touchesEquity && (fromB || toB)) {
-        if (
-          st === EquityLedgerSubtype.PROFIT_SHARE ||
-          st === EquityLedgerSubtype.PM_FEE_EQUITY
-        ) {
+        if (st === EquityLedgerSubtype.PROFIT_SHARE || st === EquityLedgerSubtype.PM_FEE_EQUITY) {
           ensureBucket(
             financing,
             'distributions',
-            'Distributions and profit allocations to owners',
-            tx.id,
-            cashDelta
-          );
-        } else if (st === EquityLedgerSubtype.CAPITAL_PAYOUT) {
-          ensureBucket(
-            financing,
-            'capital_payouts',
-            'Equity paid to investors',
-            tx.id,
-            cashDelta
-          );
-        } else if (st === EquityLedgerSubtype.INVESTMENT || st === EquityLedgerSubtype.MOVE_IN) {
-          ensureBucket(
-            financing,
-            'owner_contributions',
-            'Owner and investor contributions',
+            'Cash profit distributions to investors',
             tx.id,
             cashDelta
           );
         } else if (
+          st === EquityLedgerSubtype.CAPITAL_PAYOUT ||
           st === EquityLedgerSubtype.WITHDRAWAL ||
           st === EquityLedgerSubtype.MOVE_OUT ||
           st === EquityLedgerSubtype.EQUITY_TRANSFER_BETWEEN
         ) {
-          ensureBucket(
-            financing,
-            'owner_withdrawals',
-            'Owner withdrawals and drawings',
-            tx.id,
-            cashDelta
-          );
+          ensureBucket(financing, 'investor_withdrawals', 'Investor withdrawals', tx.id, cashDelta);
+        } else if (st === EquityLedgerSubtype.INVESTMENT || st === EquityLedgerSubtype.MOVE_IN) {
+          ensureBucket(financing, 'investor_contributions', 'Investor contributions', tx.id, cashDelta);
         } else {
           // Legacy / unspecified equity–cash transfer
           if (cashDelta > 0) {
-            ensureBucket(
-              financing,
-              'owner_contributions',
-              'Owner and investor contributions',
-              tx.id,
-              cashDelta
-            );
+            ensureBucket(financing, 'investor_contributions', 'Investor contributions', tx.id, cashDelta);
           } else {
-            ensureBucket(
-              financing,
-              'owner_withdrawals',
-              'Owner withdrawals and drawings',
-              tx.id,
-              cashDelta
-            );
+            ensureBucket(financing, 'investor_withdrawals', 'Investor withdrawals', tx.id, cashDelta);
           }
         }
         continue;
@@ -469,9 +533,49 @@ export function computeCashFlowReport(
     }
   }
 
+  // Inter-project equity moves (typically Clearing ↔ Equity): non-cash for IAS 7 but material for project view
+  if (selectedProjectId !== 'all') {
+    for (const tx of state.transactions || []) {
+      if (!inPeriodInclusive(tx.date, fromDate, toDate)) continue;
+      const pid = resolveProjectIdForTransaction(tx, state);
+      if (pid !== selectedProjectId) continue;
+      if (tx.subtype !== EquityLedgerSubtype.MOVE_OUT && tx.subtype !== EquityLedgerSubtype.MOVE_IN) {
+        continue;
+      }
+      if (!tx.batchId) continue;
+      const batch = txsByBatchId.get(tx.batchId);
+      const paired = findInterProjectPairedLeg(tx, batch);
+      const linkedPid = paired ? resolveProjectIdForTransaction(paired, state) : undefined;
+      const linkedName = linkedPid ? projectsById.get(linkedPid) ?? linkedPid : undefined;
+
+      if (tx.subtype === EquityLedgerSubtype.MOVE_OUT) {
+        const label = linkedName
+          ? `Inter-project equity transfer (to ${linkedName})`
+          : 'Inter-project equity transfer (out)';
+        ensureBucket(financing, `inter_proj_out_${tx.id}`, label, tx.id, -tx.amount, true);
+      } else {
+        const label = linkedName
+          ? `Inter-project equity transfer (from ${linkedName})`
+          : 'Inter-project equity transfer (in)';
+        ensureBucket(financing, `inter_proj_in_${tx.id}`, label, tx.id, tx.amount, true);
+      }
+    }
+  }
+
   const opLines = bucketsToLines(operating);
   const invLines = bucketsToLines(investing);
   const finLines = bucketsToLines(financing);
+
+  const transactionsById = new Map((state.transactions || []).map((t) => [t.id, t]));
+  const audit = buildCashFlowAuditFromLines(
+    opLines,
+    invLines,
+    finLines,
+    transactionsById,
+    accountsById,
+    clearingId,
+    state
+  );
 
   const netOperating = sectionTotal(opLines);
   const netInvesting = sectionTotal(invLines);
@@ -510,5 +614,77 @@ export function computeCashFlowReport(
     flags: {
       negative_opening_cash: opening_cash < -EPS,
     },
+    audit,
   };
+}
+
+function buildCashFlowAuditFromLines(
+  operating: CashFlowLine[],
+  investing: CashFlowLine[],
+  financing: CashFlowLine[],
+  transactionsById: Map<string, Transaction>,
+  accountsById: Map<string, Account>,
+  clearingId: string | undefined,
+  state: StateIn
+): CashFlowAuditRow[] {
+  const txsByBatch = new Map<string, Transaction[]>();
+  for (const t of state.transactions || []) {
+    if (!t.batchId) continue;
+    const arr = txsByBatch.get(t.batchId) ?? [];
+    arr.push(t);
+    txsByBatch.set(t.batchId, arr);
+  }
+  const projectsById = new Map((state.projects || []).map((p) => [p.id, p.name]));
+
+  const rows: CashFlowAuditRow[] = [];
+  const pushLine = (
+    section: CashFlowAuditRow['section'],
+    line: CashFlowLine,
+    sourceModule: string
+  ) => {
+    for (const tid of line.transactionIds) {
+      const tx = transactionsById.get(tid);
+      if (!tx) continue;
+      const net = getTransactionCashDelta(tx, accountsById, clearingId);
+      const isNc = Boolean(line.isNonCash);
+      const cin = net > 0 ? net : 0;
+      const cout = net < 0 ? -net : 0;
+      let linkedProjectId: string | undefined;
+      let linkedProjectName: string | undefined;
+      let notional: number | undefined;
+      if (isNc && tx.batchId) {
+        const paired = findInterProjectPairedLeg(tx, txsByBatch.get(tx.batchId));
+        const lp = paired ? resolveProjectIdForTransaction(paired, state) : undefined;
+        if (lp) {
+          linkedProjectId = lp;
+          linkedProjectName = projectsById.get(lp) ?? lp;
+        }
+        if (tx.subtype === EquityLedgerSubtype.MOVE_OUT) notional = -tx.amount;
+        else if (tx.subtype === EquityLedgerSubtype.MOVE_IN) notional = tx.amount;
+      }
+      rows.push({
+        transactionId: tx.id,
+        transactionType: String(tx.type),
+        subtype: tx.subtype ? String(tx.subtype) : undefined,
+        date: tx.date,
+        projectId: tx.projectId,
+        cashIn: isNc ? 0 : cin,
+        cashOut: isNc ? 0 : cout,
+        netCash: isNc ? 0 : net,
+        sourceModule,
+        section,
+        lineLabel: line.label,
+        isNonCashMovement: isNc,
+        batchId: tx.batchId,
+        linkedProjectId,
+        linkedProjectName,
+        notionalAmount: notional,
+      });
+    }
+  };
+  for (const line of operating) pushLine('operating', line, 'Operating / AR-AP');
+  for (const line of investing) pushLine('investing', line, 'Investing / assets');
+  for (const line of financing) pushLine('financing', line, 'Investment management / equity');
+  rows.sort((a, b) => a.date.localeCompare(b.date) || a.transactionId.localeCompare(b.transactionId));
+  return rows;
 }

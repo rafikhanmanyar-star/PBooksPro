@@ -8,7 +8,11 @@ export type JournalLineInput = {
   /** One side only: debit > 0 XOR credit > 0 */
   debitAmount: number;
   creditAmount: number;
+  /** Optional project scope (journal_lines.project_id). */
+  projectId?: string | null;
 };
+
+export type InvestorTransactionType = 'investment' | 'profit_allocation' | 'withdrawal' | 'transfer';
 
 export type CreateJournalEntryInput = {
   tenantId: string;
@@ -18,6 +22,11 @@ export type CreateJournalEntryInput = {
   sourceModule?: string;
   sourceId?: string;
   createdBy?: string | null;
+  /** journal_entries.project_id */
+  projectId?: string | null;
+  /** journal_entries.investor_id (party or equity GL id) */
+  investorId?: string | null;
+  investorTransactionType?: InvestorTransactionType | null;
   lines: JournalLineInput[];
 };
 

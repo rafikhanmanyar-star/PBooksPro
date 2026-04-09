@@ -8,6 +8,8 @@ export type JournalLineInput = {
   accountId: string;
   debitAmount: number;
   creditAmount: number;
+  /** Optional project scope for project-level cash flow / reporting. */
+  projectId?: string | null;
 };
 
 export function sumDebits(lines: JournalLineInput[]): number {
@@ -47,5 +49,6 @@ export function swapLinesForReversal(lines: JournalLineInput[]): JournalLineInpu
     accountId: l.accountId,
     debitAmount: roundMoney(l.creditAmount),
     creditAmount: roundMoney(l.debitAmount),
+    projectId: l.projectId,
   }));
 }
