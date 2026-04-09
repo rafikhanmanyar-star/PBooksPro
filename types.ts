@@ -215,6 +215,8 @@ export interface Account {
   name: string;
   type: AccountType;
   balance: number;
+  /** Bank/Cash: amount before in-app transactions; current balance = openingBalance + net from ledger activity. */
+  openingBalance?: number;
   isPermanent?: boolean;
   description?: string;
   parentAccountId?: string;

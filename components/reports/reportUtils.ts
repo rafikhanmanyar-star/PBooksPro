@@ -50,3 +50,22 @@ export function isTransactionFromVoidedOrCancelledInvoice(
   }
   return false;
 }
+
+/**
+ * Transactions for project-scoped Trial Balance (same project resolution and void rules as P&amp;L).
+ */
+export function filterTransactionsForTrialBalanceProjectScope(
+  transactions: Transaction[],
+  projectId: string,
+  state: ReportStateSlice
+): Transaction[] {
+  if (projectId === 'all') {
+    return transactions.filter((t) => !(t as { deletedAt?: string }).deletedAt);
+  }
+  return transactions.filter((t) => {
+    if ((t as { deletedAt?: string }).deletedAt) return false;
+    if (isTransactionFromVoidedOrCancelledInvoice(t, state)) return false;
+    const pid = resolveProjectIdForTransaction(t, state);
+    return pid === projectId;
+  });
+}

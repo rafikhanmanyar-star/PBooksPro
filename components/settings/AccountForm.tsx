@@ -13,8 +13,12 @@ const SYSTEM_ACCOUNT_NAMES = new Set([
     'security liability', 'project received assets'
 ]);
 
+function isBankLikeType(t: AccountType): boolean {
+    return t === AccountType.BANK || t === AccountType.CASH;
+}
+
 interface AccountFormProps {
-    onSubmit: (account: Omit<Account, 'id' | 'balance'> & { initialBalance: number }) => void;
+    onSubmit: (account: Omit<Account, 'id' | 'balance'> & { initialBalance?: number; openingBalance?: number }) => void;
     onCancel: () => void;
     onDelete?: () => void;
     accountToEdit?: Account;
@@ -25,11 +29,29 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
     const { state } = useAppContext();
     const [name, setName] = useState(accountToEdit?.name || initialName || '');
     const [description, setDescription] = useState(accountToEdit?.description || '');
-    const [initialBalance, setInitialBalance] = useState(accountToEdit ? String(accountToEdit.balance) : '0');
     const [type, setType] = useState<AccountType>(accountToEdit?.type || AccountType.BANK);
     const [parentAccountId, setParentAccountId] = useState(accountToEdit?.parentAccountId || '');
-    
+
+    const [openingAmount, setOpeningAmount] = useState(() => {
+        if (!accountToEdit) return '0';
+        if (isBankLikeType(accountToEdit.type)) return String(accountToEdit.openingBalance ?? 0);
+        return '0';
+    });
+    const [nonBankInitial, setNonBankInitial] = useState(() =>
+        accountToEdit && !isBankLikeType(accountToEdit.type) ? String(accountToEdit.balance) : '0'
+    );
+
     const isPermanent = accountToEdit?.isPermanent;
+    const bankLike = isBankLikeType(type);
+
+    useEffect(() => {
+        if (!accountToEdit) return;
+        if (isBankLikeType(accountToEdit.type)) {
+            setOpeningAmount(String(accountToEdit.openingBalance ?? 0));
+        } else {
+            setNonBankInitial(String(accountToEdit.balance));
+        }
+    }, [accountToEdit]);
 
     // Reset parent when type changes, as sub-account must match parent type
     useEffect(() => {
@@ -39,8 +61,8 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
     }, [type, accountToEdit]);
 
     const availableParents = useMemo(() => {
-        return state.accounts.filter(acc => 
-            acc.type === type && 
+        return state.accounts.filter(acc =>
+            acc.type === type &&
             acc.id !== accountToEdit?.id && // Cannot be parent of itself
             !acc.parentAccountId // Ideally only 1 level deep for simplicity, but we can allow nesting. For now, filter to prevent circular if we implemented checks.
         );
@@ -50,16 +72,31 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
     const isSystemAccountId = id.includes('sys-acc-');
     const isReservedName = !isSystemAccountId && SYSTEM_ACCOUNT_NAMES.has(name.toLowerCase().trim());
 
+    const parseNum = (s: string) => {
+        const n = parseFloat(s.trim());
+        return Number.isFinite(n) ? n : 0;
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (isPermanent || isReservedName) return;
-        onSubmit({ 
-            name, 
-            description, 
-            type, 
-            parentAccountId: parentAccountId || undefined,
-            initialBalance: parseFloat(initialBalance) 
-        });
+        if (bankLike) {
+            onSubmit({
+                name,
+                description,
+                type,
+                parentAccountId: parentAccountId || undefined,
+                openingBalance: parseNum(openingAmount),
+            });
+        } else {
+            onSubmit({
+                name,
+                description,
+                type,
+                parentAccountId: parentAccountId || undefined,
+                initialBalance: parseNum(nonBankInitial),
+            });
+        }
     };
 
     return (
@@ -75,15 +112,15 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
                     "{name}" is a reserved system account name. Please use a different name.
                 </p>
             )}
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Select 
-                    label="Account Type" 
-                    value={type} 
+                <Select
+                    label="Account Type"
+                    value={type}
                     onChange={e => {
                         setType(e.target.value as AccountType);
                         setParentAccountId(''); // Clear parent if type changes
-                    }} 
+                    }}
                     disabled={isPermanent}
                 >
                     <option value={AccountType.BANK}>Bank / Cash / Credit Card</option>
@@ -92,10 +129,10 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
                     <option value={AccountType.EQUITY}>Equity (Capital, Drawings, Investors)</option>
                 </Select>
 
-                <ComboBox 
-                    label="Parent Account (Optional)" 
-                    items={availableParents} 
-                    selectedId={parentAccountId} 
+                <ComboBox
+                    label="Parent Account (Optional)"
+                    items={availableParents}
+                    selectedId={parentAccountId}
                     onSelect={(item) => setParentAccountId(item?.id || '')}
                     placeholder="Select main account..."
                     allowAddNew={false}
@@ -104,15 +141,41 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
             </div>
 
             <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Purpose, bank info, etc." disabled={isPermanent} />
-            <Input 
-                label={accountToEdit ? "Current Balance" : "Initial Balance"} 
-                type="text"
-                inputMode="decimal"
-                value={initialBalance} 
-                onChange={e => setInitialBalance(e.target.value)} 
-                required 
-                disabled={!!accountToEdit}
-            />
+
+            {bankLike ? (
+                <>
+                    <Input
+                        label="Initial amount"
+                        type="text"
+                        inputMode="decimal"
+                        value={openingAmount}
+                        onChange={e => setOpeningAmount(e.target.value)}
+                        disabled={isPermanent}
+                        placeholder="Opening balance before transactions in this app (can be negative)"
+                    />
+                    {accountToEdit && (
+                        <Input
+                            label="Current balance"
+                            type="text"
+                            inputMode="decimal"
+                            value={String(accountToEdit.balance ?? 0)}
+                            onChange={() => {}}
+                            disabled
+                        />
+                    )}
+                </>
+            ) : (
+                <Input
+                    label={accountToEdit ? 'Current balance' : 'Initial balance'}
+                    type="text"
+                    inputMode="decimal"
+                    value={nonBankInitial}
+                    onChange={e => setNonBankInitial(e.target.value)}
+                    required={!accountToEdit}
+                    disabled={!!accountToEdit || isPermanent}
+                />
+            )}
+
             <div className="flex justify-between items-center pt-4">
                 <div>
                     {accountToEdit && onDelete && (

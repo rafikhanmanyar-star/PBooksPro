@@ -8,7 +8,7 @@
 
 // Aligned with PostgreSQL (postgresql-schema.sql + hardening). PostgreSQL is source of truth.
 // Bump when schema changes; keep electron/schemaVersion.json in sync (npm run electron:extract-schema).
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 export const CREATE_SCHEMA_SQL = `
 -- PBooksPro Schema (PRAGMAs set in sqliteBridge.cjs)
@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_active INTEGER NOT NULL DEFAULT 1,
     login_status INTEGER NOT NULL DEFAULT 0,
     force_password_change INTEGER NOT NULL DEFAULT 0,
+    display_timezone TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(tenant_id, username)
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     balance REAL NOT NULL DEFAULT 0,
+    opening_balance REAL NOT NULL DEFAULT 0,
     description TEXT,
     is_permanent INTEGER NOT NULL DEFAULT 0,
     parent_account_id TEXT,

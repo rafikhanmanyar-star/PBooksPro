@@ -9,6 +9,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { logger } from '../services/logger';
+import { applyDisplayTimezoneFromProfile, setDisplayTimeZoneUserContext } from '../utils/dateUtils';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +38,8 @@ export interface CompanyUser {
   username: string;
   name: string;
   role: string;
+  /** IANA id from SQLite `users.display_timezone`, or null = device local */
+  displayTimezone?: string | null;
 }
 
 export interface CompanyDbUser {
@@ -140,6 +143,11 @@ declare global {
       updateUser: (userId: string, data: UpdateUserData) => Promise<{ ok: boolean; error?: string }>;
       deleteUser: (userId: string) => Promise<{ ok: boolean; error?: string }>;
       resetPassword: (userId: string) => Promise<{ ok: boolean; error?: string }>;
+      updateUserDisplayTimezone?: (
+        companyId: string,
+        userId: string,
+        displayTimezone: string | null
+      ) => Promise<{ ok: boolean; error?: string }>;
     };
   }
 }
@@ -240,6 +248,15 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     })();
   }, []);
+
+  // Scope display timezone cache to this company user (local-only); apply server/SQLite value when present
+  useEffect(() => {
+    if (!isLocalOnlyMode() || !authenticatedUser?.id) return;
+    setDisplayTimeZoneUserContext(authenticatedUser.id);
+    if (authenticatedUser.displayTimezone !== undefined) {
+      applyDisplayTimezoneFromProfile(authenticatedUser.displayTimezone);
+    }
+  }, [authenticatedUser]);
 
   // Electron: handle window close (File → Exit, or X). Must run in a provider that is always mounted
   // so it works on the company select screen (where App is not rendered).
@@ -523,7 +540,13 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem('pbooks_local_auth', JSON.stringify({
             companyId,
-            user: { id: user.id, username: user.username, name: user.name, role: user.role },
+            user: {
+              id: user.id,
+              username: user.username,
+              name: user.name,
+              role: user.role,
+              displayTimezone: user.displayTimezone ?? null,
+            },
           }));
         }
       } catch (_) {}

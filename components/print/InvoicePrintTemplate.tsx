@@ -8,6 +8,7 @@ import React from 'react';
 import { PrintSettings } from '../../types';
 import { PrintLayout } from './PrintLayout';
 import { CURRENCY } from '../../constants';
+import { formatDate } from '../../utils/dateUtils';
 
 /** Minimal invoice data for printing (from Invoice or P2P invoice) */
 export interface InvoicePrintData {
@@ -34,8 +35,8 @@ const headerBg = 'var(--print-highlight, #f8fafc)';
 export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ printSettings, data }) => {
   const items = data.items || [];
   const totalAmount = data.amount ?? items.reduce((s, i) => s + (i.total || 0), 0);
-  const issueDate = data.issueDate ? new Date(data.issueDate).toLocaleDateString() : '—';
-  const dueDate = data.dueDate ? new Date(data.dueDate).toLocaleDateString() : '—';
+  const issueDate = data.issueDate ? formatDate(data.issueDate) : '—';
+  const dueDate = data.dueDate ? formatDate(data.dueDate) : '—';
 
   return (
     <PrintLayout printSettings={printSettings} title="INVOICE">

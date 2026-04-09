@@ -14,6 +14,7 @@ import { CURRENCY } from '../../constants';
 import { formatCurrency } from '../../utils/numberUtils';
 import { formatDate } from '../../utils/dateUtils';
 import { computeEquityBalances, getInvestorEquityAccounts, roundEquityBalance } from './equityMetrics';
+import { resolveProfitDistributionExpenseCategory } from '../../services/database/resolveProfitDistributionExpenseCategory';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
 
@@ -30,9 +31,28 @@ const InvestmentDashboard: React.FC = () => {
         total = roundEquityBalance(total);
 
         const distBatches = new Set<string>();
+        const profitDistExpenseCatIds = new Set<string>();
+        const canonicalPd = resolveProfitDistributionExpenseCategory(state.categories);
+        if (canonicalPd) profitDistExpenseCatIds.add(canonicalPd.id);
+        state.categories.forEach((c) => {
+            if (c.type !== TransactionType.EXPENSE) return;
+            if (c.name === 'Profit Share' || c.name === 'Dividend') profitDistExpenseCatIds.add(c.id);
+        });
         state.transactions.forEach((tx) => {
-            if (tx.batchId && String(tx.batchId).startsWith('dist-cycle')) distBatches.add(tx.batchId);
-            else if (tx.description?.includes('Profit Distribution:')) {
+            if (tx.batchId && String(tx.batchId).startsWith('dist-cycle')) {
+                distBatches.add(tx.batchId);
+                return;
+            }
+            if (
+                tx.type === TransactionType.EXPENSE &&
+                tx.description?.includes('Profit Distribution:') &&
+                tx.categoryId &&
+                profitDistExpenseCatIds.has(tx.categoryId)
+            ) {
+                distBatches.add(tx.batchId || tx.id);
+                return;
+            }
+            if (tx.description?.includes('Profit Distribution:')) {
                 distBatches.add(tx.batchId || tx.id);
             }
         });
@@ -107,7 +127,7 @@ const InvestmentDashboard: React.FC = () => {
         {
             label: 'Distribution cycles',
             value: String(cycleCount),
-            sub: 'Recorded profit-distribution batches',
+            sub: 'Unique batches (dist-cycle* or Profit Distribution lines)',
             status: 'up' as const,
             icon: Activity,
             color: 'text-green-600',
@@ -140,7 +160,7 @@ const InvestmentDashboard: React.FC = () => {
             <div>
                 <h2 className="text-xl font-bold text-gray-800">Investment overview</h2>
                 <p className="text-sm text-gray-500">
-                    Live figures from chart of accounts and journal (PostgreSQL when signed in; same data as Equity &amp; ledger).
+                    Live figures from chart of accounts and equity journal. Distribution cycles count profit-distribution batches (including legacy runs tagged by description).
                 </p>
             </div>
 

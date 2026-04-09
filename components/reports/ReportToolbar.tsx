@@ -29,6 +29,8 @@ interface ReportToolbarProps {
     
     // Unified Date Range Props
     showDateFilterPills?: boolean;
+    /** When true with pills, start/end date pickers stay visible (not only on Custom). */
+    showDatePickersWithPills?: boolean;
     activeDateRange?: ReportDateRange;
     onRangeChange?: (range: ReportDateRange) => void;
     singleDateMode?: boolean; // For balance sheet "As of" date
@@ -52,6 +54,7 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
     groupByOptions,
     children,
     showDateFilterPills,
+    showDatePickersWithPills,
     activeDateRange,
     onRangeChange,
     singleDateMode
@@ -81,7 +84,9 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
                     )}
 
                     {/* Custom Date Pickers */}
-                    {!hideDate && onDateChange && (activeDateRange === 'custom' || !showDateFilterPills) && (
+                    {!hideDate &&
+                        onDateChange &&
+                        (showDatePickersWithPills || activeDateRange === 'custom' || !showDateFilterPills) && (
                         <div className="flex items-center gap-1 sm:gap-2 animate-fade-in flex-shrink-0 text-xs">
                             {singleDateMode ? (
                                 <div className="flex items-center gap-2 bg-app-card px-2 py-1 rounded-md border border-app-border">

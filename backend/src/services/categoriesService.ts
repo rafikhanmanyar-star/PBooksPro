@@ -2,6 +2,24 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 
+/**
+ * When only pl_category_mapping changes, categories.updated_at may not move — incremental sync
+ * (/state/changes) would omit the row and clients keep stale plSubType. Bump updated_at for
+ * tenant-owned category rows so the category appears in listCategoriesChangedSince.
+ * System (global) category rows are not updated here; stateChangesService supplements those.
+ */
+export async function touchCategoryRowAfterPlMappingChange(
+  client: pg.PoolClient,
+  tenantId: string,
+  categoryId: string
+): Promise<void> {
+  await client.query(
+    `UPDATE categories SET updated_at = NOW()
+     WHERE id = $1 AND tenant_id = $2`,
+    [categoryId, tenantId]
+  );
+}
+
 const ALLOWED_PL_TYPES = new Set([
   'revenue',
   'cost_of_sales',
@@ -38,6 +56,7 @@ export async function syncPlCategoryMappingFromPick(
       `DELETE FROM pl_category_mapping WHERE tenant_id = $1 AND category_id = $2`,
       [tenantId, categoryId]
     );
+    await touchCategoryRowAfterPlMappingChange(client, tenantId, categoryId);
     return;
   }
   await client.query(
@@ -46,6 +65,7 @@ export async function syncPlCategoryMappingFromPick(
      ON CONFLICT (tenant_id, category_id) DO UPDATE SET pl_type = EXCLUDED.pl_type, updated_at = NOW()`,
     [tenantId, categoryId, pick]
   );
+  await touchCategoryRowAfterPlMappingChange(client, tenantId, categoryId);
 }
 
 /** Tenant row wins over global system tenant when both exist. */

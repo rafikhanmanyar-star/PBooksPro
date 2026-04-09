@@ -1232,8 +1232,11 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 rentalAgreements: [],
                 projectAgreements: [],
                 salesReturns: [],
-                // Preserve settings: recurringInvoiceTemplates, accounts (balances reset), contacts, categories, projects, buildings, properties, units
-                accounts: state.accounts.map(acc => ({ ...acc, balance: 0 })),
+                // Preserve settings: recurringInvoiceTemplates, accounts (balances + bank opening reset), contacts, categories, projects, buildings, properties, units
+                accounts: state.accounts.map(acc => {
+                    const bankLike = acc.type === AccountType.BANK || acc.type === AccountType.CASH;
+                    return { ...acc, balance: 0, ...(bankLike ? { openingBalance: 0 } : {}) };
+                }),
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
             };
         }

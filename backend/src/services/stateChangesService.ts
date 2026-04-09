@@ -15,6 +15,7 @@ import { listInvoicesChangedSince, rowToInvoiceApi } from './invoicesService.js'
 import { listAccountsChangedSince, rowToAccountApi } from './accountsService.js';
 import { listTransactionsChangedSince, rowToTransactionApi } from './transactionsService.js';
 import {
+  getCategoryById,
   listCategoriesChangedSince,
   rowToCategoryApi,
   fetchPlSubTypesForTenant,
@@ -154,6 +155,24 @@ export async function getStateChanges(
     listPlanAmenitiesChangedSince(client, tenantId, since),
     listInstallmentPlansChangedSince(client, tenantId, since),
   ]);
+
+  /** P&L overrides live in pl_category_mapping; system (global) category rows do not get updated_at bumps. */
+  const seenCategoryIds = new Set(categoryRows.map((r) => r.id));
+  const plMappingDeltas = await client.query<{ category_id: string }>(
+    `SELECT DISTINCT category_id FROM pl_category_mapping
+     WHERE tenant_id = $1 AND updated_at > $2`,
+    [tenantId, since]
+  );
+  const mergedCategoryRows = [...categoryRows];
+  for (const row of plMappingDeltas.rows) {
+    if (seenCategoryIds.has(row.category_id)) continue;
+    const cat = await getCategoryById(client, tenantId, row.category_id);
+    if (cat) {
+      mergedCategoryRows.push(cat);
+      seenCategoryIds.add(row.category_id);
+    }
+  }
+
   const plMap = await fetchPlSubTypesForTenant(client, tenantId);
   const projectAgreementEnriched = await enrichRowsWithUnitIds(client, projectAgreementRowsRaw);
   const entities: Record<string, unknown[]> = {
@@ -166,7 +185,7 @@ export async function getStateChanges(
     invoices: invoiceRows.map((r) => rowToInvoiceApi(r)),
     accounts: accountRows.map((r) => rowToAccountApi(r)),
     transactions: transactionRows.map((r) => rowToTransactionApi(r)),
-    categories: categoryRows.map((r) => rowToCategoryApi(r, plMap.get(r.id))),
+    categories: mergedCategoryRows.map((r) => rowToCategoryApi(r, plMap.get(r.id))),
     bills: billRows.map((r) => rowToBillApi(r)),
     pm_cycle_allocations: pmCycleAllocationRows.map((r) => rowToPmCycleAllocationApi(r)),
     recurring_invoice_templates: recurringTemplateRows.map((r) => rowToRecurringInvoiceTemplateApi(r)),

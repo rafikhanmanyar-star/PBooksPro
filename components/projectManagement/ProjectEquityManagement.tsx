@@ -27,6 +27,7 @@ import {
     type EquityFlowLeg,
 } from '../investmentManagement/equityLedgerClassification';
 import { computeProjectProfitLossTotals } from '../reports/projectProfitLossComputation';
+import { resolveProfitDistributionExpenseCategory } from '../../services/database/resolveProfitDistributionExpenseCategory';
 
 interface InvestorDistribution {
     investorId: string;
@@ -923,8 +924,13 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         const timestamp = Date.now();
         const batchId = `dist-cycle-${timestamp}`;
         const transactions: Transaction[] = [];
-        let profitExpCat = state.categories.find(c => c.name === 'Owner Equity' && c.type === TransactionType.EXPENSE);
-        if (!profitExpCat) profitExpCat = state.categories.find(c=>c.type === TransactionType.EXPENSE)!;
+        const profitExpCat = resolveProfitDistributionExpenseCategory(state.categories);
+        if (!profitExpCat) {
+            await showAlert(
+                'Could not find expense category for profit distribution. The app needs a permanent "Profit Share" (Expense) category — update the app or add that category, then try again.'
+            );
+            return;
+        }
         distributions.forEach((dist) => {
             transactions.push({
                 id: `prof-exp-${timestamp}-${dist.investorId}`,

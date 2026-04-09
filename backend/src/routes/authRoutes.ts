@@ -100,8 +100,10 @@ authRouter.post('/auth/login', async (req, res) => {
       tenant_id: string;
       username: string;
       tenant_name: string;
+      display_timezone: string | null;
     }>(
-      `SELECT u.id, u.password_hash, u.name, u.role, u.tenant_id, u.username, t.name AS tenant_name
+      `SELECT u.id, u.password_hash, u.name, u.role, u.tenant_id, u.username, t.name AS tenant_name,
+              u.display_timezone
        FROM users u
        JOIN tenants t ON t.id = u.tenant_id
        WHERE u.tenant_id = $1 AND LOWER(u.username) = LOWER($2) AND u.is_active = TRUE`,
@@ -126,6 +128,7 @@ authRouter.post('/auth/login', async (req, res) => {
         name: user.name,
         role: user.role,
         tenantId: user.tenant_id,
+        displayTimezone: user.display_timezone ?? null,
       },
       tenant: {
         id: user.tenant_id,

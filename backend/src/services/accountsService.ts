@@ -2,7 +2,7 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 
-/** Balance for rows with tenant_id = GLOBAL_SYSTEM_TENANT_ID is derived per requesting tenant from transactions. */
+/** Balance for rows with tenant_id = GLOBAL_SYSTEM_TENANT_ID is derived per requesting tenant from transactions plus opening_balance. */
 const ACCOUNT_BALANCE_CASE = `CASE WHEN a.tenant_id = $2 THEN COALESCE((
     SELECT SUM(
       CASE
@@ -15,9 +15,9 @@ const ACCOUNT_BALANCE_CASE = `CASE WHEN a.tenant_id = $2 THEN COALESCE((
         ELSE 0
       END
     ) FROM transactions t WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
-  ), 0) ELSE a.balance END`;
+  ), 0) + COALESCE(a.opening_balance, 0) ELSE a.balance END`;
 
-/** Same as ACCOUNT_BALANCE_CASE but $1 = tenantId, $2 = GLOBAL for get-by-id queries. */
+/** Same as ACCOUNT_BALANCE_CASE but $1 = id param, $2 = tenantId, $3 = GLOBAL for get-by-id queries. */
 const ACCOUNT_BALANCE_CASE_BY_ID = `CASE WHEN a.tenant_id = $3 THEN COALESCE((
     SELECT SUM(
       CASE
@@ -30,7 +30,7 @@ const ACCOUNT_BALANCE_CASE_BY_ID = `CASE WHEN a.tenant_id = $3 THEN COALESCE((
         ELSE 0
       END
     ) FROM transactions t WHERE t.tenant_id = $2 AND t.deleted_at IS NULL
-  ), 0) ELSE a.balance END`;
+  ), 0) + COALESCE(a.opening_balance, 0) ELSE a.balance END`;
 
 export type AccountRow = {
   id: string;
@@ -52,6 +52,7 @@ export type AccountRow = {
   account_code?: string | null;
   sub_type?: string | null;
   is_active?: boolean | null;
+  opening_balance?: string | null;
 };
 
 export function rowToAccountApi(row: AccountRow): Record<string, unknown> {
@@ -73,6 +74,7 @@ export function rowToAccountApi(row: AccountRow): Record<string, unknown> {
     accountCode: row.account_code ?? undefined,
     accountSubType: row.sub_type ?? undefined,
     isActive: row.is_active === null || row.is_active === undefined ? undefined : Boolean(row.is_active),
+    openingBalance: row.opening_balance != null ? Number(row.opening_balance) : 0,
   };
   if (row.deleted_at) {
     base.deletedAt =
@@ -82,10 +84,16 @@ export function rowToAccountApi(row: AccountRow): Record<string, unknown> {
 }
 
 function pickBody(body: Record<string, unknown>) {
+  const rawOb = body.openingBalance ?? body.opening_balance;
+  const opening_balance =
+    rawOb !== undefined && rawOb !== null && rawOb !== ''
+      ? Number(rawOb)
+      : undefined;
   return {
     name: String(body.name ?? '').trim(),
     type: String(body.type ?? '').trim(),
     balance: body.balance != null ? Number(body.balance) : 0,
+    opening_balance: opening_balance !== undefined && Number.isFinite(opening_balance) ? opening_balance : 0,
     is_permanent:
       body.isPermanent === true ||
       body.isPermanent === 1 ||
@@ -101,7 +109,7 @@ function pickBody(body: Record<string, unknown>) {
 
 export async function listAccounts(client: pg.PoolClient, tenantId: string): Promise<AccountRow[]> {
   const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
+    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
             a.bs_position, a.bs_term, a.bs_group_key,
             a.account_code, a.sub_type, a.is_active
      FROM accounts a
@@ -117,7 +125,7 @@ export async function getAccountById(
   id: string
 ): Promise<AccountRow | null> {
   const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
+    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
             a.bs_position, a.bs_term, a.bs_group_key,
             a.account_code, a.sub_type, a.is_active
      FROM accounts a
@@ -133,7 +141,7 @@ export async function getAccountByIdIncludingDeleted(
   id: string
 ): Promise<AccountRow | null> {
   const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
+    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
             a.bs_position, a.bs_term, a.bs_group_key,
             a.account_code, a.sub_type, a.is_active
      FROM accounts a
@@ -157,17 +165,18 @@ export async function createAccount(
 
   const r = await client.query<AccountRow>(
     `INSERT INTO accounts (
-       id, tenant_id, name, type, balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at
+       id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, 1, NULL, NOW(), NOW()
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, NULL, NOW(), NOW()
      )
-     RETURNING id, tenant_id, name, type, balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
+     RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
     [
       id,
       tenantId,
       p.name,
       p.type,
       Number.isFinite(p.balance) ? p.balance : 0,
+      p.opening_balance ?? 0,
       p.description ?? null,
       p.is_permanent,
       p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,
@@ -197,6 +206,7 @@ export async function updateAccount(
     p.name,
     p.type,
     Number.isFinite(p.balance) ? p.balance : 0,
+    p.opening_balance ?? 0,
     p.description ?? null,
     p.is_permanent,
     p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,
@@ -205,10 +215,10 @@ export async function updateAccount(
   if (expectedVersion !== undefined) {
     const u = await client.query<AccountRow>(
       `UPDATE accounts SET
-         name = $3, type = $4, balance = $5, description = $6, is_permanent = $7, parent_account_id = $8,
+         name = $3, type = $4, balance = $5, opening_balance = $6, description = $7, is_permanent = $8, parent_account_id = $9,
          version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $9
-       RETURNING id, tenant_id, name, type, balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $10
+       RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
       [id, tenantId, ...vals, expectedVersion]
     );
     if (u.rows.length === 0) {
@@ -221,10 +231,10 @@ export async function updateAccount(
 
   const u = await client.query<AccountRow>(
     `UPDATE accounts SET
-       name = $3, type = $4, balance = $5, description = $6, is_permanent = $7, parent_account_id = $8,
+       name = $3, type = $4, balance = $5, opening_balance = $6, description = $7, is_permanent = $8, parent_account_id = $9,
        version = version + 1, updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, type, balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
+     RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId, ...vals]
   );
   if (!u.rows[0]) return { row: null, conflict: false };
@@ -264,6 +274,7 @@ export async function upsertAccount(
     p.name,
     p.type,
     Number.isFinite(p.balance) ? p.balance : 0,
+    p.opening_balance ?? 0,
     p.description ?? null,
     p.is_permanent,
     p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,
@@ -272,11 +283,11 @@ export async function upsertAccount(
 
   const u = await client.query<AccountRow>(
     `UPDATE accounts SET
-       name = $3, type = $4, balance = $5, description = $6, is_permanent = $7, parent_account_id = $8,
-       user_id = COALESCE($9, user_id),
+       name = $3, type = $4, balance = $5, opening_balance = $6, description = $7, is_permanent = $8, parent_account_id = $9,
+       user_id = COALESCE($10, user_id),
        deleted_at = NULL, version = version + 1, updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, name, type, balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
+     RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId, ...vals]
   );
   const row = u.rows[0];
@@ -321,7 +332,7 @@ export async function listAccountsChangedSince(
   since: Date
 ): Promise<AccountRow[]> {
   const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
+    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
             a.bs_position, a.bs_term, a.bs_group_key
      FROM accounts a
      WHERE (a.tenant_id = $1 OR a.tenant_id = $2) AND a.updated_at > $3

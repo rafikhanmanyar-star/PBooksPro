@@ -22,7 +22,13 @@ import DatePicker from '../ui/DatePicker';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { uploadEntityDocument, openDocumentById } from '../../services/documentUploadService';
-import { getFirstOfNextMonthLocal, parseStoredDateToYyyyMmDdInput, parseYyyyMmDdToLocalDate, toLocalDateString } from '../../utils/dateUtils';
+import {
+  fromPickerDateToYyyyMmDd,
+  getFirstOfNextMonthLocal,
+  parseStoredDateToYyyyMmDdInput,
+  parseYyyyMmDdToLocalDate,
+  todayLocalYyyyMmDd,
+} from '../../utils/dateUtils';
 import { sumExpenseLinkedToBill } from '../../utils/billLinkedPayments';
 
 interface InvoiceBillFormProps {
@@ -349,7 +355,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     if (state.enableDatePreservation && state.lastPreservedDate && !itemToEdit) {
       return state.lastPreservedDate;
     }
-    return toLocalDateString(new Date());
+    return todayLocalYyyyMmDd();
   };
 
   const [issueDate, setIssueDate] = useState(getInitialIssueDate());
@@ -359,7 +365,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   // Save date to preserved date when changed (if option is enabled)
   const handleIssueDateChange = (date: Date) => {
-    const dateStr = toLocalDateString(date);
+    const dateStr = fromPickerDateToYyyyMmDd(date);
     setIssueDate(dateStr);
     if (state.enableDatePreservation && !itemToEdit) {
       dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: dateStr });
@@ -583,11 +589,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       if (type === 'invoice') {
         const nextWeek = new Date(issue.getFullYear(), issue.getMonth(), issue.getDate());
         nextWeek.setDate(nextWeek.getDate() + 7);
-        setDueDate(toLocalDateString(nextWeek));
+        setDueDate(fromPickerDateToYyyyMmDd(nextWeek));
       } else if (type === 'bill') {
         const nextMonth = new Date(issue.getFullYear(), issue.getMonth(), issue.getDate());
         nextMonth.setMonth(nextMonth.getMonth() + 1);
-        setDueDate(toLocalDateString(nextMonth));
+        setDueDate(fromPickerDateToYyyyMmDd(nextMonth));
       }
     }
   }, [issueDate, type, defaults]);
@@ -852,7 +858,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       if (newDueDate < issueBase) {
         newDueDate.setMonth(newDueDate.getMonth() + 1);
       }
-      setDueDate(toLocalDateString(newDueDate));
+      setDueDate(fromPickerDateToYyyyMmDd(newDueDate));
     }
 
   }, [agreementId, issueDate, gracePeriodDays, invoiceType, itemToEdit, initialData, state.rentalAgreements, state.properties]);
@@ -977,7 +983,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       finalAmount = parseFloat(amount) || 0;
     }
 
-    const issueYmd = parseStoredDateToYyyyMmDdInput(issueDate || toLocalDateString(new Date()));
+    const issueYmd = parseStoredDateToYyyyMmDdInput(issueDate || todayLocalYyyyMmDd());
     const dueYmd = dueDate ? parseStoredDateToYyyyMmDdInput(dueDate) : undefined;
 
     const srcInv = type === 'invoice' ? sourceInvoice : undefined;
@@ -1490,7 +1496,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             <DatePicker
               label="Due Date"
               value={dueDate}
-              onChange={d => setDueDate(toLocalDateString(d))}
+              onChange={d => setDueDate(fromPickerDateToYyyyMmDd(d))}
               required
               disabled={isAgreementCancelled}
             />
@@ -1603,7 +1609,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               <DatePicker
                 label="Due Date"
                 value={dueDate}
-                onChange={d => setDueDate(toLocalDateString(d))}
+                onChange={d => setDueDate(fromPickerDateToYyyyMmDd(d))}
                 required
                 disabled={isAgreementCancelled}
               />

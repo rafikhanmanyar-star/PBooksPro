@@ -57,7 +57,7 @@ export function objectToDbFormat<T extends Record<string, any>>(obj: T): Record<
  * Also converts integer values (0/1) back to booleans for fields that look like booleans
  */
 const NUMERIC_COLUMNS = new Set([
-    'amount', 'paid_amount', 'monthly_rent', 'rent_due_date', 'security_deposit',
+    'amount', 'paid_amount', 'opening_balance', 'balance', 'monthly_rent', 'rent_due_date', 'security_deposit',
     'broker_fee', 'sale_price', 'area', 'monthly_service_charge', 'price',
     'list_price', 'customer_discount', 'floor_discount', 'lump_sum_discount',
     'misc_discount', 'selling_price', 'down_payment_percentage', 'down_payment_amount',

@@ -11,6 +11,7 @@ import { isLocalOnlyMode } from '../config/apiUrl';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
 import { useCompanyOptional } from './CompanyContext';
+import { applyDisplayTimezoneFromProfile, setDisplayTimeZoneUserContext } from '../utils/dateUtils';
 
 export interface User {
   id: string;
@@ -18,6 +19,19 @@ export interface User {
   name: string;
   role: string;
   tenantId: string;
+  /** IANA zone from `users.display_timezone` (PostgreSQL), or null = device local */
+  displayTimezone?: string | null;
+}
+
+function syncDisplayTimezoneFromUser(user: User | null): void {
+  if (!user?.id) {
+    setDisplayTimeZoneUserContext(null);
+    return;
+  }
+  setDisplayTimeZoneUserContext(user.id);
+  if (user.displayTimezone !== undefined) {
+    applyDisplayTimezoneFromProfile(user.displayTimezone);
+  }
 }
 
 export interface Tenant {
@@ -85,6 +99,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Multi-company integration: derive user from CompanyContext in local-only mode
   const companyCtx = useCompanyOptional();
 
+  /**
+   * Check license status. Throws on error so callers (e.g. LicenseContext) don't treat fallback as valid data.
+   * Defined before smart/unified/login so hooks can reference it safely.
+   */
+  const checkLicenseStatus = useCallback(async () => {
+    if (isLocalOnlyMode()) {
+      return {
+        isValid: true,
+        daysRemaining: 999,
+        licenseType: 'perpetual',
+        licenseStatus: 'active',
+        isExpired: false,
+        modules: ['real_estate', 'rental', 'shop'],
+      };
+    }
+    const response = await apiClient.get<{
+      isValid?: boolean;
+      licenseType?: string;
+      licenseStatus?: string;
+      expiryDate?: string | null;
+      daysRemaining?: number;
+      isExpired?: boolean;
+      modules?: string[];
+    }>('/tenants/license-status');
+    return response;
+  }, []);
+
   // Flag to prevent heartbeat from re-creating sessions during logout
   const loggingOutRef = React.useRef(false);
 
@@ -123,6 +164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         error: null,
       });
+      syncDisplayTimezoneFromUser(null);
       if (typeof window !== 'undefined') {
         localStorage.removeItem('tenant_id');
         localStorage.removeItem('user_id');
@@ -145,6 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading: false,
       error: null,
     });
+    syncDisplayTimezoneFromUser(null);
 
     // Run save, API logout, and cleanup in background (no blocking)
     (async () => {
@@ -440,7 +483,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const companyUser = companyCtx?.authenticatedUser;
       const activeCompany = companyCtx?.activeCompany;
       const user: User = companyUser
-        ? { id: companyUser.id, username: companyUser.username, name: companyUser.name, role: companyUser.role, tenantId: 'local' }
+        ? {
+            id: companyUser.id,
+            username: companyUser.username,
+            name: companyUser.name,
+            role: companyUser.role,
+            tenantId: 'local',
+            displayTimezone: companyUser.displayTimezone,
+          }
         : LOCAL_USER;
       const tenant: Tenant = activeCompany
         ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
@@ -456,6 +506,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         error: null,
       });
+      syncDisplayTimezoneFromUser(user);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('auth:login-success'));
       }
@@ -521,6 +572,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isLoading: false,
           error: null,
         });
+        syncDisplayTimezoneFromUser(response.user);
 
         logger.logCategory('auth', '✅ Login completed successfully');
         if (typeof window !== 'undefined') {
@@ -548,7 +600,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       throw error;
     }
-  }, []);
+  }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany]);
 
   /**
    * Unified login - takes organizationEmail, username, and password all at once
@@ -558,7 +610,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const companyUser = companyCtx?.authenticatedUser;
       const activeCompany = companyCtx?.activeCompany;
       const user: User = companyUser
-        ? { id: companyUser.id, username: companyUser.username, name: companyUser.name, role: companyUser.role, tenantId: 'local' }
+        ? {
+            id: companyUser.id,
+            username: companyUser.username,
+            name: companyUser.name,
+            role: companyUser.role,
+            tenantId: 'local',
+            displayTimezone: companyUser.displayTimezone,
+          }
         : LOCAL_USER;
       const tenant: Tenant = activeCompany
         ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
@@ -574,6 +633,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         error: null,
       });
+      syncDisplayTimezoneFromUser(user);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('auth:login-success'));
       }
@@ -644,6 +704,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isLoading: false,
           error: null,
         });
+        syncDisplayTimezoneFromUser(response.user);
 
         logger.logCategory('auth', '✅ Unified login completed successfully');
         if (typeof window !== 'undefined') {
@@ -698,34 +759,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       throw error;
     }
-  }, []);
-
-  /**
-   * Check license status. Throws on error so callers (e.g. LicenseContext) don't treat fallback as valid data.
-   * Defined before login/unifiedLogin so they can reference it in their dependency arrays.
-   */
-  const checkLicenseStatus = useCallback(async () => {
-    if (isLocalOnlyMode()) {
-      return {
-        isValid: true,
-        daysRemaining: 999,
-        licenseType: 'perpetual',
-        licenseStatus: 'active',
-        isExpired: false,
-        modules: ['real_estate', 'rental', 'shop'],
-      };
-    }
-    const response = await apiClient.get<{
-      isValid?: boolean;
-      licenseType?: string;
-      licenseStatus?: string;
-      expiryDate?: string | null;
-      daysRemaining?: number;
-      isExpired?: boolean;
-      modules?: string[];
-    }>('/tenants/license-status');
-    return response;
-  }, []);
+  }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany, checkLicenseStatus]);
 
   /**
    * Login with username, password, and tenant ID (legacy - kept for backward compatibility)
@@ -766,6 +800,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         error: null,
       });
+      syncDisplayTimezoneFromUser(response.user);
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('auth:login-success'));

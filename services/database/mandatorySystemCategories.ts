@@ -45,6 +45,8 @@ export const MANDATORY_SYSTEM_CATEGORIES: Category[] = [
     { id: 'sys-cat-rebate', name: 'Rebate Amount', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-pm-cost', name: 'Project Management Cost', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-own-with', name: 'Owner Withdrawn', type: TransactionType.EXPENSE, isPermanent: true },
+    /** Clearing-leg expense for Project Equity → Profit Distribution (paired with investor equity credits). */
+    { id: 'sys-cat-profit-share', name: 'Profit Share', type: TransactionType.EXPENSE, isPermanent: true },
 
     // Discounts (Virtual Expenses)
     { id: 'sys-cat-disc-cust', name: 'Customer Discount', type: TransactionType.EXPENSE, isPermanent: true },

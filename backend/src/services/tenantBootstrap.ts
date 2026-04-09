@@ -35,6 +35,7 @@ export const SYSTEM_CATEGORY_DEFS: { logicalId: string; name: string; type: stri
   { logicalId: 'sys-cat-rebate', name: 'Rebate Amount', type: 'Expense', is_rental: false },
   { logicalId: 'sys-cat-pm-cost', name: 'Project Management Cost', type: 'Expense', is_rental: false },
   { logicalId: 'sys-cat-own-with', name: 'Owner Withdrawn', type: 'Expense', is_rental: false },
+  { logicalId: 'sys-cat-profit-share', name: 'Profit Share', type: 'Expense', is_rental: false },
   { logicalId: 'sys-cat-disc-cust', name: 'Customer Discount', type: 'Expense', is_rental: false },
   { logicalId: 'sys-cat-disc-flr', name: 'Floor Discount', type: 'Expense', is_rental: false },
   { logicalId: 'sys-cat-disc-lump', name: 'Lump Sum Discount', type: 'Expense', is_rental: false },

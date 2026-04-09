@@ -6,13 +6,36 @@ export const toLocalDateString = (d: Date): string => {
   return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
-const DISPLAY_TIMEZONE_STORAGE_KEY = 'pbooks_display_timezone';
+/** Legacy key before per-user scoping (migrated on first read when user id is set). */
+const DISPLAY_TIMEZONE_LEGACY_KEY = 'pbooks_display_timezone';
 
-/** IANA time zone for calendar display, or null = use device (browser) local time. Stored on this device only. */
+let displayTimeZoneUserId: string | null = null;
+
+/**
+ * Set the signed-in user id so display timezone preference is stored per user (local cache).
+ * Call on login with the real user id; call with `null` on logout.
+ */
+export function setDisplayTimeZoneUserContext(userId: string | null): void {
+  displayTimeZoneUserId = userId;
+}
+
+function displayTimeZoneStorageKey(): string {
+  return displayTimeZoneUserId ? `pbooks_display_timezone_u_${displayTimeZoneUserId}` : DISPLAY_TIMEZONE_LEGACY_KEY;
+}
+
+/** IANA time zone for calendar display, or null = use device (browser) local time. */
 export function getDisplayTimeZone(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
-    const v = localStorage.getItem(DISPLAY_TIMEZONE_STORAGE_KEY);
+    const key = displayTimeZoneStorageKey();
+    let v = localStorage.getItem(key);
+    if ((v == null || v === '') && displayTimeZoneUserId) {
+      const legacy = localStorage.getItem(DISPLAY_TIMEZONE_LEGACY_KEY);
+      if (legacy != null && legacy !== '') {
+        localStorage.setItem(key, legacy);
+        v = legacy;
+      }
+    }
     if (v == null || v === '' || v === 'auto') return null;
     return v;
   } catch {
@@ -20,12 +43,19 @@ export function getDisplayTimeZone(): string | null {
   }
 }
 
+/** Apply timezone from server profile (PostgreSQL / SQLite user row). `null` = device local. */
+export function applyDisplayTimezoneFromProfile(displayTimezone: string | null | undefined): void {
+  if (displayTimezone === undefined) return;
+  setDisplayTimeZone(displayTimezone);
+}
+
 /** Persist display time zone and notify listeners so lists refresh. */
 export function setDisplayTimeZone(zone: string | null): void {
   try {
     if (typeof localStorage === 'undefined') return;
-    if (zone == null || zone === 'auto') localStorage.removeItem(DISPLAY_TIMEZONE_STORAGE_KEY);
-    else localStorage.setItem(DISPLAY_TIMEZONE_STORAGE_KEY, zone);
+    const key = displayTimeZoneStorageKey();
+    if (zone == null || zone === 'auto') localStorage.removeItem(key);
+    else localStorage.setItem(key, zone);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('pbooks-display-timezone-change'));
     }
@@ -73,11 +103,25 @@ export function currentMonthYyyyMm(anchor: Date = new Date()): string {
 }
 
 /**
+ * ISO datetime at UTC midnight (PostgreSQL DATE / JSON), e.g. `2026-04-07T00:00:00.000Z` — calendar day is the UTC date, not the local evening of the previous day in Americas timezones.
+ */
+export function tryParseSqlUtcMidnightIsoToYyyyMmDd(s: string): string | null {
+  const t = String(s).trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(t)) return null;
+  const d = new Date(t);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
  * Serialize a `Date` from a calendar control (`DatePicker` `onChange`) to YYYY-MM-DD for storage/API.
- * Prefer this over `d.toISOString().split('T')[0]` / `d.toISOString().slice(0, 10)`.
+ * Uses the app display time zone (Settings) when set, else browser local — matches "App timezone" in settings.
  */
 export function fromPickerDateToYyyyMmDd(d: Date): string {
-  return toLocalDateString(d);
+  return toYyyyMmDdInDisplayZone(d);
 }
 
 /** First / last calendar day of the month for `anchor`, as YYYY-MM-DD (local). */
@@ -91,13 +135,16 @@ export function endOfMonthYyyyMmDd(anchor: Date = new Date()): string {
 
 /**
  * Normalize a stored date (YYYY-MM-DD or ISO) for `<input type="date">` / DatePicker `value`.
- * Pure `YYYY-MM-DD` is kept as-is. Any ISO/datetime string is converted using the **calendar day** in the
- * display time zone (Settings) or browser local — never the UTC date prefix alone (fixes one-day errors).
+ * Pure `YYYY-MM-DD` is kept as-is.
+ * PostgreSQL/API `...T00:00:00.000Z` uses **UTC calendar day** (matches SQL DATE).
+ * Other ISO strings use the calendar day in the display time zone (Settings) or browser local.
  */
 export function parseStoredDateToYyyyMmDdInput(value: string | undefined | null): string {
   if (!value) return toYyyyMmDdInDisplayZone(new Date());
   const s = String(value).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const utcCivil = tryParseSqlUtcMidnightIsoToYyyyMmDd(s);
+  if (utcCivil) return utcCivil;
   const d = new Date(s);
   if (isNaN(d.getTime())) return toYyyyMmDdInDisplayZone(new Date());
   return toYyyyMmDdInDisplayZone(d);
@@ -109,8 +156,8 @@ export function parseStoredDateToYyyyMmDdInput(value: string | undefined | null)
  */
 export function toDateOnly(input: Date | string | number | null | undefined): string {
   if (input == null || input === '') return todayLocalYyyyMmDd();
-  if (input instanceof Date) return toLocalDateString(input);
-  if (typeof input === 'number' && Number.isFinite(input)) return toLocalDateString(new Date(input));
+  if (input instanceof Date) return toYyyyMmDdInDisplayZone(input);
+  if (typeof input === 'number' && Number.isFinite(input)) return toYyyyMmDdInDisplayZone(new Date(input));
   const s = String(input).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   return parseStoredDateToYyyyMmDdInput(s);
@@ -297,7 +344,13 @@ export const formatDate = (date: string | Date | undefined | null): string => {
       const [y, m, d] = trimmed.split('-');
       return `${d}-${m}-${y}`;
     }
-    // ISO / timestamps: calendar day in display zone (not the UTC YYYY-MM-DD prefix)
+    // SQL DATE serialized as UTC midnight — use UTC calendar (fixes −1 day in UTC− timezones)
+    const utcCivil = tryParseSqlUtcMidnightIsoToYyyyMmDd(trimmed);
+    if (utcCivil) {
+      const [y, mo, day] = utcCivil.split('-');
+      return `${day}-${mo}-${y}`;
+    }
+    // Other ISO / timestamps: calendar day in display zone
     const parsed = new Date(trimmed);
     if (!isNaN(parsed.getTime())) {
       const ymd = toYyyyMmDdInDisplayZone(parsed);

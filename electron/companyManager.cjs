@@ -693,7 +693,7 @@ function loginToCompany(companyId, username, password) {
     const Database = require('better-sqlite3');
     const tmpDb = new Database(company.db_file_path, { readonly: true });
     const user = tmpDb.prepare(
-      "SELECT id, username, password, name, role, force_password_change FROM users WHERE username = ? AND is_active = 1"
+      "SELECT id, username, password, name, role, force_password_change, display_timezone FROM users WHERE username = ? AND is_active = 1"
     ).get(username);
     tmpDb.close();
 
@@ -703,7 +703,13 @@ function loginToCompany(companyId, username, password) {
     if (!user.password) {
       return {
         ok: true,
-        user: { id: user.id, username: user.username, name: user.name, role: user.role },
+        user: {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          displayTimezone: user.display_timezone != null && user.display_timezone !== '' ? user.display_timezone : null,
+        },
         forcePasswordChange: true,
       };
     }
@@ -714,7 +720,13 @@ function loginToCompany(companyId, username, password) {
 
     return {
       ok: true,
-      user: { id: user.id, username: user.username, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        displayTimezone: user.display_timezone != null && user.display_timezone !== '' ? user.display_timezone : null,
+      },
       forcePasswordChange: !!user.force_password_change,
     };
   } catch (err) {
@@ -736,6 +748,25 @@ function setUserPassword(companyId, userId, newPassword) {
     const companyDb = new Database(company.db_file_path);
     const hashed = hashPassword(newPassword);
     companyDb.prepare('UPDATE users SET password = ?, force_password_change = 0, updated_at = datetime(\'now\') WHERE id = ?').run(hashed, userId);
+    companyDb.close();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function updateUserDisplayTimezone(companyId, userId, displayTimezone) {
+  const company = getCompanyById(companyId);
+  if (!company) return { ok: false, error: 'Company not found.' };
+  if (!userId) return { ok: false, error: 'User id required.' };
+
+  try {
+    const Database = require('better-sqlite3');
+    const companyDb = new Database(company.db_file_path);
+    const tz = displayTimezone == null || displayTimezone === '' || displayTimezone === 'auto' ? null : displayTimezone;
+    companyDb.prepare(
+      'UPDATE users SET display_timezone = ?, updated_at = datetime(\'now\') WHERE id = ? AND is_active = 1'
+    ).run(tz, userId);
     companyDb.close();
     return { ok: true };
   } catch (err) {
@@ -1354,6 +1385,10 @@ function setupHandlers(bridge) {
 
   ipcMain.handle('company:setPassword', (_event, companyId, userId, newPassword) => {
     return setUserPassword(companyId, userId, newPassword);
+  });
+
+  ipcMain.handle('company:updateUserDisplayTimezone', (_event, companyId, userId, displayTimezone) => {
+    return updateUserDisplayTimezone(companyId, userId, displayTimezone);
   });
 
   ipcMain.handle('company:prepareForBackup', (_event, companyId) => {

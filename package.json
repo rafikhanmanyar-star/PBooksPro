@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.185",
+  "version": "1.2.187",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -33,6 +33,8 @@
     "migrate:sqlite-to-postgres": "node scripts/sqlite-to-postgres-rk-builders.cjs",
     "migrate:sqlite-to-postgres:transactions": "node scripts/sqlite-to-postgres-rk-builders.cjs --transactions-only",
     "repair:pg-categories": "node scripts/repair-postgres-categories-from-sqlite.cjs",
+    "repair:profit-distribution-categories": "node scripts/repair-profit-distribution-categories.cjs",
+    "repair:profit-distribution-categories:pg": "dotenv -e .env -- node scripts/repair-profit-distribution-categories.cjs --pg",
     "seed:rk-builders-rafi": "node scripts/seed-rk-builders-rafi.cjs",
     "migrate-pbookspro-to-rkbuilders": "node scripts/migrate-pbookspro-to-rkbuilders.cjs",
     "copy-tenant-from-production": "node scripts/copy-tenant-from-production.cjs",

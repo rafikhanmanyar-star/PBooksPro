@@ -362,6 +362,14 @@ function initSchema() {
     }
   } catch (_) {}
 
+  // Per-user calendar display timezone (IANA id or NULL = device local)
+  try {
+    const userColsTz = d.prepare('PRAGMA table_info(users)').all();
+    if (userColsTz.length > 0 && !userColsTz.some(c => c.name === 'display_timezone')) {
+      d.exec('ALTER TABLE users ADD COLUMN display_timezone TEXT');
+    }
+  } catch (_) {}
+
   // Ensure is_hidden column on categories (for Security Deposit category hiding)
   try {
     const catCols = d.prepare('PRAGMA table_info(categories)').all();
@@ -439,6 +447,38 @@ function initSchema() {
       if (!accCols.some((c) => c.name === 'is_active')) {
         d.exec('ALTER TABLE accounts ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
         console.log('[SQLiteBridge] Migrated: added is_active to accounts');
+      }
+      if (!accCols.some((c) => c.name === 'opening_balance')) {
+        d.exec('ALTER TABLE accounts ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0');
+        console.log('[SQLiteBridge] Migrated: added opening_balance to accounts');
+        try {
+          d.exec(`
+            UPDATE accounts AS a
+            SET opening_balance = COALESCE(a.balance, 0) - COALESCE((
+              SELECT SUM(
+                CASE
+                  WHEN t.type = 'Income' AND t.account_id = a.id THEN t.amount
+                  WHEN t.type = 'Expense' AND t.account_id = a.id THEN -t.amount
+                  WHEN t.type = 'Transfer' AND t.from_account_id = a.id THEN -t.amount
+                  WHEN t.type = 'Transfer' AND t.to_account_id = a.id THEN t.amount
+                  WHEN t.type = 'Loan' AND t.account_id = a.id THEN
+                    CASE WHEN t.subtype IN ('Receive Loan', 'Collect Loan') THEN t.amount ELSE -t.amount END
+                  ELSE 0
+                END
+              )
+              FROM transactions t
+              WHERE t.tenant_id = a.tenant_id AND (t.deleted_at IS NULL OR t.deleted_at = '')
+            ), 0)
+            WHERE a.type IN ('Bank', 'Cash')
+              AND (a.deleted_at IS NULL OR a.deleted_at = '')
+              AND IFNULL(a.tenant_id, '') != '__system__'
+          `);
+        } catch (obErr) {
+          console.warn('[SQLiteBridge] opening_balance backfill skipped:', obErr && obErr.message);
+        }
+        try {
+          d.exec(`UPDATE accounts SET opening_balance = 0 WHERE IFNULL(tenant_id, '') = '__system__' AND type IN ('Bank', 'Cash')`);
+        } catch (_) {}
       }
     }
   } catch (e) {

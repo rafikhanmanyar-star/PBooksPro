@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import Card from '../ui/Card';
+import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
-import { toLocalDateString } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import Button from '../ui/Button';
@@ -23,26 +25,37 @@ function money(n: number): string {
 
 const TrialBalanceReport: React.FC = () => {
   const { state } = useAppContext();
+  const { user } = useAuth();
   const { print: triggerPrint } = usePrintContext();
-  const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-  const [startDate, setStartDate] = useState(() => {
-    const now = new Date();
-    const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    return toLocalDateString(first);
-  });
+  const [dateRange, setDateRange] = useState<ReportDateRange>('all');
+  const [startDate, setStartDate] = useState('2000-01-01');
   const [endDate, setEndDate] = useState(() => toLocalDateString(new Date()));
   const [basis, setBasis] = useState<TrialBalanceBasis>('period');
   const [hideZeros, setHideZeros] = useState(false);
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
 
   const [data, setData] = useState<TrialBalanceReportResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const tenantId = useMemo(() => {
-    if (typeof window === 'undefined') return 'local';
-    return localStorage.getItem('tenant_id')?.trim() || 'local';
-  }, []);
+  const tenantId = user?.tenantId?.trim() || (typeof window !== 'undefined' ? localStorage.getItem('tenant_id')?.trim() : null) || 'local';
+
+  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
+  const accountItems = useMemo(
+    () => [{ id: 'all', name: 'All accounts' }, ...state.accounts.map((a) => ({ id: a.id, name: a.name }))],
+    [state.accounts]
+  );
+
+  const projectScopeState = useMemo(
+    () => ({
+      invoices: state.invoices,
+      bills: state.bills,
+      projectAgreements: state.projectAgreements,
+    }),
+    [state.invoices, state.bills, state.projectAgreements]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +67,8 @@ const TrialBalanceReport: React.FC = () => {
           from: startDate,
           to: endDate,
           basis,
+          projectScopeId: selectedProjectId,
+          projectScopeState,
           ledgerFallback: {
             transactions: state.transactions,
             accounts: state.accounts,
@@ -72,7 +87,7 @@ const TrialBalanceReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, startDate, endDate, basis, state.transactions, state.accounts]);
+  }, [tenantId, startDate, endDate, basis, selectedProjectId, projectScopeState, state.transactions, state.accounts]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -101,9 +116,12 @@ const TrialBalanceReport: React.FC = () => {
 
   const grouped = useMemo(() => {
     if (!data) return [];
-    const rows = hideZeros
+    let rows = hideZeros
       ? data.accounts.filter((a) => Math.abs(a.netBalance) >= 0.005)
       : data.accounts;
+    if (selectedAccountId !== 'all') {
+      rows = rows.filter((a) => a.accountId === selectedAccountId);
+    }
     const byType = new Map<string, typeof rows>();
     for (const a of rows) {
       const list = byType.get(a.accountType) ?? [];
@@ -119,7 +137,27 @@ const TrialBalanceReport: React.FC = () => {
         return x.accountName.localeCompare(y.accountName);
       }),
     }));
-  }, [data, hideZeros]);
+  }, [data, hideZeros, selectedAccountId]);
+
+  const displayTotals = useMemo(() => {
+    if (!data) return null;
+    if (selectedAccountId === 'all') return data.totals;
+    let rows = hideZeros
+      ? data.accounts.filter((a) => Math.abs(a.netBalance) >= 0.005)
+      : data.accounts;
+    rows = rows.filter((a) => a.accountId === selectedAccountId);
+    let totalDebit = 0;
+    let totalCredit = 0;
+    let grossDebit = 0;
+    let grossCredit = 0;
+    for (const a of rows) {
+      totalDebit += a.debit;
+      totalCredit += a.credit;
+      grossDebit += a.grossDebit;
+      grossCredit += a.grossCredit;
+    }
+    return { totalDebit, totalCredit, grossDebit, grossCredit };
+  }, [data, hideZeros, selectedAccountId]);
 
   const toggleType = useCallback((t: string) => {
     setCollapsedTypes((prev) => {
@@ -145,20 +183,23 @@ const TrialBalanceReport: React.FC = () => {
         });
       }
     }
+    const t = displayTotals ?? data.totals;
     flat.push({
       Section: 'TOTALS',
       Account: '',
       Code: '',
-      Debit: data.totals.totalDebit,
-      Credit: data.totals.totalCredit,
+      Debit: t.totalDebit,
+      Credit: t.totalCredit,
     });
     exportJsonToExcel(flat as never, `TrialBalance_${startDate}_${endDate}.xlsx`);
   };
 
+  const projectLabel =
+    selectedProjectId === 'all' ? 'All projects' : state.projects.find((p) => p.id === selectedProjectId)?.name ?? 'Project';
   const subtitle =
     basis === 'cumulative'
-      ? `Cumulative through ${endDate} (all journal activity on or before end date)`
-      : `Period activity ${startDate} – ${endDate}`;
+      ? `${projectLabel} · Cumulative through ${formatDate(endDate)} (activity on or before end date)`
+      : `${projectLabel} · ${formatDate(startDate)} – ${formatDate(endDate)}`;
 
   return (
     <div className="flex flex-col gap-4 p-4 max-w-6xl mx-auto print:p-2 printable-area" id="printable-area">
@@ -177,10 +218,32 @@ const TrialBalanceReport: React.FC = () => {
             onDateChange={handleDateChange}
             hideGroup={true}
             showDateFilterPills={true}
+            showDatePickersWithPills={true}
             activeDateRange={dateRange}
             onRangeChange={handleRangeChange}
             hideSearch={true}
-          />
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="w-40 sm:w-48 flex-shrink-0">
+                <ComboBox
+                  items={projectItems}
+                  selectedId={selectedProjectId}
+                  onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
+                  allowAddNew={false}
+                  placeholder="Project scope"
+                />
+              </div>
+              <div className="w-44 sm:w-52 flex-shrink-0">
+                <ComboBox
+                  items={accountItems}
+                  selectedId={selectedAccountId}
+                  onSelect={(item) => setSelectedAccountId(item?.id || 'all')}
+                  allowAddNew={false}
+                  placeholder="Account filter"
+                />
+              </div>
+            </div>
+          </ReportToolbar>
 
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -202,30 +265,36 @@ const TrialBalanceReport: React.FC = () => {
               />
               Hide zero net
             </label>
-            <Button variant="secondary" type="button" onClick={handleExport} disabled={!data}>
+            <Button variant="secondary" type="button" onClick={handleExport} disabled={!data || grouped.length === 0}>
               Export Excel
             </Button>
-            <Button variant="secondary" type="button" onClick={() => triggerPrint('REPORT', { elementId: 'printable-area' })} disabled={!data}>
+            <Button variant="secondary" type="button" onClick={() => triggerPrint('REPORT', { elementId: 'printable-area' })} disabled={!data || grouped.length === 0}>
               Print
             </Button>
           </div>
 
-          {loading && <p className="text-slate-500 text-sm">Loading journal-based trial balance…</p>}
+          {loading && <p className="text-slate-500 text-sm">Loading trial balance…</p>}
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 px-3 py-2 text-sm text-red-800 dark:text-red-200">
               {error}
             </div>
           )}
 
-          {data?.dataSource === 'transactions_fallback' && (
+          {data?.dataSource === 'transactions_fallback' && selectedProjectId === 'all' && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
               No posted <strong>journal</strong> lines in this range — amounts are reconstructed from your{' '}
               <strong>transaction ledger</strong> (Income, Expense, Transfer, Loan) with a balancing clearing line.
               Post journals from Settings → Journal entry (GL) for immutable double-entry in the database.
             </div>
           )}
+          {selectedProjectId !== 'all' && (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+              Project scope matches <strong>Profit &amp; Loss</strong> / <strong>Balance Sheet</strong> (operational
+              transactions; journal lines are not split by project).
+            </div>
+          )}
 
-          {data && !data.isBalanced && (
+          {data && !data.isBalanced && selectedAccountId === 'all' && (
             <div
               className="rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-950/50 px-4 py-3 text-red-800 dark:text-red-100 font-semibold"
               role="alert"
@@ -235,7 +304,13 @@ const TrialBalanceReport: React.FC = () => {
             </div>
           )}
 
-          {data && (
+          {data && grouped.length === 0 && !loading && (
+            <p className="text-sm text-slate-500 text-center py-6 border border-dashed border-slate-200 dark:border-slate-700 rounded-lg">
+              No accounts with activity for the selected period and filters.
+            </p>
+          )}
+
+          {data && grouped.length > 0 && (
             <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
               <table className="min-w-full text-sm">
                 <thead>
@@ -289,18 +364,25 @@ const TrialBalanceReport: React.FC = () => {
                   <tr className="bg-slate-200/80 dark:bg-slate-700 font-semibold border-t-2 border-slate-300 dark:border-slate-600">
                     <td colSpan={2} className="px-3 py-3">
                       Totals
+                      {selectedAccountId !== 'all' && (
+                        <span className="font-normal text-slate-500 dark:text-slate-400 text-xs ml-1">(filtered)</span>
+                      )}
                     </td>
-                    <td className="px-3 py-3 text-right font-mono tabular-nums">{money(data.totals.totalDebit)}</td>
-                    <td className="px-3 py-3 text-right font-mono tabular-nums">{money(data.totals.totalCredit)}</td>
+                    <td className="px-3 py-3 text-right font-mono tabular-nums">
+                      {displayTotals ? money(displayTotals.totalDebit) : '—'}
+                    </td>
+                    <td className="px-3 py-3 text-right font-mono tabular-nums">
+                      {displayTotals ? money(displayTotals.totalCredit) : '—'}
+                    </td>
                   </tr>
                 </tbody>
               </table>
             </div>
           )}
 
-          {data && (
+          {data && displayTotals && grouped.length > 0 && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Gross postings: debit {money(data.totals.grossDebit)} · credit {money(data.totals.grossCredit)}. Net
+              Gross postings: debit {money(displayTotals.grossDebit)} · credit {money(displayTotals.grossCredit)}. Net
               columns follow double-entry: each account shows the net of debits minus credits on one side.
             </p>
           )}

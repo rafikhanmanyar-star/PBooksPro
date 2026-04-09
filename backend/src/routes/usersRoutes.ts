@@ -31,6 +31,11 @@ const updateUserSchema = z.object({
   password: z.string().optional(),
 });
 
+/** Current user only: IANA zone or null = device local (same as Settings → Date display time zone). */
+const patchMeSchema = z.object({
+  displayTimezone: z.union([z.string().max(120), z.null()]),
+});
+
 function rowToApi(row: { id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }) {
   return {
     id: row.id,
@@ -41,6 +46,36 @@ function rowToApi(row: { id: string; username: string; name: string; role: strin
     is_active: row.is_active,
   };
 }
+
+usersRouter.patch('/users/me', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  const userId = req.userId;
+  if (!tenantId || !userId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const parsed = patchMeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'displayTimezone required (string or null)');
+    return;
+  }
+  const { displayTimezone } = parsed.data;
+  try {
+    const pool = getPool();
+    const r = await pool.query<{ display_timezone: string | null }>(
+      `UPDATE users SET display_timezone = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3
+       RETURNING display_timezone`,
+      [displayTimezone, userId, tenantId]
+    );
+    if (r.rows.length === 0) {
+      sendFailure(res, 404, 'NOT_FOUND', 'User not found');
+      return;
+    }
+    sendSuccess(res, { displayTimezone: r.rows[0].display_timezone ?? null });
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
 
 usersRouter.get('/users', async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;

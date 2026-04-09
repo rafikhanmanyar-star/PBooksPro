@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { ContactType, TransactionType } from '../types';
+import { ContactType, TransactionType, AccountType } from '../types';
 import Modal from '../components/ui/Modal';
 import ContactForm from '../components/settings/ContactForm';
 import ProjectForm from '../components/ui/ProjectForm';
@@ -79,10 +79,23 @@ export const useEntityFormModal = (): UseEntityFormModalReturn => {
         payload = { ...data, id: newId };
         dispatch({ type: 'ADD_CATEGORY', payload });
         break;
-      case 'account':
+      case 'account': {
         payload = { ...data, id: newId };
+        delete payload.initialBalance;
+        const t = data.type as AccountType;
+        const bankLike = t === AccountType.BANK || t === AccountType.CASH;
+        if (bankLike) {
+          const ob = Number(data.openingBalance);
+          const opening = Number.isFinite(ob) ? ob : 0;
+          payload.openingBalance = opening;
+          payload.balance = opening;
+        } else {
+          payload.balance = Number(data.initialBalance) || 0;
+          delete payload.openingBalance;
+        }
         dispatch({ type: 'ADD_ACCOUNT', payload });
         break;
+      }
       case 'property':
         payload = { ...data, id: newId };
         dispatch({ type: 'ADD_PROPERTY', payload });

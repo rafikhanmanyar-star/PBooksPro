@@ -1,7 +1,7 @@
 
 import React, { useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { TransactionType, ContactType } from '../../types';
+import { TransactionType, ContactType, AccountType, Account } from '../../types';
 import { ICONS } from '../../constants';
 import AccountForm from './AccountForm';
 import ContactForm from './ContactForm';
@@ -63,9 +63,30 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
         const actionType = isEditing ? `UPDATE_${entityType}` : `ADD_${entityType}`;
         const payload = isEditing ? { ...itemToEdit, ...data } : { id: Date.now().toString(), ...data };
 
-        if (entityType === 'ACCOUNT' && !isEditing) {
-            payload.balance = data.initialBalance || 0;
+        if (entityType === 'ACCOUNT') {
             delete payload.initialBalance;
+            const t = (data.type ?? (isEditing && itemToEdit ? (itemToEdit as Account).type : payload.type)) as AccountType;
+            const bankLike = t === AccountType.BANK || t === AccountType.CASH;
+            if (!isEditing) {
+                if (bankLike) {
+                    const ob = Number(data.openingBalance);
+                    const opening = Number.isFinite(ob) ? ob : 0;
+                    payload.openingBalance = opening;
+                    payload.balance = opening;
+                } else {
+                    payload.balance = Number(data.initialBalance) || 0;
+                }
+            } else if (itemToEdit && bankLike && data.openingBalance !== undefined) {
+                const acc = itemToEdit as Account;
+                const oldOb = acc.openingBalance ?? 0;
+                const newOb = Number(data.openingBalance);
+                const nextOpening = Number.isFinite(newOb) ? newOb : 0;
+                payload.openingBalance = nextOpening;
+                payload.balance = (acc.balance ?? 0) + (nextOpening - oldOb);
+            }
+            if (!bankLike) {
+                delete payload.openingBalance;
+            }
         }
 
         console.log('🔍 Form Submit:', { entityType, actionType, payload });

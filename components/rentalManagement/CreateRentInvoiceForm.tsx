@@ -7,7 +7,7 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
-import { fromPickerDateToYyyyMmDd, parseYyyyMmDdToLocalDate, toLocalDateString } from '../../utils/dateUtils';
+import { fromPickerDateToYyyyMmDd, parseYyyyMmDdToLocalDate, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 
 interface CreateRentInvoiceFormProps {
   propertyId: string;
@@ -48,10 +48,11 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
     return `${prefix}${String(maxNum).padStart(padding, '0')}`;
   };
 
-  // --- Default date: 1st of current month ---
+  // --- Default date: 1st of current month (app display timezone) ---
   const getFirstOfMonth = () => {
-    const now = new Date();
-    return toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+    const t = todayLocalYyyyMmDd();
+    const [y, m] = t.split('-');
+    return `${y}-${m}-01`;
   };
 
   // --- Form state ---
@@ -62,7 +63,7 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
     const base = parseYyyyMmDdToLocalDate(getFirstOfMonth());
     const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
     d.setDate(d.getDate() + 7);
-    return toLocalDateString(d);
+    return fromPickerDateToYyyyMmDd(d);
   });
 
   // Auto-generate description
@@ -79,7 +80,7 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
     if (!isNaN(d.getTime())) {
       const dueDateObj = new Date(d.getFullYear(), d.getMonth(), d.getDate());
       dueDateObj.setDate(dueDateObj.getDate() + 7);
-      setDueDate(toLocalDateString(dueDateObj));
+      setDueDate(fromPickerDateToYyyyMmDd(dueDateObj));
     }
   }, [invoiceDate]);
 

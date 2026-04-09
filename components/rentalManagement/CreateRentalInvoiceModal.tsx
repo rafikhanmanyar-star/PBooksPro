@@ -10,7 +10,12 @@ import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import Modal from '../ui/Modal';
 import { CURRENCY } from '../../constants';
-import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import {
+  formatDate,
+  fromPickerDateToYyyyMmDd,
+  parseStoredDateToYyyyMmDdInput,
+  todayLocalYyyyMmDd,
+} from '../../utils/dateUtils';
 
 export type InvoiceTypeChoice = 'rental' | 'security';
 
@@ -124,9 +129,11 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   }, [selectedAgreement]);
 
   useEffect(() => {
+    /** First calendar day of current month in app display timezone (Settings). */
     const getFirstOfMonth = () => {
-      const now = new Date();
-      return toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+      const t = todayLocalYyyyMmDd();
+      const [y, m] = t.split('-');
+      return `${y}-${m}-01`;
     };
     if (!selectedAgreement) {
       setInvoiceDate('');
@@ -137,41 +144,30 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
     if (invoiceTypeChoice === 'rental') {
       const d = getFirstOfMonth();
       setInvoiceDate(d);
-      const due = new Date(d + 'T00:00:00');
+      const due = new Date(d + 'T12:00:00');
       due.setDate(due.getDate() + (selectedAgreement?.rentDueDate || 7));
-      setDueDate(toLocalDateString(due));
-      const dateObj = new Date(d + 'T00:00:00');
+      setDueDate(fromPickerDateToYyyyMmDd(due));
+      const dateObj = new Date(d + 'T12:00:00');
       const monthYear = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
       setDescription(`Rent for ${property?.name || 'Unknown'} - ${monthYear}`);
     } else {
       const startDate = toValidDateString(selectedAgreement?.startDate as string | undefined);
       setInvoiceDate(startDate);
-      const due = new Date(startDate + 'T00:00:00');
+      const due = new Date(startDate + 'T12:00:00');
       if (!isNaN(due.getTime())) {
         due.setDate(due.getDate() + 7);
-        setDueDate(toLocalDateString(due));
+        setDueDate(fromPickerDateToYyyyMmDd(due));
       } else {
-        const fallback = new Date();
-        setDueDate(toLocalDateString(fallback));
+        setDueDate(todayLocalYyyyMmDd());
       }
       setDescription(`Security Deposit [Security]`);
     }
   }, [invoiceTypeChoice, selectedAgreement, selectedAgreement?.startDate, selectedAgreement?.rentDueDate, property?.name]);
 
-  // Return a valid YYYY-MM-DD string; fallback to today if invalid (avoids RangeError: Invalid time value)
+  /** Normalize agreement/API date strings to YYYY-MM-DD (UTC midnight ISO + display zone). */
   function toValidDateString(val: string | undefined | null): string {
-    if (!val || typeof val !== 'string') return toLocalDateString(new Date());
-    const trimmed = String(val).trim();
-    if (!trimmed) return toLocalDateString(new Date());
-    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) {
-      const [, y, m, d] = match;
-      const date = new Date(parseInt(y!, 10), parseInt(m!, 10) - 1, parseInt(d!, 10));
-      if (!isNaN(date.getTime())) return `${y}-${m}-${d}`;
-    }
-    const parsed = new Date(trimmed + (trimmed.includes('T') ? '' : 'T00:00:00'));
-    if (!isNaN(parsed.getTime())) return toLocalDateString(parsed);
-    return toLocalDateString(new Date());
+    if (!val || typeof val !== 'string') return todayLocalYyyyMmDd();
+    return parseStoredDateToYyyyMmDdInput(val);
   }
 
   const handleSave = async () => {
@@ -457,13 +453,13 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
             <DatePicker
               label="Invoice Date"
               value={invoiceDate}
-              onChange={d => setInvoiceDate(toLocalDateString(d))}
+              onChange={d => setInvoiceDate(fromPickerDateToYyyyMmDd(d))}
               required
             />
             <DatePicker
               label="Due Date"
               value={dueDate}
-              onChange={d => setDueDate(toLocalDateString(d))}
+              onChange={d => setDueDate(fromPickerDateToYyyyMmDd(d))}
               required
             />
           </div>

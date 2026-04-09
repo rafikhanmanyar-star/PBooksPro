@@ -86,6 +86,8 @@ contextBridge.exposeInMainWorld('companyBridge', {
   checkCredentials: (companyId) => ipcRenderer.invoke('company:checkCredentials', companyId),
   login: (companyId, username, password) => ipcRenderer.invoke('company:login', companyId, username, password),
   setPassword: (companyId, userId, newPassword) => ipcRenderer.invoke('company:setPassword', companyId, userId, newPassword),
+  updateUserDisplayTimezone: (companyId, userId, displayTimezone) =>
+    ipcRenderer.invoke('company:updateUserDisplayTimezone', companyId, userId, displayTimezone),
   prepareForBackup: (companyId) => ipcRenderer.invoke('company:prepareForBackup', companyId),
   backup: (companyId) => ipcRenderer.invoke('company:backup', companyId),
   listBackups: (companyId) => ipcRenderer.invoke('company:listBackups', companyId),

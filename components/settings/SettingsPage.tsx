@@ -37,6 +37,7 @@ import { useCompanyOptional } from '../../context/CompanyContext';
 import { useSpellCheckerOptional, SPELLCHECK_LANGUAGE_OPTIONS } from '../../context/SpellCheckerContext';
 import { useTheme } from '../../context/ThemeContext';
 import { getDisplayTimeZone, setDisplayTimeZone } from '../../utils/dateUtils';
+import { persistUserDisplayTimezone } from '../../services/userDisplayTimezonePersist';
 
 const UserManagement = lazy(() => import('./UserManagement'));
 const BackupRestorePage = lazy(() => import('./BackupRestorePage'));
@@ -65,6 +66,11 @@ interface ColumnDef {
     label: string;
     isNumeric?: boolean;
     render?: (value: any, row: any) => React.ReactNode;
+}
+
+/** City/region label from IANA id (e.g. `America/New_York` → `New York`) for searchable display. */
+function ianaTimeZoneCityLabel(iana: string): string {
+    return (iana.split('/').pop() || iana).replace(/_/g, ' ');
 }
 
 const SettingsPage: React.FC = () => {
@@ -139,6 +145,17 @@ const SettingsPage: React.FC = () => {
         }
         return [] as string[];
     }, []);
+
+    const displayTimeZoneComboItems = useMemo(() => {
+        const auto = { id: 'auto', name: 'Use device (browser local time)' };
+        return [
+            auto,
+            ...ianaTimeZones.map((tz) => ({
+                id: tz,
+                name: `${ianaTimeZoneCityLabel(tz)} · ${tz}`,
+            })),
+        ];
+    }, [ianaTimeZones]);
 
     // Check if user is admin - use AuthContext user (cloud auth), AppContext currentUser (local), or CompanyContext (local-only company login)
     const isAdmin = authUser?.role === 'Admin' || state.currentUser?.role === 'Admin' || companyCtx?.authenticatedUser?.role === 'SUPER_ADMIN';
@@ -694,25 +711,37 @@ const SettingsPage: React.FC = () => {
                 <label htmlFor="display-timezone" className="block text-sm font-medium text-slate-700 mb-2">
                     Calendar dates
                 </label>
-                <select
-                    id="display-timezone"
-                    className="block w-full max-w-lg border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
-                    value={displayTz}
-                    onChange={(e) => {
-                        const v = e.target.value;
-                        setDisplayTz(v);
-                        setDisplayTimeZone(v === 'auto' ? null : v);
-                        showToast('Time zone saved. Navigate away or refresh the page to refresh all date columns.', 'info');
-                    }}
-                    aria-label="Date display time zone"
-                >
-                    <option value="auto">Use device (browser local time)</option>
-                    {ianaTimeZones.map((tz) => (
-                        <option key={tz} value={tz}>
-                            {tz}
-                        </option>
-                    ))}
-                </select>
+                <p className="text-xs text-slate-500 mb-2">Type a city or region (e.g. Dubai, Tokyo) or part of the zone name to filter.</p>
+                <div className="max-w-lg">
+                    <ComboBox
+                        id="display-timezone"
+                        name="displayTimezone"
+                        label=""
+                        items={displayTimeZoneComboItems}
+                        selectedId={displayTz}
+                        onSelect={async (item) => {
+                            if (!item) return;
+                            const v = item.id;
+                            const zoneVal = v === 'auto' ? null : v;
+                            setDisplayTz(v);
+                            setDisplayTimeZone(zoneVal);
+                            try {
+                                await persistUserDisplayTimezone(zoneVal, {
+                                    companyId: companyCtx?.activeCompany?.id,
+                                    userId: companyCtx?.authenticatedUser?.id ?? authUser?.id,
+                                });
+                                showToast('Time zone saved.', 'success');
+                            } catch (e) {
+                                showToast('Saved on this device; could not save to the database.', 'warning');
+                            }
+                        }}
+                        placeholder="Search by city or time zone..."
+                        allowAddNew={false}
+                        entityType="report"
+                        compact
+                        className="max-w-lg"
+                    />
+                </div>
             </div>
 
             <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">

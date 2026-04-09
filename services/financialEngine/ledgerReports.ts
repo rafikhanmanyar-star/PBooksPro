@@ -16,6 +16,10 @@ import {
 } from './trialBalanceCore';
 import { buildTrialBalanceRawRowsFromTransactions } from './trialBalanceFromTransactions';
 import type { Account, Transaction } from '../../types';
+import {
+  filterTransactionsForTrialBalanceProjectScope,
+  type ReportStateSlice,
+} from '../../components/reports/reportUtils';
 
 function getBridge() {
   if (typeof window === 'undefined' || !window.sqliteBridge?.query) {
@@ -45,6 +49,12 @@ export type FetchTrialBalanceOptions = {
     transactions: Transaction[];
     accounts: Account[];
   };
+  /**
+   * When not `all`, trial balance is built from operational transactions for that project only
+   * (same scope as Project P&amp;L). Journal aggregates are not used because lines are not project-tagged.
+   */
+  projectScopeId?: string;
+  projectScopeState?: ReportStateSlice;
 };
 
 export type TrialBalanceReportResult = TrialBalanceReportPayload & {
@@ -122,6 +132,42 @@ export async function fetchTrialBalanceReport(
   const from = options.from;
   const to = options.to;
   const basis = options.basis ?? 'period';
+
+  const projectScope =
+    options.projectScopeId && options.projectScopeId !== 'all' ? options.projectScopeId : null;
+  if (projectScope) {
+    const fb = options.ledgerFallback;
+    const st = options.projectScopeState;
+    if (!fb?.accounts?.length) {
+      throw new Error('Project-scoped trial balance requires accounts to be loaded.');
+    }
+    if (!st) {
+      throw new Error('Project-scoped trial balance requires invoice/bill context (projectScopeState).');
+    }
+    const scopedTx = filterTransactionsForTrialBalanceProjectScope(fb.transactions, projectScope, st);
+    let rawRows: TrialBalanceRawRow[] = buildTrialBalanceRawRowsFromTransactions(
+      scopedTx,
+      fb.accounts,
+      from,
+      to,
+      basis
+    );
+    rawRows.sort((x, y) => {
+      const c = compareTrialBalanceType(x.accountType, y.accountType);
+      if (c !== 0) return c;
+      const cx = (x.accountCode || '').localeCompare(y.accountCode || '');
+      if (cx !== 0) return cx;
+      return x.accountName.localeCompare(y.accountName);
+    });
+    const report = buildTrialBalanceReport(rawRows);
+    return {
+      ...report,
+      from,
+      to,
+      basis,
+      dataSource: 'transactions_fallback',
+    };
+  }
 
   if (!isLocalOnlyMode()) {
     void tenantId;
