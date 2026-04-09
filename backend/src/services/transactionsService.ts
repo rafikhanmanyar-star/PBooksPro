@@ -66,10 +66,8 @@ export type ListTransactionFilters = {
   offset?: number;
 };
 
-function dateToApi(d: Date | string): string {
-  if (d instanceof Date) return formatPgDateToYyyyMmDd(d);
-  const s = String(d);
-  return s.length >= 10 ? s.slice(0, 10) : s;
+function dateToApi(d: Date | string | null | undefined): string {
+  return formatPgDateToYyyyMmDd(d);
 }
 
 export function rowToTransactionApi(row: TransactionRow): Record<string, unknown> {

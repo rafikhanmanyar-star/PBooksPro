@@ -28,12 +28,8 @@ export type SalesReturnRow = {
 
 function toDateStr(d: Date | string | null | undefined): string | undefined {
   if (d == null) return undefined;
-  if (d instanceof Date) return isNaN(d.getTime()) ? undefined : formatPgDateToYyyyMmDd(d);
-  const s = String(d).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const x = new Date(s);
-  if (isNaN(x.getTime())) return undefined;
-  return formatPgDateToYyyyMmDd(x);
+  const s = formatPgDateToYyyyMmDd(d);
+  return s || undefined;
 }
 
 export function rowToSalesReturnApi(row: SalesReturnRow): Record<string, unknown> {

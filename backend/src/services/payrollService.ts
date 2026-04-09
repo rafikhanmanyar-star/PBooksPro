@@ -161,6 +161,13 @@ function iso(d: Date | string | null | undefined): string | undefined {
 }
 
 function dateStr(d: Date | string | null | undefined): string {
+  if (d == null) return '';
+  if (typeof d === 'string') {
+    const t = d.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+    const m = t.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
   const s = iso(d);
   return s ? s.slice(0, 10) : '';
 }

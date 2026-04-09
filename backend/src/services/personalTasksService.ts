@@ -19,20 +19,14 @@ export type PersonalTaskRow = {
 const ALLOWED_STATUS = new Set(['pending', 'in_progress', 'completed', 'cancelled']);
 const ALLOWED_PRIORITY = new Set(['low', 'medium', 'high']);
 
-function toDate(d: Date | string): Date {
-  return d instanceof Date ? d : new Date(d);
-}
-
 export function rowToPersonalTaskApi(row: PersonalTaskRow): Record<string, unknown> {
-  const cd = toDate(row.created_date);
-  const td = toDate(row.target_date);
   return {
     id: row.id,
     userId: row.user_id,
     title: row.title,
     description: row.description ?? undefined,
-    createdDate: formatPgDateToYyyyMmDd(cd),
-    targetDate: formatPgDateToYyyyMmDd(td),
+    createdDate: formatPgDateToYyyyMmDd(row.created_date),
+    targetDate: formatPgDateToYyyyMmDd(row.target_date),
     status: row.status,
     progress: row.progress,
     priority: row.priority,
@@ -178,7 +172,7 @@ export async function listPersonalTasksCalendarMonth(
 
   const out: Record<string, PersonalTaskRow[]> = {};
   for (const row of r.rows) {
-    const key = formatPgDateToYyyyMmDd(toDate(row.target_date));
+    const key = formatPgDateToYyyyMmDd(row.target_date);
     if (!out[key]) out[key] = [];
     out[key].push(row);
   }
@@ -208,12 +202,12 @@ export async function updatePersonalTask(
     body.title !== undefined ? String(body.title).trim() : existing.title;
   if (!title) throw new Error('Title is required.');
 
-  const createdDateStr = formatPgDateToYyyyMmDd(toDate(existing.created_date));
+  const createdDateStr = formatPgDateToYyyyMmDd(existing.created_date);
 
   let targetDate =
     body.targetDate !== undefined || body.target_date !== undefined
       ? parseApiDateToYyyyMmDd(body.targetDate ?? body.target_date)
-      : formatPgDateToYyyyMmDd(toDate(existing.target_date));
+      : formatPgDateToYyyyMmDd(existing.target_date);
 
   if (targetDate < createdDateStr) {
     throw new Error('Target date must be on or after created date.');
@@ -285,8 +279,8 @@ export async function listUpcomingPersonalTasks(
     [tenantId, userId, d]
   );
   r.rows.sort((a, b) => {
-    const da = formatPgDateToYyyyMmDd(toDate(a.target_date));
-    const db = formatPgDateToYyyyMmDd(toDate(b.target_date));
+    const da = formatPgDateToYyyyMmDd(a.target_date);
+    const db = formatPgDateToYyyyMmDd(b.target_date);
     if (da !== db) return da.localeCompare(db);
     return a.title.localeCompare(b.title);
   });

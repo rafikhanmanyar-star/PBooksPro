@@ -82,12 +82,7 @@ export function rowToProjectAgreementApi(
     sellingPrice: Number(row.selling_price) || 0,
     rebateAmount: numToApi(row.rebate_amount),
     rebateBrokerId: row.rebate_broker_id ?? undefined,
-    issueDate:
-      row.issue_date instanceof Date
-        ? formatPgDateToYyyyMmDd(row.issue_date)
-        : row.issue_date
-          ? String(row.issue_date).slice(0, 10)
-          : undefined,
+    issueDate: row.issue_date ? formatPgDateToYyyyMmDd(row.issue_date) : undefined,
     description: row.description ?? undefined,
     status: row.status,
     cancellationDetails: parseJsonField(row.cancellation_details) ?? undefined,

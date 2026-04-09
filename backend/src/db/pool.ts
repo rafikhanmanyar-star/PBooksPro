@@ -1,6 +1,12 @@
 import pg from 'pg';
 
-const { Pool } = pg;
+const { Pool, types } = pg;
+
+// node-pg parses DATE (OID 1082) into JS Date using the server's local
+// timezone, which shifts the calendar day when the server isn't UTC.
+// Override to return the raw 'YYYY-MM-DD' string — no timezone ambiguity.
+const PG_DATE_OID = 1082;
+types.setTypeParser(PG_DATE_OID, (val: string) => val);
 
 let pool: pg.Pool | null = null;
 

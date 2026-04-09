@@ -81,10 +81,6 @@ function pickBody(body: Record<string, unknown>, userId?: string | null) {
 }
 
 export function rowToPmCycleAllocationApi(row: PmCycleAllocationRow): Record<string, unknown> {
-  const sd = row.start_date instanceof Date ? row.start_date : new Date(row.start_date as unknown as string);
-  const ed = row.end_date instanceof Date ? row.end_date : new Date(row.end_date as unknown as string);
-  const ad =
-    row.allocation_date instanceof Date ? row.allocation_date : new Date(row.allocation_date as unknown as string);
   let excludedCategoryIds: string[] | undefined;
   if (row.excluded_category_ids) {
     try {
@@ -100,9 +96,9 @@ export function rowToPmCycleAllocationApi(row: PmCycleAllocationRow): Record<str
     cycleId: row.cycle_id,
     cycleLabel: row.cycle_label,
     frequency: row.frequency,
-    startDate: formatPgDateToYyyyMmDd(sd),
-    endDate: formatPgDateToYyyyMmDd(ed),
-    allocationDate: formatPgDateToYyyyMmDd(ad),
+    startDate: formatPgDateToYyyyMmDd(row.start_date),
+    endDate: formatPgDateToYyyyMmDd(row.end_date),
+    allocationDate: formatPgDateToYyyyMmDd(row.allocation_date),
     amount: Number(row.amount),
     paidAmount: Number(row.paid_amount),
     status: row.status,

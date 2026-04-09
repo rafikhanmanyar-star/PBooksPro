@@ -35,16 +35,10 @@ function optStr(v: unknown): string | null | undefined {
 }
 
 export function rowToRecurringInvoiceTemplateApi(row: RecurringInvoiceTemplateRow): Record<string, unknown> {
-  const nextDue =
-    row.next_due_date instanceof Date
-      ? formatPgDateToYyyyMmDd(row.next_due_date)
-      : String(row.next_due_date).slice(0, 10);
-  const lastGen =
-    row.last_generated_date == null
-      ? undefined
-      : row.last_generated_date instanceof Date
-        ? formatPgDateToYyyyMmDd(row.last_generated_date)
-        : String(row.last_generated_date).slice(0, 10);
+  const nextDue = formatPgDateToYyyyMmDd(row.next_due_date);
+  const lastGen = row.last_generated_date != null
+    ? formatPgDateToYyyyMmDd(row.last_generated_date)
+    : undefined;
 
   const base: Record<string, unknown> = {
     id: row.id,

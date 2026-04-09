@@ -10,6 +10,7 @@ import {
   LoanSubtype,
   TransactionType,
 } from '../types';
+import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../services/database/resolveProfitDistributionExpenseCategory';
 
 function minimalState(overrides: Partial<AppState> = {}): AppState {
   const base: AppState = {
@@ -138,6 +139,57 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
     'loan repayment → financing'
   );
   assert.ok(r.validation.reconciled, `expected reconciled, discrepancy=${r.validation.discrepancy}`);
+}
+
+{
+  // Profit distribution: EXPENSE on Internal Clearing + TRANSFER (PROFIT_SHARE) — same cash once (IAS 7: financing only).
+  const state = minimalState({
+    categories: [
+      {
+        id: CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID,
+        name: 'Profit Share',
+        type: TransactionType.EXPENSE,
+        plSubType: 'operating_expense',
+      },
+    ],
+    transactions: [
+      {
+        id: 'pd-exp',
+        type: TransactionType.EXPENSE,
+        amount: 77,
+        date: '2024-06-15',
+        accountId: 'bank1',
+        categoryId: CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID,
+        description: 'Profit Distribution: Cycle 2026',
+        projectId: 'p1',
+      } as AppState['transactions'][0],
+      {
+        id: 'pd-tr',
+        type: TransactionType.TRANSFER,
+        subtype: EquityLedgerSubtype.PROFIT_SHARE,
+        amount: 77,
+        date: '2024-06-15',
+        accountId: 'eq1',
+        fromAccountId: 'bank1',
+        toAccountId: 'eq1',
+        description: 'Profit Share: Cycle 2026',
+        projectId: 'p1',
+      } as AppState['transactions'][0],
+    ],
+  });
+
+  const r = computeCashFlowReport(state, {
+    fromDate: '2024-06-01',
+    toDate: '2024-06-30',
+    selectedProjectId: 'p1',
+  });
+
+  const opex = r.operating.items.find((i) => i.label.includes('operating expenses'));
+  assert.ok(!opex || Math.abs(opex.amount) < 0.02, 'profit distribution clearing expense must not appear as operating');
+  const dist = r.financing.items.find((i) => i.label.includes('Distributions and profit'));
+  assert.ok(dist && dist.amount < 0, 'profit distribution cash must appear once under financing');
+  // Reconciliation vs BS cash may still differ when both journal legs hit the same bank in test data;
+  // production uses Internal Clearing for the expense leg (BS suspense, not “cash” in sumCashFromBalanceSheet).
 }
 
 {

@@ -1,18 +1,6 @@
 import { apiClient } from './api/client';
 import { isLocalOnlyMode } from '../config/apiUrl';
 
-declare global {
-  interface Window {
-    companyBridge?: {
-      updateUserDisplayTimezone?: (
-        companyId: string,
-        userId: string,
-        displayTimezone: string | null
-      ) => Promise<{ ok: boolean; error?: string }>;
-    };
-  }
-}
-
 /**
  * Persist display timezone for the signed-in user: PostgreSQL (API) or company SQLite (Electron).
  * `null` means "use device / auto" in Settings.

@@ -20,6 +20,18 @@ import {
 import { resolveProjectIdForTransaction, isTransactionFromVoidedOrCancelledInvoice } from './reportUtils';
 import { computeBalanceSheetReport, type BalanceSheetReportResult } from './balanceSheetEngine';
 import { resolvePlTypeForCategory } from './profitLossEngine';
+import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../../services/database/resolveProfitDistributionExpenseCategory';
+
+/**
+ * Profit distribution posts (1) an EXPENSE on Internal Clearing and (2) a paired TRANSFER
+ * (PROFIT_SHARE) from clearing to investor equity. Both affect bank cash delta the same way;
+ * IAS 7 classifies owner distributions under financing — count only the transfer leg.
+ */
+function isProfitDistributionDuplicateCashLeg(tx: Transaction): boolean {
+  if (tx.type !== TransactionType.EXPENSE) return false;
+  if (tx.categoryId === CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID) return true;
+  return Boolean(tx.description?.includes('Profit Distribution:'));
+}
 
 export interface CashFlowEngineOptions {
   fromDate: string;
@@ -370,6 +382,8 @@ export function computeCashFlowReport(
       if (!isBankCash(acc)) continue;
 
       if (isTransactionFromVoidedOrCancelledInvoice(tx, state)) continue;
+
+      if (isProfitDistributionDuplicateCashLeg(tx)) continue;
 
       // Proceeds from sale of project asset (cash)
       if (tx.type === TransactionType.INCOME && tx.projectAssetId) {

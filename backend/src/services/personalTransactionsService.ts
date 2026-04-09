@@ -25,14 +25,13 @@ function numToApi(n: string | null | undefined): number {
 }
 
 export function rowToPersonalTransactionApi(row: PersonalTransactionRow): Record<string, unknown> {
-  const td = row.transaction_date instanceof Date ? row.transaction_date : new Date(row.transaction_date as unknown as string);
   const base: Record<string, unknown> = {
     id: row.id,
     accountId: row.account_id,
     personalCategoryId: row.personal_category_id,
     type: row.type,
     amount: numToApi(row.amount),
-    transactionDate: formatPgDateToYyyyMmDd(td),
+    transactionDate: formatPgDateToYyyyMmDd(row.transaction_date),
     description: row.description ?? undefined,
     version: row.version,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
@@ -225,8 +224,7 @@ export async function updatePersonalTransaction(
       throw new Error('Invalid transactionDate.');
     }
   } else {
-    const ed = existing.transaction_date as unknown as Date | string;
-    dateStr = ed instanceof Date ? formatPgDateToYyyyMmDd(ed) : String(ed).slice(0, 10);
+    dateStr = formatPgDateToYyyyMmDd(existing.transaction_date);
   }
 
   const desc =

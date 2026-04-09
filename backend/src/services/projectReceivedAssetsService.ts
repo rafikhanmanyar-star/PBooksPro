@@ -37,14 +37,6 @@ function optDate(v: unknown): string | null {
 }
 
 export function rowToProjectReceivedAssetApi(row: ProjectReceivedAssetRow): Record<string, unknown> {
-  const rd =
-    row.received_date instanceof Date ? row.received_date : new Date(row.received_date as unknown as string);
-  const sd =
-    row.sold_date instanceof Date
-      ? row.sold_date
-      : row.sold_date
-        ? new Date(row.sold_date as unknown as string)
-        : null;
   const base: Record<string, unknown> = {
     id: row.id,
     projectId: row.project_id,
@@ -53,8 +45,8 @@ export function rowToProjectReceivedAssetApi(row: ProjectReceivedAssetRow): Reco
     description: row.description,
     assetType: row.asset_type,
     recordedValue: Number(row.recorded_value),
-    receivedDate: formatPgDateToYyyyMmDd(rd),
-    soldDate: sd ? formatPgDateToYyyyMmDd(sd) : undefined,
+    receivedDate: formatPgDateToYyyyMmDd(row.received_date),
+    soldDate: row.sold_date ? formatPgDateToYyyyMmDd(row.sold_date) : undefined,
     saleAmount: row.sale_amount != null ? Number(row.sale_amount) : undefined,
     saleAccountId: row.sale_account_id ?? undefined,
     notes: row.notes ?? undefined,

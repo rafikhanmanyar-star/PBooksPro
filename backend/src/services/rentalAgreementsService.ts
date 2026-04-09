@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
+import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { randomUUID } from 'crypto';
 
 export type RentalAgreementRow = {
@@ -32,15 +32,13 @@ function numToApi(n: string | null | undefined): number | undefined {
 }
 
 export function rowToRentalAgreementApi(row: RentalAgreementRow): Record<string, unknown> {
-  const sd = row.start_date instanceof Date ? row.start_date : new Date(row.start_date as unknown as string);
-  const ed = row.end_date instanceof Date ? row.end_date : new Date(row.end_date as unknown as string);
   const base: Record<string, unknown> = {
     id: row.id,
     agreementNumber: row.agreement_number,
     contactId: row.contact_id,
     propertyId: row.property_id,
-    startDate: sd.toISOString(),
-    endDate: ed.toISOString(),
+    startDate: formatPgDateToYyyyMmDd(row.start_date),
+    endDate: formatPgDateToYyyyMmDd(row.end_date),
     monthlyRent: Number(row.monthly_rent),
     rentDueDate: row.rent_due_date ?? 1,
     status: row.status,

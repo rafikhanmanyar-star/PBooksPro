@@ -57,13 +57,6 @@ function expenseItemsToDb(body: Record<string, unknown>): string | null {
 }
 
 export function rowToBillApi(row: BillRow): Record<string, unknown> {
-  const issue =
-    row.issue_date instanceof Date ? row.issue_date : new Date(row.issue_date as unknown as string);
-  const due = row.due_date
-    ? row.due_date instanceof Date
-      ? row.due_date
-      : new Date(row.due_date as unknown as string)
-    : null;
   const base: Record<string, unknown> = {
     id: row.id,
     billNumber: row.bill_number,
@@ -72,8 +65,8 @@ export function rowToBillApi(row: BillRow): Record<string, unknown> {
     amount: Number(row.amount),
     paidAmount: Number(row.paid_amount),
     status: row.status,
-    issueDate: formatPgDateToYyyyMmDd(issue),
-    dueDate: due ? formatPgDateToYyyyMmDd(due) : undefined,
+    issueDate: formatPgDateToYyyyMmDd(row.issue_date),
+    dueDate: row.due_date ? formatPgDateToYyyyMmDd(row.due_date) : undefined,
     description: row.description ?? undefined,
     categoryId: row.category_id ?? undefined,
     projectId: row.project_id ?? undefined,

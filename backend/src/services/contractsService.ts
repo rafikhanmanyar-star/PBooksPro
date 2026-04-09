@@ -55,18 +55,8 @@ function parseExpenseItems(v: unknown): string | null {
 }
 
 export function rowToContractApi(row: ContractRow): Record<string, unknown> {
-  const sd =
-    row.start_date instanceof Date
-      ? row.start_date
-      : row.start_date
-        ? new Date(row.start_date as unknown as string)
-        : null;
-  const ed =
-    row.end_date instanceof Date
-      ? row.end_date
-      : row.end_date
-        ? new Date(row.end_date as unknown as string)
-        : null;
+  const sd = row.start_date ?? null;
+  const ed = row.end_date ?? null;
   const base: Record<string, unknown> = {
     id: row.id,
     contractNumber: row.contract_number,

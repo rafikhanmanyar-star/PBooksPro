@@ -152,13 +152,13 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
     };
 
     const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-        // Only select-all and open when focus came from keyboard (tab). When focus came from mouse
-        // (e.g. right-to-left text selection), don't select/open to avoid overwriting selection and crashes.
-        if (!mouseDownOnInputRef.current) {
+        // Do not open the calendar on focus. Async re-renders (e.g. report data loading) can move focus
+        // or restore it without a preceding mousedown, which was opening the popup unexpectedly.
+        // Opening is handled by onClick and the calendar icon only.
+        if (mouseDownOnInputRef.current) return;
+        // Select-all only when tabbing from another control (not when focus appears with no related target).
+        if (e.relatedTarget != null) {
             e.target.select();
-            if (!disabled) {
-                setIsOpen(true);
-            }
         }
     };
 
@@ -207,6 +207,17 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
                     onFocus={handleInputFocus}
                     onBlur={handleInputBlur}
                     onClick={() => { mouseDownOnInputRef.current = false; if (!disabled) setIsOpen(true); }}
+                    onKeyDown={(e) => {
+                        if (disabled) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setIsOpen((open) => !open);
+                        }
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setIsOpen(false);
+                        }
+                    }}
                     className={inputClassName}
                     disabled={disabled}
                     required={required}

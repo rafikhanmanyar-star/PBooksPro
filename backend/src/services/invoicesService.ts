@@ -47,9 +47,6 @@ function parseDate(label: string, v: unknown): string {
 }
 
 export function rowToInvoiceApi(row: InvoiceRow): Record<string, unknown> {
-  const issue =
-    row.issue_date instanceof Date ? row.issue_date : new Date(row.issue_date as unknown as string);
-  const due = row.due_date instanceof Date ? row.due_date : new Date(row.due_date as unknown as string);
   const base: Record<string, unknown> = {
     id: row.id,
     invoiceNumber: row.invoice_number,
@@ -57,8 +54,8 @@ export function rowToInvoiceApi(row: InvoiceRow): Record<string, unknown> {
     amount: Number(row.amount),
     paidAmount: Number(row.paid_amount),
     status: row.status,
-    issueDate: formatPgDateToYyyyMmDd(issue),
-    dueDate: formatPgDateToYyyyMmDd(due),
+    issueDate: formatPgDateToYyyyMmDd(row.issue_date),
+    dueDate: formatPgDateToYyyyMmDd(row.due_date),
     invoiceType: row.invoice_type,
     description: row.description ?? undefined,
     projectId: row.project_id ?? undefined,
