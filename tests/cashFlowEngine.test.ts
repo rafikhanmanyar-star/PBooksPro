@@ -207,4 +207,54 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   assert.strictEqual(getTransactionCashDelta(tx, m), 0, 'internal bank transfer → 0 delta');
 }
 
+{
+  // Profit distribution via Internal Clearing should have zero cash impact.
+  // In production: EXPENSE on clearing (skipped by duplicate guard) + TRANSFER from clearing to equity.
+  // Internal Clearing is excluded from cash calculations so the transfer has zero cashDelta.
+  const state = minimalState({
+    categories: [
+      {
+        id: CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID,
+        name: 'Profit Share',
+        type: TransactionType.EXPENSE,
+        plSubType: 'operating_expense',
+      },
+    ],
+    transactions: [
+      {
+        id: 'pd-exp-clr',
+        type: TransactionType.EXPENSE,
+        amount: 77000,
+        date: '2024-06-15',
+        accountId: 'sys-acc-clearing',
+        categoryId: CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID,
+        description: 'Profit Distribution: Cycle 2026',
+        projectId: 'p1',
+      } as AppState['transactions'][0],
+      {
+        id: 'pd-tr-clr',
+        type: TransactionType.TRANSFER,
+        subtype: EquityLedgerSubtype.PROFIT_SHARE,
+        amount: 77000,
+        date: '2024-06-15',
+        accountId: 'eq1',
+        fromAccountId: 'sys-acc-clearing',
+        toAccountId: 'eq1',
+        description: 'Profit Share: Cycle 2026',
+        projectId: 'p1',
+      } as AppState['transactions'][0],
+    ],
+  });
+
+  const r = computeCashFlowReport(state, {
+    fromDate: '2024-06-01',
+    toDate: '2024-06-30',
+    selectedProjectId: 'p1',
+  });
+
+  const dist = r.financing.items.find((i) => i.label.includes('Distributions and profit'));
+  assert.ok(!dist, 'profit distribution via Internal Clearing must not appear in cash flow (non-cash allocation)');
+  assert.strictEqual(r.financing.total, 0, 'no financing cash flow from clearing-based profit distribution');
+}
+
 console.log('cashFlowEngine.test.ts: OK');

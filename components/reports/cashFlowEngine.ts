@@ -24,8 +24,9 @@ import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../../service
 
 /**
  * Profit distribution posts (1) an EXPENSE on Internal Clearing and (2) a paired TRANSFER
- * (PROFIT_SHARE) from clearing to investor equity. Both affect bank cash delta the same way;
- * IAS 7 classifies owner distributions under financing — count only the transfer leg.
+ * (PROFIT_SHARE) from clearing to investor equity. Neither is a real cash movement because
+ * Internal Clearing is a pass-through account excluded from cash calculations. This guard
+ * catches the expense leg in case an account override maps the category to a real bank.
  */
 function isProfitDistributionDuplicateCashLeg(tx: Transaction): boolean {
   if (tx.type !== TransactionType.EXPENSE) return false;
@@ -99,8 +100,9 @@ function inPeriodInclusive(txDateStr: string, fromYmd: string, toYmd: string): b
   return t >= parseYmd(fromYmd) && t <= parseYmd(toYmd);
 }
 
-function isBankCash(acc: Account | undefined | null): boolean {
+function isBankCash(acc: Account | undefined | null, clearingId?: string): boolean {
   if (!acc) return false;
+  if (clearingId && acc.id === clearingId) return false;
   return acc.type === AccountType.BANK || acc.type === AccountType.CASH;
 }
 
@@ -114,15 +116,15 @@ function sumCashFromBalanceSheet(bs: BalanceSheetReportResult): number {
 }
 
 /** Net change to consolidated cash & cash equivalents for one transaction. */
-export function getTransactionCashDelta(tx: Transaction, accountsById: Map<string, Account>): number {
+export function getTransactionCashDelta(tx: Transaction, accountsById: Map<string, Account>, clearingId?: string): number {
   if (tx.type === TransactionType.INCOME || tx.type === TransactionType.EXPENSE) {
     const acc = accountsById.get(tx.accountId);
-    if (!isBankCash(acc)) return 0;
+    if (!isBankCash(acc, clearingId)) return 0;
     return tx.type === TransactionType.INCOME ? tx.amount : -tx.amount;
   }
   if (tx.type === TransactionType.LOAN) {
     const acc = accountsById.get(tx.accountId);
-    if (!isBankCash(acc)) return 0;
+    if (!isBankCash(acc, clearingId)) return 0;
     const st = tx.subtype as LoanSubtype | undefined;
     if (st === LoanSubtype.RECEIVE || st === LoanSubtype.COLLECT) return tx.amount;
     if (st === LoanSubtype.GIVE || st === LoanSubtype.REPAY) return -tx.amount;
@@ -130,8 +132,8 @@ export function getTransactionCashDelta(tx: Transaction, accountsById: Map<strin
   }
   if (tx.type === TransactionType.TRANSFER) {
     let d = 0;
-    if (tx.fromAccountId && isBankCash(accountsById.get(tx.fromAccountId))) d -= tx.amount;
-    if (tx.toAccountId && isBankCash(accountsById.get(tx.toAccountId))) d += tx.amount;
+    if (tx.fromAccountId && isBankCash(accountsById.get(tx.fromAccountId), clearingId)) d -= tx.amount;
+    if (tx.toAccountId && isBankCash(accountsById.get(tx.toAccountId), clearingId)) d += tx.amount;
     return d;
   }
   return 0;
@@ -218,6 +220,8 @@ export function computeCashFlowReport(
 
   const accountsById = new Map(state.accounts.map((a) => [a.id, a]));
   const catById = new Map(state.categories.map((c) => [c.id, c]));
+  const clearingAccount = state.accounts.find((a) => a.name === 'Internal Clearing');
+  const clearingId = clearingAccount?.id;
   const assetIds = new Set(
     state.accounts.filter((a) => a.type === AccountType.ASSET).map((a) => a.id)
   );
@@ -255,13 +259,13 @@ export function computeCashFlowReport(
       if (!projectId) continue;
     }
 
-    const cashDelta = getTransactionCashDelta(tx, accountsById);
+    const cashDelta = getTransactionCashDelta(tx, accountsById, clearingId);
     if (Math.abs(cashDelta) < EPS) continue;
 
     const override = getAccountOverride(tx, cashFlowCategoryByAccountId);
 
     // --- Loans (financing) — do not allow mapping to break loan substance ---
-    if (tx.type === TransactionType.LOAN && isBankCash(accountsById.get(tx.accountId))) {
+    if (tx.type === TransactionType.LOAN && isBankCash(accountsById.get(tx.accountId), clearingId)) {
       const st = tx.subtype as LoanSubtype | undefined;
       if (st === LoanSubtype.RECEIVE || st === LoanSubtype.COLLECT) {
         ensureBucket(financing, 'loans_received', 'Proceeds from borrowings', tx.id, cashDelta);
@@ -275,8 +279,8 @@ export function computeCashFlowReport(
     if (tx.type === TransactionType.TRANSFER) {
       const fromA = tx.fromAccountId ? accountsById.get(tx.fromAccountId) : undefined;
       const toA = tx.toAccountId ? accountsById.get(tx.toAccountId) : undefined;
-      const fromB = isBankCash(fromA);
-      const toB = isBankCash(toA);
+      const fromB = isBankCash(fromA, clearingId);
+      const toB = isBankCash(toA, clearingId);
       if (fromB && toB) {
         // Internal cash pool transfer — no net impact; should already be delta 0
         continue;
@@ -379,7 +383,7 @@ export function computeCashFlowReport(
     // --- Income / Expense on bank ---
     if (tx.type === TransactionType.INCOME || tx.type === TransactionType.EXPENSE) {
       const acc = accountsById.get(tx.accountId);
-      if (!isBankCash(acc)) continue;
+      if (!isBankCash(acc, clearingId)) continue;
 
       if (isTransactionFromVoidedOrCancelledInvoice(tx, state)) continue;
 
