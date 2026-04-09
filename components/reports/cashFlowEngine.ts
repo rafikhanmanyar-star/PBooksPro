@@ -304,13 +304,20 @@ export function computeCashFlowReport(
       if (touchesEquity && (fromB || toB)) {
         if (
           st === EquityLedgerSubtype.PROFIT_SHARE ||
-          st === EquityLedgerSubtype.PM_FEE_EQUITY ||
-          st === EquityLedgerSubtype.CAPITAL_PAYOUT
+          st === EquityLedgerSubtype.PM_FEE_EQUITY
         ) {
           ensureBucket(
             financing,
             'distributions',
             'Distributions and profit allocations to owners',
+            tx.id,
+            cashDelta
+          );
+        } else if (st === EquityLedgerSubtype.CAPITAL_PAYOUT) {
+          ensureBucket(
+            financing,
+            'capital_payouts',
+            'Equity paid to investors',
             tx.id,
             cashDelta
           );

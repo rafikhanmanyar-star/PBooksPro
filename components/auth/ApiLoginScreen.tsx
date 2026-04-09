@@ -58,6 +58,50 @@ function persistLastUsername(name: string) {
   }
 }
 
+const API_SAVED_LOGIN_KEY = 'pbookspro_api_saved_login';
+
+function readSavedApiPassword(tenantId: string, username: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = localStorage.getItem(API_SAVED_LOGIN_KEY);
+    if (!raw) return '';
+    const o = JSON.parse(raw) as { tenantId?: string; username?: string; password?: string };
+    const tid = (tenantId || 'default').trim();
+    if ((o.tenantId || '').trim() !== tid) return '';
+    if (
+      (o.username || '').trim().toLowerCase() !== (username || '').trim().toLowerCase()
+    ) {
+      return '';
+    }
+    return typeof o.password === 'string' ? o.password : '';
+  } catch {
+    return '';
+  }
+}
+
+function persistSavedApiLogin(tenantId: string, username: string, password: string) {
+  try {
+    localStorage.setItem(
+      API_SAVED_LOGIN_KEY,
+      JSON.stringify({
+        tenantId: tenantId.trim() || 'default',
+        username: username.trim(),
+        password,
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearSavedApiLogin() {
+  try {
+    localStorage.removeItem(API_SAVED_LOGIN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 type ViewMode = 'login' | 'register' | 'registerSuccess';
 
 const ApiLoginScreen: React.FC = () => {
@@ -66,7 +110,13 @@ const ApiLoginScreen: React.FC = () => {
   const [serverUrl, setServerUrl] = useState('');
   const [tenantId, setTenantId] = useState(() => readStoredLastTenant());
   const [username, setUsername] = useState(() => readStoredLastUsername());
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(() =>
+    readSavedApiPassword(readStoredLastTenant(), readStoredLastUsername())
+  );
+  const [savePassword, setSavePassword] = useState(() => {
+    const p = readSavedApiPassword(readStoredLastTenant(), readStoredLastUsername());
+    return p.length > 0;
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('login');
@@ -197,6 +247,11 @@ const ApiLoginScreen: React.FC = () => {
     try {
       apiClient.setBaseUrl(rootUrl());
       await login(user, password, tid);
+      if (savePassword) {
+        persistSavedApiLogin(tid, user, password);
+      } else {
+        clearSavedApiLogin();
+      }
     } catch (err: unknown) {
       const msg =
         err && typeof err === 'object' && 'error' in err
@@ -440,6 +495,22 @@ const ApiLoginScreen: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                checked={savePassword}
+                onChange={e => setSavePassword(e.target.checked)}
+                disabled={isLoading}
+              />
+              <span>
+                Save password on this device
+                <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                  Stored locally with your last organization and username. Uncheck and sign in to remove it.
+                </span>
+              </span>
+            </label>
 
             <button
               type="submit"

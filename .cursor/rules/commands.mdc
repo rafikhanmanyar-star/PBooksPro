@@ -5,18 +5,23 @@ alwaysApply: true
 
 # PBooks Pro – Commands
 
-## Run locally (no server, no cloud)
+## Run locally (PostgreSQL + API + Electron Client)
 
 ```powershell
 npm run test:local-only
 ```
 
 **What it does:**
-1. Sets `VITE_LOCAL_ONLY=true` and `VITE_ELECTRON_BUILD=true`
-2. Runs `npm run electron:local`: extracts schema, builds the app, launches Electron
-3. Data is stored in local SQLite only (e.g. `%APPDATA%\pbooks-pro\pbookspro\PBooksPro.db`)
+1. Loads `.env` (needs `DATABASE_URL` pointing at a local PostgreSQL instance)
+2. Rebuilds native modules for Electron
+3. Builds the backend (bundles financial engines + compiles TypeScript)
+4. Runs PostgreSQL migrations (`db:migrate:lan`)
+5. Starts the backend API server (`node backend/dist/index.js`) in background
+6. Builds the Vite frontend with `VITE_LOCAL_ONLY=false` and `VITE_ELECTRON_BUILD=true`
+7. Launches Electron client connected to the local API server (`http://127.0.0.1:3000/api`)
+8. When Electron exits, stops the backend API server
 
-**Migrations:** When the app starts, the Electron main process opens the DB and runs `initSchema()` in `electron/sqliteBridge.cjs`. That includes the **rental_agreements** repair (copy `org_id` → `tenant_id`, drop `org_id`). So running `npm run test:local-only` **does apply** the migration to your local DB on first launch.
+**Requirements:** PostgreSQL must be running locally with `DATABASE_URL` configured in the root `.env` file (e.g. `DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/pBookspro`).
 
 ---
 

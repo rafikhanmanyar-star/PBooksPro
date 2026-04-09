@@ -4,10 +4,43 @@ import { useAppContext } from '../../context/AppContext';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 
+const LOCAL_SAVED_LOGIN_KEY = 'pbookspro_local_saved_login';
+
+function readSavedLocalLogin(): { username: string; password: string } | null {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = localStorage.getItem(LOCAL_SAVED_LOGIN_KEY);
+        if (!raw) return null;
+        const o = JSON.parse(raw) as { username?: unknown; password?: unknown };
+        if (typeof o.username !== 'string' || typeof o.password !== 'string') return null;
+        return { username: o.username, password: o.password };
+    } catch {
+        return null;
+    }
+}
+
+function persistSavedLocalLogin(username: string, password: string) {
+    try {
+        localStorage.setItem(LOCAL_SAVED_LOGIN_KEY, JSON.stringify({ username, password }));
+    } catch {
+        /* ignore */
+    }
+}
+
+function clearSavedLocalLogin() {
+    try {
+        localStorage.removeItem(LOCAL_SAVED_LOGIN_KEY);
+    } catch {
+        /* ignore */
+    }
+}
+
 const LoginPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
+    const initialSaved = readSavedLocalLogin();
+    const [username, setUsername] = useState(initialSaved?.username ?? '');
+    const [password, setPassword] = useState(initialSaved?.password ?? '');
+    const [savePassword, setSavePassword] = useState(!!initialSaved);
     const [error, setError] = useState('');
 
     const handleLogin = (e: React.FormEvent) => {
@@ -33,6 +66,12 @@ const LoginPage: React.FC = () => {
              // Or allow it. For security, better to be strict.
              setError('Incorrect password.');
              return;
+        }
+
+        if (savePassword) {
+            persistSavedLocalLogin(username.trim(), password);
+        } else {
+            clearSavedLocalLogin();
         }
 
         dispatch({ type: 'LOGIN', payload: user });
@@ -68,6 +107,21 @@ const LoginPage: React.FC = () => {
                         autoComplete="off"
                         data-form-type="other"
                     />
+
+                    <label className="flex items-start gap-2 cursor-pointer text-sm text-slate-700">
+                        <input
+                            type="checkbox"
+                            className="mt-0.5 rounded border-slate-300 text-slate-800 focus:ring-slate-500"
+                            checked={savePassword}
+                            onChange={e => setSavePassword(e.target.checked)}
+                        />
+                        <span>
+                            Save password on this device
+                            <span className="block text-xs text-slate-500 font-normal mt-0.5">
+                                Stored locally in your browser. Clear the checkbox and sign in to remove it.
+                            </span>
+                        </span>
+                    </label>
 
                     {error && (
                         <div className="p-3 bg-rose-50 text-rose-700 text-sm rounded border border-rose-200">
