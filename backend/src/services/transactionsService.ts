@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { recalculateBillPaymentAggregates } from './billsService.js';
 import { recalculateInvoicePaymentAggregates } from './invoicesService.js';
+import { assertExpenseProjectCashAvailable } from '../financial/expenseCashValidation.js';
 
 /** Keep invoice/bill paid_amount + status aligned with ledger (also when client saveInvoice fails, e.g. LOCK_HELD). */
 async function recalculateAggregatesForLinkedIds(
@@ -279,6 +280,15 @@ export async function createTransaction(
     p.category_id
   );
 
+  await assertExpenseProjectCashAvailable(client, tenantId, {
+    type: p.type,
+    amount: Number.isFinite(p.amount) ? p.amount : 0,
+    date: p.date,
+    account_id: p.account_id,
+    project_id: p.project_id,
+    bill_id: p.bill_id,
+  });
+
   const r = await client.query<TransactionRow>(
     `INSERT INTO transactions (
        id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
@@ -350,6 +360,16 @@ export async function updateTransaction(
     p.bill_id,
     p.category_id
   );
+
+  await assertExpenseProjectCashAvailable(client, tenantId, {
+    type: p.type,
+    amount: Number.isFinite(p.amount) ? p.amount : 0,
+    date: p.date,
+    account_id: p.account_id,
+    project_id: p.project_id,
+    bill_id: p.bill_id,
+    exclude_transaction_id: id,
+  });
 
   const fieldVals = [
     p.type,
@@ -477,6 +497,16 @@ export async function upsertTransaction(
     p.bill_id,
     p.category_id
   );
+
+  await assertExpenseProjectCashAvailable(client, tenantId, {
+    type: p.type,
+    amount: Number.isFinite(p.amount) ? p.amount : 0,
+    date: p.date,
+    account_id: p.account_id,
+    project_id: p.project_id,
+    bill_id: p.bill_id,
+    exclude_transaction_id: id,
+  });
 
   const fieldVals = [
     p.type,

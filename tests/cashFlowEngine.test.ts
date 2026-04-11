@@ -258,7 +258,7 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
 }
 
 {
-  // Financing section total must equal sum of all rows, including isNonCash inter-project lines.
+  // Legacy: Internal Clearing ↔ Equity inter-project batches — zero cash; disclosure only (non-cash).
   const state = minimalState({
     projects: [
       { id: 'p1', name: 'Project A' },
@@ -312,17 +312,83 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   const sumAllLines = r.financing.items.reduce((s, i) => s + i.amount, 0);
   assert.ok(
     r.financing.items.some((i) => i.label.includes('Inter-project') && i.isNonCash && i.amount < 0),
-    'inter-project line appears as non-cash financing'
+    'clearing-based inter-project line appears as non-cash financing disclosure'
   );
   assert.strictEqual(
     r.financing.total,
-    66_000_000,
-    'net financing (cash) = contributions only; inter-project is non-cash disclosure'
+    60_000_000,
+    'single-project net financing sums all financing rows (cash + inter-project disclosure)'
   );
+  assert.ok(Math.abs(sumAllLines - r.financing.total) < 0.02, 'financing foot equals sum of line amounts');
   assert.ok(
-    Math.abs(sumAllLines - (66_000_000 - 6_000_000)) < 0.02,
-    'full line sum still reflects disclosure amounts including non-cash inter-project'
+    !r.validation.reconciled,
+    'legacy clearing inter-project is non-cash in the ledger; foot includes disclosure so CF may not tie BS cash'
   );
+  assert.ok(Math.abs(r.validation.discrepancy - -6_000_000) < 0.02, 'expected -6M discrepancy vs BS cash');
+}
+
+{
+  // Bank/cash inter-project: real cash in main financing lines; no duplicate non-cash disclosure row.
+  const state = minimalState({
+    projects: [
+      { id: 'p1', name: 'Project A' },
+      { id: 'p2', name: 'Project B' },
+    ],
+    transactions: [
+      {
+        id: 'inv-big',
+        type: TransactionType.TRANSFER,
+        subtype: EquityLedgerSubtype.INVESTMENT,
+        amount: 66_000_000,
+        date: '2024-06-10',
+        accountId: 'eq1',
+        fromAccountId: 'eq1',
+        toAccountId: 'bank1',
+        projectId: 'p1',
+      } as AppState['transactions'][0],
+      {
+        id: 'move-out-bank',
+        type: TransactionType.TRANSFER,
+        subtype: EquityLedgerSubtype.MOVE_OUT,
+        amount: 6_000_000,
+        date: '2024-06-12',
+        accountId: 'bank1',
+        fromAccountId: 'bank1',
+        toAccountId: 'eq1',
+        projectId: 'p1',
+        batchId: 'batch-ip-2',
+      } as AppState['transactions'][0],
+      {
+        id: 'move-in-bank',
+        type: TransactionType.TRANSFER,
+        subtype: EquityLedgerSubtype.MOVE_IN,
+        amount: 6_000_000,
+        date: '2024-06-12',
+        accountId: 'eq1',
+        fromAccountId: 'eq1',
+        toAccountId: 'bank1',
+        projectId: 'p2',
+        batchId: 'batch-ip-2',
+      } as AppState['transactions'][0],
+    ],
+  });
+
+  const r = computeCashFlowReport(state, {
+    fromDate: '2024-06-01',
+    toDate: '2024-06-30',
+    selectedProjectId: 'p1',
+  });
+
+  assert.ok(
+    !r.financing.items.some((i) => i.label.includes('Inter-project') && i.isNonCash),
+    'bank-based inter-project must not add extra non-cash disclosure (cash is in main financing buckets)'
+  );
+  assert.strictEqual(
+    r.financing.total,
+    60_000_000,
+    'p1 financing cash = investment 66M − inter-project bank outflow 6M'
+  );
+  assert.ok(r.validation.reconciled, `expected CF reconciled to BS cash, discrepancy=${r.validation.discrepancy}`);
 }
 
 console.log('cashFlowEngine.test.ts: OK');

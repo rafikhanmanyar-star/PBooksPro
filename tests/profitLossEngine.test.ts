@@ -5,6 +5,8 @@
 import type { AppState, Category, Transaction, Account, Project } from '../types';
 import { TransactionType, AccountType } from '../types';
 import { computeProfitLossReport } from '../components/reports/profitLossEngine';
+import { computeProjectProfitLossTotals } from '../components/reports/projectProfitLossComputation';
+import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../services/database/resolveProfitDistributionExpenseCategory';
 
 function baseState(overrides: Partial<AppState> = {}): AppState {
   const incomeCat: Category = {
@@ -264,6 +266,42 @@ function assertClose(a: number, b: number, label: string) {
   });
   assertClose(r.totalRevenue, 5000, 'bulk revenue');
   assertClose(r.validation.legacyNetProfit, 5000, 'bulk net');
+}
+
+// 5) Profit-distribution expense category (sys-cat-profit-share) must not affect P&L
+{
+  const profitShareCat: Category = {
+    id: CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID,
+    name: 'Profit Share',
+    type: TransactionType.EXPENSE,
+    plSubType: 'operating_expense',
+  };
+  const inner = baseState();
+  const s = baseState({
+    categories: [...inner.categories, profitShareCat],
+    transactions: [
+      tx({
+        id: 'pd',
+        amount: 800_000,
+        date: '2025-08-01',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID,
+        projectId: 'proj-1',
+      }),
+      tx({
+        id: 'rev',
+        amount: 1_000_000,
+        date: '2025-08-02',
+        type: TransactionType.INCOME,
+        accountId: 'acc-bank',
+        categoryId: 'cat-inc',
+        projectId: 'proj-1',
+      }),
+    ],
+  });
+  const pl = computeProjectProfitLossTotals(s, 'proj-1', '2025-01-01', '2025-12-31');
+  assertClose(pl.netProfit, 1_000_000, 'distribution expense excluded from P&L');
 }
 
 console.log('profitLossEngine.test.ts: OK');

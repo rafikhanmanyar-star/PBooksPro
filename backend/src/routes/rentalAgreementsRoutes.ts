@@ -8,6 +8,7 @@ import {
   listRentalAgreements,
   rowToRentalAgreementApi,
   softDeleteRentalAgreement,
+  syncReconcileRentalAgreementsForTenant,
   updateRentalAgreement,
 } from '../services/rentalAgreementsService.js';
 import { listInvoices, rowToInvoiceApi } from '../services/invoicesService.js';
@@ -96,9 +97,11 @@ rentalAgreementsRouter.post('/rental-agreements', async (req: AuthedRequest, res
     return;
   }
   try {
-    const row = await withTransaction((client) =>
-      createRentalAgreement(client, tenantId, req.body as Record<string, unknown>)
-    );
+    const row = await withTransaction(async (client) => {
+      const created = await createRentalAgreement(client, tenantId, req.body as Record<string, unknown>);
+      await syncReconcileRentalAgreementsForTenant(client, tenantId);
+      return (await getRentalAgreementById(client, tenantId, created.id)) ?? created;
+    });
     const apiRow = rowToRentalAgreementApi(row);
     emitEntityEvent(tenantId, 'created', 'rental_agreement', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, 201);
@@ -116,9 +119,13 @@ rentalAgreementsRouter.put('/rental-agreements/:id', async (req: AuthedRequest, 
   }
   const { id } = req.params;
   try {
-    const result = await withTransaction((client) =>
-      updateRentalAgreement(client, tenantId, id, req.body as Record<string, unknown>)
-    );
+    const result = await withTransaction(async (client) => {
+      const u = await updateRentalAgreement(client, tenantId, id, req.body as Record<string, unknown>);
+      if (u.conflict || !u.row) return u;
+      await syncReconcileRentalAgreementsForTenant(client, tenantId);
+      const refreshed = await getRentalAgreementById(client, tenantId, id);
+      return { row: refreshed ?? u.row, conflict: false };
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
       return;
@@ -148,14 +155,16 @@ rentalAgreementsRouter.delete('/rental-agreements/:id', async (req: AuthedReques
     typeof versionRaw === 'string' && versionRaw !== '' ? Number(versionRaw) : undefined;
 
   try {
-    const result = await withTransaction((client) =>
-      softDeleteRentalAgreement(
+    const result = await withTransaction(async (client) => {
+      const del = await softDeleteRentalAgreement(
         client,
         tenantId,
         id,
         Number.isFinite(expectedVersion) ? expectedVersion : undefined
-      )
-    );
+      );
+      if (del.ok && !del.conflict) await syncReconcileRentalAgreementsForTenant(client, tenantId);
+      return del;
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
       return;

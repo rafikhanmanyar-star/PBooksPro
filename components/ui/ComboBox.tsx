@@ -39,6 +39,8 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
   const shouldSelectOnFocusRef = useRef(true);
   const lastUserTypedValueRef = useRef<string | null>(null);
   const mouseDownOnInputRef = useRef(false);
+  /** When true, first printable key replaces the whole value (selected label), e.g. after mouse focus without select-all. */
+  const replaceFirstKeystrokeRef = useRef(false);
   const reactId = useId().replace(/:/g, '');
 
   // Generate an id if not provided (for accessibility; useId avoids duplicate ids when label is omitted)
@@ -225,6 +227,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
   }, [disabled, query, entityType, allowAddNew, hasExactMatch]);
 
   const handleSelect = (item: ComboBoxItem) => {
+    replaceFirstKeystrokeRef.current = false;
     onSelect(item, undefined);
     setQuery(item.name);
     lastUserTypedValueRef.current = null; // Reset since we're setting from selection
@@ -279,19 +282,57 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     if (!disabled) {
+      // After mouse focus we intentionally skip select() so drag-to-select text still works; use
+      // replaceFirstKeystrokeRef + keydown so the first typed character replaces the label instead of appending.
+      replaceFirstKeystrokeRef.current = !!(selectedItem && query === selectedItem.name);
+
       // Only open and select-all when focus came from keyboard (tab). When focus came from mouse (mousedown),
-      // don't open here and don't call select() — that overwrites in-progress selection and can crash.
+      // don't call select() here — that overwrites in-progress selection and can crash.
       if (!mouseDownOnInputRef.current) {
         setIsOpen(true);
         if (shouldSelectOnFocusRef.current) {
           const input = e.target;
           input.select();
         }
+      } else {
+        setIsOpen(true);
       }
     }
   };
 
+  const handleInputSelectNative = (e: React.SyntheticEvent<HTMLInputElement>) => {
+    const t = e.currentTarget;
+    const len = t.value.length;
+    if (len === 0) return;
+    if (t.selectionStart !== 0 || t.selectionEnd !== len) {
+      replaceFirstKeystrokeRef.current = false;
+    }
+  };
+
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const isPrintable =
+      e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat;
+
+    if (replaceFirstKeystrokeRef.current && isPrintable) {
+      replaceFirstKeystrokeRef.current = false;
+      shouldSelectOnFocusRef.current = false;
+      e.preventDefault();
+      const newValue = e.key;
+      lastUserTypedValueRef.current = newValue;
+      setQuery(newValue);
+      if (onQueryChange) {
+        onQueryChange(newValue);
+      }
+      if (!isOpen) {
+        setIsOpen(true);
+      }
+      return;
+    }
+
+    if (replaceFirstKeystrokeRef.current && !isPrintable) {
+      replaceFirstKeystrokeRef.current = false;
+    }
+
     // When user starts typing, disable text selection to prevent interference
     if (shouldSelectOnFocusRef.current && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       shouldSelectOnFocusRef.current = false;
@@ -347,6 +388,8 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
   };
 
   const handleInputBlur = () => {
+    replaceFirstKeystrokeRef.current = false;
+
     // Clear selection if user typed something different from the selected item
     if (selectedId && selectedItem && lastUserTypedValueRef.current &&
       lastUserTypedValueRef.current !== selectedItem.name) {
@@ -395,6 +438,10 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
       onClick={handleInputClick}
       onFocus={handleInputFocus}
       onBlur={handleInputBlur}
+      onSelect={handleInputSelectNative}
+      onCompositionStart={() => {
+        replaceFirstKeystrokeRef.current = false;
+      }}
       onKeyDown={handleInputKeyDown}
       onChange={handleChange}
       placeholder={placeholder}

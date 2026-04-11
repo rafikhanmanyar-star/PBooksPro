@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { ICONS, CURRENCY } from '../../constants';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 
 export interface ARTreeNode {
   id: string;
@@ -230,6 +232,16 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
 
   const sortedTreeData = useMemo(() => sortNodes(treeData), [treeData, sortNodes]);
 
+  const arExpandableIds = useMemo(() => collectExpandableParentIds(sortedTreeData), [sortedTreeData]);
+
+  const handleExpandAllTree = useCallback(() => {
+    setExpandedIds(new Set(arExpandableIds));
+  }, [arExpandableIds]);
+
+  const handleCollapseAllTree = useCallback(() => {
+    setExpandedIds(new Set());
+  }, []);
+
   const totalOutstanding = useMemo(
     () => treeData.reduce((sum, n) => sum + n.outstanding, 0),
     [treeData]
@@ -259,6 +271,14 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
         >
           Entity <SortIcon column="name" />
         </div>
+        <TreeExpandCollapseControls
+          variant="app"
+          compact
+          className="px-0.5"
+          onExpandAll={handleExpandAllTree}
+          onCollapseAll={handleCollapseAllTree}
+          visible={arExpandableIds.length > 0}
+        />
         {showSecondary && (
           <div className="w-16 px-2 py-1.5 text-right select-none">
             {secondaryLabel}

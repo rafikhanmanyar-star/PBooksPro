@@ -26,12 +26,19 @@ import {
 import type { Transaction } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import type { ReportStateSlice } from './reportUtils';
+import { resolveProjectIdForTransaction } from './reportUtils';
 
-/** Include paired batch legs (e.g. inter-project MOVE_OUT + MOVE_IN) when drilling down. */
+/**
+ * Drill-down rows for cash flow lines. When a single project is selected, batch-linked transfers
+ * (inter-project MOVE_OUT + MOVE_IN) only show the leg that belongs to that project — not the mirror leg.
+ */
 function buildCashFlowDrillRows(
     lines: CashFlowLine[],
     transactionsById: Map<string, Transaction>,
-    allTransactions: Transaction[]
+    allTransactions: Transaction[],
+    reportState: ReportStateSlice,
+    selectedProjectId: string
 ): { tx: Transaction; lineLabel: string }[] {
     const byBatch = new Map<string, Transaction[]>();
     for (const t of allTransactions) {
@@ -40,6 +47,14 @@ function buildCashFlowDrillRows(
         arr.push(t);
         byBatch.set(t.batchId, arr);
     }
+    const projectScope = selectedProjectId !== 'all' ? selectedProjectId : null;
+
+    const mateBelongsToScope = (m: Transaction): boolean => {
+        if (!projectScope) return true;
+        const pid = resolveProjectIdForTransaction(m, reportState);
+        return pid === projectScope;
+    };
+
     const seen = new Set<string>();
     const out: { tx: Transaction; lineLabel: string }[] = [];
     for (const line of lines) {
@@ -49,7 +64,8 @@ function buildCashFlowDrillRows(
             if (tx.batchId) {
                 const mates = byBatch.get(tx.batchId);
                 if (mates && mates.length > 0) {
-                    for (const m of [...mates].sort(
+                    const filtered = projectScope ? mates.filter(mateBelongsToScope) : mates;
+                    for (const m of [...filtered].sort(
                         (a, b) =>
                             String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id))
                     )) {
@@ -79,6 +95,8 @@ function CashFlowDrillModal({
     lines,
     transactionsById,
     allTransactions,
+    reportStateSlice,
+    selectedProjectId,
 }: {
     open: boolean;
     onClose: () => void;
@@ -87,10 +105,18 @@ function CashFlowDrillModal({
     transactionsById: Map<string, Transaction>;
     /** When set, batch-related transactions (e.g. equity transfers) are expanded in the detail list. */
     allTransactions: Transaction[];
+    reportStateSlice: ReportStateSlice;
+    selectedProjectId: string;
 }) {
     const rows = useMemo(() => {
         if (allTransactions.length > 0) {
-            return buildCashFlowDrillRows(lines, transactionsById, allTransactions);
+            return buildCashFlowDrillRows(
+                lines,
+                transactionsById,
+                allTransactions,
+                reportStateSlice,
+                selectedProjectId
+            );
         }
         const out: { tx: Transaction; lineLabel: string }[] = [];
         for (const line of lines) {
@@ -101,7 +127,7 @@ function CashFlowDrillModal({
         }
         out.sort((a, b) => String(a.tx.date).localeCompare(String(b.tx.date)));
         return out;
-    }, [lines, transactionsById, allTransactions]);
+    }, [lines, transactionsById, allTransactions, reportStateSlice, selectedProjectId]);
 
     return (
         <Modal isOpen={open} onClose={onClose} title={title} size="xl">
@@ -435,8 +461,9 @@ const ProjectCashFlowReport: React.FC = () => {
                                     <td className="py-2 px-2 text-slate-800 pl-4 font-medium">
                                         Equity transfers & payouts
                                         <span className="block text-xs font-normal text-slate-600 mt-0.5">
-                                            Drill-down detail — may mix non-cash inter-project entries with cash payouts. “Net
-                                        cash from Financing” below is cash-only and ties to the balance sheet.
+                                            Includes inter-project and capital payout lines for this project. Net financing
+                                            below sums all financing rows (single-project view) so operating + financing
+                                            matches project cash movement; compare closing cash to the balance sheet.
                                         </span>
                                     </td>
                                     <td
@@ -628,6 +655,12 @@ const ProjectCashFlowReport: React.FC = () => {
                 lines={drilldown?.lines ?? []}
                 transactionsById={transactionsById}
                 allTransactions={state.transactions}
+                reportStateSlice={{
+                    invoices: state.invoices,
+                    bills: state.bills,
+                    projectAgreements: state.projectAgreements,
+                }}
+                selectedProjectId={selectedProjectId}
             />
 
             <CashFlowAuditModal

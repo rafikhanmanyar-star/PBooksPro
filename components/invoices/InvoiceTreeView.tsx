@@ -1,7 +1,9 @@
 
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Invoice } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { collectInvoiceTreeExpandableIds } from '../ui/treeExpandCollapseUtils';
 
 export interface TreeNode {
     id: string;
@@ -30,14 +32,16 @@ const TreeItem: React.FC<{
     onContextMenu?: (node: TreeNode, event: React.MouseEvent) => void;
     level?: number;
     colWidths: { count: number; balance: number };
-}> = React.memo(({ node, selectedNodeId, onNodeSelect, onContextMenu, level = 0, colWidths }) => {
-    const [isExpanded, setIsExpanded] = useState(true); // Default expanded for better visibility
+    expandedIds: Set<string>;
+    onToggleExpand: (id: string) => void;
+}> = React.memo(({ node, selectedNodeId, onNodeSelect, onContextMenu, level = 0, colWidths, expandedIds, onToggleExpand }) => {
     const isSelected = selectedNodeId === node.id;
     const hasChildren = node.children.length > 0 || node.invoices.length > 0;
+    const isExpanded = expandedIds.has(node.id);
 
     const handleToggle = (e: React.MouseEvent) => {
         e.stopPropagation();
-        setIsExpanded(!isExpanded);
+        onToggleExpand(node.id);
     };
 
     const handleSelect = () => {
@@ -52,7 +56,6 @@ const TreeItem: React.FC<{
         }
     };
 
-    // Indentation for the name column
     const paddingLeft = `${level * 16 + 8}px`;
 
     return (
@@ -62,7 +65,6 @@ const TreeItem: React.FC<{
                 onContextMenu={handleContextMenu}
                 className={`group contents cursor-pointer text-sm transition-all duration-200`}
             >
-                {/* Name Column (Fluid) */}
                 <div
                     className={`p-2 border-b border-r border-slate-200 flex items-center gap-2 min-w-0 overflow-hidden transition-colors
                         ${isSelected
@@ -86,7 +88,6 @@ const TreeItem: React.FC<{
                     <span className="truncate" title={node.name}>{node.name}</span>
                 </div>
 
-                {/* Balance Column (Fixed/Resizable) */}
                 <div
                     className={`p-2 border-b border-slate-200 text-right flex-shrink-0 tabular-nums text-xs transition-colors
                         ${isSelected
@@ -105,7 +106,7 @@ const TreeItem: React.FC<{
                 </div>
             </div>
 
-            {isExpanded && (
+            {isExpanded && hasChildren && (
                 <>
                     {node.children.map(childNode => (
                         <TreeItem
@@ -116,6 +117,8 @@ const TreeItem: React.FC<{
                             onContextMenu={onContextMenu}
                             level={level + 1}
                             colWidths={colWidths}
+                            expandedIds={expandedIds}
+                            onToggleExpand={onToggleExpand}
                         />
                     ))}
                 </>
@@ -125,10 +128,8 @@ const TreeItem: React.FC<{
 });
 
 const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNodeId, onNodeSelect, onContextMenu }) => {
-    // Sorting State
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' });
 
-    // Column Resizing State (Pixels)
     const [colWidths, setColWidths] = useState({ count: 64, balance: 96 });
     const resizingCol = useRef<SortKey | null>(null);
 
@@ -139,7 +140,6 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
         }));
     };
 
-    // Recursive sort function
     const sortNodes = useCallback((nodes: TreeNode[]): TreeNode[] => {
         const sorted = [...nodes].sort((a, b) => {
             let aVal: any = a[sortConfig.key];
@@ -162,6 +162,31 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
     }, [sortConfig]);
 
     const sortedTreeData = useMemo(() => sortNodes(treeData), [treeData, sortNodes]);
+
+    const invoiceExpandableIds = useMemo(() => collectInvoiceTreeExpandableIds(sortedTreeData), [sortedTreeData]);
+
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        setExpandedIds(new Set(invoiceExpandableIds));
+    }, [invoiceExpandableIds]);
+
+    const onToggleExpand = useCallback((id: string) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }, []);
+
+    const handleExpandAll = useCallback(() => {
+        setExpandedIds(new Set(invoiceExpandableIds));
+    }, [invoiceExpandableIds]);
+
+    const handleCollapseAll = useCallback(() => {
+        setExpandedIds(new Set());
+    }, []);
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (!resizingCol.current) return;
@@ -200,22 +225,29 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
         </span>
     );
 
-    // Dynamic grid template
-    // Name col is 1fr (fluid), others are fixed pixel widths based on state
     const gridTemplateColumns = `1fr ${colWidths.balance}px`;
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-slate-300 flex flex-col h-full overflow-hidden">
-            {/* Header Row */}
             <div
                 className="grid bg-slate-100 border-b border-slate-300 font-bold text-xs text-slate-600 uppercase tracking-wider sticky top-0 z-10"
                 style={{ gridTemplateColumns }}
             >
                 <div
-                    className="p-2 border-r border-slate-300 cursor-pointer hover:bg-slate-200 flex items-center justify-between select-none"
-                    onClick={() => handleSort('name')}
+                    className="p-2 border-r border-slate-300 flex items-center gap-2 select-none min-w-0"
                 >
-                    Entity {sortIcon('name')}
+                    <div
+                        className="flex-1 min-w-0 cursor-pointer hover:bg-slate-200/80 rounded px-1 py-0.5 -mx-1 flex items-center"
+                        onClick={() => handleSort('name')}
+                    >
+                        Entity {sortIcon('name')}
+                    </div>
+                    <TreeExpandCollapseControls
+                        variant="slate"
+                        onExpandAll={handleExpandAll}
+                        onCollapseAll={handleCollapseAll}
+                        visible={invoiceExpandableIds.length > 0}
+                    />
                 </div>
 
                 <div
@@ -231,7 +263,6 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
                 </div>
             </div>
 
-            {/* Tree Content */}
             <div className="overflow-y-auto flex-grow">
                 <div className="grid" style={{ gridTemplateColumns }}>
                     {sortedTreeData.map(node => (
@@ -242,6 +273,8 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
                             onNodeSelect={onNodeSelect}
                             onContextMenu={onContextMenu}
                             colWidths={colWidths}
+                            expandedIds={expandedIds}
+                            onToggleExpand={onToggleExpand}
                         />
                     ))}
                     {sortedTreeData.length === 0 && (
@@ -252,7 +285,6 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
                 </div>
             </div>
 
-            {/* Total Footer */}
             <div
                 className="grid bg-slate-50 border-t border-slate-300 font-bold text-xs text-slate-700"
                 style={{ gridTemplateColumns }}

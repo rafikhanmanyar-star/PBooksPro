@@ -1,6 +1,8 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
-import { ICONS, CURRENCY } from '../../constants';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { ICONS } from '../../constants';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 
 export interface BillTreeNode {
     id: string;
@@ -28,23 +30,24 @@ const TreeItem: React.FC<{
     selectedParentId?: string | null;
     onNodeSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void;
     parentId?: string;
-    level?: number
-}> = React.memo(({ node, selectedNodeId, selectedParentId, onNodeSelect, parentId, level = 0 }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-
-    // Only select if ID matches AND (it's a group OR the parent context matches)
+    level?: number;
+    expandedIds: Set<string>;
+    onToggleExpand: (id: string) => void;
+    onEnsureExpanded: (id: string) => void;
+}> = React.memo(({ node, selectedNodeId, selectedParentId, onNodeSelect, parentId, level = 0, expandedIds, onToggleExpand, onEnsureExpanded }) => {
     const isSelected = selectedNodeId === node.id && (node.type === 'group' || selectedParentId === parentId);
 
     const hasChildren = node.children && node.children.length > 0;
+    const isExpanded = expandedIds.has(node.id);
 
     const handleToggle = (e: React.MouseEvent) => {
         e.stopPropagation();
-        setIsExpanded(!isExpanded);
+        onToggleExpand(node.id);
     };
 
     const handleSelect = () => {
-        if (node.type === 'group') {
-            setIsExpanded(true);
+        if (node.type === 'group' && hasChildren) {
+            onEnsureExpanded(node.id);
         }
         onNodeSelect(node.id, node.type, parentId);
     };
@@ -101,6 +104,9 @@ const TreeItem: React.FC<{
                             onNodeSelect={onNodeSelect}
                             parentId={node.id}
                             level={level + 1}
+                            expandedIds={expandedIds}
+                            onToggleExpand={onToggleExpand}
+                            onEnsureExpanded={onEnsureExpanded}
                         />
                     ))}
                 </ul>
@@ -119,7 +125,6 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
         }));
     };
 
-    // Recursive sort function
     const sortNodes = useCallback((nodes: BillTreeNode[]): BillTreeNode[] => {
         const sorted = [...nodes].sort((a, b) => {
             let aVal: any = a[sortConfig.key];
@@ -143,6 +148,39 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
 
     const sortedTreeData = useMemo(() => sortNodes(treeData), [treeData, sortNodes]);
 
+    const billExpandableIds = useMemo(() => collectExpandableParentIds(sortedTreeData), [sortedTreeData]);
+
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        setExpandedIds(new Set());
+    }, [sortedTreeData]);
+
+    const onToggleExpand = useCallback((id: string) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }, []);
+
+    const onEnsureExpanded = useCallback((id: string) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+        });
+    }, []);
+
+    const handleExpandAll = useCallback(() => {
+        setExpandedIds(new Set(billExpandableIds));
+    }, [billExpandableIds]);
+
+    const handleCollapseAll = useCallback(() => {
+        setExpandedIds(new Set());
+    }, []);
+
     const SortIcon = ({ column }: { column: SortKey }) => {
         if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
         return <span className="text-indigo-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
@@ -150,20 +188,25 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200/80 h-full flex flex-col overflow-hidden">
-            {/* Sort Header */}
             <div className="px-2 py-2 border-b border-slate-200 flex-shrink-0 bg-slate-50">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                     <button
                         onClick={() => handleSort('name')}
-                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
+                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer min-w-0 flex-1"
                         title="Sort by Name"
                     >
                         Entity <SortIcon column="name" />
                     </button>
-                    <div className="flex-1"></div>
+                    <TreeExpandCollapseControls
+                        variant="slate"
+                        onExpandAll={handleExpandAll}
+                        onCollapseAll={handleCollapseAll}
+                        visible={billExpandableIds.length > 0}
+                        className="shrink-0"
+                    />
                     <button
                         onClick={() => handleSort('balance')}
-                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
+                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer shrink-0"
                         title="Sort by Account Payable (Balance)"
                     >
                         Payable <SortIcon column="balance" />
@@ -171,7 +214,6 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
                 </div>
             </div>
 
-            {/* Tree Content */}
             <div className="flex-1 overflow-y-auto p-2">
                 <ul className="space-y-1">
                     {sortedTreeData.map(node => (
@@ -181,6 +223,9 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
                             selectedNodeId={selectedNodeId}
                             selectedParentId={selectedParentId}
                             onNodeSelect={onNodeSelect}
+                            expandedIds={expandedIds}
+                            onToggleExpand={onToggleExpand}
+                            onEnsureExpanded={onEnsureExpanded}
                         />
                     ))}
                 </ul>

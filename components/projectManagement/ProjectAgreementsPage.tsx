@@ -12,6 +12,8 @@ import { TreeNode } from '../ui/TreeView';
 import DatePicker from '../ui/DatePicker';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { ImportType } from '../../services/importService';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 
 type SortKey = 'agreementNumber' | 'owner' | 'project' | 'units' | 'price' | 'paid' | 'balance' | 'date' | 'status';
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -28,6 +30,8 @@ const AgreementTreeSidebar: React.FC<{
 }> = ({ nodes, selectedId, selectedType, selectedParentId, onSelect }) => {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
 
+    const expandableIds = useMemo(() => collectExpandableParentIds(nodes), [nodes]);
+
     const toggleExpanded = (id: string) => {
         setExpandedIds(prev => {
             const next = new Set(prev);
@@ -36,6 +40,14 @@ const AgreementTreeSidebar: React.FC<{
             return next;
         });
     };
+
+    const handleExpandAll = useCallback(() => {
+        setExpandedIds(new Set(expandableIds));
+    }, [expandableIds]);
+
+    const handleCollapseAll = useCallback(() => {
+        setExpandedIds(new Set());
+    }, []);
 
     const renderNode = (node: TreeNode, level: number, parentId?: string | null) => {
         const hasChildren = node.children && node.children.length > 0;
@@ -91,9 +103,19 @@ const AgreementTreeSidebar: React.FC<{
     }
 
     return (
-        <div className="space-y-0.5">
-            {nodes.map(node => renderNode(node, 0))}
-        </div>
+        <>
+            <div className="flex justify-end mb-1">
+                <TreeExpandCollapseControls
+                    variant="app"
+                    onExpandAll={handleExpandAll}
+                    onCollapseAll={handleCollapseAll}
+                    visible={expandableIds.length > 0}
+                />
+            </div>
+            <div className="space-y-0.5">
+                {nodes.map(node => renderNode(node, 0))}
+            </div>
+        </>
     );
 };
 

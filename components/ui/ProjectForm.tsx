@@ -1,11 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
-import { Project } from '../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Project, ProjectStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
+import { suggestProjectClosed } from '../../services/accounting/accountingLedgerCore';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 interface ProjectFormProps {
     onSubmit: (project: Omit<Project, 'id'>) => void;
@@ -23,7 +25,17 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
     const [location, setLocation] = useState(projectToEdit?.location || '');
     const [projectType, setProjectType] = useState(projectToEdit?.projectType || '');
     const [color, setColor] = useState(projectToEdit?.color || '#4f46e5'); // Default indigo-600
+    const [status, setStatus] = useState<ProjectStatus>(projectToEdit?.status || 'Active');
     const [nameError, setNameError] = useState('');
+
+    const booksClearForClose = useMemo(() => {
+        if (!projectToEdit?.id) return false;
+        return suggestProjectClosed(state, projectToEdit.id, toLocalDateString(new Date()));
+    }, [state, projectToEdit?.id]);
+
+    useEffect(() => {
+        setStatus(projectToEdit?.status || 'Active');
+    }, [projectToEdit?.id, projectToEdit?.status]);
 
     // Check for duplicate project names
     useEffect(() => {
@@ -51,10 +63,28 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
             color,
             location: location.trim() || undefined,
             projectType: projectType.trim() || undefined,
+            status,
         });
     };
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
+            {projectToEdit && booksClearForClose && status !== 'Closed' && (
+                <div
+                    className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-900"
+                    role="status"
+                >
+                    <p className="font-medium">Books show zero cash, assets, and liabilities for this project (balanced).</p>
+                    <p className="mt-1 text-emerald-800/90">You can mark the project as Closed when the lifecycle is finished.</p>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        className="mt-2"
+                        onClick={() => setStatus('Closed')}
+                    >
+                        Set status to Closed
+                    </Button>
+                </div>
+            )}
             <div className="flex gap-4">
                 <div className="flex-grow">
                     <Input label="Project Name" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
@@ -91,6 +121,20 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
                         <option value="other">Other</option>
                     </select>
                 </div>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">Status</label>
+                <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+                    className="block w-full max-w-xs px-3 py-2 border border-slate-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    aria-label="Project status"
+                >
+                    <option value="Active">Active</option>
+                    <option value="Completed">Completed</option>
+                    <option value="On Hold">On Hold</option>
+                    <option value="Closed">Closed</option>
+                </select>
             </div>
             <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Project details, scope, etc." />
             <div className="flex justify-between items-center pt-4">

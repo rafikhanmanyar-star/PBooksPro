@@ -270,6 +270,17 @@ function sectionTotal(lines: CashFlowLine[]): number {
   return lines.reduce((s, l) => s + (l.isNonCash ? 0 : l.amount), 0);
 }
 
+/**
+ * Financing foot total: for a single project, include all line amounts (cash + inter-project disclosures)
+ * so net financing matches visible rows. For "all", keep cash-only (IAS 7).
+ */
+function financingSectionTotal(lines: CashFlowLine[], selectedProjectId: string): number {
+  if (selectedProjectId === 'all') {
+    return sectionTotal(lines);
+  }
+  return roundMoney(lines.reduce((s, l) => s + l.amount, 0));
+}
+
 function pushAuditRow(
   rows: CashFlowAuditRow[],
   tx: Transaction,
@@ -585,7 +596,8 @@ export function computeCashFlowReport(
     }
   }
 
-  // Inter-project equity moves (typically Clearing ↔ Equity): non-cash for IAS 7 but material for project view
+  // Inter-project equity moves: real bank/cash legs appear in the main loop above. Legacy Clearing↔Equity
+  // batches (zero cash delta) stay here as non-cash disclosure for project analysis only.
   if (selectedProjectId !== 'all') {
     for (const tx of state.transactions || []) {
       if (!inPeriodInclusive(tx.date, fromDate, toDate)) continue;
@@ -595,6 +607,9 @@ export function computeCashFlowReport(
         continue;
       }
       if (!tx.batchId) continue;
+      const cashDeltaHere = getTransactionCashDelta(tx, accountsById, clearingId);
+      if (Math.abs(cashDeltaHere) >= EPS) continue;
+
       const batch = txsByBatchId.get(tx.batchId);
       const paired = findInterProjectPairedLeg(tx, batch);
       const linkedPid = paired ? resolveProjectIdForTransaction(paired, state) : undefined;
@@ -631,7 +646,7 @@ export function computeCashFlowReport(
 
   const netOperating = sectionTotal(opLines);
   const netInvesting = sectionTotal(invLines);
-  const netFinancing = sectionTotal(finLines);
+  const netFinancing = financingSectionTotal(finLines, selectedProjectId);
   const net_change = netOperating + netInvesting + netFinancing;
   const computed_closing_cash = opening_cash + net_change;
   const discrepancy = computed_closing_cash - balance_sheet_cash;

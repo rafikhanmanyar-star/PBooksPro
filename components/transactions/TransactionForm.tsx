@@ -17,6 +17,7 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import { resolveExpenseCategoryForBillPayment } from '../../utils/rentalBillPayments';
 import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../utils/ledgerInvoicePayments';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
+import { validateExpenseCashForProject } from '../../services/accounting/accountingLedgerCore';
 
 interface TransactionFormProps {
     onClose: () => void;
@@ -317,6 +318,31 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
         const costCenterPropertyId = costCenterType === 'building' ? (propertyId || undefined) : undefined;
         const costCenterUnitId = costCenterType === 'building' ? (unitId || undefined) : undefined;
         const costCenterContractId = costCenterType === 'project' ? (contractId || undefined) : undefined;
+
+        if (type === TransactionType.EXPENSE) {
+            const payAcc = state.accounts.find((a) => a.id === accountId);
+            if (payAcc?.name === 'Internal Clearing') {
+                // Profit-distribution / clearing legs — not real bank cash; skip project cash guard
+            } else if (!isPayingBill) {
+            const projectIdForCash = costCenterProjectId ?? undefined;
+            const dateYmd = /^\d{4}-\d{2}-\d{2}$/.test(date)
+                ? date
+                : new Date(date).toISOString().slice(0, 10);
+            const cashCheck = validateExpenseCashForProject(state, {
+                amount: numAmount,
+                accountId,
+                projectId: projectIdForCash,
+                dateYyyyMmDd: dateYmd,
+                excludeTransactionId: transactionToEdit?.id,
+            });
+            if (!cashCheck.ok) {
+                await showAlert(
+                    `Insufficient cash on this account for the selected project scope. Available: ${CURRENCY} ${cashCheck.available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. This expense needs ${CURRENCY} ${numAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Record funding (capital) first or reduce the amount.`
+                );
+                return;
+            }
+            }
+        }
 
         const expenseCategoryForBill =
             isPayingBill && billBeingPaid && type === TransactionType.EXPENSE

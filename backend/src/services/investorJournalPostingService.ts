@@ -8,6 +8,85 @@ import {
   type CreateJournalBody,
   type InvestorTransactionType,
 } from './journalService.js';
+import { createTransaction } from './transactionsService.js';
+
+/** Matches `EquityLedgerSubtype` in client `types.ts` — ledger UI reads `transactions`, not journal-only rows. */
+const EQ_SUB_INVESTMENT = 'equity_investment';
+const EQ_SUB_WITHDRAWAL = 'equity_withdrawal';
+
+async function mirrorContributionToTransactionsRow(
+  client: pg.PoolClient,
+  tenantId: string,
+  input: {
+    journalEntryId: string;
+    entryDate: string;
+    amount: number;
+    cashAccountId: string;
+    investorEquityAccountId: string;
+    projectId: string;
+    description: string | null | undefined;
+    reference: string | null | undefined;
+    createdBy: string | null | undefined;
+  }
+): Promise<void> {
+  const refBase = input.reference?.trim() ? input.reference.trim() : `JE:${input.journalEntryId}`;
+  await createTransaction(
+    client,
+    tenantId,
+    {
+      id: `invj_tx_${input.journalEntryId}`,
+      type: 'Transfer',
+      subtype: EQ_SUB_INVESTMENT,
+      amount: input.amount,
+      date: input.entryDate,
+      description: input.description ?? 'Investor contribution',
+      reference: refBase,
+      accountId: input.investorEquityAccountId,
+      fromAccountId: input.investorEquityAccountId,
+      toAccountId: input.cashAccountId,
+      projectId: input.projectId,
+      isSystem: true,
+    },
+    input.createdBy ?? null
+  );
+}
+
+async function mirrorWithdrawalToTransactionsRow(
+  client: pg.PoolClient,
+  tenantId: string,
+  input: {
+    journalEntryId: string;
+    entryDate: string;
+    amount: number;
+    cashAccountId: string;
+    investorEquityAccountId: string;
+    projectId: string;
+    description: string | null | undefined;
+    reference: string | null | undefined;
+    createdBy: string | null | undefined;
+  }
+): Promise<void> {
+  const refBase = input.reference?.trim() ? input.reference.trim() : `JE:${input.journalEntryId}`;
+  await createTransaction(
+    client,
+    tenantId,
+    {
+      id: `invj_tx_${input.journalEntryId}`,
+      type: 'Transfer',
+      subtype: EQ_SUB_WITHDRAWAL,
+      amount: input.amount,
+      date: input.entryDate,
+      description: input.description ?? 'Investor withdrawal',
+      reference: refBase,
+      accountId: input.investorEquityAccountId,
+      fromAccountId: input.cashAccountId,
+      toAccountId: input.investorEquityAccountId,
+      projectId: input.projectId,
+      isSystem: true,
+    },
+    input.createdBy ?? null
+  );
+}
 
 /** Stored on journal_entries.investor_id (party/contact id preferred; else equity GL id). */
 function investorMetadataId(partyId: string | null | undefined, equityAccountId: string): string {
@@ -71,7 +150,19 @@ export async function postInvestorContribution(
       },
     ],
   };
-  return insertJournalEntry(client, tenantId, body);
+  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  await mirrorContributionToTransactionsRow(client, tenantId, {
+    journalEntryId,
+    entryDate: input.entryDate,
+    amount: amt,
+    cashAccountId: input.cashAccountId,
+    investorEquityAccountId: input.investorEquityAccountId,
+    projectId: input.projectId,
+    description: input.description,
+    reference: input.reference ?? body.reference,
+    createdBy: input.createdBy ?? null,
+  });
+  return { journalEntryId };
 }
 
 /** Dr Investor equity / Cr Cash — cash outflow */
@@ -126,7 +217,19 @@ export async function postInvestorWithdrawal(
       { accountId: input.cashAccountId, debitAmount: 0, creditAmount: amt, projectId: input.projectId },
     ],
   };
-  return insertJournalEntry(client, tenantId, body);
+  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  await mirrorWithdrawalToTransactionsRow(client, tenantId, {
+    journalEntryId,
+    entryDate: input.entryDate,
+    amount: amt,
+    cashAccountId: input.cashAccountId,
+    investorEquityAccountId: input.investorEquityAccountId,
+    projectId: input.projectId,
+    description: input.description,
+    reference: input.reference ?? body.reference,
+    createdBy: input.createdBy ?? null,
+  });
+  return { journalEntryId };
 }
 
 /** Non-cash: Dr Retained earnings / Cr Investor equity */

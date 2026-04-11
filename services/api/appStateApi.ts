@@ -397,7 +397,7 @@ import {
   normalizePersonalTransactionFromApi,
 } from './repositories/personalTransactionsApi';
 import { getApiBaseUrl } from '../../config/apiUrl';
-import { apiClient } from './client';
+import { apiClient, type ApiError } from './client';
 import { logger } from '../logger';
 import type { Invoice, ProjectReceivedAsset } from '../../types';
 
@@ -695,6 +695,23 @@ export class AppStateApiService {
       });
       return state;
     } catch (error) {
+      const status =
+        error && typeof error === 'object' && 'status' in error
+          ? (error as ApiError).status
+          : undefined;
+      const msg = error instanceof Error ? error.message : String(error ?? '');
+      const bulkUnavailable =
+        status === 404 ||
+        msg.includes('404') ||
+        msg.includes('Not Found') ||
+        msg.includes('Cannot GET');
+      if (bulkUnavailable) {
+        logger.warnCategory(
+          'sync',
+          'GET /state/bulk not available; falling back to parallel loadState()'
+        );
+        return this.loadState();
+      }
       console.error('[DIAG] loadStateBulk FAILED:', error);
       logger.errorCategory('sync', '❌ Error loading state from API (bulk):', error);
       throw error;

@@ -10,6 +10,7 @@ import { useContacts, useProperties, useBuildings, useProjects, useUnits, useRen
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 
 /** Extended transaction with optional invoice number for bulk payment child rows */
 type TransactionWithInvoiceRef = Transaction & { invoiceNumber?: string };
@@ -319,6 +320,26 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         return sorted;
     }, [filteredRecords, sortConfig, getInvoiceContextNames]);
 
+    const bulkExpandableRecordIds = useMemo(
+        () =>
+            sortedRecords
+                .filter(r => {
+                    if (r.type !== 'Payment (Bulk)') return false;
+                    const rawTx = r.raw as Transaction & { children?: unknown[] };
+                    return (rawTx.children?.length ?? 0) > 0;
+                })
+                .map(r => r.id),
+        [sortedRecords]
+    );
+
+    const handleExpandAllBulk = useCallback(() => {
+        setExpandedIds(new Set(bulkExpandableRecordIds));
+    }, [bulkExpandableRecordIds]);
+
+    const handleCollapseAllBulk = useCallback(() => {
+        setExpandedIds(new Set());
+    }, []);
+
     /** Flatten list: when a bulk payment row is expanded, insert child rows (invoice + amount) after it */
     const effectiveRecords = useMemo(() => {
         const out: FinancialRecord[] = [];
@@ -459,7 +480,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                 onClick={handleRowClick}
                 onDoubleClick={handleRowDoubleClick}
             >
-                <div className="px-3 py-2 sm:px-4 text-center w-10 flex-shrink-0 overflow-hidden" style={isBulkChild ? { paddingLeft: 24 } : undefined} onClick={(e) => e.stopPropagation()}>
+                <div className="px-2 py-2 sm:px-3 text-center min-w-[5.25rem] flex-shrink-0 overflow-hidden" style={isBulkChild ? { paddingLeft: 24 } : undefined} onClick={(e) => e.stopPropagation()}>
                     {hasChildren ? (
                         <button type="button" onClick={(e) => toggleExpand(e, record.id)} className="p-0.5 rounded-md hover:bg-app-toolbar text-app-muted transition-colors duration-ds">
                             <div className={`w-3 h-3 transform transition-transform duration-200 ${isExpanded ? 'rotate-90 text-primary' : ''}`}>{ICONS.chevronRight}</div>
@@ -670,7 +691,15 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
             {/* Table Header */}
             <div className="sticky top-0 z-10 bg-app-table-header border-b border-app-border flex-shrink-0 w-full" style={{ minWidth: tableMinWidth }}>
                 <div className="flex items-center w-full">
-                    <div className="px-3 py-2 sm:px-4 w-10 text-center flex-shrink-0" />
+                    <div className="px-1 py-1.5 min-w-[5.25rem] flex-shrink-0 flex flex-col items-center justify-center gap-0.5 border-r border-app-border/40">
+                        <TreeExpandCollapseControls
+                            variant="app"
+                            compact
+                            onExpandAll={handleExpandAllBulk}
+                            onCollapseAll={handleCollapseAllBulk}
+                            visible={bulkExpandableRecordIds.length > 0}
+                        />
+                    </div>
                     <div style={thStyle('type')} onClick={() => handleSort('type')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Type {sortIcon('type')}{resizer('type')}</div>
                     <div style={thStyle('reference')} onClick={() => handleSort('reference')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Reference {sortIcon('reference')}{resizer('reference')}</div>
                     <div style={thStyle('description')} onClick={() => handleSort('description')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden">Description {sortIcon('description')}{resizer('description')}</div>

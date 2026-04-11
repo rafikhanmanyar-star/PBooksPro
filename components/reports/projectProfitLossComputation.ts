@@ -6,6 +6,7 @@
 import type { AppState, Transaction } from '../../types';
 import { TransactionType } from '../../types';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
+import { getProfitLossExcludedCategoryIds } from '../../services/accounting/plExclusions';
 import { resolveProjectIdForTransaction, isTransactionFromVoidedOrCancelledInvoice } from './reportUtils';
 
 /** Bill accrual section of P&L (must match computeProjectProfitLossTotals). */
@@ -23,9 +24,7 @@ function runPlBillAccrual(
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
 
-    const excludedCats = new Set(
-        state.categories.filter((c) => c.name === 'Owner Equity' || c.name === 'Owner Withdrawn').map((c) => c.id)
-    );
+    const excludedCats = getProfitLossExcludedCategoryIds(state);
     const bsOnlyPl = findProjectAssetCategory(state.categories, 'ASSET_BALANCE_SHEET_ONLY');
     if (bsOnlyPl) excludedCats.add(bsOnlyPl.id);
 
@@ -198,9 +197,7 @@ export function transactionIncludedInPlLoop(
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
 
-    const excludedCats = new Set(
-        state.categories.filter((c) => c.name === 'Owner Equity' || c.name === 'Owner Withdrawn').map((c) => c.id)
-    );
+    const excludedCats = getProfitLossExcludedCategoryIds(state);
     const bsOnlyPl = findProjectAssetCategory(state.categories, 'ASSET_BALANCE_SHEET_ONLY');
     if (bsOnlyPl) excludedCats.add(bsOnlyPl.id);
     const rentalCats = new Set(state.categories.filter((c) => c.isRental).map((c) => c.id));
@@ -277,9 +274,7 @@ export function computeProjectProfitLossTotals(
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
 
-    const excludedCats = new Set(
-        state.categories.filter((c) => c.name === 'Owner Equity' || c.name === 'Owner Withdrawn').map((c) => c.id)
-    );
+    const excludedCats = getProfitLossExcludedCategoryIds(state);
     const bsOnlyPl = findProjectAssetCategory(state.categories, 'ASSET_BALANCE_SHEET_ONLY');
     if (bsOnlyPl) excludedCats.add(bsOnlyPl.id);
 

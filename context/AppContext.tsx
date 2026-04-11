@@ -16,6 +16,7 @@ import { findSalesReturnCategory } from '../constants/salesReturnSystemCategorie
 import { resolveSystemCategoryId } from '../services/systemEntityIds';
 import packageJson from '../package.json';
 import { isLocalOnlyMode } from '../config/apiUrl';
+import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconcile';
 import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
 import { toLocalDateString } from '../utils/dateUtils';
@@ -479,6 +480,10 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 }
             }
 
+            if (anyChanged && patches.rentalAgreements?.length) {
+                patches.rentalAgreements = reconcileRentalAgreementsList(patches.rentalAgreements);
+            }
+
             return anyChanged ? { ...state, ...patches } : state;
         }
         case 'BATCH_WS_SYNC': {
@@ -511,6 +516,13 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                     }
                 }
                 if (anyChanged) newState = { ...newState, ...patches };
+            }
+
+            if (anyChanged && newState.rentalAgreements?.length) {
+                newState = {
+                    ...newState,
+                    rentalAgreements: reconcileRentalAgreementsList(newState.rentalAgreements),
+                };
             }
 
             if (deletes) {
@@ -964,10 +976,14 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, budgets: state.budgets.filter(b => b.id !== action.payload) };
 
         // --- AGREEMENT HANDLERS ---
-        case 'ADD_RENTAL_AGREEMENT':
-            return { ...state, rentalAgreements: [...state.rentalAgreements, action.payload] };
-        case 'UPDATE_RENTAL_AGREEMENT':
-            return { ...state, rentalAgreements: state.rentalAgreements.map(r => r.id === action.payload.id ? action.payload : r) };
+        case 'ADD_RENTAL_AGREEMENT': {
+            const next = [...state.rentalAgreements, action.payload];
+            return { ...state, rentalAgreements: reconcileRentalAgreementsList(next) };
+        }
+        case 'UPDATE_RENTAL_AGREEMENT': {
+            const mapped = state.rentalAgreements.map(r => (r.id === action.payload.id ? action.payload : r));
+            return { ...state, rentalAgreements: reconcileRentalAgreementsList(mapped) };
+        }
         case 'DELETE_RENTAL_AGREEMENT':
             return { ...state, rentalAgreements: state.rentalAgreements.filter(r => r.id !== action.payload) };
 

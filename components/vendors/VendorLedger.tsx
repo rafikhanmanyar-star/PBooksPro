@@ -1,10 +1,11 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType } from '../../types';
 import { ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { exportJsonToExcel } from '../../services/exportService';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 
 interface VendorLedgerProps {
     vendorId: string | null;
@@ -123,6 +124,19 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
 
     }, [vendorId, state.bills, state.transactions, sortConfig]);
 
+    const expandableBatchIds = useMemo(
+        () => ledgerItems.filter((item: { children?: unknown[] }) => (item.children?.length ?? 0) > 0).map((item: { id: string }) => item.id),
+        [ledgerItems]
+    );
+
+    const handleExpandAllBatches = useCallback(() => {
+        setExpandedIds(new Set(expandableBatchIds));
+    }, [expandableBatchIds]);
+
+    const handleCollapseAllBatches = useCallback(() => {
+        setExpandedIds(new Set());
+    }, []);
+
     const handleExport = () => {
         if (!vendorId) return;
         const vendor = state.vendors?.find(v => v.id === vendorId);
@@ -160,15 +174,23 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                         <th onClick={() => handleSort('credit')} scope="col" className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bills (Cr) <SortIcon column="credit" /></th>
                                         <th onClick={() => handleSort('debit')} scope="col" className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Payments (Dr) <SortIcon column="debit" /></th>
                                         <th scope="col" className="py-2 pl-2 pr-1 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap" onClick={() => handleSort('balance')}>Balance <SortIcon column="balance" /></th>
-                                        <th scope="col" className="py-2 pl-1 pr-2 w-8">
-                                            <button
-                                                onClick={handleExport}
-                                                disabled={ledgerItems.length === 0}
-                                                className="flex items-center justify-center w-6 h-6 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors disabled:opacity-50"
-                                                title="Export to Excel"
-                                            >
-                                                <span className="w-3.5 h-3.5">{ICONS.export}</span>
-                                            </button>
+                                        <th scope="col" className="py-2 pl-1 pr-2">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <TreeExpandCollapseControls
+                                                    variant="slate"
+                                                    onExpandAll={handleExpandAllBatches}
+                                                    onCollapseAll={handleCollapseAllBatches}
+                                                    visible={expandableBatchIds.length > 0}
+                                                />
+                                                <button
+                                                    onClick={handleExport}
+                                                    disabled={ledgerItems.length === 0}
+                                                    className="flex items-center justify-center w-6 h-6 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors disabled:opacity-50"
+                                                    title="Export to Excel"
+                                                >
+                                                    <span className="w-3.5 h-3.5">{ICONS.export}</span>
+                                                </button>
+                                            </div>
                                         </th>
                                     </tr>
                                 </thead>

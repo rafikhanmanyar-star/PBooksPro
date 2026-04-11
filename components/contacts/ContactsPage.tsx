@@ -17,6 +17,8 @@ import { ImportType } from '../../services/importService';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 
 type SortKey = 'name' | 'type' | 'companyName' | 'contactNo' | 'address' | 'balance';
 
@@ -38,6 +40,8 @@ const ContactTreeSidebar: React.FC<{
 }> = React.memo(({ nodes, selectedId, selectedType, onSelect }) => {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
 
+    const expandableIds = useMemo(() => collectExpandableParentIds(nodes), [nodes]);
+
     useEffect(() => {
         setExpandedIds(prev => {
             const next = new Set(prev);
@@ -45,6 +49,14 @@ const ContactTreeSidebar: React.FC<{
             return next;
         });
     }, [nodes]);
+
+    const handleExpandAll = useCallback(() => {
+        setExpandedIds(new Set(expandableIds));
+    }, [expandableIds]);
+
+    const handleCollapseAll = useCallback(() => {
+        setExpandedIds(new Set());
+    }, []);
 
     const toggleExpanded = (id: string) => {
         setExpandedIds(prev => {
@@ -102,9 +114,19 @@ const ContactTreeSidebar: React.FC<{
     }
 
     return (
-        <div className="space-y-0.5">
-            {nodes.map(node => renderNode(node, 0))}
-        </div>
+        <>
+            <div className="flex justify-end mb-1">
+                <TreeExpandCollapseControls
+                    variant="slate"
+                    onExpandAll={handleExpandAll}
+                    onCollapseAll={handleCollapseAll}
+                    visible={expandableIds.length > 0}
+                />
+            </div>
+            <div className="space-y-0.5">
+                {nodes.map(node => renderNode(node, 0))}
+            </div>
+        </>
     );
 });
 

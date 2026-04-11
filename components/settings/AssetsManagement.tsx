@@ -43,7 +43,7 @@ const AssetsManagement: React.FC = () => {
     const [color, setColor] = useState('#10b981');
     
     // Project specific
-    const [projectStatus, setProjectStatus] = useState<'Active' | 'Completed' | 'On Hold'>('Active');
+    const [projectStatus, setProjectStatus] = useState<'Active' | 'Completed' | 'On Hold' | 'Closed'>('Active');
     const [projectLocation, setProjectLocation] = useState('');
     const [projectAssetType, setProjectAssetType] = useState('');
     
@@ -840,6 +840,7 @@ const AssetsManagement: React.FC = () => {
                                     <option value="Active">Active</option>
                                     <option value="Completed">Completed</option>
                                     <option value="On Hold">On Hold</option>
+                                    <option value="Closed">Closed</option>
                                 </select>
                             </div>
                             <div className="sm:col-span-2 lg:col-span-1">

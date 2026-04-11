@@ -1,6 +1,11 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { randomUUID } from 'crypto';
+import {
+  reconcileChangedLike,
+  reconcileRentalAgreementsListLike,
+  type ReconcileRentalAgreementLike,
+} from '../rentalAgreementReconcile.js';
 
 export type RentalAgreementRow = {
   id: string;
@@ -281,6 +286,58 @@ export async function updateRentalAgreement(
     ]
   );
   return { row: u.rows[0] ?? null, conflict: false };
+}
+
+/** After create/update, enforce one Active per property and single broker fee on first agreement in each renewal chain. */
+export async function syncReconcileRentalAgreementsForTenant(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<void> {
+  const rows = await listRentalAgreements(client, tenantId);
+  const asApi: ReconcileRentalAgreementLike[] = rows.map((r) => {
+    const o = rowToRentalAgreementApi(r) as Record<string, unknown>;
+    return {
+      id: String(o.id),
+      propertyId: String(o.propertyId),
+      contactId: String(o.contactId),
+      startDate: String(o.startDate),
+      endDate: String(o.endDate),
+      status: String(o.status),
+      brokerFee: o.brokerFee != null ? Number(o.brokerFee) : undefined,
+      previousAgreementId: o.previousAgreementId != null ? String(o.previousAgreementId) : undefined,
+    };
+  });
+  const fixed = reconcileRentalAgreementsListLike(asApi);
+  if (!reconcileChangedLike(asApi, fixed)) return;
+
+  const origById = new Map(asApi.map((a) => [a.id, a]));
+  for (const f of fixed) {
+    const o = origById.get(f.id);
+    if (!o) continue;
+    if (
+      o.status === f.status &&
+      (o.previousAgreementId ?? '') === (f.previousAgreementId ?? '') &&
+      Math.abs((o.brokerFee ?? 0) - (f.brokerFee ?? 0)) <= 0.005
+    ) {
+      continue;
+    }
+    await client.query(
+      `UPDATE rental_agreements SET
+         status = $1,
+         previous_agreement_id = $2,
+         broker_fee = $3,
+         version = version + 1,
+         updated_at = NOW()
+       WHERE id = $4 AND tenant_id = $5 AND deleted_at IS NULL`,
+      [
+        f.status,
+        f.previousAgreementId && String(f.previousAgreementId).trim() ? String(f.previousAgreementId).trim() : null,
+        f.brokerFee != null && Number.isFinite(f.brokerFee) ? f.brokerFee : null,
+        f.id,
+        tenantId,
+      ]
+    );
+  }
 }
 
 export async function softDeleteRentalAgreement(

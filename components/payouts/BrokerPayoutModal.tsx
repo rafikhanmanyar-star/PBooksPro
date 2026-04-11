@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useAppContext, _getAppState } from '../../context/AppContext';
 import { Contact, TransactionType, Transaction, AccountType } from '../../types';
@@ -142,6 +142,22 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
             setItems(newItems);
         }
     }, [isOpen, broker, context, state.rentalAgreements, state.projectAgreements, state.transactions, state.properties, state.contacts, state.categories, userSelectableAccounts, state.projects]);
+
+    const selectAllRef = useRef<HTMLInputElement>(null);
+    const allSelected = items.length > 0 && items.every(i => i.isSelected);
+    const noneSelected = items.length === 0 || !items.some(i => i.isSelected);
+
+    useEffect(() => {
+        const el = selectAllRef.current;
+        if (!el) return;
+        el.indeterminate = items.length > 0 && !allSelected && !noneSelected;
+    }, [items.length, allSelected, noneSelected]);
+
+    const handleSelectAll = () => {
+        if (items.length === 0) return;
+        const next = !allSelected;
+        setItems(items.map(i => ({ ...i, isSelected: next })));
+    };
 
     const handleToggle = (index: number) => {
         const newItems = [...items];
@@ -339,8 +355,19 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
                 />
 
                 <div className="border border-app-border rounded-lg overflow-hidden bg-app-card">
-                    <div className="bg-app-table-header px-4 py-2 font-semibold text-sm text-app-muted grid grid-cols-12 gap-2 border-b border-app-border">
-                        <div className="col-span-1 text-center">Select</div>
+                    <div className="bg-app-table-header px-4 py-2 font-semibold text-sm text-app-muted grid grid-cols-12 gap-2 border-b border-app-border items-center">
+                        <div className="col-span-1 flex justify-center">
+                            <input
+                                ref={selectAllRef}
+                                type="checkbox"
+                                checked={allSelected}
+                                onChange={handleSelectAll}
+                                disabled={items.length === 0}
+                                className="w-4 h-4 rounded border-app-border text-primary focus:ring-primary/30 disabled:opacity-40"
+                                aria-label="Select or deselect all commission records"
+                                title={allSelected ? 'Deselect all' : 'Select all'}
+                            />
+                        </div>
                         <div className="col-span-4">Reference (Unit/Project)</div>
                         <div className="col-span-2 text-right">Total Fee</div>
                         <div className="col-span-2 text-right">Due</div>

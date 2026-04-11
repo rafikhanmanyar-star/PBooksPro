@@ -82,8 +82,9 @@ const BrokerFeeReport: React.FC = () => {
 
         const items: { date: string, brokerId: string, particulars: string, fee: number, paid: number }[] = [];
 
-        // 1. Agreements (Fees Accrued)
+        // 1. Agreements (Fees Accrued) — same rule as payouts: fee only on first agreement in chain (no previousAgreementId)
         state.rentalAgreements.forEach(ra => {
+            if (ra.previousAgreementId) return;
             if (ra.brokerId && (ra.brokerFee || 0) > 0) {
                 const date = new Date(ra.startDate);
                 if (date >= start && date <= end) {

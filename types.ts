@@ -313,7 +313,7 @@ export interface Property {
   monthlyServiceCharge?: number;
 }
 
-export type ProjectStatus = 'Active' | 'Completed' | 'On Hold';
+export type ProjectStatus = 'Active' | 'Completed' | 'On Hold' | 'Closed';
 export type InstallmentFrequency = 'Monthly' | 'Quarterly' | 'Yearly';
 
 export interface InstallmentPlanDiscount {

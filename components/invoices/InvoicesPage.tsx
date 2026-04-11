@@ -23,6 +23,8 @@ import { ImportType } from '../../services/importService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../utils/ledgerInvoicePayments';
 import { isActiveInvoice } from '../../utils/invoiceActive';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 
 interface InvoicesPageProps {
     invoiceTypeFilter?: InvoiceType;
@@ -113,6 +115,16 @@ const InvoiceTreeSidebar = memo<{
 
     const sortedNodes = useMemo(() => sortNodes(nodes), [nodes, sortNodes]);
 
+    const expandableIds = useMemo(() => collectExpandableParentIds(sortedNodes), [sortedNodes]);
+
+    const handleExpandAll = useCallback(() => {
+        setExpandedIds(new Set(expandableIds));
+    }, [expandableIds]);
+
+    const handleCollapseAll = useCallback(() => {
+        setExpandedIds(new Set());
+    }, []);
+
     const toggleExpanded = (id: string) => {
         // ... (existing toggleExpanded)
         setExpandedIds(prev => {
@@ -174,7 +186,7 @@ const InvoiceTreeSidebar = memo<{
     return (
         <div className="flex flex-col h-full">
             {/* Sort Header: name = Owner/Unit/Tenant/Property per groupBy; balance = A/R */}
-            <div className="flex items-center justify-between px-2 py-1.5 border-b border-app-border mb-1 bg-app-toolbar rounded-md">
+            <div className="flex items-center justify-between px-2 py-1.5 border-b border-app-border mb-1 bg-app-toolbar rounded-md gap-1">
                 <button
                     onClick={() => handleSort('name')}
                     className="flex items-center text-[10px] font-bold text-app-muted uppercase tracking-wider hover:text-app-text transition-colors duration-ds"
@@ -182,6 +194,12 @@ const InvoiceTreeSidebar = memo<{
                 >
                     {treeSortNameLabel(groupBy, isRental)} <TreeSortIcon sortConfig={sortConfig} column="name" />
                 </button>
+                <TreeExpandCollapseControls
+                    variant="app"
+                    onExpandAll={handleExpandAll}
+                    onCollapseAll={handleCollapseAll}
+                    visible={expandableIds.length > 0}
+                />
                 <button
                     onClick={() => handleSort('balance')}
                     className="flex items-center text-[10px] font-bold text-app-muted uppercase tracking-wider hover:text-app-text transition-colors duration-ds"

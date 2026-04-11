@@ -28,6 +28,7 @@ import {
 } from '../investmentManagement/equityLedgerClassification';
 import { computeProjectProfitLossTotals } from '../reports/projectProfitLossComputation';
 import { resolveProfitDistributionExpenseCategory } from '../../services/database/resolveProfitDistributionExpenseCategory';
+import { computeProjectScopedBankCashBalance } from '../../services/accounting/accountingLedgerCore';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { investorJournalApi } from '../../services/api/investorJournalApi';
@@ -47,6 +48,66 @@ interface TransferRow {
     currentEquity: number;
     transferAmount: string;
     isSelected: boolean;
+}
+
+type EquityLedgerColKey = 'date' | 'type' | 'description' | 'info' | 'amount' | 'balance';
+
+const EQUITY_LEDGER_COL_DEFAULT_WIDTH: Record<EquityLedgerColKey, number> = {
+    date: 112,
+    type: 140,
+    description: 200,
+    info: 240,
+    amount: 120,
+    balance: 128,
+};
+
+type EquityLedgerRow = Transaction & {
+    ledgerRowKey?: string;
+    paymentType: string;
+    paymentTypeColor: string;
+    info: string;
+    amount: number;
+    balance: number;
+    isDeposit: boolean;
+    isWithdrawal: boolean;
+    projectName: string;
+    rowInvestorName?: string;
+};
+
+function signedEquityLedgerAmount(row: Pick<EquityLedgerRow, 'amount' | 'isDeposit'>): number {
+    return row.isDeposit ? row.amount : -row.amount;
+}
+
+function compareEquityLedgerRows(a: EquityLedgerRow, b: EquityLedgerRow, key: EquityLedgerColKey, dir: 'asc' | 'desc'): number {
+    const mul = dir === 'asc' ? 1 : -1;
+    let cmp = 0;
+    switch (key) {
+        case 'date': {
+            cmp = new Date(a.date).getTime() - new Date(b.date).getTime();
+            break;
+        }
+        case 'type':
+            cmp = a.paymentType.localeCompare(b.paymentType, undefined, { sensitivity: 'base' });
+            break;
+        case 'description':
+            cmp = (a.description || '').localeCompare(b.description || '', undefined, { sensitivity: 'base' });
+            break;
+        case 'info':
+            cmp = (a.info || '').localeCompare(b.info || '', undefined, { sensitivity: 'base' });
+            break;
+        case 'amount':
+            cmp = signedEquityLedgerAmount(a) - signedEquityLedgerAmount(b);
+            break;
+        case 'balance':
+            cmp = a.balance - b.balance;
+            break;
+        default:
+            break;
+    }
+    if (cmp !== 0) return cmp * mul;
+    const idCmp = a.id.localeCompare(b.id);
+    if (idCmp !== 0) return idCmp;
+    return (a.ledgerRowKey || '').localeCompare(b.ledgerRowKey || '');
 }
 
 // Helper to get entity color style for Type field
@@ -93,6 +154,19 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
     const [searchQuery, setSearchQuery] = useState('');
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('projectEquity_sidebarWidth', 300);
+    const [ledgerSort, setLedgerSort] = useState<{ key: EquityLedgerColKey; dir: 'asc' | 'desc' }>({
+        key: 'date',
+        dir: 'asc',
+    });
+    const [ledgerColWidthsState, setLedgerColWidthsState] = useLocalStorage<Partial<Record<EquityLedgerColKey, number>>>(
+        'projectEquity_ledgerColWidths',
+        {},
+    );
+    const ledgerColWidths = useMemo(
+        () => ({ ...EQUITY_LEDGER_COL_DEFAULT_WIDTH, ...ledgerColWidthsState }),
+        [ledgerColWidthsState],
+    );
+    const ledgerColResizeRef = useRef<{ col: EquityLedgerColKey; startX: number; startW: number } | null>(null);
     const [isActionModalOpen, setIsActionModalOpen] = useState(false);
     const [isRecordingInvestment, setIsRecordingInvestment] = useState(false);
 
@@ -135,9 +209,27 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
     const [payoutAccountId, setPayoutAccountId] = useState('');
     const [transferDescription, setTransferDescription] = useState('');
     const [transferDate, setTransferDate] = useState(() => toLocalDateString(new Date()));
+    /** Inter-project transfers use real bank/cash legs so cash flow and balance sheet stay aligned. */
+    const [transferSourceBankId, setTransferSourceBankId] = useState('');
+    const [transferDestBankId, setTransferDestBankId] = useState('');
 
     const equityAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.EQUITY), [state.accounts]);
     const bankAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
+    const bankAndCashAccounts = useMemo(
+        () => state.accounts.filter((a) => (a.type === AccountType.BANK || a.type === AccountType.CASH) && a.name !== 'Internal Clearing'),
+        [state.accounts]
+    );
+
+    useEffect(() => {
+        if (!transferSourceBankId && bankAndCashAccounts.length > 0) {
+            const cash = bankAndCashAccounts.find((a) => a.name === 'Cash');
+            setTransferSourceBankId(cash?.id ?? bankAndCashAccounts[0].id);
+        }
+        if (!transferDestBankId && bankAndCashAccounts.length > 0) {
+            const cash = bankAndCashAccounts.find((a) => a.name === 'Cash');
+            setTransferDestBankId(cash?.id ?? bankAndCashAccounts[0].id);
+        }
+    }, [bankAndCashAccounts, transferSourceBankId, transferDestBankId]);
 
     // Resizing Logic
     const isResizing = useRef(false);
@@ -529,6 +621,56 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         equityAccountIds,
     ]);
 
+    const sortedLedgerData = useMemo(() => {
+        if (ledgerData.length === 0) return ledgerData;
+        const copy = [...ledgerData] as EquityLedgerRow[];
+        copy.sort((a, b) => compareEquityLedgerRows(a, b, ledgerSort.key, ledgerSort.dir));
+        return copy;
+    }, [ledgerData, ledgerSort]);
+
+    const toggleLedgerSort = useCallback((key: EquityLedgerColKey) => {
+        setLedgerSort((prev) => {
+            if (prev.key === key) return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+            return { key, dir: 'asc' };
+        });
+    }, []);
+
+    const startLedgerColumnResize = useCallback(
+        (col: EquityLedgerColKey, e: React.MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ledgerColResizeRef.current = { col, startX: e.clientX, startW: ledgerColWidths[col] };
+            const onMove = (ev: MouseEvent) => {
+                const r = ledgerColResizeRef.current;
+                if (!r) return;
+                const delta = ev.clientX - r.startX;
+                const next = Math.max(64, r.startW + delta);
+                setLedgerColWidthsState((prev) => ({ ...prev, [r.col]: next }));
+            };
+            const onUp = () => {
+                ledgerColResizeRef.current = null;
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            };
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+        },
+        [ledgerColWidths, setLedgerColWidthsState],
+    );
+
+    const LedgerSortIcon = ({ column }: { column: EquityLedgerColKey }) => {
+        if (ledgerSort.key !== column) {
+            return <span className="text-slate-400 opacity-60 ml-0.5 text-[10px] leading-none">↕</span>;
+        }
+        return (
+            <span className="text-indigo-600 ml-0.5 text-[10px] leading-none">{ledgerSort.dir === 'asc' ? '↑' : '↓'}</span>
+        );
+    };
+
     // --- Editing Handlers ---
     const handleRowClick = (txItem: any) => {
         const mainTx = state.transactions.find(t => t.id === txItem.id);
@@ -795,17 +937,21 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             } catch {
                 apiState = await api.loadState();
             }
+            const mergeById = <T extends { id: string }>(current: T[], apiRows: T[]): T[] => {
+                const merged = new Map<string, T>();
+                current.forEach((item) => merged.set(item.id, item));
+                apiRows.forEach((item) => merged.set(item.id, item));
+                return Array.from(merged.values());
+            };
+            const payload: Partial<typeof state> = {};
             if (apiState.accounts && apiState.accounts.length > 0) {
-                const mergeById = <T extends { id: string }>(current: T[], apiRows: T[]): T[] => {
-                    const merged = new Map<string, T>();
-                    current.forEach((item) => merged.set(item.id, item));
-                    apiRows.forEach((item) => merged.set(item.id, item));
-                    return Array.from(merged.values());
-                };
-                dispatch({
-                    type: 'SET_STATE',
-                    payload: { accounts: mergeById(state.accounts, apiState.accounts) },
-                });
+                payload.accounts = mergeById(state.accounts, apiState.accounts);
+            }
+            if (apiState.transactions != null && Array.isArray(apiState.transactions)) {
+                payload.transactions = mergeById(state.transactions, apiState.transactions);
+            }
+            if (Object.keys(payload).length > 0) {
+                dispatch({ type: 'SET_STATE', payload });
             }
             showToast("Investment posted to the general ledger. Chart balances were refreshed.", "success");
             setIsActionModalOpen(false);
@@ -822,10 +968,10 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         
         // Generate table rows HTML
         let tableRows = '';
-        if (ledgerData.length === 0) {
+        if (sortedLedgerData.length === 0) {
             tableRows = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #64748b;">No transactions found</td></tr>';
         } else {
-            tableRows = ledgerData.map(tx => {
+            tableRows = sortedLedgerData.map(tx => {
                 const amountSign = tx.isDeposit ? '+' : '-';
                 const amountColor = tx.isDeposit ? '#10b981' : '#ef4444';
                 const balanceColor = tx.balance >= 0 ? '#10b981' : '#ef4444';
@@ -875,7 +1021,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
     };
 
     const handleExport = () => {
-        const data = ledgerData.map(r => ({
+        const data = sortedLedgerData.map(r => ({
             Date: formatDate(r.date),
             'Payment Type': r.paymentType,
             Description: r.description,
@@ -1058,17 +1204,33 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
         const timestamp = Date.now();
         const transactions: Transaction[] = [];
-        let clearingAcc = state.accounts.find(a => a.name === 'Internal Clearing');
-        if (transferType === 'PROJECT' && !clearingAcc) {
-            clearingAcc = { id: `sys-acc-clearing-${Date.now()}`, name: 'Internal Clearing', type: AccountType.BANK, balance: 0, description: 'System', isPermanent: true };
-            dispatch({ type: 'ADD_ACCOUNT', payload: clearingAcc });
-        }
 
         const txDate = transferDate || toLocalDateString(new Date());
+
+        if (transferType === 'PROJECT') {
+            if (!transferSourceBankId || !transferDestBankId) {
+                await showAlert('Select source and destination bank/cash accounts for this transfer.');
+                return;
+            }
+            const availableOnSource = computeProjectScopedBankCashBalance(
+                state,
+                transferSourceBankId,
+                sourceProjectId,
+                txDate
+            );
+            if (totalAmount > availableOnSource + 0.005) {
+                await showAlert(
+                    `Insufficient cash on the source account for this project. Available: ${CURRENCY} ${availableOnSource.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Required: ${totalFormatted}. Fund the project or reduce the transfer.`
+                );
+                return;
+            }
+        }
 
         selectedTransfers.forEach((row) => {
             const amount = parseFloat(row.transferAmount);
             if (transferType === 'PROJECT') {
+                // Source: Dr equity (investor) / Cr cash — same pattern as withdrawal (bank → investor).
+                // Dest: Dr cash / Cr equity — same pattern as investment (investor → bank).
                 transactions.push({
                     id: `divest-${timestamp}-${row.investorId}`,
                     type: TransactionType.TRANSFER,
@@ -1076,8 +1238,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                     amount,
                     date: txDate,
                     description: `Equity Move out${noteSuffix}`,
-                    accountId: clearingAcc!.id,
-                    fromAccountId: clearingAcc!.id,
+                    accountId: transferSourceBankId,
+                    fromAccountId: transferSourceBankId,
                     toAccountId: row.investorId,
                     projectId: sourceProjectId,
                     batchId: `eq-move-${timestamp}`,
@@ -1091,7 +1253,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                     description: `Equity Move in${noteSuffix}`,
                     accountId: row.investorId,
                     fromAccountId: row.investorId,
-                    toAccountId: clearingAcc!.id,
+                    toAccountId: transferDestBankId,
                     projectId: destProjectId,
                     batchId: `eq-move-${timestamp}`,
                 } as Transaction);
@@ -1162,14 +1324,14 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 bg-white">
-                                {ledgerData.length === 0 ? (
+                                {sortedLedgerData.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                                             No transactions found
                                         </td>
                                     </tr>
                                 ) : (
-                                    ledgerData.map(tx => (
+                                    sortedLedgerData.map(tx => (
                                         <tr key={(tx as { ledgerRowKey?: string }).ledgerRowKey ?? tx.id}>
                                             <td className="px-4 py-2 text-slate-700">{formatDate(tx.date)}</td>
                                             <td className="px-4 py-2">
@@ -1287,45 +1449,116 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                     <Button size="sm" onClick={handleOpenInvestModal} className="bg-emerald-600 hover:bg-emerald-700">{ICONS.plus} Invest</Button>
                                 </div>
                             </div>
-                            <div className="flex-grow overflow-y-auto">
-                                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                            <div className="flex-grow overflow-auto">
+                                <table className="min-w-full table-fixed divide-y divide-slate-200 text-sm">
+                                    <colgroup>
+                                        {(
+                                            [
+                                                'date',
+                                                'type',
+                                                'description',
+                                                'info',
+                                                'amount',
+                                                'balance',
+                                            ] as EquityLedgerColKey[]
+                                        ).map((k) => (
+                                            <col key={k} style={{ width: ledgerColWidths[k] }} />
+                                        ))}
+                                    </colgroup>
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-600">Date</th>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-600">Type</th>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-600">Description</th>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-600">Info</th>
-                                            <th className="px-4 py-3 text-right font-semibold text-slate-600">Amount</th>
-                                            <th className="px-4 py-3 text-right font-semibold text-slate-600">Balance</th>
+                                            {(
+                                                [
+                                                    { key: 'date' as const, label: 'Date', align: 'left' as const },
+                                                    { key: 'type' as const, label: 'Type', align: 'left' as const },
+                                                    { key: 'description' as const, label: 'Description', align: 'left' as const },
+                                                    { key: 'info' as const, label: 'Info', align: 'left' as const },
+                                                    { key: 'amount' as const, label: 'Amount', align: 'right' as const },
+                                                    { key: 'balance' as const, label: 'Balance', align: 'right' as const },
+                                                ] as const
+                                            ).map((col) => (
+                                                <th
+                                                    key={col.key}
+                                                    className={`relative px-4 py-3 font-semibold text-slate-600 ${
+                                                        col.align === 'right' ? 'text-right' : 'text-left'
+                                                    }`}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        className={`flex w-full max-w-full items-center gap-0.5 rounded px-0.5 -mx-0.5 cursor-pointer select-none hover:text-slate-900 transition-colors ${
+                                                            col.align === 'right' ? 'justify-end text-right' : 'justify-start text-left'
+                                                        }`}
+                                                        onClick={() => toggleLedgerSort(col.key)}
+                                                    >
+                                                        <span className="truncate">{col.label}</span>
+                                                        <LedgerSortIcon column={col.key} />
+                                                    </button>
+                                                    <span
+                                                        role="separator"
+                                                        aria-hidden
+                                                        className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize hover:bg-indigo-300/50"
+                                                        onMouseDown={(e) => startLedgerColumnResize(col.key, e)}
+                                                        title="Drag to resize column"
+                                                    />
+                                                </th>
+                                            ))}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
-                                        {ledgerData.length === 0 ? (
+                                        {sortedLedgerData.length === 0 ? (
                                             <tr>
                                                 <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                                                     No transactions found
                                                 </td>
                                             </tr>
                                         ) : (
-                                            ledgerData.map(tx => (
-                                                <tr 
-                                                    key={(tx as { ledgerRowKey?: string }).ledgerRowKey ?? tx.id} 
+                                            sortedLedgerData.map((tx) => (
+                                                <tr
+                                                    key={(tx as { ledgerRowKey?: string }).ledgerRowKey ?? tx.id}
                                                     className="hover:bg-slate-50 cursor-pointer transition-colors"
                                                     onClick={() => handleRowClick(tx)}
                                                 >
-                                                    <td className="px-4 py-2 text-slate-700">{formatDate(tx.date)}</td>
-                                                    <td className="px-4 py-2">
-                                                        <span 
+                                                    <td className="px-4 py-2 text-slate-700 align-top whitespace-nowrap">
+                                                        {formatDate(tx.date)}
+                                                    </td>
+                                                    <td className="px-4 py-2 align-top">
+                                                        <span
                                                             className={`px-3 py-1 font-medium rounded-full inline-block ${tx.paymentTypeColor}`}
                                                             style={getEntityColorStyle(tx.projectId, undefined, state)}
                                                         >
                                                             {tx.paymentType}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-2 max-w-xs truncate text-slate-600">{tx.description}</td>
-                                                    <td className="px-4 py-2 text-xs text-slate-500">{tx.info}</td>
-                                                    <td className={`px-4 py-2 text-right font-bold ${tx.isDeposit ? 'text-emerald-600' : 'text-rose-600'}`}>{tx.isDeposit ? '+' : '-'}{CURRENCY} {Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                                    <td className={`px-4 py-2 text-right font-mono ${tx.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{tx.balance >= 0 ? '' : '-'}{CURRENCY} {Math.abs(tx.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="px-4 py-2 text-slate-600 align-top min-w-0">
+                                                        <div className="line-clamp-3 break-words">{tx.description}</div>
+                                                    </td>
+                                                    <td className="px-4 py-2 text-xs text-slate-500 align-top min-w-0">
+                                                        <div className="line-clamp-3 break-words">{tx.info}</div>
+                                                    </td>
+                                                    <td
+                                                        className={`px-4 py-2 text-right font-bold align-top whitespace-nowrap ${
+                                                            tx.isDeposit ? 'text-emerald-600' : 'text-rose-600'
+                                                        }`}
+                                                    >
+                                                        {tx.isDeposit ? '+' : '-'}
+                                                        {CURRENCY}{' '}
+                                                        {Math.abs(tx.amount).toLocaleString(undefined, {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2,
+                                                        })}
+                                                    </td>
+                                                    <td
+                                                        className={`px-4 py-2 text-right font-mono align-top whitespace-nowrap ${
+                                                            tx.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                        }`}
+                                                    >
+                                                        {tx.balance >= 0 ? '' : '-'}
+                                                        {CURRENCY}{' '}
+                                                        {Math.abs(tx.balance).toLocaleString(undefined, {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2,
+                                                        })}
+                                                    </td>
                                                 </tr>
                                             ))
                                         )}
@@ -1448,7 +1681,30 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                     </label>
                                 </div>
                                 {transferType === 'PROJECT' ? (
-                                    <ComboBox label="Destination Project" items={state.projects.filter(p => p.id !== sourceProjectId)} selectedId={destProjectId} onSelect={(item) => setDestProjectId(item?.id || '')} placeholder="Select Target Project" allowAddNew={false} />
+                                    <>
+                                        <ComboBox label="Destination Project" items={state.projects.filter(p => p.id !== sourceProjectId)} selectedId={destProjectId} onSelect={(item) => setDestProjectId(item?.id || '')} placeholder="Select Target Project" allowAddNew={false} />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                                            <ComboBox
+                                                label="Cash out — from account (source project)"
+                                                items={bankAndCashAccounts}
+                                                selectedId={transferSourceBankId}
+                                                onSelect={(item) => setTransferSourceBankId(item?.id || '')}
+                                                placeholder="Bank / cash"
+                                                allowAddNew={false}
+                                            />
+                                            <ComboBox
+                                                label="Cash in — to account (destination project)"
+                                                items={bankAndCashAccounts}
+                                                selectedId={transferDestBankId}
+                                                onSelect={(item) => setTransferDestBankId(item?.id || '')}
+                                                placeholder="Bank / cash"
+                                                allowAddNew={false}
+                                            />
+                                        </div>
+                                        <p className="text-xs text-slate-500 mt-2">
+                                            Records two linked transfers: cash leaves the source project account and enters the destination project account, with equity moving between projects for each investor.
+                                        </p>
+                                    </>
                                 ) : (
                                     <ComboBox label="Pay From Account" items={bankAccounts} selectedId={payoutAccountId} onSelect={(item) => setPayoutAccountId(item?.id || '')} placeholder="Select Bank/Cash Account" allowAddNew={false} />
                                 )}
@@ -1577,6 +1833,11 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                     Please select a destination project before confirming the transfer.
                                 </div>
                             )}
+                            {transferType === 'PROJECT' && (!transferSourceBankId || !transferDestBankId) && bankAndCashAccounts.length > 0 && (
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                                    Select both bank/cash accounts for the inter-project cash movement.
+                                </div>
+                            )}
                             {transferType === 'PAYOUT' && !payoutAccountId && (
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
                                     Please select a payout account before confirming the transfer.
@@ -1587,7 +1848,12 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                 <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); setTransferDescription(''); setTransferDate(toLocalDateString(new Date())); }}>Cancel</Button>
                                 <Button 
                                     onClick={handleTransferCommit} 
-                                    disabled={(transferType === 'PROJECT' && !destProjectId) || (transferType === 'PAYOUT' && !payoutAccountId) || transferRows.filter(r => r.isSelected && parseFloat(r.transferAmount) > 0).length === 0}
+                                    disabled={
+                                        (transferType === 'PROJECT' &&
+                                            (!destProjectId || !transferSourceBankId || !transferDestBankId)) ||
+                                        (transferType === 'PAYOUT' && !payoutAccountId) ||
+                                        transferRows.filter((r) => r.isSelected && parseFloat(r.transferAmount) > 0).length === 0
+                                    }
                                     className="bg-indigo-600 hover:bg-indigo-700"
                                 >
                                     Execute Transfer

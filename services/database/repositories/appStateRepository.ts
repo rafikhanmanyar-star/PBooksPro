@@ -41,6 +41,10 @@ import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { ensureMandatorySystemAccountsPersisted } from '../mandatorySystemAccounts';
 import { ensureMandatorySystemCategoriesPersisted } from '../mandatorySystemCategories';
 import { notifyDatabaseError } from '../../dbErrorNotification';
+import {
+    reconcileRentalAgreementsList,
+    rentalAgreementsReconcileChanged,
+} from '../../rentalAgreementReconcile';
 
 /** Sort items so parents appear before children (for FK parent_id → id). Handles missing parents and cycles. */
 function sortByParentOrder<T>(
@@ -267,13 +271,29 @@ export class AppStateRepository {
             })),
             budgets,
             planAmenities: planAmenities || [],
-            rentalAgreements: repairedRentalAgreements.map((ra: any) => ({
-                ...ra,
-                status: ra.status || 'Active',
-                startDate: ra.startDate ?? toLocalDateString(new Date()),
-                endDate: ra.endDate ?? toLocalDateString(new Date()),
-                rentDueDate: typeof ra.rentDueDate === 'number' ? ra.rentDueDate : parseInt(String(ra.rentDueDate || '1')),
-            })),
+            rentalAgreements: (() => {
+                const mapped = repairedRentalAgreements.map((ra: any) => ({
+                    ...ra,
+                    status: ra.status || 'Active',
+                    startDate: ra.startDate ?? toLocalDateString(new Date()),
+                    endDate: ra.endDate ?? toLocalDateString(new Date()),
+                    rentDueDate: typeof ra.rentDueDate === 'number' ? ra.rentDueDate : parseInt(String(ra.rentDueDate || '1')),
+                }));
+                try {
+                    const reconciled = reconcileRentalAgreementsList(mapped);
+                    if (rentalAgreementsReconcileChanged(mapped, reconciled)) {
+                        try {
+                            this.rentalAgreementsRepo.saveAll(reconciled, { skipOrphanCleanup: true });
+                        } catch (persistErr) {
+                            console.warn('[LocalDB] rental agreement reconcile persist failed:', persistErr);
+                        }
+                    }
+                    return reconciled;
+                } catch (e) {
+                    console.warn('[LocalDB] rental agreement reconcile skipped:', e);
+                    return mapped;
+                }
+            })(),
             projectAgreements: projectAgreements.map((pa: any) => ({
                 ...pa,
                 unitIds: Array.isArray(pa.unitIds) ? pa.unitIds : [],

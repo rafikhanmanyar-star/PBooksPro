@@ -20,6 +20,8 @@ import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarn
 import { ImportType } from '../../services/importService';
 import BillBulkPaymentModal from './BillBulkPaymentModal';
 import { openDocumentById } from '../../services/documentUploadService';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type TypeFilter = 'All' | 'Bills' | 'Payments';
@@ -94,6 +96,8 @@ const BillTreeSidebar: React.FC<{
 
     const sortedNodes = useMemo(() => sortNodes(nodes), [nodes, sortNodes]);
 
+    const expandableIds = useMemo(() => collectExpandableParentIds(sortedNodes), [sortedNodes]);
+
     const SortIcon = ({ column }: { column: 'name' | 'balance' }) => {
         if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
         return <span className="text-orange-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
@@ -107,6 +111,14 @@ const BillTreeSidebar: React.FC<{
             return next;
         });
     };
+
+    const handleExpandAll = useCallback(() => {
+        setExpandedIds(new Set(expandableIds));
+    }, [expandableIds]);
+
+    const handleCollapseAll = useCallback(() => {
+        setExpandedIds(new Set());
+    }, []);
 
     const renderNode = (node: BillTreeNode, level: number, parentId?: string) => {
         const hasChildren = node.children && node.children.length > 0;
@@ -165,13 +177,19 @@ const BillTreeSidebar: React.FC<{
     return (
         <div className="flex flex-col h-full">
             {/* Sort Header */}
-            <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 mb-1 bg-slate-50/50 rounded-md">
+            <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 mb-1 bg-slate-50/50 rounded-md gap-1">
                 <button
                     onClick={() => handleSort('name')}
                     className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-900 transition-colors"
                 >
                     Entity <SortIcon column="name" />
                 </button>
+                <TreeExpandCollapseControls
+                    variant="slate"
+                    onExpandAll={handleExpandAll}
+                    onCollapseAll={handleCollapseAll}
+                    visible={expandableIds.length > 0}
+                />
                 <button
                     onClick={() => handleSort('balance')}
                     className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-900 transition-colors"
