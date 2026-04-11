@@ -8,7 +8,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { ICONS } from '../../constants';
 
 interface ContactFormProps {
-  onSubmit: (contact: Omit<Contact, 'id'> | Omit<Vendor, 'id'>) => void;
+  onSubmit: (contact: Omit<Contact, 'id'> | Omit<Vendor, 'id'>) => void | Promise<void>;
   onCancel: () => void;
   onDelete?: () => void;
   contactToEdit?: Contact;
@@ -97,9 +97,13 @@ const ContactForm: React.FC<ContactFormProps> = ({
     }
 
     if (isVendorForm) {
-      onSubmit({ name: trimmedName, description, companyName, contactNo, address, isActive } as any);
+      await Promise.resolve(
+        onSubmit({ name: trimmedName, description, companyName, contactNo, address, isActive } as any)
+      );
     } else {
-      onSubmit({ name: trimmedName, type, description, companyName, contactNo, address, isActive } as any);
+      await Promise.resolve(
+        onSubmit({ name: trimmedName, type, description, companyName, contactNo, address, isActive } as any)
+      );
     }
   };
 

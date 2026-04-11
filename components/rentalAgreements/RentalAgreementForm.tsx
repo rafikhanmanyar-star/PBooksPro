@@ -14,6 +14,7 @@ import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { getFirstOfNextMonthLocal, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { RentalAgreementsApiRepository } from '../../services/api/repositories/rentalAgreementsApi';
+import { ContactsApiRepository, normalizeContactFromApi } from '../../services/api/repositories/contactsApi';
 
 interface RentalAgreementFormProps {
     onClose: () => void;
@@ -661,13 +662,34 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 {/* Add New Tenant modal (when user clicks "+" in Tenant field) */}
                 <Modal isOpen={showAddTenantModal} onClose={() => { setShowAddTenantModal(false); setNewTenantInitialName(''); }} title="Add New Tenant" size="md">
                     <ContactForm
-                        onSubmit={(data) => {
-                            const newId = Date.now().toString();
-                            const payload = { ...data, id: newId, type: ContactType.TENANT };
-                            dispatch({ type: 'ADD_CONTACT', payload });
-                            setContactId(newId);
-                            setShowAddTenantModal(false);
-                            setNewTenantInitialName('');
+                        onSubmit={async (data) => {
+                            if (isLocalOnlyMode()) {
+                                const newId = Date.now().toString();
+                                const payload = { ...data, id: newId, type: ContactType.TENANT };
+                                dispatch({ type: 'ADD_CONTACT', payload });
+                                setContactId(newId);
+                                setShowAddTenantModal(false);
+                                setNewTenantInitialName('');
+                                return;
+                            }
+                            try {
+                                const contactsApi = new ContactsApiRepository();
+                                const created = await contactsApi.create({ ...data, type: ContactType.TENANT });
+                                const normalized = normalizeContactFromApi(created);
+                                dispatch({ type: 'ADD_CONTACT', payload: normalized });
+                                setContactId(normalized.id);
+                                setShowAddTenantModal(false);
+                                setNewTenantInitialName('');
+                                showToast('Tenant saved.', 'success');
+                            } catch (err: unknown) {
+                                const msg =
+                                    err && typeof err === 'object' && 'message' in err
+                                        ? String((err as { message?: unknown }).message)
+                                        : err instanceof Error
+                                          ? err.message
+                                          : 'Failed to save tenant';
+                                await showAlert(msg);
+                            }
                         }}
                         onCancel={() => { setShowAddTenantModal(false); setNewTenantInitialName(''); }}
                         existingContacts={state.contacts.filter(c => c.type === ContactType.TENANT)}

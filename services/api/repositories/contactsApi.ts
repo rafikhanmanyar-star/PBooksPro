@@ -8,6 +8,23 @@
 import { apiClient } from '../client';
 import { Contact } from '../../../types';
 
+/** Map API JSON (camelCase or snake_case) to app Contact */
+export function normalizeContactFromApi(api: Record<string, unknown> | Contact): Contact {
+  const r = api as Record<string, unknown>;
+  return {
+    id: String(r.id ?? ''),
+    name: String(r.name ?? ''),
+    type: r.type as Contact['type'],
+    description: r.description != null ? String(r.description) : undefined,
+    contactNo: (r.contactNo ?? r.contact_no) != null ? String(r.contactNo ?? r.contact_no) : undefined,
+    companyName: (r.companyName ?? r.company_name) != null ? String(r.companyName ?? r.company_name) : undefined,
+    address: r.address != null ? String(r.address) : undefined,
+    userId: (r.userId ?? r.user_id) != null ? String(r.userId ?? r.user_id) : undefined,
+    version: typeof r.version === 'number' ? r.version : undefined,
+    isActive: r.isActive === false ? false : undefined,
+  };
+}
+
 export class ContactsApiRepository {
   /**
    * Get all contacts
