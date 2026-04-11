@@ -43,6 +43,8 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
 
     const isPermanent = accountToEdit?.isPermanent;
     const bankLike = isBankLikeType(type);
+    /** Shared system accounts (Cash, Internal Clearing): identity is fixed but opening balance may be set per books. */
+    const canEditOpeningAsSystem = !!(isPermanent && bankLike && accountToEdit);
 
     useEffect(() => {
         if (!accountToEdit) return;
@@ -79,7 +81,8 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (isPermanent || isReservedName) return;
+        if (isReservedName) return;
+        if (isPermanent && !canEditOpeningAsSystem) return;
         if (bankLike) {
             onSubmit({
                 name,
@@ -103,7 +106,12 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
         <form onSubmit={handleSubmit} className="space-y-4">
             {isPermanent && (
                 <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg">
-                    <p><strong>Read-only:</strong> This is a system account and cannot be edited or deleted.</p>
+                    <p>
+                        <strong>System account:</strong>{' '}
+                        {canEditOpeningAsSystem
+                            ? 'Name, type, and description are fixed. You can still set Initial amount (opening balance) for this bank/cash account; delete is not available.'
+                            : 'This account cannot be edited or deleted.'}
+                    </p>
                 </div>
             )}
             <Input label="Account Name" value={name} onChange={e => setName(e.target.value)} required autoFocus disabled={isPermanent} />
@@ -150,7 +158,7 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
                         inputMode="decimal"
                         value={openingAmount}
                         onChange={e => setOpeningAmount(e.target.value)}
-                        disabled={isPermanent}
+                        disabled={isPermanent && !canEditOpeningAsSystem}
                         placeholder="Opening balance before transactions in this app (can be negative)"
                     />
                     {accountToEdit && (
@@ -184,7 +192,12 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
                 </div>
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                    <Button type="submit" disabled={isPermanent || isReservedName}>{accountToEdit ? 'Update' : 'Save'} Account</Button>
+                    <Button
+                        type="submit"
+                        disabled={isReservedName || (isPermanent && !canEditOpeningAsSystem)}
+                    >
+                        {accountToEdit ? 'Update' : 'Save'} Account
+                    </Button>
                 </div>
             </div>
         </form>

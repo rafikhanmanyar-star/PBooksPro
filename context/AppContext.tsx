@@ -2306,7 +2306,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     getAppStateApiService()
                         .saveAccount(acc)
                         .then((saved) => {
-                            if (saved && typeof saved.version === 'number') {
+                            if (saved?.id) {
                                 dispatch({
                                     type: 'UPDATE_ACCOUNT',
                                     payload: { ...acc, ...saved } as Account,
@@ -2329,7 +2329,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     getAppStateApiService()
                         .saveAccount(acc)
                         .then((saved) => {
-                            if (saved && typeof saved.version === 'number') {
+                            if (saved?.id) {
                                 dispatch({
                                     type: 'UPDATE_ACCOUNT',
                                     payload: { ...acc, ...saved } as Account,

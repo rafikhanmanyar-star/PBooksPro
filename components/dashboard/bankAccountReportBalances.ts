@@ -49,11 +49,14 @@ export function computeBankAccountProjectBalances(params: {
     const balances: Record<string, BankAccountProjectBalanceRow> = {};
 
     bankAccounts.forEach(account => {
+        const rawOb = account.openingBalance ?? 0;
+        const opening = typeof rawOb === 'number' && Number.isFinite(rawOb) ? rawOb : Number(rawOb) || 0;
         balances[account.id] = {
             accountId: account.id,
             accountName: account.name,
-            projectBalances: {},
-            totalBalance: 0
+            projectBalances:
+                Math.abs(opening) > 0.000_000_1 ? { [UNASSIGNED_PROJECT_ID]: opening } : {},
+            totalBalance: opening,
         };
     });
 

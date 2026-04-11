@@ -110,6 +110,33 @@ function resolveOpeningForUpdate(
   return Number.isFinite(n) ? n : 0;
 }
 
+function numFromRow(raw: string | number | null | undefined): number {
+  if (raw == null || raw === '') return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Shared chart rows (tenant_id = GLOBAL_SYSTEM_TENANT_ID) cannot rename or retype; opening/balance may be updated.
+ * DB may store type as UPPERCASE (seed) while the client sends Title Case enum strings — treat as equivalent.
+ */
+function assertSystemAccountIdentityUnchanged(
+  prior: AccountRow,
+  p: ReturnType<typeof pickBody>
+): void {
+  const nameOk = prior.name.trim().toLowerCase() === p.name.trim().toLowerCase();
+  const typeOk =
+    String(prior.type ?? '')
+      .trim()
+      .toLowerCase() ===
+    String(p.type ?? '')
+      .trim()
+      .toLowerCase();
+  if (!nameOk || !typeOk) {
+    throw new Error('System account name and type cannot be changed.');
+  }
+}
+
 function pickBody(body: Record<string, unknown>) {
   return {
     name: String(body.name ?? '').trim(),
@@ -220,11 +247,46 @@ export async function updateAccount(
   const expectedVersion = p.version;
 
   const prior = await getAccountByIdIncludingDeleted(client, tenantId, id);
-  if (prior?.tenant_id === GLOBAL_SYSTEM_TENANT_ID) {
+  if (!prior) {
     return { row: null, conflict: false };
   }
 
-  const openingStored = resolveOpeningForUpdate(p.opening_balance, prior?.opening_balance);
+  if (prior.tenant_id === GLOBAL_SYSTEM_TENANT_ID) {
+    if (prior.deleted_at) {
+      return { row: null, conflict: false };
+    }
+    assertSystemAccountIdentityUnchanged(prior, p);
+    const openingStored = resolveOpeningForUpdate(p.opening_balance, prior.opening_balance);
+    const balanceNext = Number.isFinite(p.balance) ? p.balance : numFromRow(prior.balance);
+
+    if (expectedVersion !== undefined) {
+      const u = await client.query<AccountRow>(
+        `UPDATE accounts SET
+           balance = $3, opening_balance = $4, version = version + 1, updated_at = NOW()
+         WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $5
+         RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
+        [id, GLOBAL_SYSTEM_TENANT_ID, balanceNext, openingStored, expectedVersion]
+      );
+      if (u.rows.length === 0) {
+        const exists = await getAccountById(client, tenantId, id);
+        if (!exists) return { row: null, conflict: false };
+        return { row: null, conflict: true };
+      }
+      return { row: (await getAccountById(client, tenantId, id)) ?? u.rows[0], conflict: false };
+    }
+
+    const u = await client.query<AccountRow>(
+      `UPDATE accounts SET
+         balance = $3, opening_balance = $4, version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
+      [id, GLOBAL_SYSTEM_TENANT_ID, balanceNext, openingStored]
+    );
+    if (!u.rows[0]) return { row: null, conflict: false };
+    return { row: (await getAccountById(client, tenantId, id)) ?? u.rows[0], conflict: false };
+  }
+
+  const openingStored = resolveOpeningForUpdate(p.opening_balance, prior.opening_balance);
 
   const vals = [
     p.name,
@@ -284,9 +346,26 @@ export async function upsertAccount(
     return { row, conflict: false, wasInsert: true };
   }
   if (existing.tenant_id === GLOBAL_SYSTEM_TENANT_ID) {
-    const row = await getAccountById(client, tenantId, id);
-    if (!row) throw new Error('System account not found.');
-    return { row, conflict: false, wasInsert: false };
+    assertSystemAccountIdentityUnchanged(existing, p);
+    const expectedVersionGlobal = p.version;
+    if (expectedVersionGlobal !== undefined && existing.version !== expectedVersionGlobal) {
+      const row = await getAccountById(client, tenantId, id);
+      if (!row) throw new Error('System account not found.');
+      return { row, conflict: true, wasInsert: false };
+    }
+    const openingStored = resolveOpeningForUpdate(p.opening_balance, existing.opening_balance);
+    const balanceNext = Number.isFinite(p.balance) ? p.balance : numFromRow(existing.balance);
+    const u = await client.query<AccountRow>(
+      `UPDATE accounts SET
+         balance = $3, opening_balance = $4, version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
+      [id, GLOBAL_SYSTEM_TENANT_ID, balanceNext, openingStored]
+    );
+    const row = u.rows[0];
+    if (!row) throw new Error('System account upsert failed.');
+    const withBalance = await getAccountById(client, tenantId, id);
+    return { row: withBalance ?? row, conflict: false, wasInsert: false };
   }
 
   const expectedVersion = p.version;
