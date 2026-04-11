@@ -83,17 +83,39 @@ export function rowToAccountApi(row: AccountRow): Record<string, unknown> {
   return base;
 }
 
-function pickBody(body: Record<string, unknown>) {
+function hasOpeningBalanceKey(body: Record<string, unknown>): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(body, 'openingBalance') ||
+    Object.prototype.hasOwnProperty.call(body, 'opening_balance')
+  );
+}
+
+/** Parsed opening balance when the client sent the field; otherwise undefined (caller must preserve DB value on update). */
+function openingBalanceFromBody(body: Record<string, unknown>): number | undefined {
+  if (!hasOpeningBalanceKey(body)) return undefined;
   const rawOb = body.openingBalance ?? body.opening_balance;
-  const opening_balance =
-    rawOb !== undefined && rawOb !== null && rawOb !== ''
-      ? Number(rawOb)
-      : undefined;
+  if (rawOb === undefined || rawOb === null || rawOb === '') return 0;
+  const n = Number(rawOb);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** On PUT/upsert update, keep DB opening_balance when the client omits the field (avoids wiping with 0). */
+function resolveOpeningForUpdate(
+  parsedFromBody: number | undefined,
+  priorOpening: string | number | null | undefined
+): number {
+  if (parsedFromBody !== undefined) return parsedFromBody;
+  if (priorOpening == null || priorOpening === '') return 0;
+  const n = Number(priorOpening);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function pickBody(body: Record<string, unknown>) {
   return {
     name: String(body.name ?? '').trim(),
     type: String(body.type ?? '').trim(),
     balance: body.balance != null ? Number(body.balance) : 0,
-    opening_balance: opening_balance !== undefined && Number.isFinite(opening_balance) ? opening_balance : 0,
+    opening_balance: openingBalanceFromBody(body),
     is_permanent:
       body.isPermanent === true ||
       body.isPermanent === 1 ||
@@ -202,11 +224,13 @@ export async function updateAccount(
     return { row: null, conflict: false };
   }
 
+  const openingStored = resolveOpeningForUpdate(p.opening_balance, prior?.opening_balance);
+
   const vals = [
     p.name,
     p.type,
     Number.isFinite(p.balance) ? p.balance : 0,
-    p.opening_balance ?? 0,
+    openingStored,
     p.description ?? null,
     p.is_permanent,
     p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,
@@ -270,11 +294,13 @@ export async function upsertAccount(
     return { row: existing, conflict: true, wasInsert: false };
   }
 
+  const openingStored = resolveOpeningForUpdate(p.opening_balance, existing.opening_balance);
+
   const vals = [
     p.name,
     p.type,
     Number.isFinite(p.balance) ? p.balance : 0,
-    p.opening_balance ?? 0,
+    openingStored,
     p.description ?? null,
     p.is_permanent,
     p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,

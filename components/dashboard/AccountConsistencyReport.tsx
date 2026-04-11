@@ -21,6 +21,29 @@ function parseAmountInput(raw: string): number | null {
     return Number.isFinite(n) ? n : null;
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+    if (!text) return false;
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok;
+        } catch {
+            return false;
+        }
+    }
+}
+
 const AccountConsistencyReport: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const tenantId =
@@ -68,7 +91,26 @@ const AccountConsistencyReport: React.FC = () => {
 
     const [actualInputs, setActualInputs] = useState<Record<string, string>>({});
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
+    const [copyMessage, setCopyMessage] = useState<string | null>(null);
+    const copyMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const legacyMigratedRef = useRef(false);
+
+    const showCopyFeedback = useCallback(() => {
+        if (copyMsgTimerRef.current) clearTimeout(copyMsgTimerRef.current);
+        setCopyMessage('Copied to clipboard');
+        copyMsgTimerRef.current = setTimeout(() => {
+            copyMsgTimerRef.current = null;
+            setCopyMessage(null);
+        }, 1600);
+    }, []);
+
+    const copyFigure = useCallback(
+        async (displayText: string) => {
+            const ok = await copyTextToClipboard(displayText);
+            if (ok) showCopyFeedback();
+        },
+        [showCopyFeedback]
+    );
 
     /** One-time: move browser-only localStorage into app state (then persisted to DB on save). */
     useEffect(() => {
@@ -106,6 +148,12 @@ const AccountConsistencyReport: React.FC = () => {
         }
         legacyMigratedRef.current = true;
     }, [tenantId, persisted.actualByAccountId, dispatch]);
+
+    useEffect(() => {
+        return () => {
+            if (copyMsgTimerRef.current) clearTimeout(copyMsgTimerRef.current);
+        };
+    }, []);
 
     useEffect(() => {
         setSaveMessage(null);
@@ -162,6 +210,11 @@ const AccountConsistencyReport: React.FC = () => {
         ? 'Amounts are saved in your local database with this company file.'
         : 'Amounts are saved to the server database for this tenant.';
 
+    const numSelectable = 'select-text cursor-text';
+
+    const inputActualClass =
+        'w-full max-w-[160px] ml-auto block rounded-lg border border-app-border bg-app-surface-2 px-2 py-1.5 text-right text-app-text tabular-nums text-sm focus:outline-none focus:ring-2 focus:ring-ds-accent/40 select-text';
+
     return (
         <Card className="overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
@@ -170,6 +223,7 @@ const AccountConsistencyReport: React.FC = () => {
                     <p className="text-xs text-app-muted mt-1 max-w-2xl">
                         Compare the system balance (from your recorded transactions) with the actual balance from bank statements or cash counts.
                         Difference is system balance minus actual. Use this to spot missing or incorrect bills, invoices, or payments.
+                        Select any figure to copy, or double-click a system/difference/summary amount to copy it. Actual amount fields support standard copy and paste (Ctrl+C / Ctrl+V).
                     </p>
                     <p className="text-[10px] text-app-muted mt-1">{storageHint}</p>
                 </div>
@@ -178,23 +232,40 @@ const AccountConsistencyReport: React.FC = () => {
                         Save amounts
                     </Button>
                     {savedAt && (
-                        <span className="text-[10px] text-app-muted">
+                        <span className={`text-[10px] text-app-muted ${numSelectable}`}>
                             Last saved: {new Date(savedAt).toLocaleString()}
                         </span>
                     )}
                     {saveMessage && <span className="text-xs text-ds-success">{saveMessage}</span>}
+                    {copyMessage && <span className="text-xs text-app-muted">{copyMessage}</span>}
                 </div>
             </div>
 
             <div className={`rounded-lg p-4 border mb-4 ${netSystem >= 0 ? 'bg-app-toolbar border-app-border' : 'bg-[color:var(--badge-unpaid-bg)] border-ds-danger/30'}`}>
                 <div className="text-xs font-medium text-app-muted mb-1">Net balance (system, all accounts)</div>
-                <div className={`text-lg font-bold tabular-nums ${netSystem >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>
+                <div
+                    className={`text-lg font-bold tabular-nums ${numSelectable} ${netSystem >= 0 ? 'text-app-text' : 'text-ds-danger'}`}
+                    title="Select to copy, or double-click to copy this figure"
+                    onDoubleClick={e => {
+                        e.preventDefault();
+                        void copyFigure(formatRoundedNumber(netSystem));
+                    }}
+                >
                     {formatRoundedNumber(netSystem)}
                 </div>
                 {netActualParsed !== null && (
                     <div className="text-xs text-app-muted mt-2">
                         Sum of entered actual amounts:{' '}
-                        <span className="font-semibold text-app-text tabular-nums">{formatRoundedNumber(netActualParsed)}</span>
+                        <span
+                            className={`font-semibold text-app-text tabular-nums ${numSelectable}`}
+                            title="Select to copy, or double-click to copy"
+                            onDoubleClick={e => {
+                                e.preventDefault();
+                                void copyFigure(formatRoundedNumber(netActualParsed));
+                            }}
+                        >
+                            {formatRoundedNumber(netActualParsed)}
+                        </span>
                     </div>
                 )}
             </div>
@@ -225,11 +296,16 @@ const AccountConsistencyReport: React.FC = () => {
                                 const diff = actual === null ? null : r.currentBalance - actual;
                                 return (
                                     <tr key={r.accountId} className="hover:bg-app-toolbar/80 transition-colors duration-ds">
-                                        <td className="px-3 py-3 font-medium text-app-text">{r.accountName}</td>
+                                        <td className={`px-3 py-3 font-medium text-app-text ${numSelectable}`}>{r.accountName}</td>
                                         <td
-                                            className={`px-3 py-3 text-right tabular-nums ${
+                                            className={`px-3 py-3 text-right tabular-nums ${numSelectable} ${
                                                 r.currentBalance >= 0 ? 'text-app-text' : 'text-ds-danger'
                                             }`}
+                                            title="Select to copy, or double-click to copy this figure"
+                                            onDoubleClick={e => {
+                                                e.preventDefault();
+                                                void copyFigure(formatRoundedNumber(r.currentBalance));
+                                            }}
                                         >
                                             {formatRoundedNumber(r.currentBalance)}
                                         </td>
@@ -238,20 +314,32 @@ const AccountConsistencyReport: React.FC = () => {
                                                 type="text"
                                                 inputMode="decimal"
                                                 autoComplete="off"
+                                                spellCheck={false}
                                                 placeholder="—"
+                                                aria-label={`Actual amount for ${r.accountName}; copy and paste supported`}
                                                 value={actualInputs[r.accountId] ?? ''}
                                                 onChange={e => setActualFor(r.accountId, e.target.value)}
-                                                className="w-full max-w-[160px] ml-auto block rounded-lg border border-app-border bg-app-surface-2 px-2 py-1.5 text-right text-app-text tabular-nums text-sm focus:outline-none focus:ring-2 focus:ring-ds-accent/40"
+                                                className={inputActualClass}
                                             />
                                         </td>
                                         <td
-                                            className={`px-3 py-3 text-right font-medium tabular-nums ${
+                                            className={`px-3 py-3 text-right font-medium tabular-nums ${numSelectable} ${
                                                 diff === null || Math.abs(diff) < 0.005
                                                     ? 'text-app-muted'
                                                     : 'text-ds-danger font-semibold'
                                             }`}
+                                            title={
+                                                diff === null
+                                                    ? undefined
+                                                    : 'Select to copy, or double-click to copy this figure'
+                                            }
+                                            onDoubleClick={e => {
+                                                if (diff === null || Math.abs(diff) < 0.005) return;
+                                                e.preventDefault();
+                                                void copyFigure(formatRoundedNumber(diff));
+                                            }}
                                         >
-                                            {diff === null ? '—' : formatRoundedNumber(diff)}
+                                            {diff === null ? <span className={numSelectable}>—</span> : formatRoundedNumber(diff)}
                                         </td>
                                     </tr>
                                 );

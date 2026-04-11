@@ -45,11 +45,20 @@ function normalizeAccountTypeFromApi(raw: unknown): AccountType {
 }
 
 function normalizeAccountFromApi(a: any): Account {
+  const rawOb = a.opening_balance ?? a.openingBalance;
+  let openingBalance: number | undefined;
+  if (rawOb === null || rawOb === undefined || rawOb === '') {
+    openingBalance = 0;
+  } else {
+    const n = typeof rawOb === 'number' ? rawOb : parseFloat(String(rawOb));
+    openingBalance = Number.isFinite(n) ? n : 0;
+  }
   return {
     id: a.id,
     name: a.name || '',
     type: normalizeAccountTypeFromApi(a.type),
     balance: typeof a.balance === 'number' ? a.balance : parseFloat(String(a.balance || '0')),
+    openingBalance,
     isPermanent: a.is_permanent === true || a.is_permanent === 1 || a.isPermanent === true || false,
     description: a.description || undefined,
     parentAccountId: a.parent_account_id || a.parentAccountId || undefined,
