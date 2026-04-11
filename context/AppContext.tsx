@@ -249,6 +249,7 @@ const initialState: AppState = {
     },
     invoiceHtmlTemplate: DEFAULT_INVOICE_TEMPLATE,
     dashboardConfig: { visibleKpis: [] },
+    accountConsistency: { actualByAccountId: {} },
     installmentPlans: [],
     planAmenities: [],
     agreementSettings: { prefix: 'AGR-', nextNumber: 1, padding: 4 },
@@ -1192,6 +1193,8 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         // --- SETTINGS ---
         case 'UPDATE_DASHBOARD_CONFIG':
             return { ...state, dashboardConfig: action.payload };
+        case 'UPDATE_ACCOUNT_CONSISTENCY':
+            return { ...state, accountConsistency: action.payload };
         case 'UPDATE_AGREEMENT_SETTINGS':
             return { ...state, agreementSettings: action.payload };
         case 'UPDATE_PROJECT_AGREEMENT_SETTINGS':
@@ -1286,6 +1289,8 @@ function mergeTenantSettingsFromAction(prev: AppState, action: AppAction): AppSt
             return { ...prev, whatsAppMode: action.payload };
         case 'UPDATE_DASHBOARD_CONFIG':
             return { ...prev, dashboardConfig: action.payload };
+        case 'UPDATE_ACCOUNT_CONSISTENCY':
+            return { ...prev, accountConsistency: action.payload };
         case 'UPDATE_AGREEMENT_SETTINGS':
             return { ...prev, agreementSettings: action.payload };
         case 'UPDATE_PROJECT_AGREEMENT_SETTINGS':
@@ -3071,6 +3076,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             if (cloudSettings.dashboardConfig) {
                 dispatch({ type: 'UPDATE_DASHBOARD_CONFIG', payload: cloudSettings.dashboardConfig });
+            }
+            if (cloudSettings.accountConsistency) {
+                dispatch({ type: 'UPDATE_ACCOUNT_CONSISTENCY', payload: cloudSettings.accountConsistency });
             }
             if (cloudSettings.agreementSettings) {
                 dispatch({ type: 'UPDATE_AGREEMENT_SETTINGS', payload: cloudSettings.agreementSettings });

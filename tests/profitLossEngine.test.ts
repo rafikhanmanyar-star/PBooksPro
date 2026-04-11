@@ -75,6 +75,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     },
     whatsAppTemplates: {} as AppState['whatsAppTemplates'],
     dashboardConfig: { visibleKpis: [] },
+    accountConsistency: { actualByAccountId: {} },
     installmentPlans: [],
     planAmenities: [],
     agreementSettings: { prefix: '', nextNumber: 1, padding: 1 },

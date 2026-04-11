@@ -178,6 +178,8 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                             <div className="flex items-center justify-end gap-1">
                                                 <TreeExpandCollapseControls
                                                     variant="slate"
+                                                    allExpandableIds={expandableBatchIds}
+                                                    expandedIds={expandedIds}
                                                     onExpandAll={handleExpandAllBatches}
                                                     onCollapseAll={handleCollapseAllBatches}
                                                     visible={expandableBatchIds.length > 0}

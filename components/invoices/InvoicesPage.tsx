@@ -196,6 +196,8 @@ const InvoiceTreeSidebar = memo<{
                 </button>
                 <TreeExpandCollapseControls
                     variant="app"
+                    allExpandableIds={expandableIds}
+                    expandedIds={expandedIds}
                     onExpandAll={handleExpandAll}
                     onCollapseAll={handleCollapseAll}
                     visible={expandableIds.length > 0}

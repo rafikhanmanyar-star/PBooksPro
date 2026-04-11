@@ -118,6 +118,8 @@ const ContactTreeSidebar: React.FC<{
             <div className="flex justify-end mb-1">
                 <TreeExpandCollapseControls
                     variant="slate"
+                    allExpandableIds={expandableIds}
+                    expandedIds={expandedIds}
                     onExpandAll={handleExpandAll}
                     onCollapseAll={handleCollapseAll}
                     visible={expandableIds.length > 0}

@@ -30,3 +30,12 @@ export function collectInvoiceTreeExpandableIds<T extends { id: string; children
     nodes.forEach(walk);
     return ids;
 }
+
+/** True if any expandable parent is currently expanded. */
+export function treeHasAnyExpandedBranch(
+    expandedIds: Set<string>,
+    allExpandableIds: readonly string[]
+): boolean {
+    if (allExpandableIds.length === 0) return false;
+    return allExpandableIds.some(id => expandedIds.has(id));
+}

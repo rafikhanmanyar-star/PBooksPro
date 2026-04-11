@@ -16,6 +16,7 @@ import Modal from '../ui/Modal';
 import TransferStatisticsReport from '../reports/TransferStatisticsReport';
 import ProjectBuildingFundsReport from './ProjectBuildingFundsReport';
 import BankAccountsReport from './BankAccountsReport';
+import AccountConsistencyReport from './AccountConsistencyReport';
 import Tabs from '../ui/Tabs';
 import { formatDate } from '../../utils/dateUtils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
@@ -128,13 +129,19 @@ const DashboardPage: React.FC = () => {
                 <div className="flex-shrink-0">
                     <Tabs
                         variant="browser"
-                        tabs={['Overview Reports', 'Bank Accounts']}
+                        tabs={['Overview Reports', 'Bank Accounts', 'Account consistency']}
                         activeTab={activeReportTab}
                         onTabClick={setActiveReportTab}
                     />
                 </div>
                 <div className="flex-grow bg-app-card rounded-b-2xl -mt-px p-4 border border-app-border border-t-0 shadow-ds-card">
-                    {activeReportTab === 'Overview Reports' ? <ProjectBuildingFundsReport /> : <BankAccountsReport />}
+                    {activeReportTab === 'Overview Reports' ? (
+                        <ProjectBuildingFundsReport />
+                    ) : activeReportTab === 'Bank Accounts' ? (
+                        <BankAccountsReport />
+                    ) : (
+                        <AccountConsistencyReport />
+                    )}
                 </div>
             </div>
 

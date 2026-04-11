@@ -199,6 +199,8 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
                     </button>
                     <TreeExpandCollapseControls
                         variant="slate"
+                        allExpandableIds={billExpandableIds}
+                        expandedIds={expandedIds}
                         onExpandAll={handleExpandAll}
                         onCollapseAll={handleCollapseAll}
                         visible={billExpandableIds.length > 0}

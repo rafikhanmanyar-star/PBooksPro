@@ -834,6 +834,13 @@ export interface DashboardConfig {
   visibleKpis: string[];
 }
 
+/** Saved actual bank/cash balances for Account consistency (tenant-scoped; stored in PostgreSQL app_settings). */
+export interface AccountConsistencySettings {
+  /** Per chart account id; null means cleared / not entered */
+  actualByAccountId: Record<string, number | null>;
+  savedAt?: string;
+}
+
 export interface TransactionLogEntry {
   id: string;
   timestamp: string;
@@ -939,6 +946,7 @@ export interface AppState {
   printSettings: PrintSettings;
   whatsAppTemplates: WhatsAppTemplates;
   dashboardConfig: DashboardConfig;
+  accountConsistency: AccountConsistencySettings;
   invoiceHtmlTemplate?: string;
   installmentPlans: InstallmentPlan[]; // Per owner per project installment plans
   planAmenities: PlanAmenity[]; // Configurable amenities that can be added to plans
@@ -1046,6 +1054,7 @@ export type AppAction =
   | { type: 'UPDATE_RECURRING_TEMPLATE'; payload: RecurringInvoiceTemplate }
   | { type: 'DELETE_RECURRING_TEMPLATE'; payload: string }
   | { type: 'UPDATE_DASHBOARD_CONFIG'; payload: DashboardConfig }
+  | { type: 'UPDATE_ACCOUNT_CONSISTENCY'; payload: AccountConsistencySettings }
   | { type: 'UPDATE_AGREEMENT_SETTINGS'; payload: AgreementSettings }
   | { type: 'UPDATE_PROJECT_AGREEMENT_SETTINGS'; payload: AgreementSettings }
   | { type: 'UPDATE_RENTAL_INVOICE_SETTINGS'; payload: InvoiceSettings }

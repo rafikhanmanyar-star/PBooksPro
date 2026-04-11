@@ -77,6 +77,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             { Key: 'PrintSettings', Value: safeJson(s.printSettings) },
             { Key: 'WhatsAppTemplates', Value: safeJson(s.whatsAppTemplates) },
             { Key: 'DashboardConfig', Value: safeJson(s.dashboardConfig) },
+            { Key: 'AccountConsistency', Value: safeJson(s.accountConsistency ?? { actualByAccountId: {} }) },
             { Key: 'InstallmentPlans', Value: safeJson(s.installmentPlans || []) },
             { Key: 'InvoiceHtmlTemplate', Value: safeJson(s.invoiceHtmlTemplate ?? '') },
             { Key: 'PmCostPercentage', Value: safeJson(s.pmCostPercentage) },

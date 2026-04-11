@@ -186,6 +186,8 @@ const BillTreeSidebar: React.FC<{
                 </button>
                 <TreeExpandCollapseControls
                     variant="slate"
+                    allExpandableIds={expandableIds}
+                    expandedIds={expandedIds}
                     onExpandAll={handleExpandAll}
                     onCollapseAll={handleCollapseAll}
                     visible={expandableIds.length > 0}

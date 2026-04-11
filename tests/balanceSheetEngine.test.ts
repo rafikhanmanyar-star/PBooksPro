@@ -44,6 +44,7 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
     printSettings: {} as AppState['printSettings'],
     whatsAppTemplates: {} as AppState['whatsAppTemplates'],
     dashboardConfig: { visibleKpis: [] },
+    accountConsistency: { actualByAccountId: {} },
     installmentPlans: [],
     planAmenities: [],
     showSystemTransactions: false,

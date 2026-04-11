@@ -50,6 +50,7 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
             { Key: 'PrintSettings', Value: helpers.safeJson(state.printSettings) },
             { Key: 'WhatsAppTemplates', Value: helpers.safeJson(state.whatsAppTemplates) },
             { Key: 'DashboardConfig', Value: helpers.safeJson(state.dashboardConfig) },
+            { Key: 'AccountConsistency', Value: helpers.safeJson(state.accountConsistency ?? { actualByAccountId: {} }) },
             { Key: 'InvoiceHtmlTemplate', Value: helpers.safeJson(state.invoiceHtmlTemplate ?? '') },
             { Key: 'PmCostPercentage', Value: helpers.safeJson(state.pmCostPercentage) },
             { Key: 'ShowSystemTransactions', Value: helpers.safeJson(state.showSystemTransactions) },

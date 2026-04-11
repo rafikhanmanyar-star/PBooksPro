@@ -107,6 +107,8 @@ const AgreementTreeSidebar: React.FC<{
             <div className="flex justify-end mb-1">
                 <TreeExpandCollapseControls
                     variant="app"
+                    allExpandableIds={expandableIds}
+                    expandedIds={expandedIds}
                     onExpandAll={handleExpandAll}
                     onCollapseAll={handleCollapseAll}
                     visible={expandableIds.length > 0}

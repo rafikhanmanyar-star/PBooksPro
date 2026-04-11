@@ -317,6 +317,7 @@ const TENANT_SETTING_STATE_KEYS: (keyof AppState)[] = [
   'printSettings',
   'whatsAppTemplates',
   'dashboardConfig',
+  'accountConsistency',
   'invoiceHtmlTemplate',
   'showSystemTransactions',
   'enableColorCoding',
@@ -346,6 +347,7 @@ export function tenantSettingsPayloadFromState(state: AppState): Record<string, 
     printSettings: state.printSettings,
     whatsAppTemplates: state.whatsAppTemplates,
     dashboardConfig: state.dashboardConfig,
+    accountConsistency: state.accountConsistency,
     invoiceHtmlTemplate: state.invoiceHtmlTemplate,
     showSystemTransactions: state.showSystemTransactions,
     enableColorCoding: state.enableColorCoding,
@@ -1026,6 +1028,7 @@ export class AppStateApiService {
     if (flat.printSettings != null) out.printSettings = flat.printSettings;
     if (flat.whatsAppTemplates != null) out.whatsAppTemplates = flat.whatsAppTemplates;
     if (flat.dashboardConfig != null) out.dashboardConfig = flat.dashboardConfig;
+    if (flat.accountConsistency != null) out.accountConsistency = flat.accountConsistency;
     if (flat.invoiceHtmlTemplate !== undefined) out.invoiceHtmlTemplate = flat.invoiceHtmlTemplate;
     if (flat.showSystemTransactions !== undefined) out.showSystemTransactions = flat.showSystemTransactions;
     if (flat.enableColorCoding !== undefined) out.enableColorCoding = flat.enableColorCoding;

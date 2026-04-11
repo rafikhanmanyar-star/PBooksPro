@@ -328,6 +328,7 @@ export class AppStateRepository {
                 vendorGreeting: 'Hello {contactName},'
             },
             dashboardConfig: settings.dashboardConfig || { visibleKpis: [] },
+            accountConsistency: settings.accountConsistency || { actualByAccountId: {} },
             installmentPlans: installmentPlans.map(p => {
                 // Normalize installment plan to ensure all fields are properly mapped
                 const normalizedPlan: InstallmentPlan = {
@@ -1712,6 +1713,7 @@ export class AppStateRepository {
                                         printSettings: state.printSettings,
                                         whatsAppTemplates: state.whatsAppTemplates,
                                         dashboardConfig: state.dashboardConfig,
+                                        accountConsistency: state.accountConsistency,
                                         installmentPlans: state.installmentPlans || [],
                                         invoiceHtmlTemplate: state.invoiceHtmlTemplate,
                                         showSystemTransactions: state.showSystemTransactions,

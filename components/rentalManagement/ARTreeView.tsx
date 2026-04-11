@@ -275,6 +275,8 @@ const ARTreeView: React.FC<ARTreeViewProps> = ({
           variant="app"
           compact
           className="px-0.5"
+          allExpandableIds={arExpandableIds}
+          expandedIds={expandedIds}
           onExpandAll={handleExpandAllTree}
           onCollapseAll={handleCollapseAllTree}
           visible={arExpandableIds.length > 0}

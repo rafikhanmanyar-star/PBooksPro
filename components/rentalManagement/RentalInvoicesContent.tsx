@@ -35,7 +35,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   const [statusFilter, setStatusFilter] = useLocalStorage<string>('rental_invoices_statusFilter', 'All');
   const [groupBy, setGroupBy] = useLocalStorage<'tenant' | 'owner' | 'property' | 'building'>(
     'rental_invoices_groupBy',
-    'tenant'
+    'building'
   );
   const [entityFilterId, setEntityFilterId] = useState<string>('all');
 

@@ -181,6 +181,8 @@ const TreeView: React.FC<TreeViewProps> = ({
                     {showControls && (
                         <TreeExpandCollapseControls
                             variant="app"
+                            allExpandableIds={allExpandableIds}
+                            expandedIds={expandedIds}
                             onExpandAll={handleExpandAll}
                             onCollapseAll={handleCollapseAll}
                             visible={showControls}
@@ -192,6 +194,8 @@ const TreeView: React.FC<TreeViewProps> = ({
                 <div className="flex justify-end mb-1.5">
                     <TreeExpandCollapseControls
                         variant="app"
+                        allExpandableIds={allExpandableIds}
+                        expandedIds={expandedIds}
                         onExpandAll={handleExpandAll}
                         onCollapseAll={handleCollapseAll}
                         visible={showControls}

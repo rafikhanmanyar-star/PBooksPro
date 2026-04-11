@@ -1,116 +1,44 @@
 
 import React, { useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { TransactionType, AccountType, LoanSubtype } from '../../types';
+import { AccountType } from '../../types';
 import Card from '../ui/Card';
 import { formatRoundedNumber } from '../../utils/numberUtils';
-
-interface BankAccountProjectBalance {
-    accountId: string;
-    accountName: string;
-    projectBalances: Record<string, number>; // projectId -> balance
-    totalBalance: number;
-}
-
-const UNASSIGNED_PROJECT_ID = '__unassigned__';
-const LOAN_COLUMN_ID = '__loan__';
-const BUILDINGS_COLUMN_ID = '__buildings__';
-const TRANSFER_COLUMN_ID = '__transfer__';
-
-/** Resolve report column key: Loan -> Transfer -> Rental (tx with buildingId) -> Project -> Unassigned */
-function resolveColumnKey(
-    tx: { type: string; projectId?: string; buildingId?: string; billId?: string; invoiceId?: string },
-    bills: { id: string; projectId?: string; buildingId?: string }[],
-    invoices: { id: string; projectId?: string; buildingId?: string }[]
-): string {
-    if (tx.type === TransactionType.LOAN) return LOAN_COLUMN_ID;
-    if (tx.type === TransactionType.TRANSFER) return TRANSFER_COLUMN_ID;
-
-    const bill = tx.billId ? bills.find(b => b.id === tx.billId) : undefined;
-    const invoice = tx.invoiceId ? invoices.find(i => i.id === tx.invoiceId) : undefined;
-    const hasBuilding = !!(tx.buildingId || bill?.buildingId || invoice?.buildingId);
-    if (hasBuilding) return BUILDINGS_COLUMN_ID;
-
-    const projectId = tx.projectId ?? bill?.projectId ?? invoice?.projectId;
-    return projectId ?? UNASSIGNED_PROJECT_ID;
-}
+import {
+    computeBankAccountProjectBalances,
+    UNASSIGNED_PROJECT_ID,
+    LOAN_COLUMN_ID,
+    BUILDINGS_COLUMN_ID,
+    TRANSFER_COLUMN_ID,
+} from './bankAccountReportBalances';
 
 const BankAccountsReport: React.FC = () => {
     const { state } = useAppContext();
 
-    // Get all bank and cash accounts (so transfers between Cash and Bank show both sides)
     const bankAccounts = useMemo(() => {
         return state.accounts.filter(acc =>
             acc.type === AccountType.BANK || acc.type === AccountType.CASH
         );
     }, [state.accounts]);
 
-    // Calculate balance per bank account per column (projects, Loan, Rental, Transfer, Unassigned)
+    const balanceMap = useMemo(
+        () =>
+            computeBankAccountProjectBalances({
+                accounts: state.accounts,
+                transactions: state.transactions,
+                bills: state.bills,
+                invoices: state.invoices,
+            }),
+        [state.accounts, state.transactions, state.bills, state.invoices]
+    );
+
     const accountProjectBalances = useMemo(() => {
-        const balances: Record<string, BankAccountProjectBalance> = {};
-
-        bankAccounts.forEach(account => {
-            balances[account.id] = {
-                accountId: account.id,
-                accountName: account.name,
-                projectBalances: {},
-                totalBalance: 0
-            };
-        });
-
-        state.transactions.forEach(tx => {
-            const columnKey = resolveColumnKey(tx, state.bills, state.invoices);
-
-            if (tx.type === TransactionType.INCOME && tx.accountId) {
-                const account = balances[tx.accountId];
-                if (account) {
-                    const amount = tx.amount;
-                    account.projectBalances[columnKey] = (account.projectBalances[columnKey] || 0) + amount;
-                    account.totalBalance += amount;
-                }
-            } else if (tx.type === TransactionType.EXPENSE && tx.accountId) {
-                const account = balances[tx.accountId];
-                if (account) {
-                    const amount = tx.amount;
-                    account.projectBalances[columnKey] = (account.projectBalances[columnKey] || 0) - amount;
-                    account.totalBalance -= amount;
-                }
-            } else if (tx.type === TransactionType.TRANSFER) {
-                if (tx.fromAccountId && balances[tx.fromAccountId]) {
-                    const amount = tx.amount;
-                    balances[tx.fromAccountId].projectBalances[columnKey] =
-                        (balances[tx.fromAccountId].projectBalances[columnKey] || 0) - amount;
-                    balances[tx.fromAccountId].totalBalance -= amount;
-                }
-                if (tx.toAccountId && balances[tx.toAccountId]) {
-                    const amount = tx.amount;
-                    balances[tx.toAccountId].projectBalances[columnKey] =
-                        (balances[tx.toAccountId].projectBalances[columnKey] || 0) + amount;
-                    balances[tx.toAccountId].totalBalance += amount;
-                }
-            } else if (tx.type === TransactionType.LOAN && tx.accountId) {
-                const account = balances[tx.accountId];
-                if (account) {
-                    const amount = tx.amount;
-                    if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
-                        account.projectBalances[columnKey] = (account.projectBalances[columnKey] || 0) + amount;
-                        account.totalBalance += amount;
-                    } else if (tx.subtype === LoanSubtype.GIVE || tx.subtype === LoanSubtype.REPAY) {
-                        account.projectBalances[columnKey] = (account.projectBalances[columnKey] || 0) - amount;
-                        account.totalBalance -= amount;
-                    }
-                }
-            }
-        });
-
-        // Include all bank accounts that have any balance (total or per-column)
-        return Object.values(balances).filter(account => {
+        return Object.values(balanceMap).filter(account => {
             if (Math.abs(account.totalBalance) > 0.01) return true;
             return Object.values(account.projectBalances).some(b => Math.abs(b) > 0.01);
         });
-    }, [state.transactions, state.bills, state.invoices, state.projects, bankAccounts]);
+    }, [balanceMap]);
 
-    // Columns: real projects with balance, then Loan, Rental, Transfer, Unassigned (only if they have balance)
     const projectsWithTransactions = useMemo(() => {
         const projectIds = new Set<string>();
         let hasLoan = false;
@@ -139,35 +67,32 @@ const BankAccountsReport: React.FC = () => {
         return list;
     }, [accountProjectBalances, state.projects]);
 
-    // Calculate project totals (column totals) - only for projects with transactions
     const projectTotals = useMemo(() => {
         const totals: Record<string, number> = {};
-        
+
         projectsWithTransactions.forEach(project => {
             totals[project.id] = 0;
         });
-        
+
         accountProjectBalances.forEach(accountData => {
             projectsWithTransactions.forEach(project => {
                 const balance = accountData.projectBalances[project.id] || 0;
                 totals[project.id] = (totals[project.id] || 0) + balance;
             });
         });
-        
+
         return totals;
     }, [accountProjectBalances, projectsWithTransactions]);
 
-    // Calculate net balance (grand total)
     const netBalance = useMemo(() => {
         return accountProjectBalances.reduce((sum, account) => sum + account.totalBalance, 0);
     }, [accountProjectBalances]);
 
-    // Helper function to get font size based on number length
     const getFontSize = (num: number): string => {
         const rounded = Math.round(num);
         const numStr = formatRoundedNumber(Math.abs(rounded));
         const length = numStr.length;
-        
+
         if (length <= 6) return 'text-base';
         if (length <= 9) return 'text-sm';
         if (length <= 12) return 'text-xs';
@@ -179,8 +104,7 @@ const BankAccountsReport: React.FC = () => {
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-app-text">Bank Accounts Report</h3>
             </div>
-            
-            {/* Net Balance Summary */}
+
             <div className="mb-6">
                 <div className={`rounded-lg p-4 border ${netBalance >= 0 ? 'bg-app-toolbar border-app-border' : 'bg-[color:var(--badge-unpaid-bg)] border-ds-danger/30'}`}>
                     <div className={`text-sm font-medium mb-1 ${netBalance >= 0 ? 'text-app-muted' : 'text-ds-danger'}`}>Net Balance</div>
@@ -189,8 +113,7 @@ const BankAccountsReport: React.FC = () => {
                     </div>
                 </div>
             </div>
-            
-            {/* Table */}
+
             {bankAccounts.length === 0 ? (
                 <div className="py-8 text-center text-app-muted bg-app-toolbar rounded-lg border border-app-border">
                     No bank or cash accounts. Add accounts in Settings to see balances here.
@@ -238,7 +161,6 @@ const BankAccountsReport: React.FC = () => {
                                 </td>
                             </tr>
                         ))}
-                        {/* Totals Row */}
                         {accountProjectBalances.length > 0 && (
                             <tr className="bg-app-toolbar font-semibold border-t-2 border-app-border">
                                 <td className="px-2 sm:px-3 py-3 font-bold text-app-text sticky left-0 bg-app-toolbar z-10 border-r border-app-border">
@@ -266,4 +188,3 @@ const BankAccountsReport: React.FC = () => {
 };
 
 export default BankAccountsReport;
-

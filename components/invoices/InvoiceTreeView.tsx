@@ -244,6 +244,8 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
                     </div>
                     <TreeExpandCollapseControls
                         variant="slate"
+                        allExpandableIds={invoiceExpandableIds}
+                        expandedIds={expandedIds}
                         onExpandAll={handleExpandAll}
                         onCollapseAll={handleCollapseAll}
                         visible={invoiceExpandableIds.length > 0}

@@ -719,6 +719,8 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
                         <TreeExpandCollapseControls
                             variant="app"
                             compact
+                            allExpandableIds={bulkExpandableRecordIds}
+                            expandedIds={expandedIds}
                             onExpandAll={handleExpandAllBulk}
                             onCollapseAll={handleCollapseAllBulk}
                             visible={bulkExpandableRecordIds.length > 0}

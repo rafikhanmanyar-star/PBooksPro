@@ -93,7 +93,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   const { overdueCount: dueCount, handleGenerateAllDue, isGenerating } = useGenerateDueInvoices();
 
   // Filters — list and summary use separate keys so both persist
-  const [viewByList, setViewByList] = useLocalStorage<ViewBy>('rental_invoices_groupBy', 'tenant');
+  const [viewByList, setViewByList] = useLocalStorage<ViewBy>('rental_invoices_groupBy', 'building');
   const [viewBySummary, setViewBySummary] = useLocalStorage<ViewBy>('ar_dashboard_viewBy', 'building');
   const viewBy = listMode ? viewByList : viewBySummary;
   const setViewBy = listMode ? setViewByList : setViewBySummary;

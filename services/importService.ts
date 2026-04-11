@@ -1446,6 +1446,7 @@ export const runImportProcess = async (
                                 'PrintSettings': 'UPDATE_PRINT_SETTINGS',
                                 'WhatsAppTemplates': 'UPDATE_WHATSAPP_TEMPLATES',
                                 'DashboardConfig': 'UPDATE_DASHBOARD_CONFIG',
+                                'AccountConsistency': 'UPDATE_ACCOUNT_CONSISTENCY',
                                 'InvoiceHtmlTemplate': 'UPDATE_INVOICE_TEMPLATE',
                                 'PmCostPercentage': 'UPDATE_PM_COST_PERCENTAGE',
                                 'ShowSystemTransactions': 'TOGGLE_SYSTEM_TRANSACTIONS',

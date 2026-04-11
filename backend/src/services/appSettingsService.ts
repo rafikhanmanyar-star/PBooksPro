@@ -9,6 +9,7 @@ export const TENANT_SETTING_KEYS = [
   'printSettings',
   'whatsAppTemplates',
   'dashboardConfig',
+  'accountConsistency',
   'invoiceHtmlTemplate',
   'showSystemTransactions',
   'enableColorCoding',
