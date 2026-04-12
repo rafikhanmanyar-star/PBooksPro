@@ -5,6 +5,11 @@ import { ContactType, TransactionType, Transaction, Contact } from '../../types'
 import { CURRENCY, ICONS } from '../../constants';
 import { formatCurrency } from '../../utils/numberUtils';
 import OwnerPayoutModal from './OwnerPayoutModal';
+import PayoutTreePanel, {
+    PayoutTreeNode,
+    filterPayoutTreeNodes,
+    sortPayoutTreeNodes,
+} from './PayoutTreePanel';
 import OwnerLedger from './OwnerLedger';
 import BrokerLedger from './BrokerLedger';
 import BrokerPayoutModal from './BrokerPayoutModal';
@@ -47,11 +52,13 @@ const OwnerPayoutsPage: React.FC = () => {
     const { showToast } = useNotification();
 
     // UI state
-    const [activeCategory, setActiveCategory] = useState<PayoutCategory>('all');
+    const [activeCategory, setActiveCategory] = useState<PayoutCategory>('ownerIncome');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [selectedOwnerId, setSelectedOwnerId] = useState<string>('all');
     const [selectedUnitId, setSelectedUnitId] = useState<string>('all');
+    const [selectedBrokerId, setSelectedBrokerId] = useState<string>('all');
+    const [treeSortBy, setTreeSortBy] = useState<'name' | 'amount'>('amount');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'balance', direction: 'desc' });
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
@@ -99,6 +106,10 @@ const OwnerPayoutsPage: React.FC = () => {
     useEffect(() => {
         setSelectedUnitId('all');
     }, [selectedOwnerId]);
+
+    useEffect(() => {
+        if (activeCategory !== 'brokerCommission') setSelectedBrokerId('all');
+    }, [activeCategory]);
 
     // Owner options: after building selection (owners with properties in that building, or all owners with properties)
     const ownerFilterOptions = useMemo(() => {
@@ -522,6 +533,335 @@ const OwnerPayoutsPage: React.FC = () => {
         return p?.name || 'Unit';
     }, [selectedUnitId, state.properties]);
 
+    // --- Payout tree data (full portfolio; table scope follows building / owner / unit / broker selection) ---
+    const ownerStyleTreeNodes = useMemo((): PayoutTreeNode[] => {
+        const mode: 'rent' | 'security' = activeCategory === 'securityDeposit' ? 'security' : 'rent';
+        const buildings = [...state.buildings].sort((a, b) =>
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+        );
+        const root: PayoutTreeNode[] = [];
+
+        for (const b of buildings) {
+            const propsInB = state.properties.filter(p => p.buildingId === b.id);
+            const byOwner = new Map<string, typeof state.properties>();
+            for (const p of propsInB) {
+                if (!p.ownerId) continue;
+                if (!byOwner.has(p.ownerId)) byOwner.set(p.ownerId, []);
+                byOwner.get(p.ownerId)!.push(p);
+            }
+
+            const ownerChildren: PayoutTreeNode[] = [];
+
+            for (const [ownerId, props] of byOwner) {
+                const contact = state.contacts.find(c => c.id === ownerId);
+                if (!contact) continue;
+
+                const propNodes: PayoutTreeNode[] = [];
+                let oSum = 0;
+
+                for (const prop of props) {
+                    const items = ownerPropertyBreakdown[ownerId]?.[mode] ?? [];
+                    const item = items.find(i => String(i.propertyId) === String(prop.id));
+                    const raw = item?.balanceDue ?? 0;
+                    const due = Math.max(0, raw);
+                    if (due <= 0.01) continue;
+                    oSum += due;
+                    propNodes.push({
+                        id: `property-${prop.id}`,
+                        type: 'property',
+                        label: prop.name || 'Unit',
+                        value: `${CURRENCY} ${formatCurrency(due)}`,
+                        sortAmount: due,
+                    });
+                }
+
+                if (propNodes.length === 0) continue;
+
+                ownerChildren.push({
+                    id: `bld-${b.id}-own-${ownerId}`,
+                    type: 'owner',
+                    label: contact.name,
+                    value: `${CURRENCY} ${formatCurrency(oSum)}`,
+                    sortAmount: oSum,
+                    children: propNodes,
+                });
+            }
+
+            if (ownerChildren.length === 0) continue;
+
+            const bSum = ownerChildren.reduce((s, c) => s + (c.sortAmount ?? 0), 0);
+            root.push({
+                id: `bld-${b.id}`,
+                type: 'building',
+                label: b.name,
+                value: `${CURRENCY} ${formatCurrency(bSum)}`,
+                sortAmount: bSum,
+                children: ownerChildren,
+            });
+        }
+
+        return root;
+    }, [state.buildings, state.properties, state.contacts, ownerPropertyBreakdown, activeCategory]);
+
+    const brokerPayoutTreeNodes = useMemo((): PayoutTreeNode[] => {
+        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+        const relevantCategoryIds = [brokerFeeCategory?.id, rebateCategory?.id].filter(Boolean) as string[];
+        const fullScope = new Set(state.properties.map(p => String(p.id)));
+
+        const earned = new Map<string, number>();
+        state.rentalAgreements.forEach(ra => {
+            if (ra.previousAgreementId) return;
+            const propId = ra.propertyId ?? (ra as { property_id?: string }).property_id;
+            if (!propId || !ra.brokerId) return;
+            const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
+            if (isNaN(fee) || fee <= 0) return;
+            const k = `${ra.brokerId}::${String(propId)}`;
+            earned.set(k, (earned.get(k) || 0) + fee);
+        });
+
+        const paid = new Map<string, number>();
+        state.transactions
+            .filter(
+                tx =>
+                    tx.type === TransactionType.EXPENSE &&
+                    tx.contactId &&
+                    tx.categoryId &&
+                    relevantCategoryIds.includes(tx.categoryId) &&
+                    !tx.projectId
+            )
+            .forEach(tx => {
+                const category = state.categories.find(c => c.id === tx.categoryId);
+                if (category?.name === 'Rebate Amount') return;
+                if (!tx.contactId) return;
+                const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount ?? 0));
+                if (isNaN(amount)) return;
+                if (tx.propertyId) {
+                    if (!fullScope.has(String(tx.propertyId))) return;
+                    const k = `${tx.contactId}::${String(tx.propertyId)}`;
+                    paid.set(k, (paid.get(k) || 0) + amount);
+                } else {
+                    const k = `${tx.contactId}::__noprop__`;
+                    paid.set(k, (paid.get(k) || 0) + amount);
+                }
+            });
+
+        const pairBalance = new Map<string, number>();
+        const keys = new Set<string>([...earned.keys(), ...paid.keys()]);
+        keys.forEach(k => {
+            if (k.endsWith('::__noprop__')) return;
+            const e = earned.get(k) ?? 0;
+            const pAmt = paid.get(k) ?? 0;
+            pairBalance.set(k, e - pAmt);
+        });
+
+        const buildings = [...state.buildings].sort((a, b) =>
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+        );
+        const root: PayoutTreeNode[] = [];
+
+        for (const b of buildings) {
+            const propsInB = state.properties.filter(p => p.buildingId === b.id);
+            const propIdsB = new Set(propsInB.map(p => String(p.id)));
+
+            const byBroker = new Map<string, PayoutTreeNode[]>();
+
+            pairBalance.forEach((bal, pairKey) => {
+                const sep = pairKey.indexOf('::');
+                if (sep < 0) return;
+                const brokerId = pairKey.slice(0, sep);
+                const propId = pairKey.slice(sep + 2);
+                if (!propIdsB.has(propId)) return;
+
+                const eAmt = earned.get(pairKey) ?? 0;
+                const pAmt = paid.get(pairKey) ?? 0;
+                const hasActivity = eAmt > 0.01 || pAmt > 0.01;
+                if (!hasActivity) return;
+
+                const due = Math.max(0, bal);
+                if (due <= 0.01) return;
+
+                const prop = state.properties.find(p => String(p.id) === propId);
+                if (!prop) return;
+
+                const node: PayoutTreeNode = {
+                    id: `bld-${b.id}-brk-${brokerId}-prop-${propId}`,
+                    type: 'brokerProperty',
+                    label: prop.name || 'Unit',
+                    value: `${CURRENCY} ${formatCurrency(due)}`,
+                    sortAmount: due,
+                };
+                if (!byBroker.has(brokerId)) byBroker.set(brokerId, []);
+                byBroker.get(brokerId)!.push(node);
+            });
+
+            const brokerChildren: PayoutTreeNode[] = [];
+            byBroker.forEach((propNodes, brokerId) => {
+                if (propNodes.length === 0) return;
+                const broker = state.contacts.find(c => c.id === brokerId);
+                if (!broker) return;
+                const brSum = propNodes.reduce((s, n) => s + (n.sortAmount ?? 0), 0);
+                brokerChildren.push({
+                    id: `bld-${b.id}-brk-${brokerId}`,
+                    type: 'broker',
+                    label: broker.name,
+                    value: `${CURRENCY} ${formatCurrency(brSum)}`,
+                    sortAmount: brSum,
+                    children: propNodes,
+                });
+            });
+
+            if (brokerChildren.length === 0) continue;
+            const bSum = brokerChildren.reduce((s, c) => s + (c.sortAmount ?? 0), 0);
+            root.push({
+                id: `bld-${b.id}`,
+                type: 'building',
+                label: b.name,
+                value: `${CURRENCY} ${formatCurrency(bSum)}`,
+                sortAmount: bSum,
+                children: brokerChildren,
+            });
+        }
+
+        return root;
+    }, [state.buildings, state.properties, state.contacts, state.rentalAgreements, state.transactions, state.categories]);
+
+    const payoutTreeNodes = useMemo((): PayoutTreeNode[] => {
+        if (activeCategory === 'brokerCommission') return brokerPayoutTreeNodes;
+        return ownerStyleTreeNodes;
+    }, [activeCategory, brokerPayoutTreeNodes, ownerStyleTreeNodes]);
+
+    const payoutTreeDisplayNodes = useMemo(
+        () => sortPayoutTreeNodes(filterPayoutTreeNodes(payoutTreeNodes, searchQuery), treeSortBy),
+        [payoutTreeNodes, searchQuery, treeSortBy]
+    );
+
+    const treeSelectedId = useMemo(() => {
+        if (activeCategory === 'brokerCommission') {
+            if (selectedBrokerId !== 'all' && selectedUnitId !== 'all' && selectedBuildingId !== 'all') {
+                return `bld-${selectedBuildingId}-brk-${selectedBrokerId}-prop-${selectedUnitId}`;
+            }
+            if (selectedBrokerId !== 'all' && selectedBuildingId !== 'all') {
+                return `bld-${selectedBuildingId}-brk-${selectedBrokerId}`;
+            }
+            if (selectedBuildingId !== 'all') return `bld-${selectedBuildingId}`;
+            return null;
+        }
+        if (selectedUnitId !== 'all') return `property-${selectedUnitId}`;
+        if (selectedOwnerId !== 'all' && selectedBuildingId !== 'all') {
+            return `bld-${selectedBuildingId}-own-${selectedOwnerId}`;
+        }
+        if (selectedOwnerId !== 'all' && selectedBuildingId === 'all') {
+            const props = state.properties.filter(p => p.ownerId === selectedOwnerId);
+            const first = props[0];
+            if (first) return `bld-${first.buildingId}-own-${selectedOwnerId}`;
+        }
+        if (selectedBuildingId !== 'all') return `bld-${selectedBuildingId}`;
+        return null;
+    }, [
+        activeCategory,
+        selectedBrokerId,
+        selectedUnitId,
+        selectedBuildingId,
+        selectedOwnerId,
+        state.properties,
+    ]);
+
+    const treeSelectedParentId = useMemo(() => {
+        if (activeCategory === 'brokerCommission') {
+            if (selectedBrokerId !== 'all' && selectedUnitId !== 'all' && selectedBuildingId !== 'all') {
+                return `bld-${selectedBuildingId}-brk-${selectedBrokerId}`;
+            }
+            if (selectedBrokerId !== 'all' && selectedBuildingId !== 'all') return `bld-${selectedBuildingId}`;
+            if (selectedBuildingId !== 'all') return null;
+            return null;
+        }
+        if (selectedUnitId !== 'all') {
+            const prop = state.properties.find(p => p.id === selectedUnitId);
+            if (prop) return `bld-${prop.buildingId}-own-${prop.ownerId}`;
+            return null;
+        }
+        if (selectedOwnerId !== 'all' && selectedBuildingId !== 'all') return `bld-${selectedBuildingId}`;
+        if (selectedOwnerId !== 'all' && selectedBuildingId === 'all') {
+            const props = state.properties.filter(p => p.ownerId === selectedOwnerId);
+            const first = props[0];
+            if (first) return `bld-${first.buildingId}`;
+        }
+        if (selectedBuildingId !== 'all') return null;
+        return null;
+    }, [
+        activeCategory,
+        selectedBrokerId,
+        selectedUnitId,
+        selectedBuildingId,
+        selectedOwnerId,
+        state.properties,
+    ]);
+
+    const clearLocationFilters = () => {
+        setSelectedBuildingId('all');
+        setSelectedOwnerId('all');
+        setSelectedUnitId('all');
+        setSelectedBrokerId('all');
+        setExpandedRowId(null);
+    };
+
+    const hasLocationFilters =
+        selectedBuildingId !== 'all' ||
+        selectedOwnerId !== 'all' ||
+        selectedUnitId !== 'all' ||
+        selectedBrokerId !== 'all';
+
+    const handleTreeSelect = (id: string, _type?: string, _parentId?: string | null) => {
+        if (id.startsWith('bld-') && !id.includes('-own-') && !id.includes('-brk-')) {
+            const buildingId = id.replace('bld-', '');
+            setSelectedBuildingId(buildingId);
+            setSelectedOwnerId('all');
+            setSelectedUnitId('all');
+            setSelectedBrokerId('all');
+            setExpandedRowId(null);
+            return;
+        }
+        const ownMatch = id.match(/^bld-(.+)-own-(.+)$/);
+        if (ownMatch) {
+            setSelectedBuildingId(ownMatch[1]);
+            setSelectedOwnerId(ownMatch[2]);
+            setSelectedUnitId('all');
+            setSelectedBrokerId('all');
+            setExpandedRowId(null);
+            return;
+        }
+        if (id.startsWith('property-')) {
+            const pid = id.replace('property-', '');
+            const prop = state.properties.find(p => String(p.id) === pid);
+            if (prop) {
+                setSelectedBuildingId(prop.buildingId || 'all');
+                setSelectedOwnerId(prop.ownerId || 'all');
+                setSelectedUnitId(prop.id);
+                setSelectedBrokerId('all');
+                setExpandedRowId(null);
+            }
+            return;
+        }
+        const brkPropMatch = id.match(/^bld-(.+)-brk-(.+)-prop-(.+)$/);
+        if (brkPropMatch) {
+            setSelectedBuildingId(brkPropMatch[1]);
+            setSelectedOwnerId('all');
+            setSelectedUnitId(brkPropMatch[3]);
+            setSelectedBrokerId(brkPropMatch[2]);
+            setExpandedRowId(null);
+            return;
+        }
+        const brkMatch = id.match(/^bld-(.+)-brk-(.+)$/);
+        if (brkMatch) {
+            setSelectedBuildingId(brkMatch[1]);
+            setSelectedOwnerId('all');
+            setSelectedUnitId('all');
+            setSelectedBrokerId(brkMatch[2]);
+            setExpandedRowId(null);
+        }
+    };
+
     // --- Unified Payee Rows ---
     const allPayeeRows = useMemo<PayeeRow[]>(() => {
         const rows: PayeeRow[] = [];
@@ -599,6 +939,10 @@ const OwnerPayoutsPage: React.FC = () => {
             rows = rows.filter(r => r.category === activeCategory);
         }
 
+        if (activeCategory === 'brokerCommission' && selectedBrokerId !== 'all') {
+            rows = rows.filter(r => r.id === `broker-${selectedBrokerId}`);
+        }
+
         // Search filter
         if (searchQuery) {
             const lower = searchQuery.toLowerCase();
@@ -621,7 +965,7 @@ const OwnerPayoutsPage: React.FC = () => {
         });
 
         return rows;
-    }, [allPayeeRows, activeCategory, searchQuery, sortConfig]);
+    }, [allPayeeRows, activeCategory, searchQuery, sortConfig, selectedBrokerId]);
 
     // Rows for summary (same scope as allPayeeRows; only search filter so all three cards show correct totals)
     const rowsForSummary = useMemo(() => {
@@ -662,8 +1006,26 @@ const OwnerPayoutsPage: React.FC = () => {
         }));
     };
 
-    const handleCategoryClick = (cat: PayoutCategory) => {
-        setActiveCategory(prev => prev === cat ? 'all' : cat);
+    const handleSummaryCardClick = (cat: 'ownerIncome' | 'brokerCommission' | 'securityDeposit') => {
+        setActiveCategory(cat);
+        setExpandedRowId(null);
+        if (cat === 'brokerCommission') {
+            setSelectedOwnerId('all');
+            setSelectedUnitId('all');
+        } else {
+            setSelectedBrokerId('all');
+        }
+    };
+
+    const handleCategoryChipClick = (cat: PayoutCategory) => {
+        setActiveCategory(cat);
+        setExpandedRowId(null);
+        if (cat === 'brokerCommission') {
+            setSelectedOwnerId('all');
+            setSelectedUnitId('all');
+        } else {
+            setSelectedBrokerId('all');
+        }
     };
 
     const handlePay = (row: PayeeRow) => {
@@ -838,7 +1200,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 {/* Owner Income Card */}
                 <button
                     type="button"
-                    onClick={() => handleCategoryClick('ownerIncome')}
+                    onClick={() => handleSummaryCardClick('ownerIncome')}
                     className={`text-left p-4 rounded-xl border-2 transition-all ${
                         activeCategory === 'ownerIncome'
                             ? 'border-ds-success bg-ds-success/10 shadow-ds-card'
@@ -863,7 +1225,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 {/* Broker Commission Card */}
                 <button
                     type="button"
-                    onClick={() => handleCategoryClick('brokerCommission')}
+                    onClick={() => handleSummaryCardClick('brokerCommission')}
                     className={`text-left p-4 rounded-xl border-2 transition-all ${
                         activeCategory === 'brokerCommission'
                             ? 'border-primary bg-primary/10 shadow-ds-card'
@@ -888,7 +1250,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 {/* Security Deposit Card */}
                 <button
                     type="button"
-                    onClick={() => handleCategoryClick('securityDeposit')}
+                    onClick={() => handleSummaryCardClick('securityDeposit')}
                     className={`text-left p-4 rounded-xl border-2 transition-all ${
                         activeCategory === 'securityDeposit'
                             ? 'border-ds-warning bg-ds-warning/10 shadow-ds-card'
@@ -926,7 +1288,7 @@ const OwnerPayoutsPage: React.FC = () => {
                             <button
                                 type="button"
                                 key={cat}
-                                onClick={() => setActiveCategory(cat)}
+                                onClick={() => handleCategoryChipClick(cat)}
                                 className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
                                     activeCategory === cat
                                         ? 'bg-primary text-ds-on-primary'
@@ -981,15 +1343,34 @@ const OwnerPayoutsPage: React.FC = () => {
                     </Select>
                 </div>
 
-                {/* Search */}
+                <div className="h-5 w-px bg-app-border hidden md:block" />
+
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-app-muted whitespace-nowrap hidden sm:inline">Tree sort</span>
+                    <Select
+                        value={treeSortBy}
+                        onChange={e => setTreeSortBy(e.target.value as 'name' | 'amount')}
+                        className="text-xs py-1 w-36"
+                    >
+                        <option value="amount">Unpaid (high → low)</option>
+                        <option value="name">Name (A–Z)</option>
+                    </Select>
+                </div>
+
+                {hasLocationFilters && (
+                    <Button type="button" variant="outline" className="text-xs py-1 px-2" onClick={clearLocationFilters}>
+                        Clear tree filters
+                    </Button>
+                )}
+
                 <div className="relative flex-grow max-w-xs ml-auto">
                     <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted">
                         <div className="w-3.5 h-3.5">{ICONS.search}</div>
                     </div>
                     <Input
-                        placeholder="Search payee or property..."
+                        placeholder="Search payee, property, building…"
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onChange={e => setSearchQuery(e.target.value)}
                         className="ds-input-field pl-8 py-1 text-xs placeholder:text-app-muted"
                     />
                     {searchQuery && (
@@ -1004,10 +1385,20 @@ const OwnerPayoutsPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Payees Table */}
-            <div className="flex-grow overflow-auto px-4 pb-4">
-                <Card className="overflow-hidden">
-                    <div className="overflow-x-auto">
+            {/* Tree + payees table */}
+            <div className="flex flex-col lg:flex-row flex-1 min-h-0 gap-3 px-4 pb-4">
+                <div className="w-full lg:w-[min(100%,380px)] lg:max-w-[380px] flex-shrink-0 flex flex-col min-h-[220px] h-[min(40vh,320px)] lg:h-auto lg:min-h-0">
+                    <PayoutTreePanel
+                        nodes={payoutTreeDisplayNodes}
+                        selectedId={treeSelectedId}
+                        selectedParentId={treeSelectedParentId}
+                        onNodeSelect={handleTreeSelect}
+                        valueColumnHeader={`${CURRENCY} Unpaid`}
+                    />
+                </div>
+                <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+                <Card className="overflow-hidden flex-1 flex flex-col min-h-0">
+                    <div className="overflow-x-auto flex-1 overflow-y-auto">
                         <table className="min-w-full divide-y divide-app-border">
                             <thead className="bg-app-table-header">
                                 <tr>
@@ -1153,6 +1544,7 @@ const OwnerPayoutsPage: React.FC = () => {
                         </table>
                     </div>
                 </Card>
+                </div>
             </div>
 
             {/* Modals */}

@@ -134,6 +134,31 @@ export function endOfMonthYyyyMmDd(anchor: Date = new Date()): string {
 }
 
 /**
+ * True when `value` is exactly `YYYY-MM-DD` and matches a real calendar date
+ * (rejects `2026-02-30`, malformed text, etc.).
+ */
+export function isValidYyyyMmDdDate(value: string | undefined | null): boolean {
+  if (value == null) return false;
+  const s = String(value).trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  const day = parseInt(m[3], 10);
+  const d = new Date(y, mo - 1, day);
+  return !isNaN(d.getTime()) && d.getFullYear() === y && d.getMonth() === mo - 1 && d.getDate() === day;
+}
+
+/** First day of month from `YYYY-MM` (e.g. `<input type="month">`). Returns null if invalid. */
+export function firstDayOfMonthFromYyyyMm(monthYyyyMm: string | undefined | null): string | null {
+  if (monthYyyyMm == null) return null;
+  const s = String(monthYyyyMm).trim();
+  if (!/^\d{4}-\d{2}$/.test(s)) return null;
+  const day = `${s}-01`;
+  return isValidYyyyMmDdDate(day) ? day : null;
+}
+
+/**
  * Normalize a stored date (YYYY-MM-DD or ISO) for `<input type="date">` / DatePicker `value`.
  * Pure `YYYY-MM-DD` is kept as-is.
  * PostgreSQL/API `...T00:00:00.000Z` uses **UTC calendar day** (matches SQL DATE).
@@ -142,7 +167,10 @@ export function endOfMonthYyyyMmDd(anchor: Date = new Date()): string {
 export function parseStoredDateToYyyyMmDdInput(value: string | undefined | null): string {
   if (!value) return toYyyyMmDdInDisplayZone(new Date());
   const s = String(value).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    if (isValidYyyyMmDdDate(s)) return s;
+    return toYyyyMmDdInDisplayZone(new Date());
+  }
   const utcCivil = tryParseSqlUtcMidnightIsoToYyyyMmDd(s);
   if (utcCivil) return utcCivil;
   const d = new Date(s);

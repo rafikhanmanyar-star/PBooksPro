@@ -9,7 +9,7 @@ import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
 import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
-import { currentMonthYyyyMm } from '../../utils/dateUtils';
+import { currentMonthYyyyMm, firstDayOfMonthFromYyyyMm } from '../../utils/dateUtils';
 
 interface ManualServiceChargeModalProps {
     isOpen: boolean;
@@ -114,11 +114,9 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
             return;
         }
 
-        // 4. Create Transactions
-        const dateStr = `${month}-01`; // Default to 1st of selected month
-        const dateObj = new Date(dateStr);
-        
-        if (isNaN(dateObj.getTime())) {
+        // 4. Create Transactions — first day of selected month only (validated YYYY-MM-DD)
+        const dateStr = firstDayOfMonthFromYyyyMm(month);
+        if (!dateStr) {
             await showAlert('Invalid month selected.');
             return;
         }

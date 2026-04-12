@@ -23,8 +23,10 @@ interface TreeViewProps {
     selectedId?: string | null; // Currently selected node ID
     selectedParentId?: string | null; // Parent of the selected node (for scoped selection)
     onSelect?: (id: string, type?: string, parentId?: string | null) => void; // Selection callback
-    /** When nodes show `value`, label for the right column (e.g. provisional PM fee). */
+    /** When nodes show `value`, label for the right column (e.g. amount due). */
     valueColumnHeader?: string;
+    /** Label for the left column when `valueColumnHeader` is set (default: Project). */
+    labelColumnHeader?: string;
     /** Show expand/collapse-all controls in the header row (when a header is shown) or above the tree. */
     showExpandCollapseAll?: boolean;
 }
@@ -124,6 +126,7 @@ const TreeView: React.FC<TreeViewProps> = ({
     selectedParentId,
     onSelect,
     valueColumnHeader,
+    labelColumnHeader = 'Project',
     showExpandCollapseAll = true,
 }) => {
     const data = nodes || treeData || [];
@@ -177,7 +180,7 @@ const TreeView: React.FC<TreeViewProps> = ({
         <div className={`${className}`}>
             {valueColumnHeader ? (
                 <div className="flex items-center gap-2 px-1 pb-2 mb-1 border-b border-app-border text-[10px] font-bold text-app-muted uppercase tracking-wider">
-                    <span className="flex-1 pl-6 min-w-0">Project</span>
+                    <span className="flex-1 pl-6 min-w-0">{labelColumnHeader}</span>
                     {showControls && (
                         <TreeExpandCollapseControls
                             variant="app"

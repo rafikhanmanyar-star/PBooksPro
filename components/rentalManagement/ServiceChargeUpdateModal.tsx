@@ -7,6 +7,12 @@ import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
+import {
+    isValidYyyyMmDdDate,
+    parseStoredDateToYyyyMmDdInput,
+    parseYyyyMmDdToLocalDate,
+    toLocalDateString,
+} from '../../utils/dateUtils';
 
 interface ServiceChargeUpdateModalProps {
     isOpen: boolean;
@@ -37,12 +43,19 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
             return;
         }
 
-        if (!date) {
+        const trimmed = String(date ?? '').trim();
+        if (!trimmed) {
             await showAlert("Please select a valid date.");
             return;
         }
-        
-        const dateObj = new Date(date + 'T12:00:00');
+
+        const normalized = parseStoredDateToYyyyMmDdInput(trimmed);
+        if (!isValidYyyyMmDdDate(normalized)) {
+            await showAlert("Invalid date. Please choose a valid date from the calendar.");
+            return;
+        }
+
+        const dateObj = parseYyyyMmDdToLocalDate(normalized);
         if (isNaN(dateObj.getTime())) {
             await showAlert("Invalid date selected.");
             return;

@@ -18,7 +18,7 @@ import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtil
 import ARTreeView, { ARTreeNode } from './ARTreeView';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
-import { currentMonthYyyyMm } from '../../utils/dateUtils';
+import { currentMonthYyyyMm, isValidYyyyMmDdDate } from '../../utils/dateUtils';
 
 type ViewBy = 'building' | 'property' | 'tenant' | 'owner';
 type MscStatusFilter = 'All' | 'Deducted' | 'Pending';
@@ -938,6 +938,10 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
             try {
                 const dateStr = `${runMonth}-01`;
+                if (!isValidYyyyMmDdDate(dateStr)) {
+                    await showAlert('Invalid billing month — cannot record service charges.');
+                    return;
+                }
                 const newTxs: Transaction[] = [];
                 let rentedCount = 0;
                 let vacantCount = 0;
