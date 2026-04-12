@@ -15,6 +15,7 @@ import ReportFooter from './ReportFooter';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { getExpenseBearerType } from '../../utils/rentalBillPayments';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -36,11 +37,25 @@ interface BuildingAnalysisRow {
     // Expenses
     ownerExpenses: number;
     tenantExpenses: number;
-    
+    buildingExpenses: number;
+
     netFlow: number; // Calculated as (All Collected - All Paid Out - Expenses)
 }
 
-type SortKey = 'buildingName' | 'rentCollected' | 'rentArrears' | 'securityCollected' | 'securityArrears' | 'serviceCollected' | 'serviceArrears' | 'rentPaidOut' | 'securityPaidOut' | 'ownerExpenses' | 'tenantExpenses' | 'netFlow';
+type SortKey =
+    | 'buildingName'
+    | 'rentCollected'
+    | 'rentArrears'
+    | 'securityCollected'
+    | 'securityArrears'
+    | 'serviceCollected'
+    | 'serviceArrears'
+    | 'rentPaidOut'
+    | 'securityPaidOut'
+    | 'ownerExpenses'
+    | 'tenantExpenses'
+    | 'buildingExpenses'
+    | 'netFlow';
 
 const BuildingAccountsReport: React.FC = () => {
     const { state } = useAppContext();
@@ -108,6 +123,7 @@ const BuildingAccountsReport: React.FC = () => {
                 securityPaidOut: 0,
                 ownerExpenses: 0,
                 tenantExpenses: 0,
+                buildingExpenses: 0,
                 netFlow: 0
             };
         });
@@ -155,9 +171,26 @@ const BuildingAccountsReport: React.FC = () => {
                 } else if (tx.type === TransactionType.EXPENSE) {
                     if (tx.categoryId === cats.ownPay) row.rentPaidOut += amt;
                     else if (tx.categoryId === cats.secRef || tx.categoryId === cats.ownSecPay) row.securityPaidOut += amt;
-                    else if (tx.categoryId === cats.repTen || isTenant(tx.contactId)) row.tenantExpenses += amt;
-                    else if ([cats.repOwn, cats.brokFee, cats.bldMaint, cats.bldUtil].includes(tx.categoryId)) row.ownerExpenses += amt;
-                    else if (tx.propertyId) row.ownerExpenses += amt; // Any other property-linked expense is owner expense
+                    else {
+                        const bill = tx.billId ? state.bills.find(b => b.id === tx.billId) : undefined;
+                        const isRentalBill = bill && !bill.projectId;
+                        if (isRentalBill) {
+                            const bearer = getExpenseBearerType(bill, state);
+                            if (bearer === 'tenant') row.tenantExpenses += amt;
+                            else if (bearer === 'building') row.buildingExpenses += amt;
+                            else row.ownerExpenses += amt;
+                        } else if (tx.categoryId === cats.repTen || isTenant(tx.contactId)) {
+                            row.tenantExpenses += amt;
+                        } else if (
+                            [cats.repOwn, cats.brokFee, cats.bldMaint, cats.bldUtil].includes(tx.categoryId)
+                        ) {
+                            row.ownerExpenses += amt;
+                        } else if (tx.propertyId) {
+                            row.ownerExpenses += amt;
+                        } else if (tx.buildingId) {
+                            row.buildingExpenses += amt;
+                        }
+                    }
                 }
             }
         });
@@ -200,7 +233,12 @@ const BuildingAccountsReport: React.FC = () => {
         // 3. Calculate Net Flow and Sort
         let rows = Object.values(buildingMap).map(row => {
             const totalIn = row.rentCollected + row.securityCollected + row.serviceCollected;
-            const totalOut = row.rentPaidOut + row.securityPaidOut + row.ownerExpenses + row.tenantExpenses;
+            const totalOut =
+                row.rentPaidOut +
+                row.securityPaidOut +
+                row.ownerExpenses +
+                row.tenantExpenses +
+                row.buildingExpenses;
             row.netFlow = totalIn - totalOut;
             return row;
         });
@@ -242,11 +280,21 @@ const BuildingAccountsReport: React.FC = () => {
             securityPaidOut: acc.securityPaidOut + curr.securityPaidOut,
             ownerExpenses: acc.ownerExpenses + curr.ownerExpenses,
             tenantExpenses: acc.tenantExpenses + curr.tenantExpenses,
+            buildingExpenses: acc.buildingExpenses + curr.buildingExpenses,
             netFlow: acc.netFlow + curr.netFlow,
-        }), { 
-            rentCollected: 0, rentArrears: 0, securityCollected: 0, securityArrears: 0, 
-            serviceCollected: 0, serviceArrears: 0, rentPaidOut: 0, securityPaidOut: 0, 
-            ownerExpenses: 0, tenantExpenses: 0, netFlow: 0 
+        }), {
+            rentCollected: 0,
+            rentArrears: 0,
+            securityCollected: 0,
+            securityArrears: 0,
+            serviceCollected: 0,
+            serviceArrears: 0,
+            rentPaidOut: 0,
+            securityPaidOut: 0,
+            ownerExpenses: 0,
+            tenantExpenses: 0,
+            buildingExpenses: 0,
+            netFlow: 0,
         });
     }, [filteredData]);
 
@@ -263,6 +311,7 @@ const BuildingAccountsReport: React.FC = () => {
             'Security Paid (Refund)': r.securityPaidOut,
             'Owner Expenses': r.ownerExpenses,
             'Tenant Expenses': r.tenantExpenses,
+            'Building Expenses': r.buildingExpenses,
             'Net Cash Flow': r.netFlow
         }));
         exportJsonToExcel(data, 'building-analysis-report.xlsx', 'Analysis');
@@ -396,6 +445,7 @@ const BuildingAccountsReport: React.FC = () => {
                                     <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-success/10 border-r border-app-border cursor-pointer hover:bg-ds-success/20" onClick={() => handleSort('securityPaidOut')}>Sec <SortIcon column="securityPaidOut"/></th>
                                     <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-danger/10 border-r border-app-border cursor-pointer hover:bg-ds-danger/20" onClick={() => handleSort('ownerExpenses')}>Own <SortIcon column="ownerExpenses"/></th>
                                     <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-danger/10 border-r border-app-border cursor-pointer hover:bg-ds-danger/20" onClick={() => handleSort('tenantExpenses')}>Ten <SortIcon column="tenantExpenses"/></th>
+                                    <th className="px-2 py-1 text-right font-medium text-app-muted bg-ds-danger/10 border-r border-app-border cursor-pointer hover:bg-ds-danger/20" onClick={() => handleSort('buildingExpenses')}>Bld <SortIcon column="buildingExpenses"/></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-app-border bg-app-card">
@@ -416,7 +466,8 @@ const BuildingAccountsReport: React.FC = () => {
                                         <td className="px-2 py-2 text-right text-app-muted bg-ds-success/5 border-r border-app-border whitespace-nowrap">{row.securityPaidOut.toLocaleString()}</td>
                                         
                                         <td className="px-2 py-2 text-right text-app-muted bg-ds-danger/5 whitespace-nowrap">{row.ownerExpenses.toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-app-muted bg-ds-danger/5 border-r border-app-border whitespace-nowrap">{row.tenantExpenses.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-app-muted bg-ds-danger/5 whitespace-nowrap">{row.tenantExpenses.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-app-muted bg-ds-danger/5 border-r border-app-border whitespace-nowrap">{row.buildingExpenses.toLocaleString()}</td>
                                         
                                         <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${row.netFlow >= 0 ? 'text-ds-success' : 'text-ds-danger'}`}>
                                             {row.netFlow.toLocaleString()}
@@ -424,7 +475,7 @@ const BuildingAccountsReport: React.FC = () => {
                                     </tr>
                                 ))}
                                 {filteredData.length === 0 && (
-                                    <tr><td colSpan={12} className="text-center py-8 text-app-muted">No data found.</td></tr>
+                                    <tr><td colSpan={13} className="text-center py-8 text-app-muted">No data found.</td></tr>
                                 )}
                             </tbody>
                             <tfoot className="bg-app-toolbar/50 font-bold border-t border-app-border sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.15)]">
@@ -439,7 +490,8 @@ const BuildingAccountsReport: React.FC = () => {
                                     <td className="px-2 py-2 text-right whitespace-nowrap">{totals.rentPaidOut.toLocaleString()}</td>
                                     <td className="px-2 py-2 text-right border-r border-app-border whitespace-nowrap">{totals.securityPaidOut.toLocaleString()}</td>
                                     <td className="px-2 py-2 text-right whitespace-nowrap">{totals.ownerExpenses.toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right border-r border-app-border whitespace-nowrap">{totals.tenantExpenses.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right whitespace-nowrap">{totals.tenantExpenses.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right border-r border-app-border whitespace-nowrap">{totals.buildingExpenses.toLocaleString()}</td>
                                     <td className={`px-3 py-2 text-right whitespace-nowrap ${totals.netFlow >= 0 ? 'text-ds-success' : 'text-ds-danger'}`}>{totals.netFlow.toLocaleString()}</td>
                                 </tr>
                             </tfoot>

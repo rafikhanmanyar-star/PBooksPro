@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ContactType, TransactionType, Transaction, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
@@ -24,6 +24,7 @@ import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarn
 import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 // --- Types ---
 
@@ -58,7 +59,13 @@ const OwnerPayoutsPage: React.FC = () => {
     const [selectedOwnerId, setSelectedOwnerId] = useState<string>('all');
     const [selectedUnitId, setSelectedUnitId] = useState<string>('all');
     const [selectedBrokerId, setSelectedBrokerId] = useState<string>('all');
-    const [treeSortBy, setTreeSortBy] = useState<'name' | 'amount'>('amount');
+    const [treeSortConfig, setTreeSortConfig] = useState<{ key: 'name' | 'amount'; direction: 'asc' | 'desc' }>({
+        key: 'amount',
+        direction: 'desc',
+    });
+    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('owner_payouts_tree_sidebar', 340);
+    const [isTreeResizing, setIsTreeResizing] = useState(false);
+    const payoutSplitContainerRef = useRef<HTMLDivElement>(null);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'balance', direction: 'desc' });
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
@@ -570,7 +577,7 @@ const OwnerPayoutsPage: React.FC = () => {
                         id: `property-${prop.id}`,
                         type: 'property',
                         label: prop.name || 'Unit',
-                        value: `${CURRENCY} ${formatCurrency(due)}`,
+                        value: formatCurrency(due),
                         sortAmount: due,
                     });
                 }
@@ -581,7 +588,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     id: `bld-${b.id}-own-${ownerId}`,
                     type: 'owner',
                     label: contact.name,
-                    value: `${CURRENCY} ${formatCurrency(oSum)}`,
+                    value: formatCurrency(oSum),
                     sortAmount: oSum,
                     children: propNodes,
                 });
@@ -594,7 +601,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 id: `bld-${b.id}`,
                 type: 'building',
                 label: b.name,
-                value: `${CURRENCY} ${formatCurrency(bSum)}`,
+                value: formatCurrency(bSum),
                 sortAmount: bSum,
                 children: ownerChildren,
             });
@@ -688,7 +695,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     id: `bld-${b.id}-brk-${brokerId}-prop-${propId}`,
                     type: 'brokerProperty',
                     label: prop.name || 'Unit',
-                    value: `${CURRENCY} ${formatCurrency(due)}`,
+                    value: formatCurrency(due),
                     sortAmount: due,
                 };
                 if (!byBroker.has(brokerId)) byBroker.set(brokerId, []);
@@ -705,7 +712,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     id: `bld-${b.id}-brk-${brokerId}`,
                     type: 'broker',
                     label: broker.name,
-                    value: `${CURRENCY} ${formatCurrency(brSum)}`,
+                    value: formatCurrency(brSum),
                     sortAmount: brSum,
                     children: propNodes,
                 });
@@ -717,7 +724,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 id: `bld-${b.id}`,
                 type: 'building',
                 label: b.name,
-                value: `${CURRENCY} ${formatCurrency(bSum)}`,
+                value: formatCurrency(bSum),
                 sortAmount: bSum,
                 children: brokerChildren,
             });
@@ -732,8 +739,13 @@ const OwnerPayoutsPage: React.FC = () => {
     }, [activeCategory, brokerPayoutTreeNodes, ownerStyleTreeNodes]);
 
     const payoutTreeDisplayNodes = useMemo(
-        () => sortPayoutTreeNodes(filterPayoutTreeNodes(payoutTreeNodes, searchQuery), treeSortBy),
-        [payoutTreeNodes, searchQuery, treeSortBy]
+        () =>
+            sortPayoutTreeNodes(
+                filterPayoutTreeNodes(payoutTreeNodes, searchQuery),
+                treeSortConfig.key,
+                treeSortConfig.direction
+            ),
+        [payoutTreeNodes, searchQuery, treeSortConfig]
     );
 
     const treeSelectedId = useMemo(() => {
@@ -811,6 +823,49 @@ const OwnerPayoutsPage: React.FC = () => {
         selectedOwnerId !== 'all' ||
         selectedUnitId !== 'all' ||
         selectedBrokerId !== 'all';
+
+    const handleTreeSortColumn = useCallback((column: 'label' | 'value') => {
+        setTreeSortConfig(prev => {
+            const key = column === 'label' ? 'name' : 'amount';
+            if (prev.key === key) {
+                return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+            }
+            return { key, direction: key === 'amount' ? 'desc' : 'asc' };
+        });
+    }, []);
+
+    const handleTreeResizeMove = useCallback(
+        (e: MouseEvent) => {
+            if (!payoutSplitContainerRef.current) return;
+            const left = payoutSplitContainerRef.current.getBoundingClientRect().left;
+            const newWidth = e.clientX - left;
+            if (newWidth > 200 && newWidth < 600) setSidebarWidth(newWidth);
+        },
+        [setSidebarWidth]
+    );
+
+    useEffect(() => {
+        if (!isTreeResizing) return;
+        const handleUp = () => {
+            setIsTreeResizing(false);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', handleTreeResizeMove);
+        window.addEventListener('mouseup', handleUp);
+        window.addEventListener('blur', handleUp);
+        document.addEventListener('visibilitychange', handleUp);
+        return () => {
+            window.removeEventListener('mousemove', handleTreeResizeMove);
+            window.removeEventListener('mouseup', handleUp);
+            window.removeEventListener('blur', handleUp);
+            document.removeEventListener('visibilitychange', handleUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+    }, [isTreeResizing, handleTreeResizeMove]);
 
     const handleTreeSelect = (id: string, _type?: string, _parentId?: string | null) => {
         if (id.startsWith('bld-') && !id.includes('-own-') && !id.includes('-brk-')) {
@@ -1343,20 +1398,6 @@ const OwnerPayoutsPage: React.FC = () => {
                     </Select>
                 </div>
 
-                <div className="h-5 w-px bg-app-border hidden md:block" />
-
-                <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-app-muted whitespace-nowrap hidden sm:inline">Tree sort</span>
-                    <Select
-                        value={treeSortBy}
-                        onChange={e => setTreeSortBy(e.target.value as 'name' | 'amount')}
-                        className="text-xs py-1 w-36"
-                    >
-                        <option value="amount">Unpaid (high → low)</option>
-                        <option value="name">Name (A–Z)</option>
-                    </Select>
-                </div>
-
                 {hasLocationFilters && (
                     <Button type="button" variant="outline" className="text-xs py-1 px-2" onClick={clearLocationFilters}>
                         Clear tree filters
@@ -1385,17 +1426,36 @@ const OwnerPayoutsPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Tree + payees table */}
-            <div className="flex flex-col lg:flex-row flex-1 min-h-0 gap-3 px-4 pb-4">
-                <div className="w-full lg:w-[min(100%,380px)] lg:max-w-[380px] flex-shrink-0 flex flex-col min-h-[220px] h-[min(40vh,320px)] lg:h-auto lg:min-h-0">
+            {/* Tree + payees table (resizable split from lg; full-width stacked tree on small screens) */}
+            <div
+                ref={payoutSplitContainerRef}
+                className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden gap-y-3 lg:gap-y-0 px-4 pb-4"
+            >
+                <div
+                    className="w-full lg:w-[var(--payout-tree-w)] lg:flex-shrink-0 flex flex-col min-h-[220px] h-[min(40vh,320px)] lg:h-full lg:min-h-0 border border-app-border lg:border-r-0 rounded-xl lg:rounded-r-none bg-app-card overflow-hidden"
+                    style={{ ['--payout-tree-w' as string]: `${sidebarWidth}px` } as React.CSSProperties}
+                >
                     <PayoutTreePanel
                         nodes={payoutTreeDisplayNodes}
                         selectedId={treeSelectedId}
                         selectedParentId={treeSelectedParentId}
                         onNodeSelect={handleTreeSelect}
-                        valueColumnHeader={`${CURRENCY} Unpaid`}
+                        valueColumnHeader="Unpaid"
+                        treeSortKey={treeSortConfig.key}
+                        treeSortDirection={treeSortConfig.direction}
+                        onTreeSortColumn={handleTreeSortColumn}
                     />
                 </div>
+                <div
+                    className="hidden lg:block w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors flex-shrink-0 self-stretch min-h-[120px]"
+                    onMouseDown={e => {
+                        e.preventDefault();
+                        setIsTreeResizing(true);
+                    }}
+                    role="separator"
+                    aria-orientation="vertical"
+                    title="Drag to resize tree panel"
+                />
                 <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
                 <Card className="overflow-hidden flex-1 flex flex-col min-h-0">
                     <div className="overflow-x-auto flex-1 overflow-y-auto">

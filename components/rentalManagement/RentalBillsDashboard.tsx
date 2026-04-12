@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Bill, TransactionType, Transaction, ExpenseBearerType } from '../../types';
+import { Bill, TransactionType, Transaction } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import ARTreeView, { ARTreeNode } from './ARTreeView';
@@ -14,16 +14,13 @@ import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { getPaymentTransactionsForRentalBill, resolveExpenseCategoryForBillPayment, getEffectiveBillPaymentDisplay } from '../../utils/rentalBillPayments';
+import {
+  getExpenseBearerType,
+  getPaymentTransactionsForRentalBill,
+  resolveExpenseCategoryForBillPayment,
+  getEffectiveBillPaymentDisplay,
+} from '../../utils/rentalBillPayments';
 import { ImportType } from '../../services/importService';
-
-function getExpenseBearerType(bill: Bill, state: { rentalAgreements: { id: string }[] }): ExpenseBearerType {
-  if (bill.expenseBearerType) return bill.expenseBearerType;
-  if (bill.projectAgreementId && state.rentalAgreements?.some(ra => ra.id === bill.projectAgreementId)) return 'tenant';
-  if (bill.propertyId) return 'owner';
-  if (bill.buildingId) return 'building';
-  return 'building';
-}
 
 type ViewBy = 'building' | 'property' | 'vendor' | 'bearer';
 type StatusFilter = 'all' | 'Unpaid' | 'Paid' | 'Partially Paid' | 'Overdue';
@@ -132,20 +129,35 @@ const RentalBillsDashboard: React.FC = () => {
 
         const propGrouped = new Map<string, Bill[]>();
         for (const b of bills) {
-          const pId = b.propertyId || '__unassigned';
-          if (!propGrouped.has(pId)) propGrouped.set(pId, []);
-          propGrouped.get(pId)!.push(b);
+          // Building-wide bills (no property): group by vendor so the tree shows vendor name instead of "General".
+          const groupKey = b.propertyId
+            ? b.propertyId
+            : `__bw__${b.vendorId ?? '__none'}`;
+          if (!propGrouped.has(groupKey)) propGrouped.set(groupKey, []);
+          propGrouped.get(groupKey)!.push(b);
         }
 
-        const children: ARTreeNode[] = Array.from(propGrouped.entries()).map(([pId, pBills]) => {
-          const prop = state.properties.find(p => p.id === pId);
+        const children: ARTreeNode[] = Array.from(propGrouped.entries()).map(([groupKey, pBills]) => {
+          const isBuildingWide = groupKey.startsWith('__bw__');
+          const prop = !isBuildingWide ? state.properties.find(p => p.id === groupKey) : null;
+          const vendorIdFromKey = isBuildingWide ? groupKey.replace('__bw__', '') : null;
+          const vendor =
+            vendorIdFromKey && vendorIdFromKey !== '__none'
+              ? state.vendors?.find(v => v.id === vendorIdFromKey)
+              : null;
+          const displayName = prop?.name ?? vendor?.name ?? 'General';
+          const nodeId =
+            isBuildingWide
+              ? `bwide|${bId}|${vendorIdFromKey === '__none' ? 'none' : vendorIdFromKey}`
+              : groupKey;
           return {
-            id: pId === '__unassigned' ? `prop-unassigned-${bId}` : pId,
-            name: prop?.name || 'General',
+            id: nodeId,
+            name: displayName,
             type: 'property' as const,
             ...calcStats(pBills),
           };
         });
+        children.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
         return {
           id: bId === '__unassigned' ? '__building_unassigned' : bId,
@@ -277,6 +289,15 @@ const RentalBillsDashboard: React.FC = () => {
       }
       if (nodeId.startsWith('bearer-')) {
         return bearer === nodeId.replace('bearer-', '');
+      }
+      if (nodeId.startsWith('bwide|')) {
+        const parts = nodeId.split('|');
+        const bid = parts[1];
+        const vKey = parts[2];
+        if (b.propertyId) return false;
+        if (effectiveBuildingId !== bid) return false;
+        if (vKey === 'none') return !b.vendorId;
+        return b.vendorId === vKey;
       }
       if (nodeId.startsWith('prop-unassigned')) return !b.propertyId;
 

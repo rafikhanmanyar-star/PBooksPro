@@ -1,4 +1,25 @@
-import { Bill, Category, Property, RentalAgreement, Transaction, TransactionType } from '../types';
+import {
+  Bill,
+  Category,
+  ExpenseBearerType,
+  Property,
+  RentalAgreement,
+  Transaction,
+  TransactionType,
+} from '../types';
+
+/** Who bears the rental bill cost: persisted flag or inferred from property / agreement / building. */
+export function getExpenseBearerType(
+  bill: Bill,
+  state: { rentalAgreements: { id: string }[] }
+): ExpenseBearerType {
+  if (bill.expenseBearerType) return bill.expenseBearerType;
+  if (bill.projectAgreementId && state.rentalAgreements?.some(ra => ra.id === bill.projectAgreementId))
+    return 'tenant';
+  if (bill.propertyId) return 'owner';
+  if (bill.buildingId) return 'building';
+  return 'building';
+}
 
 /**
  * Primary expense category on a bill: top-level categoryId, else first line in expenseCategoryItems

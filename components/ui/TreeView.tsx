@@ -29,6 +29,12 @@ interface TreeViewProps {
     labelColumnHeader?: string;
     /** Show expand/collapse-all controls in the header row (when a header is shown) or above the tree. */
     showExpandCollapseAll?: boolean;
+    /** When true, node list scrolls inside a flex child (parent should be flex column with a bounded height). */
+    scrollableContent?: boolean;
+    /** Column sort affordance when `onSortColumn` is set. */
+    activeSortColumn?: 'label' | 'value' | null;
+    sortDirection?: 'asc' | 'desc';
+    onSortColumn?: (column: 'label' | 'value') => void;
 }
 
 const TreeNodeItem: React.FC<{
@@ -128,6 +134,10 @@ const TreeView: React.FC<TreeViewProps> = ({
     valueColumnHeader,
     labelColumnHeader = 'Project',
     showExpandCollapseAll = true,
+    scrollableContent = false,
+    activeSortColumn = null,
+    sortDirection = 'desc',
+    onSortColumn,
 }) => {
     const data = nodes || treeData || [];
 
@@ -168,6 +178,59 @@ const TreeView: React.FC<TreeViewProps> = ({
     const hasExpandable = allExpandableIds.length > 0;
     const showControls = showExpandCollapseAll && hasExpandable;
 
+    const SortHeaderIcon = ({ column }: { column: 'label' | 'value' }) => (
+        <span className="ml-0.5 text-[9px] text-app-muted inline tabular-nums">
+            {activeSortColumn === column ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+    );
+
+    const labelHeaderEl = onSortColumn ? (
+        <button
+            type="button"
+            onClick={e => {
+                e.stopPropagation();
+                onSortColumn('label');
+            }}
+            className="flex-1 pl-6 min-w-0 text-left flex items-center hover:bg-app-toolbar/50 rounded px-0.5 -mx-0.5 transition-colors"
+        >
+            <span>{labelColumnHeader}</span>
+            <SortHeaderIcon column="label" />
+        </button>
+    ) : (
+        <span className="flex-1 pl-6 min-w-0">{labelColumnHeader}</span>
+    );
+
+    const valueHeaderEl = onSortColumn ? (
+        <button
+            type="button"
+            onClick={e => {
+                e.stopPropagation();
+                onSortColumn('value');
+            }}
+            className="shrink-0 tabular-nums max-w-[7rem] text-right hover:bg-app-toolbar/50 rounded px-0.5 -mx-0.5 transition-colors inline-flex items-center justify-end gap-0"
+        >
+            <span>{valueColumnHeader}</span>
+            <SortHeaderIcon column="value" />
+        </button>
+    ) : (
+        <span className="shrink-0 tabular-nums max-w-[9rem] text-right">{valueColumnHeader}</span>
+    );
+
+    const nodeList = data.map(node => (
+        <TreeNodeItem
+            key={node.id}
+            node={node}
+            level={0}
+            showLines={showLines}
+            selectedId={selectedId}
+            selectedParentId={selectedParentId}
+            onSelect={onSelect}
+            parentId={null}
+            expandedIds={expandedIds}
+            toggleExpanded={toggleExpanded}
+        />
+    ));
+
     if (!data || data.length === 0) {
         return (
             <div className={`${className} text-sm text-app-muted italic p-2`}>
@@ -176,11 +239,11 @@ const TreeView: React.FC<TreeViewProps> = ({
         );
     }
 
-    return (
-        <div className={`${className}`}>
+    const inner = (
+        <>
             {valueColumnHeader ? (
-                <div className="flex items-center gap-2 px-1 pb-2 mb-1 border-b border-app-border text-[10px] font-bold text-app-muted uppercase tracking-wider">
-                    <span className="flex-1 pl-6 min-w-0">{labelColumnHeader}</span>
+                <div className="flex-shrink-0 flex items-center gap-2 px-1 pb-2 mb-1 border-b border-app-border text-[10px] font-bold text-app-muted uppercase tracking-wider">
+                    {labelHeaderEl}
                     {showControls && (
                         <TreeExpandCollapseControls
                             variant="app"
@@ -191,10 +254,10 @@ const TreeView: React.FC<TreeViewProps> = ({
                             visible={showControls}
                         />
                     )}
-                    <span className="shrink-0 tabular-nums max-w-[9rem] text-right">{valueColumnHeader}</span>
+                    {valueHeaderEl}
                 </div>
             ) : showControls ? (
-                <div className="flex justify-end mb-1.5">
+                <div className="flex justify-end mb-1.5 flex-shrink-0">
                     <TreeExpandCollapseControls
                         variant="app"
                         allExpandableIds={allExpandableIds}
@@ -205,20 +268,19 @@ const TreeView: React.FC<TreeViewProps> = ({
                     />
                 </div>
             ) : null}
-            {data.map(node => (
-                <TreeNodeItem
-                    key={node.id}
-                    node={node}
-                    level={0}
-                    showLines={showLines}
-                    selectedId={selectedId}
-                    selectedParentId={selectedParentId}
-                    onSelect={onSelect}
-                    parentId={null}
-                    expandedIds={expandedIds}
-                    toggleExpanded={toggleExpanded}
-                />
-            ))}
+            {scrollableContent ? (
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-[color:var(--border-color)] scrollbar-track-transparent pr-0.5">
+                    {nodeList}
+                </div>
+            ) : (
+                nodeList
+            )}
+        </>
+    );
+
+    return (
+        <div className={`${scrollableContent ? 'flex flex-col min-h-0 h-full' : ''} ${className}`}>
+            {inner}
         </div>
     );
 };

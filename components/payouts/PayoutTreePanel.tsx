@@ -19,17 +19,34 @@ export function filterPayoutTreeNodes(nodes: PayoutTreeNode[], query: string): P
     return nodes.map(recur).filter((x): x is PayoutTreeNode => x !== null);
 }
 
-export function sortPayoutTreeNodes(nodes: PayoutTreeNode[], sortBy: 'name' | 'amount'): PayoutTreeNode[] {
+export function sortPayoutTreeNodes(
+    nodes: PayoutTreeNode[],
+    sortBy: 'name' | 'amount',
+    direction: 'asc' | 'desc'
+): PayoutTreeNode[] {
+    const cmpName = (a: PayoutTreeNode, b: PayoutTreeNode) => {
+        const c = a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+        return direction === 'asc' ? c : -c;
+    };
+    const cmpAmount = (a: PayoutTreeNode, b: PayoutTreeNode) => {
+        const diff = (a.sortAmount ?? 0) - (b.sortAmount ?? 0);
+        return direction === 'asc' ? diff : -diff;
+    };
     const sorted = [...nodes].sort((a, b) => {
         if (sortBy === 'amount') {
-            const diff = (b.sortAmount ?? 0) - (a.sortAmount ?? 0);
-            if (diff !== 0) return diff;
+            const diff = (a.sortAmount ?? 0) - (b.sortAmount ?? 0);
+            if (diff !== 0) return direction === 'asc' ? diff : -diff;
+            return cmpName(a, b);
         }
-        return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+        const c = a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+        if (c !== 0) return direction === 'asc' ? c : -c;
+        return cmpAmount(a, b);
     });
     return sorted.map(n => ({
         ...n,
-        children: n.children?.length ? sortPayoutTreeNodes(n.children as PayoutTreeNode[], sortBy) : undefined,
+        children: n.children?.length
+            ? sortPayoutTreeNodes(n.children as PayoutTreeNode[], sortBy, direction)
+            : undefined,
     }));
 }
 
@@ -39,6 +56,9 @@ interface PayoutTreePanelProps {
     selectedParentId: string | null;
     onNodeSelect: (id: string, type?: string, parentId?: string | null) => void;
     valueColumnHeader: string;
+    treeSortKey: 'name' | 'amount';
+    treeSortDirection: 'asc' | 'desc';
+    onTreeSortColumn: (column: 'label' | 'value') => void;
 }
 
 const PayoutTreePanel: React.FC<PayoutTreePanelProps> = ({
@@ -47,9 +67,12 @@ const PayoutTreePanel: React.FC<PayoutTreePanelProps> = ({
     selectedParentId,
     onNodeSelect,
     valueColumnHeader,
+    treeSortKey,
+    treeSortDirection,
+    onTreeSortColumn,
 }) => {
     return (
-        <div className="flex flex-col h-full min-h-0 border border-app-border rounded-xl bg-app-card overflow-hidden p-2">
+        <div className="flex flex-col h-full min-h-0 overflow-hidden bg-app-card">
             <TreeView
                 nodes={nodes}
                 showLines
@@ -60,6 +83,10 @@ const PayoutTreePanel: React.FC<PayoutTreePanelProps> = ({
                 valueColumnHeader={valueColumnHeader}
                 labelColumnHeader="Entity"
                 showExpandCollapseAll
+                scrollableContent
+                activeSortColumn={treeSortKey === 'name' ? 'label' : 'value'}
+                sortDirection={treeSortDirection}
+                onSortColumn={onTreeSortColumn}
             />
         </div>
     );
