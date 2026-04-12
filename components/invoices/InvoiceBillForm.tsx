@@ -1512,7 +1512,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               <>
                 {existingRecurringTemplate ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50/90 p-3 text-sm text-slate-600">
-                    A recurring schedule already exists for this agreement or property. You can change it under Rental → Invoices → Recurring Templates.
+                    A recurring schedule already exists for this agreement or property. You can change it under Rental → Recurring Templates.
                   </div>
                 ) : (
                   <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3">

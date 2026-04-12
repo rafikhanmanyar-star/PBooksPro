@@ -4,15 +4,15 @@ import { ImportType } from '../../services/importService';
 import { ICONS } from '../../constants';
 import RentalARDashboard from './RentalARDashboard';
 import CreateRentalInvoiceModal from './CreateRentalInvoiceModal';
-import RecurringInvoicesList from './RecurringInvoicesList';
-import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
 import Button from '../ui/Button';
 
-const TABS = ['Invoices', 'Recurring Templates', 'Monthly Service Charges'] as const;
+export interface RentalInvoicesPageProps {
+  /** Switches rental sidebar to Recurring Templates (e.g. Manage Schedules). */
+  onNavigateToRecurringTemplates?: () => void;
+}
 
-const RentalInvoicesPage: React.FC = () => {
+const RentalInvoicesPage: React.FC<RentalInvoicesPageProps> = ({ onNavigateToRecurringTemplates }) => {
   const { dispatch } = useAppContext();
-  const [activeTab, setActiveTab] = useState<typeof TABS[number]>('Invoices');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalType, setCreateModalType] = useState<'rental' | 'security'>('rental');
   /** When set, modal opens with form prefilled from this property; when null/undefined, form opens empty. */
@@ -36,7 +36,7 @@ const RentalInvoicesPage: React.FC = () => {
   };
 
   const handleSchedulesClick = () => {
-    setActiveTab('Recurring Templates');
+    onNavigateToRecurringTemplates?.();
   };
 
   const handleBulkImport = () => {
@@ -44,74 +44,34 @@ const RentalInvoicesPage: React.FC = () => {
     dispatch({ type: 'SET_PAGE', payload: 'import' });
   };
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'Invoices':
-        return (
-          <RentalARDashboard
-            listMode
-            onCreateRentalClick={handleCreateRental}
-            onCreateSecurityClick={handleCreateSecurity}
-            onSchedulesClick={handleSchedulesClick}
-          />
-        );
-      case 'Recurring Templates':
-        return (
-          <div className="h-full overflow-y-auto">
-            <RecurringInvoicesList />
-          </div>
-        );
-      case 'Monthly Service Charges':
-        return <MonthlyServiceChargesPage />;
-      default:
-        return null;
-    }
-  };
-
   return (
     <div className="flex flex-col h-full">
-      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-app-border bg-app-card px-4 py-2">
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0">
-          {TABS.map(tab => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === tab
-                  ? 'bg-primary/15 text-primary ring-1 ring-primary/25 border border-primary/20'
-                  : 'text-app-muted hover:bg-app-toolbar hover:text-app-text'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-shrink-0 items-center gap-2 ml-2">
-          {activeTab === 'Invoices' && (
-            <>
-              <Button onClick={handleCreateRental} size="sm">
-                <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
-                New Rental Invoice
-              </Button>
-              <Button variant="secondary" onClick={handleCreateSecurity} size="sm">
-                <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
-                New Security Deposit
-              </Button>
-              <Button variant="secondary" onClick={handleBulkImport} size="sm">
-                <div className="w-4 h-4 mr-2">{ICONS.download}</div>
-                Bulk Import
-              </Button>
-              <Button variant="ghost" onClick={handleSchedulesClick} size="sm">
-                Manage Schedules
-              </Button>
-            </>
-          )}
+      <div className="flex flex-shrink-0 items-center justify-end gap-2 flex-wrap border-b border-app-border bg-app-card px-4 py-2">
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <Button onClick={handleCreateRental} size="sm">
+            <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
+            New Rental Invoice
+          </Button>
+          <Button variant="secondary" onClick={handleCreateSecurity} size="sm">
+            <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
+            New Security Deposit
+          </Button>
+          <Button variant="secondary" onClick={handleBulkImport} size="sm">
+            <div className="w-4 h-4 mr-2">{ICONS.download}</div>
+            Bulk Import
+          </Button>
+          <Button variant="ghost" onClick={handleSchedulesClick} size="sm">
+            Manage Schedules
+          </Button>
         </div>
       </div>
       <div className="flex-grow overflow-hidden min-h-0">
-        {renderContent()}
+        <RentalARDashboard
+          listMode
+          onCreateRentalClick={handleCreateRental}
+          onCreateSecurityClick={handleCreateSecurity}
+          onSchedulesClick={handleSchedulesClick}
+        />
       </div>
 
       <CreateRentalInvoiceModal

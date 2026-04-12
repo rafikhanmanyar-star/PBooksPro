@@ -6,6 +6,8 @@ import RentalAgreementsPage from '../rentalAgreements/RentalAgreementsPage';
 import OwnerPayoutsPage from '../payouts/OwnerPayoutsPage';
 import { Page } from '../../types';
 import RentalInvoicesPage from './RentalInvoicesPage';
+import RecurringInvoicesList from './RecurringInvoicesList';
+import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
 import RentalPaymentSearch from './RentalPaymentSearch';
 import RentalBillsPage from './RentalBillsPage';
 import { useAppContext } from '../../context/AppContext';
@@ -33,7 +35,7 @@ interface RentalManagementPageProps {
 
 // Define all possible view keys
 type RentalView =
-    | 'Agreements' | 'Invoices' | 'Bills' | 'Payment' | 'Payouts'
+    | 'Agreements' | 'Invoices' | 'Recurring Templates' | 'Monthly Service Charges' | 'Bills' | 'Payment' | 'Payouts'
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
     | 'Owner Rental Income' | 'Owner Rental Income Summary'
@@ -109,14 +111,22 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             const [mainTab, subTab] = initialTabs;
             if (mainTab === 'Reports' && subTab) {
                 setActiveView(subTab as RentalView);
-            } else if (['Agreements', 'Invoices', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
+            } else if (['Agreements', 'Invoices', 'Recurring Templates', 'Monthly Service Charges', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
                 setActiveView(mainTab as RentalView);
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
         }
     }, [initialTabs, dispatch, setActiveView]);
 
-    const OPERATIONAL_VIEWS: RentalView[] = ['Agreements', 'Invoices', 'Bills', 'Payment', 'Payouts'];
+    const OPERATIONAL_VIEWS: RentalView[] = [
+        'Agreements',
+        'Invoices',
+        'Recurring Templates',
+        'Monthly Service Charges',
+        'Bills',
+        'Payment',
+        'Payouts',
+    ];
     const isOperationalView = OPERATIONAL_VIEWS.includes(activeView);
 
     const renderOperationalContent = () => (
@@ -127,7 +137,15 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     className={`absolute inset-0 h-full w-full overflow-auto ${activeView === view ? 'visible z-10' : 'invisible z-0 pointer-events-none'}`}
                 >
                     {view === 'Agreements' && <RentalAgreementsPage />}
-                    {view === 'Invoices' && <RentalInvoicesPage />}
+                    {view === 'Invoices' && (
+                        <RentalInvoicesPage onNavigateToRecurringTemplates={() => setActiveView('Recurring Templates')} />
+                    )}
+                    {view === 'Recurring Templates' && (
+                        <div className="h-full overflow-y-auto">
+                            <RecurringInvoicesList />
+                        </div>
+                    )}
+                    {view === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
                     {view === 'Bills' && <RentalBillsPage />}
                     {view === 'Payment' && <RentalPaymentSearch />}
                     {view === 'Payouts' && <OwnerPayoutsPage />}
@@ -202,6 +220,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 <div className="space-y-0.5">
                     <NavItem view="Agreements" label="Agreements" />
                     <NavItem view="Invoices" label="Invoices" />
+                    <NavItem view="Recurring Templates" label="Recurring Templates" />
+                    <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
                     <NavItem view="Payment" label="Payment" />
                     <NavItem view="Payouts" label="Payouts" />

@@ -277,7 +277,7 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>Auto-Invoice Generation:</strong> System automatically creates initial rent invoice and security deposit invoice. Also creates a recurring invoice template for monthly rent.</li>
                     <li><strong>Broker Fees:</strong> If property has a broker, enter broker fee. Track and pay via Broker Payouts.</li>
                     <li><strong>Agreement Status:</strong> Active, Terminated, or Expired. Terminate agreements when tenants leave.</li>
-                    <li><strong>Recurring Invoices:</strong> Monthly rent invoices are auto-generated from templates. Manually generate from Recurring Invoices tab if needed.</li>
+                    <li><strong>Recurring Invoices:</strong> Monthly rent invoices are auto-generated from templates. Manually generate from Rental → Recurring Templates (sidebar) if needed.</li>
                     <li><strong>Security Deposits:</strong> Tracked separately. Can be charged/refunded via invoices or transactions.</li>
                 </ul>
             </div>
@@ -303,7 +303,7 @@ const HELP_TOPICS: HelpTopic[] = [
                 <p>Track rent collection and tenant payments efficiently.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Invoice Types:</strong> Rental invoices include monthly rent, security deposits, and one-time charges.</li>
-                    <li><strong>Recurring Invoices:</strong> System generates monthly rent invoices automatically. View in Recurring Invoices tab. Generate manually if needed.</li>
+                    <li><strong>Recurring Invoices:</strong> System generates monthly rent invoices automatically. View under Rental → Recurring Templates in the sidebar. Generate manually if needed.</li>
                     <li><strong>Recording Payments:</strong> Click "Pay" on an invoice, select payment account and date. System creates transaction and updates invoice status.</li>
                     <li><strong>Partial Payments:</strong> Record partial payments. Invoice status shows "Partially Paid" until fully paid.</li>
                     <li><strong>Bulk Payments:</strong> Select multiple invoices and pay together for batch processing.</li>

@@ -7,6 +7,8 @@ import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
 import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
+import Modal from '../ui/Modal';
+import Tabs from '../ui/Tabs';
 import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
@@ -25,6 +27,25 @@ interface BuildingBMData {
     net: number;
 }
 
+type BMDetailKind = 'collected' | 'receivable' | 'expense';
+
+interface BMDetailLine {
+    id: string;
+    kind: BMDetailKind;
+    date: string;
+    label: string;
+    amount: number;
+    reference?: string;
+}
+
+interface BMBuildingDetail {
+    buildingId: string;
+    buildingName: string;
+    collected: BMDetailLine[];
+    receivable: BMDetailLine[];
+    expenses: BMDetailLine[];
+}
+
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type SortKey = 'buildingName' | 'collected' | 'receivable' | 'expenses' | 'net';
 
@@ -38,6 +59,8 @@ const BMAnalysisReport: React.FC = () => {
 
     // Sorting State
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'buildingName', direction: 'asc' });
+    const [detailBuildingId, setDetailBuildingId] = useState<string | null>(null);
+    const [detailTab, setDetailTab] = useState('Collected');
 
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
 
@@ -70,13 +93,14 @@ const BMAnalysisReport: React.FC = () => {
         }));
     };
 
-    const reportData = useMemo<BuildingBMData[]>(() => {
+    const { reportData, bmDetailsByBuilding } = useMemo(() => {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
         const buildingData: Record<string, BuildingBMData> = {};
+        const detailsMap: Record<string, BMBuildingDetail> = {};
 
         // Initialize all buildings
         state.buildings.forEach(b => {
@@ -88,6 +112,13 @@ const BMAnalysisReport: React.FC = () => {
                 receivable: 0,
                 expenses: 0,
                 net: 0
+            };
+            detailsMap[b.id] = {
+                buildingId: b.id,
+                buildingName: b.name,
+                collected: [],
+                receivable: [],
+                expenses: []
             };
         });
 
@@ -139,6 +170,15 @@ const BMAnalysisReport: React.FC = () => {
             if (buildingId && buildingData[buildingId]) {
                 if (tx.type === TransactionType.INCOME && tx.categoryId && serviceIncomeCatIds.has(tx.categoryId)) {
                     buildingData[buildingId].collected += tx.amount;
+                    const catName = getCategory(tx.categoryId)?.name;
+                    detailsMap[buildingId].collected.push({
+                        id: `tx-income-${tx.id}`,
+                        kind: 'collected',
+                        date: tx.date,
+                        label: tx.description?.trim() || catName || 'Service charge collection',
+                        amount: tx.amount,
+                        reference: tx.reference
+                    });
                 }
             }
 
@@ -154,6 +194,15 @@ const BMAnalysisReport: React.FC = () => {
 
                     if (!isOwnerExpense(tx.categoryId)) {
                         buildingData[tx.buildingId].expenses += tx.amount;
+                        const catName = getCategory(tx.categoryId)?.name;
+                        detailsMap[tx.buildingId].expenses.push({
+                            id: `tx-exp-${tx.id}`,
+                            kind: 'expense',
+                            date: tx.date,
+                            label: tx.description?.trim() || catName || 'Building expense',
+                            amount: tx.amount,
+                            reference: tx.reference
+                        });
                     }
                 }
             }
@@ -174,17 +223,36 @@ const BMAnalysisReport: React.FC = () => {
 
                 // Handle expenseCategoryItems: process each category separately
                 if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
-                    bill.expenseCategoryItems.forEach(item => {
+                    bill.expenseCategoryItems.forEach((item, idx) => {
                         if (!item.categoryId) return;
                         // Only add if it's not an owner expense
                         if (!isOwnerExpense(item.categoryId)) {
-                            buildingData[bill.buildingId].expenses += (item.netValue || 0);
+                            const amt = item.netValue || 0;
+                            buildingData[bill.buildingId].expenses += amt;
+                            const catName = getCategory(item.categoryId)?.name || 'Expense';
+                            detailsMap[bill.buildingId].expenses.push({
+                                id: `bill-${bill.id}-line-${idx}`,
+                                kind: 'expense',
+                                date: bill.issueDate,
+                                label: `${catName}${bill.description ? ` — ${bill.description}` : ''}`,
+                                amount: amt,
+                                reference: bill.billNumber
+                            });
                         }
                     });
                 } else {
                     // Fallback to old categoryId logic
                     if (!isOwnerExpense(bill.categoryId)) {
                         buildingData[bill.buildingId].expenses += bill.amount;
+                        const catName = getCategory(bill.categoryId)?.name || 'Expense';
+                        detailsMap[bill.buildingId].expenses.push({
+                            id: `bill-${bill.id}`,
+                            kind: 'expense',
+                            date: bill.issueDate,
+                            label: bill.description?.trim() || catName,
+                            amount: bill.amount,
+                            reference: bill.billNumber
+                        });
                     }
                 }
             }
@@ -203,7 +271,17 @@ const BMAnalysisReport: React.FC = () => {
                 }
 
                 if (buildingId && buildingData[buildingId]) {
-                    buildingData[buildingId].receivable += (inv.serviceCharges || 0);
+                    const sc = inv.serviceCharges || 0;
+                    buildingData[buildingId].receivable += sc;
+                    const tenantName = state.contacts.find(c => c.id === inv.contactId)?.name;
+                    detailsMap[buildingId].receivable.push({
+                        id: `inv-${inv.id}-sc`,
+                        kind: 'receivable',
+                        date: inv.issueDate,
+                        label: tenantName ? `Service charges — ${tenantName}` : 'Outstanding service charges',
+                        amount: sc,
+                        reference: inv.invoiceNumber
+                    });
                 }
             }
         });
@@ -233,9 +311,14 @@ const BMAnalysisReport: React.FC = () => {
             return 0;
         });
 
-        return result;
+        return { reportData: result, bmDetailsByBuilding: detailsMap };
 
     }, [state, startDate, endDate, selectedBuildingId, searchQuery, sortConfig]);
+
+    const activeDetail = detailBuildingId ? bmDetailsByBuilding[detailBuildingId] : null;
+
+    const sortDetailLines = (lines: BMDetailLine[]) =>
+        [...lines].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const totals = useMemo(() => {
         return reportData.reduce((acc, curr) => ({
@@ -389,7 +472,24 @@ const BMAnalysisReport: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-app-border bg-app-card">
                                 {reportData.map(row => (
-                                    <tr key={row.id} className="hover:bg-app-toolbar/30 transition-colors">
+                                    <tr
+                                        key={row.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        className="hover:bg-app-toolbar/40 transition-colors cursor-pointer"
+                                        title="View transactions and invoices for this building"
+                                        onClick={() => {
+                                            setDetailTab('Collected');
+                                            setDetailBuildingId(row.id);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                setDetailTab('Collected');
+                                                setDetailBuildingId(row.id);
+                                            }
+                                        }}
+                                    >
                                         <td className="px-4 py-3 font-medium text-app-text whitespace-normal break-words">{row.buildingName}</td>
                                         <td className="px-4 py-3 text-right text-ds-success whitespace-nowrap">{CURRENCY} {row.collected.toLocaleString()}</td>
                                         <td className="px-4 py-3 text-right text-ds-warning whitespace-nowrap">{CURRENCY} {row.receivable.toLocaleString()}</td>
@@ -419,6 +519,88 @@ const BMAnalysisReport: React.FC = () => {
                     <ReportFooter />
                 </Card>
             </div>
+
+            <Modal
+                isOpen={!!detailBuildingId && !!activeDetail}
+                onClose={() => setDetailBuildingId(null)}
+                title={activeDetail ? `${activeDetail.buildingName} — line items` : 'Building detail'}
+                size="xl"
+                className="no-print"
+            >
+                {activeDetail && (
+                    <>
+                        <p className="text-xs text-app-muted mb-3">
+                            Period: {formatDate(startDate)} — {formatDate(endDate)}
+                        </p>
+                        <Tabs
+                            tabs={['Collected', 'Receivable', 'Expenses']}
+                            activeTab={detailTab}
+                            onTabClick={setDetailTab}
+                            variant="browser"
+                            className="mb-4"
+                        />
+                        {(() => {
+                            const lines =
+                                detailTab === 'Collected'
+                                    ? sortDetailLines(activeDetail.collected)
+                                    : detailTab === 'Receivable'
+                                      ? sortDetailLines(activeDetail.receivable)
+                                      : sortDetailLines(activeDetail.expenses);
+                            const amountClass =
+                                detailTab === 'Collected'
+                                    ? 'text-ds-success'
+                                    : detailTab === 'Receivable'
+                                      ? 'text-ds-warning'
+                                      : 'text-ds-danger';
+                            if (lines.length === 0) {
+                                return (
+                                    <p className="text-center py-8 text-app-muted">
+                                        No items in this category for the selected period.
+                                    </p>
+                                );
+                            }
+                            const subtotal = lines.reduce((s, l) => s + l.amount, 0);
+                            return (
+                                <div className="overflow-x-auto max-h-[min(60vh,480px)] overflow-y-auto border border-app-border rounded-lg">
+                                    <table className="min-w-full text-sm">
+                                        <thead className="bg-app-toolbar/40 sticky top-0 z-[1]">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left text-xs font-semibold text-app-muted uppercase tracking-wider">Date</th>
+                                                <th className="px-3 py-2 text-left text-xs font-semibold text-app-muted uppercase tracking-wider">Particulars</th>
+                                                <th className="px-3 py-2 text-left text-xs font-semibold text-app-muted uppercase tracking-wider">Reference</th>
+                                                <th className="px-3 py-2 text-right text-xs font-semibold text-app-muted uppercase tracking-wider">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-app-border bg-app-card">
+                                            {lines.map(line => (
+                                                <tr key={line.id}>
+                                                    <td className="px-3 py-2 whitespace-nowrap text-app-text">{formatDate(line.date)}</td>
+                                                    <td className="px-3 py-2 text-app-text">{line.label}</td>
+                                                    <td className="px-3 py-2 text-app-muted">{line.reference ?? '—'}</td>
+                                                    <td className={`px-3 py-2 text-right font-medium whitespace-nowrap ${amountClass}`}>
+                                                        {CURRENCY} {line.amount.toLocaleString()}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-app-toolbar/40 font-semibold border-t border-app-border">
+                                            <tr>
+                                                <td colSpan={3} className="px-3 py-2 text-right text-app-text">Subtotal</td>
+                                                <td className={`px-3 py-2 text-right whitespace-nowrap ${amountClass}`}>
+                                                    {CURRENCY} {subtotal.toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            );
+                        })()}
+                        <div className="flex justify-end mt-4">
+                            <Button variant="secondary" onClick={() => setDetailBuildingId(null)}>Close</Button>
+                        </div>
+                    </>
+                )}
+            </Modal>
         </div>
     );
 };

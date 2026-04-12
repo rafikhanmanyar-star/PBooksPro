@@ -250,9 +250,30 @@ const MonthlyServiceChargesPage: React.FC = () => {
         return balances;
     }, [state.transactions, state.categories, state.properties, state.contacts]);
 
-    const propertiesWithCharges = useMemo(() => {
+    /** Used for "Run Monthly Deduction" only — properties with an amount configured on the asset. */
+    const propertiesWithPredefinedCharge = useMemo(() => {
         return state.properties.filter(p => (p.monthlyServiceCharge || 0) > 0);
     }, [state.properties]);
+
+    /**
+     * Properties shown on this page: configured monthly charge OR any Service Charge Income on the ledger
+     * (e.g. manual deduction without a predefined amount in Settings → Asset / Property).
+     */
+    const propertiesWithCharges = useMemo(() => {
+        const svc = state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
+        const ids = new Set<string>();
+        for (const p of state.properties) {
+            if ((p.monthlyServiceCharge || 0) > 0) ids.add(p.id);
+        }
+        if (svc) {
+            for (const tx of state.transactions) {
+                if (tx.type === TransactionType.INCOME && tx.categoryId === svc.id && tx.propertyId) {
+                    ids.add(tx.propertyId);
+                }
+            }
+        }
+        return state.properties.filter(p => ids.has(p.id));
+    }, [state.properties, state.categories, state.transactions]);
 
     const svcIncomeCategory = useMemo(() => {
         return state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
@@ -706,18 +727,61 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
     const gridData = filteredPropertyRows;
 
-    const deductedAmountForPeriod = useMemo(() => {
-        if (!svcIncomeCategory) return 0;
-        return state.transactions
-            .filter(tx => {
-                if (tx.type !== TransactionType.INCOME || tx.categoryId !== svcIncomeCategory.id) return false;
-                if (selectedMonth !== 'all' && !tx.date.startsWith(selectedMonth)) return false;
-                return true;
-            })
-            .reduce((sum, tx) => sum + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0);
-    }, [state.transactions, svcIncomeCategory, selectedMonth]);
-
     const summaryStats = useMemo(() => {
+        const sumDeductedForPropertyIds = (propertyIds: Set<string>) => {
+            if (!svcIncomeCategory) return 0;
+            return state.transactions
+                .filter(tx => {
+                    if (tx.type !== TransactionType.INCOME || tx.categoryId !== svcIncomeCategory.id) return false;
+                    if (!tx.propertyId || !propertyIds.has(tx.propertyId)) return false;
+                    if (selectedMonth !== 'all' && !tx.date?.startsWith(selectedMonth)) return false;
+                    return true;
+                })
+                .reduce((sum, tx) => sum + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0);
+        };
+
+        /** Portfolio-wide period total (same as before tree selection was added). */
+        const sumDeductedAllProperties = () => {
+            if (!svcIncomeCategory) return 0;
+            return state.transactions
+                .filter(tx => {
+                    if (tx.type !== TransactionType.INCOME || tx.categoryId !== svcIncomeCategory.id) return false;
+                    if (selectedMonth !== 'all' && !tx.date?.startsWith(selectedMonth)) return false;
+                    return true;
+                })
+                .reduce((sum, tx) => sum + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0);
+        };
+
+        if (selectedNode) {
+            const rows = selectedPropertyRowsForLedger;
+            const total = rows.length;
+            const rented = rows.filter(d => d.status === 'Rented').length;
+            const vacant = total - rented;
+            const totalCharges = rows.reduce((sum, d) => sum + d.monthlyCharge, 0);
+            const deductedCount = rows.filter(d => d.deductedThisMonth).length;
+            const pendingCount = rows.filter(d => !d.deductedThisMonth).length;
+            const propIds = new Set(rows.map(r => r.propertyId));
+            const deductedAmount = sumDeductedForPropertyIds(propIds);
+
+            const ownerIdsInScope = new Set(rows.map(r => r.ownerId).filter(Boolean));
+            const ownersNegative = Object.entries(ownerBalances).filter(
+                ([id, bal]) => ownerIdsInScope.has(id) && bal < -0.01
+            );
+            const totalNegative = ownersNegative.reduce((sum, [, bal]) => sum + bal, 0);
+
+            return {
+                total,
+                rented,
+                vacant,
+                totalCharges,
+                deductedCount,
+                pendingCount,
+                ownersNegativeCount: ownersNegative.length,
+                totalNegative,
+                deductedAmount,
+            };
+        }
+
         const total = propertiesWithCharges.length;
         const rented = propertiesWithCharges.filter(p => getPropertyStatus(p.id) === 'Rented').length;
         const vacant = total - rented;
@@ -727,9 +791,20 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
         const ownersNegative = Object.entries(ownerBalances).filter(([, bal]) => bal < -0.01);
         const totalNegative = ownersNegative.reduce((sum, [, bal]) => sum + bal, 0);
+        const deductedAmount = sumDeductedAllProperties();
 
-        return { total, rented, vacant, totalCharges, deductedCount, pendingCount, ownersNegativeCount: ownersNegative.length, totalNegative, deductedAmount: deductedAmountForPeriod };
-    }, [propertiesWithCharges, gridData, getPropertyStatus, ownerBalances, deductedAmountForPeriod]);
+        return { total, rented, vacant, totalCharges, deductedCount, pendingCount, ownersNegativeCount: ownersNegative.length, totalNegative, deductedAmount };
+    }, [
+        selectedNode,
+        selectedPropertyRowsForLedger,
+        propertiesWithCharges,
+        gridData,
+        getPropertyStatus,
+        ownerBalances,
+        svcIncomeCategory,
+        state.transactions,
+        selectedMonth,
+    ]);
 
     const ownerNegativeBalances = useMemo<OwnerNegativeBalance[]>(() => {
         const negativeOwners: OwnerNegativeBalance[] = [];
@@ -846,14 +921,14 @@ const MonthlyServiceChargesPage: React.FC = () => {
         if (catsToCreate.length > 0) catsToCreate.forEach(cat => dispatch({ type: 'ADD_CATEGORY', payload: cat }));
         if (!cashAccount) { showAlert('No accounts found.'); return; }
 
-        if (propertiesWithCharges.length === 0) {
+        if (propertiesWithPredefinedCharge.length === 0) {
             showAlert('No properties have a "Monthly Service Charge" configured in Settings.', { title: 'No Charges Configured' });
             return;
         }
 
         const runMonth = selectedMonth === 'all' ? currentMonthYyyyMm() : selectedMonth;
         const confirmed = await showConfirm(
-            `Run auto-deduction for ${propertiesWithCharges.length} properties for ${runMonth}?\n\nThis deducts service charges from owner balances regardless of rental status.`,
+            `Run auto-deduction for ${propertiesWithPredefinedCharge.length} properties for ${runMonth}?\n\nThis deducts service charges from owner balances regardless of rental status.`,
             { title: 'Run Service Charges', confirmLabel: 'Run Process' }
         );
 
@@ -869,8 +944,8 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 let skippedCount = 0;
                 const baseTimestamp = Date.now();
 
-                for (let i = 0; i < propertiesWithCharges.length; i++) {
-                    const property = propertiesWithCharges[i];
+                for (let i = 0; i < propertiesWithPredefinedCharge.length; i++) {
+                    const property = propertiesWithPredefinedCharge[i];
                     if (!property.ownerId) continue;
 
                     const alreadyApplied = state.transactions.some(tx =>
