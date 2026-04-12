@@ -251,6 +251,17 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
           version: typeof tx.version === 'number' ? tx.version : undefined,
         });
 
+        const payments: Array<{
+          payslipId: string;
+          accountId: string;
+          categoryId: string;
+          amount: number;
+          description: string;
+          date: string;
+          projectId?: string;
+          buildingId?: string;
+        }> = [];
+
         for (let idx = 0; idx < items.length; idx++) {
           const { payslip, employee, run } = items[idx];
           const payAmount = payAmountByPayslipId[payslip.id] ?? 0;
@@ -291,7 +302,8 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
               const txAmount = Math.round(payAmount * pct * 100) / 100;
               if (txAmount <= 0) continue;
               const desc = allAllocs.length > 1 ? `${descriptionBase} (${a.name} ${a.percentage}%)` : descriptionBase;
-              const res = await payrollApi.payPayslip(payslip.id, {
+              payments.push({
+                payslipId: payslip.id,
                 accountId,
                 categoryId: salaryCategory!.id,
                 amount: txAmount,
@@ -300,32 +312,39 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
                 projectId: a.type === 'project' ? a.id : undefined,
                 buildingId: a.type === 'building' ? a.id : undefined,
               });
-              if (!res?.success || !res.transaction) {
-                setError(res?.error || `Payment failed for ${empName}.`);
-                return;
-              }
-              dispatch({ type: 'ADD_TRANSACTION', payload: mapApiTx(res.transaction as Record<string, unknown>, desc) });
             }
           } else {
-            const res = await payrollApi.payPayslip(payslip.id, {
+            payments.push({
+              payslipId: payslip.id,
               accountId,
               categoryId: salaryCategory!.id,
               amount: payAmount,
               description: descriptionBase,
               date: paymentDate,
             });
-            if (!res?.success || !res.transaction) {
-              setError(res?.error || `Payment failed for ${empName}.`);
-              return;
-            }
-            dispatch({
-              type: 'ADD_TRANSACTION',
-              payload: mapApiTx(res.transaction as Record<string, unknown>, descriptionBase),
-            });
           }
         }
 
-        await syncPayrollFromServer(tenantId);
+        const bulkRes = await payrollApi.payPayslipsBulk(payments);
+        if (!bulkRes.success || !bulkRes.results?.length) {
+          setError(bulkRes.error || 'Bulk payment failed.');
+          return;
+        }
+        if (bulkRes.results.length !== payments.length) {
+          setError('Unexpected response from server.');
+          return;
+        }
+        for (let i = 0; i < bulkRes.results.length; i++) {
+          const r = bulkRes.results[i];
+          const line = payments[i];
+          dispatch({
+            type: 'ADD_TRANSACTION',
+            payload: mapApiTx(r.transaction as Record<string, unknown>, line.description),
+          });
+        }
+
+        const runIds = [...new Set(itemsWithPositivePay.map(({ payslip }) => payslip.payroll_run_id))];
+        await syncPayrollFromServer(tenantId, { runIds });
         onPaymentComplete();
         onClose();
       }

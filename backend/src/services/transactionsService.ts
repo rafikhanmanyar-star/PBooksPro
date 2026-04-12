@@ -3,7 +3,11 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { recalculateBillPaymentAggregates } from './billsService.js';
 import { recalculateInvoicePaymentAggregates } from './invoicesService.js';
-import { assertExpenseProjectCashAvailable } from '../financial/expenseCashValidation.js';
+import {
+  assertExpenseProjectCashAvailable,
+  type ExpenseCashValidationBatchContext,
+  type ProjectCashTxRow,
+} from '../financial/expenseCashValidation.js';
 
 /** Keep invoice/bill paid_amount + status aligned with ledger (also when client saveInvoice fails, e.g. LOCK_HELD). */
 async function recalculateAggregatesForLinkedIds(
@@ -260,11 +264,26 @@ export async function getTransactionByIdIncludingDeleted(
   return r.rows[0] ?? null;
 }
 
+function rowToProjectCashTxRow(row: TransactionRow): ProjectCashTxRow {
+  return {
+    id: row.id,
+    type: row.type,
+    subtype: row.subtype,
+    amount: row.amount,
+    date: row.date,
+    account_id: row.account_id,
+    from_account_id: row.from_account_id,
+    to_account_id: row.to_account_id,
+    project_id: row.project_id,
+  };
+}
+
 export async function createTransaction(
   client: pg.PoolClient,
   tenantId: string,
   body: Record<string, unknown>,
-  actorUserId: string | null
+  actorUserId: string | null,
+  expenseCashBatchCtx?: ExpenseCashValidationBatchContext | null
 ): Promise<TransactionRow> {
   const p = pickBody(body);
   if (!p.type) throw new Error('type is required.');
@@ -280,14 +299,19 @@ export async function createTransaction(
     p.category_id
   );
 
-  await assertExpenseProjectCashAvailable(client, tenantId, {
-    type: p.type,
-    amount: Number.isFinite(p.amount) ? p.amount : 0,
-    date: p.date,
-    account_id: p.account_id,
-    project_id: p.project_id,
-    bill_id: p.bill_id,
-  });
+  await assertExpenseProjectCashAvailable(
+    client,
+    tenantId,
+    {
+      type: p.type,
+      amount: Number.isFinite(p.amount) ? p.amount : 0,
+      date: p.date,
+      account_id: p.account_id,
+      project_id: p.project_id,
+      bill_id: p.bill_id,
+    },
+    expenseCashBatchCtx ?? undefined
+  );
 
   const r = await client.query<TransactionRow>(
     `INSERT INTO transactions (
@@ -332,6 +356,9 @@ export async function createTransaction(
     ]
   );
   const row = r.rows[0];
+  if (expenseCashBatchCtx && row.project_id && row.type === 'Expense') {
+    expenseCashBatchCtx.recordInsertedTransaction(rowToProjectCashTxRow(row));
+  }
   await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id]);
   return row;
 }

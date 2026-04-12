@@ -21,6 +21,14 @@ export function getPool(): pg.Pool {
   return pool;
 }
 
+/** Close all pool connections (e.g. before pg_restore). Next getPool() creates a new pool. */
+export async function closePool(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
+}
+
 export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   const p = getPool();
   const client = await p.connect();

@@ -716,6 +716,44 @@ export const payrollApi = {
     }
   },
 
+  /** LAN/API: pay many payslip lines in one request (single DB transaction on server). */
+  async payPayslipsBulk(
+    payments: Array<{
+      payslipId: string;
+      accountId: string;
+      categoryId?: string;
+      projectId?: string;
+      buildingId?: string;
+      amount?: number;
+      description?: string;
+      date?: string;
+    }>
+  ): Promise<{
+    success: boolean;
+    results?: Array<{ payslip: any; transaction: any }>;
+    error?: string;
+  }> {
+    if (isLocalOnlyMode()) {
+      return { success: false, error: 'Bulk pay uses API mode.' };
+    }
+    if (!payments.length) {
+      return { success: false, error: 'No payments' };
+    }
+    try {
+      const response = await apiClient.post<{ results: Array<{ payslip: any; transaction: any }> }>(
+        '/payroll/payslips/bulk-pay',
+        { payments }
+      );
+      return { success: true, results: response?.results ?? [] };
+    } catch (error: any) {
+      let errorMessage = 'Bulk pay failed';
+      if (error?.error) errorMessage = error.error;
+      else if (error?.message) errorMessage = error.message;
+      else if (error?.response?.data?.error) errorMessage = error.response.data.error;
+      return { success: false, error: errorMessage };
+    }
+  },
+
   async payPayslip(
     payslipId: string,
     paymentData: {

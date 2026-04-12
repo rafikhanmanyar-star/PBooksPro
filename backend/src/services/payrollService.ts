@@ -7,6 +7,7 @@ import {
   type PayrollEmployeeLike,
 } from '../payroll/salaryComputation.js';
 import { todayUtcYyyyMmDd } from '../utils/dateOnly.js';
+import { ExpenseCashValidationBatchContext } from '../financial/expenseCashValidation.js';
 import { createTransaction, rowToTransactionApi } from './transactionsService.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -854,29 +855,37 @@ export async function recalculatePayrollRunAggregates(
   tenantId: string,
   runId: string
 ): Promise<PayrollRunRow | null> {
-  const payslips = await listPayslipsByRun(client, tenantId, runId);
-  const totalAmt = payslips.reduce((s, p) => s + numStr(p.net_pay), 0);
-  const count = payslips.length;
-  const allPaid =
-    count > 0 &&
-    payslips.every((p) => {
-      const net = numStr(p.net_pay);
-      const paid = numStr(p.paid_amount);
-      return p.is_paid || paid >= net - 0.01;
-    });
   const run = await getPayrollRun(client, tenantId, runId);
   if (!run) return null;
+
+  const agg = await client.query<{
+    cnt: string;
+    total_amt: string;
+    all_paid: boolean | null;
+    max_paid_at: Date | null;
+  }>(
+    `SELECT
+       COUNT(*)::int AS cnt,
+       COALESCE(SUM(net_pay::numeric), 0)::text AS total_amt,
+       CASE
+         WHEN COUNT(*) = 0 THEN NULL
+         ELSE BOOL_AND(
+           is_paid OR COALESCE(paid_amount::numeric, 0) >= net_pay::numeric - 0.01
+         )
+       END AS all_paid,
+       MAX(paid_at) FILTER (WHERE paid_at IS NOT NULL) AS max_paid_at
+     FROM payslips
+     WHERE tenant_id = $1 AND payroll_run_id = $2 AND deleted_at IS NULL`,
+    [tenantId, runId]
+  );
+  const row = agg.rows[0];
+  if (!row) return null;
+
+  const count = Number(row.cnt);
+  const totalAmt = numStr(row.total_amt);
+  const allPaid = row.all_paid === true;
   const newStatus = count === 0 ? 'DRAFT' : allPaid ? 'PAID' : 'DRAFT';
-  let paidAt: Date | null = null;
-  if (allPaid && count > 0) {
-    for (const p of payslips) {
-      const d = p.paid_at;
-      if (!d) continue;
-      const dt = d instanceof Date ? d : new Date(String(d));
-      if (isNaN(dt.getTime())) continue;
-      if (!paidAt || dt.getTime() > paidAt.getTime()) paidAt = dt;
-    }
-  }
+  const paidAt = count > 0 && allPaid ? row.max_paid_at : null;
 
   const u = await client.query<PayrollRunRow>(
     `UPDATE payroll_runs SET
@@ -1005,6 +1014,53 @@ function employeeRowToLike(row: PayrollEmployeeRow): PayrollEmployeeLike {
   };
 }
 
+const PAYSIP_BATCH_ROWS = 50;
+
+type PayslipInsertRow = {
+  id: string;
+  tenantId: string;
+  runId: string;
+  employeeId: string;
+  computed: ReturnType<typeof computeMonthlyPayslip>;
+  adjustmentJson: string;
+  assignmentSnapshot: string;
+};
+
+function buildPayslipBatchInsert(slice: PayslipInsertRow[]): { sql: string; params: unknown[] } {
+  const parts: string[] = [];
+  const params: unknown[] = [];
+  let i = 1;
+  for (const r of slice) {
+    parts.push(
+      `($${i},$${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5},$${i + 6},$${i + 7},$${i + 8},$${i + 9},$${i + 10}::jsonb,$${i + 11}::jsonb,$${i + 12}::jsonb,$${i + 13}::jsonb,false,0,NULL,NOW(),NOW())`
+    );
+    params.push(
+      r.id,
+      r.tenantId,
+      r.runId,
+      r.employeeId,
+      r.computed.basic_pay,
+      r.computed.total_allowances,
+      r.computed.total_deductions,
+      r.computed.total_adjustments,
+      r.computed.gross_pay,
+      r.computed.net_pay,
+      JSON.stringify(r.computed.allowance_details),
+      JSON.stringify(r.computed.deduction_details),
+      r.adjustmentJson,
+      r.assignmentSnapshot
+    );
+    i += 14;
+  }
+  return {
+    sql: `INSERT INTO payslips (
+         id, tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, total_deductions, total_adjustments,
+         gross_pay, net_pay, allowance_details, deduction_details, adjustment_details, assignment_snapshot, is_paid, paid_amount, deleted_at, created_at, updated_at
+       ) VALUES ${parts.join(',')}`,
+    params,
+  };
+}
+
 export async function processPayrollRun(
   client: pg.PoolClient,
   tenantId: string,
@@ -1055,6 +1111,8 @@ export async function processPayrollRun(
   let newAmount = 0;
   const previousTotal = existing.reduce((s, p) => s + numStr(p.net_pay), 0);
 
+  const toInsert: PayslipInsertRow[] = [];
+
   for (const emp of employees) {
     if (singleId && emp.id !== singleId) continue;
 
@@ -1078,43 +1136,39 @@ export async function processPayrollRun(
       projects: j(emp.projects, []),
       buildings: j(emp.buildings, []),
     });
-    await client.query(
-      `INSERT INTO payslips (
-         id, tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, total_deductions, total_adjustments,
-         gross_pay, net_pay, allowance_details, deduction_details, adjustment_details, assignment_snapshot, is_paid, paid_amount, deleted_at, created_at, updated_at
-       ) VALUES (
-         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,false,0,NULL,NOW(),NOW()
-       )`,
-      [
-        psId,
-        tenantId,
-        runId,
-        emp.id,
-        computed.basic_pay,
-        computed.total_allowances,
-        computed.total_deductions,
-        computed.total_adjustments,
-        computed.gross_pay,
-        computed.net_pay,
-        JSON.stringify(computed.allowance_details),
-        JSON.stringify(computed.deduction_details),
-        JSON.stringify(j(emp.adjustments, [])),
-        assignmentSnapshot,
-      ]
-    );
+    toInsert.push({
+      id: psId,
+      tenantId,
+      runId,
+      employeeId: emp.id,
+      computed,
+      adjustmentJson: JSON.stringify(j(emp.adjustments, [])),
+      assignmentSnapshot,
+    });
     newCount++;
     newAmount += computed.net_pay;
     existingEmp.add(emp.id);
   }
 
-  const all = await listPayslipsByRun(client, tenantId, runId);
-  const totalAmt = all.reduce((s, p) => s + numStr(p.net_pay), 0);
+  for (let c = 0; c < toInsert.length; c += PAYSIP_BATCH_ROWS) {
+    const slice = toInsert.slice(c, c + PAYSIP_BATCH_ROWS);
+    const { sql, params } = buildPayslipBatchInsert(slice);
+    await client.query(sql, params);
+  }
+
+  const sumQ = await client.query<{ total_amt: string; cnt: string }>(
+    `SELECT COALESCE(SUM(net_pay::numeric), 0)::text AS total_amt, COUNT(*)::int AS cnt
+     FROM payslips WHERE tenant_id = $1 AND payroll_run_id = $2 AND deleted_at IS NULL`,
+    [tenantId, runId]
+  );
+  const totalAmt = numStr(sumQ.rows[0]?.total_amt ?? '0');
+  const totalPayslips = Number(sumQ.rows[0]?.cnt ?? 0);
 
   const u = await client.query<PayrollRunRow>(
     `UPDATE payroll_runs SET total_amount = $3, employee_count = $4, updated_at = NOW() WHERE id = $1 AND tenant_id = $2
      RETURNING id, tenant_id, month, year, period_start, period_end, status, total_amount::text, employee_count,
                created_by, updated_by, approved_by, approved_at, paid_at, deleted_at, created_at, updated_at`,
-    [runId, tenantId, totalAmt, all.length]
+    [runId, tenantId, totalAmt, totalPayslips]
   );
   const updated = u.rows[0];
   if (!updated) throw new Error('Failed to update payroll run.');
@@ -1124,7 +1178,7 @@ export async function processPayrollRun(
     processing_summary: {
       new_payslips_generated: newCount,
       existing_payslips_skipped: skipCount,
-      total_payslips: all.length,
+      total_payslips: totalPayslips,
       new_amount_added: newAmount,
       previous_amount: previousTotal,
       total_amount: totalAmt,
@@ -1188,12 +1242,27 @@ export async function softDeletePayslip(client: pg.PoolClient, tenantId: string,
   return true;
 }
 
+export type BulkPayPayslipLine = {
+  payslipId: string;
+  amount?: number;
+  accountId: string;
+  categoryId?: string;
+  projectId?: string;
+  buildingId?: string;
+  description?: string;
+  date?: string;
+};
+
 export async function payPayslip(
   client: pg.PoolClient,
   tenantId: string,
   payslipId: string,
   body: Record<string, unknown>,
-  userId: string | null
+  userId: string | null,
+  options?: {
+    skipRecalculate?: boolean;
+    expenseCashBatchCtx?: ExpenseCashValidationBatchContext;
+  }
 ): Promise<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }> {
   const ps = await getPayslip(client, tenantId, payslipId);
   if (!ps) throw new Error('Payslip not found.');
@@ -1227,7 +1296,13 @@ export async function payPayslip(
     payslipId: payslipId,
   };
 
-  const tx = await createTransaction(client, tenantId, txBody, userId);
+  const tx = await createTransaction(
+    client,
+    tenantId,
+    txBody,
+    userId,
+    options?.expenseCashBatchCtx ?? null
+  );
 
   const u = await client.query<PayslipRow>(
     `UPDATE payslips SET
@@ -1244,8 +1319,46 @@ export async function payPayslip(
   );
   const row = u.rows[0];
   if (!row) throw new Error('Failed to update payslip.');
-  await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
+  if (!options?.skipRecalculate) {
+    await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
+  }
   return { payslip: row, transaction: rowToTransactionApi(tx) };
+}
+
+/** Pay many payslip lines in one DB transaction; one aggregate recalc per affected payroll run. */
+export async function payBulkPayslips(
+  client: pg.PoolClient,
+  tenantId: string,
+  lines: BulkPayPayslipLine[],
+  userId: string | null
+): Promise<{
+  results: Array<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }>;
+}> {
+  if (lines.length === 0) return { results: [] };
+  const expenseCtx = new ExpenseCashValidationBatchContext(client, tenantId);
+  const results: Array<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }> = [];
+  const runIds = new Set<string>();
+  for (const line of lines) {
+    const body: Record<string, unknown> = {
+      accountId: line.accountId,
+      categoryId: line.categoryId,
+      projectId: line.projectId,
+      buildingId: line.buildingId,
+      amount: line.amount,
+      description: line.description,
+      date: line.date,
+    };
+    const r = await payPayslip(client, tenantId, line.payslipId, body, userId, {
+      skipRecalculate: true,
+      expenseCashBatchCtx: expenseCtx,
+    });
+    results.push(r);
+    runIds.add(r.payslip.payroll_run_id);
+  }
+  for (const rid of runIds) {
+    await recalculatePayrollRunAggregates(client, tenantId, rid);
+  }
+  return { results };
 }
 
 // ── Tenant config (earning/deduction types + GL defaults) ──────────────────────

@@ -3,6 +3,8 @@ import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../db/pool.js';
 import { emitEntityEvent } from '../core/realtime.js';
+import { perfPayrollLog, perfPayrollNow } from '../utils/payrollPerf.js';
+import type { BulkPayPayslipLine } from '../services/payrollService.js';
 import {
   createPayrollRun,
   deletePayrollRun,
@@ -21,6 +23,7 @@ import {
   listPayslipsByEmployee,
   listPayslipsByRun,
   migrateDepartmentNamesToIds,
+  payBulkPayslips,
   payPayslip,
   processPayrollRun,
   rowToDepartmentApi,
@@ -491,9 +494,16 @@ payrollRouter.post('/payroll/runs/:id/process', async (req: AuthedRequest, res) 
         : typeof body.employee_id === 'string'
           ? body.employee_id
           : undefined;
+    const t0 = perfPayrollNow();
     const result = await withTransaction((c) =>
       processPayrollRun(c, tenantId, req.params.id, onlyEmployeeId)
     );
+    perfPayrollLog('payroll.processPayrollRun', perfPayrollNow() - t0, {
+      tenantId,
+      runId: req.params.id,
+      newPayslips: result.processing_summary.new_payslips_generated,
+      totalPayslips: result.processing_summary.total_payslips,
+    });
     emitEntityEvent(tenantId, 'updated', 'payroll_run', { data: rowToPayrollRunApi(result.run), sourceUserId: req.userId });
     sendSuccess(res, {
         ...rowToPayrollRunApi(result.run),
@@ -618,12 +628,85 @@ payrollRouter.post('/payroll/payslips/:payslipId/pay', async (req: AuthedRequest
     return;
   }
   try {
+    const t0 = perfPayrollNow();
     const result = await withTransaction((c) =>
       payPayslip(c, tenantId, req.params.payslipId, req.body as Record<string, unknown>, req.userId ?? null)
     );
+    perfPayrollLog('payroll.payPayslip', perfPayrollNow() - t0, { tenantId, payslipId: req.params.payslipId });
     emitEntityEvent(tenantId, 'updated', 'payslip', { data: rowToPayslipApi(result.payslip), sourceUserId: req.userId });
     emitEntityEvent(tenantId, 'created', 'transaction', { data: result.transaction, sourceUserId: req.userId });
     sendSuccess(res, { payslip: rowToPayslipApi(result.payslip), transaction: result.transaction },);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+payrollRouter.post('/payroll/payslips/bulk-pay', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  try {
+    const raw = (req.body as { payments?: unknown }).payments;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      sendFailure(res, 400, 'VALIDATION_ERROR', 'payments array is required and must be non-empty');
+      return;
+    }
+    const lines: BulkPayPayslipLine[] = [];
+    for (const x of raw as Record<string, unknown>[]) {
+      const payslipId = String(x.payslipId ?? x.payslip_id ?? '').trim();
+      const accountId = String(x.accountId ?? x.account_id ?? '').trim();
+      if (!payslipId || !accountId) continue;
+      const amountRaw = x.amount;
+      const amount =
+        amountRaw !== undefined && amountRaw !== null && String(amountRaw).trim() !== ''
+          ? Number(amountRaw)
+          : undefined;
+      lines.push({
+        payslipId,
+        accountId,
+        categoryId:
+          typeof x.categoryId === 'string'
+            ? x.categoryId
+            : typeof x.category_id === 'string'
+              ? x.category_id
+              : undefined,
+        projectId:
+          typeof x.projectId === 'string'
+            ? x.projectId
+            : typeof x.project_id === 'string'
+              ? x.project_id
+              : undefined,
+        buildingId:
+          typeof x.buildingId === 'string'
+            ? x.buildingId
+            : typeof x.building_id === 'string'
+              ? x.building_id
+              : undefined,
+        description: typeof x.description === 'string' ? x.description : undefined,
+        date: typeof x.date === 'string' ? x.date : undefined,
+        amount: Number.isFinite(amount) ? amount : undefined,
+      });
+    }
+    if (lines.length === 0) {
+      sendFailure(res, 400, 'VALIDATION_ERROR', 'No valid payment lines (need payslipId and accountId)');
+      return;
+    }
+    const t0 = perfPayrollNow();
+    const result = await withTransaction((c) => payBulkPayslips(c, tenantId, lines, req.userId ?? null));
+    perfPayrollLog('payroll.bulkPay', perfPayrollNow() - t0, { tenantId, lines: lines.length });
+    for (const r of result.results) {
+      emitEntityEvent(tenantId, 'updated', 'payslip', { data: rowToPayslipApi(r.payslip), sourceUserId: req.userId });
+      emitEntityEvent(tenantId, 'created', 'transaction', { data: r.transaction, sourceUserId: req.userId });
+    }
+    sendSuccess(res, {
+      results: result.results.map((r) => ({
+        payslip: rowToPayslipApi(r.payslip),
+        transaction: r.transaction,
+      })),
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);

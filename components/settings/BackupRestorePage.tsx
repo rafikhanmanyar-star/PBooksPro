@@ -3,11 +3,20 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import Tabs from '../ui/Tabs';
 import ExportDataModal from './ExportDataModal';
 import CompanyBackupRestore from '../company/CompanyBackupRestore';
+import PostgresBackupRestore from './PostgresBackupRestore';
 import { useCompanyOptional } from '../../context/CompanyContext';
+import { useAuth } from '../../context/AuthContext';
 import ImportExportWizard from './ImportExportWizard';
+
+function isOrgAdminRole(role: string | undefined): boolean {
+    if (!role) return false;
+    const r = role.toLowerCase();
+    return r === 'admin' || r === 'super_admin';
+}
 
 const BackupRestorePage: React.FC = () => {
     const companyCtx = useCompanyOptional();
+    const { user: authUser } = useAuth();
 
     const [activeTab, setActiveTab] = useState<string>('Backup and Restore');
     const [isExportDataModalOpen, setIsExportDataModalOpen] = useState(false);
@@ -15,13 +24,16 @@ const BackupRestorePage: React.FC = () => {
     const backupTabs = ['Backup and Restore', 'Import', 'Selective Export'];
 
     const renderBackupRestore = () => {
-        const showCompanyBackup = isLocalOnlyMode() && companyCtx?.activeCompany;
+        const showSqliteCompanyBackup = isLocalOnlyMode() && companyCtx?.activeCompany;
+        const showPostgresBackup = !isLocalOnlyMode() && isOrgAdminRole(authUser?.role);
         return (
             <div className="p-4 sm:p-6">
                 <div className="max-w-2xl mx-auto">
                     <div className="p-5 sm:p-6 border border-slate-200 rounded-xl bg-slate-50/50 shadow-sm">
-                        {showCompanyBackup ? (
+                        {showSqliteCompanyBackup ? (
                             <CompanyBackupRestore />
+                        ) : showPostgresBackup ? (
+                            <PostgresBackupRestore />
                         ) : (
                             <>
                                 <h4 className="text-lg font-semibold text-slate-800 mb-1">Company Backup</h4>
@@ -30,11 +42,13 @@ const BackupRestorePage: React.FC = () => {
                                 </p>
                                 <div className="py-8 px-4 text-center rounded-lg bg-slate-100/80 border border-slate-200">
                                     <p className="text-sm text-slate-600">
-                                        {!isLocalOnlyMode()
-                                            ? 'Company backup is available only when using the app in local-only mode.'
-                                            : !companyCtx?.activeCompany
-                                                ? 'Select or create a company to manage backups.'
-                                                : 'Company backup is unavailable.'}
+                                        {isLocalOnlyMode() && !companyCtx?.activeCompany
+                                            ? 'Select or create a company to manage backups.'
+                                            : isLocalOnlyMode()
+                                                ? 'Company backup is unavailable.'
+                                                : !isOrgAdminRole(authUser?.role)
+                                                    ? 'Full database backup and restore (PostgreSQL) is available to organization administrators when using the app with your API server.'
+                                                    : 'Company backup is unavailable.'}
                                     </p>
                                 </div>
                             </>

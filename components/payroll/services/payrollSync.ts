@@ -8,7 +8,12 @@ import { payrollApi } from '../../../services/api/payrollApi';
 import { storageService } from './storageService';
 import { normalizeEmployee, normalizePayrollRun, normalizePayslip } from '../types';
 
-export async function syncPayrollFromServer(tenantId: string): Promise<void> {
+export type SyncPayrollFromServerOptions = {
+  /** When set, only re-fetches payslips for these payroll run IDs (merges with cached payslips for other runs). */
+  runIds?: string[];
+};
+
+export async function syncPayrollFromServer(tenantId: string, options?: SyncPayrollFromServerOptions): Promise<void> {
   if (isLocalOnlyMode() || !tenantId) return;
 
   storageService.init(tenantId);
@@ -31,14 +36,28 @@ export async function syncPayrollFromServer(tenantId: string): Promise<void> {
   const runsNorm = runs.map((r) => normalizePayrollRun(r as any));
   storageService.setPayrollRuns(tenantId, runsNorm);
 
-  const allPayslips: ReturnType<typeof storageService.getPayslips> = [];
-  for (const run of runsNorm) {
-    const raw = await payrollApi.getPayslipsByRun(run.id);
-    for (const p of raw || []) {
-      allPayslips.push(normalizePayslip(p as any));
+  const targetRunIds = (options?.runIds ?? []).filter(Boolean);
+  if (targetRunIds.length === 0) {
+    const allPayslips: ReturnType<typeof storageService.getPayslips> = [];
+    for (const run of runsNorm) {
+      const raw = await payrollApi.getPayslipsByRun(run.id);
+      for (const p of raw || []) {
+        allPayslips.push(normalizePayslip(p as any));
+      }
     }
+    storageService.setPayslips(tenantId, allPayslips);
+  } else {
+    const runIdSet = new Set(targetRunIds);
+    const freshLists = await Promise.all(targetRunIds.map((id) => payrollApi.getPayslipsByRun(id)));
+    const fresh = freshLists.flat().map((p) => normalizePayslip(p as any));
+    const existing = storageService.getPayslips(tenantId);
+    const kept = existing.filter((p) => !runIdSet.has(p.payroll_run_id));
+    const byId = new Map<string, (typeof fresh)[0]>();
+    for (const p of [...kept, ...fresh]) {
+      byId.set(p.id, p);
+    }
+    storageService.setPayslips(tenantId, Array.from(byId.values()));
   }
-  storageService.setPayslips(tenantId, allPayslips);
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('pbooks-payroll-storage-updated', { detail: { tenantId } }));

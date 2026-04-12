@@ -36,6 +36,7 @@ import { recurringInvoiceTemplatesRouter } from './routes/recurringInvoiceTempla
 import { payrollRouter } from './routes/payrollRoutes.js';
 import { personalFinanceRouter } from './routes/personalFinanceRoutes.js';
 import { tasksRouter } from './routes/tasksRoutes.js';
+import { databaseBackupRouter } from './routes/databaseBackupRoutes.js';
 import { pmCycleAllocationsRouter } from './routes/pmCycleAllocationsRoutes.js';
 import { planAmenitiesRouter } from './routes/planAmenitiesRoutes.js';
 import { installmentPlansRouter } from './routes/installmentPlansRoutes.js';
@@ -180,6 +181,8 @@ app.use('/api', authMiddleware, investorJournalRouter);
 app.use('/api', authMiddleware, transactionsRouter);
 
 app.use('/api', authMiddleware, usersRouter);
+
+app.use('/api', authMiddleware, databaseBackupRouter);
 
 app.use('/api', authMiddleware, recurringInvoiceTemplatesRouter);
 
