@@ -19,6 +19,7 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
+import { useDevRenderCount } from '../../hooks/useDevRenderCount';
 
 type SortKey = 'name' | 'type' | 'companyName' | 'contactNo' | 'address' | 'balance';
 
@@ -133,8 +134,13 @@ const ContactTreeSidebar: React.FC<{
 });
 
 const ContactsPage: React.FC = () => {
+    useDevRenderCount('ContactsPage');
     const dispatch = useDispatchOnly();
-    const state = useStateSelector(s => s);
+    const contactsFromStore = useStateSelector(s => s.contacts);
+    const vendors = useStateSelector(s => s.vendors);
+    const transactions = useStateSelector(s => s.transactions);
+    const currentUser = useStateSelector(s => s.currentUser);
+    const whatsAppMode = useStateSelector(s => s.whatsAppMode);
     const { isAuthenticated } = useAuth();
     const { showConfirm, showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
@@ -160,8 +166,8 @@ const ContactsPage: React.FC = () => {
     const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Vendors', 'Friends & Family'];
 
     const vendorsMap = useMemo(
-        () => new Map((state.vendors || []).map(v => [v.id, v])),
-        [state.vendors]
+        () => new Map((vendors || []).map(v => [v.id, v])),
+        [vendors]
     );
 
     // Sync activeTab when tree type is selected
@@ -175,7 +181,7 @@ const ContactsPage: React.FC = () => {
     const contactBalances = useMemo(() => {
         const balances = new Map<string, number>();
 
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             if (!tx.contactId) return;
 
             let amount = 0;
@@ -190,11 +196,11 @@ const ContactsPage: React.FC = () => {
         });
 
         return balances;
-    }, [state.transactions]);
+    }, [transactions]);
 
     // Tree data: two levels — Type (Owners, Tenants, Brokers, Friends & Family) -> Contacts
     const treeData = useMemo<ContactTreeNode[]>(() => {
-        const baseContacts = state.contacts.filter(c => c.type !== ContactType.STAFF);
+        const baseContacts = contactsFromStore.filter(c => c.type !== ContactType.STAFF);
         const typeConfig: { id: string; label: string; filter: (c: Contact) => boolean }[] = [
             { id: 'Owners', label: 'Owners', filter: c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT },
             { id: 'Tenants', label: 'Tenants', filter: c => c.type === ContactType.TENANT },
@@ -216,20 +222,20 @@ const ContactsPage: React.FC = () => {
         });
 
         // Add Vendors Node
-        if (state.vendors && state.vendors.length > 0) {
+        if (vendors && vendors.length > 0) {
             nodes.push({
                 id: 'Vendors',
                 label: 'Vendors',
                 type: 'type',
-                value: state.vendors.length,
-                children: state.vendors
+                value: vendors.length,
+                children: vendors
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map(v => ({ id: v.id, label: v.name, type: 'contact', children: [], value: undefined, isActive: v.isActive }))
             });
         }
 
         return nodes.filter(node => node.value! > 0);
-    }, [state.contacts, state.vendors]);
+    }, [contactsFromStore, vendors]);
 
     const filterContactTree = useCallback((nodes: ContactTreeNode[], q: string): ContactTreeNode[] => {
         if (!q.trim()) return nodes;
@@ -287,7 +293,7 @@ const ContactsPage: React.FC = () => {
     }, []);
 
     const contacts = useMemo(() => {
-        let filtered = state.contacts.filter(c => c.type !== ContactType.STAFF);
+        let filtered = contactsFromStore.filter(c => c.type !== ContactType.STAFF);
 
         if (selectedTreeType === 'contact' && selectedTreeId) {
             const vendor = vendorsMap.get(selectedTreeId);
@@ -301,10 +307,10 @@ const ContactsPage: React.FC = () => {
             else if (activeTab === 'Tenants') filtered = filtered.filter(c => c.type === ContactType.TENANT);
             else if (activeTab === 'Brokers') filtered = filtered.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER);
             else if (activeTab === 'Friends & Family') filtered = filtered.filter(c => c.type === ContactType.FRIEND_FAMILY);
-            else if (activeTab === 'Vendors') filtered = (state.vendors || []) as unknown as Contact[];
+            else if (activeTab === 'Vendors') filtered = (vendors || []) as unknown as Contact[];
         } else {
             // All tab: include vendors
-            filtered = [...filtered, ...((state.vendors || []) as unknown as Contact[])];
+            filtered = [...filtered, ...((vendors || []) as unknown as Contact[])];
         }
 
         if (searchQuery) {
@@ -333,7 +339,7 @@ const ContactsPage: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [state.contacts, state.vendors, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId, vendorsMap]);
+    }, [contactsFromStore, vendors, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId, vendorsMap]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -383,7 +389,7 @@ const ContactsPage: React.FC = () => {
                         try {
                             const merged = await getAppStateApiService().saveVendor({
                                 ...payload,
-                                userId: state.currentUser?.id,
+                                userId: currentUser?.id,
                             });
                             payload = { ...payload, ...merged };
                         } catch (err: any) {
@@ -469,7 +475,7 @@ const ContactsPage: React.FC = () => {
             const message = `Hello ${contact.name}!`;
             sendOrOpenWhatsApp(
                 { contact, message, phoneNumber: contact.contactNo },
-                () => state.whatsAppMode,
+                () => whatsAppMode,
                 openChat
             );
         } catch (error) {
@@ -720,7 +726,7 @@ const ContactsPage: React.FC = () => {
                     onCancel={handleCloseModal}
                     contactToEdit={contactToEdit || undefined}
                     onDelete={handleDeleteContact}
-                    existingContacts={state.contacts}
+                    existingContacts={contactsFromStore}
                     fixedTypeForNew={contactToEdit ? undefined : getDefaultType()}
                     allowedTypesForNew={allowedTypes}
                     isVendorForm={contactToEdit?.type === ContactType.VENDOR || activeTab === 'Vendors'}

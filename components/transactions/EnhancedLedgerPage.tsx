@@ -20,6 +20,7 @@ import MonthNavigator from './MonthNavigator';
 import TransactionForm from './TransactionForm';
 import Modal from '../ui/Modal';
 import { usePaginatedTransactions } from '../../hooks/usePaginatedTransactions';
+import { useDevRenderCount } from '../../hooks/useDevRenderCount';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { usePrintContext } from '../../context/PrintContext';
 import ReportHeader from '../reports/ReportHeader';
@@ -43,8 +44,10 @@ const initialFilters: FilterCriteria = {
 
 
 const EnhancedLedgerPage: React.FC = () => {
+    useDevRenderCount('EnhancedLedgerPage');
     const dispatch = useDispatchOnly();
-    const state = useStateSelector(s => s);
+    const showSystemTransactions = useStateSelector(s => s.showSystemTransactions);
+    const transactionsFromStore = useStateSelector(s => s.transactions);
     const progress = useProgress();
     const { print: triggerPrint } = usePrintContext();
 
@@ -122,7 +125,7 @@ const EnhancedLedgerPage: React.FC = () => {
 
         const raw = (isUsingNative && paginatedTransactions.length > 0 && !shouldUseAllTransactions)
             ? paginatedTransactions
-            : (state?.transactions || []);
+            : transactionsFromStore;
         const batchMap = new Map<string, Transaction[]>();
         const processedBatchIds = new Set<string>();
         const result: Transaction[] = [];
@@ -181,7 +184,7 @@ const EnhancedLedgerPage: React.FC = () => {
             }
         });
         return result;
-    }, [isUsingNative, paginatedTransactions, state?.transactions, lookupMaps, shouldUseAllTransactions]);
+    }, [isUsingNative, paginatedTransactions, transactionsFromStore, lookupMaps, shouldUseAllTransactions]);
 
     // Update filters with debounced search query
     useEffect(() => {
@@ -195,7 +198,7 @@ const EnhancedLedgerPage: React.FC = () => {
         let filtered = consolidatedTransactions;
 
         // Hide system transactions if needed
-        if (state && !state.showSystemTransactions) {
+        if (!showSystemTransactions) {
             filtered = filtered.filter(t => !t.isSystem);
         }
 
@@ -285,7 +288,7 @@ const EnhancedLedgerPage: React.FC = () => {
         }
 
         return filtered;
-    }, [consolidatedTransactions, filters, lookupMaps, state?.showSystemTransactions, currentDate, viewMode, debouncedSearchQuery]);
+    }, [consolidatedTransactions, filters, lookupMaps, showSystemTransactions, currentDate, viewMode, debouncedSearchQuery]);
 
     // Sort transactions
     const sortedTransactions = useMemo(() => {
@@ -687,7 +690,7 @@ const EnhancedLedgerPage: React.FC = () => {
                     </div>
                 ) : (
                     <div className="flex-1 overflow-auto p-1 custom-scrollbar">
-                        {useVirtualization && sortedTransactions.length > 50 ? (
+                        {useVirtualization && sortedTransactions.length > 20 ? (
                             <VirtualizedLedgerTable
                                 groups={groupedTransactions}
                                 sortConfig={sortConfig}
@@ -726,7 +729,7 @@ const EnhancedLedgerPage: React.FC = () => {
                         <span>
                             Records: {paginatedTransactions.length}
                             {totalCount !== null && ` of ${totalCount}`}
-                            {totalCount === null && ` of ${state.transactions.length}`}
+                            {totalCount === null && ` of ${transactionsFromStore.length}`}
                         </span>
                         {isUsingNative && totalCount !== null && totalCount > paginatedTransactions.length && (
                             <span className="text-primary normal-case font-medium ml-2">

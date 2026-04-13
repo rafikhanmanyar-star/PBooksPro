@@ -1,5 +1,4 @@
-import React, { useMemo, useRef, useCallback, CSSProperties } from 'react';
-import { useStateSelector } from '../../hooks/useSelectiveState';
+import React, { useRef, useCallback } from 'react';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Transaction, TransactionType, LedgerSortKey as SortKey, SortDirection } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
@@ -28,7 +27,6 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
     onToggleExpand,
     showGrouping
 }) => {
-    const state = useStateSelector(s => s);
     const lookups = useLookupMaps();
     const tableRef = useRef<HTMLDivElement>(null);
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
+import { useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Transaction, TransactionType } from '../../types';
 import { CURRENCY } from '../../constants';
@@ -26,7 +26,6 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
     transaction,
     onTransactionUpdated
 }) => {
-    const state = useStateSelector(s => s);
     const dispatch = useDispatchOnly();
     const lookups = useLookupMaps();
     const { print: triggerPrint } = usePrintContext();

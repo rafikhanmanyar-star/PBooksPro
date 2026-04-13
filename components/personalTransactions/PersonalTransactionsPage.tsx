@@ -1,6 +1,6 @@
 import React, { useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector } from '../../hooks/useSelectiveState';
 import { useCompanyOptional } from '../../context/CompanyContext';
 import PersonalCategoriesSettingsPanel from './PersonalCategoriesSettingsPanel';
 import PersonalTransactionsTab from './PersonalTransactionsTab';
@@ -31,14 +31,14 @@ const PersonalTransactionsPage: React.FC = () => {
   const subNav = useCollapsibleSubNav('subnav_personal_tx');
 
   const { user } = useAuth();
-  const { state } = useAppContext();
+  const currentUserRole = useStateSelector(s => s.currentUser?.role);
   const companyCtx = useCompanyOptional();
 
   const isAdmin =
     user?.role === 'Admin' ||
     user?.role === 'SUPER_ADMIN' ||
-    state.currentUser?.role === 'Admin' ||
-    state.currentUser?.role === 'SUPER_ADMIN' ||
+    currentUserRole === 'Admin' ||
+    currentUserRole === 'SUPER_ADMIN' ||
     companyCtx?.authenticatedUser?.role === 'SUPER_ADMIN';
 
   useEffect(() => {

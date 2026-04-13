@@ -171,7 +171,8 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
 
             for (const bill of selectedBills) {
                 try {
-                    await apiService.saveBill(bill);
+                    // Omit version: a prior payment may have bumped server bill.version while UI still holds the old value.
+                    await apiService.saveBill({ ...bill, version: undefined });
                 } catch (e) {
                     console.warn('Could not ensure bill on server before bulk payment:', bill.billNumber, e);
                 }

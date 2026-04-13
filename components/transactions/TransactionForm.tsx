@@ -12,7 +12,6 @@ import { CURRENCY } from '../../constants';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
-import { getAppStateApiService } from '../../services/api/appStateApi';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { resolveExpenseCategoryForBillPayment } from '../../utils/rentalBillPayments';
 import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../utils/ledgerInvoicePayments';
@@ -395,30 +394,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                 return;
             }
 
-            try {
-                // Cloud: ensure bill exists on server, then save transaction via API
-                const bill = state.bills.find(b => b.id === linkedBillId);
-                if (bill) {
-                    await getAppStateApiService().saveBill(bill);
-                }
-                const saved = await getAppStateApiService().saveTransaction(payload) as Transaction;
-                dispatch({ type: 'ADD_TRANSACTION', payload: saved });
-                if (bill) {
-                    const newPaidAmount = (bill.paidAmount || 0) + numAmount;
-                    const newStatus = newPaidAmount >= bill.amount - 0.01
-                        ? InvoiceStatus.PAID
-                        : newPaidAmount > 0.01
-                            ? InvoiceStatus.PARTIALLY_PAID
-                            : InvoiceStatus.UNPAID;
-                    dispatch({ type: 'UPDATE_BILL', payload: { ...bill, paidAmount: newPaidAmount, status: newStatus } });
-                }
-                onClose();
-                return;
-            } catch (err: any) {
-                const msg = err?.message || err?.error || 'Payment could not be saved to cloud. Please check your account exists in cloud and try again.';
-                await showAlert(`Payment failed: ${msg}`);
-                return;
-            }
+            // LAN/API: single ADD_TRANSACTION — AppContext runs saveTransaction once and fetchBill for the
+            // authoritative row (server recalc bumps bill.version). Avoids redundant saveBill with stale
+            // version (409) and duplicate saveTransaction from pre-saving here then syncing again in dispatch.
+            dispatch({ type: 'ADD_TRANSACTION', payload });
+            onClose();
+            return;
         }
 
         // --- Non–bill-payment: local-first, then sync ---

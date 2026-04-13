@@ -11,8 +11,7 @@ interface FooterProps {
 
 const Footer: React.FC<FooterProps> = ({ isPanelOpen, onNavigate }) => {
   const dispatch = useDispatchOnly();
-  const state = useStateSelector(s => s);
-  const { currentPage } = state;
+  const currentPage = useStateSelector(s => s.currentPage);
   
   // Use optimized navigation handler if provided, otherwise fallback to direct dispatch
   const handleNavigate = useCallback((page: Page) => {
