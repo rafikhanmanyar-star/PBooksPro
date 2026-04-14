@@ -6,7 +6,7 @@
  * Sits above AuthProvider in the provider hierarchy.
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { logger } from '../services/logger';
 import { applyDisplayTimezoneFromProfile, setDisplayTimeZoneUserContext } from '../utils/dateUtils';
@@ -765,7 +765,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return window.companyBridge!.resetPassword(userId);
   }, []);
 
-  const value: CompanyContextType = {
+  const value: CompanyContextType = useMemo(() => ({
     companies,
     activeCompany,
     pendingCompanyId,
@@ -800,7 +800,14 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     updateUser: updateUserMethod,
     deleteUser: deleteUserMethod,
     resetUserPassword: resetUserPasswordMethod,
-  };
+  }), [companies, activeCompany, pendingCompanyId, isLoading, error, screen, loginUsers,
+       authenticatedUser, forcePasswordChange,
+       refreshCompanies, createCompany, closeCurrentAndCreateNewCompany, openCompany,
+       openCompanyByPath, selectAndOpenCompanyFile, selectCompanyFile, getCompanyNameFromFile,
+       copyExternalWithNewName, switchCompany, logoutCompany, deleteCompany, loginToCompany,
+       setNewPassword, skipLogin, backupCompany, listBackups, restoreBackup, selectBackupFile,
+       closeForNewCompany, listUsersMethod, createUserMethod, updateUserMethod, deleteUserMethod,
+       resetUserPasswordMethod]);
 
   return (
     <CompanyContext.Provider value={value}>

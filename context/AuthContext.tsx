@@ -5,7 +5,7 @@
  * Provides authentication state and methods throughout the application.
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { getApiBaseUrl } from '../config/apiUrl';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { apiClient } from '../services/api/client';
@@ -882,19 +882,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const contextValue = useMemo(() => ({
+    ...state,
+    login,
+    lookupTenants,
+    smartLogin,
+    unifiedLogin,
+    registerTenant,
+    logout,
+    checkLicenseStatus,
+  }), [state.isAuthenticated, state.user, state.tenant, state.isLoading, state.error,
+       login, lookupTenants, smartLogin, unifiedLogin, registerTenant, logout, checkLicenseStatus]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        ...state,
-        login,
-        lookupTenants,
-        smartLogin,
-        unifiedLogin,
-        registerTenant,
-        logout,
-        checkLicenseStatus,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

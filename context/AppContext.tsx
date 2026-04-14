@@ -2786,9 +2786,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 reducerInitializedRef.current = true;
             }
         }
-        // Only depend on isInitializing to avoid accessing storedState before it's ready
+        // Only depend on isInitializing/apiStateLoadFailed to avoid running on every state change.
+        // The ref guard (reducerInitializedRef) ensures this dispatches at most once; state
+        // comparisons read from storedStateRef and the current state snapshot inside the effect.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isInitializing, apiStateLoadFailed, state, dispatch]);
+    }, [isInitializing, apiStateLoadFailed, dispatch]);
 
     // Track latest state to avoid stale captures in async effects
     const stateRef = useRef(state);

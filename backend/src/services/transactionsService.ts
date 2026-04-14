@@ -227,7 +227,7 @@ export async function listTransactions(
     where += ` AND t.invoice_id = $${params.length}`;
   }
 
-  const limit = Math.min(filters.limit ?? 100000, 500000);
+  const limit = Math.min(filters.limit ?? 10000, 500000);
   const offset = Math.max(filters.offset ?? 0, 0);
   params.push(limit);
   params.push(offset);

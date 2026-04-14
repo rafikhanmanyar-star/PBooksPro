@@ -12,9 +12,13 @@ let watchdogTimer = null;
 let memoryTimer = null;
 let getMainWindow = () => null;
 let sqliteBridgeRef = null;
+let lastReloadAt = 0;
+let warnedStaleAt = 0;
 
-const HEARTBEAT_STALE_MS = 5000;
+const HEARTBEAT_STALE_MS = 30000;
+const HEARTBEAT_WARN_MS = 10000;
 const WATCHDOG_INTERVAL_MS = 5000;
+const RELOAD_COOLDOWN_MS = 60000;
 const MEMORY_LOG_INTERVAL_MS = 10000;
 const HEAP_WARN_BYTES = 500 * 1024 * 1024;
 
@@ -102,15 +106,28 @@ function startWatchdog() {
     if (!win || win.isDestroyed()) return;
     const wc = win.webContents;
     if (!wc || wc.isDestroyed()) return;
-    const elapsed = Date.now() - lastHeartbeat;
+    const now = Date.now();
+    const elapsed = now - lastHeartbeat;
+    if (elapsed > HEARTBEAT_WARN_MS && elapsed <= HEARTBEAT_STALE_MS && !warnedStaleAt) {
+      warnedStaleAt = now;
+      logLine('WARN', `Renderer heartbeat stale (${elapsed}ms) — watching for recovery`);
+    }
     if (elapsed > HEARTBEAT_STALE_MS) {
+      if (now - lastReloadAt < RELOAD_COOLDOWN_MS) {
+        logLine('WARN', `Renderer heartbeat stale (${elapsed}ms) but skipping reload — cooldown active (last reload ${now - lastReloadAt}ms ago)`);
+        return;
+      }
       logLine('WARN', `Renderer heartbeat stale (${elapsed}ms) — reloading webContents`);
       try {
         resetHeartbeat();
+        lastReloadAt = now;
+        warnedStaleAt = 0;
         wc.reload();
       } catch (err) {
         logLine('ERROR', 'Watchdog reload failed', String(err));
       }
+    } else if (elapsed <= HEARTBEAT_WARN_MS) {
+      warnedStaleAt = 0;
     }
   }, WATCHDOG_INTERVAL_MS);
 }

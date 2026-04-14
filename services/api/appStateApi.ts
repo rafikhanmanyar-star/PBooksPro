@@ -956,7 +956,10 @@ export class AppStateApiService {
         }),
       ]);
 
-      // Enhanced vendor logging for debugging
+      // Yield to the event loop so the stability heartbeat can fire between
+      // network I/O completion and the synchronous normalization work below.
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       if (vendors.length > 0) {
         logger.logCategory('sync', '📋 Vendors loaded from API:', vendors.map(v => ({ id: v.id, name: v.name })));
       } else {
@@ -992,7 +995,8 @@ export class AppStateApiService {
         appSettingsKeys: Object.keys(appSettingsFlat || {}).length,
       });
 
-      return this.normalizeLoadedState({
+      // Use off-thread normalization to avoid blocking the main thread
+      return this.normalizeLoadedStateOffThread({
         accounts,
         contacts,
         transactions,

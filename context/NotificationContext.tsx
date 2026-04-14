@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
 import { ICONS } from '../constants';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
@@ -188,8 +188,12 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   };
 
+  const contextValue = useMemo(() => ({
+    showToast, showAlert, showConfirm, showProgress, hideProgress,
+  }), [showToast, showAlert, showConfirm, showProgress, hideProgress]);
+
   return (
-    <NotificationContext.Provider value={{ showToast, showAlert, showConfirm, showProgress, hideProgress }}>
+    <NotificationContext.Provider value={contextValue}>
       {children}
 
       {/* Toast Container */}

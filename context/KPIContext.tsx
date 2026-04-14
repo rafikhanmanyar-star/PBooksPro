@@ -117,24 +117,30 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     return [...ALL_KPIS, ...dynamicKpis];
-  }, [state.accounts, state.transactions, state.categories, state.projectAgreements]);
+    // getData closures receive appState at call time — only accounts/categories are needed
+    // to build the KPI *definitions*; transactions/projectAgreements are read inside getData.
+  }, [state.accounts, state.categories]);
+
+  const contextValue = useMemo(() => ({
+    isPanelOpen,
+    togglePanel,
+    visibleKpiIds,
+    setVisibleKpiIds,
+    allKpis,
+    favoriteReportIds,
+    setFavoriteReportIds,
+    allReports,
+    activePanelTab,
+    setActivePanelTab,
+    activeDrilldownKpi,
+    openDrilldown,
+    closeDrilldown,
+  }), [isPanelOpen, togglePanel, visibleKpiIds, setVisibleKpiIds, allKpis,
+       favoriteReportIds, setFavoriteReportIds, allReports, activePanelTab,
+       setActivePanelTab, activeDrilldownKpi, openDrilldown, closeDrilldown]);
 
   return (
-    <KPIContext.Provider value={{
-      isPanelOpen,
-      togglePanel,
-      visibleKpiIds,
-      setVisibleKpiIds,
-      allKpis,
-      favoriteReportIds,
-      setFavoriteReportIds,
-      allReports,
-      activePanelTab,
-      setActivePanelTab,
-      activeDrilldownKpi,
-      openDrilldown,
-      closeDrilldown,
-    }}>
+    <KPIContext.Provider value={contextValue}>
       {children}
     </KPIContext.Provider>
   );

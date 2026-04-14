@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { installAutocorrect } from '../utils/spellAutocorrect';
 
 export type SpellCheckerSettings = {
@@ -82,13 +82,13 @@ export function SpellCheckerProvider({ children }: { children: React.ReactNode }
     [api]
   );
 
-  const value: SpellCheckerContextValue = {
+  const value: SpellCheckerContextValue = useMemo(() => ({
     settings,
     isElectronSpell,
     loading,
     refreshSettings,
     updateSettings,
-  };
+  }), [settings, isElectronSpell, loading, refreshSettings, updateSettings]);
 
   return <SpellCheckerContext.Provider value={value}>{children}</SpellCheckerContext.Provider>;
 }

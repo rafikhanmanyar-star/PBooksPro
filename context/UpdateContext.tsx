@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import type { SpellCheckerSettings } from './SpellCheckerContext';
 
 interface UpdateInfo {
@@ -185,25 +185,27 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return { ok: true };
   }, []);
 
+  const contextValue = useMemo(() => ({
+    appVersion,
+    isChecking,
+    updateAvailable,
+    updateDownloaded,
+    updateInfo,
+    downloadProgress,
+    error,
+    errorTone,
+    checkNote,
+    unavailableReleasesUrl,
+    checkForUpdates,
+    startDownload,
+    installUpdate,
+    isElectronUpdate,
+  }), [appVersion, isChecking, updateAvailable, updateDownloaded, updateInfo,
+       downloadProgress, error, errorTone, checkNote, unavailableReleasesUrl,
+       checkForUpdates, startDownload, installUpdate, isElectronUpdate]);
+
   return (
-    <UpdateContext.Provider
-      value={{
-        appVersion,
-        isChecking,
-        updateAvailable,
-        updateDownloaded,
-        updateInfo,
-        downloadProgress,
-        error,
-        errorTone,
-        checkNote,
-        unavailableReleasesUrl,
-        checkForUpdates,
-        startDownload,
-        installUpdate,
-        isElectronUpdate,
-      }}
-    >
+    <UpdateContext.Provider value={contextValue}>
       {children}
     </UpdateContext.Provider>
   );
