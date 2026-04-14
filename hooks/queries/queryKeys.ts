@@ -17,4 +17,9 @@ export const queryKeys = {
     all: ['reports'] as const,
     orgUsers: () => ['reports', 'orgUsers'] as const,
   },
+  rental: {
+    /** Warmed while on Visual Layout; read for instant counts / future API merge */
+    invoicesList: () => ['rental', 'invoices', 'list'] as const,
+  },
 } as const;
+

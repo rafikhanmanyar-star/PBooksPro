@@ -1,6 +1,10 @@
 
-import React, { useMemo, useState, Suspense, lazy } from 'react';
+import React, { useMemo, useState, Suspense, lazy, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAppContext } from '../../context/AppContext';
+import { queryKeys } from '../../hooks/queries/queryKeys';
+import { selectRentalInvoicesForCache } from '../../hooks/queries/rentalInvoicesCache';
+import { cancelScheduledIdle, scheduleIdleWork } from '../../utils/interactionScheduling';
 import { CURRENCY } from '../../constants';
 import { Invoice, InvoiceStatus, TransactionType, InvoiceType, RentalAgreementStatus } from '../../types';
 import ReportHeader from './ReportHeader';
@@ -85,6 +89,7 @@ interface ProjectLayoutData {
 
 const PropertyLayoutReport: React.FC = () => {
     const { state } = useAppContext();
+    const queryClient = useQueryClient();
     const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [invoicePick, setInvoicePick] = useState<{
@@ -94,6 +99,19 @@ const PropertyLayoutReport: React.FC = () => {
     } | null>(null);
     const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
     const [mscForPropertyId, setMscForPropertyId] = useState<string | null>(null);
+
+    /** Warm rental invoices query while user is on Visual Layout so Invoices view opens faster. */
+    useEffect(() => {
+        const idleId = scheduleIdleWork(() => {
+            const slice = selectRentalInvoicesForCache(state.invoices);
+            queryClient.setQueryData(queryKeys.rental.invoicesList(), slice);
+            void queryClient.prefetchQuery({
+                queryKey: queryKeys.rental.invoicesList(),
+                queryFn: async () => slice,
+            });
+        }, { timeout: 2500 });
+        return () => cancelScheduledIdle(idleId);
+    }, [queryClient, state.invoices]);
 
     const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
 

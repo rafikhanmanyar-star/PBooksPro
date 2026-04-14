@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, memo, Suspense } from 'react';
+import React, { useState, useEffect, memo, Suspense, startTransition, useCallback } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import RentalAgreementsPage from '../rentalAgreements/RentalAgreementsPage';
@@ -89,31 +89,35 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     }, [isReportActive]);
 
     useEffect(() => {
-        switch (initialPage) {
-            case 'rentalInvoices':
-                setActiveView('Invoices');
-                break;
-            case 'rentalAgreements':
-                setActiveView('Agreements');
-                break;
-            case 'ownerPayouts':
-                setActiveView('Payouts');
-                break;
-            case 'rentalManagement':
-                break;
-            default:
-                break;
-        }
+        startTransition(() => {
+            switch (initialPage) {
+                case 'rentalInvoices':
+                    setActiveView('Invoices');
+                    break;
+                case 'rentalAgreements':
+                    setActiveView('Agreements');
+                    break;
+                case 'ownerPayouts':
+                    setActiveView('Payouts');
+                    break;
+                case 'rentalManagement':
+                    break;
+                default:
+                    break;
+            }
+        });
     }, [initialPage, setActiveView]);
 
     useEffect(() => {
         if (initialTabs && initialTabs.length > 0) {
             const [mainTab, subTab] = initialTabs;
-            if (mainTab === 'Reports' && subTab) {
-                setActiveView(subTab as RentalView);
-            } else if (['Agreements', 'Invoices', 'Recurring Templates', 'Monthly Service Charges', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
-                setActiveView(mainTab as RentalView);
-            }
+            startTransition(() => {
+                if (mainTab === 'Reports' && subTab) {
+                    setActiveView(subTab as RentalView);
+                } else if (['Agreements', 'Invoices', 'Recurring Templates', 'Monthly Service Charges', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
+                    setActiveView(mainTab as RentalView);
+                }
+            });
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
         }
     }, [initialTabs, dispatch, setActiveView]);
@@ -129,28 +133,26 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     ];
     const isOperationalView = OPERATIONAL_VIEWS.includes(activeView);
 
+    const goRecurringTemplates = useCallback(() => {
+        startTransition(() => setActiveView('Recurring Templates'));
+    }, [setActiveView]);
+
+    /** Mount ONLY the active operational view — avoids mounting all 7 at once (major INP win). */
     const renderOperationalContent = () => (
-        <div className="relative h-full w-full">
-            {OPERATIONAL_VIEWS.map((view) => (
-                <div
-                    key={view}
-                    className={`absolute inset-0 h-full w-full overflow-auto ${activeView === view ? 'visible z-10' : 'invisible z-0 pointer-events-none'}`}
-                >
-                    {view === 'Agreements' && <RentalAgreementsPage />}
-                    {view === 'Invoices' && (
-                        <RentalInvoicesPage onNavigateToRecurringTemplates={() => setActiveView('Recurring Templates')} />
-                    )}
-                    {view === 'Recurring Templates' && (
-                        <div className="h-full overflow-y-auto">
-                            <RecurringInvoicesList />
-                        </div>
-                    )}
-                    {view === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
-                    {view === 'Bills' && <RentalBillsPage />}
-                    {view === 'Payment' && <RentalPaymentSearch />}
-                    {view === 'Payouts' && <OwnerPayoutsPage />}
+        <div className="relative h-full w-full min-h-0">
+            {activeView === 'Agreements' && <RentalAgreementsPage />}
+            {activeView === 'Invoices' && (
+                <RentalInvoicesPage onNavigateToRecurringTemplates={goRecurringTemplates} />
+            )}
+            {activeView === 'Recurring Templates' && (
+                <div className="h-full min-h-0 overflow-y-auto">
+                    <RecurringInvoicesList />
                 </div>
-            ))}
+            )}
+            {activeView === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
+            {activeView === 'Bills' && <RentalBillsPage />}
+            {activeView === 'Payment' && <RentalPaymentSearch />}
+            {activeView === 'Payouts' && <OwnerPayoutsPage />}
         </div>
     );
 
@@ -177,12 +179,13 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     const NavItem = ({ view, label }: { view: RentalView; label: string }) => {
         const on = activeView === view;
         const short = rentalNavLabelShort(label);
+        const onNavigate = () => startTransition(() => setActiveView(view));
         if (subNavCollapsed) {
             return (
                 <button
                     type="button"
                     title={label}
-                    onClick={() => setActiveView(view)}
+                    onClick={onNavigate}
                     className={`w-full flex justify-center px-1 py-1.5 rounded-md text-[10px] font-bold leading-tight transition-colors ${on
                         ? 'bg-primary text-ds-on-primary shadow-sm'
                         : 'text-app-muted hover:bg-app-toolbar hover:text-app-text'
@@ -195,7 +198,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         return (
             <button
                 type="button"
-                onClick={() => setActiveView(view)}
+                onClick={onNavigate}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${on
                     ? 'bg-primary text-ds-on-primary shadow-sm shadow-primary/20'
                     : 'text-app-muted hover:bg-app-toolbar hover:text-app-text'
@@ -308,7 +311,10 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <select
                         id="rental-module-view"
                         value={activeView}
-                        onChange={(e) => setActiveView(e.target.value as RentalView)}
+                        onChange={(e) => {
+                            const v = e.target.value as RentalView;
+                            startTransition(() => setActiveView(v));
+                        }}
                         className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
                         aria-label="Rental module section"
                     >

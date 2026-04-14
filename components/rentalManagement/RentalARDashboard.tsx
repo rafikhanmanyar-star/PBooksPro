@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
 import { useInvoices, useContacts, useProperties, useBuildings, useAccounts, useTransactions, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { Invoice, InvoiceStatus, InvoiceType, Transaction, TransactionType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
@@ -586,6 +586,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
 
   // List mode: build invoices + payments (FinancialRecord[]) for the selected node
   const contactsById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
+  const propertiesById = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
   const accountsById = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts]);
   const invoicesById = useMemo(() => new Map(invoices.map(i => [i.id, i])), [invoices]);
 
@@ -810,15 +811,15 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   const contactPropByInvoiceId = useMemo(() => {
     const map = new Map<string, { contactName: string; propertyName: string }>();
     for (const inv of sortedInvoices) {
-      const contact = contacts.find(c => c.id === inv.contactId);
-      const prop = inv.propertyId ? properties.find(p => p.id === inv.propertyId) : null;
+      const contact = contactsById.get(inv.contactId);
+      const prop = inv.propertyId ? propertiesById.get(inv.propertyId) : null;
       map.set(inv.id, {
         contactName: contact?.name || '—',
         propertyName: prop?.name || '—',
       });
     }
     return map;
-  }, [sortedInvoices, contacts, properties]);
+  }, [sortedInvoices, contactsById, propertiesById]);
 
   const toggleSelection = useCallback((id: string) => {
     setSelectedInvoiceIds(prev => {
@@ -829,12 +830,12 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     });
   }, []);
 
-  const handleSortClick = (key: string) => {
+  const handleSortClick = useCallback((key: string) => {
     setInvoiceSort(prev => ({
       key,
       dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc',
     }));
-  };
+  }, []);
 
   const selectClass = 'ds-input-field px-2 py-1 text-xs cursor-pointer min-w-[100px]';
   const filterInputClass = 'ds-input-field pl-2.5 py-1.5 text-sm';
@@ -1243,4 +1244,4 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   );
 };
 
-export default RentalARDashboard;
+export default memo(RentalARDashboard);
