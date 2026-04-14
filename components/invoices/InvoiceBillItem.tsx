@@ -25,7 +25,16 @@ interface InvoiceBillItemProps {
 }
 
 const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordPayment, onItemClick, isSelected, onToggleSelect, selectionMode }) => {
-  const state = useStateSelector(s => s);
+  const contacts = useStateSelector(s => s.contacts);
+  const projectAgreements = useStateSelector(s => s.projectAgreements);
+  const rentalAgreements = useStateSelector(s => s.rentalAgreements);
+  const units = useStateSelector(s => s.units);
+  const properties = useStateSelector(s => s.properties);
+  const buildings = useStateSelector(s => s.buildings);
+  const projects = useStateSelector(s => s.projects);
+  const whatsAppMode = useStateSelector(s => s.whatsAppMode);
+  const enableColorCoding = useStateSelector(s => s.enableColorCoding);
+  const whatsAppTemplates = useStateSelector(s => s.whatsAppTemplates);
   const dispatch = useDispatchOnly();
   const lookups = useLookupMaps();
   const { showConfirm, showToast, showAlert } = useNotification();
@@ -43,13 +52,13 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   const propertyId = item.propertyId;
   const staffId = type === 'bill' ? (item as Bill).staffId : undefined;
   
-  const contact = state.contacts.find(c => c.id === contactId);
+  const contact = contacts.find(c => c.id === contactId);
   const contactName = (contactId && lookups.contacts.get(contactId)?.name) || 'N/A';
   const contactLabel = type === 'invoice' ? (invoiceType === InvoiceType.RENTAL ? 'Tenant' : 'Owner') : 'Supplier';
   const balance = amount - paidAmount;
 
   const agreementId = type === 'invoice' ? (item as Invoice).agreementId : (item as Bill).projectAgreementId;
-  const projectAgreement = agreementId ? state.projectAgreements.find(pa => pa.id === agreementId) : undefined;
+  const projectAgreement = agreementId ? projectAgreements.find(pa => pa.id === agreementId) : undefined;
   const isAgreementCancelled = projectAgreement?.status === ProjectAgreementStatus.CANCELLED;
 
   const getStatusClasses = (status: InvoiceStatus) => {
@@ -91,26 +100,26 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   let resolvedUnitId = unitId;
   let resolvedPropertyId = propertyId;
   if (type === 'invoice' && agreementId) {
-      const pa = state.projectAgreements.find(a => a.id === agreementId);
+      const pa = projectAgreements.find(a => a.id === agreementId);
       if (pa) {
           if (!resolvedProjectId) resolvedProjectId = pa.projectId;
           if (!resolvedUnitId && pa.unitIds?.length > 0) resolvedUnitId = pa.unitIds[0];
       }
       if (!resolvedPropertyId) {
-          const ra = state.rentalAgreements.find(a => a.id === agreementId);
+          const ra = rentalAgreements.find(a => a.id === agreementId);
           if (ra) resolvedPropertyId = ra.propertyId;
       }
   }
   if (!resolvedProjectId && resolvedUnitId) {
-      const u = state.units.find(u => u.id === resolvedUnitId);
+      const u = units.find(u => u.id === resolvedUnitId);
       if (u?.projectId) resolvedProjectId = u.projectId;
   }
 
-  const property = isRental || resolvedPropertyId ? state.properties.find(p => p.id === (isRental ? (item as Invoice).propertyId || resolvedPropertyId : resolvedPropertyId)) : null;
-  const building = property ? state.buildings.find(b => b.id === property.buildingId) : (buildingId ? state.buildings.find(b => b.id === buildingId) : null);
-  const project = resolvedProjectId ? state.projects.find(p => p.id === resolvedProjectId) : null;
-  const unit = resolvedUnitId ? state.units.find(u => u.id === resolvedUnitId) : null;
-  const staff = staffId ? state.contacts.find(c => c.id === staffId) : null;
+  const property = isRental || resolvedPropertyId ? properties.find(p => p.id === (isRental ? (item as Invoice).propertyId || resolvedPropertyId : resolvedPropertyId)) : null;
+  const building = property ? buildings.find(b => b.id === property.buildingId) : (buildingId ? buildings.find(b => b.id === buildingId) : null);
+  const project = resolvedProjectId ? projects.find(p => p.id === resolvedProjectId) : null;
+  const unit = resolvedUnitId ? units.find(u => u.id === resolvedUnitId) : null;
+  const staff = staffId ? contacts.find(c => c.id === staffId) : null;
 
   const handleSendWhatsApp = () => {
     if (!contact?.contactNo) { 
@@ -119,7 +128,6 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
     }
 
     try {
-      const { whatsAppTemplates } = state;
       let message = '';
       const hasMadePayment = paidAmount > 0;
       
@@ -162,7 +170,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
 
       sendOrOpenWhatsApp(
         { contact, message, phoneNumber: contact.contactNo },
-        () => state.whatsAppMode,
+        () => whatsAppMode,
         openChat
       );
     } catch (error) {
@@ -172,15 +180,15 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
 
   // Color Logic
   const customStyle = useMemo(() => {
-      if (!state.enableColorCoding) return {};
+      if (!enableColorCoding) return {};
 
       let color = null;
       if (projectId) {
-          const p = state.projects.find(proj => proj.id === projectId);
+          const p = projects.find(proj => proj.id === projectId);
           if (p?.color) color = p.color;
       }
       if (!color && buildingId) {
-          const b = state.buildings.find(bd => bd.id === buildingId);
+          const b = buildings.find(bd => bd.id === buildingId);
           if (b?.color) color = b.color;
       }
 
@@ -194,7 +202,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
           };
       }
       return {};
-  }, [projectId, buildingId, state.projects, state.buildings, state.enableColorCoding]);
+  }, [projectId, buildingId, projects, buildings, enableColorCoding]);
 
   const isPaid = status === InvoiceStatus.PAID;
   const canEdit = !isAgreementCancelled;

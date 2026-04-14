@@ -27,15 +27,23 @@ import { syncQueueStub as getSyncQueue } from '../services/sync/localOnlyStubs';
 // unlike useAppContext() which re-renders ALL 155+ consumers on every state change.
 let _appState: AppState | null = null;
 let _appDispatch: React.Dispatch<AppAction> | null = null;
+let _initialDataLoading = false;
 const _stateListeners = new Set<() => void>();
 export function _getAppState(): AppState { return _appState!; }
 export function _getAppDispatch(): React.Dispatch<AppAction> { return _appDispatch!; }
+export function _getInitialDataLoading(): boolean { return _initialDataLoading; }
 export function _subscribeAppState(listener: () => void): () => void {
     _stateListeners.add(listener);
     return () => { _stateListeners.delete(listener); };
 }
+let _notifyScheduled = false;
 function _notifyStateListeners() {
-    _stateListeners.forEach(l => l());
+    if (_notifyScheduled) return;
+    _notifyScheduled = true;
+    queueMicrotask(() => {
+        _notifyScheduled = false;
+        _stateListeners.forEach(l => l());
+    });
 }
 
 /**
@@ -3191,15 +3199,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isInitializing && state.currentUser && !useFallback && saveNow) {
             const saveTimer = setTimeout(async () => {
                 try {
-                    await saveNow(state);
+                    await saveNow(stateRef.current);
                 } catch (error) {
                     console.error('Failed to save state after login:', error);
-                    // Check if it's a missing table error
                     const errorMsg = error instanceof Error ? error.message : String(error);
                     if (errorMsg.includes('no such table')) {
                         console.error('❌ CRITICAL: Missing database table!', errorMsg);
 
-                        // Show user-friendly error
                         const errorDiv = document.createElement('div');
                         errorDiv.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#dc2626;color:white;padding:16px 24px;border-radius:8px;z-index:9999;max-width:600px;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
                         errorDiv.innerHTML = `
@@ -3216,7 +3222,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         `;
                         document.body.appendChild(errorDiv);
 
-                        // Add proper async handler for Fix button
                         const fixButton = document.getElementById('fixDbButton');
                         if (fixButton) {
                             fixButton.onclick = async () => {
@@ -3238,14 +3243,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             };
                         }
 
-                        setTimeout(() => errorDiv.remove(), 30000); // Auto-remove after 30s
+                        setTimeout(() => errorDiv.remove(), 30000);
                     }
                 }
-            }, 100); // Small delay to ensure state is updated
+            }, 100);
 
             return () => clearTimeout(saveTimer);
         }
-    }, [state.currentUser, isInitializing, state, useFallback, saveNow]);
+        // Uses stateRef.current for the save snapshot; only re-run when login state changes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.currentUser, isInitializing, useFallback, saveNow]);
 
     // Listen for logout event to save state before logout / update install (must dispatch detail.success for UpdateContext.installUpdate)
     useEffect(() => {
@@ -3377,6 +3384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Dispatch is stable (from useReducer) so only needs to be set once.
     _appState = state;
     _appDispatch = dispatch;
+    _initialDataLoading = isInitialDataLoading;
     useEffect(() => {
         _notifyStateListeners();
     });

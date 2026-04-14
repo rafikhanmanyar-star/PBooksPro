@@ -4,7 +4,7 @@ import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import Sidebar from './components/layout/Sidebar';
 import { Page, TransactionType } from './types';
-import { useAppContext } from './context/AppContext';
+import { useStateSelector, useDispatchOnly, useInitialDataLoading } from './hooks/useSelectiveState';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProgressDisplay from './components/ui/ProgressDisplay';
 import CustomKeyboard from './components/ui/CustomKeyboard';
@@ -101,14 +101,19 @@ const PAGE_GROUPS = {
 };
 
 const App: React.FC = () => {
-  const { state, dispatch, isInitialDataLoading } = useAppContext();
-  const { currentPage, currentUser } = state;
+  const currentPage = useStateSelector(s => s.currentPage);
+  const dispatch = useDispatchOnly();
+  const isInitialDataLoading = useInitialDataLoading();
   const { isOpen: isCustomKeyboardOpen, closeKeyboard } = useKeyboard();
   const { isPanelOpen } = useKpis();
   const { isExpired } = useLicense(); // License Check
   const progress = useProgress();
   const { isAuthenticated, isLoading: authLoading, user, tenant } = useAuth(); // Cloud authentication
   const companyCtx = useCompanyOptional();
+
+  // Ref tracks currentPage without causing callback identity changes on navigation
+  const currentPageRef = React.useRef(currentPage);
+  currentPageRef.current = currentPage;
 
   /** Local-only: block UI when main-process schema validation reports a critical failure. */
   const [schemaGate, setSchemaGate] = useState<'unset' | 'ok' | { errors: string[] }>('ok');
@@ -386,29 +391,32 @@ const App: React.FC = () => {
     }
   }, [isAuthenticated, dispatch, user?.id]);
 
-  // Optimized navigation handler - uses startTransition for non-blocking updates
+  // Optimized navigation handler - uses startTransition for non-blocking updates.
+  // Uses currentPageRef so the callback identity is stable across navigations,
+  // which lets memo(Sidebar) skip re-renders when only the active page changed.
   const handleSetPage = useCallback((page: Page) => {
     navPerfLog('nav requested', { page });
+    const curPage = currentPageRef.current;
 
     // Project Selling: preserve and restore last sub-page (projectSelling vs projectInvoices)
     const projectSellingPages = PAGE_GROUPS.PROJECT_SELLING;
-    const isLeavingProjectSelling = projectSellingPages.includes(currentPage) && !projectSellingPages.includes(page);
+    const isLeavingProjectSelling = projectSellingPages.includes(curPage) && !projectSellingPages.includes(page);
     const isEnteringProjectSelling = page === 'projectSelling';
 
     if (isLeavingProjectSelling) {
       try {
-        sessionStorage.setItem('lastProjectSellingPage', currentPage);
+        sessionStorage.setItem('lastProjectSellingPage', curPage);
       } catch (_) {}
     }
 
     // Rental: preserve and restore last sub-page (rentalManagement, rentalInvoices, rentalAgreements, ownerPayouts)
     const rentalPages = PAGE_GROUPS.RENTAL;
-    const isLeavingRental = rentalPages.includes(currentPage) && !rentalPages.includes(page);
+    const isLeavingRental = rentalPages.includes(curPage) && !rentalPages.includes(page);
     const isEnteringRental = page === 'rentalManagement';
 
     if (isLeavingRental) {
       try {
-        sessionStorage.setItem('lastRentalPage', currentPage);
+        sessionStorage.setItem('lastRentalPage', curPage);
       } catch (_) {}
     }
 
@@ -434,7 +442,7 @@ const App: React.FC = () => {
     startNavTransition(() => {
       dispatch({ type: 'SET_PAGE', payload: pageToSet });
     });
-  }, [dispatch, startNavTransition, currentPage]);
+  }, [dispatch, startNavTransition]);
 
   // Log when currentPage actually updates (to measure delay between request and commit)
   useEffect(() => {

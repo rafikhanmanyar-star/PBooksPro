@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Transaction, TransactionType, LoanSubtype, AppState } from '../../types';
+import { Transaction, TransactionType, LoanSubtype, Project, Building } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { useStateSelector } from '../../hooks/useSelectiveState';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
@@ -12,16 +12,16 @@ interface TransactionItemProps {
 }
 
 // Helper to convert hex to rgba with low opacity for background
-const getEntityColorStyle = (projectId: string | undefined, buildingId: string | undefined, state: AppState) => {
-    if (!state.enableColorCoding) return {};
+const getEntityColorStyle = (projectId: string | undefined, buildingId: string | undefined, enableColorCoding: boolean, projects: Project[], buildings: Building[]) => {
+    if (!enableColorCoding) return {};
 
     let color = null;
     if (projectId) {
-        const project = state.projects.find((p: any) => p.id === projectId);
+        const project = projects.find((p) => p.id === projectId);
         if (project?.color) color = project.color;
     }
     if (!color && buildingId) {
-        const building = state.buildings.find((b: any) => b.id === buildingId);
+        const building = buildings.find((b) => b.id === buildingId);
         if (building?.color) color = building.color;
     }
 
@@ -52,7 +52,9 @@ const getTimeString = (transaction: Transaction) => {
 };
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }) => {
-  const state = useStateSelector(s => s);
+  const enableColorCoding = useStateSelector(s => s.enableColorCoding);
+  const projects = useStateSelector(s => s.projects);
+  const buildings = useStateSelector(s => s.buildings);
   const lookups = useLookupMaps();
   const [isExpanded, setIsExpanded] = useState(false);
   const { type, amount, description, accountId, fromAccountId, toAccountId, projectId, buildingId, contactId, children, categoryId } = transaction;
@@ -96,7 +98,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }
 
   const { iconColorClass, accountInfo, timeStr, relatedName, payingName, categoryName, descText } = getTransactionDetails();
   
-  const customStyle = getEntityColorStyle(projectId, buildingId, state);
+  const customStyle = getEntityColorStyle(projectId, buildingId, enableColorCoding, projects, buildings);
 
   // Group Rendering (Bulk Payment)
   if (children && children.length > 0) {

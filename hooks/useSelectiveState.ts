@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useRef, useSyncExternalStore } from 'react';
-import { _getAppState, _getAppDispatch, _subscribeAppState } from '../context/AppContext';
+import { _getAppState, _getAppDispatch, _getInitialDataLoading, _subscribeAppState } from '../context/AppContext';
 import { AppState, AppAction } from '../types';
 
 /**
@@ -129,4 +129,13 @@ export function useVendors() {
 export function useDispatchOnly(): React.Dispatch<AppAction> {
     const dispatchRef = useRef(_getAppDispatch());
     return dispatchRef.current;
+}
+
+/**
+ * Subscribe to isInitialDataLoading flag without subscribing to full state.
+ * Only re-renders when the flag changes (typically once during init).
+ */
+export function useInitialDataLoading(): boolean {
+    const getSnapshot = useCallback(() => _getInitialDataLoading(), []);
+    return useSyncExternalStore(_subscribeAppState, getSnapshot);
 }
