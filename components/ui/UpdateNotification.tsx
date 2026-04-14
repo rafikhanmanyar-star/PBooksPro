@@ -9,6 +9,7 @@ const UpdateNotification: React.FC = () => {
     updateInfo,
     downloadProgress,
     error,
+    errorTone,
     unavailableReleasesUrl,
     checkForUpdates,
     startDownload,
@@ -163,13 +164,28 @@ const UpdateNotification: React.FC = () => {
 
   if (error) {
     const isUnavailable = !!unavailableReleasesUrl || error.includes('development build') || error.includes('not available in this build');
+    const isInfoTone = errorTone === 'info';
     return (
       <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] animate-slide-in-up">
-        <div className={`bg-white rounded-xl shadow-2xl border overflow-hidden ${isUnavailable ? 'border-slate-200' : 'border-red-200'}`}>
-          <div className={`flex items-center justify-between px-4 py-3 ${isUnavailable ? 'bg-gradient-to-r from-slate-500 to-slate-600' : 'bg-gradient-to-r from-red-500 to-rose-500'}`}>
+        <div
+          className={`bg-white rounded-xl shadow-2xl border overflow-hidden ${
+            isUnavailable ? 'border-slate-200' : isInfoTone ? 'border-amber-200' : 'border-red-200'
+          }`}
+        >
+          <div
+            className={`flex items-center justify-between px-4 py-3 ${
+              isUnavailable
+                ? 'bg-gradient-to-r from-slate-500 to-slate-600'
+                : isInfoTone
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600'
+                  : 'bg-gradient-to-r from-red-500 to-rose-500'
+            }`}
+          >
             <div className="flex items-center gap-2 text-white">
               {isUnavailable ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              <span className="font-semibold text-sm">{isUnavailable ? 'Updates' : 'Update Error'}</span>
+              <span className="font-semibold text-sm">
+                {isUnavailable ? 'Updates' : isInfoTone ? 'Update check' : 'Update Error'}
+              </span>
             </div>
             <button
               onClick={() => setIsDismissed(true)}
@@ -180,7 +196,13 @@ const UpdateNotification: React.FC = () => {
           </div>
 
           <div className="px-4 py-3">
-            <p className={`text-sm mb-4 ${isUnavailable ? 'text-slate-700' : 'text-rose-600'}`}>{error}</p>
+            <p
+              className={`text-sm mb-4 ${
+                isUnavailable ? 'text-slate-700' : isInfoTone ? 'text-amber-900' : 'text-rose-600'
+              }`}
+            >
+              {error}
+            </p>
             <div className="flex flex-wrap gap-2">
               {unavailableReleasesUrl && (
                 <button

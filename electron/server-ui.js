@@ -213,7 +213,8 @@
       pendingUpdate = true;
       $('btnDl').style.display = 'inline-block';
     } else {
-      $('updateMsg').textContent = 'Update check failed: ' + (r.message || 'Unknown error');
+      const msg = r.message || 'Unknown error';
+      $('updateMsg').textContent = r.isReleasePending ? msg : 'Update check failed: ' + msg;
       pendingUpdate = null;
     }
   };

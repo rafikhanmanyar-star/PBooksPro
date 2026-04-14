@@ -14,9 +14,15 @@ import { currentMonthYyyyMm, firstDayOfMonthFromYyyyMm } from '../../utils/dateU
 interface ManualServiceChargeModalProps {
     isOpen: boolean;
     onClose: () => void;
+    /** When opening from Visual Layout card, pre-select this property and amount. */
+    initialPropertyId?: string | null;
 }
 
-const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isOpen, onClose }) => {
+const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
+    isOpen,
+    onClose,
+    initialPropertyId = null,
+}) => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert } = useNotification();
 
@@ -51,14 +57,20 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
         }
     }, [propertyId, state.properties]);
 
-    // Reset on open
+    // Reset on open (optionally pre-fill from Visual Layout card)
     useEffect(() => {
         if (isOpen) {
             setMonth(currentMonthYyyyMm());
-            setPropertyId('');
-            setAmount('');
+            if (initialPropertyId) {
+                setPropertyId(initialPropertyId);
+                const p = state.properties.find(x => x.id === initialPropertyId);
+                setAmount(p?.monthlyServiceCharge?.toString() || '0');
+            } else {
+                setPropertyId('');
+                setAmount('');
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, initialPropertyId, state.properties]);
 
     const handleSubmit = async () => {
         if (!month) {

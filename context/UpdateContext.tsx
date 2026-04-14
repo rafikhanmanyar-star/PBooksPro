@@ -17,6 +17,10 @@ interface UpdateStatusPayload {
   version?: string;
   percent?: number;
   releasesUrl?: string;
+  /** When true, a native dialog already informed the user (avoid duplicate error toast). */
+  suppressNotification?: boolean;
+  /** Softer styling for expected cases (e.g. release still publishing). */
+  errorTone?: 'info' | 'error';
 }
 
 interface UpdateContextType {
@@ -27,6 +31,10 @@ interface UpdateContextType {
   updateInfo: UpdateInfo | null;
   downloadProgress: DownloadProgress | null;
   error: string | null;
+  /** Presentational hint when `error` is set (info vs destructive). */
+  errorTone: 'info' | 'error';
+  /** Shown when the main process already alerted (e.g. native dialog) but we still want a short inline hint. */
+  checkNote: string | null;
   /** When set, update check is unavailable (e.g. dev build) but user can open this URL for releases. */
   unavailableReleasesUrl: string | null;
   checkForUpdates: () => void;
@@ -63,6 +71,8 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorTone, setErrorTone] = useState<'info' | 'error'>('error');
+  const [checkNote, setCheckNote] = useState<string | null>(null);
   const [unavailableReleasesUrl, setUnavailableReleasesUrl] = useState<string | null>(null);
 
   const isElectronUpdate = typeof window !== 'undefined' && !!window.electronAPI;
@@ -80,10 +90,13 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         case 'checking':
           setIsChecking(true);
           setError(null);
+          setErrorTone('error');
+          setCheckNote(null);
           setUnavailableReleasesUrl(null);
           break;
         case 'available':
           setIsChecking(false);
+          setCheckNote(null);
           setUpdateAvailable(true);
           if (payload.version) {
             setUpdateInfo({ version: payload.version });
@@ -91,14 +104,17 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           break;
         case 'not-available':
           setIsChecking(false);
+          setCheckNote(null);
           setUpdateAvailable(false);
           break;
         case 'downloading':
           setIsChecking(false);
+          setCheckNote(null);
           setDownloadProgress({ percent: payload.percent ?? 0 });
           break;
         case 'downloaded':
           setUpdateDownloaded(true);
+          setCheckNote(null);
           setDownloadProgress(null);
           break;
         case 'error':
@@ -106,7 +122,15 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setIsChecking(false);
           setUpdateAvailable(false);
           setDownloadProgress(null);
-          setError(payload.message || 'Unknown update error');
+          if (payload.suppressNotification) {
+            setError(null);
+            setErrorTone('error');
+            setCheckNote(payload.message ?? null);
+          } else {
+            setCheckNote(null);
+            setError(payload.message || 'Unknown update error');
+            setErrorTone(payload.errorTone === 'info' ? 'info' : 'error');
+          }
           setUnavailableReleasesUrl(payload.releasesUrl || null);
           break;
       }
@@ -171,6 +195,8 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         updateInfo,
         downloadProgress,
         error,
+        errorTone,
+        checkNote,
         unavailableReleasesUrl,
         checkForUpdates,
         startDownload,

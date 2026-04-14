@@ -1,16 +1,24 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, Suspense, lazy } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { CURRENCY, ICONS } from '../../constants';
-import { InvoiceStatus, TransactionType, InvoiceType, RentalAgreementStatus } from '../../types';
+import { CURRENCY } from '../../constants';
+import { Invoice, InvoiceStatus, TransactionType, InvoiceType, RentalAgreementStatus } from '../../types';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import PrintButton from '../ui/PrintButton';
 import ComboBox from '../ui/ComboBox';
-import PropertyHistoryModal from './PropertyHistoryModal';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-import { toLocalDateString } from '../../utils/dateUtils';
+import { currentMonthYyyyMm, toLocalDateString } from '../../utils/dateUtils';
+import RentalPropertySummaryCard from './RentalPropertySummaryCard';
+
+const PropertyInvoicePickModal = lazy(() => import('./PropertyInvoicePickModal'));
+const RentalPaymentModal = lazy(() => import('../invoices/RentalPaymentModal'));
+const ManualServiceChargeModal = lazy(() => import('../rentalManagement/ManualServiceChargeModal'));
+
+const modalSuspenseFallback = (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/10 text-app-muted text-xs">Loading…</div>
+);
 
 interface UnitBoxData {
     id: string;
@@ -44,6 +52,14 @@ interface PropertyBoxData {
     type: string; // APT, OFF, SHOP, etc.
     isExpiringSoon: boolean;
     isCurrentMonthRentPaid: boolean;
+    monthlyRent: number;
+    securityDepositAmount: number;
+    agreementStartDate: string | null;
+    monthlyServiceCharge: number;
+    serviceChargeDeductedThisMonth: boolean;
+    hasUnpaidRental: boolean;
+    hasUnpaidSecurity: boolean;
+    canDeductServiceCharges: boolean;
 }
 
 interface BuildingData {
@@ -71,7 +87,13 @@ const PropertyLayoutReport: React.FC = () => {
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
-    const [selectedProperty, setSelectedProperty] = useState<{ id: string, name: string } | null>(null);
+    const [invoicePick, setInvoicePick] = useState<{
+        propertyId: string;
+        propertyName: string;
+        type: InvoiceType.RENTAL | InvoiceType.SECURITY_DEPOSIT;
+    } | null>(null);
+    const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
+    const [mscForPropertyId, setMscForPropertyId] = useState<string | null>(null);
 
     const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
 
@@ -206,6 +228,10 @@ const PropertyLayoutReport: React.FC = () => {
 
             // Use local time for current month string to align with user expectation
             const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            const svcIncomeCategory = state.categories.find(
+                c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income'
+            );
+            const monthPrefix = currentMonthYyyyMm(today);
 
             let propertiesToProcess = state.properties;
             if (selectedBuildingId !== 'all') {
@@ -240,10 +266,38 @@ const PropertyLayoutReport: React.FC = () => {
 
                 const payoutDue = Math.max(0, propIncome - propExpense);
 
+                const hasUnpaidRental = propertyInvoices.some(
+                    inv =>
+                        inv.invoiceType === InvoiceType.RENTAL &&
+                        inv.status !== InvoiceStatus.PAID &&
+                        inv.status !== InvoiceStatus.DRAFT &&
+                        inv.amount - (inv.paidAmount || 0) > 0.01
+                );
+                const hasUnpaidSecurity = propertyInvoices.some(
+                    inv =>
+                        inv.invoiceType === InvoiceType.SECURITY_DEPOSIT &&
+                        inv.status !== InvoiceStatus.PAID &&
+                        inv.status !== InvoiceStatus.DRAFT &&
+                        inv.amount - (inv.paidAmount || 0) > 0.01
+                );
+                const serviceChargeDeductedThisMonth =
+                    !!svcIncomeCategory &&
+                    state.transactions.some(
+                        tx =>
+                            tx.propertyId === prop.id &&
+                            tx.categoryId === svcIncomeCategory!.id &&
+                            tx.date.startsWith(monthPrefix)
+                    );
+                const monthlyServiceCharge = prop.monthlyServiceCharge || 0;
+                const canDeductServiceCharges = !serviceChargeDeductedThisMonth && monthlyServiceCharge > 0;
+
                 // Owner & Tenant
                 const owner = state.contacts.find(c => c.id === prop.ownerId);
                 const activeAgreement = state.rentalAgreements.find(ra => ra.propertyId === prop.id && ra.status === RentalAgreementStatus.ACTIVE);
                 const tenant = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.contactId) : null;
+                const monthlyRent = activeAgreement?.monthlyRent ?? 0;
+                const securityDepositAmount = activeAgreement?.securityDeposit ?? 0;
+                const agreementStartDate = activeAgreement?.startDate ?? null;
 
                 // Calculate last updated date
                 const propertyTransactions = state.transactions.filter(tx => tx.propertyId === prop.id);
@@ -301,7 +355,15 @@ const PropertyLayoutReport: React.FC = () => {
                     unitIndex: parsed.unitIndex,
                     type: parsed.type,
                     isExpiringSoon,
-                    isCurrentMonthRentPaid
+                    isCurrentMonthRentPaid,
+                    monthlyRent,
+                    securityDepositAmount,
+                    agreementStartDate,
+                    monthlyServiceCharge,
+                    serviceChargeDeductedThisMonth,
+                    hasUnpaidRental,
+                    hasUnpaidSecurity,
+                    canDeductServiceCharges,
                 };
 
                 if (!buildingsMap[parsed.buildingCode]) {
@@ -328,20 +390,20 @@ const PropertyLayoutReport: React.FC = () => {
                 b.unconventional.sort((u1, u2) => u1.name.localeCompare(u2.name));
             });
 
-            // Calculate maximum payoutDue for color saturation
-            let maxPayoutDue = 0;
+            // Max receivable on this layout — used to normalize account-receivable background tint
+            let maxReceivable = 0;
             sortedBuildings.forEach(b => {
                 b.floors.forEach(f => {
                     f.units.forEach(u => {
-                        if (u.payoutDue > maxPayoutDue) maxPayoutDue = u.payoutDue;
+                        if (u.receivable > maxReceivable) maxReceivable = u.receivable;
                     });
                 });
                 b.unconventional.forEach(u => {
-                    if (u.payoutDue > maxPayoutDue) maxPayoutDue = u.payoutDue;
+                    if (u.receivable > maxReceivable) maxReceivable = u.receivable;
                 });
             });
 
-            return { type: 'RENTAL', data: sortedBuildings, maxPayoutDue };
+            return { type: 'RENTAL', data: sortedBuildings, maxReceivable };
         }
 
         // --- PROJECT MODE ---
@@ -411,21 +473,20 @@ const PropertyLayoutReport: React.FC = () => {
     }, [state, selectedBuildingId]);
 
 
-    const getStatusBadge = (unit: PropertyBoxData) => {
-        if (unit.isExpiringSoon) return { text: 'COMING', color: 'bg-ds-warning text-ds-on-primary' };
-        if (unit.status === 'Occupied') return { text: 'ACTIVE', color: 'bg-ds-success text-ds-on-primary' };
-        return { text: 'VACANT', color: 'bg-app-toolbar text-app-text ring-1 ring-app-border' };
-    };
-
-    const getBackgroundColorStyle = (payoutDue: number, maxPayoutDue: number): React.CSSProperties => {
-        if (maxPayoutDue === 0 || payoutDue === 0) {
-            return {};
+    /** Light red (unpaid) → light green (paid) from account receivable vs max receivable on the layout. */
+    const getReceivableBackgroundStyle = (receivable: number, maxReceivable: number): React.CSSProperties => {
+        const r = Math.max(0, receivable);
+        const max = Math.max(0, maxReceivable);
+        let paidRatio: number;
+        if (max <= 0.01) {
+            paidRatio = r <= 0.01 ? 1 : 0;
+        } else {
+            paidRatio = Math.min(1, Math.max(0, 1 - r / max));
         }
-
-        const ratio = Math.min(payoutDue / maxPayoutDue, 1);
-        const pct = 5 + ratio * 20; // 5%–25% primary tint over page background (light + dark)
+        const lightRed = 'rgb(254 242 242)';
+        const lightGreen = 'rgb(220 252 231)';
         return {
-            backgroundColor: `color-mix(in srgb, var(--color-primary) ${pct}%, var(--bg-primary))`,
+            backgroundColor: `color-mix(in srgb, ${lightGreen} ${paidRatio * 100}%, ${lightRed} ${(1 - paidRatio) * 100}%)`,
         };
     };
 
@@ -442,151 +503,89 @@ const PropertyLayoutReport: React.FC = () => {
         }
     };
 
-    const handleCardClick = (unit: any) => {
-        setSelectedProperty({ id: unit.id, name: unit.name });
-    };
+    const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT', maxReceivable: number = 0) => {
+        /** Vacant, no tenant receivables, and no net owner/account payout due — plain white card */
+        const plainWhiteVacant =
+            unit.status === 'Vacant' &&
+            (unit.payoutDue || 0) <= 0.01 &&
+            (unit.receivable || 0) <= 0.01 &&
+            (unit.securityDue || 0) <= 0.01;
 
-    const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT', maxPayoutDue: number = 0) => {
-        const statusBadge = mode === 'RENTAL' ? getStatusBadge(unit) : null;
-        const backgroundColorStyle = mode === 'RENTAL' ? getBackgroundColorStyle(unit.payoutDue || 0, maxPayoutDue) : {};
+        const backgroundColorStyle =
+            mode === 'RENTAL' && !plainWhiteVacant
+                ? getReceivableBackgroundStyle(unit.receivable || 0, maxReceivable)
+                : undefined;
+
+        if (mode === 'RENTAL') {
+            return (
+                <RentalPropertySummaryCard
+                    key={unit.id}
+                    unit={unit}
+                    className={getColorClasses(unit, mode)}
+                    style={backgroundColorStyle}
+                    plainWhiteBackground={plainWhiteVacant}
+                    onReceiveRent={() =>
+                        setInvoicePick({
+                            propertyId: unit.id,
+                            propertyName: unit.name,
+                            type: InvoiceType.RENTAL,
+                        })
+                    }
+                    onReceiveSecurity={() =>
+                        setInvoicePick({
+                            propertyId: unit.id,
+                            propertyName: unit.name,
+                            type: InvoiceType.SECURITY_DEPOSIT,
+                        })
+                    }
+                    onDeductCharges={() => setMscForPropertyId(unit.id)}
+                />
+            );
+        }
 
         return (
             <div
                 key={unit.id}
-                onClick={() => handleCardClick(unit)}
-                className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all min-h-[12rem] cursor-pointer hover:shadow-md hover:scale-[1.02]
+                className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all min-h-[12rem]
                     ${getColorClasses(unit, mode)}
                 `}
-                style={backgroundColorStyle}
-                title="Click to view details"
             >
-                {/* Header with Status Badge */}
                 <div className="flex justify-between items-start mb-1 relative z-10">
                     <div className="min-w-0 flex-1">
-                        <span className="font-bold text-xs text-app-text block truncate" title={unit.name}>{unit.name}</span>
+                        <span className="font-bold text-xs text-app-text block truncate" title={unit.name}>
+                            {unit.name}
+                        </span>
                     </div>
-                    {mode === 'RENTAL' && statusBadge && (
-                        <div
-                            className={`${statusBadge.color} text-[8px] font-bold px-1 py-0.5 rounded flex-shrink-0 ml-1.5`}
-                            title={statusBadge.text}
-                        >
-                            {statusBadge.text}
-                        </div>
-                    )}
-                    {mode === 'PROJECT' && unit.status === 'Sold' && (
+                    {unit.status === 'Sold' && (
                         <div className="rounded-full bg-ds-success flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
                     )}
                 </div>
 
-                {mode === 'RENTAL' && unit.status === 'Occupied' && (unit.receivable ?? 0) <= 0.01 && (unit.securityDue ?? 0) <= 0.01 && (
-                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-20 pointer-events-none select-none z-0">
-                        <div className="border-4 border-ds-success text-ds-success font-black text-2xl px-2 py-1 rounded rotate-[-15deg] tracking-widest">
-                            PAID
-                        </div>
+                <div className="text-[9px] leading-tight space-y-0.5 mb-1 relative z-10">
+                    <div className={`truncate font-medium ${unit.status === 'Available' ? 'text-app-muted italic' : 'text-app-text'}`} title={unit.clientName}>
+                        {unit.clientName}
                     </div>
-                )}
-
-                {/* Owner/Tenant Section */}
-                {mode === 'RENTAL' && (
-                    <div className="text-[9px] leading-tight space-y-0.5 mb-1 relative z-10">
-                        <div className="flex items-center gap-0.5 truncate text-app-text" title={`Owner: ${unit.ownerName}`}>
-                            <svg className="w-2.5 h-2.5 text-app-muted flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
-                            </svg>
-                            <span className="truncate">{unit.ownerName}</span>
-                        </div>
-                        <div className={`flex items-center gap-0.5 truncate font-medium ${unit.status === 'Vacant' ? 'text-red-600' : 'text-slate-800'}`} title={`Tenant: ${unit.tenantName}`}>
-                            <span className="text-[8px] font-semibold text-slate-500 flex-shrink-0">T:</span>
-                            <span className="truncate">{unit.tenantName}</span>
-                        </div>
-                    </div>
-                )}
-
-                {mode === 'PROJECT' && (
-                    <div className="text-[9px] leading-tight space-y-0.5 mb-1 relative z-10">
-                        <div className={`truncate font-medium ${unit.status === 'Available' ? 'text-app-muted italic' : 'text-app-text'}`} title={unit.clientName}>
-                            {unit.clientName}
-                        </div>
-                        <div className={`text-[8px] uppercase font-bold ${unit.status === 'Available' ? 'text-app-muted' : 'text-app-muted'}`}>
-                            {unit.status}
-                        </div>
-                    </div>
-                )}
-
-                {/* Agreement Expiry Indicator */}
-                {mode === 'RENTAL' && unit.agreementEndDate && unit.daysUntilExpiry !== null && (
-                    <div className={`text-[8px] font-semibold mb-0.5 relative z-10 ${unit.daysUntilExpiry < 0
-                            ? 'text-ds-danger'
-                            : unit.daysUntilExpiry <= 30
-                                ? 'text-ds-warning animate-pulse'
-                                : 'text-app-muted'
-                        }`}>
-                        {unit.daysUntilExpiry < 0
-                            ? `Expired ${Math.abs(unit.daysUntilExpiry)}d ago`
-                            : `Expires in ${unit.daysUntilExpiry}d`
-                        }
-                    </div>
-                )}
-
-                {/* Divider */}
-                <div className="border-t border-app-border my-1"></div>
-
-                {/* Financial Section */}
-                <div className="text-[9px] flex justify-between items-start relative z-10">
-                    {mode === 'RENTAL' ? (
-                        <>
-                            <div className="flex flex-col">
-                                <div className="flex flex-col mb-0.5">
-                                    <span className="text-red-600 text-[8px] font-semibold uppercase">RENT DUE</span>
-                                    <span className="font-bold text-sm text-slate-900 leading-tight">
-                                        {unit.receivable > 0 ? (unit.receivable / 1000).toFixed(1) + 'k' : '0'}
-                                    </span>
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-red-600 text-[8px] font-semibold uppercase">SEC. DUE</span>
-                                    <span className="font-bold text-sm text-slate-900 leading-tight">
-                                        {unit.securityDue > 0 ? (unit.securityDue / 1000).toFixed(1) + 'k' : '0'}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="flex flex-col text-right">
-                                <div className="flex flex-col">
-                                    <span className="text-app-text text-[8px] font-semibold uppercase">ACCT PAY</span>
-                                    <span className={`text-[8px] font-semibold uppercase ${unit.status === 'Vacant' ? 'text-app-text' : 'text-primary'}`}>
-                                        {unit.status === 'Vacant' ? 'OWNR PAY' : 'ACCT PAY'}
-                                    </span>
-                                    <span className="font-bold text-sm text-primary leading-tight">
-                                        {unit.payoutDue > 0 ? (unit.payoutDue / 1000).toFixed(1) + 'k' : '0'}
-                                    </span>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        unit.status === 'Sold' && (
-                            <>
-                                <div className="flex flex-col">
-                                    <span className="text-app-muted text-[8px] uppercase">Recv</span>
-                                    <span className="font-medium text-ds-success text-xs">
-                                        {(unit.received / 1000).toFixed(0)}k
-                                    </span>
-                                </div>
-                                <div className="flex flex-col text-right">
-                                    <span className="text-app-muted text-[8px] uppercase">Due</span>
-                                    <span className={`font-bold text-xs ${unit.receivable > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
-                                        {(unit.receivable / 1000).toFixed(0)}k
-                                    </span>
-                                </div>
-                            </>
-                        )
-                    )}
+                    <div className="text-[8px] uppercase font-bold text-app-muted">{unit.status}</div>
                 </div>
 
-                {/* Last Updated Timestamp */}
-                {mode === 'RENTAL' && unit.lastUpdated && (
-                    <div className="text-[7px] text-app-muted text-center mt-1 pt-0.5 border-t border-app-border relative z-10">
-                        Last: {unit.lastUpdated.split('T')[0]}
-                    </div>
-                )}
+                <div className="border-t border-app-border my-1"></div>
+
+                <div className="text-[9px] flex justify-between items-start relative z-10">
+                    {unit.status === 'Sold' && (
+                        <>
+                            <div className="flex flex-col">
+                                <span className="text-app-muted text-[8px] uppercase">Recv</span>
+                                <span className="font-medium text-ds-success text-xs">{(unit.received / 1000).toFixed(0)}k</span>
+                            </div>
+                            <div className="flex flex-col text-right">
+                                <span className="text-app-muted text-[8px] uppercase">Due</span>
+                                <span className={`font-bold text-xs ${unit.receivable > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
+                                    {(unit.receivable / 1000).toFixed(0)}k
+                                </span>
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
         );
     };
@@ -668,14 +667,14 @@ const PropertyLayoutReport: React.FC = () => {
                                                 {floor.label}
                                             </div>
                                             <div className="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                                                {floor.units.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
+                                                {floor.units.map((unit: any) => renderBox(unit, data.type as any, data.maxReceivable || 0))}
                                             </div>
                                         </div>
                                     ))}
                                     {group.unconventional.length > 0 && (
                                         <div className="mt-2 pt-2 border-t border-dashed border-app-border">
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:pl-14">
-                                                {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
+                                                {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxReceivable || 0))}
                                             </div>
                                         </div>
                                     )}
@@ -687,14 +686,35 @@ const PropertyLayoutReport: React.FC = () => {
                 <ReportFooter />
             </div>
 
-            {selectedProperty && (
-                <PropertyHistoryModal
-                    isOpen={!!selectedProperty}
-                    onClose={() => setSelectedProperty(null)}
-                    propertyId={selectedProperty.id}
-                    propertyName={selectedProperty.name}
-                />
-            )}
+            <Suspense fallback={modalSuspenseFallback}>
+                {invoicePick && (
+                    <PropertyInvoicePickModal
+                        isOpen={!!invoicePick}
+                        onClose={() => setInvoicePick(null)}
+                        propertyId={invoicePick.propertyId}
+                        propertyName={invoicePick.propertyName}
+                        invoiceType={invoicePick.type}
+                        onSelectInvoice={inv => {
+                            setPaymentInvoice(inv);
+                            setInvoicePick(null);
+                        }}
+                    />
+                )}
+                {paymentInvoice && (
+                    <RentalPaymentModal
+                        isOpen={!!paymentInvoice}
+                        onClose={() => setPaymentInvoice(null)}
+                        invoice={paymentInvoice}
+                    />
+                )}
+                {mscForPropertyId && (
+                    <ManualServiceChargeModal
+                        isOpen={!!mscForPropertyId}
+                        onClose={() => setMscForPropertyId(null)}
+                        initialPropertyId={mscForPropertyId}
+                    />
+                )}
+            </Suspense>
         </div>
     );
 };

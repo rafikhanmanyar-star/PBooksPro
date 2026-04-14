@@ -18,6 +18,7 @@ const UpdateCheck: React.FC = () => {
     updateInfo: electronUpdateInfo,
     downloadProgress: electronDownloadProgress,
     error: electronError,
+    checkNote: electronCheckNote,
     unavailableReleasesUrl,
     checkForUpdates: electronCheckForUpdates,
     startDownload: electronStartDownload,
@@ -43,6 +44,10 @@ const UpdateCheck: React.FC = () => {
       setStatus('error');
       setError(electronError);
       setErrorDetails(electronError);
+    } else if (electronCheckNote) {
+      setStatus('idle');
+      setError(null);
+      setErrorDetails(null);
     } else if (electronDownloadProgress) {
       setStatus('downloading');
     } else if (electronUpdateAvailable) {
@@ -50,7 +55,16 @@ const UpdateCheck: React.FC = () => {
     } else if (!electronChecking && !electronUpdateAvailable && status === 'checking') {
       setStatus('not-available');
     }
-  }, [isElectronUpdate, electronChecking, electronUpdateAvailable, electronUpdateDownloaded, electronDownloadProgress, electronError, status]);
+  }, [
+    isElectronUpdate,
+    electronChecking,
+    electronUpdateAvailable,
+    electronUpdateDownloaded,
+    electronDownloadProgress,
+    electronError,
+    electronCheckNote,
+    status,
+  ]);
 
   useEffect(() => {
     if (isElectronUpdate) return;
@@ -165,6 +179,12 @@ const UpdateCheck: React.FC = () => {
             <span className="ml-2 text-xs text-slate-400">(Desktop)</span>
           )}
         </div>
+
+        {isElectronUpdate && electronCheckNote && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-950">
+            {electronCheckNote}
+          </div>
+        )}
 
         {status === 'checking' && (
           <div className="flex items-center gap-2 text-sm text-slate-600">

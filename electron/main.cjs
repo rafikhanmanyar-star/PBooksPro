@@ -11,6 +11,7 @@ const sqliteBridge = require('./sqliteBridge.cjs');
 const companyManager = require('./companyManager.cjs');
 const stability = require('./stability.cjs');
 const spellChecker = require('./spellChecker.cjs');
+const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils.cjs');
 
 let mainWindow = null;
 let autoUpdater = null;
@@ -351,10 +352,28 @@ function setupUpdaterIPC() {
       sendUpdateStatus({ status: 'checking' });
       await autoUpdater.checkForUpdates();
     } catch (err) {
-      sendUpdateStatus({
-        status: 'error',
-        message: err && err.message ? err.message : String(err),
-      });
+      const formatted = formatUpdaterError(err);
+      const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      if (formatted.isReleasePending) {
+        dialog.showMessageBox(win, {
+          type: 'info',
+          title: 'Update check',
+          message: formatted.userMessage,
+          buttons: ['OK'],
+          defaultId: 0,
+        });
+        sendUpdateStatus({
+          status: 'error',
+          message: formatted.userMessage,
+          suppressNotification: true,
+        });
+      } else {
+        sendUpdateStatus({
+          status: 'error',
+          message: formatted.userMessage,
+          errorTone: 'error',
+        });
+      }
     } finally {
       isManualCheck = false;
     }
@@ -417,14 +436,9 @@ function setupUpdaterIPC() {
       sendUpdateStatus({ status: 'downloaded' });
     });
 
-    autoUpdater.on('error', (err) => {
-      console.error('[AutoUpdater] Error:', err);
-      if (isManualCheck) {
-        sendUpdateStatus({
-          status: 'error',
-          message: err && err.message ? err.message : String(err),
-        });
-      }
+    autoUpdater.on('error', (_err) => {
+      // Manual "Check for updates" failures are handled in the IPC handler (avoids duplicate dialogs).
+      if (isManualCheck) return;
     });
   }
 }
@@ -441,7 +455,7 @@ app.whenReady().then(() => {
     // Check for updates on first load (short delay so window is ready)
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch((err) => {
-        console.log('[AutoUpdater] Initial check failed:', err?.message);
+        console.log(formatUpdaterError(err).logLine);
       });
     }, 5000);
 
@@ -449,7 +463,9 @@ app.whenReady().then(() => {
     const oneHourMs = 60 * 60 * 1000;
     updateCheckIntervalId = setInterval(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        autoUpdater.checkForUpdates().catch(() => {});
+        autoUpdater.checkForUpdates().catch((err) => {
+          console.log(formatUpdaterError(err).logLine);
+        });
       }
     }, oneHourMs);
   }

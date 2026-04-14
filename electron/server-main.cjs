@@ -8,6 +8,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils.cjs');
 
 let mainWindow = null;
 let tray = null;
@@ -22,7 +23,7 @@ if (app.isPackaged) {
     autoUpdater = require('electron-updater').autoUpdater;
     autoUpdater.channel = 'api-server';
     autoUpdater.autoDownload = false;
-    autoUpdater.logger = console;
+    autoUpdater.logger = createUpdaterLogger();
     // NSIS full installer (not web installer): required for reliable blockmap / differential downloads.
     autoUpdater.disableWebInstaller = true;
     autoUpdater.disableDifferentialDownload = false;
@@ -337,9 +338,20 @@ ipcMain.handle('server:check-update', async () => {
     }
     return { ok: true, upToDate: true, currentVersion };
   } catch (e) {
+    const formatted = formatUpdaterError(e);
+    if (formatted.isReleasePending) {
+      dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+        type: 'info',
+        title: 'Update check',
+        message: formatted.userMessage,
+        buttons: ['OK'],
+        defaultId: 0,
+      });
+    }
     return {
       ok: false,
-      message: e && e.message ? e.message : String(e),
+      message: formatted.userMessage,
+      isReleasePending: formatted.isReleasePending,
     };
   }
 });
@@ -359,8 +371,17 @@ ipcMain.handle('server:download-and-install', async () => {
       };
     }
   } catch (e) {
-    const msg = e && e.message ? e.message : String(e);
-    return { ok: false, message: msg };
+    const formatted = formatUpdaterError(e);
+    if (formatted.isReleasePending) {
+      dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+        type: 'info',
+        title: 'Update check',
+        message: formatted.userMessage,
+        buttons: ['OK'],
+        defaultId: 0,
+      });
+    }
+    return { ok: false, message: formatted.userMessage };
   }
   const onProgress = (p) => {
     emitDownloadProgress({
@@ -379,9 +400,9 @@ ipcMain.handle('server:download-and-install', async () => {
     emitDownloadProgress({ phase: 'done' });
   } catch (e) {
     autoUpdater.removeListener('download-progress', onProgress);
-    const msg = e && e.message ? e.message : String(e);
-    emitDownloadProgress({ phase: 'error', message: msg });
-    return { ok: false, message: msg };
+    const formatted = formatUpdaterError(e);
+    emitDownloadProgress({ phase: 'error', message: formatted.userMessage });
+    return { ok: false, message: formatted.userMessage };
   }
   const { response } = await dialog.showMessageBox({
     type: 'info',
