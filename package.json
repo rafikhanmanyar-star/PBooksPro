@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.207",
+  "version": "1.2.208",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -65,6 +65,7 @@
     "reset-pm-cycle": "dotenv -e .env -- npm run reset-pm-cycle --prefix backend --"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.99.0",
     "better-sqlite3": "^12.6.2",
     "dayjs": "^1.11.20",
     "electron-updater": "^6.8.3",

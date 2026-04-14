@@ -1,9 +1,11 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { setupElectronFocusRecovery } from './utils/electronFocusRecovery';
 import { initStabilityLayer } from './services/stability/stabilityLayer';
+import { getQueryClient } from './config/queryClient';
 
 // Get root element
 const rootElement = document.getElementById('root');
@@ -139,9 +141,11 @@ const initApp = async () => {
     ]);
 
     const root = ReactDOM.createRoot(rootElement);
+    const queryClient = getQueryClient();
 
     root.render(
       <React.StrictMode>
+        <QueryClientProvider client={queryClient}>
         <ErrorBoundary
           onError={(error, errorInfo) => {
             console.error('Top-level error caught:', error, errorInfo);
@@ -183,6 +187,7 @@ const initApp = async () => {
           </CompanyProvider>
           </ThemeProvider>
         </ErrorBoundary>
+        </QueryClientProvider>
       </React.StrictMode>
     );
   } catch (error) {

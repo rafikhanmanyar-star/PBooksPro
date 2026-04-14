@@ -45,6 +45,7 @@ import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
 import LoadingShell from './components/ui/LoadingShell';
+import PageRouteSkeleton from './components/ui/PageRouteSkeleton';
 import { OfflineProvider } from './context/OfflineContext';
 import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
 import { ContactsApiRepository } from './services/api/repositories/contactsApi';
@@ -569,26 +570,6 @@ const App: React.FC = () => {
     return 'bg-app-bg';
   };
 
-  // Optimized page renderer - use React.memo and Suspense for better performance
-  const renderPage = useCallback((page: Page, component: React.ReactNode) => {
-    // Use React.startTransition for non-blocking page switches
-    if (currentPage === page) {
-      return (
-        <Suspense fallback={
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div>
-              <p className="text-sm text-app-muted">Loading...</p>
-            </div>
-          </div>
-        }>
-          {component}
-        </Suspense>
-      );
-    }
-    return null;
-  }, [currentPage]);
-
   // Optimized page renderer - preserves page state by keeping pages mounted but hidden
   // Memoized with minimal dependencies to prevent unnecessary re-renders
   const renderPersistentPage = useCallback((groupKey: string, content: React.ReactNode) => {
@@ -620,7 +601,15 @@ const App: React.FC = () => {
         id={pageId}
       >
         <div className="w-full h-full min-h-0">
-          <Suspense fallback={<Loading message="Loading Records" />}>
+          <Suspense
+            fallback={
+              groupKey === 'TRANSACTIONS' ? (
+                <PageRouteSkeleton variant="ledger" />
+              ) : (
+                <PageRouteSkeleton />
+              )
+            }
+          >
             {content}
           </Suspense>
         </div>

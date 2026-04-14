@@ -1,19 +1,18 @@
 /**
  * Enhanced Paginated Transactions Hook
- * 
- * Provides paginated access to transactions with smart fallback:
- * - Uses native backend when available (fast, paginated)
- * - Falls back to state.transactions when native unavailable
- * - Maintains all filtering, sorting, and grouping functionality
+ *
+ * - Native / local DB: TanStack Query infinite cache (stale 5m, gc 10m via default client)
+ * - Fallback: AppState transactions when native pagination is off (API / sql.js-only paths)
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Transaction } from '../types';
 import { TransactionsRepository } from '../services/database/repositories';
 import { useStateSelector } from './useSelectiveState';
-import { getDatabaseService } from '../services/database/databaseService';
 import { isMobileDevice } from '../utils/platformDetection';
 import { isLocalOnlyMode } from '../config/apiUrl';
+import { queryKeys } from './queries/queryKeys';
 
 interface UsePaginatedTransactionsOptions {
   projectId?: string | null;
@@ -37,20 +36,12 @@ export function usePaginatedTransactions(
   options: UsePaginatedTransactionsOptions = {}
 ): UsePaginatedTransactionsResult {
   const stateTransactions = useStateSelector(s => s.transactions);
+  const queryClient = useQueryClient();
   const { projectId, pageSize = 200, enabled = true } = options;
-  const [nativeTransactions, setNativeTransactions] = useState<Transaction[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [isUsingNative, setIsUsingNative] = useState(false);
-  const [totalCount, setTotalCount] = useState<number | null>(null);
 
-  // Memoize repository instance to avoid repeated setup
   const repo = useMemo(() => new TransactionsRepository(), []);
   const isNativeEnabled = useMemo(() => repo.isNativeEnabled(), [repo]);
 
-  // Check if we should use native backend (SQLite IPC / sql.js). LAN/API uses PostgreSQL via AppState only.
   const shouldUseNative = useMemo(() => {
     if (!isLocalOnlyMode()) return false;
     if (!enabled) return false;
@@ -63,106 +54,78 @@ export function usePaginatedTransactions(
     return true;
   }, [enabled, isNativeEnabled]);
 
-  const loadPage = useCallback(async (page: number, append: boolean = false) => {
-    if (!enabled) return;
+  const countEnabled =
+    enabled &&
+    shouldUseNative &&
+    isLocalOnlyMode() &&
+    !isMobileDevice();
 
-    setIsLoading(true);
-    setError(null);
+  const countQuery = useQuery({
+    queryKey: queryKeys.ledger.count(projectId),
+    queryFn: () => repo.getCount({ projectId }),
+    enabled: countEnabled,
+  });
 
-    try {
-      // Always fetch count on first page or when it's null
-      // Only fetch if database is ready to avoid warnings
-      if (page === 0 || totalCount === null) {
-        if (!isLocalOnlyMode()) {
-          setTotalCount(stateTransactions.length);
-        } else if (isMobileDevice()) {
-          setTotalCount(null); // Count would come from API if needed
-        } else {
-          const dbService = getDatabaseService();
-          if (dbService.isReady()) {
-            try {
-              const count = await repo.getCount({ projectId });
-              setTotalCount(count);
-            } catch (error) {
-              console.debug('Count query failed:', error);
-            }
-          } else {
-            if (!shouldUseNative) {
-              setTotalCount(stateTransactions.length);
-            }
-          }
-        }
-      }
-
-      if (shouldUseNative) {
-        const offset = page * pageSize;
-        const pageTransactions = await repo.findAllPaginated({
-          projectId,
-          limit: pageSize,
-          offset,
-        });
-
-        if (append) {
-          setNativeTransactions(prev => [...prev, ...pageTransactions]);
-        } else {
-          setNativeTransactions(pageTransactions);
-        }
-
-        setHasMore(pageTransactions.length === pageSize);
-        setCurrentPage(page);
-        setIsUsingNative(true);
-      } else {
-        setNativeTransactions([]);
-        setIsUsingNative(false);
-        setHasMore(false);
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      setError(error);
-      console.error('Failed to load transactions:', error);
-      setIsUsingNative(false);
-      setHasMore(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [enabled, projectId, pageSize, repo, shouldUseNative, totalCount, stateTransactions.length]);
-
-  const loadMore = useCallback(async () => {
-    if (!hasMore || isLoading || !shouldUseNative) return;
-    await loadPage(currentPage + 1, true);
-  }, [hasMore, isLoading, currentPage, loadPage, shouldUseNative]);
+  const infiniteQuery = useInfiniteQuery({
+    queryKey: queryKeys.ledger.paginated(projectId, pageSize),
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const offset = pageParam as number;
+      return repo.findAllPaginated({
+        projectId,
+        limit: pageSize,
+        offset,
+      }) as Promise<Transaction[]>;
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage || lastPage.length < pageSize) return undefined;
+      return allPages.reduce((sum, p) => sum + p.length, 0);
+    },
+    enabled: enabled && shouldUseNative,
+  });
 
   const refresh = useCallback(async () => {
-    setCurrentPage(0);
-    setTotalCount(null);
-    await loadPage(0, false);
-  }, [loadPage]);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all });
+  }, [queryClient]);
 
-  // Initial load or when projectId/shouldUseNative changes
-  useEffect(() => {
-    if (enabled) {
-      if (shouldUseNative) {
-        loadPage(0, false);
-      } else {
-        setIsUsingNative(false);
-        setNativeTransactions([]);
-        // When not using native, we'll use state transactions, so we can set total count
-        setTotalCount(stateTransactions.length);
-      }
-    } else {
-      setNativeTransactions([]);
-      setIsUsingNative(false);
-      setTotalCount(null); // Clear total count if disabled
-    }
-  }, [enabled, projectId, shouldUseNative, loadPage, stateTransactions.length]);
+  const loadMore = useCallback(async () => {
+    if (!shouldUseNative) return;
+    if (!infiniteQuery.hasNextPage || infiniteQuery.isFetchingNextPage) return;
+    await infiniteQuery.fetchNextPage();
+  }, [shouldUseNative, infiniteQuery]);
 
-  // Get transactions (native or fallback)
-  const transactions = useMemo(() => {
-    if (isUsingNative && nativeTransactions.length > 0) {
-      return nativeTransactions;
+  const transactions = useMemo((): Transaction[] => {
+    if (!shouldUseNative) return stateTransactions;
+    if (infiniteQuery.isError) return stateTransactions;
+    const pages = infiniteQuery.data?.pages;
+    const flat = (pages ?? []).flat() as Transaction[];
+    if (infiniteQuery.isPending && flat.length === 0) {
+      return stateTransactions;
     }
-    return stateTransactions;
-  }, [isUsingNative, nativeTransactions, stateTransactions]);
+    return flat;
+  }, [shouldUseNative, stateTransactions, infiniteQuery.data, infiniteQuery.isPending, infiniteQuery.isError]);
+
+  const isUsingNative = shouldUseNative && infiniteQuery.isSuccess;
+  const isLoading = shouldUseNative
+    ? infiniteQuery.isPending || infiniteQuery.isFetchingNextPage
+    : false;
+
+  const error =
+    (infiniteQuery.error as Error | null) ||
+    (countQuery.error as Error | null) ||
+    null;
+
+  const totalCount = useMemo((): number | null => {
+    if (!isLocalOnlyMode()) return stateTransactions.length;
+    if (isMobileDevice()) return null;
+    if (shouldUseNative) {
+      if (countEnabled) return countQuery.data ?? null;
+      return null;
+    }
+    return stateTransactions.length;
+  }, [shouldUseNative, countEnabled, countQuery.data, stateTransactions.length]);
+
+  const hasMore = shouldUseNative ? !!infiniteQuery.hasNextPage : false;
 
   return {
     transactions,

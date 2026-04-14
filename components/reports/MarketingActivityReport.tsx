@@ -1,11 +1,10 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ContactType, ProjectAgreementStatus } from '../../types';
 import Card from '../ui/Card';
 import { ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
-import { apiClient } from '../../services/api/client';
-import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useOrgUsersQuery } from '../../hooks/queries/useOrgUsersQuery';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
@@ -29,29 +28,7 @@ const MarketingActivityReport: React.FC = () => {
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
     const [endDate, setEndDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)));
-    const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string }[]>([]);
-
-    useEffect(() => {
-        let isMounted = true;
-        const loadOrgUsers = async () => {
-            if (isLocalOnlyMode()) {
-                if (isMounted) setOrgUsers([]);
-                return;
-            }
-            try {
-                const data = await apiClient.get<{ id: string; name: string; username: string }[]>('/users');
-                if (isMounted) setOrgUsers(data || []);
-            } catch (error) {
-                const msg = error instanceof Error ? error.message : String(error);
-                console.error('Failed to load organization users for marketing report', msg);
-                if (isMounted) setOrgUsers([]);
-            }
-        };
-        loadOrgUsers();
-        return () => {
-            isMounted = false;
-        };
-    }, []);
+    const { data: orgUsers = [] } = useOrgUsersQuery();
 
     const handleRangeChange = (option: ReportDateRange) => {
         setDateRange(option);
