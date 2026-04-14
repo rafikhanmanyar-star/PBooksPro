@@ -1,11 +1,11 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useTransition, memo } from 'react';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
-import { Page, Transaction, Bill, Contract, RentalAgreement, ProjectAgreement, Contact, ContactType } from '../../types';
+import { Page } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
-import { ICONS, CURRENCY } from '../../constants';
-import { formatDate } from '../../utils/dateUtils';
+import { ICONS } from '../../constants';
+import { useDebounce } from '../../hooks/useDebounce';
+import { buildSearchRows, type BuiltSearchRow } from './searchModalResults';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -13,254 +13,165 @@ interface SearchModalProps {
   currentPage: Page;
 }
 
-interface SearchResult {
-  id: string;
-  type: string;
-  title: string;
-  subtitle?: string;
-  onClick: () => void;
-}
+const SearchResultButton = memo(function SearchResultButton({
+  row,
+  onPick,
+}: {
+  row: BuiltSearchRow;
+  onPick: (row: BuiltSearchRow) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(row)}
+      className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+    >
+      <div className="font-medium text-gray-900">{row.title}</div>
+      {row.subtitle && <div className="text-sm text-gray-500 mt-1">{row.subtitle}</div>}
+      <div className="text-xs text-gray-400 mt-1">{row.type}</div>
+    </button>
+  );
+});
 
 const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage }) => {
   const dispatch = useDispatchOnly();
-  const transactions = useStateSelector(s => s.transactions);
-  const accounts = useStateSelector(s => s.accounts);
-  const categories = useStateSelector(s => s.categories);
-  const contacts = useStateSelector(s => s.contacts);
-  const bills = useStateSelector(s => s.bills);
-  const contracts = useStateSelector(s => s.contracts);
-  const vendors = useStateSelector(s => s.vendors);
-  const projectAgreements = useStateSelector(s => s.projectAgreements);
-  const rentalAgreements = useStateSelector(s => s.rentalAgreements);
+  const transactions = useStateSelector((s) => s.transactions);
+  const accounts = useStateSelector((s) => s.accounts);
+  const categories = useStateSelector((s) => s.categories);
+  const contacts = useStateSelector((s) => s.contacts);
+  const bills = useStateSelector((s) => s.bills);
+  const contracts = useStateSelector((s) => s.contracts);
+  const vendors = useStateSelector((s) => s.vendors);
+  const projectAgreements = useStateSelector((s) => s.projectAgreements);
+  const rentalAgreements = useStateSelector((s) => s.rentalAgreements);
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const debouncedSearch = useDebounce(searchQuery, 280);
+  const [searchRows, setSearchRows] = useState<BuiltSearchRow[]>([]);
+  const [, startSearchTransition] = useTransition();
+  const [, startPickTransition] = useTransition();
+
+  const accountById = useMemo(() => {
+    const m = new Map<string, { name?: string }>();
+    for (const a of accounts) m.set(a.id, a);
+    return m;
+  }, [accounts]);
+
+  const categoryById = useMemo(() => {
+    const m = new Map<string, { name?: string }>();
+    for (const c of categories) m.set(c.id, c);
+    return m;
+  }, [categories]);
+
+  const contactById = useMemo(() => {
+    const m = new Map<string, (typeof contacts)[0]>();
+    for (const c of contacts) m.set(c.id, c);
+    return m;
+  }, [contacts]);
+
+  const vendorById = useMemo(() => {
+    const m = new Map<string, { name?: string }>();
+    for (const v of vendors ?? []) {
+      if (v?.id) m.set(v.id, v);
+    }
+    return m;
+  }, [vendors]);
+
+  const contractById = useMemo(() => {
+    const m = new Map<string, (typeof contracts)[0]>();
+    for (const x of contracts) m.set(x.id, x);
+    return m;
+  }, [contracts]);
 
   useEffect(() => {
     if (!isOpen) {
       setSearchQuery('');
-      setSearchResults([]);
+      setSearchRows([]);
       return;
     }
-    // Focus search input when modal opens
-    setTimeout(() => {
+    const t = window.setTimeout(() => {
       const input = document.getElementById('search-modal-input');
       input?.focus();
     }, 100);
+    return () => clearTimeout(t);
   }, [isOpen]);
 
-  const handleSearch = useMemo(() => {
-    return () => {
-      if (!searchQuery.trim()) {
-        setSearchResults([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    const raw = debouncedSearch.trim();
+    startSearchTransition(() => {
+      if (!raw) {
+        setSearchRows([]);
         return;
       }
+      const rows = buildSearchRows(raw, {
+        currentPage,
+        transactions,
+        bills,
+        contracts,
+        contractById,
+        projectAgreements,
+        rentalAgreements,
+        contacts,
+        accountById,
+        categoryById,
+        contactById,
+        vendorById,
+      });
+      setSearchRows(rows);
+    });
+  }, [
+    isOpen,
+    debouncedSearch,
+    currentPage,
+    transactions,
+    bills,
+    contracts,
+    contractById,
+    projectAgreements,
+    rentalAgreements,
+    contacts,
+    accountById,
+    categoryById,
+    contactById,
+    vendorById,
+    startSearchTransition,
+  ]);
 
-      const query = searchQuery.toLowerCase().trim();
-      const results: SearchResult[] = [];
-
-      switch (currentPage) {
-        case 'transactions': {
-          transactions
-            .filter(tx => {
-              const description = tx.description?.toLowerCase() || '';
-              const account = accounts.find(a => a.id === tx.accountId)?.name.toLowerCase() || '';
-              const category = categories.find(c => c.id === tx.categoryId)?.name.toLowerCase() || '';
-              const contact = contacts.find(c => c.id === tx.contactId)?.name.toLowerCase() || '';
-              const amount = tx.amount.toString();
-              return description.includes(query) || account.includes(query) || category.includes(query) || contact.includes(query) || amount.includes(query);
-            })
-            .slice(0, 20)
-            .forEach(tx => {
-              const account = accounts.find(a => a.id === tx.accountId)?.name || 'Unknown';
-              results.push({
-                id: tx.id,
-                type: 'Transaction',
-                title: tx.description || 'No description',
-                subtitle: `${account} • ${CURRENCY}${tx.amount.toFixed(2)} • ${formatDate(tx.date)}`,
-                onClick: () => {
-                  sessionStorage.setItem('openTransactionId', tx.id);
-                  dispatch({ type: 'SET_PAGE', payload: 'transactions' });
-                  onClose();
-                }
-              });
-            });
-          break;
+  const handlePick = useCallback(
+    (row: BuiltSearchRow) => {
+      startPickTransition(() => {
+        if (row.session) {
+          sessionStorage.setItem(row.session.key, row.session.value);
         }
-
-        case 'bills': {
-          bills
-            .filter(bill => {
-              const billNumber = bill.billNumber?.toLowerCase() || '';
-              const description = bill.description?.toLowerCase() || '';
-              const vendor = contacts.find(c => c.id === bill.contactId)?.name.toLowerCase() || '';
-              const contract = contracts.find(c => c.id === bill.contractId)?.name.toLowerCase() || '';
-              const amount = bill.amount.toString();
-              return billNumber.includes(query) || description.includes(query) || vendor.includes(query) || contract.includes(query) || amount.includes(query);
-            })
-            .slice(0, 20)
-            .forEach(bill => {
-              const vendor = contacts.find(c => c.id === bill.contactId)?.name || 'Unknown';
-              results.push({
-                id: bill.id,
-                type: 'Bill',
-                title: bill.billNumber || 'No number',
-                subtitle: `${vendor} • ${CURRENCY}${bill.amount.toFixed(2)} • ${formatDate(bill.issueDate)}`,
-                onClick: () => {
-                  sessionStorage.setItem('openBillId', bill.id);
-                  dispatch({ type: 'SET_PAGE', payload: 'bills' });
-                  onClose();
-                }
-              });
-            });
-          break;
+        if (row.editing) {
+          dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: row.editing.type, id: row.editing.id } });
         }
+        dispatch({ type: 'SET_PAGE', payload: row.page });
+        onClose();
+      });
+    },
+    [dispatch, onClose, startPickTransition]
+  );
 
-        case 'projectManagement': {
-          // Search contracts
-          contracts
-            .filter(contract => {
-              const contractNumber = contract.contractNumber?.toLowerCase() || '';
-              const name = contract.name?.toLowerCase() || '';
-              const vendor = vendors?.find(v => v.id === contract.vendorId)?.name.toLowerCase() || '';
-              return contractNumber.includes(query) || name.includes(query) || vendor.includes(query);
-            })
-            .slice(0, 20)
-            .forEach(contract => {
-              const vendor = vendors?.find(v => v.id === contract.vendorId)?.name || 'Unknown';
-              results.push({
-                id: contract.id,
-                type: 'Contract',
-                title: contract.name || contract.contractNumber || 'No name',
-                subtitle: `${vendor} • ${CURRENCY}${contract.totalAmount.toFixed(2)}`,
-                onClick: () => {
-                  sessionStorage.setItem('openContractId', contract.id);
-                  dispatch({ type: 'SET_PAGE', payload: 'projectManagement' });
-                  onClose();
-                }
-              });
-            });
-
-          // Search project agreements
-          projectAgreements
-            .filter(agreement => {
-              const agreementNumber = agreement.agreementNumber?.toLowerCase() || '';
-              const client = contacts.find(c => c.id === agreement.clientId)?.name.toLowerCase() || '';
-              return agreementNumber.includes(query) || client.includes(query);
-            })
-            .slice(0, 10)
-            .forEach(agreement => {
-              const client = contacts.find(c => c.id === agreement.clientId)?.name || 'Unknown';
-              results.push({
-                id: agreement.id,
-                type: 'Project Agreement',
-                title: agreement.agreementNumber || 'No number',
-                subtitle: `${client} • ${CURRENCY}${agreement.sellingPrice.toFixed(2)}`,
-                onClick: () => {
-                  sessionStorage.setItem('openProjectAgreementId', agreement.id);
-                  dispatch({ type: 'SET_PAGE', payload: 'projectManagement' });
-                  onClose();
-                }
-              });
-            });
-          break;
-        }
-
-        case 'rentalAgreements': {
-          rentalAgreements
-            .filter(agreement => {
-              const agreementNumber = agreement.agreementNumber?.toLowerCase() || '';
-              const tenant = contacts.find(c => c.id === agreement.contactId)?.name.toLowerCase() || '';
-              return agreementNumber.includes(query) || tenant.includes(query);
-            })
-            .slice(0, 20)
-            .forEach(agreement => {
-              const tenant = contacts.find(c => c.id === agreement.contactId)?.name || 'Unknown';
-              results.push({
-                id: agreement.id,
-                type: 'Rental Agreement',
-                title: agreement.agreementNumber || 'No number',
-                subtitle: `${tenant} • ${CURRENCY}${agreement.monthlyRent.toFixed(2)}/month`,
-                onClick: () => {
-                  sessionStorage.setItem('openRentalAgreementId', agreement.id);
-                  dispatch({ type: 'SET_PAGE', payload: 'rentalAgreements' });
-                  onClose();
-                }
-              });
-            });
-          break;
-        }
-
-        case 'vendorDirectory':
-        case 'contacts': {
-          contacts
-            .filter(contact => {
-              const name = contact.name?.toLowerCase() || '';
-              const description = contact.description?.toLowerCase() || '';
-              const type = contact.type?.toLowerCase() || '';
-              return name.includes(query) || description.includes(query) || type.includes(query);
-            })
-            .slice(0, 20)
-            .forEach(contact => {
-              results.push({
-                id: contact.id,
-                type: contact.type || 'Contact',
-                title: contact.name || 'No name',
-                subtitle: contact.description || contact.type || '',
-                onClick: () => {
-                  if (currentPage === 'vendorDirectory') {
-                    sessionStorage.setItem('openVendorId', contact.id);
-                    dispatch({ type: 'SET_PAGE', payload: 'vendorDirectory' });
-                  } else {
-                    dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: `CONTACT_${contact.type}`, id: contact.id } });
-                    dispatch({ type: 'SET_PAGE', payload: 'settings' });
-                  }
-                  onClose();
-                }
-              });
-            });
-          break;
-        }
-
-        default:
-          // Generic search across common entities
-          contacts
-            .filter(contact => contact.name?.toLowerCase().includes(query))
-            .slice(0, 10)
-            .forEach(contact => {
-              results.push({
-                id: contact.id,
-                type: contact.type || 'Contact',
-                title: contact.name || 'No name',
-                subtitle: contact.type || '',
-                onClick: () => {
-                  dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: `CONTACT_${contact.type}`, id: contact.id } });
-                  dispatch({ type: 'SET_PAGE', payload: 'settings' });
-                  onClose();
-                }
-              });
-            });
-          break;
-      }
-
-      setSearchResults(results);
-    };
-  }, [searchQuery, currentPage, transactions, accounts, categories, contacts, bills, contracts, vendors, projectAgreements, rentalAgreements, dispatch, onClose]);
-
-  useEffect(() => {
-    handleSearch();
-  }, [handleSearch]);
-
-  const getSearchPlaceholder = () => {
+  const getSearchPlaceholder = useCallback(() => {
     switch (currentPage) {
-      case 'transactions': return 'Search transactions...';
-      case 'bills': return 'Search bills...';
-      case 'projectManagement': return 'Search contracts and agreements...';
-      case 'rentalAgreements': return 'Search rental agreements...';
-      case 'vendorDirectory': return 'Search vendors...';
-      case 'contacts': return 'Search contacts...';
-      default: return 'Search...';
+      case 'transactions':
+        return 'Search transactions...';
+      case 'bills':
+        return 'Search bills...';
+      case 'projectManagement':
+        return 'Search contracts and agreements...';
+      case 'rentalAgreements':
+        return 'Search rental agreements...';
+      case 'vendorDirectory':
+        return 'Search vendors...';
+      case 'contacts':
+        return 'Search contacts...';
+      default:
+        return 'Search...';
     }
-  };
+  }, [currentPage]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Search" size="lg">
@@ -278,8 +189,8 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
             autoFocus
           />
           {searchQuery && (
-            <button 
-              onClick={() => setSearchQuery('')} 
+            <button
+              onClick={() => setSearchQuery('')}
               className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 transition-colors"
               type="button"
               aria-label="Clear search"
@@ -289,35 +200,20 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
           )}
         </div>
 
-        {searchResults.length > 0 ? (
-          <div className="max-h-96 overflow-y-auto space-y-2">
-            {searchResults.map((result) => (
-              <button
-                key={result.id}
-                onClick={result.onClick}
-                className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-              >
-                <div className="font-medium text-gray-900">{result.title}</div>
-                {result.subtitle && (
-                  <div className="text-sm text-gray-500 mt-1">{result.subtitle}</div>
-                )}
-                <div className="text-xs text-gray-400 mt-1">{result.type}</div>
-              </button>
+        {searchRows.length > 0 ? (
+          <div className="max-h-96 overflow-y-auto space-y-2 min-h-[120px]">
+            {searchRows.map((row) => (
+              <SearchResultButton key={row.id} row={row} onPick={handlePick} />
             ))}
           </div>
-        ) : searchQuery.trim() ? (
-          <div className="text-center py-8 text-gray-500">
-            No results found for "{searchQuery}"
-          </div>
+        ) : debouncedSearch.trim() ? (
+          <div className="text-center py-8 text-gray-500 min-h-[120px]">No results found for &quot;{debouncedSearch}&quot;</div>
         ) : (
-          <div className="text-center py-8 text-gray-400">
-            Start typing to search...
-          </div>
+          <div className="text-center py-8 text-gray-400 min-h-[120px]">Start typing to search...</div>
         )}
       </div>
     </Modal>
   );
 };
 
-export default SearchModal;
-
+export default memo(SearchModal);

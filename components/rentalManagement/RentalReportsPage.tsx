@@ -102,7 +102,7 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
     };
 
     return (
-        <div className="flex flex-col h-full space-y-4">
+        <div className="flex flex-col h-full min-h-0 space-y-4">
             <div className="no-print flex flex-wrap items-center gap-3 bg-app-card p-2 rounded-lg border border-app-border shadow-ds-card">
                 {/* Reports Menu Button */}
                 <div className="relative" ref={menuRef}>
@@ -152,7 +152,7 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                 )}
 
             </div>
-            <div className="flex-grow overflow-y-auto animate-fade-in-fast pb-4">
+            <div className="flex-1 min-h-0 overflow-hidden animate-fade-in-fast">
                 {renderReport()}
             </div>
         </div>

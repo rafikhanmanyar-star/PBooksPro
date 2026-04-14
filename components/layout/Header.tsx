@@ -1,4 +1,4 @@
-import React, { useState, memo, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, memo, useEffect, useCallback, useMemo, useRef, useTransition } from 'react';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import SearchModal from './SearchModal';
@@ -14,6 +14,7 @@ import { fetchUpcomingTasks } from '../../components/personalTransactions/person
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: () => {}, connect: () => {}, disconnect: () => {} });
 import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
 import { useTheme } from '../../context/ThemeContext';
+import { scheduleIdleWork, cancelScheduledIdle } from '../../utils/interactionScheduling';
 interface HeaderProps {
   title: string;
   isNavigating?: boolean;
@@ -22,6 +23,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const { theme, toggleTheme } = useTheme();
   const dispatch = useDispatchOnly();
+  const [, startNavTransition] = useTransition();
   const currentUser = useStateSelector(s => s.currentUser);
   const contacts = useStateSelector(s => s.contacts);
   const users = useStateSelector(s => s.users);
@@ -342,7 +344,11 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, [currentUser, installmentPlans, contacts, projects, units, usersForNotifications, dismissedNotifications, taskBellRows]);
 
   const handleNotificationClick = useCallback((notification: NotificationItem) => {
-    console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
+    scheduleIdleWork(() => {
+      if (import.meta.env.DEV) {
+        console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
+      }
+    });
 
     // Dismiss the notification immediately - this will remove it from the bell icon
     dismissNotification(notification.id);
@@ -355,20 +361,27 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       window.dispatchEvent(
         new CustomEvent('pb:open-personal-task', { detail: { taskId: notification.action.taskId } })
       );
-      dispatch({ type: 'SET_PAGE', payload: 'personalTransactions' });
+      startNavTransition(() => {
+        dispatch({ type: 'SET_PAGE', payload: 'personalTransactions' });
+      });
       return;
     }
 
     if (notification.action.type === 'installment_plan') {
       const planId = notification.action.planId;
-      // Navigate to project management page with Marketing tab active
-      dispatch({ type: 'SET_INITIAL_TABS', payload: ['Marketing'] });
-      dispatch({ type: 'SET_PAGE', payload: 'projectManagement' });
+      startNavTransition(() => {
+        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Marketing'] });
+        dispatch({ type: 'SET_PAGE', payload: 'projectManagement' });
+      });
 
       // Set editing entity after a small delay to ensure page is loaded
-      setTimeout(() => {
-        console.log('[NOTIFICATION CLICK] Setting editing entity for plan:', planId);
-        dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
+      window.setTimeout(() => {
+        startNavTransition(() => {
+          dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
+        });
+        if (import.meta.env.DEV) {
+          console.log('[NOTIFICATION CLICK] Setting editing entity for plan:', planId);
+        }
       }, 100);
       return;
     }
@@ -393,7 +406,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }
       return;
     }
-  }, [dispatch, dismissNotification, openChat, contacts, whatsAppMode, findContactByPhone]);
+  }, [dispatch, dismissNotification, openChat, contacts, whatsAppMode, findContactByPhone, startNavTransition]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -470,7 +483,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         setOrgUsers([]);
       }
     };
-    loadOrgUsers();
+    const idleId = scheduleIdleWork(() => {
+      void loadOrgUsers();
+    }, { timeout: 4000 });
+    return () => cancelScheduledIdle(idleId);
   }, [isAuthenticated]);
 
   // Load WhatsApp unread count - only when authenticated
@@ -613,16 +629,17 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     }
   }, [dismissNotification, openChat, contacts, whatsAppMode, findContactByPhone]);
 
-  // Format breadcrumbs based on current page
-  const getBreadcrumbs = () => {
-    return (
-      <div className="hidden sm:flex items-center gap-2 text-sm text-app-muted">
-        <span className="hover:text-app-text cursor-pointer transition-colors" onClick={() => dispatch({ type: 'SET_PAGE', payload: 'dashboard' })}>Home</span>
-        <span className="text-app-muted/50">/</span>
-        <span className="font-medium text-app-text">{title}</span>
-      </div>
-    );
-  };
+  const handleBreadcrumbHome = useCallback(() => {
+    startNavTransition(() => {
+      dispatch({ type: 'SET_PAGE', payload: 'dashboard' });
+    });
+  }, [dispatch, startNavTransition]);
+
+  const handleClearAllNotifications = useCallback(() => {
+    startNavTransition(() => {
+      notifications.forEach((item) => dismissNotification(item.id));
+    });
+  }, [notifications, dismissNotification, startNavTransition]);
 
   return (
     <>
@@ -650,7 +667,17 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
             <div className="flex flex-col">
               <h1 className="text-lg font-bold text-app-text leading-tight md:hidden">{title}</h1>
-              {getBreadcrumbs()}
+              <div className="hidden sm:flex items-center gap-2 text-sm text-app-muted min-h-[1.25rem]">
+                <button
+                  type="button"
+                  className="hover:text-app-text cursor-pointer transition-colors bg-transparent border-0 p-0 font-inherit"
+                  onClick={handleBreadcrumbHome}
+                >
+                  Home
+                </button>
+                <span className="text-app-muted/50">/</span>
+                <span className="font-medium text-app-text">{title}</span>
+              </div>
             </div>
           </div>
 
@@ -717,9 +744,8 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                     </div>
                     {notifications.length > 0 && (
                       <button
-                        onClick={() => {
-                          notifications.forEach(item => dismissNotification(item.id));
-                        }}
+                        type="button"
+                        onClick={handleClearAllNotifications}
                         className="text-xs text-indigo-600 hover:text-indigo-700 font-medium hover:underline"
                       >
                         Clear All

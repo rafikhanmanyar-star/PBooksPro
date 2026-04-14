@@ -46,10 +46,17 @@ export const navPerfLog = (message: string, detail?: Record<string, unknown>): v
   try {
     if (!navPerfLogEnabled()) return;
     const prefix = `[NAV-PERF] ${ts()}`;
-    if (detail != null) {
-      console.log(prefix, message, detail);
+    const run = (): void => {
+      if (detail != null) {
+        console.log(prefix, message, detail);
+      } else {
+        console.log(prefix, message);
+      }
+    };
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => run(), { timeout: 1500 });
     } else {
-      console.log(prefix, message);
+      setTimeout(run, 0);
     }
   } catch (_) {
     // never break app if logging fails

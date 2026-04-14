@@ -591,11 +591,11 @@ const PropertyLayoutReport: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6 h-full overflow-y-auto pr-2 pb-20">
+        <div className="flex flex-col h-full min-h-0 overflow-hidden">
             <style>{STANDARD_PRINT_STYLES}</style>
 
-            {/* Custom Toolbar - All controls in first row */}
-            <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print mb-4">
+            {/* Custom Toolbar - All controls in first row (stays fixed; grid scrolls below) */}
+            <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print mb-4 shrink-0">
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Report Title */}
                     <h2 className="text-xl font-bold text-app-text mr-4">
@@ -648,42 +648,46 @@ const PropertyLayoutReport: React.FC = () => {
                 </div>
             </div>
 
-            <div className="printable-area" id="printable-area">
-                <ReportHeader />
+            <div
+                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-2 pb-4 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 print:overflow-visible print:h-auto print:max-h-none print:flex-none"
+            >
+                <div className="printable-area" id="printable-area">
+                    <ReportHeader />
 
-                {data.data.length === 0 ? (
-                    <div className="text-center py-10 text-app-muted">No project units found to display.</div>
-                ) : (
-                    <div className="space-y-8">
-                        {data.data.map((group) => (
-                            <div key={group.code || group.id} className="break-inside-avoid border-2 border-app-border rounded-xl p-4 bg-app-toolbar/30">
-                                <h3 className="text-lg font-bold text-primary mb-4 border-b-2 border-primary/25 pb-1 pl-1 bg-primary/10 rounded-lg px-3 py-2 shadow-ds-card">
-                                    {data.type === 'RENTAL' ? `Building ${group.code}` : group.name}
-                                </h3>
-                                <div className="flex flex-col gap-4">
-                                    {group.floors.map((floor: any) => (
-                                        <div key={floor.index} className="flex flex-col md:flex-row gap-2">
-                                            <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-primary text-ds-on-primary rounded-lg font-bold text-sm shadow-ds-card mb-2 md:mb-0">
-                                                {floor.label}
+                    {data.data.length === 0 ? (
+                        <div className="text-center py-10 text-app-muted">No project units found to display.</div>
+                    ) : (
+                        <div className="space-y-8">
+                            {data.data.map((group) => (
+                                <div key={group.code || group.id} className="break-inside-avoid border-2 border-app-border rounded-xl p-4 bg-app-toolbar/30">
+                                    <h3 className="text-lg font-bold text-primary mb-4 border-b-2 border-primary/25 pb-1 pl-1 bg-primary/10 rounded-lg px-3 py-2 shadow-ds-card">
+                                        {data.type === 'RENTAL' ? `Building ${group.code}` : group.name}
+                                    </h3>
+                                    <div className="flex flex-col gap-4">
+                                        {group.floors.map((floor: any) => (
+                                            <div key={floor.index} className="flex flex-col md:flex-row gap-2">
+                                                <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-primary text-ds-on-primary rounded-lg font-bold text-sm shadow-ds-card mb-2 md:mb-0">
+                                                    {floor.label}
+                                                </div>
+                                                <div className="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                                                    {floor.units.map((unit: any) => renderBox(unit, data.type as any, data.maxReceivable || 0))}
+                                                </div>
                                             </div>
-                                            <div className="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                                                {floor.units.map((unit: any) => renderBox(unit, data.type as any, data.maxReceivable || 0))}
+                                        ))}
+                                        {group.unconventional.length > 0 && (
+                                            <div className="mt-2 pt-2 border-t border-dashed border-app-border">
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:pl-14">
+                                                    {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxReceivable || 0))}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                    {group.unconventional.length > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-dashed border-app-border">
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:pl-14">
-                                                {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxReceivable || 0))}
-                                            </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-                <ReportFooter />
+                            ))}
+                        </div>
+                    )}
+                    <ReportFooter />
+                </div>
             </div>
 
             <Suspense fallback={modalSuspenseFallback}>
