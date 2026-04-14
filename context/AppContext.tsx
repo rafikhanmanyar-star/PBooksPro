@@ -427,8 +427,19 @@ const reducer = (state: AppState, action: AppAction): AppState => {
     // For single actions broadcasted, we apply them normally.
 
     switch (action.type) {
-        case 'SET_STATE':
-            return { ...state, ...action.payload };
+        case 'SET_STATE': {
+            const payload = action.payload as Partial<AppState>;
+            let changed = false;
+            const next = { ...state };
+            for (const key of Object.keys(payload)) {
+                const k = key as keyof AppState;
+                if (payload[k] !== state[k]) {
+                    (next as any)[k] = payload[k];
+                    changed = true;
+                }
+            }
+            return changed ? next : state;
+        }
         case 'BATCH_UPSERT_ENTITIES': {
             const entities = action.payload;
             let anyChanged = false;
@@ -2932,12 +2943,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+        let lastRefreshAt = 0;
+        const DEBOUNCE_MS = 2000;
+        const COOLDOWN_MS = 3000;
+
         const scheduleRefresh = () => {
             if (debounceTimer) clearTimeout(debounceTimer);
+            const sinceLastRefresh = Date.now() - lastRefreshAt;
+            if (sinceLastRefresh < COOLDOWN_MS) {
+                debounceTimer = setTimeout(() => {
+                    debounceTimer = null;
+                    lastRefreshAt = Date.now();
+                    void refreshFromApiRef.current?.();
+                }, COOLDOWN_MS - sinceLastRefresh);
+                return;
+            }
             debounceTimer = setTimeout(() => {
                 debounceTimer = null;
+                lastRefreshAt = Date.now();
                 void refreshFromApiRef.current?.();
-            }, 400);
+            }, DEBOUNCE_MS);
         };
 
         const handleEntity = (payload: { sourceUserId?: string }) => {

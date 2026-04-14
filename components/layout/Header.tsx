@@ -22,7 +22,14 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const { theme, toggleTheme } = useTheme();
   const dispatch = useDispatchOnly();
-  const state = useStateSelector(s => s);
+  const currentUser = useStateSelector(s => s.currentUser);
+  const contacts = useStateSelector(s => s.contacts);
+  const users = useStateSelector(s => s.users);
+  const installmentPlans = useStateSelector(s => s.installmentPlans);
+  const projects = useStateSelector(s => s.projects);
+  const units = useStateSelector(s => s.units);
+  const whatsAppMode = useStateSelector(s => s.whatsAppMode);
+  const currentPage = useStateSelector(s => s.currentPage);
   const { isAuthenticated } = useAuth();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
@@ -49,7 +56,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   >([]);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const whatsappDropdownRef = useRef<HTMLDivElement>(null);
-  const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
+  const usersForNotifications = orgUsers.length > 0 ? orgUsers : users;
 
   type NotificationBadgeTone = 'blue' | 'green' | 'red' | 'orange' | 'slate';
 
@@ -70,10 +77,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
   // Load dismissed notifications from localStorage on mount
   useEffect(() => {
-    if (!state.currentUser) return;
+    if (!currentUser) return;
 
     try {
-      const storageKey = `dismissed_notifications_${state.currentUser.id}`;
+      const storageKey = `dismissed_notifications_${currentUser.id}`;
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const dismissed = JSON.parse(stored) as string[];
@@ -83,10 +90,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     } catch (error) {
       console.error('[NOTIFICATIONS] Failed to load dismissed notifications:', error);
     }
-  }, [state.currentUser]);
+  }, [currentUser]);
 
   const dismissNotification = useCallback((notificationId: string) => {
-    if (!state.currentUser) {
+    if (!currentUser) {
       console.warn('[NOTIFICATIONS] Cannot dismiss notification: no current user');
       return;
     }
@@ -109,7 +116,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
       // Save to localStorage immediately to persist dismissal
       try {
-        const storageKey = `dismissed_notifications_${state.currentUser.id}`;
+        const storageKey = `dismissed_notifications_${currentUser.id}`;
         const dismissedArray = Array.from(updated);
         localStorage.setItem(storageKey, JSON.stringify(dismissedArray));
         console.log('[NOTIFICATIONS] Saved dismissed notification to localStorage:', notificationId, 'Total dismissed:', dismissedArray.length);
@@ -119,7 +126,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
       return updated;
     });
-  }, [state.currentUser]);
+  }, [currentUser]);
 
   const resolveWhatsAppTimestamp = useCallback((value?: string | Date) => {
     if (!value) return new Date().toISOString();
@@ -149,7 +156,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     const digitsOnly = phoneNumber.replace(/\D/g, '');
     const lastTen = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : '';
     if (!normalized && !lastTen) return undefined;
-    return state.contacts.find(contact => {
+    return contacts.find(contact => {
       const contactNumber = contact.contactNo || '';
       if (!contactNumber) return false;
       const contactNormalized = normalizePhoneForMatch(contactNumber);
@@ -160,7 +167,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }
       return false;
     });
-  }, [state.contacts]);
+  }, [contacts]);
 
   const formatNotificationTime = useCallback((value: string) => {
     if (!value) return '';
@@ -181,7 +188,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     const notificationId = `whatsapp:${messageKey}`;
     if (dismissedNotifications.has(notificationId)) return;
 
-    const contactFromId = message.contactId ? state.contacts.find(contact => contact.id === message.contactId) : undefined;
+    const contactFromId = message.contactId ? contacts.find(contact => contact.id === message.contactId) : undefined;
     const contactFromPhone = contactFromId || findContactByPhone(message.phoneNumber);
     const resolvedContactId = contactFromId?.id || contactFromPhone?.id || message.contactId;
     const resolvedContactName = contactFromId?.name || contactFromPhone?.name;
@@ -203,18 +210,18 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       };
       return [nextItem, ...prev].slice(0, 50);
     });
-  }, [dismissedNotifications, findContactByPhone, resolveWhatsAppTimestamp, state.contacts]);
+  }, [dismissedNotifications, findContactByPhone, resolveWhatsAppTimestamp, contacts]);
 
   const notifications = useMemo(() => {
-    if (!state.currentUser) return [];
-    const currentUserId = state.currentUser.id;
+    if (!currentUser) return [];
+    const currentUserId = currentUser.id;
 
     const planLabel = (planId: string) => {
-      const plan = state.installmentPlans.find(p => p.id === planId);
+      const plan = installmentPlans.find(p => p.id === planId);
       if (!plan) return 'Installment plan';
-      const lead = state.contacts.find(l => l.id === plan.leadId);
-      const project = state.projects.find(p => p.id === plan.projectId);
-      const unit = state.units.find(u => u.id === plan.unitId);
+      const lead = contacts.find(l => l.id === plan.leadId);
+      const project = projects.find(p => p.id === plan.projectId);
+      const unit = units.find(u => u.id === plan.unitId);
       return `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
     };
 
@@ -225,11 +232,11 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     };
 
     const isMatchingCurrentUser = (value?: string) => {
-      if (!value || !state.currentUser) return false;
+      if (!value || !currentUser) return false;
       const candidates = [
-        state.currentUser.id,
-        state.currentUser.username,
-        state.currentUser.name
+        currentUser.id,
+        currentUser.username,
+        currentUser.name
       ].filter(Boolean).map(item => item.toString().toLowerCase());
       const normalizedValue = value.toString().toLowerCase();
       const matches = candidates.includes(normalizedValue);
@@ -265,7 +272,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       };
     });
 
-    const planItems: NotificationItem[] = (state.installmentPlans || []).flatMap(plan => {
+    const planItems: NotificationItem[] = (installmentPlans || []).flatMap(plan => {
       const time = plan.updatedAt || plan.createdAt || '';
       const normalizedStatus = (plan.status || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
       const isPendingApproval = normalizedStatus === 'pending approval';
@@ -332,7 +339,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     const activeNotifications = items.filter(item => !dismissedNotifications.has(item.id));
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
-  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, taskBellRows]);
+  }, [currentUser, installmentPlans, contacts, projects, units, usersForNotifications, dismissedNotifications, taskBellRows]);
 
   const handleNotificationClick = useCallback((notification: NotificationItem) => {
     console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
@@ -368,7 +375,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
     if (notification.action.type === 'whatsapp') {
       const contact =
-        state.contacts.find(item => item.id === notification.action.contactId)
+        contacts.find(item => item.id === notification.action.contactId)
         || findContactByPhone(notification.action.phoneNumber)
         || null;
       const phone = notification.action.phoneNumber || contact?.contactNo;
@@ -377,7 +384,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         setTimeout(() => {
           sendOrOpenWhatsApp(
             { contact: contactLike, message: '', phoneNumber: phone },
-            () => state.whatsAppMode,
+            () => whatsAppMode,
             openChat
           );
         }, 0);
@@ -386,7 +393,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }
       return;
     }
-  }, [dispatch, dismissNotification, openChat, state.contacts, state.whatsAppMode, findContactByPhone]);
+  }, [dispatch, dismissNotification, openChat, contacts, whatsAppMode, findContactByPhone]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -403,14 +410,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, [isNotificationsOpen, isWhatsappDropdownOpen]);
 
   useEffect(() => {
-    if (!isAuthenticated || !state.currentUser?.id) {
+    if (!isAuthenticated || !currentUser?.id) {
       setTaskBellRows([]);
       return;
     }
     let cancelled = false;
     const load = async () => {
       try {
-        const rows = await fetchUpcomingTasks(state.currentUser!.id, 7);
+        const rows = await fetchUpcomingTasks(currentUser!.id, 7);
         if (cancelled) return;
         setTaskBellRows(
           rows.map((r) => ({
@@ -437,7 +444,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       window.clearInterval(interval);
       window.removeEventListener('pb:tasks-changed', onTasksChanged);
     };
-  }, [isAuthenticated, state.currentUser?.id]);
+  }, [isAuthenticated, currentUser?.id]);
 
   useEffect(() => {
     if (isLocalOnlyMode()) {
@@ -588,7 +595,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     setIsWhatsappDropdownOpen(false);
     // Open chat with the contact or phone number
     const contact =
-      (item.contactId ? state.contacts.find(c => c.id === item.contactId) : null)
+      (item.contactId ? contacts.find(c => c.id === item.contactId) : null)
       || findContactByPhone(item.phoneNumber)
       || null;
     const phone = item.phoneNumber || contact?.contactNo;
@@ -597,14 +604,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       setTimeout(() => {
         sendOrOpenWhatsApp(
           { contact: contactLike, message: '', phoneNumber: phone },
-          () => state.whatsAppMode,
+          () => whatsAppMode,
           openChat
         );
       }, 0);
     } else {
       setTimeout(() => openChat(contact, item.phoneNumber), 0);
     }
-  }, [dismissNotification, openChat, state.contacts, state.whatsAppMode, findContactByPhone]);
+  }, [dismissNotification, openChat, contacts, whatsAppMode, findContactByPhone]);
 
   // Format breadcrumbs based on current page
   const getBreadcrumbs = () => {
@@ -773,7 +780,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               )}
             </div>
 
-            {state.whatsAppMode === 'api' && (
+            {whatsAppMode === 'api' && (
               <div className="relative" ref={whatsappDropdownRef}>
                 <button
                   onClick={handleWhatsAppNotificationClick}
@@ -878,8 +885,8 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         </div>
       </header>
 
-      {isSearchModalOpen && <SearchModal isOpen={isSearchModalOpen} onClose={() => setIsSearchModalOpen(false)} currentPage={state.currentPage} />}
-      {isHelpModalOpen && <HelpModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} currentPage={state.currentPage} />}
+      {isSearchModalOpen && <SearchModal isOpen={isSearchModalOpen} onClose={() => setIsSearchModalOpen(false)} currentPage={currentPage} />}
+      {isHelpModalOpen && <HelpModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} currentPage={currentPage} />}
     </>
   );
 };

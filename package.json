@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.204",
+  "version": "1.2.205",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -122,6 +122,7 @@
       "electron/migrations/**/*.cjs",
       "electron/companyManager.cjs",
       "electron/spellChecker.cjs",
+      "electron/updaterErrorUtils.cjs",
       "electron/schema.sql",
       "electron/assets/**/*",
       "package.json",

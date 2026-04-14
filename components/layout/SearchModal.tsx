@@ -23,7 +23,15 @@ interface SearchResult {
 
 const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage }) => {
   const dispatch = useDispatchOnly();
-  const state = useStateSelector(s => s);
+  const transactions = useStateSelector(s => s.transactions);
+  const accounts = useStateSelector(s => s.accounts);
+  const categories = useStateSelector(s => s.categories);
+  const contacts = useStateSelector(s => s.contacts);
+  const bills = useStateSelector(s => s.bills);
+  const contracts = useStateSelector(s => s.contracts);
+  const vendors = useStateSelector(s => s.vendors);
+  const projectAgreements = useStateSelector(s => s.projectAgreements);
+  const rentalAgreements = useStateSelector(s => s.rentalAgreements);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
@@ -52,18 +60,18 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
 
       switch (currentPage) {
         case 'transactions': {
-          state.transactions
+          transactions
             .filter(tx => {
               const description = tx.description?.toLowerCase() || '';
-              const account = state.accounts.find(a => a.id === tx.accountId)?.name.toLowerCase() || '';
-              const category = state.categories.find(c => c.id === tx.categoryId)?.name.toLowerCase() || '';
-              const contact = state.contacts.find(c => c.id === tx.contactId)?.name.toLowerCase() || '';
+              const account = accounts.find(a => a.id === tx.accountId)?.name.toLowerCase() || '';
+              const category = categories.find(c => c.id === tx.categoryId)?.name.toLowerCase() || '';
+              const contact = contacts.find(c => c.id === tx.contactId)?.name.toLowerCase() || '';
               const amount = tx.amount.toString();
               return description.includes(query) || account.includes(query) || category.includes(query) || contact.includes(query) || amount.includes(query);
             })
             .slice(0, 20)
             .forEach(tx => {
-              const account = state.accounts.find(a => a.id === tx.accountId)?.name || 'Unknown';
+              const account = accounts.find(a => a.id === tx.accountId)?.name || 'Unknown';
               results.push({
                 id: tx.id,
                 type: 'Transaction',
@@ -80,18 +88,18 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
         }
 
         case 'bills': {
-          state.bills
+          bills
             .filter(bill => {
               const billNumber = bill.billNumber?.toLowerCase() || '';
               const description = bill.description?.toLowerCase() || '';
-              const vendor = state.contacts.find(c => c.id === bill.contactId)?.name.toLowerCase() || '';
-              const contract = state.contracts.find(c => c.id === bill.contractId)?.name.toLowerCase() || '';
+              const vendor = contacts.find(c => c.id === bill.contactId)?.name.toLowerCase() || '';
+              const contract = contracts.find(c => c.id === bill.contractId)?.name.toLowerCase() || '';
               const amount = bill.amount.toString();
               return billNumber.includes(query) || description.includes(query) || vendor.includes(query) || contract.includes(query) || amount.includes(query);
             })
             .slice(0, 20)
             .forEach(bill => {
-              const vendor = state.contacts.find(c => c.id === bill.contactId)?.name || 'Unknown';
+              const vendor = contacts.find(c => c.id === bill.contactId)?.name || 'Unknown';
               results.push({
                 id: bill.id,
                 type: 'Bill',
@@ -109,16 +117,16 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
 
         case 'projectManagement': {
           // Search contracts
-          state.contracts
+          contracts
             .filter(contract => {
               const contractNumber = contract.contractNumber?.toLowerCase() || '';
               const name = contract.name?.toLowerCase() || '';
-              const vendor = state.vendors?.find(v => v.id === contract.vendorId)?.name.toLowerCase() || '';
+              const vendor = vendors?.find(v => v.id === contract.vendorId)?.name.toLowerCase() || '';
               return contractNumber.includes(query) || name.includes(query) || vendor.includes(query);
             })
             .slice(0, 20)
             .forEach(contract => {
-              const vendor = state.vendors?.find(v => v.id === contract.vendorId)?.name || 'Unknown';
+              const vendor = vendors?.find(v => v.id === contract.vendorId)?.name || 'Unknown';
               results.push({
                 id: contract.id,
                 type: 'Contract',
@@ -133,15 +141,15 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
             });
 
           // Search project agreements
-          state.projectAgreements
+          projectAgreements
             .filter(agreement => {
               const agreementNumber = agreement.agreementNumber?.toLowerCase() || '';
-              const client = state.contacts.find(c => c.id === agreement.clientId)?.name.toLowerCase() || '';
+              const client = contacts.find(c => c.id === agreement.clientId)?.name.toLowerCase() || '';
               return agreementNumber.includes(query) || client.includes(query);
             })
             .slice(0, 10)
             .forEach(agreement => {
-              const client = state.contacts.find(c => c.id === agreement.clientId)?.name || 'Unknown';
+              const client = contacts.find(c => c.id === agreement.clientId)?.name || 'Unknown';
               results.push({
                 id: agreement.id,
                 type: 'Project Agreement',
@@ -158,15 +166,15 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
         }
 
         case 'rentalAgreements': {
-          state.rentalAgreements
+          rentalAgreements
             .filter(agreement => {
               const agreementNumber = agreement.agreementNumber?.toLowerCase() || '';
-              const tenant = state.contacts.find(c => c.id === agreement.contactId)?.name.toLowerCase() || '';
+              const tenant = contacts.find(c => c.id === agreement.contactId)?.name.toLowerCase() || '';
               return agreementNumber.includes(query) || tenant.includes(query);
             })
             .slice(0, 20)
             .forEach(agreement => {
-              const tenant = state.contacts.find(c => c.id === agreement.contactId)?.name || 'Unknown';
+              const tenant = contacts.find(c => c.id === agreement.contactId)?.name || 'Unknown';
               results.push({
                 id: agreement.id,
                 type: 'Rental Agreement',
@@ -184,7 +192,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
 
         case 'vendorDirectory':
         case 'contacts': {
-          state.contacts
+          contacts
             .filter(contact => {
               const name = contact.name?.toLowerCase() || '';
               const description = contact.description?.toLowerCase() || '';
@@ -215,7 +223,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
 
         default:
           // Generic search across common entities
-          state.contacts
+          contacts
             .filter(contact => contact.name?.toLowerCase().includes(query))
             .slice(0, 10)
             .forEach(contact => {
@@ -236,7 +244,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
 
       setSearchResults(results);
     };
-  }, [searchQuery, currentPage, state, dispatch, onClose]);
+  }, [searchQuery, currentPage, transactions, accounts, categories, contacts, bills, contracts, vendors, projectAgreements, rentalAgreements, dispatch, onClose]);
 
   useEffect(() => {
     handleSearch();

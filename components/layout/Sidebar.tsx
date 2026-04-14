@@ -30,14 +30,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     const mainNavToggleTitle = mainNavCollapsed ? 'Expand navigation' : 'Collapse navigation to icons';
     const dispatch = useDispatchOnly();
-    const state = useStateSelector(s => s);
+    const currentUser = useStateSelector(s => s.currentUser);
     const { logout, tenant, user } = useAuth();
     const { hasModule } = useLicense();
     const companyCtx = useCompanyOptional();
     const { appVersion, isElectronUpdate } = useUpdate();
-    // In Electron, show installed app version (from main process); otherwise build-time package version
     const displayVersion = isElectronUpdate ? (appVersion ?? '...') : packageJson.version;
-    const { currentUser } = state;
     const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<number | null>(null);
     const [onlineUsersList, setOnlineUsersList] = useState<any[]>([]);
@@ -100,7 +98,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
         if (!isLocalOnlyMode() && (user || currentUser)) {
             fetchOnlineUsers();
-            const interval = setInterval(fetchOnlineUsers, 30000);
+            const interval = setInterval(fetchOnlineUsers, 60000);
             return () => clearInterval(interval);
         }
     }, [user, currentUser]);
@@ -151,11 +149,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
         socket.on('chat:message', handleChatMessage);
 
-        const interval = setInterval(checkUnreadMessages, 30000);
-
         return () => {
             socket.off('chat:message', handleChatMessage);
-            clearInterval(interval);
         };
     }, [currentUserId, checkUnreadMessages]);
 

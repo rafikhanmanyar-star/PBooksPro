@@ -29,6 +29,13 @@ const DashboardPage: React.FC = () => {
     const currentUser = useStateSelector(s => s.currentUser);
     const dashboardConfig = useStateSelector(s => s.dashboardConfig);
     const rentalAgreements = useStateSelector(s => s.rentalAgreements);
+    const accounts = useStateSelector(s => s.accounts);
+    const contacts = useStateSelector(s => s.contacts);
+    const bills = useStateSelector(s => s.bills);
+    const projects = useStateSelector(s => s.projects);
+    const projectAgreements = useStateSelector(s => s.projectAgreements);
+    const properties = useStateSelector(s => s.properties);
+    const buildings = useStateSelector(s => s.buildings);
     const lookupMaps = useLookupMaps();
     const { allKpis, openDrilldown } = useKpis();
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -59,8 +66,13 @@ const DashboardPage: React.FC = () => {
 
     const navigate = (page: Page) => dispatch({ type: 'SET_PAGE', payload: page });
 
-    // Build a lightweight state proxy for KPI getData calls (KPI definitions expect the full state shape)
-    const kpiState = useStateSelector(s => s);
+    const kpiState = useMemo(() => ({
+        transactions, invoices, categories, accounts, contacts,
+        bills, projects, projectAgreements, properties, buildings,
+        rentalAgreements, currentUser,
+    }), [transactions, invoices, categories, accounts, contacts,
+        bills, projects, projectAgreements, properties, buildings,
+        rentalAgreements, currentUser]);
 
     const kpisToDisplay = useMemo(() => {
         const visibleKpiIds = Array.isArray(dashboardConfig?.visibleKpis) ? dashboardConfig.visibleKpis : [];

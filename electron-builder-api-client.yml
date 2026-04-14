@@ -20,6 +20,7 @@ files:
   - "electron/migrations/**/*.cjs"
   - "electron/companyManager.cjs"
   - "electron/spellChecker.cjs"
+  - "electron/updaterErrorUtils.cjs"
   - "electron/schema.sql"
   - "electron/assets/**/*"
   - "package.json"
