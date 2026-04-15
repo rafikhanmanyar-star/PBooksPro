@@ -12,6 +12,7 @@ import RentalPaymentSearch from './RentalPaymentSearch';
 import RentalBillsPage from './RentalBillsPage';
 import { useAppContext } from '../../context/AppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import { ICONS } from '../../constants';
 
 // Static report imports for file:// (Electron) compatibility — dynamic import can fail there
 import PropertyLayoutReport from '../reports/PropertyLayoutReport';
@@ -220,6 +221,17 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 <SubNavModeToggle collapsed={subNavCollapsed} onToggle={toggleSubNav} title={subNavToggleTitle} compact />
             </div>
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Rental module navigation">
+                <div className="mb-2 pb-2 border-b border-app-border">
+                    <button
+                        type="button"
+                        onClick={() => startTransition(() => dispatch({ type: 'SET_PAGE', payload: 'rentalSettings' }))}
+                        className={`w-full flex items-center gap-2 rounded-md text-sm font-medium transition-colors px-3 py-2 text-app-muted hover:bg-app-toolbar hover:text-app-text ${subNavCollapsed ? 'justify-center px-1' : ''}`}
+                        title="Buildings, properties, tenants, owners"
+                    >
+                        <span className="w-4 h-4 shrink-0 opacity-80">{ICONS.home}</span>
+                        {!subNavCollapsed && <span>Rental setup</span>}
+                    </button>
+                </div>
                 <div className="space-y-0.5">
                     <NavItem view="Agreements" label="Agreements" />
                     <NavItem view="Invoices" label="Invoices" />

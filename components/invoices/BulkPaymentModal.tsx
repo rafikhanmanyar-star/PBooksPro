@@ -10,6 +10,8 @@ import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
+import { getOwnershipSharesForPropertyOnDate, primaryOwnerIdFromShares } from '../../services/propertyOwnershipService';
+import { buildOwnerRentAllocationTransactions, shouldPostOwnerRentAllocation } from '../../services/rentOwnerAllocation';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
 import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
@@ -256,17 +258,25 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 }
 
                 const property = inv.propertyId ? state.properties.find(p => p.id === inv.propertyId) : null;
-                const ownerId = inv.propertyId
-                    ? getOwnerIdForPropertyOnDate(
-                        inv.propertyId,
-                        paymentDate,
-                        state.propertyOwnershipHistory || [],
-                        property?.ownerId
-                    )
-                    : undefined;
+                const sharesForDay = inv.propertyId
+                    ? getOwnershipSharesForPropertyOnDate(state, inv.propertyId, paymentDate)
+                    : [];
+                const ownerId =
+                    primaryOwnerIdFromShares(sharesForDay) ??
+                    (inv.propertyId
+                        ? getOwnerIdForPropertyOnDate(
+                              inv.propertyId,
+                              paymentDate,
+                              state.propertyOwnershipHistory || [],
+                              property?.ownerId
+                          )
+                        : undefined);
+
+                const mkId = () =>
+                    `txn-bulk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}-${inv.id}`;
 
                 transactions.push({
-                    id: `txn-bulk-${Date.now()}-${inv.id}`,
+                    id: mkId(),
                     type: TransactionType.INCOME,
                     amount: payAmount,
                     date: paymentDate,
@@ -282,6 +292,25 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                     batchId: batchId,
                     ownerId,
                 });
+
+                if (
+                    inv.invoiceType === InvoiceType.RENTAL &&
+                    inv.propertyId &&
+                    shouldPostOwnerRentAllocation(state, inv.propertyId, paymentDate)
+                ) {
+                    const allocBatch = `${batchId}-rent-alloc-${inv.id}`;
+                    const legs = buildOwnerRentAllocationTransactions(state, {
+                        propertyId: inv.propertyId,
+                        buildingId: inv.buildingId,
+                        paymentDateYyyyMmDd: paymentDate.slice(0, 10),
+                        rentAmount: payAmount,
+                        accountId,
+                        invoiceId: inv.id,
+                        baseDescription: `Bulk Payment: ${reference || label} (Inv #${inv.invoiceNumber})`,
+                        batchId: allocBatch,
+                    }).map((leg) => ({ ...leg, id: mkId() })) as Transaction[];
+                    transactions.push(...legs);
+                }
             }
         });
 

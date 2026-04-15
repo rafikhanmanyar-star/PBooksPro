@@ -17,6 +17,7 @@ import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate } from '../../services/propertyOwnershipService';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -88,8 +89,9 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         end.setHours(23, 59, 59, 999);
 
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+        const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+        const clearingRentCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
 
         if (!rentalIncomeCategory) return [];
 
@@ -110,10 +112,9 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         );
 
         const summaries: OwnerSummary[] = filteredOwners.map(owner => {
-            const ownerProperties = state.properties.filter(p =>
-                p.ownerId === owner.id &&
-                (selectedBuildingId === 'all' || p.buildingId === selectedBuildingId)
-            );
+            const b = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
+            const stakeIds = getPropertyIdsForOwner(state, owner.id, b);
+            const ownerProperties = state.properties.filter((p) => stakeIds.has(String(p.id)));
             const unitData: { [unitId: string]: UnitSummary } = {};
 
             ownerProperties.forEach(p => {
@@ -185,12 +186,27 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(amount)) return;
 
-                // Case 1: Rental Income — use tx.ownerId when set, else current property owner
+                if (clearingRentCat && tx.categoryId === clearingRentCat.id) return;
+
+                // Case 1: Rental Income — gross (single-owner) or per-owner share (multi-owner)
                 if (tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id) {
                     if (tx.propertyId && unitData[tx.propertyId]) {
+                        const d = (tx.date || '').slice(0, 10);
+                        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) return;
                         const belongsToOwner = tx.ownerId ? tx.ownerId === owner.id : (state.properties.find(p => p.id === tx.propertyId)?.ownerId === owner.id);
                         if (belongsToOwner) unitData[tx.propertyId].collected += amount;
                     }
+                }
+
+                if (
+                    tx.type === TransactionType.INCOME &&
+                    ownerShareCat &&
+                    tx.categoryId === ownerShareCat.id &&
+                    tx.contactId === owner.id &&
+                    tx.propertyId &&
+                    unitData[tx.propertyId]
+                ) {
+                    unitData[tx.propertyId].collected += amount;
                 }
 
                 // Case 2: Expenses & Payouts

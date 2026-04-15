@@ -20,6 +20,12 @@ import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconc
 import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
 import { toLocalDateString } from '../utils/dateUtils';
+import {
+    applyLegacySingleOwnerTransfer,
+    buildDefaultPropertyOwnershipRow,
+    invalidatePropertyOwnershipCache,
+} from '../services/propertyOwnershipService';
+import { getCurrentTenantId } from '../services/database/tenantUtils';
 import InitializationScreen from '../components/InitializationScreen';
 import { syncQueueStub as getSyncQueue } from '../services/sync/localOnlyStubs';
 // --- Module-level state store for selective subscriptions via useSyncExternalStore ---
@@ -223,6 +229,8 @@ const initialState: AppState = {
     projects: [],
     buildings: [],
     properties: [],
+    propertyOwnershipHistory: [],
+    propertyOwnership: [],
     units: [],
     transactions: [],
     invoices: [],
@@ -465,6 +473,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 sales_returns: 'salesReturns',
                 project_received_assets: 'projectReceivedAssets',
                 inventory_items: 'inventoryItems',
+                property_ownership: 'propertyOwnership',
             };
 
             for (const [rawKey, items] of Object.entries(entities)) {
@@ -796,18 +805,29 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         case 'DELETE_BUILDING':
             return { ...state, buildings: state.buildings.filter(b => b.id !== action.payload) };
 
-        case 'ADD_PROPERTY':
-            // Check if property already exists (prevents duplicates from WebSocket events)
+        case 'ADD_PROPERTY': {
             const existingProperty = state.properties.find(p => p.id === action.payload.id);
             if (existingProperty) {
-                // If exists, update it instead of adding duplicate
                 return { ...state, properties: state.properties.map(p => p.id === action.payload.id ? action.payload : p) };
             }
-            return { ...state, properties: [...state.properties, action.payload] };
+            const po = buildDefaultPropertyOwnershipRow(action.payload, getCurrentTenantId());
+            invalidatePropertyOwnershipCache(action.payload.id);
+            return {
+                ...state,
+                properties: [...state.properties, action.payload],
+                propertyOwnership: [...(state.propertyOwnership || []), po],
+            };
+        }
         case 'UPDATE_PROPERTY':
             return { ...state, properties: state.properties.map(p => p.id === action.payload.id ? action.payload : p) };
-        case 'DELETE_PROPERTY':
-            return { ...state, properties: state.properties.filter(p => p.id !== action.payload) };
+        case 'DELETE_PROPERTY': {
+            invalidatePropertyOwnershipCache(action.payload);
+            return {
+                ...state,
+                properties: state.properties.filter(p => p.id !== action.payload),
+                propertyOwnership: (state.propertyOwnership || []).filter(r => r.propertyId !== action.payload),
+            };
+        }
 
         case 'ADD_UNIT':
             // Check if unit already exists (prevents duplicates from WebSocket events)
@@ -1245,6 +1265,16 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, defaultProjectId: action.payload };
         case 'SET_LAST_SERVICE_CHARGE_RUN':
             return { ...state, lastServiceChargeRun: action.payload };
+        case 'TRANSFER_PROPERTY_OWNERSHIP':
+            return applyLegacySingleOwnerTransfer(state, { ...action.payload, tenantId: getCurrentTenantId() });
+        case 'REPLACE_PROPERTY_OWNERSHIP_FOR_PROPERTY': {
+            invalidatePropertyOwnershipCache(action.payload.propertyId);
+            const rest = (state.propertyOwnership || []).filter(r => r.propertyId !== action.payload.propertyId);
+            return { ...state, propertyOwnership: [...rest, ...action.payload.rows] };
+        }
+        case 'SET_PROPERTY_OWNERSHIP':
+            invalidatePropertyOwnershipCache();
+            return { ...state, propertyOwnership: action.payload };
         case 'SET_WHATSAPP_MODE':
             return { ...state, whatsAppMode: action.payload };
 

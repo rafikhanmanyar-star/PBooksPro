@@ -66,6 +66,7 @@ const EnhancedLedgerPage = lazyWithRetry(() => import('./components/transactions
 const SettingsPage = lazyWithRetry(() => import('./components/settings/SettingsPage'));
 const ImportExportWizard = lazyWithRetry(() => import('./components/settings/ImportExportWizard'));
 const RentalManagementPage = lazyWithRetry(() => import('./components/rentalManagement/RentalManagementPage'));
+const RentalSettingsPage = lazyWithRetry(() => import('./components/rentalManagement/RentalSettingsPage'));
 const ProjectManagementPage = lazyWithRetry(() => import('./components/projectManagement/ProjectManagementPage'));
 const InvestmentManagementPage = lazyWithRetry(() => import('./components/investmentManagement/InvestmentManagementPage'));
 const PMConfigPage = lazyWithRetry(() => import('./components/pmConfig/PMConfigPage'));
@@ -89,7 +90,7 @@ const PAGE_GROUPS = {
   VENDORS: ['vendorDirectory'],
   CONTACTS: ['contacts'],
   BUDGETS: ['budgets'],
-  RENTAL: ['rentalManagement', 'rentalInvoices', 'rentalAgreements', 'ownerPayouts'],
+  RENTAL: ['rentalManagement', 'rentalSettings', 'rentalInvoices', 'rentalAgreements', 'ownerPayouts'],
   PROJECT: ['projectManagement', 'bills'],
   PROJECT_SELLING: ['projectSelling', 'projectInvoices'],
   INVESTMENT: ['investmentManagement'],
@@ -732,7 +733,14 @@ const App: React.FC = () => {
               {renderPersistentPage('VENDORS', <VendorDirectoryPage />)}
               {renderPersistentPage('CONTACTS', <ContactsPage />)}
               {renderPersistentPage('BUDGETS', <BudgetManagement />)}
-              {renderPersistentPage('RENTAL', <RentalManagementPage initialPage={currentPage} />)}
+              {renderPersistentPage(
+                'RENTAL',
+                currentPage === 'rentalSettings' ? (
+                  <RentalSettingsPage />
+                ) : (
+                  <RentalManagementPage initialPage={currentPage} />
+                )
+              )}
               {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('PROJECT_SELLING', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}

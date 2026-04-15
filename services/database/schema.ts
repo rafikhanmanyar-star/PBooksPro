@@ -237,6 +237,24 @@ CREATE TABLE IF NOT EXISTS property_ownership_history (
     FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT
 );
 
+-- Property co-ownership (percentage-based; multiple rows may be active per property)
+CREATE TABLE IF NOT EXISTS property_ownership (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    property_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    ownership_percentage REAL NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+    FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT
+);
+
 -- Units table (aligned with PostgreSQL)
 CREATE TABLE IF NOT EXISTS units (
     id TEXT PRIMARY KEY,
@@ -908,6 +926,10 @@ CREATE INDEX IF NOT EXISTS idx_property_ownership_history_property ON property_o
 CREATE INDEX IF NOT EXISTS idx_property_ownership_history_owner ON property_ownership_history(owner_id);
 CREATE INDEX IF NOT EXISTS idx_property_ownership_history_start ON property_ownership_history(ownership_start_date);
 CREATE INDEX IF NOT EXISTS idx_property_ownership_history_property_end ON property_ownership_history(property_id, ownership_end_date);
+
+CREATE INDEX IF NOT EXISTS idx_property_ownership_property_dates ON property_ownership(property_id, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_property_ownership_owner ON property_ownership(owner_id);
+CREATE INDEX IF NOT EXISTS idx_property_ownership_active ON property_ownership(property_id, is_active);
 
 -- Units
 CREATE INDEX IF NOT EXISTS idx_units_project ON units(project_id);

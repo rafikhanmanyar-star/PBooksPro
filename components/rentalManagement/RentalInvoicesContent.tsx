@@ -80,11 +80,15 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     const ownerIds = new Set<string>();
     for (const inv of state.invoices) {
       if (!RENTAL_INVOICE_TYPES.includes(inv.invoiceType) || !inv.propertyId) continue;
-      const ownerId = propertiesById.get(inv.propertyId)?.ownerId;
-      if (ownerId) ownerIds.add(ownerId);
+      const pid = inv.propertyId;
+      const primary = propertiesById.get(pid)?.ownerId;
+      if (primary) ownerIds.add(primary);
+      for (const r of state.propertyOwnership || []) {
+        if (r.propertyId === pid) ownerIds.add(r.ownerId);
+      }
     }
     return state.contacts.filter(c => ownerIds.has(c.id));
-  }, [state.invoices, propertiesById, state.contacts]);
+  }, [state.invoices, state.propertyOwnership, propertiesById, state.contacts]);
 
   const propertiesWithInvoices = useMemo(() => {
     const propIds = new Set(
@@ -137,7 +141,11 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         invoices = invoices.filter(inv => inv.contactId === entityFilterId);
       } else if (groupBy === 'owner') {
         invoices = invoices.filter(inv => {
-          return propertiesById.get(inv.propertyId!)?.ownerId === entityFilterId;
+          const pid = inv.propertyId!;
+          if (propertiesById.get(pid)?.ownerId === entityFilterId) return true;
+          return (state.propertyOwnership || []).some(
+            (r) => r.propertyId === pid && r.ownerId === entityFilterId
+          );
         });
       } else if (groupBy === 'property') {
         invoices = invoices.filter(inv => inv.propertyId === entityFilterId);
@@ -154,6 +162,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     statusFilter,
     groupBy,
     entityFilterId,
+    state.propertyOwnership,
   ]);
 
   const invoicesWithoutStatusFilter = useMemo(() => {
@@ -183,7 +192,14 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     }
     if (entityFilterId && entityFilterId !== 'all') {
       if (groupBy === 'tenant') invoices = invoices.filter(inv => inv.contactId === entityFilterId);
-      else if (groupBy === 'owner') invoices = invoices.filter(inv => propertiesById.get(inv.propertyId!)?.ownerId === entityFilterId);
+      else if (groupBy === 'owner')
+        invoices = invoices.filter(inv => {
+          const pid = inv.propertyId!;
+          if (propertiesById.get(pid)?.ownerId === entityFilterId) return true;
+          return (state.propertyOwnership || []).some(
+            (r) => r.propertyId === pid && r.ownerId === entityFilterId
+          );
+        });
       else if (groupBy === 'property') invoices = invoices.filter(inv => inv.propertyId === entityFilterId);
       else if (groupBy === 'building') {
         invoices = invoices.filter(inv => {
@@ -193,7 +209,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       }
     }
     return invoices;
-  }, [state.invoices, contactsById, propertiesById, debouncedSearch, groupBy, entityFilterId]);
+  }, [state.invoices, state.propertyOwnership, contactsById, propertiesById, debouncedSearch, groupBy, entityFilterId]);
 
   const financialRecords = useMemo<FinancialRecord[]>(() => {
     const records: FinancialRecord[] = [];

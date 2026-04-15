@@ -9,6 +9,7 @@ export type Page =
   | 'contacts'
   | 'budgets'
   | 'rentalManagement'
+  | 'rentalSettings'
   | 'rentalInvoices'
   | 'rentalAgreements'
   | 'ownerPayouts'
@@ -494,6 +495,22 @@ export interface PropertyOwnershipHistory {
   updatedAt: string;
 }
 
+/** Percentage-based co-ownership; multiple rows may be active (sum 100%). History preserved via endDate / isActive. */
+export interface PropertyOwnership {
+  id: string;
+  tenantId: string;
+  propertyId: string;
+  ownerId: string;
+  ownershipPercentage: number;
+  startDate: string;
+  endDate: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  version?: number;
+  deletedAt?: string;
+}
+
 export interface Invoice {
   id: string;
   invoiceNumber: string;
@@ -910,6 +927,8 @@ export interface AppState {
   buildings: Building[];
   properties: Property[];
   propertyOwnershipHistory: PropertyOwnershipHistory[];
+  /** Co-ownership slices (%); empty array means "use legacy single-owner (property.ownerId + history only)". */
+  propertyOwnership: PropertyOwnership[];
   units: Unit[];
 
   transactions: Transaction[];
@@ -1008,6 +1027,8 @@ export type AppAction =
   | { type: 'ADD_PROPERTY_OWNERSHIP_HISTORY'; payload: PropertyOwnershipHistory }
   | { type: 'UPDATE_PROPERTY_OWNERSHIP_HISTORY'; payload: PropertyOwnershipHistory }
   | { type: 'TRANSFER_PROPERTY_OWNERSHIP'; payload: { propertyId: string; newOwnerId: string; transferDate: string; transferReference?: string; notes?: string } }
+  | { type: 'REPLACE_PROPERTY_OWNERSHIP_FOR_PROPERTY'; payload: { propertyId: string; rows: PropertyOwnership[] } }
+  | { type: 'SET_PROPERTY_OWNERSHIP'; payload: PropertyOwnership[] }
   | { type: 'ADD_UNIT'; payload: Unit }
   | { type: 'UPDATE_UNIT'; payload: Unit }
   | { type: 'DELETE_UNIT'; payload: string }

@@ -15,6 +15,7 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
+import { getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate } from '../../services/propertyOwnershipService';
 import ARTreeView, { ARTreeNode } from './ARTreeView';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -74,6 +75,8 @@ function computeOwnerBalanceAsOf(ownerId: string, asOfDate: string, state: AppSt
     const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
     const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
     const ownerSvcPayCategory = state.categories.find(c => c.id === 'sys-cat-own-svc-pay' || c.name === 'Owner Service Charge Payment');
+    const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+    const clearingRentCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
 
     const balances: Record<string, number> = {};
     state.contacts.filter(c => c.type === ContactType.OWNER).forEach(owner => {
@@ -84,14 +87,24 @@ function computeOwnerBalanceAsOf(ownerId: string, asOfDate: string, state: AppSt
 
     if (rentalIncomeCategory) {
         state.transactions
-            .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && txDateOk(tx.date))
+            .filter(tx => tx.type === TransactionType.INCOME && txDateOk(tx.date))
             .forEach(tx => {
-                if (tx.propertyId) {
-                    const property = state.properties.find(p => p.id === tx.propertyId);
-                    if (property?.ownerId && balances[property.ownerId] !== undefined) {
-                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (!isNaN(amount)) balances[property.ownerId] += amount;
-                    }
+                if (clearingRentCat && tx.categoryId === clearingRentCat.id) return;
+                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                if (isNaN(amount)) return;
+
+                if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId && balances[tx.contactId] !== undefined) {
+                    balances[tx.contactId] += amount;
+                    return;
+                }
+
+                if (tx.categoryId !== rentalIncomeCategory.id) return;
+                if (!tx.propertyId) return;
+                const d = (tx.date || '').slice(0, 10);
+                if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) return;
+                const property = state.properties.find(p => p.id === tx.propertyId);
+                if (property?.ownerId && balances[property.ownerId] !== undefined) {
+                    balances[property.ownerId] += amount;
                 }
             });
     }
@@ -136,16 +149,28 @@ function rentalIncomeForOwnerInMonth(
     rentalIncomeCategoryId: string | undefined,
     state: AppState
 ): number {
-    if (!rentalIncomeCategoryId) return 0;
+    const shareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+    const clearCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
     let sum = 0;
     for (const tx of state.transactions) {
-        if (tx.type !== TransactionType.INCOME || tx.categoryId !== rentalIncomeCategoryId) continue;
-        if (!tx.date?.startsWith(monthKey)) continue;
+        if (tx.type !== TransactionType.INCOME || !tx.date?.startsWith(monthKey)) continue;
         if (!tx.propertyId) continue;
+        if (clearCat && tx.categoryId === clearCat.id) continue;
+
+        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+        if (isNaN(amount) || amount <= 0) continue;
+
+        if (shareCat && tx.categoryId === shareCat.id && tx.contactId === ownerId) {
+            sum += amount;
+            continue;
+        }
+
+        if (!rentalIncomeCategoryId || tx.categoryId !== rentalIncomeCategoryId) continue;
+        const d = (tx.date || '').slice(0, 10);
+        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) continue;
         const prop = state.properties.find(p => p.id === tx.propertyId);
         if (prop?.ownerId !== ownerId) continue;
-        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-        if (!isNaN(amount) && amount > 0) sum += amount;
+        sum += amount;
     }
     return sum;
 }
@@ -965,43 +990,81 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
                     const amount = property.monthlyServiceCharge || 0;
                     const isRented = getPropertyStatus(property.id) === 'Rented';
-                    const ownerId = getOwnerIdForPropertyOnDate(
-                        property.id,
-                        dateStr,
-                        state.propertyOwnershipHistory || [],
-                        property.ownerId
-                    );
+                    const shares = getOwnershipSharesForPropertyOnDate(state, property.id, dateStr);
+                    const round2 = (n: number) => Math.round(n * 100) / 100;
 
-                    const debitTx: Transaction = {
-                        id: `bm-debit-${baseTimestamp}-${i}`,
-                        type: TransactionType.INCOME,
-                        amount: -amount,
-                        date: dateStr,
-                        description: `Service Charge Deduction for ${property.name} (${isRented ? 'Rented' : 'Vacant'})`,
-                        accountId: cashAccount.id,
-                        categoryId: rentalIncomeCategory.id,
-                        propertyId: property.id,
-                        buildingId: property.buildingId,
-                        contactId: property.ownerId,
-                        ownerId,
-                        isSystem: true,
-                    };
-
-                    const creditTx: Transaction = {
-                        id: `bm-credit-${baseTimestamp}-${i}`,
-                        type: TransactionType.INCOME,
-                        amount: amount,
-                        date: dateStr,
-                        description: `Service Charge Allocation for ${property.name} (${isRented ? 'Rented' : 'Vacant'})`,
-                        accountId: cashAccount.id,
-                        categoryId: svcCat!.id,
-                        propertyId: property.id,
-                        buildingId: property.buildingId,
-                        ownerId,
-                        isSystem: true,
-                    };
-
-                    newTxs.push(debitTx, creditTx);
+                    if (shares.length <= 1) {
+                        const ownerId = getOwnerIdForPropertyOnDate(
+                            property.id,
+                            dateStr,
+                            state.propertyOwnershipHistory || [],
+                            property.ownerId
+                        );
+                        const debitTx: Transaction = {
+                            id: `bm-debit-${baseTimestamp}-${i}`,
+                            type: TransactionType.INCOME,
+                            amount: -amount,
+                            date: dateStr,
+                            description: `Service Charge Deduction for ${property.name} (${isRented ? 'Rented' : 'Vacant'})`,
+                            accountId: cashAccount.id,
+                            categoryId: rentalIncomeCategory.id,
+                            propertyId: property.id,
+                            buildingId: property.buildingId,
+                            contactId: property.ownerId,
+                            ownerId,
+                            isSystem: true,
+                        };
+                        const creditTx: Transaction = {
+                            id: `bm-credit-${baseTimestamp}-${i}`,
+                            type: TransactionType.INCOME,
+                            amount: amount,
+                            date: dateStr,
+                            description: `Service Charge Allocation for ${property.name} (${isRented ? 'Rented' : 'Vacant'})`,
+                            accountId: cashAccount.id,
+                            categoryId: svcCat!.id,
+                            propertyId: property.id,
+                            buildingId: property.buildingId,
+                            ownerId,
+                            isSystem: true,
+                        };
+                        newTxs.push(debitTx, creditTx);
+                    } else {
+                        let allocated = 0;
+                        shares.forEach((s, si) => {
+                            const isLast = si === shares.length - 1;
+                            const portion = isLast ? round2(amount - allocated) : round2((amount * s.percentage) / 100);
+                            if (!isLast) allocated += portion;
+                            if (Math.abs(portion) < 0.001 && !isLast) return;
+                            const oid = s.ownerId;
+                            newTxs.push({
+                                id: `bm-debit-${baseTimestamp}-${i}-${si}`,
+                                type: TransactionType.INCOME,
+                                amount: -portion,
+                                date: dateStr,
+                                description: `Service Charge Deduction for ${property.name} (${isRented ? 'Rented' : 'Vacant'}) [${s.percentage.toFixed(2)}%]`,
+                                accountId: cashAccount.id,
+                                categoryId: rentalIncomeCategory.id,
+                                propertyId: property.id,
+                                buildingId: property.buildingId,
+                                contactId: oid,
+                                ownerId: oid,
+                                isSystem: true,
+                            });
+                            newTxs.push({
+                                id: `bm-credit-${baseTimestamp}-${i}-${si}`,
+                                type: TransactionType.INCOME,
+                                amount: portion,
+                                date: dateStr,
+                                description: `Service Charge Allocation for ${property.name} (${isRented ? 'Rented' : 'Vacant'}) [${s.percentage.toFixed(2)}%]`,
+                                accountId: cashAccount.id,
+                                categoryId: svcCat!.id,
+                                propertyId: property.id,
+                                buildingId: property.buildingId,
+                                ownerId: oid,
+                                isSystem: true,
+                            });
+                        });
+                    }
                     if (isRented) rentedCount++;
                     else vacantCount++;
                 }

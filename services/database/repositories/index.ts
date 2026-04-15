@@ -70,6 +70,10 @@ export class PropertyOwnershipHistoryRepository extends BaseRepository<any> {
     constructor() { super('property_ownership_history'); }
 }
 
+export class PropertyOwnershipRepository extends BaseRepository<any> {
+    constructor() { super('property_ownership'); }
+}
+
 export class UnitsRepository extends BaseRepository<any> {
     constructor() { super('units'); }
 }

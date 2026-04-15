@@ -136,7 +136,15 @@ const RentalSettingsPage: React.FC = () => {
     const addLabel = `Add ${settingCategories.find(c => c.id === activeCategory)?.label.slice(0, -1)}`;
 
     return (
-        <div className="flex flex-col md:flex-row h-full gap-6">
+        <div className="flex flex-col h-full min-h-0 p-4 md:p-6">
+            <button
+                type="button"
+                onClick={() => dispatch({ type: 'SET_PAGE', payload: 'rentalManagement' })}
+                className="self-start mb-3 text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+            >
+                ← Back to rental operations
+            </button>
+            <div className="flex flex-col md:flex-row flex-1 min-h-0 gap-6">
             {/* Sidebar */}
             <Card className="md:w-64 flex-shrink-0 p-2">
                 <div className="space-y-1">
@@ -227,6 +235,7 @@ const RentalSettingsPage: React.FC = () => {
                     />
                 )}
             </Modal>
+            </div>
         </div>
     );
 };

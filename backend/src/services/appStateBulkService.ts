@@ -10,6 +10,7 @@ import {
 import { listProjects, rowToProjectApi } from './projectsService.js';
 import { listBuildings, rowToBuildingApi } from './buildingsService.js';
 import { listProperties, rowToPropertyApi } from './propertiesService.js';
+import { listPropertyOwnership, rowToPropertyOwnershipApi } from './propertyOwnershipPgService.js';
 import { listUnits, rowToUnitApi } from './unitsService.js';
 import { listInvoices, rowToInvoiceApi } from './invoicesService.js';
 import { listBills, rowToBillApi } from './billsService.js';
@@ -54,6 +55,7 @@ type BulkEntityKey =
   | 'projects'
   | 'buildings'
   | 'properties'
+  | 'propertyOwnership'
   | 'units'
   | 'invoices'
   | 'bills'
@@ -114,6 +116,7 @@ export async function getBulkAppState(
     projectRows,
     buildingRows,
     propertyRows,
+    propertyOwnershipRows,
     unitRows,
     invoiceRows,
     billRows,
@@ -139,6 +142,9 @@ export async function getBulkAppState(
     wantEntity('projects', filter) ? listProjects(client, tenantId) : Promise.resolve([]),
     wantEntity('buildings', filter) ? listBuildings(client, tenantId) : Promise.resolve([]),
     wantEntity('properties', filter) ? listProperties(client, tenantId) : Promise.resolve([]),
+    wantEntity('propertyOwnership', filter)
+      ? listPropertyOwnership(client, tenantId)
+      : Promise.resolve([]),
     wantEntity('units', filter) ? listUnits(client, tenantId) : Promise.resolve([]),
     wantEntity('invoices', filter) ? listInvoices(client, tenantId) : Promise.resolve([]),
     wantEntity('bills', filter) ? listBills(client, tenantId) : Promise.resolve([]),
@@ -200,6 +206,9 @@ export async function getBulkAppState(
   }
   if (wantEntity('properties', filter)) {
     out.properties = propertyRows.map((r) => rowToPropertyApi(r));
+  }
+  if (wantEntity('propertyOwnership', filter)) {
+    out.propertyOwnership = propertyOwnershipRows.map((r) => rowToPropertyOwnershipApi(r));
   }
   if (wantEntity('units', filter)) {
     out.units = unitRows.map((r) => rowToUnitApi(r));

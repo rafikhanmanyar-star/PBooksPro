@@ -58,6 +58,7 @@ export function objectToDbFormat<T extends Record<string, any>>(obj: T): Record<
  */
 const NUMERIC_COLUMNS = new Set([
     'amount', 'paid_amount', 'opening_balance', 'balance', 'monthly_rent', 'rent_due_date', 'security_deposit',
+    'ownership_percentage',
     'broker_fee', 'sale_price', 'area', 'monthly_service_charge', 'price',
     'list_price', 'customer_discount', 'floor_discount', 'lump_sum_discount',
     'misc_discount', 'selling_price', 'down_payment_percentage', 'down_payment_amount',

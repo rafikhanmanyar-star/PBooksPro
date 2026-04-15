@@ -128,6 +128,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, currentPage }) =
         };
 
       case 'rentalManagement':
+      case 'rentalSettings':
       case 'rentalInvoices':
         return {
           title: 'Rental Management Help',

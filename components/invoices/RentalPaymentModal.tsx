@@ -12,6 +12,8 @@ import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
+import { getOwnershipSharesForPropertyOnDate, primaryOwnerIdFromShares } from '../../services/propertyOwnershipService';
+import { buildOwnerRentAllocationTransactions, shouldPostOwnerRentAllocation } from '../../services/rentOwnerAllocation';
 import { accountIdMatchesLogical } from '../../services/systemEntityIds';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 
@@ -176,14 +178,19 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         const property = effectiveInvoice.propertyId
             ? state.properties.find(p => p.id === effectiveInvoice.propertyId)
             : null;
-        const ownerId = effectiveInvoice.propertyId
-            ? getOwnerIdForPropertyOnDate(
-                effectiveInvoice.propertyId,
-                paymentDate,
-                state.propertyOwnershipHistory || [],
-                property?.ownerId
-            )
-            : undefined;
+        const sharesForDay = effectiveInvoice.propertyId
+            ? getOwnershipSharesForPropertyOnDate(state, effectiveInvoice.propertyId, paymentDate)
+            : [];
+        const ownerId =
+            primaryOwnerIdFromShares(sharesForDay) ??
+            (effectiveInvoice.propertyId
+                ? getOwnerIdForPropertyOnDate(
+                      effectiveInvoice.propertyId,
+                      paymentDate,
+                      state.propertyOwnershipHistory || [],
+                      property?.ownerId
+                  )
+                : undefined);
         const baseTransaction = {
             date: paymentDate,
             propertyId: effectiveInvoice.propertyId,
@@ -231,18 +238,37 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             const rentDescription = (description && description.trim())
                 ? description.trim()
                 : `Rent payment for Invoice #${effectiveInvoice.invoiceNumber}`;
-            // Create transaction for RENT portion with Rental Income category
             const tx: Omit<Transaction, 'id'> = {
                 ...baseTransaction,
                 contactId: effectiveInvoice.contactId,
                 type: TransactionType.INCOME,
                 amount: rentPayment,
-                categoryId: categoryId, // Rental Income category
+                categoryId: categoryId,
                 accountId: accountId,
                 description: rentDescription,
                 invoiceId: effectiveInvoice.id
             };
-            dispatch({ type: 'ADD_TRANSACTION', payload: { ...tx, id: Date.now().toString() + Math.random() } });
+            const mkId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+            const grossTx: Transaction = { ...tx, id: mkId() };
+            if (
+                effectiveInvoice.propertyId &&
+                shouldPostOwnerRentAllocation(state, effectiveInvoice.propertyId, paymentDate)
+            ) {
+                const batchId = `rent-alloc-${mkId()}`;
+                const allocLegs = buildOwnerRentAllocationTransactions(state, {
+                    propertyId: effectiveInvoice.propertyId,
+                    buildingId: effectiveInvoice.buildingId,
+                    paymentDateYyyyMmDd: paymentDate.slice(0, 10),
+                    rentAmount: rentPayment,
+                    accountId,
+                    invoiceId: effectiveInvoice.id,
+                    baseDescription: rentDescription,
+                    batchId,
+                }).map((leg) => ({ ...leg, id: mkId() })) as Transaction[];
+                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: [grossTx, ...allocLegs] });
+            } else {
+                dispatch({ type: 'ADD_TRANSACTION', payload: grossTx });
+            }
         }
 
         // Security Deposit Logic - Credits both Bank and Security Liability

@@ -25,6 +25,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate } from '../../services/propertyOwnershipService';
 
 // --- Types ---
 
@@ -121,37 +122,30 @@ const OwnerPayoutsPage: React.FC = () => {
     // Owner options: after building selection (owners with properties in that building, or all owners with properties)
     const ownerFilterOptions = useMemo(() => {
         const owners = state.contacts.filter(c => c.type === ContactType.OWNER);
-        if (selectedBuildingId === 'all') {
-            return owners.filter(o => state.properties.some(p => p.ownerId === o.id));
-        }
-        return owners.filter(o =>
-            state.properties.some(p => p.ownerId === o.id && p.buildingId === selectedBuildingId)
-        );
-    }, [state.contacts, state.properties, selectedBuildingId]);
+        const b = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
+        return owners.filter((o) => getPropertyIdsForOwner(state, o.id, b).size > 0);
+    }, [state.contacts, state.properties, state.propertyOwnership, selectedBuildingId]);
 
     // Unit options: after owner selection (properties of that owner, optionally in selected building)
     const unitFilterOptions = useMemo(() => {
         if (selectedOwnerId === 'all') return [];
-        return state.properties.filter(
-            p => p.ownerId === selectedOwnerId &&
-                (selectedBuildingId === 'all' || p.buildingId === selectedBuildingId)
-        );
-    }, [state.properties, selectedOwnerId, selectedBuildingId]);
+        const b = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
+        const keys = getPropertyIdsForOwner(state, selectedOwnerId, b);
+        return state.properties.filter((p) => keys.has(String(p.id)));
+    }, [state.properties, state.propertyOwnership, selectedOwnerId, selectedBuildingId]);
 
     // Property scope for filters: when building/owner/unit selected, balances and summary show only that scope.
     // Use string ids so comparisons with rentalAgreement.propertyId (may be string or number) always match.
     const propertyIdsInScope = useMemo(() => {
         if (selectedUnitId !== 'all') return new Set<string>([String(selectedUnitId)]);
+        const b = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
+        if (selectedOwnerId !== 'all') {
+            return getPropertyIdsForOwner(state, selectedOwnerId, b);
+        }
         return new Set(
-            state.properties
-                .filter(p => {
-                    if (selectedBuildingId !== 'all' && p.buildingId !== selectedBuildingId) return false;
-                    if (selectedOwnerId !== 'all' && p.ownerId !== selectedOwnerId) return false;
-                    return true;
-                })
-                .map(p => String(p.id))
+            state.properties.filter((p) => (b ? p.buildingId === b : true)).map((p) => String(p.id))
         );
-    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, state.properties]);
+    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, state.properties, state.propertyOwnership]);
 
     // --- Owner Rental Income Balances ---
     // Aligned with Owner Ledger / Owner Income report: broker fee is deducted from owner balance.
@@ -163,12 +157,17 @@ const OwnerPayoutsPage: React.FC = () => {
         const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
         const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+        const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+        const clearingRentCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
 
         // Only owners that have at least one property in scope (use string id for consistency)
         const ownersInScope = new Set<string>();
         propertyIdsInScope.forEach(pid => {
             const prop = state.properties.find(p => String(p.id) === pid);
             if (prop?.ownerId) ownersInScope.add(prop.ownerId);
+            (state.propertyOwnership || [])
+                .filter((r) => r.propertyId === pid)
+                .forEach((r) => ownersInScope.add(r.ownerId));
         });
 
         // Exclude broker fee payment transactions from expenses (broker fee is deducted from agreements below)
@@ -194,20 +193,38 @@ const OwnerPayoutsPage: React.FC = () => {
             ownerData[ownerId] = { collected: 0, paid: 0 };
         });
 
-        // Rental Income — aligned with Owner Rental Income report: positive = collected, negative = service charge deduction (paid out). Only in-scope properties.
-        state.transactions.filter(tx =>
-            tx.type === TransactionType.INCOME &&
-            tx.categoryId === rentalIncomeCategory.id &&
-            tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))
-        ).forEach(tx => {
-            const ownerIdForTx = tx.ownerId ?? state.properties.find(p => p.id === tx.propertyId)?.ownerId;
-            if (ownerIdForTx && ownerData[ownerIdForTx]) {
+        // Rental Income — gross (single-owner) + per-owner share lines (multi-owner). Only in-scope properties.
+        state.transactions
+            .filter((tx) => {
+                if (tx.type !== TransactionType.INCOME || !tx.propertyId || !propertyIdsInScope.has(String(tx.propertyId)))
+                    return false;
+                if (clearingRentCat && tx.categoryId === clearingRentCat.id) return false;
+                if (tx.categoryId === rentalIncomeCategory.id) {
+                    const d = (tx.date || '').slice(0, 10);
+                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) return false;
+                    return true;
+                }
+                if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) return true;
+                return false;
+            })
+            .forEach((tx) => {
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(amount)) return;
-                if (amount > 0) ownerData[ownerIdForTx].collected += amount;
-                else ownerData[ownerIdForTx].paid += Math.abs(amount);
-            }
-        });
+
+                if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) {
+                    const oid = tx.contactId;
+                    if (oid && ownerData[oid]) {
+                        if (amount > 0) ownerData[oid].collected += amount;
+                    }
+                    return;
+                }
+
+                const ownerIdForTx = tx.ownerId ?? state.properties.find((p) => p.id === tx.propertyId)?.ownerId;
+                if (ownerIdForTx && ownerData[ownerIdForTx]) {
+                    if (amount > 0) ownerData[ownerIdForTx].collected += amount;
+                    else ownerData[ownerIdForTx].paid += Math.abs(amount);
+                }
+            });
 
         // Owner Service Charge Payments — only for owners in scope
         if (ownerSvcPayCategory) {

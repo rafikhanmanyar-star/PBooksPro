@@ -1094,6 +1094,7 @@ export class AppStateApiService {
     const projects = raw.projects || [];
     const buildings = raw.buildings || [];
     const properties = raw.properties || [];
+    const propertyOwnershipRaw = raw.propertyOwnership || raw.property_ownership || [];
     const units = raw.units || [];
     const invoices = raw.invoices || [];
     const bills = raw.bills || [];
@@ -1159,6 +1160,33 @@ export class AppStateApiService {
 
       return normalizedProperty;
     });
+
+    const normalizedPropertyOwnership = (Array.isArray(propertyOwnershipRaw) ? propertyOwnershipRaw : []).map(
+      (r: any) => ({
+        id: r.id,
+        tenantId: r.tenantId ?? r.tenant_id ?? '',
+        propertyId: r.propertyId ?? r.property_id ?? '',
+        ownerId: r.ownerId ?? r.owner_id ?? '',
+        ownershipPercentage:
+          typeof r.ownershipPercentage === 'number'
+            ? r.ownershipPercentage
+            : parseFloat(String(r.ownership_percentage ?? r.ownershipPercentage ?? '0')) || 0,
+        startDate: (() => {
+          const v = r.startDate ?? r.start_date;
+          return v ? parseStoredDateToYyyyMmDdInput(String(v)) : '';
+        })(),
+        endDate: (() => {
+          const v = r.endDate ?? r.end_date;
+          if (v == null || v === '') return null;
+          return parseStoredDateToYyyyMmDdInput(String(v));
+        })(),
+        isActive: r.isActive === true || r.is_active === true || r.is_active === 1,
+        createdAt: r.createdAt ?? r.created_at ?? new Date().toISOString(),
+        updatedAt: r.updatedAt ?? r.updated_at ?? new Date().toISOString(),
+        version: typeof r.version === 'number' ? r.version : undefined,
+        deletedAt: r.deletedAt ?? r.deleted_at ?? undefined,
+      })
+    );
 
     // Normalize units from API (PostgreSQL: unit_number, owner_contact_id, status)
     const normalizedUnits = units.map((u: any) => {
@@ -1467,6 +1495,7 @@ export class AppStateApiService {
       projects: normalizedProjects,
       buildings: normalizedBuildings,
       properties: normalizedProperties,
+      propertyOwnership: normalizedPropertyOwnership,
       units: normalizedUnits,
       invoices: normalizedInvoices,
       bills: normalizedBills,

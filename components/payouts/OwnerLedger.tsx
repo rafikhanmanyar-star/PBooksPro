@@ -4,6 +4,7 @@ import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate } from '../../services/propertyOwnershipService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -34,10 +35,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
     const ledgerItems = useMemo(() => {
         if (!ownerId) return [];
         
-        // Filter properties by Owner, Building (if provided), and Unit (if provided). Use string ids for consistent comparison.
-        let ownerProperties = state.properties.filter(
-            p => p.ownerId === ownerId && (!buildingId || p.buildingId === buildingId)
-        );
+        const ownerScopeIds = getPropertyIdsForOwner(state, ownerId, buildingId);
+        let ownerProperties = state.properties.filter(p => ownerScopeIds.has(String(p.id)));
         if (propertyId) {
             const propertyIdStr = String(propertyId);
             ownerProperties = ownerProperties.filter(p => String(p.id) === propertyIdStr);
@@ -52,21 +51,34 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
             const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
             const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
-            
-            // 1. Rental Income (Credit) - Restrict to in-scope properties first (respects building/property filter), then attribute by tx.ownerId (ownership history) or current property owner.
-            const income = state.transactions
-                .filter(tx => {
-                    if (tx.type !== TransactionType.INCOME || tx.categoryId !== rentalIncomeCategory.id || !tx.propertyId) return false;
-                    if (!ownerPropertyIds.has(String(tx.propertyId))) return false;
+            const clearingAllocCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
+            const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+
+            // 1. Rental Income + per-owner share lines (multi-owner uses share category; gross rent hidden when split).
+            const income = state.transactions.filter(tx => {
+                if (tx.type !== TransactionType.INCOME || !tx.propertyId) return false;
+                if (!ownerPropertyIds.has(String(tx.propertyId))) return false;
+
+                if (clearingAllocCat && tx.categoryId === clearingAllocCat.id) return false;
+
+                if (tx.categoryId === rentalIncomeCategory.id) {
+                    const d = (tx.date || '').slice(0, 10);
+                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) return false;
                     if (tx.ownerId) return tx.ownerId === ownerId;
                     return true;
-                });
+                }
+
+                if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId === ownerId) return true;
+
+                return false;
+            });
 
             income.forEach(tx => {
                 const property = state.properties.find(p => p.id === tx.propertyId);
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(amount)) return;
-                
+                const isShareLine = Boolean(ownerShareCat && tx.categoryId === ownerShareCat.id);
+
                 // If negative (service charge deduction), show as debit; if positive (rent), show as credit
                 if (amount < 0) {
                     items.push({
@@ -82,10 +94,12 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     items.push({
                         id: `inc-${tx.id}`,
                         date: tx.date,
-                        particulars: `Rent: ${property?.name || 'Unit'}`,
+                        particulars: isShareLine
+                            ? (tx.description || `Rent share: ${property?.name || 'Unit'}`)
+                            : `Rent: ${property?.name || 'Unit'}`,
                         debit: 0,
                         credit: amount,
-                        type: 'Rent',
+                        type: isShareLine ? 'Rent (share)' : 'Rent',
                         transaction: tx
                     });
                 }

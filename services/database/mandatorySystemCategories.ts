@@ -18,6 +18,9 @@ export const MANDATORY_SYSTEM_CATEGORIES: Category[] = [
     { id: 'sys-cat-penalty-inc', name: 'Penalty Income', type: TransactionType.INCOME, isPermanent: true },
     { id: 'sys-cat-own-eq', name: 'Owner Equity', type: TransactionType.INCOME, isPermanent: true },
     { id: 'sys-cat-own-svc-pay', name: 'Owner Service Charge Payment', type: TransactionType.INCOME, isPermanent: true, isRental: true },
+    /** Cash-neutral legs after tenant rent; excluded from P&L (see plExclusions). */
+    { id: 'sys-cat-rent-own-clear', name: 'Owner Rental Allocation (Clearing)', type: TransactionType.INCOME, isPermanent: true, isRental: true },
+    { id: 'sys-cat-rent-own-share', name: 'Owner Rental Income Share', type: TransactionType.INCOME, isPermanent: true, isRental: true },
 
     // Project received assets (non-cash installment consideration, sale recognition)
     { id: 'sys-cat-rev-asset-in-kind', name: 'Revenue - Asset received in kind', type: TransactionType.INCOME, isPermanent: true },

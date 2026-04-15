@@ -8,6 +8,7 @@ import ComboBox from '../ui/ComboBox';
 import Modal from '../ui/Modal';
 import ContactForm from './ContactForm';
 import BuildingForm from './BuildingForm';
+import PropertyOwnershipTabContent from './PropertyOwnershipTabContent';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 // Note: useEntityFormModal removed to avoid circular dependency - using local modal pattern instead
@@ -39,6 +40,7 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
 
     const [addModalType, setAddModalType] = useState<string | null>(null);
     const [newItemName, setNewItemName] = useState('');
+    const [activeTab, setActiveTab] = useState<'details' | 'ownership'>('details');
 
     // Allow both Owner and Client types for the "Global Owner" concept
     const owners = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
@@ -62,6 +64,7 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
             // For new property mode, we don't reset - preserve user input
             lastInitializedPropertyId.current = currentPropertyId;
         }
+        setActiveTab('details');
     }, [propertyToEdit?.id]); // Only update when the property ID changes (switching between properties)
     
     // Check for duplicate property names
@@ -122,7 +125,33 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
     return (
         <>
             <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
+                {propertyToEdit && (
+                    <div className="flex gap-1 mb-3 border-b border-slate-200 pb-2">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('details')}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                                activeTab === 'details' ? 'bg-indigo-50 text-accent' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                            Details
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('ownership')}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                                activeTab === 'ownership' ? 'bg-indigo-50 text-accent' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                            Ownership
+                        </button>
+                    </div>
+                )}
                 <div className="flex-grow min-h-0 overflow-y-auto space-y-4">
+                    {propertyToEdit && activeTab === 'ownership' ? (
+                        <PropertyOwnershipTabContent property={propertyToEdit} />
+                    ) : (
+                        <>
                     <div>
                         <Input label="Property Name (e.g., Unit 101)" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
                         {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
@@ -157,6 +186,8 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
                         helperText="Amount deducted from owner's rental income when running monthly service charges."
                     />
                     <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Property details, notes, etc." />
+                        </>
+                    )}
                 </div>
                 
                 <div className="flex-shrink-0 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 mt-auto border-t">

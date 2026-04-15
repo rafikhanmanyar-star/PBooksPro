@@ -10,6 +10,7 @@ export function getProfitLossExcludedCategoryIds(state: Pick<AppState, 'categori
   const ids = new Set<string>();
   for (const c of state.categories || []) {
     if (c.name === 'Owner Equity' || c.name === 'Owner Withdrawn') ids.add(c.id);
+    if (c.name === 'Owner Rental Allocation (Clearing)' || c.name === 'Owner Rental Income Share') ids.add(c.id);
   }
   ids.add(CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID);
   return ids;
