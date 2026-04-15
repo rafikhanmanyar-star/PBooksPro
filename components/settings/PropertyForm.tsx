@@ -11,6 +11,9 @@ import BuildingForm from './BuildingForm';
 import PropertyOwnershipTabContent from './PropertyOwnershipTabContent';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
+import { getAppStateApiService } from '../../services/api/appStateApi';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 // Note: useEntityFormModal removed to avoid circular dependency - using local modal pattern instead
 
 interface PropertyFormProps {
@@ -26,6 +29,7 @@ interface PropertyFormProps {
 const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelete, propertyToEdit, contacts, buildings, properties }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
+    const { isAuthenticated } = useAuth();
     
     // Use ref to track the last property ID we initialized with
     // This prevents resetting the form when props change but we're still editing the same property
@@ -103,24 +107,46 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
         setAddModalType(type);
     }
 
-    const handleGenericSubmit = (type: 'CONTACT' | 'BUILDING') => (data: any) => {
-        const newId = Date.now().toString();
-        let payload;
+    const handleGenericSubmit = (type: 'CONTACT' | 'BUILDING') => async (data: any) => {
         if (type === 'CONTACT') {
-            payload = { ...data, id: newId, type: ContactType.OWNER };
-        } else { // BUILDING
-            payload = { ...data, id: newId };
-        }
-        
-        dispatch({ type: `ADD_${type}` as any, payload });
-
-        switch(type) {
-            case 'CONTACT': setOwnerId(newId); break;
-            case 'BUILDING': setBuildingId(newId); break;
+            if (!isLocalOnlyMode() && isAuthenticated) {
+                try {
+                    const saved = await getAppStateApiService().saveContact({
+                        ...data,
+                        type: ContactType.OWNER,
+                    });
+                    dispatch({ type: 'ADD_CONTACT', payload: { ...saved, type: saved.type || ContactType.OWNER } });
+                    setOwnerId(saved.id);
+                } catch (err: unknown) {
+                    const e = err as { message?: string; error?: string };
+                    await showAlert(e?.message || e?.error || 'Could not save owner to server.');
+                    return;
+                }
+            } else {
+                const newId = Date.now().toString();
+                dispatch({ type: 'ADD_CONTACT', payload: { ...data, id: newId, type: ContactType.OWNER } });
+                setOwnerId(newId);
+            }
+        } else {
+            if (!isLocalOnlyMode() && isAuthenticated) {
+                try {
+                    const saved = await getAppStateApiService().saveBuilding({ ...data });
+                    dispatch({ type: 'ADD_BUILDING', payload: { ...saved, id: saved.id } });
+                    setBuildingId(saved.id);
+                } catch (err: unknown) {
+                    const e = err as { message?: string; error?: string };
+                    await showAlert(e?.message || e?.error || 'Could not save building to server.');
+                    return;
+                }
+            } else {
+                const newId = Date.now().toString();
+                dispatch({ type: 'ADD_BUILDING', payload: { ...data, id: newId } });
+                setBuildingId(newId);
+            }
         }
         setAddModalType(null);
         setNewItemName('');
-    }
+    };
     
     return (
         <>

@@ -54,30 +54,65 @@ const RentalSettingsPage: React.FC = () => {
     const handleSubmit = async (data: any) => {
         if (!editingItem) return;
         const isEdit = !!editingItem.item;
-        const id = isEdit ? editingItem.item.id : Date.now().toString();
-        let payload: Record<string, unknown> = { ...data, id };
+        let payload: Record<string, unknown>;
 
-        if (!isLocalOnlyMode() && isAuthenticated && (editingItem.type === 'buildings' || editingItem.type === 'properties')) {
-            try {
-                const api = getAppStateApiService();
-                if (editingItem.type === 'buildings') {
-                    const ver = (editingItem.item as { version?: number } | undefined)?.version;
-                    const saved = isEdit
-                        ? await api.updateBuilding(id, { ...payload, version: ver } as any)
-                        : await api.saveBuilding(payload as any);
-                    payload = { ...payload, ...saved };
-                } else {
-                    const ver = (editingItem.item as { version?: number } | undefined)?.version;
-                    const saved = isEdit
-                        ? await api.updateProperty(id, { ...payload, version: ver } as any)
-                        : await api.saveProperty(payload as any);
-                    payload = { ...payload, ...saved };
+        if (editingItem.type === 'buildings' || editingItem.type === 'properties') {
+            const id = isEdit ? editingItem.item.id : Date.now().toString();
+            payload = { ...data, id };
+
+            if (!isLocalOnlyMode() && isAuthenticated) {
+                try {
+                    const api = getAppStateApiService();
+                    if (editingItem.type === 'buildings') {
+                        const ver = (editingItem.item as { version?: number } | undefined)?.version;
+                        const saved = isEdit
+                            ? await api.updateBuilding(id, { ...payload, version: ver } as any)
+                            : await api.saveBuilding(payload as any);
+                        payload = { ...payload, ...saved };
+                    } else {
+                        const ver = (editingItem.item as { version?: number } | undefined)?.version;
+                        const saved = isEdit
+                            ? await api.updateProperty(id, { ...payload, version: ver } as any)
+                            : await api.saveProperty(payload as any);
+                        payload = { ...payload, ...saved };
+                    }
+                } catch (err: unknown) {
+                    const e = err as { message?: string; error?: string };
+                    showToast(e?.message || e?.error || 'Could not save to server.', 'error');
+                    return;
                 }
-            } catch (err: unknown) {
-                const e = err as { message?: string; error?: string };
-                showToast(e?.message || e?.error || 'Could not save to server.', 'error');
-                return;
             }
+        } else if (editingItem.type === 'tenants' || editingItem.type === 'owners') {
+            const contactType = editingItem.type === 'tenants' ? ContactType.TENANT : ContactType.OWNER;
+            if (!isLocalOnlyMode() && isAuthenticated) {
+                try {
+                    const api = getAppStateApiService();
+                    if (isEdit) {
+                        const saved = await api.saveContact({
+                            ...data,
+                            type: contactType,
+                            id: editingItem.item.id,
+                        });
+                        payload = { ...saved };
+                    } else {
+                        // New contact: do not send a client-only id — saveContact uses POST when `id` is absent (PUT would 404).
+                        const saved = await api.saveContact({
+                            ...data,
+                            type: contactType,
+                        });
+                        payload = { ...saved };
+                    }
+                } catch (err: unknown) {
+                    const e = err as { message?: string; error?: string };
+                    showToast(e?.message || e?.error || 'Could not save to server.', 'error');
+                    return;
+                }
+            } else {
+                const id = isEdit ? editingItem.item.id : Date.now().toString();
+                payload = { ...data, id, type: contactType };
+            }
+        } else {
+            return;
         }
 
         switch (editingItem.type) {
@@ -89,7 +124,13 @@ const RentalSettingsPage: React.FC = () => {
                 break;
             case 'tenants':
             case 'owners':
-                dispatch({ type: isEdit ? 'UPDATE_CONTACT' : 'ADD_CONTACT', payload: { ...payload, type: editingItem.type === 'tenants' ? ContactType.TENANT : ContactType.OWNER } });
+                dispatch({
+                    type: isEdit ? 'UPDATE_CONTACT' : 'ADD_CONTACT',
+                    payload: {
+                        ...payload,
+                        type: editingItem.type === 'tenants' ? ContactType.TENANT : ContactType.OWNER,
+                    },
+                });
                 break;
         }
         setEditingItem(null);
@@ -101,7 +142,7 @@ const RentalSettingsPage: React.FC = () => {
         if (!confirmed) return;
 
         const itemId = editingItem.item.id;
-        if (isAuthenticated && (editingItem.type === 'buildings' || editingItem.type === 'properties')) {
+        if (!isLocalOnlyMode() && isAuthenticated && (editingItem.type === 'buildings' || editingItem.type === 'properties')) {
             try {
                 const api = getAppStateApiService();
                 if (editingItem.type === 'buildings') await api.deleteBuilding(itemId);
@@ -113,7 +154,7 @@ const RentalSettingsPage: React.FC = () => {
                 }
             }
         }
-        if (isAuthenticated && (editingItem.type === 'tenants' || editingItem.type === 'owners')) {
+        if (!isLocalOnlyMode() && isAuthenticated && (editingItem.type === 'tenants' || editingItem.type === 'owners')) {
             try {
                 await getAppStateApiService().deleteContact(itemId);
             } catch (err: any) {
