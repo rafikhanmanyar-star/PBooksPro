@@ -11,17 +11,22 @@ alwaysApply: true
 npm run test:local-only
 ```
 
-**What it does:**
+**What it does (production-like path: PostgreSQL → REST API → same Electron build style as the LAN/API client):**
 1. Loads `.env` (needs `DATABASE_URL` pointing at a local PostgreSQL instance)
 2. Rebuilds native modules for Electron
-3. Builds the backend (bundles financial engines + compiles TypeScript)
+3. Builds the backend (`build:backend`), unless you use watch mode (see below)
 4. Runs PostgreSQL migrations (`db:migrate:lan`)
-5. Starts the backend API server (`node backend/dist/index.js`) in background
-6. Builds the Vite frontend with `VITE_LOCAL_ONLY=false` and `VITE_ELECTRON_BUILD=true`
-7. Launches Electron client connected to the local API server (`http://127.0.0.1:3000/api`)
-8. When Electron exits, stops the backend API server
+5. Starts the API on port 3000 with `NODE_ENV=production` (`node backend/dist/index.js` via cmd so the process tree can be stopped cleanly)
+6. Waits until `http://127.0.0.1:3000/health` responds (Socket.IO uses the same port for realtime)
+7. Builds the Vite app with **`VITE_LOCAL_ONLY=false`**, **`VITE_ELECTRON_BUILD=true`**, and **forces** `VITE_API_URL=http://127.0.0.1:3000/api` and `VITE_WS_URL=http://127.0.0.1:3000` so a remote `VITE_API_URL` in `.env` cannot point the test build at production
+8. Launches Electron; data loads through the API/JWT flow like production
+9. When Electron exits, stops the backend
 
-**Requirements:** PostgreSQL must be running locally with `DATABASE_URL` configured in the root `.env` file (e.g. `DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/pBookspro`).
+**Realtime:** After login, the client connects Socket.IO to the same host as the API. Events `entity_created` / `entity_updated` / `entity_deleted` trigger a debounced refresh from PostgreSQL so changes from **other sessions/users** show up without relogging. Your own edits still apply through the normal client save path.
+
+**Backend live reload (optional):** `npm run test:local-only:watch` or `$env:PBooks_BACKEND_WATCH="1"; npm run test:local-only` skips `build:backend` and runs `npm run dev --prefix backend` (tsx watch) in a separate console so API code changes reload; the Electron bundle is still a production Vite build.
+
+**Requirements:** PostgreSQL must be running locally with `DATABASE_URL` configured in the root or `backend/.env` (e.g. `DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/pBookspro`).
 
 ---
 
@@ -159,7 +164,7 @@ $env:VITE_LOCAL_ONLY="false"; npm run dev
 
 Then open the URL Vite prints (usually `http://localhost:5173`). Log in so the client has a JWT; the app will call `GET/POST` on `/api/projects`, `/api/units`, etc.
 
-For **local-only** (no API, SQLite in Electron), use `npm run test:local-only` as in the first section — that does **not** use this PostgreSQL backend.
+For **offline SQLite** (no API, `VITE_LOCAL_ONLY=true`), use `npm run electron:local` or `npm run electron:dev` — not `test:local-only`, which is the **PostgreSQL + API** stack above.
 
 ### 6. Import a local SQLite backup into PostgreSQL (RK Builders)
 

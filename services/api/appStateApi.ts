@@ -1999,6 +1999,23 @@ export class AppStateApiService {
   }
 
   /**
+   * Persist ownership rows for one property after transfer (PostgreSQL).
+   */
+  async syncPropertyOwnership(
+    propertyId: string,
+    rows: Array<{
+      id: string;
+      ownerId: string;
+      ownershipPercentage: number;
+      startDate: string;
+      endDate: string | null;
+      isActive: boolean;
+    }>
+  ): Promise<void> {
+    return this.propertiesRepo.syncOwnership(propertyId, rows);
+  }
+
+  /**
    * Delete property from API
    */
   async deleteProperty(id: string): Promise<void> {
@@ -2323,6 +2340,30 @@ export class AppStateApiService {
   }
 
   /**
+   * Update rental agreement on API (PUT). Use after edits when the row already exists on the server.
+   */
+  async updateRentalAgreement(
+    id: string,
+    agreement: Partial<AppState['rentalAgreements'][0]> & { version?: number }
+  ): Promise<AppState['rentalAgreements'][0]> {
+    logger.logCategory('sync', `💾 Syncing rental agreement (PUT): ${id}`);
+    const saved = await this.rentalAgreementsRepo.update(id, { ...agreement, id });
+    return this.normalizeRentalAgreement(saved);
+  }
+
+  /** LAN/API: fix agreements missing tenant contact after old property-transfer bug. */
+  async repairRentalAgreementsMissingContactFromPrevious(): Promise<{
+    updated: number;
+    agreements: AppState['rentalAgreements'];
+  }> {
+    const { updated, agreements } = await this.rentalAgreementsRepo.repairMissingContactFromPrevious();
+    return {
+      updated,
+      agreements: agreements.map((a) => this.normalizeRentalAgreement(a as Record<string, unknown>)),
+    };
+  }
+
+  /**
    * Helper to normalize rental agreement data from API
    */
   private normalizeRentalAgreement(ra: any): AppState['rentalAgreements'][0] {
@@ -2350,7 +2391,9 @@ export class AppStateApiService {
         if (fee == null) return undefined;
         return typeof fee === 'number' ? fee : parseFloat(String(fee));
       })(),
-      ownerId: ra.owner_id || ra.ownerId || undefined
+      ownerId: ra.owner_id || ra.ownerId || undefined,
+      previousAgreementId: ra.previous_agreement_id || ra.previousAgreementId || undefined,
+      version: typeof ra.version === 'number' ? ra.version : undefined,
     };
   }
 

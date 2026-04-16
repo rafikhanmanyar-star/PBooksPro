@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
 import type { Property } from '../../types';
 import { ContactType } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import Input from '../ui/Input';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { getAppStateApiService } from '../../services/api/appStateApi';
+import { apiClient } from '../../services/api/client';
 import { applyOwnershipTransferToState } from '../../services/propertyOwnershipService';
 import { getCurrentTenantId } from '../../services/database/tenantUtils';
 import { toLocalDateString } from '../../utils/dateUtils';
@@ -25,6 +29,7 @@ interface MultiOwnerOwnershipModalProps {
 const MultiOwnerOwnershipModal: React.FC<MultiOwnerOwnershipModalProps> = ({ isOpen, onClose, property }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
+    const { isAuthenticated } = useAuth();
     const [rows, setRows] = useState<Row[]>([{ ownerId: '', percentage: '' }]);
 
     const owners = useMemo(
@@ -75,12 +80,43 @@ const MultiOwnerOwnershipModal: React.FC<MultiOwnerOwnershipModalProps> = ({ isO
             return;
         }
         try {
+            const tenantId = apiClient.getTenantId() || getCurrentTenantId();
             const next = applyOwnershipTransferToState(state, {
                 propertyId: property.id,
                 transferDate: toLocalDateString(new Date()),
                 newOwners,
-                tenantId: getCurrentTenantId(),
+                tenantId,
             });
+
+            const useApi = !isLocalOnlyMode() && isAuthenticated;
+            if (useApi) {
+                const api = getAppStateApiService();
+                const updatedProp = next.properties.find((p) => p.id === property.id);
+                if (!updatedProp) {
+                    throw new Error('Property not found after ownership update.');
+                }
+                const propVersion = (property as { version?: number }).version;
+                await api.updateProperty(property.id, {
+                    name: updatedProp.name,
+                    ownerId: updatedProp.ownerId,
+                    buildingId: updatedProp.buildingId,
+                    description: updatedProp.description,
+                    monthlyServiceCharge: updatedProp.monthlyServiceCharge,
+                    ...(propVersion !== undefined ? { version: propVersion } : {}),
+                });
+                const ownershipSyncRows = (next.propertyOwnership || [])
+                    .filter((r) => r.propertyId === property.id)
+                    .map((r) => ({
+                        id: r.id,
+                        ownerId: r.ownerId,
+                        ownershipPercentage: r.ownershipPercentage,
+                        startDate: r.startDate,
+                        endDate: r.endDate ?? null,
+                        isActive: r.isActive,
+                    }));
+                await api.syncPropertyOwnership(property.id, ownershipSyncRows);
+            }
+
             dispatch({
                 type: 'SET_STATE',
                 payload: {

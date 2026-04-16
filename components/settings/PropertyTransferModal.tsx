@@ -1,7 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
 import { Property, Contact, ContactType, RentalAgreement, RentalAgreementStatus } from '../../types';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { getAppStateApiService } from '../../services/api/appStateApi';
+import { apiClient } from '../../services/api/client';
+import { applyLegacySingleOwnerTransfer } from '../../services/propertyOwnershipService';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -25,6 +30,7 @@ interface AgreementInfo {
 const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, onClose, property }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showToast, showConfirm } = useNotification();
+    const { isAuthenticated } = useAuth();
 
     // Find current owner
     const currentOwner = useMemo(() => 
@@ -201,6 +207,115 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
 
         try {
             const oldOwnerId = property.ownerId;
+            const useApi = !isLocalOnlyMode() && isAuthenticated;
+
+            if (useApi) {
+                const api = getAppStateApiService();
+                const tenantId = apiClient.getTenantId() || 'local';
+                const afterOwnership = applyLegacySingleOwnerTransfer(state, {
+                    propertyId: property.id,
+                    newOwnerId,
+                    transferDate,
+                    transferReference: transferReference.trim() || undefined,
+                    notes: notes.trim() || undefined,
+                    tenantId,
+                });
+                const transferredProp = afterOwnership.properties.find((p) => p.id === property.id);
+                if (!transferredProp) {
+                    throw new Error('Property not found after transfer transform');
+                }
+                const updatedPropForStore: Property = {
+                    ...transferredProp,
+                    description: property.description
+                        ? `${property.description}\n\n[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`
+                        : `[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`,
+                };
+                const ownershipRows = (afterOwnership.propertyOwnership || [])
+                    .filter((r) => r.propertyId === property.id)
+                    .map((r) => ({
+                        id: r.id,
+                        ownerId: r.ownerId,
+                        ownershipPercentage: r.ownershipPercentage,
+                        startDate: r.startDate,
+                        endDate: r.endDate ?? null,
+                        isActive: r.isActive,
+                    }));
+
+                const propVersion = (property as { version?: number }).version;
+                await api.updateProperty(property.id, {
+                    name: updatedPropForStore.name,
+                    ownerId: updatedPropForStore.ownerId,
+                    buildingId: updatedPropForStore.buildingId,
+                    description: updatedPropForStore.description,
+                    monthlyServiceCharge: updatedPropForStore.monthlyServiceCharge,
+                    ...(propVersion !== undefined ? { version: propVersion } : {}),
+                });
+                await api.syncPropertyOwnership(property.id, ownershipRows);
+
+                for (const agreementInfo of oldAgreements) {
+                    const oldAgreement = agreementInfo.agreement;
+                    if (!oldAgreement.ownerId) {
+                        await api.updateRentalAgreement(oldAgreement.id, {
+                            ...oldAgreement,
+                            ownerId: oldOwnerId,
+                            description: oldAgreement.description
+                                ? `${oldAgreement.description}\n\n[OWNERSHIP] Property ownership changed on ${transferDate}. This agreement was with ${currentOwner?.name || 'previous owner'} when active.`
+                                : `[OWNERSHIP] Property ownership changed on ${transferDate}. This agreement was with ${currentOwner?.name || 'previous owner'} when active.`,
+                            ...(oldAgreement.version !== undefined ? { version: oldAgreement.version } : {}),
+                        });
+                    }
+                }
+
+                if (shouldRenewAgreements && activeAgreements.length > 0) {
+                    for (const agreementInfo of activeAgreements) {
+                        const oldAgreement = agreementInfo.agreement;
+                        await api.updateRentalAgreement(oldAgreement.id, {
+                            ...oldAgreement,
+                            status: RentalAgreementStatus.RENEWED,
+                            ownerId: oldOwnerId,
+                            description: oldAgreement.description
+                                ? `${oldAgreement.description}\n\n[TRANSFERRED] Agreement ended due to property transfer on ${transferDate}. Property was transferred from ${currentOwner?.name || 'previous owner'} to ${newOwner.name}.`
+                                : `[TRANSFERRED] Agreement ended due to property transfer on ${transferDate}. Property was transferred from ${currentOwner?.name || 'previous owner'} to ${newOwner.name}.`,
+                            ...(oldAgreement.version !== undefined ? { version: oldAgreement.version } : {}),
+                        });
+
+                        const oldTemplates = state.recurringInvoiceTemplates.filter(
+                            (t) => t.agreementId === oldAgreement.id
+                        );
+                        for (const template of oldTemplates) {
+                            await api.deleteRecurringTemplate(template.id);
+                        }
+
+                        const newAgreementId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+                        const newAgreementNumber = getNextAgreementNumber();
+                        const newAgreement: RentalAgreement = {
+                            id: newAgreementId,
+                            agreementNumber: newAgreementNumber,
+                            contactId: oldAgreement.contactId,
+                            propertyId: property.id,
+                            startDate: transferDate,
+                            endDate: oldAgreement.endDate,
+                            monthlyRent: oldAgreement.monthlyRent,
+                            rentDueDate: oldAgreement.rentDueDate,
+                            status: RentalAgreementStatus.ACTIVE,
+                            securityDeposit: oldAgreement.securityDeposit,
+                            brokerId: oldAgreement.brokerId,
+                            brokerFee: oldAgreement.brokerFee,
+                            ownerId: newOwnerId,
+                            previousAgreementId: oldAgreement.id,
+                            description: `Renewed due to property transfer to ${newOwner.name} on ${transferDate}. Previous agreement: ${oldAgreement.agreementNumber}`,
+                        };
+                        await api.saveRentalAgreement(newAgreement);
+
+                        const nextSeq =
+                            parseInt(newAgreementNumber.slice(state.agreementSettings.prefix.length), 10) + 1;
+                        await api.flushTenantSettingsNow({
+                            ...state,
+                            agreementSettings: { ...state.agreementSettings, nextNumber: nextSeq },
+                        });
+                    }
+                }
+            }
 
             // 1. Ownership history + current owner (closes current row, adds new row, updates property.ownerId)
             dispatch({
@@ -279,7 +394,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                     const newAgreement: RentalAgreement = {
                         id: newAgreementId,
                         agreementNumber: newAgreementNumber,
-                        tenantId: oldAgreement.contactId,
+                        contactId: oldAgreement.contactId,
                         propertyId: property.id,
                         startDate: transferDate,
                         endDate: oldAgreement.endDate, // Keep same end date or extend as needed
@@ -290,6 +405,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                         brokerId: oldAgreement.brokerId,
                         brokerFee: oldAgreement.brokerFee,
                         ownerId: newOwnerId, // Store new owner ID for this agreement
+                        previousAgreementId: oldAgreement.id,
                         description: `Renewed due to property transfer to ${newOwner.name} on ${transferDate}. Previous agreement: ${oldAgreement.agreementNumber}`
                     };
 

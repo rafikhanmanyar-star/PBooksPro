@@ -6,6 +6,7 @@ import {
   createRentalAgreement,
   getRentalAgreementById,
   listRentalAgreements,
+  repairMissingContactIdsFromPreviousAgreement,
   rowToRentalAgreementApi,
   softDeleteRentalAgreement,
   syncReconcileRentalAgreementsForTenant,
@@ -37,6 +38,34 @@ rentalAgreementsRouter.get('/rental-agreements', async (req: AuthedRequest, res)
     handleRouteError(res, e);
   }
 });
+
+/** Must be registered before `/rental-agreements/:id` so `repair-...` is not parsed as an id. */
+rentalAgreementsRouter.post(
+  '/rental-agreements/repair-missing-contact-from-previous',
+  async (req: AuthedRequest, res) => {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+      return;
+    }
+    try {
+      const result = await withTransaction(async (client) => {
+        const { updated, ids } = await repairMissingContactIdsFromPreviousAgreement(client, tenantId);
+        await syncReconcileRentalAgreementsForTenant(client, tenantId);
+        const agreements: Record<string, unknown>[] = [];
+        for (const id of ids) {
+          const row = await getRentalAgreementById(client, tenantId, id);
+          if (row) agreements.push(rowToRentalAgreementApi(row));
+        }
+        return { updated, agreements };
+      });
+      sendSuccess(res, result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+    }
+  }
+);
 
 /** Sub-resource: invoices linked to agreement (rental / service charge / deposit lines with this agreement_id) */
 rentalAgreementsRouter.get('/rental-agreements/:id/invoices', async (req: AuthedRequest, res) => {

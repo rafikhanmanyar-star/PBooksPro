@@ -45,6 +45,23 @@ export class PropertiesApiRepository {
   }
 
   /**
+   * Replace `property_ownership` rows for one property (after client-side transfer).
+   */
+  async syncOwnership(
+    propertyId: string,
+    rows: Array<{
+      id: string;
+      ownerId: string;
+      ownershipPercentage: number;
+      startDate: string;
+      endDate: string | null;
+      isActive: boolean;
+    }>
+  ): Promise<void> {
+    await apiClient.post(`/properties/${propertyId}/ownership/sync`, { rows });
+  }
+
+  /**
    * Delete a property
    */
   async delete(id: string): Promise<void> {

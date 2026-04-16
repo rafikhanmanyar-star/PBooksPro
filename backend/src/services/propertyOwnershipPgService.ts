@@ -63,3 +63,69 @@ export async function listPropertyOwnership(
   );
   return r.rows;
 }
+
+export type PropertyOwnershipSyncRow = {
+  id: string;
+  ownerId: string;
+  ownershipPercentage: number;
+  startDate: string;
+  endDate: string | null;
+  isActive: boolean;
+};
+
+/**
+ * Replace ownership rows for one property with the client-computed chain (after transfer).
+ * Soft-deletes rows that exist on the server for this property but are not in `rows`, then upserts each row.
+ */
+export async function syncPropertyOwnershipRowsForProperty(
+  client: pg.PoolClient,
+  tenantId: string,
+  propertyId: string,
+  rows: PropertyOwnershipSyncRow[]
+): Promise<void> {
+  const existing = await client.query<{ id: string }>(
+    `SELECT id FROM property_ownership WHERE tenant_id = $1 AND property_id = $2 AND deleted_at IS NULL`,
+    [tenantId, propertyId]
+  );
+  const want = new Set(rows.map((r) => r.id));
+  for (const ex of existing.rows) {
+    if (!want.has(ex.id)) {
+      await client.query(
+        `UPDATE property_ownership SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
+         WHERE id = $1 AND tenant_id = $2`,
+        [ex.id, tenantId]
+      );
+    }
+  }
+  for (const r of rows) {
+    const end =
+      r.endDate == null || String(r.endDate).trim() === '' ? null : String(r.endDate).slice(0, 10);
+    const start = String(r.startDate).slice(0, 10);
+    const pct = Number(r.ownershipPercentage);
+    await client.query(
+      `INSERT INTO property_ownership (
+        id, tenant_id, property_id, owner_id, ownership_percentage, start_date, end_date, is_active,
+        version, deleted_at, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, 1, NULL, NOW(), NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        owner_id = EXCLUDED.owner_id,
+        ownership_percentage = EXCLUDED.ownership_percentage,
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date,
+        is_active = EXCLUDED.is_active,
+        version = property_ownership.version + 1,
+        deleted_at = NULL,
+        updated_at = NOW()`,
+      [
+        r.id,
+        tenantId,
+        propertyId,
+        r.ownerId,
+        Number.isFinite(pct) ? pct : 0,
+        start,
+        end,
+        Boolean(r.isActive),
+      ]
+    );
+  }
+}

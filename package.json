@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.212",
+  "version": "1.2.213",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -28,6 +28,7 @@
     "clear-local-transactions": "node tools/clear-local-transactions.cjs",
     "dedupe-local-db": "node scripts/dedupe-local-db.cjs",
     "test:local-only": "powershell -ExecutionPolicy Bypass -File test-local-only.ps1",
+    "test:local-only:watch": "powershell -ExecutionPolicy Bypass -File test-local-only.ps1 -BackendWatch",
     "prepare-local-db": "node scripts/prepare-local-db.cjs",
     "migrate-from-cloud": "node scripts/migrate-from-cloud.cjs",
     "migrate:sqlite-to-postgres": "node scripts/sqlite-to-postgres-rk-builders.cjs",

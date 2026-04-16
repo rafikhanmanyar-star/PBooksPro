@@ -93,7 +93,8 @@ function parseIsoDate(label: string, v: unknown): string {
 function pickBody(body: Record<string, unknown>) {
   return {
     agreement_number: String(body.agreementNumber ?? body.agreement_number ?? '').trim(),
-    contact_id: String(body.contactId ?? body.contact_id ?? '').trim(),
+    // Legacy bug: client sent tenant contact id in `tenantId` (wrong field name).
+    contact_id: String(body.contactId ?? body.contact_id ?? body.tenantId ?? '').trim(),
     property_id: String(body.propertyId ?? body.property_id ?? '').trim(),
     start_date: parseIsoDate('startDate', body.startDate ?? body.start_date),
     end_date: parseIsoDate('endDate', body.endDate ?? body.end_date),
@@ -338,6 +339,34 @@ export async function syncReconcileRentalAgreementsForTenant(
       ]
     );
   }
+}
+
+/**
+ * Copy contact_id from the linked previous agreement when contact_id is empty
+ * (e.g. property transfer renewed agreement with wrong field in old client).
+ */
+export async function repairMissingContactIdsFromPreviousAgreement(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<{ updated: number; ids: string[] }> {
+  const r = await client.query<{ id: string }>(
+    `UPDATE rental_agreements AS r
+       SET contact_id = p.contact_id,
+           version = r.version + 1,
+           updated_at = NOW()
+     FROM rental_agreements AS p
+     WHERE r.tenant_id = $1
+       AND p.tenant_id = $1
+       AND r.deleted_at IS NULL
+       AND p.deleted_at IS NULL
+       AND r.previous_agreement_id IS NOT NULL
+       AND r.previous_agreement_id = p.id
+       AND TRIM(COALESCE(r.contact_id, '')) = ''
+       AND TRIM(COALESCE(p.contact_id, '')) <> ''
+     RETURNING r.id`,
+    [tenantId]
+  );
+  return { updated: r.rowCount ?? 0, ids: r.rows.map((x) => x.id) };
 }
 
 export async function softDeleteRentalAgreement(

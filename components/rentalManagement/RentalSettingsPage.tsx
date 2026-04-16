@@ -14,6 +14,7 @@ import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
 import { ContactType } from '../../types';
 import { isLocalOnlyMode } from '../../config/apiUrl';
+import RentalAgreementContactRepairCard from './RentalAgreementContactRepairCard';
 
 const RentalSettingsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -243,6 +244,8 @@ const RentalSettingsPage: React.FC = () => {
                         {filteredItems.length === 0 && <div className="p-8 text-center text-slate-500">No items found.</div>}
                     </div>
                 </div>
+
+                <RentalAgreementContactRepairCard />
             </div>
 
             <Modal isOpen={!!editingItem} onClose={() => setEditingItem(null)} title={`${editingItem?.item ? 'Edit' : 'Add'} ${activeCategory.slice(0, -1)}`}>

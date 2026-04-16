@@ -17,7 +17,7 @@ export function normalizeRentalAgreementFromApi(raw: Record<string, unknown>): R
   return {
     id: String(raw.id ?? ''),
     agreementNumber: String(raw.agreementNumber ?? ''),
-    contactId: String(raw.contactId ?? ''),
+    contactId: String(raw.contactId ?? raw.contact_id ?? raw.tenantId ?? ''),
     propertyId: String(raw.propertyId ?? ''),
     startDate: String(raw.startDate ?? ''),
     endDate: String(raw.endDate ?? ''),
@@ -69,6 +69,21 @@ export class RentalAgreementsApiRepository {
   async create(agreement: Partial<RentalAgreement>): Promise<RentalAgreement> {
     const raw = await apiClient.post<Record<string, unknown>>('/rental-agreements', agreement);
     return normalizeRentalAgreementFromApi(raw);
+  }
+
+  /**
+   * Server: copy contact_id from previous agreement when empty (post–transfer repair).
+   */
+  async repairMissingContactFromPrevious(): Promise<{ updated: number; agreements: RentalAgreement[] }> {
+    const data = await apiClient.post<{ updated: number; agreements: Record<string, unknown>[] }>(
+      '/rental-agreements/repair-missing-contact-from-previous',
+      {}
+    );
+    const rows = Array.isArray(data.agreements) ? data.agreements : [];
+    return {
+      updated: typeof data.updated === 'number' ? data.updated : rows.length,
+      agreements: rows.map((r) => normalizeRentalAgreementFromApi(r)),
+    };
   }
 
   /**
