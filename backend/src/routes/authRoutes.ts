@@ -81,6 +81,13 @@ authRouter.get('/auth/tenants', async (_req, res) => {
   }
 });
 
+/**
+ * Stateless JWT clients: no server session to destroy. Return 200 so the client can clear tokens without a 404.
+ */
+authRouter.post('/auth/logout', async (_req, res) => {
+  sendSuccess(res, { ok: true });
+});
+
 authRouter.post('/auth/login', async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {

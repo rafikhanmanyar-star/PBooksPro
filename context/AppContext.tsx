@@ -819,7 +819,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             };
         }
         case 'UPDATE_PROPERTY':
-            return { ...state, properties: state.properties.map(p => p.id === action.payload.id ? action.payload : p) };
+            return {
+                ...state,
+                properties: state.properties.map((p) =>
+                    String(p.id) === String(action.payload.id) ? action.payload : p
+                ),
+            };
         case 'DELETE_PROPERTY': {
             invalidatePropertyOwnershipCache(action.payload);
             return {

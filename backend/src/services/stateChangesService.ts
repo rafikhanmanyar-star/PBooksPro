@@ -28,6 +28,10 @@ import {
 import { listProjectsChangedSince, rowToProjectApi } from './projectsService.js';
 import { listBuildingsChangedSince, rowToBuildingApi } from './buildingsService.js';
 import { listPropertiesChangedSince, rowToPropertyApi } from './propertiesService.js';
+import {
+  listPropertyOwnershipChangedSince,
+  rowToPropertyOwnershipApi,
+} from './propertyOwnershipPgService.js';
 import { listUnitsChangedSince, rowToUnitApi } from './unitsService.js';
 import {
   listProjectReceivedAssetsChangedSince,
@@ -104,6 +108,7 @@ export async function getStateChanges(
     projectRows,
     buildingRows,
     propertyRows,
+    propertyOwnershipRows,
     unitRows,
     projectReceivedAssetRows,
     salesReturnRows,
@@ -136,6 +141,7 @@ export async function getStateChanges(
     listProjectsChangedSince(client, tenantId, since),
     listBuildingsChangedSince(client, tenantId, since),
     listPropertiesChangedSince(client, tenantId, since),
+    listPropertyOwnershipChangedSince(client, tenantId, since),
     listUnitsChangedSince(client, tenantId, since),
     listProjectReceivedAssetsChangedSince(client, tenantId, since),
     listSalesReturnsChangedSince(client, tenantId, since),
@@ -192,6 +198,7 @@ export async function getStateChanges(
     projects: projectRows.map((r) => rowToProjectApi(r)),
     buildings: buildingRows.map((r) => rowToBuildingApi(r)),
     properties: propertyRows.map((r) => rowToPropertyApi(r)),
+    property_ownership: propertyOwnershipRows.map((r) => rowToPropertyOwnershipApi(r)),
     units: unitRows.map((r) => rowToUnitApi(r)),
     project_received_assets: projectReceivedAssetRows.map((r) => rowToProjectReceivedAssetApi(r)),
     sales_returns: salesReturnRows.map((r) => rowToSalesReturnApi(r)),

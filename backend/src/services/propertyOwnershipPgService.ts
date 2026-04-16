@@ -64,6 +64,21 @@ export async function listPropertyOwnership(
   return r.rows;
 }
 
+export async function listPropertyOwnershipChangedSince(
+  client: pg.PoolClient,
+  tenantId: string,
+  since: Date
+): Promise<PropertyOwnershipRow[]> {
+  const r = await client.query<PropertyOwnershipRow>(
+    `SELECT id, tenant_id, property_id, owner_id, ownership_percentage, start_date, end_date, is_active,
+            version, deleted_at, created_at, updated_at
+     FROM property_ownership WHERE tenant_id = $1 AND updated_at > $2
+     ORDER BY updated_at ASC`,
+    [tenantId, since]
+  );
+  return r.rows;
+}
+
 export type PropertyOwnershipSyncRow = {
   id: string;
   ownerId: string;

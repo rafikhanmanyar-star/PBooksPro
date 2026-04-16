@@ -25,6 +25,7 @@ import {
   PersonalTransactionEntry,
 } from '../../types';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
+import { parseApiEntityVersion } from '../../utils/parseApiVersion';
 
 /** PostgreSQL / seed often stores types as UPPERCASE; client enum uses Title Case ('Bank'). */
 function normalizeAccountTypeFromApi(raw: unknown): AccountType {
@@ -517,6 +518,7 @@ export class AppStateApiService {
     projects: 'projects',
     buildings: 'buildings',
     properties: 'properties',
+    property_ownership: 'propertyOwnership',
     units: 'units',
     transactions: 'transactions',
     invoices: 'invoices',
@@ -825,6 +827,7 @@ export class AppStateApiService {
         projects,
         buildings,
         properties,
+        propertyOwnershipRaw,
         units,
         invoices,
         bills,
@@ -872,6 +875,10 @@ export class AppStateApiService {
         }),
         this.propertiesRepo.findAll().catch(err => {
           console.error('Error loading properties from API:', err);
+          return [];
+        }),
+        this.propertiesRepo.findAllOwnership().catch(err => {
+          console.error('Error loading property ownership from API:', err);
           return [];
         }),
         this.unitsRepo.findAll().catch(err => {
@@ -974,6 +981,7 @@ export class AppStateApiService {
         projects: projects.length,
         buildings: buildings.length,
         properties: properties.length,
+        propertyOwnership: propertyOwnershipRaw.length,
         units: units.length,
         invoices: invoices.length,
         bills: bills.length,
@@ -1004,6 +1012,7 @@ export class AppStateApiService {
         projects,
         buildings,
         properties,
+        propertyOwnership: propertyOwnershipRaw,
         units,
         invoices,
         bills,
@@ -1970,7 +1979,20 @@ export class AppStateApiService {
         if (charge == null) return undefined;
         return typeof charge === 'number' ? charge : parseFloat(String(charge));
       })(),
-      version: typeof (saved as any).version === 'number' ? (saved as any).version : undefined,
+      version: parseApiEntityVersion((saved as any).version),
+    };
+  }
+
+  /**
+   * Latest property row from the API (for optimistic-lock version before PUT).
+   */
+  async fetchPropertyFromApi(id: string): Promise<(AppState['properties'][0] & { version?: number }) | null> {
+    const raw = await this.propertiesRepo.findById(id);
+    if (!raw) return null;
+    const p = raw as AppState['properties'][0] & { version?: number };
+    return {
+      ...p,
+      version: parseApiEntityVersion(p.version) ?? parseApiEntityVersion((p as { Version?: unknown }).Version),
     };
   }
 
@@ -1979,10 +2001,11 @@ export class AppStateApiService {
    */
   async updateProperty(
     id: string,
-    property: Partial<AppState['properties'][0]> & { version?: number }
+    property: Partial<AppState['properties'][0]> & { version?: number },
+    opts?: { skipConflictNotification?: boolean }
   ): Promise<AppState['properties'][0] & { version?: number }> {
     logger.logCategory('sync', `💾 Syncing property (PUT): ${id}`);
-    const saved = await this.propertiesRepo.update(id, { ...property, id });
+    const saved = await this.propertiesRepo.update(id, { ...property, id }, opts);
     return {
       id: saved.id,
       name: saved.name || '',
@@ -1994,7 +2017,7 @@ export class AppStateApiService {
         if (charge == null) return undefined;
         return typeof charge === 'number' ? charge : parseFloat(String(charge));
       })(),
-      version: typeof (saved as any).version === 'number' ? (saved as any).version : undefined,
+      version: parseApiEntityVersion((saved as any).version),
     };
   }
 

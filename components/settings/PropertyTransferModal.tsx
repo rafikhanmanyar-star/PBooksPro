@@ -14,6 +14,16 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY, ICONS } from '../../constants';
 import { toLocalDateString } from '../../utils/dateUtils';
+import { parseApiEntityVersion } from '../../utils/parseApiVersion';
+
+function is409Conflict(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const e = err as { status?: number; code?: string; message?: string };
+    if (e.status === 409) return true;
+    if (e.code === 'CONFLICT') return true;
+    const m = typeof e.message === 'string' ? e.message : '';
+    return /modified by another user|409|conflict/i.test(m);
+}
 
 interface PropertyTransferModalProps {
     isOpen: boolean;
@@ -208,9 +218,11 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
         try {
             const oldOwnerId = property.ownerId;
             const useApi = !isLocalOnlyMode() && isAuthenticated;
+            let persistedPropertyVersion: number | undefined;
 
             if (useApi) {
                 const api = getAppStateApiService();
+
                 const tenantId = apiClient.getTenantId() || 'local';
                 const afterOwnership = applyLegacySingleOwnerTransfer(state, {
                     propertyId: property.id,
@@ -231,7 +243,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                         : `[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`,
                 };
                 const ownershipRows = (afterOwnership.propertyOwnership || [])
-                    .filter((r) => r.propertyId === property.id)
+                    .filter((r) => String(r.propertyId) === String(property.id))
                     .map((r) => ({
                         id: r.id,
                         ownerId: r.ownerId,
@@ -241,16 +253,67 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                         isActive: r.isActive,
                     }));
 
-                const propVersion = (property as { version?: number }).version;
-                await api.updateProperty(property.id, {
+                await api.syncPropertyOwnership(property.id, ownershipRows);
+
+                const bodyBase = {
                     name: updatedPropForStore.name,
                     ownerId: updatedPropForStore.ownerId,
                     buildingId: updatedPropForStore.buildingId,
                     description: updatedPropForStore.description,
                     monthlyServiceCharge: updatedPropForStore.monthlyServiceCharge,
-                    ...(propVersion !== undefined ? { version: propVersion } : {}),
-                });
-                await api.syncPropertyOwnership(property.id, ownershipRows);
+                };
+
+                let savedAfterPersist: Awaited<ReturnType<typeof api.updateProperty>> | undefined;
+                let lastErr: unknown;
+                const maxAttempts = 5;
+                for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                    try {
+                        if (attempt > 0) {
+                            await new Promise((r) => setTimeout(r, 60 * attempt));
+                        }
+                        const fresh = await api.fetchPropertyFromApi(property.id);
+                        const live = state.properties.find((p) => String(p.id) === String(property.id));
+                        const propVersionForLock =
+                            parseApiEntityVersion(fresh?.version) ??
+                            parseApiEntityVersion((live as { version?: unknown } | undefined)?.version) ??
+                            parseApiEntityVersion((property as { version?: unknown }).version);
+
+                        savedAfterPersist = await api.updateProperty(
+                            property.id,
+                            {
+                                ...bodyBase,
+                                ...(propVersionForLock !== undefined ? { version: propVersionForLock } : {}),
+                            },
+                            { skipConflictNotification: true }
+                        );
+                        break;
+                    } catch (err: unknown) {
+                        lastErr = err;
+                        if (attempt < maxAttempts - 1 && is409Conflict(err)) {
+                            continue;
+                        }
+                        if (is409Conflict(err)) {
+                            try {
+                                savedAfterPersist = await api.updateProperty(
+                                    property.id,
+                                    { ...bodyBase },
+                                    { skipConflictNotification: true }
+                                );
+                                lastErr = undefined;
+                                break;
+                            } catch (e2) {
+                                throw e2;
+                            }
+                        }
+                        throw err;
+                    }
+                }
+                if (savedAfterPersist === undefined) {
+                    throw lastErr instanceof Error ? lastErr : new Error('Could not save property after transfer.');
+                }
+                if (typeof (savedAfterPersist as { version?: number }).version === 'number') {
+                    persistedPropertyVersion = (savedAfterPersist as { version: number }).version;
+                }
 
                 for (const agreementInfo of oldAgreements) {
                     const oldAgreement = agreementInfo.agreement;
@@ -329,14 +392,17 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                 },
             });
 
-            // 2. Update property description for display
-            const updatedProperty: Property = {
+            // 2. Update property description for display (keep server version after API persist so later edits do not 409)
+            const updatedProperty = {
                 ...property,
                 ownerId: newOwnerId,
                 description: property.description
                     ? `${property.description}\n\n[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`
                     : `[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`,
-            };
+                ...(persistedPropertyVersion !== undefined
+                    ? { version: persistedPropertyVersion }
+                    : {}),
+            } as Property;
             dispatch({ type: 'UPDATE_PROPERTY', payload: updatedProperty });
 
             // 3. Update old agreements (RENEWED, EXPIRED, TERMINATED) to preserve old owner ID

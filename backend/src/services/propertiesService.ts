@@ -54,13 +54,22 @@ function pickBody(body: Record<string, unknown>) {
       ? Number(body.monthlyServiceCharge ?? body.monthly_service_charge)
       : undefined;
 
+  const rawVer = body.version ?? (body as Record<string, unknown>).Version;
+  let version: number | undefined;
+  if (typeof rawVer === 'number' && Number.isFinite(rawVer)) {
+    version = Math.trunc(rawVer);
+  } else if (typeof rawVer === 'string' && rawVer.trim() !== '') {
+    const n = parseInt(rawVer.trim(), 10);
+    if (Number.isFinite(n)) version = n;
+  }
+
   return {
     name: String(body.name ?? ''),
     owner_id: String(body.ownerId ?? body.owner_id ?? '').trim(),
     building_id: String(body.buildingId ?? body.building_id ?? '').trim(),
     description,
     monthly_service_charge: msc !== undefined && Number.isFinite(msc) ? msc : undefined,
-    version: typeof body.version === 'number' ? body.version : undefined,
+    version,
   };
 }
 

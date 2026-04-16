@@ -242,8 +242,10 @@ export class ApiClient {
    */
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit & { skipConflictNotification?: boolean } = {}
   ): Promise<T> {
+    const { skipConflictNotification, ...fetchOpts } = options;
+    const shouldSkipConflictModal = skipConflictNotification === true;
     // Determine if this is a login or transaction operation
     const isLoginOperation = endpoint.includes('/auth/login') || 
                              endpoint.includes('/auth/smart-login') || 
@@ -285,7 +287,7 @@ export class ApiClient {
     
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...fetchOpts.headers,
     };
 
     // Add auth token if available
@@ -324,10 +326,10 @@ export class ApiClient {
     try {
       // Only log API requests during login/transaction operations
       if (shouldLogThisRequest) {
-        logger.logCategory('api', `📤 API Request: ${options.method || 'GET'} ${endpoint}`);
-        if (options.body && typeof options.body === 'string') {
+        logger.logCategory('api', `📤 API Request: ${fetchOpts.method || 'GET'} ${endpoint}`);
+        if (fetchOpts.body && typeof fetchOpts.body === 'string') {
           try {
-            const bodyData = JSON.parse(options.body);
+            const bodyData = JSON.parse(fetchOpts.body);
             logger.logCategory('api', `📤 Request body:`, { 
               ...bodyData, 
               // Truncate large fields for logging
@@ -335,23 +337,23 @@ export class ApiClient {
             });
           } catch (e) {
             // Body might not be JSON, log as-is
-            logger.logCategory('api', `📤 Request body length: ${options.body.length} bytes`);
+            logger.logCategory('api', `📤 Request body length: ${fetchOpts.body.length} bytes`);
           }
         }
       }
       
       const fetchInit: RequestInit = {
-        ...options,
+        ...fetchOpts,
         headers,
       };
-      if (!options.signal && typeof AbortSignal !== 'undefined' && typeof (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout === 'function') {
+      if (!fetchOpts.signal && typeof AbortSignal !== 'undefined' && typeof (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout === 'function') {
         fetchInit.signal = (AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout(120_000);
       }
       const response = await fetch(url, fetchInit);
 
       // Diagnostic: always log state endpoint responses
       if (endpoint.includes('/state/')) {
-        console.log(`[DIAG-HTTP] ${options.method || 'GET'} ${url} → ${response.status} ${response.statusText}`);
+        console.log(`[DIAG-HTTP] ${fetchOpts.method || 'GET'} ${url} → ${response.status} ${response.statusText}`);
       }
 
       // Only log API responses during login/transaction operations
@@ -545,7 +547,9 @@ export class ApiClient {
           ...(data.invoiceId != null && { invoiceId: data.invoiceId }),
           ...(data.invoiceNumber != null && { invoiceNumber: data.invoiceNumber }),
         };
-        notifyApiConflictIfUserFacing(err, endpoint, options.method || 'GET');
+        if (!shouldSkipConflictModal) {
+          notifyApiConflictIfUserFacing(err, endpoint, fetchOpts.method || 'GET');
+        }
         throw err;
       }
 
@@ -574,7 +578,9 @@ export class ApiClient {
         } else {
           console.error('API Error:', error);
         }
-        notifyApiConflictIfUserFacing(error, endpoint, options.method || 'GET');
+        if (!shouldSkipConflictModal) {
+          notifyApiConflictIfUserFacing(error, endpoint, fetchOpts.method || 'GET');
+        }
         throw error;
       }
 
@@ -695,10 +701,16 @@ export class ApiClient {
   /**
    * PUT request
    */
-  async put<T>(endpoint: string, data?: any): Promise<T> {
+  async put<T>(
+    endpoint: string,
+    data?: any,
+    requestOptions?: { skipConflictNotification?: boolean; headers?: Record<string, string> }
+  ): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: data ? stringifyApiJsonBody(data) : undefined,
+      headers: requestOptions?.headers,
+      skipConflictNotification: requestOptions?.skipConflictNotification,
     });
   }
 

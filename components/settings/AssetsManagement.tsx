@@ -12,6 +12,16 @@ import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
 import PropertyTransferModal from './PropertyTransferModal';
+import { parseApiEntityVersion } from '../../utils/parseApiVersion';
+
+function is409Conflict(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const e = err as { status?: number; code?: string; message?: string };
+    if (e.status === 409) return true;
+    if (e.code === 'CONFLICT') return true;
+    const m = typeof e.message === 'string' ? e.message : '';
+    return /modified by another user|409|conflict/i.test(m);
+}
 
 interface AssetTypeOption {
     id: string;
@@ -295,9 +305,12 @@ const AssetsManagement: React.FC = () => {
                 try {
                     const api = getAppStateApiService();
                     if (editingEntity) {
+                        const latestP = appState.projects.find((p) => p.id === pid);
                         const merged = await api.updateProject(pid, {
                             ...projectPayload,
-                            version: (editingEntity as Project & { version?: number }).version,
+                            version:
+                                (latestP as Project & { version?: number } | undefined)?.version ??
+                                (editingEntity as Project & { version?: number }).version,
                         });
                         projectPayload = { ...projectPayload, ...merged };
                     } else {
@@ -337,9 +350,12 @@ const AssetsManagement: React.FC = () => {
                 try {
                     const api = getAppStateApiService();
                     if (editingEntity) {
+                        const latestB = appState.buildings.find((b) => b.id === bid);
                         const merged = await api.updateBuilding(bid, {
                             ...buildingPayload,
-                            version: (editingEntity as Building & { version?: number }).version,
+                            version:
+                                (latestB as Building & { version?: number } | undefined)?.version ??
+                                (editingEntity as Building & { version?: number }).version,
                         });
                         buildingPayload = { ...buildingPayload, ...merged };
                     } else {
@@ -381,10 +397,61 @@ const AssetsManagement: React.FC = () => {
                 try {
                     const api = getAppStateApiService();
                     if (editingEntity) {
-                        const merged = await api.updateProperty(pid, {
-                            ...propertyPayload,
-                            version: (editingEntity as Property & { version?: number }).version,
-                        });
+                        const latestPr = appState.properties.find((p) => String(p.id) === String(pid));
+                        const bodyBase = {
+                            name: propertyPayload.name,
+                            ownerId: propertyPayload.ownerId,
+                            buildingId: propertyPayload.buildingId,
+                            description: propertyPayload.description,
+                            monthlyServiceCharge: propertyPayload.monthlyServiceCharge,
+                        };
+                        let merged: Awaited<ReturnType<typeof api.updateProperty>> | undefined;
+                        let lastErr: unknown;
+                        const maxAttempts = 5;
+                        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                            try {
+                                if (attempt > 0) {
+                                    await new Promise((r) => setTimeout(r, 60 * attempt));
+                                }
+                                const fresh = await api.fetchPropertyFromApi(String(pid));
+                                const propVersionForLock =
+                                    parseApiEntityVersion(fresh?.version) ??
+                                    parseApiEntityVersion((latestPr as { version?: unknown } | undefined)?.version) ??
+                                    parseApiEntityVersion((editingEntity as { version?: unknown }).version);
+
+                                merged = await api.updateProperty(
+                                    String(pid),
+                                    {
+                                        ...bodyBase,
+                                        ...(propVersionForLock !== undefined ? { version: propVersionForLock } : {}),
+                                    },
+                                    { skipConflictNotification: true }
+                                );
+                                break;
+                            } catch (err: unknown) {
+                                lastErr = err;
+                                if (attempt < maxAttempts - 1 && is409Conflict(err)) {
+                                    continue;
+                                }
+                                if (is409Conflict(err)) {
+                                    try {
+                                        merged = await api.updateProperty(
+                                            String(pid),
+                                            { ...bodyBase },
+                                            { skipConflictNotification: true }
+                                        );
+                                        lastErr = undefined;
+                                        break;
+                                    } catch (e2) {
+                                        throw e2;
+                                    }
+                                }
+                                throw err;
+                            }
+                        }
+                        if (merged === undefined) {
+                            throw lastErr instanceof Error ? lastErr : new Error('Could not save property.');
+                        }
                         propertyPayload = { ...propertyPayload, ...merged };
                     } else {
                         const merged = await api.saveProperty(propertyPayload);

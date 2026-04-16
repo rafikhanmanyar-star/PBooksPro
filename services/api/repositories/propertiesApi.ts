@@ -40,8 +40,21 @@ export class PropertiesApiRepository {
   /**
    * Update an existing property
    */
-  async update(id: string, property: Partial<Property>): Promise<Property> {
-    return apiClient.put<Property>(`/properties/${id}`, property);
+  async update(
+    id: string,
+    property: Partial<Property>,
+    opts?: { skipConflictNotification?: boolean }
+  ): Promise<Property> {
+    return apiClient.put<Property>(`/properties/${id}`, property, {
+      skipConflictNotification: opts?.skipConflictNotification,
+    });
+  }
+
+  /**
+   * Get all property ownership rows for the tenant.
+   */
+  async findAllOwnership(): Promise<Array<Record<string, unknown>>> {
+    return apiClient.get<Array<Record<string, unknown>>>('/properties/ownership');
   }
 
   /**

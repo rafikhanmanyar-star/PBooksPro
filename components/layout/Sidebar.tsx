@@ -224,7 +224,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 title: 'Rental',
                 items: [
                     { page: 'rentalManagement', label: 'Rental', icon: ICONS.building },
-                    { page: 'rentalSettings', label: 'Rental settings', icon: ICONS.home },
                 ]
             },
             {
@@ -276,11 +275,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             (currentPage === 'rentalManagement' ||
                 currentPage === 'rentalInvoices' ||
                 currentPage === 'rentalAgreements' ||
-                currentPage === 'ownerPayouts')
+                currentPage === 'ownerPayouts' ||
+                currentPage === 'rentalSettings')
         ) {
             return true;
         }
-        if (itemPage === 'rentalSettings' && currentPage === 'rentalSettings') return true;
         if (itemPage === 'projectManagement' && (currentPage.startsWith('project') || currentPage === 'bills') && currentPage !== 'projectSelling' && currentPage !== 'projectInvoices') return true;
         // projectInvoices is now under Selling (Project selling), so it should activate projectSelling not projectManagement.
         if (itemPage === 'projectSelling' && (currentPage === 'projectSelling' || currentPage === 'projectInvoices' || currentPage === 'marketing')) return true;

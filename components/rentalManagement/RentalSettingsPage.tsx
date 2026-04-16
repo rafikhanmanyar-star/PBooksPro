@@ -15,8 +15,23 @@ import Modal from '../ui/Modal';
 import { ContactType } from '../../types';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import RentalAgreementContactRepairCard from './RentalAgreementContactRepairCard';
+import { parseApiEntityVersion } from '../../utils/parseApiVersion';
 
-const RentalSettingsPage: React.FC = () => {
+function is409Conflict(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const e = err as { status?: number; code?: string; message?: string };
+    if (e.status === 409) return true;
+    if (e.code === 'CONFLICT') return true;
+    const m = typeof e.message === 'string' ? e.message : '';
+    return /modified by another user|409|conflict/i.test(m);
+}
+
+export interface RentalSettingsPageProps {
+    /** When true, hides "back to rental operations" — navigation is via the rental module sidebar. */
+    embeddedInRentalModule?: boolean;
+}
+
+const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRentalModule = false }) => {
     const { state, dispatch } = useAppContext();
     const { isAuthenticated } = useAuth();
     const { showConfirm, showToast } = useNotification();
@@ -65,17 +80,77 @@ const RentalSettingsPage: React.FC = () => {
                 try {
                     const api = getAppStateApiService();
                     if (editingItem.type === 'buildings') {
-                        const ver = (editingItem.item as { version?: number } | undefined)?.version;
+                        // Use latest version from live state (string/number id must match).
+                        const latest = state.buildings.find((b) => String(b.id) === String(id));
+                        const ver =
+                            parseApiEntityVersion((latest as { version?: unknown } | undefined)?.version) ??
+                            parseApiEntityVersion((editingItem.item as { version?: unknown } | undefined)?.version);
                         const saved = isEdit
                             ? await api.updateBuilding(id, { ...payload, version: ver } as any)
                             : await api.saveBuilding(payload as any);
                         payload = { ...payload, ...saved };
                     } else {
-                        const ver = (editingItem.item as { version?: number } | undefined)?.version;
-                        const saved = isEdit
-                            ? await api.updateProperty(id, { ...payload, version: ver } as any)
-                            : await api.saveProperty(payload as any);
-                        payload = { ...payload, ...saved };
+                        if (!isEdit) {
+                            const saved = await api.saveProperty(payload as any);
+                            payload = { ...payload, ...saved };
+                        } else {
+                            const bodyBase = {
+                                name: payload.name,
+                                ownerId: payload.ownerId,
+                                buildingId: payload.buildingId,
+                                description: payload.description,
+                                monthlyServiceCharge: payload.monthlyServiceCharge,
+                            };
+                            const latest = state.properties.find((p) => String(p.id) === String(id));
+                            let saved: Awaited<ReturnType<typeof api.updateProperty>> | undefined;
+                            let lastErr: unknown;
+                            const maxAttempts = 5;
+                            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                                try {
+                                    if (attempt > 0) {
+                                        await new Promise((r) => setTimeout(r, 60 * attempt));
+                                    }
+                                    const fresh = await api.fetchPropertyFromApi(String(id));
+                                    const propVersionForLock =
+                                        parseApiEntityVersion(fresh?.version) ??
+                                        parseApiEntityVersion((latest as { version?: unknown } | undefined)?.version) ??
+                                        parseApiEntityVersion((editingItem.item as { version?: unknown } | undefined)?.version);
+
+                                    saved = await api.updateProperty(
+                                        String(id),
+                                        {
+                                            ...bodyBase,
+                                            ...(propVersionForLock !== undefined ? { version: propVersionForLock } : {}),
+                                        },
+                                        { skipConflictNotification: true }
+                                    );
+                                    break;
+                                } catch (err: unknown) {
+                                    lastErr = err;
+                                    if (attempt < maxAttempts - 1 && is409Conflict(err)) {
+                                        continue;
+                                    }
+                                    if (is409Conflict(err)) {
+                                        try {
+                                            saved = await api.updateProperty(
+                                                String(id),
+                                                { ...bodyBase },
+                                                { skipConflictNotification: true }
+                                            );
+                                            lastErr = undefined;
+                                            break;
+                                        } catch (e2) {
+                                            throw e2;
+                                        }
+                                    }
+                                    throw err;
+                                }
+                            }
+                            if (saved === undefined) {
+                                throw lastErr instanceof Error ? lastErr : new Error('Could not save property.');
+                            }
+                            payload = { ...payload, ...saved };
+                        }
                     }
                 } catch (err: unknown) {
                     const e = err as { message?: string; error?: string };
@@ -179,13 +254,15 @@ const RentalSettingsPage: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full min-h-0 p-4 md:p-6">
-            <button
-                type="button"
-                onClick={() => dispatch({ type: 'SET_PAGE', payload: 'rentalManagement' })}
-                className="self-start mb-3 text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
-            >
-                ← Back to rental operations
-            </button>
+            {!embeddedInRentalModule && (
+                <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'SET_PAGE', payload: 'rentalManagement' })}
+                    className="self-start mb-3 text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+                >
+                    ← Back to rental operations
+                </button>
+            )}
             <div className="flex flex-col md:flex-row flex-1 min-h-0 gap-6">
             {/* Sidebar */}
             <Card className="md:w-64 flex-shrink-0 p-2">

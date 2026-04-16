@@ -66,7 +66,6 @@ const EnhancedLedgerPage = lazyWithRetry(() => import('./components/transactions
 const SettingsPage = lazyWithRetry(() => import('./components/settings/SettingsPage'));
 const ImportExportWizard = lazyWithRetry(() => import('./components/settings/ImportExportWizard'));
 const RentalManagementPage = lazyWithRetry(() => import('./components/rentalManagement/RentalManagementPage'));
-const RentalSettingsPage = lazyWithRetry(() => import('./components/rentalManagement/RentalSettingsPage'));
 const ProjectManagementPage = lazyWithRetry(() => import('./components/projectManagement/ProjectManagementPage'));
 const InvestmentManagementPage = lazyWithRetry(() => import('./components/investmentManagement/InvestmentManagementPage'));
 const PMConfigPage = lazyWithRetry(() => import('./components/pmConfig/PMConfigPage'));
@@ -423,6 +422,7 @@ const App: React.FC = () => {
     }
 
     let pageToSet: Page = page;
+    let openRentalSetupFromLast = false;
     if (isEnteringProjectSelling) {
       try {
         const last = sessionStorage.getItem('lastProjectSellingPage');
@@ -434,7 +434,10 @@ const App: React.FC = () => {
     } else if (isEnteringRental) {
       try {
         const last = sessionStorage.getItem('lastRentalPage');
-        if (last && rentalPages.includes(last)) pageToSet = last as Page;
+        if (last === 'rentalSettings') {
+          pageToSet = 'rentalManagement';
+          openRentalSetupFromLast = true;
+        } else if (last && rentalPages.includes(last)) pageToSet = last as Page;
         else pageToSet = 'rentalManagement';
       } catch (_) {
         pageToSet = 'rentalManagement';
@@ -442,6 +445,9 @@ const App: React.FC = () => {
     }
 
     startNavTransition(() => {
+      if (openRentalSetupFromLast) {
+        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Rental setup'] });
+      }
       dispatch({ type: 'SET_PAGE', payload: pageToSet });
     });
   }, [dispatch, startNavTransition]);
@@ -546,6 +552,7 @@ const App: React.FC = () => {
       case 'bills': return 'Bill Management';
       case 'loans': return 'Loan Manager';
       case 'rentalManagement': return 'Rental Management';
+      case 'rentalSettings': return 'Rental Management';
       case 'rentalInvoices': return 'Rental Invoices';
       case 'rentalAgreements': return 'Rental Agreements';
       case 'ownerPayouts': return 'Owner Payouts';
@@ -735,11 +742,7 @@ const App: React.FC = () => {
               {renderPersistentPage('BUDGETS', <BudgetManagement />)}
               {renderPersistentPage(
                 'RENTAL',
-                currentPage === 'rentalSettings' ? (
-                  <RentalSettingsPage />
-                ) : (
-                  <RentalManagementPage initialPage={currentPage} />
-                )
+                <RentalManagementPage initialPage={currentPage} />
               )}
               {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('PROJECT_SELLING', <ProjectManagementPage initialPage={currentPage} />)}

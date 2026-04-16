@@ -11,6 +11,8 @@ import {
   updateProperty,
 } from '../services/propertiesService.js';
 import {
+  listPropertyOwnership,
+  rowToPropertyOwnershipApi,
   syncPropertyOwnershipRowsForProperty,
   type PropertyOwnershipSyncRow,
 } from '../services/propertyOwnershipPgService.js';
@@ -36,6 +38,50 @@ propertiesRouter.get('/properties', async (req: AuthedRequest, res) => {
     }
   } catch (e) {
     handleRouteError(res, e);
+  }
+});
+
+/** Static path must be registered before `/properties/:id` or `id` captures the literal `ownership`. */
+propertiesRouter.get('/properties/ownership', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const rows = await listPropertyOwnership(client, tenantId);
+      sendSuccess(res, rows.map((r) => rowToPropertyOwnershipApi(r)));
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+/** After client-side transfer: persist `property_ownership` rows for one property (LAN/API). */
+propertiesRouter.post('/properties/:id/ownership/sync', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const { id } = req.params;
+  const body = req.body as { rows?: PropertyOwnershipSyncRow[] };
+  const rows = Array.isArray(body?.rows) ? body.rows : null;
+  if (!rows) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'rows array is required');
+    return;
+  }
+  try {
+    await withTransaction((client) => syncPropertyOwnershipRowsForProperty(client, tenantId, id, rows));
+    sendSuccess(res, { ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
 });
 
@@ -77,29 +123,6 @@ propertiesRouter.post('/properties', async (req: AuthedRequest, res) => {
     const apiRow = rowToPropertyApi(row);
     emitEntityEvent(tenantId, 'created', 'property', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, 201);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
-  }
-});
-
-/** After client-side transfer: persist `property_ownership` rows for one property (LAN/API). */
-propertiesRouter.post('/properties/:id/ownership/sync', async (req: AuthedRequest, res) => {
-  const tenantId = req.tenantId;
-  if (!tenantId) {
-    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
-    return;
-  }
-  const { id } = req.params;
-  const body = req.body as { rows?: PropertyOwnershipSyncRow[] };
-  const rows = Array.isArray(body?.rows) ? body.rows : null;
-  if (!rows) {
-    sendFailure(res, 400, 'VALIDATION_ERROR', 'rows array is required');
-    return;
-  }
-  try {
-    await withTransaction((client) => syncPropertyOwnershipRowsForProperty(client, tenantId, id, rows));
-    sendSuccess(res, { ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);

@@ -166,7 +166,7 @@ const OwnerPayoutsPage: React.FC = () => {
             const prop = state.properties.find(p => String(p.id) === pid);
             if (prop?.ownerId) ownersInScope.add(prop.ownerId);
             (state.propertyOwnership || [])
-                .filter((r) => r.propertyId === pid)
+                .filter((r) => String(r.propertyId) === String(pid))
                 .forEach((r) => ownersInScope.add(r.ownerId));
         });
 

@@ -48,23 +48,30 @@ export function getOwnershipSharesForPropertyOnDate(
   dateYyyyMmDd: string
 ): { ownerId: string; percentage: number }[] {
   const d = dateYyyyMmDd.slice(0, 10);
-  const rows = (state.propertyOwnership || []).filter((r) => r.propertyId === propertyId && rowEffectiveOnDate(r, d));
+  const pid = String(propertyId);
+  let rows = (state.propertyOwnership || []).filter(
+    (r) => String(r.propertyId) === pid && rowEffectiveOnDate(r, d)
+  );
+  // Same calendar day as a replacement: closed slice may share start/end with new active rows — prefer current active rows only.
+  if (rows.some((r) => r.isActive)) {
+    rows = rows.filter((r) => r.isActive);
+  }
   if (rows.length > 0) {
     const sig = `${d}|${rows.map((r) => `${r.id}:${r.ownershipPercentage}`).sort().join(',')}`;
-    const hit = ownershipSharesCache.get(propertyId);
+    const hit = ownershipSharesCache.get(pid);
     if (hit && hit.sig === sig) return hit.shares.map((s) => ({ ...s }));
 
     const shares = rows.map((r) => ({
       ownerId: r.ownerId,
       percentage: Number(r.ownershipPercentage) || 0,
     }));
-    ownershipSharesCache.set(propertyId, { sig, shares: shares.map((s) => ({ ...s })) });
+    ownershipSharesCache.set(pid, { sig, shares: shares.map((s) => ({ ...s })) });
     return shares;
   }
 
-  const prop = state.properties.find((p) => p.id === propertyId);
+  const prop = state.properties.find((p) => String(p.id) === pid);
   const legacyOwner =
-    getOwnerIdForPropertyOnDate(propertyId, d, state.propertyOwnershipHistory || [], prop?.ownerId) || prop?.ownerId;
+    getOwnerIdForPropertyOnDate(pid, d, state.propertyOwnershipHistory || [], prop?.ownerId) || prop?.ownerId;
   if (!legacyOwner) return [];
   return [{ ownerId: legacyOwner, percentage: 100 }];
 }
@@ -76,13 +83,16 @@ export function getPropertyIdsForOwner(
   ownerId: string,
   buildingId?: string
 ): Set<string> {
+  // Normalize ids — property.id and property_ownership.property_id may differ as string vs number in state.
   const stake = new Set(
-    (state.propertyOwnership || []).filter((r) => r.ownerId === ownerId).map((r) => r.propertyId)
+    (state.propertyOwnership || [])
+      .filter((r) => r.ownerId === ownerId)
+      .map((r) => String(r.propertyId))
   );
   const out = new Set<string>();
   for (const p of state.properties) {
     if (buildingId && p.buildingId !== buildingId) continue;
-    if (p.ownerId === ownerId || stake.has(p.id)) out.add(String(p.id));
+    if (p.ownerId === ownerId || stake.has(String(p.id))) out.add(String(p.id));
   }
   return out;
 }
@@ -116,8 +126,83 @@ export function validateOwnershipSharesTotal(shares: { ownerId: string; percenta
   return null;
 }
 
+/** Co-ownership UI row (`percentage` as typed string). */
+export type CoOwnerFormRow = { ownerId: string; percentage: string };
+
+function formatCoOwnerPercentOut(n: number): string {
+  const x = Math.round(n * 100) / 100;
+  return String(x);
+}
+
+/**
+ * When the user edits one row's %: clamp that value to 0–100 and split the remainder equally across
+ * **other** rows that already have an owner selected (so totals stay at 100% when possible).
+ * Empty input clears that row's % without redistributing.
+ */
+export function redistributeCoOwnerPercentages(
+  rows: CoOwnerFormRow[],
+  editedIndex: number,
+  rawInput: string
+): CoOwnerFormRow[] {
+  const out = rows.map((r) => ({ ...r }));
+  if (editedIndex < 0 || editedIndex >= out.length) return out;
+
+  const trimmed = rawInput.trim();
+  if (trimmed === '') {
+    out[editedIndex] = { ...out[editedIndex], percentage: '' };
+    return out;
+  }
+
+  let v = parseFloat(trimmed.replace(',', '.'));
+  if (!Number.isFinite(v)) v = 0;
+  v = Math.max(0, Math.min(100, v));
+
+  const otherWithOwner: number[] = [];
+  for (let i = 0; i < out.length; i++) {
+    if (i === editedIndex) continue;
+    if (out[i].ownerId.trim() !== '') otherWithOwner.push(i);
+  }
+
+  out[editedIndex] = { ...out[editedIndex], percentage: formatCoOwnerPercentOut(v) };
+
+  if (otherWithOwner.length === 0) {
+    return out;
+  }
+
+  const remCents = Math.round((100 - v) * 100);
+  const n = otherWithOwner.length;
+  const base = Math.floor(remCents / n);
+  const extra = remCents % n;
+  for (let k = 0; k < n; k++) {
+    const cents = base + (k < extra ? 1 : 0);
+    const p = cents / 100;
+    const idx = otherWithOwner[k];
+    out[idx] = { ...out[idx], percentage: formatCoOwnerPercentOut(p) };
+  }
+
+  return out;
+}
+
 function newId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/** Lexicographic max for YYYY-MM-DD strings (valid dates). */
+function maxYyyyMmDd(a: string, b: string): string {
+  const aa = a.slice(0, 10);
+  const bb = b.slice(0, 10);
+  return aa >= bb ? aa : bb;
+}
+
+/**
+ * Calendar day to set on a closing ownership slice so PostgreSQL CHECK `end_date >= start_date` holds.
+ * When the row started on the transfer day, `dayBefore` is before `start_date` — using it alone would fail the CHECK.
+ */
+function closingEndDateForOwnershipRow(
+  rowStartYyyyMmDd: string,
+  dayBeforeTransfer: string
+): string {
+  return maxYyyyMmDd(dayBeforeTransfer, rowStartYyyyMmDd.slice(0, 10));
 }
 
 export function buildDefaultPropertyOwnershipRow(
@@ -159,20 +244,22 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
   const err = validateOwnershipSharesTotal(input.newOwners);
   if (err) throw new Error(err);
 
-  const property = state.properties.find((p) => p.id === input.propertyId);
+  const pid = String(input.propertyId);
+  const property = state.properties.find((p) => String(p.id) === pid);
   if (!property) throw new Error('Property not found.');
 
   const transferDay = input.transferDate.slice(0, 10);
   const dayBefore = addCalendarDaysYyyyMmDd(transferDay, -1);
   const now = new Date().toISOString();
 
-  const forProperty = (state.propertyOwnership || []).filter((r) => r.propertyId === input.propertyId);
-  const otherPropsRows = (state.propertyOwnership || []).filter((r) => r.propertyId !== input.propertyId);
+  const forProperty = (state.propertyOwnership || []).filter((r) => String(r.propertyId) === pid);
+  const otherPropsRows = (state.propertyOwnership || []).filter((r) => String(r.propertyId) !== pid);
 
   const closedPrev = forProperty.map((r) => {
     const stillOpen = r.isActive && (r.endDate == null || String(r.endDate).trim() === '');
     if (stillOpen) {
-      return { ...r, endDate: dayBefore, isActive: false, updatedAt: now };
+      const endDate = closingEndDateForOwnershipRow(r.startDate, dayBefore);
+      return { ...r, endDate, isActive: false, updatedAt: now };
     }
     return { ...r };
   });
@@ -197,17 +284,21 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
 
   const updatedProperty: Property = { ...property, ownerId: primary };
 
-  const properties = state.properties.map((p) => (p.id === input.propertyId ? updatedProperty : p));
+  const properties = state.properties.map((p) => (String(p.id) === pid ? updatedProperty : p));
 
   // Legacy history: close open-ended row; append new open row for primary timeline (existing screens).
   let propertyOwnershipHistory = state.propertyOwnershipHistory || [];
   const openHist = propertyOwnershipHistory.filter(
-    (h) => h.propertyId === input.propertyId && h.ownershipEndDate == null
+    (h) => String(h.propertyId) === pid && h.ownershipEndDate == null
   );
   if (openHist.length > 0) {
     propertyOwnershipHistory = propertyOwnershipHistory.map((h) =>
-      h.propertyId === input.propertyId && h.ownershipEndDate == null
-        ? { ...h, ownershipEndDate: dayBefore, updatedAt: now }
+      String(h.propertyId) === pid && h.ownershipEndDate == null
+        ? {
+            ...h,
+            ownershipEndDate: closingEndDateForOwnershipRow(h.ownershipStartDate, dayBefore),
+            updatedAt: now,
+          }
         : h
     );
   }
@@ -225,7 +316,7 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
   };
   propertyOwnershipHistory = [...propertyOwnershipHistory, histRow];
 
-  invalidatePropertyOwnershipCache(input.propertyId);
+  invalidatePropertyOwnershipCache(pid);
 
   return {
     ...state,

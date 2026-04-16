@@ -17,7 +17,7 @@ const PropertyOwnershipTabContent: React.FC<PropertyOwnershipTabContentProps> = 
     const rows = useMemo(
         () =>
             (state.propertyOwnership || [])
-                .filter((r) => r.propertyId === property.id)
+                .filter((r) => String(r.propertyId) === String(property.id))
                 .slice()
                 .sort((a, b) => a.startDate.localeCompare(b.startDate)),
         [state.propertyOwnership, property.id]

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, memo, Suspense, startTransition, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, memo, Suspense, startTransition, useCallback } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import RentalAgreementsPage from '../rentalAgreements/RentalAgreementsPage';
@@ -10,9 +10,9 @@ import RecurringInvoicesList from './RecurringInvoicesList';
 import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
 import RentalPaymentSearch from './RentalPaymentSearch';
 import RentalBillsPage from './RentalBillsPage';
+import RentalSettingsPage from './RentalSettingsPage';
 import { useAppContext } from '../../context/AppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { ICONS } from '../../constants';
 
 // Static report imports for file:// (Electron) compatibility — dynamic import can fail there
 import PropertyLayoutReport from '../reports/PropertyLayoutReport';
@@ -36,6 +36,7 @@ interface RentalManagementPageProps {
 
 // Define all possible view keys
 type RentalView =
+    | 'Rental setup'
     | 'Agreements' | 'Invoices' | 'Recurring Templates' | 'Monthly Service Charges' | 'Bills' | 'Payment' | 'Payouts'
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
@@ -89,6 +90,13 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         if (isReportActive) setReportsExpanded(true);
     }, [isReportActive]);
 
+    /** Legacy `rentalSettings` top-level page → embedded Rental setup + normalize to rentalManagement. */
+    useLayoutEffect(() => {
+        if (initialPage !== 'rentalSettings') return;
+        setActiveView('Rental setup');
+        dispatch({ type: 'SET_PAGE', payload: 'rentalManagement' });
+    }, [initialPage, dispatch, setActiveView]);
+
     useEffect(() => {
         startTransition(() => {
             switch (initialPage) {
@@ -115,6 +123,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             startTransition(() => {
                 if (mainTab === 'Reports' && subTab) {
                     setActiveView(subTab as RentalView);
+                } else if (mainTab === 'Rental setup') {
+                    setActiveView('Rental setup');
                 } else if (['Agreements', 'Invoices', 'Recurring Templates', 'Monthly Service Charges', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
                     setActiveView(mainTab as RentalView);
                 }
@@ -124,6 +134,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     }, [initialTabs, dispatch, setActiveView]);
 
     const OPERATIONAL_VIEWS: RentalView[] = [
+        'Rental setup',
         'Agreements',
         'Invoices',
         'Recurring Templates',
@@ -141,6 +152,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     /** Mount ONLY the active operational view — avoids mounting all 7 at once (major INP win). */
     const renderOperationalContent = () => (
         <div className="relative h-full w-full min-h-0">
+            {activeView === 'Rental setup' && <RentalSettingsPage embeddedInRentalModule />}
             {activeView === 'Agreements' && <RentalAgreementsPage />}
             {activeView === 'Invoices' && (
                 <RentalInvoicesPage onNavigateToRecurringTemplates={goRecurringTemplates} />
@@ -221,18 +233,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 <SubNavModeToggle collapsed={subNavCollapsed} onToggle={toggleSubNav} title={subNavToggleTitle} compact />
             </div>
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Rental module navigation">
-                <div className="mb-2 pb-2 border-b border-app-border">
-                    <button
-                        type="button"
-                        onClick={() => startTransition(() => dispatch({ type: 'SET_PAGE', payload: 'rentalSettings' }))}
-                        className={`w-full flex items-center gap-2 rounded-md text-sm font-medium transition-colors px-3 py-2 text-app-muted hover:bg-app-toolbar hover:text-app-text ${subNavCollapsed ? 'justify-center px-1' : ''}`}
-                        title="Buildings, properties, tenants, owners"
-                    >
-                        <span className="w-4 h-4 shrink-0 opacity-80">{ICONS.home}</span>
-                        {!subNavCollapsed && <span>Rental setup</span>}
-                    </button>
-                </div>
                 <div className="space-y-0.5">
+                    <NavItem view="Rental setup" label="Rental setup" />
                     <NavItem view="Agreements" label="Agreements" />
                     <NavItem view="Invoices" label="Invoices" />
                     <NavItem view="Recurring Templates" label="Recurring Templates" />
