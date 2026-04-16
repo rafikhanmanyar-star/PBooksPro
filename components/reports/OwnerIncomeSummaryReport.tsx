@@ -17,7 +17,7 @@ import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -192,7 +192,18 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                 if (tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id) {
                     if (tx.propertyId && unitData[tx.propertyId]) {
                         const d = (tx.date || '').slice(0, 10);
-                        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) return;
+                        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
+                            // Multi-owner: check for explicit share lines; if none, compute proportional share
+                            const hasExplicitShares = ownerShareCat && state.transactions.some(
+                                st => st.categoryId === ownerShareCat.id &&
+                                    ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
+                            );
+                            if (!hasExplicitShares) {
+                                const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId), owner.id, d);
+                                if (pct > 0) unitData[tx.propertyId].collected += Math.round(amount * pct) / 100;
+                            }
+                            return;
+                        }
                         const belongsToOwner = tx.ownerId ? tx.ownerId === owner.id : (state.properties.find(p => p.id === tx.propertyId)?.ownerId === owner.id);
                         if (belongsToOwner) unitData[tx.propertyId].collected += amount;
                     }

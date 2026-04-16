@@ -105,6 +105,23 @@ export function hasMultipleOwnersOnDate(
   return getOwnershipSharesForPropertyOnDate(state, propertyId, dateYyyyMmDd).length > 1;
 }
 
+/**
+ * Returns the ownership percentage for a specific owner on a given date.
+ * Used to compute an owner's share of a gross rent transaction when no explicit
+ * "Owner Rental Income Share" split lines exist (legacy / pre-co-ownership data).
+ * Returns 100 when the owner is the sole owner; 0 when the owner has no stake.
+ */
+export function getOwnerSharePercentageOnDate(
+  state: Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory'>,
+  propertyId: string,
+  ownerId: string,
+  dateYyyyMmDd: string
+): number {
+  const shares = getOwnershipSharesForPropertyOnDate(state, propertyId, dateYyyyMmDd);
+  const match = shares.find((s) => s.ownerId === ownerId);
+  return match ? match.percentage : 0;
+}
+
 export function primaryOwnerIdFromShares(shares: { ownerId: string; percentage: number }[]): string | undefined {
   if (shares.length === 0) return undefined;
   const sorted = [...shares].sort((a, b) =>

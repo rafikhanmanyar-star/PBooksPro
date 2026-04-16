@@ -25,7 +25,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
 
 // --- Types ---
 
@@ -193,7 +193,17 @@ const OwnerPayoutsPage: React.FC = () => {
             ownerData[ownerId] = { collected: 0, paid: 0 };
         });
 
+        // Build set of invoice/batch IDs that already have explicit per-owner share lines
+        const txIdsWithShareLines = new Set<string>();
+        if (ownerShareCat) {
+            state.transactions.forEach(tx => {
+                if (tx.categoryId === ownerShareCat.id && tx.invoiceId) txIdsWithShareLines.add(tx.invoiceId);
+                if (tx.categoryId === ownerShareCat.id && tx.batchId) txIdsWithShareLines.add(tx.batchId);
+            });
+        }
+
         // Rental Income — gross (single-owner) + per-owner share lines (multi-owner). Only in-scope properties.
+        // For multi-owner properties without explicit share lines, compute proportional shares on the fly.
         state.transactions
             .filter((tx) => {
                 if (tx.type !== TransactionType.INCOME || !tx.propertyId || !propertyIdsInScope.has(String(tx.propertyId)))
@@ -201,14 +211,19 @@ const OwnerPayoutsPage: React.FC = () => {
                 if (clearingRentCat && tx.categoryId === clearingRentCat.id) return false;
                 if (tx.categoryId === rentalIncomeCategory.id) {
                     const d = (tx.date || '').slice(0, 10);
-                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) return false;
+                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
+                        const hasExplicitShares = (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId))
+                            || (tx.batchId && txIdsWithShareLines.has(tx.batchId));
+                        if (hasExplicitShares) return false;
+                        return true;
+                    }
                     return true;
                 }
                 if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) return true;
                 return false;
             })
             .forEach((tx) => {
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                let amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(amount)) return;
 
                 if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) {
@@ -219,10 +234,22 @@ const OwnerPayoutsPage: React.FC = () => {
                     return;
                 }
 
-                const ownerIdForTx = tx.ownerId ?? state.properties.find((p) => p.id === tx.propertyId)?.ownerId;
-                if (ownerIdForTx && ownerData[ownerIdForTx]) {
-                    if (amount > 0) ownerData[ownerIdForTx].collected += amount;
-                    else ownerData[ownerIdForTx].paid += Math.abs(amount);
+                const d = (tx.date || '').slice(0, 10);
+                const isMultiOwner = d && tx.propertyId && hasMultipleOwnersOnDate(state, String(tx.propertyId), d);
+
+                if (isMultiOwner) {
+                    ownersInScope.forEach(oid => {
+                        const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId!), oid, d);
+                        if (pct <= 0 || !ownerData[oid]) return;
+                        const share = Math.round(amount * pct) / 100;
+                        if (share > 0) ownerData[oid].collected += share;
+                    });
+                } else {
+                    const ownerIdForTx = tx.ownerId ?? state.properties.find((p) => p.id === tx.propertyId)?.ownerId;
+                    if (ownerIdForTx && ownerData[ownerIdForTx]) {
+                        if (amount > 0) ownerData[ownerIdForTx].collected += amount;
+                        else ownerData[ownerIdForTx].paid += Math.abs(amount);
+                    }
                 }
             });
 

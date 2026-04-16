@@ -15,7 +15,7 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
-import { getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate } from '../../services/propertyOwnershipService';
+import { getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
 import ARTreeView, { ARTreeNode } from './ARTreeView';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -101,7 +101,20 @@ function computeOwnerBalanceAsOf(ownerId: string, asOfDate: string, state: AppSt
                 if (tx.categoryId !== rentalIncomeCategory.id) return;
                 if (!tx.propertyId) return;
                 const d = (tx.date || '').slice(0, 10);
-                if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) return;
+                if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
+                    // Multi-owner without explicit share lines: distribute proportionally
+                    const hasExplicitShares = ownerShareCat && state.transactions.some(
+                        st => st.categoryId === ownerShareCat.id &&
+                            ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
+                    );
+                    if (!hasExplicitShares) {
+                        Object.keys(balances).forEach(oid => {
+                            const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId!), oid, d);
+                            if (pct > 0) balances[oid] += Math.round(amount * pct) / 100;
+                        });
+                    }
+                    return;
+                }
                 const property = state.properties.find(p => p.id === tx.propertyId);
                 if (property?.ownerId && balances[property.ownerId] !== undefined) {
                     balances[property.ownerId] += amount;
@@ -167,7 +180,17 @@ function rentalIncomeForOwnerInMonth(
 
         if (!rentalIncomeCategoryId || tx.categoryId !== rentalIncomeCategoryId) continue;
         const d = (tx.date || '').slice(0, 10);
-        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) continue;
+        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
+            const hasExplicitShares = shareCat && state.transactions.some(
+                st => st.categoryId === shareCat.id &&
+                    ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
+            );
+            if (!hasExplicitShares) {
+                const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId), ownerId, d);
+                if (pct > 0) sum += Math.round(amount * pct) / 100;
+            }
+            continue;
+        }
         const prop = state.properties.find(p => p.id === tx.propertyId);
         if (prop?.ownerId !== ownerId) continue;
         sum += amount;

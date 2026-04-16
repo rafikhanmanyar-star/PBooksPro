@@ -4,7 +4,7 @@ import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -54,7 +54,19 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             const clearingAllocCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
             const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
 
-            // 1. Rental Income + per-owner share lines (multi-owner uses share category; gross rent hidden when split).
+            // 1. Rental Income + per-owner share lines.
+            // When explicit "Owner Rental Income Share" split lines exist for a transaction, use those.
+            // When a property has co-owners but no split lines (legacy data), compute the owner's share on the fly.
+
+            // Build a set of gross rent tx IDs that already have explicit share allocation lines
+            const txIdsWithShareLines = new Set<string>();
+            if (ownerShareCat) {
+                state.transactions.forEach(tx => {
+                    if (tx.categoryId === ownerShareCat.id && tx.invoiceId) txIdsWithShareLines.add(tx.invoiceId);
+                    if (tx.categoryId === ownerShareCat.id && tx.batchId) txIdsWithShareLines.add(tx.batchId);
+                });
+            }
+
             const income = state.transactions.filter(tx => {
                 if (tx.type !== TransactionType.INCOME || !tx.propertyId) return false;
                 if (!ownerPropertyIds.has(String(tx.propertyId))) return false;
@@ -63,7 +75,14 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
                 if (tx.categoryId === rentalIncomeCategory.id) {
                     const d = (tx.date || '').slice(0, 10);
-                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) return false;
+                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
+                        // Multi-owner: skip gross line only when explicit share lines exist for this tx
+                        const hasExplicitShares = (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId))
+                            || (tx.batchId && txIdsWithShareLines.has(tx.batchId));
+                        if (hasExplicitShares) return false;
+                        // No explicit share lines — include so we can compute the owner's share below
+                        return true;
+                    }
                     if (tx.ownerId) return tx.ownerId === ownerId;
                     return true;
                 }
@@ -75,11 +94,23 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
             income.forEach(tx => {
                 const property = state.properties.find(p => p.id === tx.propertyId);
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                let amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(amount)) return;
                 const isShareLine = Boolean(ownerShareCat && tx.categoryId === ownerShareCat.id);
 
-                // If negative (service charge deduction), show as debit; if positive (rent), show as credit
+                // For gross rent on a multi-owner property without explicit split lines,
+                // compute this owner's proportional share based on ownership percentage.
+                let isComputedShare = false;
+                if (!isShareLine && tx.propertyId) {
+                    const d = (tx.date || '').slice(0, 10);
+                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
+                        const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId), ownerId!, d);
+                        if (pct <= 0) return;
+                        amount = Math.round(amount * pct) / 100;
+                        isComputedShare = true;
+                    }
+                }
+
                 if (amount < 0) {
                     items.push({
                         id: `ded-${tx.id}`,
@@ -91,15 +122,18 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         transaction: tx
                     });
                 } else {
+                    const pctLabel = isComputedShare
+                        ? ` (${getOwnerSharePercentageOnDate(state, String(tx.propertyId!), ownerId!, (tx.date || '').slice(0, 10)).toFixed(0)}%)`
+                        : '';
                     items.push({
                         id: `inc-${tx.id}`,
                         date: tx.date,
                         particulars: isShareLine
                             ? (tx.description || `Rent share: ${property?.name || 'Unit'}`)
-                            : `Rent: ${property?.name || 'Unit'}`,
+                            : `Rent${pctLabel}: ${property?.name || 'Unit'}`,
                         debit: 0,
                         credit: amount,
-                        type: isShareLine ? 'Rent (share)' : 'Rent',
+                        type: isShareLine ? 'Rent (share)' : (isComputedShare ? 'Rent (share)' : 'Rent'),
                         transaction: tx
                     });
                 }
@@ -335,7 +369,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             return { ...item, balance: runningBalance };
         });
 
-    }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, sortConfig]);
+    }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership, sortConfig]);
 
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className="ml-1 text-[10px] text-slate-400">
