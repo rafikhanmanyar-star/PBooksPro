@@ -25,7 +25,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getAllHistoricalOwnerIds } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getAllHistoricalOwnerIds, resolveOwnerForPropertyOnDate, isFormerOwner, getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
 
 // --- Types ---
 
@@ -65,6 +65,7 @@ const OwnerPayoutsPage: React.FC = () => {
         direction: 'desc',
     });
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('owner_payouts_tree_sidebar', 340);
+    const [showAllOwners, setShowAllOwners] = useLocalStorage<boolean>('owner_payouts_show_all_owners', true);
     const [isTreeResizing, setIsTreeResizing] = useState(false);
     const payoutSplitContainerRef = useRef<HTMLDivElement>(null);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'balance', direction: 'desc' });
@@ -245,7 +246,8 @@ const OwnerPayoutsPage: React.FC = () => {
                         if (share > 0) ownerData[oid].collected += share;
                     });
                 } else {
-                    const ownerIdForTx = tx.ownerId ?? state.properties.find((p) => p.id === tx.propertyId)?.ownerId;
+                    const d2 = (tx.date || '').slice(0, 10);
+                    const ownerIdForTx = tx.ownerId ?? (d2 && tx.propertyId ? resolveOwnerForPropertyOnDate(state, tx.propertyId, d2) : state.properties.find((p) => p.id === tx.propertyId)?.ownerId);
                     if (ownerIdForTx && ownerData[ownerIdForTx]) {
                         if (amount > 0) ownerData[ownerIdForTx].collected += amount;
                         else ownerData[ownerIdForTx].paid += Math.abs(amount);
@@ -285,7 +287,8 @@ const OwnerPayoutsPage: React.FC = () => {
                 const catName = category?.name || '';
                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
 
-                const ownerIdForTx = tx.ownerId ?? state.properties.find(p => p.id === tx.propertyId)?.ownerId;
+                const txDate = (tx.date || '').slice(0, 10);
+                const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : state.properties.find(p => p.id === tx.propertyId)?.ownerId);
                 if (ownerIdForTx && ownerData[ownerIdForTx]) {
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                     if (!isNaN(amount) && amount > 0) ownerData[ownerIdForTx].paid += amount;
@@ -293,8 +296,7 @@ const OwnerPayoutsPage: React.FC = () => {
             }
         });
 
-        // Broker fee from rental agreements — always deducted from owner balance (same as Owner Rental Income report). Only in-scope properties.
-        // Exclude renewed agreements (previousAgreementId set) so broker fee is charged only once per tenant/property, not again on renewal.
+        // Broker fee from rental agreements — deducted from owner balance. Only in-scope properties.
         state.rentalAgreements.forEach(ra => {
             if (ra.previousAgreementId) return;
             const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
@@ -302,19 +304,21 @@ const OwnerPayoutsPage: React.FC = () => {
             const propId = ra.propertyId ?? (ra as any).property_id;
             if (!propId || !propertyIdsInScope.has(String(propId))) return;
 
-            const property = state.properties.find(p => String(p.id) === String(propId));
-            if (!property?.ownerId || !ownerData[property.ownerId]) return;
+            const raDateStr = (ra.startDate || '').slice(0, 10);
+            const ownerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, propId, raDateStr) : state.properties.find(p => String(p.id) === String(propId))?.ownerId);
+            if (!ownerId || !ownerData[ownerId]) return;
 
-            ownerData[property.ownerId].paid += fee;
+            ownerData[ownerId].paid += fee;
         });
 
         // Bills with cost center = owner — only in-scope properties
         state.bills.forEach(bill => {
             if (!bill.propertyId || bill.projectId || !propertyIdsInScope.has(String(bill.propertyId))) return;
-            const property = state.properties.find(p => p.id === bill.propertyId);
-            if (!property?.ownerId || !ownerData[property.ownerId]) return;
+            const billDateStr = (bill.issueDate || '').slice(0, 10);
+            const ownerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : state.properties.find(p => p.id === bill.propertyId)?.ownerId;
+            if (!ownerId || !ownerData[ownerId]) return;
             const amount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
-            if (!isNaN(amount) && amount > 0) ownerData[property.ownerId].paid += amount;
+            if (!isNaN(amount) && amount > 0) ownerData[ownerId].paid += amount;
         });
 
         return Object.entries(ownerData)
@@ -323,7 +327,7 @@ const OwnerPayoutsPage: React.FC = () => {
     }, [state.transactions, state.categories, state.properties, state.contacts, state.rentalAgreements, state.bills, propertyIdsInScope]);
 
     // --- Owner Security Deposit Balances ---
-    // Aligned with Owner Security Deposit report. Scoped by selected building/owner/unit.
+    // Includes historical owners so former owners with pending security balances still appear.
     const ownerSecurityBalances = useMemo(() => {
         const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
         const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
@@ -334,6 +338,9 @@ const OwnerPayoutsPage: React.FC = () => {
         propertyIdsInScope.forEach(pid => {
             const prop = state.properties.find(p => String(p.id) === pid);
             if (prop?.ownerId) ownersInScope.add(prop.ownerId);
+            (state.propertyOwnership || [])
+                .filter((r) => String(r.propertyId) === String(pid) && !r.deletedAt)
+                .forEach((r) => ownersInScope.add(r.ownerId));
         });
 
         const ownerData: Record<string, { collected: number; paid: number }> = {};
@@ -341,20 +348,21 @@ const OwnerPayoutsPage: React.FC = () => {
             ownerData[ownerId] = { collected: 0, paid: 0 };
         });
 
-        // Security Deposit Income — only in-scope properties
+        // Security Deposit Income — resolve owner from date
         state.transactions.filter(tx =>
             tx.type === TransactionType.INCOME &&
             tx.categoryId === secDepCategory.id &&
             tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))
         ).forEach(tx => {
-            const property = state.properties.find(p => p.id === tx.propertyId);
-            if (property?.ownerId && ownerData[property.ownerId]) {
+            const txDate = (tx.date || '').slice(0, 10);
+            const ownerId = tx.ownerId ?? (txDate && tx.propertyId ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : state.properties.find(p => p.id === tx.propertyId)?.ownerId);
+            if (ownerId && ownerData[ownerId]) {
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                if (!isNaN(amount) && amount > 0) ownerData[property.ownerId].collected += amount;
+                if (!isNaN(amount) && amount > 0) ownerData[ownerId].collected += amount;
             }
         });
 
-        // Security Outflows — aligned with Owner Security Deposit report: Refund, Owner Security Payout, tenant deductions. Only in-scope.
+        // Security Outflows — resolve owner from date
         state.transactions.filter(tx => tx.type === TransactionType.EXPENSE).forEach(tx => {
             let ownerId = '';
             const category = state.categories.find(c => c.id === tx.categoryId);
@@ -363,8 +371,8 @@ const OwnerPayoutsPage: React.FC = () => {
             if (tx.contactId && ownerData[tx.contactId] && ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) {
                 ownerId = tx.contactId;
             } else if (tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
-                const property = state.properties.find(p => p.id === tx.propertyId);
-                if (property) ownerId = property.ownerId;
+                const txDate = (tx.date || '').slice(0, 10);
+                ownerId = (txDate ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : state.properties.find(p => p.id === tx.propertyId)?.ownerId) || '';
             }
 
             const isRefund = secRefCategory && tx.categoryId === secRefCategory.id;
@@ -381,7 +389,7 @@ const OwnerPayoutsPage: React.FC = () => {
         return Object.entries(ownerData)
             .map(([ownerId, data]) => ({ ownerId, ...data, balance: data.collected - data.paid }))
             .filter(item => Math.abs(item.balance) > 0.01 || item.collected > 0 || item.paid > 0);
-    }, [state.transactions, state.categories, state.properties, state.contacts, propertyIdsInScope]);
+    }, [state.transactions, state.categories, state.properties, state.contacts, state.propertyOwnership, propertyIdsInScope]);
 
     // --- Broker Commission Balances ---
     // Scoped by selected building/owner/unit so summary shows correct broker total when a filter is selected.
@@ -472,7 +480,8 @@ const OwnerPayoutsPage: React.FC = () => {
                     state.transactions
                         .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && String(tx.propertyId) === propIdStr)
                         .forEach(tx => {
-                            const ownerIdForTx = tx.ownerId ?? prop.ownerId;
+                            const txDate = (tx.date || '').slice(0, 10);
+                            const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : prop.ownerId);
                             if (ownerIdForTx !== ownerId) return;
                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                             if (isNaN(amount)) return;
@@ -508,7 +517,8 @@ const OwnerPayoutsPage: React.FC = () => {
                                 if (tx.contactId === ownerId) paid += amount;
                                 return;
                             }
-                            const ownerIdForTx = tx.ownerId ?? prop.ownerId;
+                            const txDate = (tx.date || '').slice(0, 10);
+                            const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : prop.ownerId);
                             if (ownerIdForTx !== ownerId) return;
                             const category = state.categories.find(c => c.id === tx.categoryId);
                             const catName = category?.name || '';
@@ -523,19 +533,22 @@ const OwnerPayoutsPage: React.FC = () => {
                             return propId && String(propId) === String(prop.id) && ra.brokerId && !isNaN(fee) && fee > 0;
                         })
                         .forEach(ra => {
-                            if (ra.ownerId === ownerId || (!ra.ownerId && prop.ownerId === ownerId)) {
+                            const raDateStr = (ra.startDate || '').slice(0, 10);
+                            const raOwnerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, prop.id, raDateStr) : prop.ownerId);
+                            if (raOwnerId === ownerId) {
                                 const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
                                 if (!isNaN(fee)) paid += fee;
                             }
                         });
-                    if (ownerId === prop.ownerId) {
-                        state.bills
-                            .filter(b => String(b.propertyId) === propIdStr && !b.projectId)
-                            .forEach(b => {
-                                const amt = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount ?? 0));
-                                if (!isNaN(amt) && amt > 0) paid += amt;
-                            });
-                    }
+                    state.bills
+                        .filter(b => String(b.propertyId) === propIdStr && !b.projectId)
+                        .forEach(b => {
+                            const billDateStr = (b.issueDate || '').slice(0, 10);
+                            const billOwnerId = billDateStr ? resolveOwnerForPropertyOnDate(state, propIdStr, billDateStr) : prop.ownerId;
+                            if (billOwnerId !== ownerId) return;
+                            const amt = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount ?? 0));
+                            if (!isNaN(amt) && amt > 0) paid += amt;
+                        });
                     const balance = collected - paid;
                     if (collected > 0.01 || paid > 0.01) {
                         result[ownerId].rent.push({
@@ -546,18 +559,24 @@ const OwnerPayoutsPage: React.FC = () => {
                     }
                 }
 
-                if (secDepCategory && ownerId === prop.ownerId) {
+                if (secDepCategory) {
                     let collected = 0;
                     let paid = 0;
                     state.transactions
                         .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && String(tx.propertyId) === propIdStr)
                         .forEach(tx => {
+                            const txDate = (tx.date || '').slice(0, 10);
+                            const txOwnerId = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : prop.ownerId);
+                            if (txOwnerId !== ownerId) return;
                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                             if (!isNaN(amount) && amount > 0) collected += amount;
                         });
                     state.transactions
                         .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
                         .forEach(tx => {
+                            const txDate = (tx.date || '').slice(0, 10);
+                            const txOwnerId = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : prop.ownerId);
+                            if (txOwnerId !== ownerId) return;
                             const category = state.categories.find(c => c.id === tx.categoryId);
                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                             if (isNaN(amount) || amount <= 0) return;
@@ -572,11 +591,13 @@ const OwnerPayoutsPage: React.FC = () => {
                             if (category?.name?.includes('(Tenant)')) paid += amount;
                         });
                     const balance = collected - paid;
-                    result[ownerId].security.push({
-                        propertyId: prop.id,
-                        propertyName: prop.name || 'Unit',
-                        balanceDue: Math.max(0, balance),
-                    });
+                    if (collected > 0.01 || paid > 0.01) {
+                        result[ownerId].security.push({
+                            propertyId: prop.id,
+                            propertyName: prop.name || 'Unit',
+                            balanceDue: Math.max(0, balance),
+                        });
+                    }
                 }
             }
         });
@@ -622,6 +643,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 const propNodes: PayoutTreeNode[] = [];
                 let oSum = 0;
 
+                const todayStr = new Date().toISOString().slice(0, 10);
                 for (const propIdStr of propIdSet) {
                     const prop = propsInB.find(p => String(p.id) === propIdStr);
                     if (!prop) continue;
@@ -631,10 +653,13 @@ const OwnerPayoutsPage: React.FC = () => {
                     const due = Math.max(0, raw);
                     if (due <= 0.01) continue;
                     oSum += due;
+                    const shares = getOwnershipSharesForPropertyOnDate(state, propIdStr, todayStr);
+                    const ownerShare = shares.find(s => s.ownerId === ownerId);
+                    const pctSuffix = shares.length > 1 && ownerShare ? ` (${ownerShare.percentage.toFixed(0)}%)` : '';
                     propNodes.push({
                         id: `property-${prop.id}`,
                         type: 'property',
-                        label: prop.name || 'Unit',
+                        label: `${prop.name || 'Unit'}${pctSuffix}`,
                         value: formatCurrency(due),
                         sortAmount: due,
                     });
@@ -642,10 +667,11 @@ const OwnerPayoutsPage: React.FC = () => {
 
                 if (propNodes.length === 0) continue;
 
+                const former = isFormerOwner(state, ownerId);
                 ownerChildren.push({
                     id: `bld-${b.id}-own-${ownerId}`,
                     type: 'owner',
-                    label: contact.name,
+                    label: former ? `${contact.name} (Former)` : contact.name,
                     value: formatCurrency(oSum),
                     sortAmount: oSum,
                     children: propNodes,
@@ -1048,6 +1074,14 @@ const OwnerPayoutsPage: React.FC = () => {
     const filteredRows = useMemo(() => {
         let rows = [...allPayeeRows];
 
+        // Active/former owner filter
+        if (!showAllOwners) {
+            rows = rows.filter(r => {
+                if (r.type !== 'Owner') return true;
+                return !isFormerOwner(state, r.contact.id);
+            });
+        }
+
         // Category filter
         if (activeCategory !== 'all') {
             rows = rows.filter(r => r.category === activeCategory);
@@ -1079,7 +1113,7 @@ const OwnerPayoutsPage: React.FC = () => {
         });
 
         return rows;
-    }, [allPayeeRows, activeCategory, searchQuery, sortConfig, selectedBrokerId]);
+    }, [allPayeeRows, activeCategory, searchQuery, sortConfig, selectedBrokerId, showAllOwners, state]);
 
     // Rows for summary (same scope as allPayeeRows; only search filter so all three cards show correct totals)
     const rowsForSummary = useMemo(() => {
@@ -1463,6 +1497,16 @@ const OwnerPayoutsPage: React.FC = () => {
                     </Button>
                 )}
 
+                <label className="inline-flex items-center gap-1.5 text-xs text-app-muted cursor-pointer select-none whitespace-nowrap">
+                    <input
+                        type="checkbox"
+                        checked={showAllOwners}
+                        onChange={(e) => setShowAllOwners(e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                    />
+                    Show former owners
+                </label>
+
                 <div className="relative flex-grow max-w-xs ml-auto">
                     <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted">
                         <div className="w-3.5 h-3.5">{ICONS.search}</div>
@@ -1576,7 +1620,12 @@ const OwnerPayoutsPage: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-3 py-3">
-                                                    <div className="font-semibold text-sm text-app-text">{row.name}</div>
+                                                    <div className="font-semibold text-sm text-app-text flex items-center gap-1.5">
+                                                        {row.name}
+                                                        {row.type === 'Owner' && isFormerOwner(state, row.contact.id) && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-100 text-amber-700">Former</span>
+                                                        )}
+                                                    </div>
                                                     <div className="text-xs text-app-muted">{row.type}</div>
                                                 </td>
                                                 <td className="px-3 py-3">

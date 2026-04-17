@@ -22,6 +22,7 @@ import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import TreeView, { TreeNode } from '../ui/TreeView';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { getAllHistoricalOwnerIds, resolveOwnerForPropertyOnDate, isFormerOwner, getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
 
 type DateRangeOption = 'today' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -113,7 +114,16 @@ const OwnerPayoutsReport: React.FC = () => {
             .filter(b => matchesTreeSearch(b.name))
             .map(building => {
                 const propsInBuilding = state.properties.filter(p => p.buildingId === building.id);
-                const ownerIds = [...new Set(propsInBuilding.map(p => p.ownerId).filter(Boolean))];
+
+                const ownerIdSet = new Set<string>();
+                const ownerIds: string[] = [];
+                for (const p of propsInBuilding) {
+                    const all = getAllHistoricalOwnerIds(state, p.id);
+                    if (all.size === 0 && p.ownerId) all.add(p.ownerId);
+                    for (const oid of all) {
+                        if (!ownerIdSet.has(oid)) { ownerIdSet.add(oid); ownerIds.push(oid); }
+                    }
+                }
 
                 if (ownerIds.length <= 1) {
                     const unitChildren: TreeNode[] = propsInBuilding
@@ -128,17 +138,29 @@ const OwnerPayoutsReport: React.FC = () => {
                     };
                 }
 
+                const todayStr = toLocalDateString(new Date());
                 const ownerChildren: TreeNode[] = ownerIds
                     .map(ownerId => {
                         const owner = ownerContacts.find(c => c.id === ownerId);
                         if (!owner || !matchesTreeSearch(owner.name)) return null;
+                        const former = isFormerOwner(state, ownerId);
                         const unitChildren: TreeNode[] = propsInBuilding
-                            .filter(p => p.ownerId === ownerId && matchesTreeSearch(p.name))
-                            .map(prop => ({ id: `unit:${prop.id}`, label: prop.name, type: 'unit' as const }));
+                            .filter(p => {
+                                const owners = getAllHistoricalOwnerIds(state, p.id);
+                                return owners.has(ownerId) && matchesTreeSearch(p.name);
+                            })
+                            .map(prop => {
+                                const shares = getOwnershipSharesForPropertyOnDate(state, prop.id, todayStr);
+                                const ownerShare = shares.find(s => s.ownerId === ownerId);
+                                const pctSuffix = shares.length > 1 && ownerShare ? ` (${ownerShare.percentage.toFixed(0)}%)` : '';
+                                return { id: `unit:${prop.id}`, label: `${prop.name}${pctSuffix}`, type: 'unit' as const };
+                            });
                         unitChildren.sort((a, b) => a.label.localeCompare(b.label));
+                        let ownerLabel = owner.name;
+                        if (former) ownerLabel += ' (Former)';
                         return {
                             id: `owner:${owner.id}`,
-                            label: owner.name,
+                            label: ownerLabel,
                             type: 'owner',
                             children: unitChildren.length ? unitChildren : undefined
                         } as TreeNode;
@@ -157,7 +179,7 @@ const OwnerPayoutsReport: React.FC = () => {
         buildingNodes.sort((a, b) => a.label.localeCompare(b.label));
 
         return [allNode, ...buildingNodes];
-    }, [state.buildings, state.properties, ownerContacts, matchesTreeSearch]);
+    }, [state.buildings, state.properties, state.propertyOwnership, ownerContacts, matchesTreeSearch]);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -198,6 +220,8 @@ const OwnerPayoutsReport: React.FC = () => {
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
         const ownerSecurityPayoutCat = state.categories.find(c => c.name === 'Owner Security Payout');
         const securityRefundCat = state.categories.find(c => c.name === 'Security Deposit Refund');
+        const obClearingCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
+        const obShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
 
         if (!rentalIncomeCategory) return 0;
 
@@ -217,22 +241,63 @@ const OwnerPayoutsReport: React.FC = () => {
             }
         });
 
+        const obShareLineInvoices = new Set<string>();
+        if (obShareCat) {
+            state.transactions.forEach(tx => {
+                if (tx.categoryId === obShareCat.id && tx.invoiceId) obShareLineInvoices.add(tx.invoiceId);
+                if (tx.categoryId === obShareCat.id && tx.batchId) obShareLineInvoices.add(tx.batchId);
+            });
+        }
+
         let balance = 0;
+
+        const addIncomeToBalance = (amount: number, ownerIdForTx: string | undefined, buildingId: string | undefined, propertyId: string | undefined) => {
+            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+            if (selectedOwnerId !== 'all' && ownerIdForTx !== selectedOwnerId) return;
+            if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
+            balance += amount;
+        };
 
         state.transactions.forEach(tx => {
             const date = new Date(tx.date);
             if (date >= start) return;
 
-            if (tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && tx.propertyId) {
-                const property = state.properties.find(p => p.id === tx.propertyId);
-                const ownerIdForTx = tx.ownerId ?? property?.ownerId;
-                const buildingId = tx.buildingId || property?.buildingId;
-                if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-                if (selectedOwnerId !== 'all' && ownerIdForTx !== selectedOwnerId) return;
-                if (selectedUnitId !== 'all' && tx.propertyId !== selectedUnitId) return;
+            if (tx.type === TransactionType.INCOME && tx.propertyId) {
+                if (obClearingCat && tx.categoryId === obClearingCat.id) return;
 
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                if (!isNaN(amount)) balance += amount;
+                if (tx.categoryId === rentalIncomeCategory.id) {
+                    const txDate = (tx.date || '').slice(0, 10);
+                    const hasExplicit = (tx.invoiceId && obShareLineInvoices.has(tx.invoiceId))
+                        || (tx.batchId && obShareLineInvoices.has(tx.batchId));
+                    if (hasExplicit) return;
+
+                    const rawAmt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(rawAmt)) return;
+                    const property = state.properties.find(p => p.id === tx.propertyId);
+                    const buildingId = tx.buildingId || property?.buildingId;
+
+                    if (txDate && tx.propertyId && hasMultipleOwnersOnDate(state, String(tx.propertyId), txDate)) {
+                        const shares = getOwnershipSharesForPropertyOnDate(state, tx.propertyId, txDate);
+                        for (const s of shares) {
+                            if (s.percentage <= 0) continue;
+                            addIncomeToBalance(Math.round(rawAmt * s.percentage) / 100, s.ownerId, buildingId, tx.propertyId);
+                        }
+                    } else {
+                        const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : property?.ownerId);
+                        addIncomeToBalance(rawAmt, ownerIdForTx, buildingId, tx.propertyId);
+                    }
+                    return;
+                }
+
+                if (obShareCat && tx.categoryId === obShareCat.id) {
+                    const rawAmt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(rawAmt)) return;
+                    const property = state.properties.find(p => p.id === tx.propertyId);
+                    addIncomeToBalance(rawAmt, tx.contactId || tx.ownerId, tx.buildingId || property?.buildingId, tx.propertyId);
+                    return;
+                }
+
+                return;
             }
 
             if (tx.type === TransactionType.EXPENSE) {
@@ -260,11 +325,12 @@ const OwnerPayoutsReport: React.FC = () => {
 
                 if (isRelevant) {
                     let buildingId = tx.buildingId;
+                    const txDate = (tx.date || '').slice(0, 10);
                     let ownerId = tx.contactId;
                     if (propertyId) {
                         const property = state.properties.find(p => p.id === propertyId);
                         if (property) {
-                            ownerId = tx.ownerId ?? property.ownerId;
+                            ownerId = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propertyId, txDate) : property.ownerId);
                             if (!buildingId) buildingId = property.buildingId;
                         }
                     }
@@ -284,7 +350,8 @@ const OwnerPayoutsReport: React.FC = () => {
             if (raDate >= start) return;
             const property = state.properties.find(p => p.id === ra.propertyId);
             if (!property) return;
-            const ownerId = property.ownerId;
+            const raDateStr = (ra.startDate || '').slice(0, 10);
+            const ownerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : property.ownerId);
             const buildingId = property.buildingId;
             if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
             if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
@@ -299,7 +366,8 @@ const OwnerPayoutsReport: React.FC = () => {
             if (billDate >= start) return;
             const property = state.properties.find(p => p.id === bill.propertyId);
             if (!property) return;
-            const ownerId = property.ownerId;
+            const billDateStr = (bill.issueDate || '').slice(0, 10);
+            const ownerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : property.ownerId;
             const buildingId = property.buildingId;
             if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
             if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
@@ -343,53 +411,86 @@ const OwnerPayoutsReport: React.FC = () => {
 
         const items: any[] = [];
 
-        // 1. Rental Income (including negative amounts for service charge deductions)
-        state.transactions
-            .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id)
-            .forEach(tx => {
-                const date = new Date(tx.date);
-                if (date >= start && date <= end && tx.propertyId) {
-                    const property = state.properties.find(p => p.id === tx.propertyId);
-                    const ownerIdForTx = tx.ownerId ?? property?.ownerId;
-                    const owner = state.contacts.find(c => c.id === ownerIdForTx);
-                    const buildingId = tx.buildingId || property?.buildingId;
+        const clearingAllocCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
+        const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
 
-                    // Filters
-                    if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-                    if (selectedOwnerId !== 'all' && ownerIdForTx !== selectedOwnerId) return;
-                    if (selectedUnitId !== 'all' && tx.propertyId !== selectedUnitId) return;
-
-                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (isNaN(amount)) return;
-
-                    // If negative (service charge deduction), show as paidOut; if positive (rent), show as rentIn
-                    if (amount < 0) {
-                        items.push({
-                            id: tx.id,
-                            date: tx.date,
-                            ownerName: owner?.name || 'Unknown',
-                            propertyName: property?.name || 'Unknown',
-                            particulars: tx.description || 'Service Charge Deduction',
-                            rentIn: 0,
-                            paidOut: Math.abs(amount),
-                            entityType: 'transaction' as const,
-                            entityId: tx.id
-                        });
-                    } else {
-                        items.push({
-                            id: tx.id,
-                            date: tx.date,
-                            ownerName: owner?.name || 'Unknown',
-                            propertyName: property?.name || 'Unknown',
-                            particulars: tx.description || 'Rent Collected',
-                            rentIn: amount,
-                            paidOut: 0,
-                            entityType: 'transaction' as const,
-                            entityId: tx.id
-                        });
-                    }
-                }
+        const txIdsWithShareLines = new Set<string>();
+        if (ownerShareCat) {
+            state.transactions.forEach(tx => {
+                if (tx.categoryId === ownerShareCat.id && tx.invoiceId) txIdsWithShareLines.add(tx.invoiceId);
+                if (tx.categoryId === ownerShareCat.id && tx.batchId) txIdsWithShareLines.add(tx.batchId);
             });
+        }
+
+        const pushIncomeItem = (tx: Transaction, amount: number, ownerIdForTx: string | undefined) => {
+            const property = state.properties.find(p => p.id === tx.propertyId);
+            const owner = state.contacts.find(c => c.id === ownerIdForTx);
+            const buildingId = tx.buildingId || property?.buildingId;
+
+            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+            if (selectedOwnerId !== 'all' && ownerIdForTx !== selectedOwnerId) return;
+            if (selectedUnitId !== 'all' && tx.propertyId !== selectedUnitId) return;
+
+            if (amount < 0) {
+                items.push({
+                    id: tx.id, date: tx.date,
+                    ownerName: owner?.name || 'Unknown',
+                    propertyName: property?.name || 'Unknown',
+                    particulars: tx.description || 'Service Charge Deduction',
+                    rentIn: 0, paidOut: Math.abs(amount),
+                    entityType: 'transaction' as const, entityId: tx.id
+                });
+            } else {
+                items.push({
+                    id: tx.id, date: tx.date,
+                    ownerName: owner?.name || 'Unknown',
+                    propertyName: property?.name || 'Unknown',
+                    particulars: tx.description || 'Rent Collected',
+                    rentIn: amount, paidOut: 0,
+                    entityType: 'transaction' as const, entityId: tx.id
+                });
+            }
+        };
+
+        // 1. Rental Income — with co-ownership awareness
+        state.transactions.forEach(tx => {
+            if (tx.type !== TransactionType.INCOME || !tx.propertyId) return;
+            const date = new Date(tx.date);
+            if (date < start || date > end) return;
+
+            if (clearingAllocCat && tx.categoryId === clearingAllocCat.id) return;
+
+            if (tx.categoryId === rentalIncomeCategory.id) {
+                const txDate = (tx.date || '').slice(0, 10);
+                const hasExplicitShares = (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId))
+                    || (tx.batchId && txIdsWithShareLines.has(tx.batchId));
+                if (hasExplicitShares) return;
+
+                const rawAmt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                if (isNaN(rawAmt)) return;
+
+                if (txDate && tx.propertyId && hasMultipleOwnersOnDate(state, String(tx.propertyId), txDate)) {
+                    const shares = getOwnershipSharesForPropertyOnDate(state, tx.propertyId, txDate);
+                    for (const s of shares) {
+                        const pct = s.percentage;
+                        if (pct <= 0) continue;
+                        const shareAmt = Math.round(rawAmt * pct) / 100;
+                        pushIncomeItem(tx, shareAmt, s.ownerId);
+                    }
+                } else {
+                    const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : state.properties.find(p => p.id === tx.propertyId)?.ownerId);
+                    pushIncomeItem(tx, rawAmt, ownerIdForTx);
+                }
+                return;
+            }
+
+            if (ownerShareCat && tx.categoryId === ownerShareCat.id) {
+                const rawAmt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                if (isNaN(rawAmt)) return;
+                pushIncomeItem(tx, rawAmt, tx.contactId || tx.ownerId);
+                return;
+            }
+        });
 
         // 2. Expenses (Rental only: Payouts, Bills, Broker, Service charges — exclude security)
         const ownerSecurityPayoutCat = state.categories.find(c => c.name === 'Owner Security Payout');
@@ -434,11 +535,12 @@ const OwnerPayoutsReport: React.FC = () => {
                     if (isRelevant) {
                         let propertyName = '-';
                         let buildingId = tx.buildingId;
+                        const txDate = (tx.date || '').slice(0, 10);
 
                         if (propertyId) {
                             const property = state.properties.find(p => p.id === propertyId);
                             if (property) {
-                                ownerId = tx.ownerId ?? property.ownerId; // Use tx.ownerId when set (ownership history)
+                                ownerId = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propertyId, txDate) : property.ownerId);
                                 propertyName = property.name;
                                 if (!buildingId) buildingId = property.buildingId;
                             }
@@ -467,7 +569,6 @@ const OwnerPayoutsReport: React.FC = () => {
             });
 
         // 3. Broker Fee Deductions from Rental Agreements (same approach as BrokerFeeReport)
-        // This ensures broker fees always show as explicit deductions from owner income
         state.rentalAgreements.forEach(ra => {
             if (!ra.brokerId || !ra.brokerFee || ra.brokerFee <= 0) return;
             if (!ra.propertyId) return;
@@ -478,7 +579,8 @@ const OwnerPayoutsReport: React.FC = () => {
             const property = state.properties.find(p => p.id === ra.propertyId);
             if (!property) return;
 
-            const ownerId = property.ownerId;
+            const raDateStr = (ra.startDate || '').slice(0, 10);
+            const ownerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : property.ownerId);
             const ownerContact = state.contacts.find(c => c.id === ownerId);
             const buildingId = property.buildingId;
 
@@ -511,7 +613,8 @@ const OwnerPayoutsReport: React.FC = () => {
             const property = state.properties.find(p => p.id === bill.propertyId);
             if (!property) return;
 
-            const ownerId = property.ownerId;
+            const billDateStr = (bill.issueDate || '').slice(0, 10);
+            const ownerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : property.ownerId;
             const ownerContact = state.contacts.find(c => c.id === ownerId);
             const buildingId = property.buildingId;
 

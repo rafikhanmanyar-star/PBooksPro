@@ -378,6 +378,49 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
 }
 
 /**
+ * True when the owner has no active/current ownership for the given property (or any property if
+ * propertyId is omitted). Used to show "Former Owner" labels in the UI.
+ */
+export function isFormerOwner(
+  state: Pick<AppState, 'properties' | 'propertyOwnership'>,
+  ownerId: string,
+  propertyId?: string
+): boolean {
+  const candidates = propertyId
+    ? state.properties.filter((p) => String(p.id) === String(propertyId))
+    : state.properties;
+  for (const prop of candidates) {
+    if (prop.ownerId === ownerId) return false;
+    const activeRows = (state.propertyOwnership || []).filter(
+      (r) =>
+        String(r.propertyId) === String(prop.id) &&
+        r.ownerId === ownerId &&
+        r.isActive &&
+        !r.deletedAt
+    );
+    if (activeRows.length > 0) return false;
+  }
+  return true;
+}
+
+/**
+ * For properties that have no `property_ownership` rows yet, build a default 100% row
+ * from `property.ownerId` so the ownership system treats them consistently.
+ */
+export function ensureOwnershipRowsExist(state: AppState, tenantId: string): PropertyOwnership[] {
+  const newRows: PropertyOwnership[] = [];
+  for (const prop of state.properties) {
+    const hasRows = (state.propertyOwnership || []).some(
+      (r) => String(r.propertyId) === String(prop.id) && !r.deletedAt
+    );
+    if (!hasRows && prop.ownerId) {
+      newRows.push(buildDefaultPropertyOwnershipRow(prop, tenantId));
+    }
+  }
+  return newRows;
+}
+
+/**
  * Single-new-owner transfer (compat with existing PropertyTransferModal): 100% to `newOwnerId`.
  */
 export function applyLegacySingleOwnerTransfer(

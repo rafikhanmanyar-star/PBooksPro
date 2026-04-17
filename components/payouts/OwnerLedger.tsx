@@ -4,7 +4,7 @@ import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -76,14 +76,16 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 if (tx.categoryId === rentalIncomeCategory.id) {
                     const d = (tx.date || '').slice(0, 10);
                     if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
-                        // Multi-owner: skip gross line only when explicit share lines exist for this tx
                         const hasExplicitShares = (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId))
                             || (tx.batchId && txIdsWithShareLines.has(tx.batchId));
                         if (hasExplicitShares) return false;
-                        // No explicit share lines — include so we can compute the owner's share below
                         return true;
                     }
                     if (tx.ownerId) return tx.ownerId === ownerId;
+                    if (d && tx.propertyId) {
+                        const resolved = resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
+                        return resolved === ownerId;
+                    }
                     return true;
                 }
 
@@ -206,9 +208,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             const expenses = state.transactions.filter(tx => {
                 if (tx.type !== TransactionType.EXPENSE) return false;
                 if (!tx.propertyId || !ownerPropertyIds.has(String(tx.propertyId))) return false;
-                if (brokerFeeTxIds.has(tx.id)) return false; // broker fee from agreements below
-                if (billPaymentTxIds.has(tx.id)) return false; // bill amount from bills below
-                // Exclude tenant-allocated expenses (where contactId is a tenant)
+                if (brokerFeeTxIds.has(tx.id)) return false;
+                if (billPaymentTxIds.has(tx.id)) return false;
                 if (tx.contactId) {
                     const contact = state.contacts.find(c => c.id === tx.contactId);
                     if (contact?.type === ContactType.TENANT) return false;
@@ -217,14 +218,16 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             });
 
             expenses.forEach(tx => {
-                // Skip if this is actually a Payout (handled in A)
                 if (tx.categoryId === ownerPayoutCategory?.id) return;
 
                 const category = state.categories.find(c => c.id === tx.categoryId);
                 const catName = category?.name || '';
 
-                // Exclude Security/Tenant items from Rent Ledger
                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
+
+                const txDate = (tx.date || '').slice(0, 10);
+                const ownerIdForTx = tx.ownerId ?? (txDate && tx.propertyId ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : undefined);
+                if (ownerIdForTx && ownerIdForTx !== ownerId) return;
 
                 const property = state.properties.find(p => p.id === tx.propertyId);
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
@@ -239,12 +242,15 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 });
             });
 
-            // B2. Broker Fee from rental agreements (always deducted, same as Owner Income report / Payout). Exclude renewed agreements so fee is charged only once.
+            // B2. Broker Fee from rental agreements — attribute to owner at agreement date
             state.rentalAgreements.forEach(ra => {
                 if (ra.previousAgreementId) return;
                 if (!ra.brokerId || !ra.brokerFee || !ra.propertyId || !ownerPropertyIds.has(String(ra.propertyId))) return;
                 const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
                 if (isNaN(fee) || fee <= 0) return;
+                const raDateStr = (ra.startDate || '').slice(0, 10);
+                const raOwnerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : undefined);
+                if (raOwnerId && raOwnerId !== ownerId) return;
                 const property = state.properties.find(p => p.id === ra.propertyId);
                 items.push({
                     id: `broker-fee-${ra.id}`,
@@ -256,11 +262,14 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 });
             });
 
-            // B3. Bills with cost center = owner (propertyId) — always deducted even if bill not paid yet
+            // B3. Bills with cost center = owner (propertyId) — attribute to owner at bill date
             (state.bills || []).forEach(bill => {
                 if (!bill.propertyId || bill.projectId || !ownerPropertyIds.has(String(bill.propertyId))) return;
                 const amount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
                 if (isNaN(amount) || amount <= 0) return;
+                const billDateStr = (bill.issueDate || '').slice(0, 10);
+                const billOwnerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : undefined;
+                if (billOwnerId && billOwnerId !== ownerId) return;
                 const property = state.properties.find(p => p.id === bill.propertyId);
                 items.push({
                     id: `bill-${bill.id}`,
@@ -279,11 +288,16 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
 
             if (secDepCategory) {
-                const deposits = state.transactions.filter(tx => 
-                    tx.type === TransactionType.INCOME && 
-                    tx.categoryId === secDepCategory.id && 
-                    tx.propertyId && ownerPropertyIds.has(String(tx.propertyId))
-                );
+                const deposits = state.transactions.filter(tx => {
+                    if (tx.type !== TransactionType.INCOME || tx.categoryId !== secDepCategory.id) return false;
+                    if (!tx.propertyId || !ownerPropertyIds.has(String(tx.propertyId))) return false;
+                    const d = (tx.date || '').slice(0, 10);
+                    if (d && tx.propertyId) {
+                        const resolved = tx.ownerId ?? resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
+                        if (resolved && resolved !== ownerId) return false;
+                    }
+                    return true;
+                });
                 deposits.forEach(tx => {
                     const property = state.properties.find(p => p.id === tx.propertyId);
                     items.push({
@@ -319,11 +333,17 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     });
                 }
 
-                // Refunds/Deductions linked to properties
-                const refunds = state.transactions.filter(tx => 
-                    tx.type === TransactionType.EXPENSE &&
-                    tx.propertyId && ownerPropertyIds.has(String(tx.propertyId))
-                );
+                // Refunds/Deductions linked to properties — attribute to owner at tx date
+                const refunds = state.transactions.filter(tx => {
+                    if (tx.type !== TransactionType.EXPENSE) return false;
+                    if (!tx.propertyId || !ownerPropertyIds.has(String(tx.propertyId))) return false;
+                    const d = (tx.date || '').slice(0, 10);
+                    if (d && tx.propertyId) {
+                        const resolved = tx.ownerId ?? resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
+                        if (resolved && resolved !== ownerId) return false;
+                    }
+                    return true;
+                });
                 refunds.forEach(tx => {
                     const category = state.categories.find(c => c.id === tx.categoryId);
                     if (category && (category.id === secRefCategory?.id || category.name.includes('(Tenant)'))) {
