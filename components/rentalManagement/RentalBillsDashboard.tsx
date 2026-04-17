@@ -1117,7 +1117,7 @@ const RentalBillsDashboard: React.FC = () => {
         isOpen={isCreateModalOpen}
         onClose={() => { setIsCreateModalOpen(false); setBillToEdit(null); setDuplicateBillData(null); }}
         title={billToEdit ? 'Edit Bill' : duplicateBillData ? 'Duplicate Bill' : 'Record New Bill'}
-        size="xl"
+        size="full"
       >
         <InvoiceBillForm
           key={billToEdit?.id ?? (duplicateBillData ? 'duplicate-bill' : 'new-bill')}

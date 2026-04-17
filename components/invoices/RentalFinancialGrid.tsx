@@ -111,7 +111,12 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
     const setTypeFilter = onTypeFilterChange ?? setInternalTypeFilter;
     const setDateFilter = onDateFilterChange ?? setInternalDateFilter;
 
-    const [colWidths, setColWidths] = useState<Record<RentalFinColKey, number>>({
+    /** Checkbox/expand + Status + Actions (fixed). */
+    const TABLE_FIXED_OUTER = 84 + 80 + 88;
+    const tableWrapRef = useRef<HTMLDivElement>(null);
+    const [containerWidth, setContainerWidth] = useState(0);
+
+    const [userColWidths, setUserColWidths] = useState<Record<RentalFinColKey, number>>({
         type: 108,
         reference: 160,
         description: 180,
@@ -124,18 +129,55 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         remainingAmount: 114,
     });
     const { startResize } = usePairColumnResize<RentalFinColKey>(
-        setColWidths,
+        setUserColWidths,
         RENTAL_FIN_COL_MIN,
         RENTAL_FIN_COL_ORDER
     );
 
-    const tableDataWidth = useMemo(
-        () => RENTAL_FIN_COL_ORDER.reduce((s, k) => s + colWidths[k], 0),
-        [colWidths]
-    );
-    /** Checkbox + Status + Actions (fixed). */
-    const TABLE_FIXED_OUTER = 40 + 80 + 88;
-    const tableMinWidth = TABLE_FIXED_OUTER + tableDataWidth;
+    useEffect(() => {
+        if (!tableWrapRef.current) return;
+        const ro = new ResizeObserver(entries => {
+            for (const entry of entries) setContainerWidth(entry.contentRect.width);
+        });
+        ro.observe(tableWrapRef.current);
+        return () => ro.disconnect();
+    }, []);
+
+    const colWidths = useMemo<Record<RentalFinColKey, number>>(() => {
+        const availableForData = containerWidth - TABLE_FIXED_OUTER;
+        if (availableForData <= 0) return userColWidths;
+        const userTotal = RENTAL_FIN_COL_ORDER.reduce((s, k) => s + userColWidths[k], 0);
+        if (userTotal <= availableForData) {
+            const scale = availableForData / userTotal;
+            const result = {} as Record<RentalFinColKey, number>;
+            let distributed = 0;
+            for (let i = 0; i < RENTAL_FIN_COL_ORDER.length; i++) {
+                const k = RENTAL_FIN_COL_ORDER[i];
+                if (i === RENTAL_FIN_COL_ORDER.length - 1) {
+                    result[k] = Math.max(RENTAL_FIN_COL_MIN[k], availableForData - distributed);
+                } else {
+                    result[k] = Math.max(RENTAL_FIN_COL_MIN[k], Math.round(userColWidths[k] * scale));
+                    distributed += result[k];
+                }
+            }
+            return result;
+        }
+        const minTotal = RENTAL_FIN_COL_ORDER.reduce((s, k) => s + RENTAL_FIN_COL_MIN[k], 0);
+        if (availableForData < minTotal) return userColWidths;
+        const scale = availableForData / userTotal;
+        const result = {} as Record<RentalFinColKey, number>;
+        let distributed = 0;
+        for (let i = 0; i < RENTAL_FIN_COL_ORDER.length; i++) {
+            const k = RENTAL_FIN_COL_ORDER[i];
+            if (i === RENTAL_FIN_COL_ORDER.length - 1) {
+                result[k] = Math.max(RENTAL_FIN_COL_MIN[k], availableForData - distributed);
+            } else {
+                result[k] = Math.max(RENTAL_FIN_COL_MIN[k], Math.round(userColWidths[k] * scale));
+                distributed += result[k];
+            }
+        }
+        return result;
+    }, [containerWidth, userColWidths, TABLE_FIXED_OUTER]);
 
     const toggleExpand = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -491,33 +533,33 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                         <span className="text-app-muted text-xs">↳</span>
                     ) : null}
                 </div>
-                <div className="px-3 py-2 sm:px-4 whitespace-nowrap flex-shrink-0" style={{ width: colWidths.type }}>
+                <div className="px-2 py-2 whitespace-nowrap min-w-0 overflow-hidden" style={{ width: colWidths.type }}>
                     <span className={typeClass}>{isBulkChild ? 'Pmt' : displayType}</span>
                 </div>
-                <div className="px-3 py-2 sm:px-4 font-mono text-xs font-medium text-app-text group-hover:text-primary whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors duration-ds flex-shrink-0" style={{ width: colWidths.reference }} title={record.reference}>{record.reference}</div>
-                <div className="px-3 py-2 sm:px-4 text-xs text-app-muted truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.description, minWidth: RENTAL_FIN_COL_MIN.description }} title={description}>{isBulkChild ? '—' : description}</div>
-                <div className="px-3 py-2 sm:px-4 text-xs text-app-muted whitespace-nowrap overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.date }}>{formatDate(record.date)}</div>
-                <div className="px-3 py-2 sm:px-4 text-xs text-app-text font-medium truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.accountName }} title={record.accountName}>{record.accountName}</div>
+                <div className="px-2 py-2 font-mono text-xs font-medium text-app-text group-hover:text-primary whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors duration-ds min-w-0" style={{ width: colWidths.reference }} title={record.reference}>{record.reference}</div>
+                <div className="px-2 py-2 text-xs text-app-muted truncate overflow-hidden text-ellipsis min-w-0" style={{ width: colWidths.description }} title={description}>{isBulkChild ? '—' : description}</div>
+                <div className="px-2 py-2 text-xs text-app-muted whitespace-nowrap overflow-hidden text-ellipsis min-w-0" style={{ width: colWidths.date }}>{formatDate(record.date)}</div>
+                <div className="px-2 py-2 text-xs text-app-text font-medium truncate overflow-hidden text-ellipsis min-w-0" style={{ width: colWidths.accountName }} title={record.accountName}>{record.accountName}</div>
                 {record.type === 'Invoice' && !isBulkChild ? (() => {
                     const names = getInvoiceContextNames(record.raw as Invoice);
                     return (
                         <>
-                            <div className="px-3 py-2 sm:px-4 text-xs text-app-muted truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.building }} title={names.buildingName}>{names.buildingName || '—'}</div>
-                            <div className="px-3 py-2 sm:px-4 text-xs text-app-muted truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.property }} title={names.propertyName}>{names.propertyName || '—'}</div>
-                            <div className="px-3 py-2 sm:px-4 text-xs text-app-muted truncate overflow-hidden text-ellipsis flex-shrink-0" style={{ width: colWidths.owner }} title={names.ownerName}>{names.ownerName || '—'}</div>
+                            <div className="px-2 py-2 text-xs text-app-muted truncate overflow-hidden text-ellipsis min-w-0" style={{ width: colWidths.building }} title={names.buildingName}>{names.buildingName || '—'}</div>
+                            <div className="px-2 py-2 text-xs text-app-muted truncate overflow-hidden text-ellipsis min-w-0" style={{ width: colWidths.property }} title={names.propertyName}>{names.propertyName || '—'}</div>
+                            <div className="px-2 py-2 text-xs text-app-muted truncate overflow-hidden text-ellipsis min-w-0" style={{ width: colWidths.owner }} title={names.ownerName}>{names.ownerName || '—'}</div>
                         </>
                     );
                 })() : (
                     <>
-                        <div className="px-3 py-2 sm:px-4 text-xs text-app-muted flex-shrink-0" style={{ width: colWidths.building }}>—</div>
-                        <div className="px-3 py-2 sm:px-4 text-xs text-app-muted flex-shrink-0" style={{ width: colWidths.property }}>—</div>
-                        <div className="px-3 py-2 sm:px-4 text-xs text-app-muted flex-shrink-0" style={{ width: colWidths.owner }}>—</div>
+                        <div className="px-2 py-2 text-xs text-app-muted min-w-0 overflow-hidden" style={{ width: colWidths.building }}>—</div>
+                        <div className="px-2 py-2 text-xs text-app-muted min-w-0 overflow-hidden" style={{ width: colWidths.property }}>—</div>
+                        <div className="px-2 py-2 text-xs text-app-muted min-w-0 overflow-hidden" style={{ width: colWidths.owner }}>—</div>
                     </>
                 )}
-                <div className={`px-3 py-2 sm:px-4 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums flex-shrink-0 ${isPayment ? 'text-ds-success' : 'text-app-text'}`} style={{ width: colWidths.amount }}>
+                <div className={`px-2 py-2 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums min-w-0 ${isPayment ? 'text-ds-success' : 'text-app-text'}`} style={{ width: colWidths.amount }}>
                     {CURRENCY} {record.amount.toLocaleString()}
                 </div>
-                <div className="px-3 py-2 sm:px-4 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium flex-shrink-0" style={{ width: colWidths.remainingAmount }}>
+                <div className="px-2 py-2 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium min-w-0" style={{ width: colWidths.remainingAmount }}>
                     {record.remainingAmount !== undefined && record.remainingAmount > 0.01 ? (
                         <span className="text-ds-danger bg-[color:var(--badge-unpaid-bg)] px-1.5 py-0.5 rounded-md">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
                     ) : (
@@ -594,7 +636,6 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
     const thStyle = (widthKey: RentalFinColKey): React.CSSProperties => ({
         position: 'relative',
         width: colWidths[widthKey],
-        minWidth: RENTAL_FIN_COL_MIN[widthKey],
         flexShrink: 0,
     });
 
@@ -686,10 +727,10 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
             </div>
             )}
 
-            {/* Table Header + Body: scroll horizontally when columns need more space */}
-            <div className="flex-1 min-h-0 flex flex-col overflow-x-auto">
+            {/* Table Header + Body */}
+            <div ref={tableWrapRef} className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Table Header */}
-            <div className="sticky top-0 z-10 bg-app-table-header border-b border-app-border flex-shrink-0 w-full" style={{ minWidth: tableMinWidth }}>
+            <div className="sticky top-0 z-10 bg-app-table-header border-b border-app-border flex-shrink-0 w-full">
                 <div className="flex items-center w-full">
                     <div className="px-1 py-1.5 min-w-[5.25rem] flex-shrink-0 flex flex-col items-center justify-center gap-0.5 border-r border-app-border/40">
                         <TreeExpandCollapseControls
@@ -702,23 +743,23 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                             visible={bulkExpandableRecordIds.length > 0}
                         />
                     </div>
-                    <div style={thStyle('type')} onClick={() => handleSort('type')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Type {sortIcon('type')}{resizer('type')}</div>
-                    <div style={thStyle('reference')} onClick={() => handleSort('reference')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Reference {sortIcon('reference')}{resizer('reference')}</div>
-                    <div style={thStyle('description')} onClick={() => handleSort('description')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden">Description {sortIcon('description')}{resizer('description')}</div>
-                    <div style={thStyle('date')} onClick={() => handleSort('date')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Date {sortIcon('date')}{resizer('date')}</div>
-                    <div style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Account {sortIcon('accountName')}{resizer('accountName')}</div>
-                    <div style={thStyle('building')} onClick={() => handleSort('buildingName')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Building {sortIcon('buildingName')}{resizer('building')}</div>
-                    <div style={thStyle('property')} onClick={() => handleSort('propertyName')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Property {sortIcon('propertyName')}{resizer('property')}</div>
-                    <div style={thStyle('owner')} onClick={() => handleSort('ownerName')} className="group px-3 py-2 sm:px-4 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Owner {sortIcon('ownerName')}{resizer('owner')}</div>
-                    <div style={thStyle('amount')} onClick={() => handleSort('amount')} className="group px-3 py-2 sm:px-4 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Amount {sortIcon('amount')}{resizer('amount')}</div>
-                    <div style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="group px-3 py-2 sm:px-4 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds flex-shrink-0">Due {sortIcon('remainingAmount')}</div>
+                    <div style={thStyle('type')} onClick={() => handleSort('type')} className="group px-2 py-2 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Type {sortIcon('type')}{resizer('type')}</div>
+                    <div style={thStyle('reference')} onClick={() => handleSort('reference')} className="group px-2 py-2 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Reference {sortIcon('reference')}{resizer('reference')}</div>
+                    <div style={thStyle('description')} onClick={() => handleSort('description')} className="group px-2 py-2 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Description {sortIcon('description')}{resizer('description')}</div>
+                    <div style={thStyle('date')} onClick={() => handleSort('date')} className="group px-2 py-2 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Date {sortIcon('date')}{resizer('date')}</div>
+                    <div style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="group px-2 py-2 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Account {sortIcon('accountName')}{resizer('accountName')}</div>
+                    <div style={thStyle('building')} onClick={() => handleSort('buildingName')} className="group px-2 py-2 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Building {sortIcon('buildingName')}{resizer('building')}</div>
+                    <div style={thStyle('property')} onClick={() => handleSort('propertyName')} className="group px-2 py-2 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Property {sortIcon('propertyName')}{resizer('property')}</div>
+                    <div style={thStyle('owner')} onClick={() => handleSort('ownerName')} className="group px-2 py-2 text-left text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Owner {sortIcon('ownerName')}{resizer('owner')}</div>
+                    <div style={thStyle('amount')} onClick={() => handleSort('amount')} className="group px-2 py-2 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Amount {sortIcon('amount')}{resizer('amount')}</div>
+                    <div style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="group px-2 py-2 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted cursor-pointer select-none hover:bg-app-toolbar transition-colors duration-ds min-w-0 overflow-hidden truncate">Due {sortIcon('remainingAmount')}</div>
                     <div className="px-2 py-2 text-center text-[10px] uppercase font-bold tracking-wider text-app-muted w-20 flex-shrink-0">Status</div>
-                    <div className="px-2 py-2 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted w-[88px] flex-shrink-0">Actions</div>
+                    <div className="px-1 py-2 text-right text-[10px] uppercase font-bold tracking-wider text-app-muted w-[88px] flex-shrink-0">Actions</div>
                 </div>
             </div>
 
             {/* Virtualized Table Body */}
-            <div className="flex-grow min-h-0 bg-app-card overflow-hidden w-full" style={{ minWidth: tableMinWidth }} ref={listContainerRef}>
+            <div className="flex-grow min-h-0 bg-app-card overflow-hidden w-full" ref={listContainerRef}>
                 {sortedRecords.length === 0 ? (
                     <div className="text-center py-16 text-app-muted">
                         <div className="flex flex-col items-center justify-center opacity-70">

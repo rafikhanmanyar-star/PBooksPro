@@ -1424,125 +1424,587 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [state.contacts]);
 
 
+  const isRentalLayout = invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT;
+
   const renderRentalInvoiceForm = () => {
     const property = state.properties.find(p => p.id === propertyId);
     const building = property ? state.buildings.find(b => b.id === property.buildingId) : null;
     const showDetails = itemToEdit || initialData || agreementId;
     const showSecurityDeposit = !itemToEdit || parseFloat(securityDepositCharge) > 0 || !isLocked;
 
-    return (
-      <>
-        <DatePicker
-          label="Date"
-          value={issueDate}
-          onChange={handleIssueDateChange}
-          required
-          disabled={isAgreementCancelled}
-        />
-        <ComboBox
-          label="Tenant"
-          items={filteredContacts}
-          selectedId={contactId}
-          onSelect={(item) => setContactId(item?.id || '')}
-          placeholder="Search or add tenant..."
-          required
-          disabled={!!itemToEdit || isAgreementCancelled}
-          entityType="contact"
-          onAddNew={(entityType, name) => {
-            entityFormModal.openForm('contact', name, fixedContactTypeForNew, undefined, (newId) => {
-              setContactId(newId);
-            });
-          }}
-        />
-        <ComboBox label="Agreement" items={agreementItems} selectedId={agreementId} onSelect={(item) => setAgreementId(item?.id || '')} placeholder="Search agreements..." required disabled={!contactId || !!itemToEdit || isAgreementCancelled} allowAddNew={false} />
+    const tenantName = state.contacts.find(c => c.id === contactId)?.name || '';
+    const agreementLabel = agreementItems.find(a => a.id === agreementId)?.name || '';
+    const rentVal = parseFloat(rentAmount) || 0;
+    const secVal = parseFloat(securityDepositCharge) || 0;
 
-        {showDetails ? (
-          <div className="space-y-2 p-2 bg-white/60 rounded-lg border border-slate-200">
-            {!itemToEdit && (
-              <div className="flex gap-2 items-end bg-yellow-50 p-2 rounded border border-yellow-100">
-                <div className="flex-grow">
+    return (
+      <div className="space-y-5">
+        {/* Header: breadcrumb + invoice number + editing badge */}
+        <div>
+          <p className="text-xs text-slate-400 mb-1">
+            Financials &gt; Invoices
+          </p>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              {itemToEdit ? 'Edit Invoice' : 'New Invoice'}
+              {number && <span className="text-slate-400 font-semibold">#{number}</span>}
+            </h2>
+            {itemToEdit && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Editing by you ({state.currentUser?.name || 'You'})
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Two-column layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+          {/* LEFT COLUMN — 3/5 width */}
+          <div className="lg:col-span-3 space-y-5">
+            {/* Invoice Details Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <h3 className="text-sm font-bold text-slate-800 mb-4">Invoice Details</h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                <DatePicker
+                  label="Date"
+                  value={issueDate}
+                  onChange={handleIssueDateChange}
+                  required
+                  disabled={isAgreementCancelled}
+                />
+                <DatePicker
+                  label="Due Date"
+                  value={dueDate}
+                  onChange={d => setDueDate(fromPickerDateToYyyyMmDd(d))}
+                  required
+                  disabled={isAgreementCancelled}
+                />
+                <ComboBox
+                  label="Tenant"
+                  items={filteredContacts}
+                  selectedId={contactId}
+                  onSelect={(item) => setContactId(item?.id || '')}
+                  placeholder="Search or add tenant..."
+                  required
+                  disabled={!!itemToEdit || isAgreementCancelled}
+                  entityType="contact"
+                  onAddNew={(entityType, name) => {
+                    entityFormModal.openForm('contact', name, fixedContactTypeForNew, undefined, (newId) => {
+                      setContactId(newId);
+                    });
+                  }}
+                />
+                <ComboBox
+                  label="Agreement"
+                  items={agreementItems}
+                  selectedId={agreementId}
+                  onSelect={(item) => setAgreementId(item?.id || '')}
+                  placeholder="Search agreements..."
+                  required
+                  disabled={!contactId || !!itemToEdit || isAgreementCancelled}
+                  allowAddNew={false}
+                />
+                <Input label="Property" value={property?.name || ''} disabled />
+                <Input label="Building" value={building?.name || ''} disabled />
+              </div>
+            </div>
+
+            {/* Financial Particulars Card */}
+            {showDetails ? (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <h3 className="text-sm font-bold text-slate-800 mb-4">Financial Particulars</h3>
+
+                {!itemToEdit && (
+                  <div className="flex gap-3 items-end bg-yellow-50 p-3 rounded-lg border border-yellow-100 mb-4">
+                    <div className="flex-grow">
+                      <Input
+                        label="Grace Period (Days)"
+                        type="number"
+                        min="0"
+                        value={gracePeriodDays}
+                        onChange={e => setGracePeriodDays(e.target.value)}
+                        helperText="Reduces billing days for the current month."
+                        disabled={isAgreementCancelled}
+                      />
+                    </div>
+                    <div className="flex-grow">
+                      <p className="text-xs text-slate-500 mb-1">Pro-rata Calculation:</p>
+                      <p className="text-sm font-medium text-slate-700">
+                        {(() => {
+                          const d = parseYyyyMmDdToLocalDate(issueDate);
+                          if (isNaN(d.getTime())) return "Invalid date";
+                          const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+                          const remaining = daysInMonth - d.getDate() + 1;
+                          const grace = parseInt(gracePeriodDays) || 0;
+                          const billable = Math.max(0, remaining - grace);
+                          return `${billable} billable days (Month total: ${daysInMonth})`;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                   <Input
-                    label="Grace Period (Days)"
-                    type="number"
-                    min="0"
-                    value={gracePeriodDays}
-                    onChange={e => setGracePeriodDays(e.target.value)}
-                    helperText="Reduces billing days for the current month."
+                    label={`Rent Amount (${CURRENCY})`}
+                    type="text"
+                    inputMode="decimal"
+                    value={rentAmount}
+                    onChange={e => setRentAmount(e.target.value)}
+                    required
+                    disabled={isAgreementCancelled}
+                  />
+                  {showSecurityDeposit && (
+                    <Input
+                      label="Security Deposit (Optional)"
+                      type="text"
+                      inputMode="decimal"
+                      value={securityDepositCharge}
+                      onChange={e => setSecurityDepositCharge(e.target.value)}
+                      placeholder="Enter amount"
+                      readOnly={isLocked || isAgreementCancelled}
+                    />
+                  )}
+                </div>
+
+                <div className="mt-4">
+                  <Input
+                    label="Description"
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
                     disabled={isAgreementCancelled}
                   />
                 </div>
-                <div className="flex-grow">
-                  <p className="text-xs text-slate-500 mb-1">Pro-rata Calculation:</p>
-                  <p className="text-sm font-medium text-slate-700">
-                    {(() => {
-                      const d = parseYyyyMmDdToLocalDate(issueDate);
-                      if (isNaN(d.getTime())) return "Invalid date";
-                      const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-                      const remaining = daysInMonth - d.getDate() + 1;
-                      const grace = parseInt(gracePeriodDays) || 0;
-                      const billable = Math.max(0, remaining - grace);
-                      return `${billable} billable days (Month total: ${daysInMonth})`;
-                    })()}
+
+                {/* Invoice Number (hidden in reference but needed) */}
+                <div className="mt-3">
+                  <Input label="Invoice Number" value={number} onChange={e => setNumber(e.target.value)} required disabled={isAgreementCancelled} />
+                  {numberError && <p className="text-danger text-xs mt-1">{numberError}</p>}
+                </div>
+
+                {invoiceType === InvoiceType.RENTAL && rentVal > 0 && !description?.includes('[Security]') && (
+                  <div className="mt-4">
+                    {existingRecurringTemplate ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/90 p-3 text-sm text-slate-600">
+                        A recurring schedule already exists for this agreement or property. You can change it under Rental → Recurring Templates.
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={addToRecurring}
+                            onChange={e => setAddToRecurring(e.target.checked)}
+                            disabled={isAgreementCancelled}
+                            className="rounded text-indigo-600 focus:ring-indigo-500 h-5 w-5 border-slate-300 mt-0.5 shrink-0"
+                          />
+                          <span className="font-medium text-indigo-900 leading-snug">
+                            Memorize this invoice for recurring (next invoice on the 1st of the following month)
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center p-8 text-slate-500 border-2 border-dashed rounded-xl bg-white">
+                <p>Select a tenant and an agreement to populate invoice details.</p>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT COLUMN — 2/5 width */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Total Amount Card */}
+            <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-5 text-white shadow-lg">
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-200 mb-1">Total Amount</p>
+              <p className="text-3xl font-bold mb-3">
+                {CURRENCY} <span className="tabular-nums">{calculatedAmount.toLocaleString()}</span>
+              </p>
+              <div className="border-t border-blue-500/40 pt-3 space-y-1.5">
+                {rentVal > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-blue-200">Monthly Rent</span>
+                    <span className="font-semibold tabular-nums">{rentVal.toLocaleString()}</span>
+                  </div>
+                )}
+                {preservedServiceCharges > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-blue-200">Maintenance</span>
+                    <span className="font-semibold tabular-nums">{preservedServiceCharges.toLocaleString()}</span>
+                  </div>
+                )}
+                {secVal > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-blue-200">Security Deposit</span>
+                    <span className="font-semibold tabular-nums">{secVal.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2">
+              <Button
+                type="submit"
+                disabled={!!numberError || isAgreementCancelled || (type === 'invoice' && Boolean(itemToEdit) && recordLock.viewOnly)}
+                className="w-full text-sm py-2.5 bg-blue-600 hover:bg-blue-700"
+              >
+                {itemToEdit ? 'Update Invoice' : 'Save Invoice'}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onClose}
+                className="w-full text-sm py-2.5 border-slate-300"
+              >
+                Cancel Changes
+              </Button>
+            </div>
+
+            {/* Secondary Actions */}
+            {itemToEdit && (
+              <div className="flex flex-col items-center gap-2 pt-1">
+                {onDuplicate && (
+                  <button
+                    type="button"
+                    onClick={handleDuplicateClick}
+                    className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-indigo-600 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    Duplicate Invoice
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isAgreementCancelled || (type === 'invoice' && recordLock.viewOnly)}
+                  className="inline-flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  Delete Invoice
+                </button>
+              </div>
+            )}
+
+            {/* Audit Notice */}
+            {itemToEdit && tenantName && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                  <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-amber-800 mb-0.5">Audit Notice</p>
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    Updates will be logged in the activity trail. Notifications will be sent to <span className="font-semibold text-blue-600">{tenantName}</span> upon confirmation.
                   </p>
                 </div>
               </div>
             )}
-            <Input label="Rent Amount" type="text" inputMode="decimal" value={rentAmount} onChange={e => setRentAmount(e.target.value)} required disabled={isAgreementCancelled} />
-            {showSecurityDeposit && (
-              <Input label="Security Deposit (Optional)" type="text" inputMode="decimal" value={securityDepositCharge} onChange={e => setSecurityDepositCharge(e.target.value)} readOnly={isLocked || isAgreementCancelled} />
-            )}
-            <hr />
-            <div className="flex justify-between items-center"><span className="font-bold text-lg">Total Amount:</span><span className="font-bold text-lg">{CURRENCY} {calculatedAmount.toLocaleString()}</span></div>
-            <DatePicker
-              label="Due Date"
-              value={dueDate}
-              onChange={d => setDueDate(fromPickerDateToYyyyMmDd(d))}
-              required
-              disabled={isAgreementCancelled}
-            />
-            <Input label="Property" value={property?.name || ''} disabled />
-            <Input label="Building" value={building?.name || ''} disabled />
-            <div>
-              <Input label="Invoice Number" value={number} onChange={e => setNumber(e.target.value)} required disabled={isAgreementCancelled} />
-              {numberError && <p className="text-danger text-xs mt-1">{numberError}</p>}
-            </div>
-            <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} disabled={isAgreementCancelled} />
+          </div>
+        </div>
+      </div>
+    );
+  };
 
-            {invoiceType === InvoiceType.RENTAL && (parseFloat(rentAmount) || 0) > 0 && !description?.includes('[Security]') && (
-              <>
-                {existingRecurringTemplate ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/90 p-3 text-sm text-slate-600">
-                    A recurring schedule already exists for this agreement or property. You can change it under Rental → Recurring Templates.
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3">
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={addToRecurring}
-                        onChange={e => setAddToRecurring(e.target.checked)}
-                        disabled={isAgreementCancelled}
-                        className="rounded text-indigo-600 focus:ring-indigo-500 h-5 w-5 border-slate-300 mt-0.5 shrink-0"
-                      />
-                      <span className="font-medium text-indigo-900 leading-snug">
-                        Memorize this invoice for recurring (next invoice on the 1st of the following month)
-                      </span>
-                    </label>
-                  </div>
-                )}
-              </>
+  const renderRentalBillForm = () => {
+    return (
+      <div className="space-y-5">
+        {/* ROW 1: Vendor, Bill #, Issue Date, Due Date */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex flex-col">
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Vendor / Supplier</label>
+            {isPartiallyPaid ? (
+              <div>
+                <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800">
+                  {(state.vendors || []).find(v => v.id === vendorId)?.name || state.contacts.find(c => c.id === contactId)?.name || '—'}
+                </div>
+                <p className="text-[10px] text-amber-600 mt-1">Cannot change vendor while payments exist.</p>
+              </div>
+            ) : (
+              <ComboBox
+                items={filteredContacts}
+                selectedId={vendorId || contactId}
+                onSelect={handleContactSelect}
+                placeholder="Select vendor..."
+                required
+                disabled={isAgreementCancelled}
+                entityType="vendor"
+                onAddNew={(_entityType, name) => { setNewItemName(name || ''); setIsContactModalOpen(true); }}
+              />
             )}
           </div>
-        ) : (
-          <div className="text-center p-8 text-slate-500 border-2 border-dashed rounded-lg">
-            <p>Select a tenant and an agreement to populate invoice details.</p>
+
+          <div className="flex flex-col">
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bill #</label>
+            <Input value={number} onChange={e => setNumber(e.target.value)} required disabled={isAgreementCancelled} />
+            {numberError && <p className="text-danger text-[10px] mt-1">{numberError}</p>}
           </div>
-        )}
-      </>
+
+          <div className="flex flex-col">
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Issue Date</label>
+            <DatePicker value={issueDate} onChange={handleIssueDateChange} required disabled={isAgreementCancelled} />
+          </div>
+
+          <div className="flex flex-col">
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Due Date</label>
+            <DatePicker value={dueDate} onChange={d => setDueDate(fromPickerDateToYyyyMmDd(d))} required disabled={isAgreementCancelled} />
+          </div>
+        </div>
+
+        {/* ROW 2: Cost Allocation | Description | Bill Document */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Cost Allocation Card */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm">{ICONS.building || '🏢'}</span>
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Cost Allocation</h3>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Building</label>
+                <ComboBox
+                  items={state.buildings}
+                  selectedId={buildingId || ''}
+                  onSelect={(item) => { setBuildingId(item?.id || ''); setPropertyId(''); setTenantId(''); }}
+                  placeholder="Search buildings..."
+                  entityType="building"
+                  onAddNew={(_entityType, name) => {
+                    entityFormModal.openForm('building', name, undefined, undefined, (newId) => {
+                      setBuildingId(newId); setPropertyId(''); setTenantId('');
+                    });
+                  }}
+                />
+              </div>
+
+              {buildingId && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Expense Bearer</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => { setBillAllocationType('building'); setPropertyId(''); setAgreementId(''); setTenantId(''); }}
+                      className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${billAllocationType === 'building' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      Building
+                    </button>
+                    <button type="button" onClick={() => { setBillAllocationType('owner'); setAgreementId(''); setTenantId(''); }}
+                      className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${billAllocationType === 'owner' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      Owner
+                    </button>
+                    <button type="button" onClick={() => { setBillAllocationType('tenant'); setPropertyId(''); }}
+                      className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${billAllocationType === 'tenant' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      Tenant
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {buildingId && billAllocationType === 'owner' && (
+                <div className="animate-fade-in">
+                  <ComboBox label="Property" items={propertyItems} selectedId={propertyId || ''} onSelect={(item) => setPropertyId(item?.id || '')} placeholder="Search properties..." allowAddNew={false} />
+                </div>
+              )}
+
+              {buildingId && billAllocationType === 'tenant' && (
+                <div className="animate-fade-in space-y-2">
+                  <ComboBox label="Tenant" items={filteredTenants} selectedId={tenantId || ''} onSelect={handleTenantSelect} placeholder="Search tenants..." allowAddNew={false} />
+                  {tenantId && <ComboBox label="Agreement" items={tenantBillAgreementItems} selectedId={agreementId || ''} onSelect={(item) => { setAgreementId(item?.id || ''); const ra = state.rentalAgreements.find(r => r.id === item?.id); if (ra) setPropertyId(ra.propertyId); }} placeholder="Select agreement..." allowAddNew={false} />}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Description */}
+          <div className="flex flex-col">
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              disabled={isAgreementCancelled}
+              placeholder="Enter bill description..."
+              rows={4}
+              className="flex-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-colors disabled:opacity-50 disabled:bg-gray-50"
+            />
+          </div>
+
+          {/* Bill Document Upload */}
+          <div className="flex flex-col">
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bill Document</label>
+            {(documentId || (documentPath && !documentFile)) ? (
+              <div className="flex-1 bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2">
+                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <div className="w-5 h-5 text-indigo-600">{ICONS.fileText}</div>
+                </div>
+                <p className="text-xs font-medium text-gray-800">Document attached</p>
+                <p className="text-[10px] text-gray-500 text-center truncate max-w-full">
+                  {documentId ? (state.documents?.find(d => d.id === documentId)?.fileName || 'Document') : documentPath.split('/').pop()}
+                </p>
+                <div className="flex gap-2 mt-1">
+                  <button type="button" onClick={async () => {
+                    if (documentId) {
+                      await openDocumentById(documentId, state.documents, url => window.open(url, '_blank'), showAlert);
+                    } else if (documentPath && (window as any).electronAPI?.openDocumentFile) {
+                      try { const result = await (window as any).electronAPI.openDocumentFile({ filePath: documentPath }); if (!result?.success) await showAlert(`Failed to open: ${result?.error || 'Unknown'}`); } catch (error) { await showAlert(error instanceof Error ? error.message : 'Error opening document'); }
+                    } else { await showAlert('File system access not available'); }
+                  }} className="text-[10px] font-medium text-indigo-600 hover:text-indigo-800 transition-colors">Open</button>
+                  <button type="button" onClick={() => { setDocumentPath(''); setDocumentId(''); setDocumentFile(null); }} className="text-[10px] font-medium text-rose-500 hover:text-rose-700 transition-colors">Remove</button>
+                </div>
+              </div>
+            ) : (
+              <label className="flex-1 cursor-pointer">
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setDocumentFile(file); setDocumentPath(''); setDocumentId(''); } }} className="hidden" disabled={isAgreementCancelled} />
+                <div className={`h-full border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 py-6 hover:border-slate-400 hover:bg-slate-50 transition-all ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {documentFile ? (
+                    <>
+                      <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+                        <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      </div>
+                      <p className="text-xs font-medium text-gray-800 truncate max-w-[180px]">{documentFile.name}</p>
+                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDocumentFile(null); }} className="text-[10px] text-rose-500 hover:text-rose-700 font-medium">Clear</button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
+                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                      </div>
+                      <p className="text-xs font-medium text-gray-500">Click to upload document</p>
+                      <p className="text-[10px] text-gray-400">PDF, JPG, PNG (Max 5MB)</p>
+                    </>
+                  )}
+                </div>
+              </label>
+            )}
+          </div>
+        </div>
+
+        {/* ROW 3: Expense Categories Table */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Expense Categories</h3>
+            <div className="w-48">
+              <ComboBox
+                items={availableCategories}
+                selectedId=""
+                onSelect={handleAddExpenseCategory}
+                placeholder="⊕ Add Row"
+                disabled={isAgreementCancelled}
+                entityType="category"
+                onAddNew={(_entityType, name) => {
+                  entityFormModal.openForm('category', name, undefined, TransactionType.EXPENSE, (newId) => {
+                    handleAddExpenseCategory({ id: newId, name });
+                  });
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Category</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-28">Unit</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">Qty</th>
+                  <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-28">Price</th>
+                  <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">Net</th>
+                  <th className="px-2 py-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {expenseCategoryItems.length > 0 ? (
+                  expenseCategoryItems.map((item) => {
+                    const category = expenseCategories.find(c => c.id === item.categoryId);
+                    return (
+                      <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-gray-800">{category?.name || 'Unknown'}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Select
+                            value={item.unit}
+                            onChange={(e) => updateExpenseCategoryItem(item.id, { unit: e.target.value as ContractExpenseCategoryItem['unit'] })}
+                            className="text-xs border-gray-200 rounded-lg h-9 w-full bg-gray-50"
+                            disabled={isAgreementCancelled}
+                            hideIcon={false}
+                          >
+                            <option value="Cubic Feet">Cubic Feet</option>
+                            <option value="Square feet">Sq. feet</option>
+                            <option value="feet">feet</option>
+                            <option value="quantity">quantity</option>
+                          </Select>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.quantity?.toString() || ''}
+                            onChange={(e) => { updateExpenseCategoryItem(item.id, { quantity: parseFloat(e.target.value) || 0 }); }}
+                            className="w-full text-center text-sm h-9 bg-gray-50 rounded-lg"
+                            disabled={isAgreementCancelled}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.pricePerUnit.toString() || ''}
+                            onChange={(e) => { updateExpenseCategoryItem(item.id, { pricePerUnit: parseFloat(e.target.value) || 0 }); }}
+                            className="w-full text-right text-sm h-9 bg-gray-50 rounded-lg"
+                            disabled={isAgreementCancelled}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.netValue?.toString() || '0'}
+                            onChange={(e) => { updateExpenseCategoryItem(item.id, { netValue: parseFloat(e.target.value) || 0 }, true); }}
+                            className="w-full text-right font-semibold text-sm h-9 bg-gray-50 rounded-lg"
+                            disabled={isAgreementCancelled}
+                          />
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          <button type="button" onClick={() => handleRemoveExpenseCategoryItem(item.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-rose-500 transition-all p-1 rounded-md hover:bg-rose-50" title="Remove" disabled={isAgreementCancelled}>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center">
+                      <p className="text-sm text-gray-400">No expense categories added yet.</p>
+                      <p className="text-xs text-gray-300 mt-1">Use "Add Row" above to add categories.</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Total Amount Footer */}
+            <div className="bg-slate-800 text-white px-6 py-3.5 flex items-center justify-between rounded-b-xl">
+              <span className="text-sm font-semibold tracking-wide">Total Amount</span>
+              <span className="text-lg font-bold tabular-nums">
+                {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
   const renderStandardForm = () => {
+    if (type === 'bill' && rentalContext) {
+      return renderRentalBillForm();
+    }
+
     return (
       <div className="space-y-4">
         {agreementForInvoice && (
@@ -2182,7 +2644,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         onDismiss={recordLock.dismissModal}
       />
       <form onSubmit={handleSubmit} className="flex flex-col h-full" style={formStyle}>
-        {type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && (
+        {type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && !isRentalLayout && (
           <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
         )}
         {type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
@@ -2214,42 +2676,45 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 mt-3 flex-shrink-0 pointer-events-auto">
-          <div className="flex flex-wrap gap-2">
-            {itemToEdit && (
+        {/* Shared footer — hidden for rental layout (buttons are in right column) */}
+        {!isRentalLayout && (
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 mt-3 flex-shrink-0 pointer-events-auto">
+            <div className="flex flex-wrap gap-2">
+              {itemToEdit && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={handleDelete}
+                  disabled={isAgreementCancelled || (type === 'invoice' && recordLock.viewOnly)}
+                  className="w-full sm:w-auto text-sm py-2"
+                >
+                  Delete
+                </Button>
+              )}
+              {itemToEdit && onDuplicate && (
+                <Button type="button" variant="secondary" onClick={handleDuplicateClick} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 w-full sm:w-auto text-sm py-2">
+                  {type === 'invoice' ? 'Duplicate Invoice' : 'Duplicate Bill'}
+                </Button>
+              )}
+              {type === 'bill' && billPrintData && (
+                <Button type="button" variant="secondary" onClick={() => triggerPrint('BILL', billPrintData)} className="w-full sm:w-auto text-sm py-2 flex items-center gap-1">
+                  {ICONS.print && <span className="w-4 h-4 inline-block [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>}
+                  Print
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
+              <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
               <Button
-                type="button"
-                variant="danger"
-                onClick={handleDelete}
-                disabled={isAgreementCancelled || (type === 'invoice' && recordLock.viewOnly)}
+                type="submit"
+                disabled={!!numberError || isAgreementCancelled || (type === 'invoice' && Boolean(itemToEdit) && recordLock.viewOnly)}
                 className="w-full sm:w-auto text-sm py-2"
               >
-                Delete
+                {itemToEdit ? 'Update' : 'Save'}
               </Button>
-            )}
-            {itemToEdit && onDuplicate && (
-              <Button type="button" variant="secondary" onClick={handleDuplicateClick} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 w-full sm:w-auto text-sm py-2">
-                {type === 'invoice' ? 'Duplicate Invoice' : 'Duplicate Bill'}
-              </Button>
-            )}
-            {type === 'bill' && billPrintData && (
-              <Button type="button" variant="secondary" onClick={() => triggerPrint('BILL', billPrintData)} className="w-full sm:w-auto text-sm py-2 flex items-center gap-1">
-                {ICONS.print && <span className="w-4 h-4 inline-block [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>}
-                Print
-              </Button>
-            )}
+            </div>
           </div>
-          <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
-            <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
-            <Button
-              type="submit"
-              disabled={!!numberError || isAgreementCancelled || (type === 'invoice' && Boolean(itemToEdit) && recordLock.viewOnly)}
-              className="w-full sm:w-auto text-sm py-2"
-            >
-              {itemToEdit ? 'Update' : 'Save'}
-            </Button>
-          </div>
-        </div>
+        )}
       </form>
       <Modal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} title={`Add New ${contactLabel}`}>
         <ContactForm

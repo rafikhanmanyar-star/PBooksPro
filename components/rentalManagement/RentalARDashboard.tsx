@@ -1190,7 +1190,8 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
           setDuplicateInvoiceData(null);
         }}
         title={invoiceToEdit ? 'Edit Invoice' : 'Duplicate Invoice'}
-        size="xl"
+        size={invoiceToEdit ? 'full' : 'xl'}
+        hideHeader={!!invoiceToEdit}
       >
         {(invoiceToEdit || duplicateInvoiceData) && (
           <InvoiceBillForm

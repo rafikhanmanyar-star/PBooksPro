@@ -46,6 +46,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
         { id: 'properties', label: 'Properties (Units)', icon: ICONS.home },
         { id: 'tenants', label: 'Tenants', icon: ICONS.users },
         { id: 'owners', label: 'Owners', icon: ICONS.briefcase },
+        { id: 'brokers', label: 'Brokers', icon: ICONS.userCheck },
     ];
 
     const filteredItems = useMemo(() => {
@@ -55,6 +56,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
             case 'properties': return state.properties.filter(i => i.name.toLowerCase().includes(query));
             case 'tenants': return state.contacts.filter(i => i.type === ContactType.TENANT && i.name.toLowerCase().includes(query));
             case 'owners': return state.contacts.filter(i => i.type === ContactType.OWNER && i.name.toLowerCase().includes(query));
+            case 'brokers': return state.contacts.filter(i => i.type === ContactType.BROKER && i.name.toLowerCase().includes(query));
             default: return [];
         }
     }, [activeCategory, searchQuery, state]);
@@ -158,8 +160,8 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                     return;
                 }
             }
-        } else if (editingItem.type === 'tenants' || editingItem.type === 'owners') {
-            const contactType = editingItem.type === 'tenants' ? ContactType.TENANT : ContactType.OWNER;
+        } else if (editingItem.type === 'tenants' || editingItem.type === 'owners' || editingItem.type === 'brokers') {
+            const contactType = editingItem.type === 'tenants' ? ContactType.TENANT : editingItem.type === 'owners' ? ContactType.OWNER : ContactType.BROKER;
             if (!isLocalOnlyMode() && isAuthenticated) {
                 try {
                     const api = getAppStateApiService();
@@ -200,11 +202,12 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                 break;
             case 'tenants':
             case 'owners':
+            case 'brokers':
                 dispatch({
                     type: isEdit ? 'UPDATE_CONTACT' : 'ADD_CONTACT',
                     payload: {
                         ...payload,
-                        type: editingItem.type === 'tenants' ? ContactType.TENANT : ContactType.OWNER,
+                        type: editingItem.type === 'tenants' ? ContactType.TENANT : editingItem.type === 'owners' ? ContactType.OWNER : ContactType.BROKER,
                     },
                 });
                 break;
@@ -230,7 +233,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                 }
             }
         }
-        if (!isLocalOnlyMode() && isAuthenticated && (editingItem.type === 'tenants' || editingItem.type === 'owners')) {
+        if (!isLocalOnlyMode() && isAuthenticated && (editingItem.type === 'tenants' || editingItem.type === 'owners' || editingItem.type === 'brokers')) {
             try {
                 await getAppStateApiService().deleteContact(itemId);
             } catch (err: any) {
@@ -245,7 +248,8 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
             case 'buildings': dispatch({ type: 'DELETE_BUILDING', payload: itemId }); break;
             case 'properties': dispatch({ type: 'DELETE_PROPERTY', payload: itemId }); break;
             case 'tenants':
-            case 'owners': dispatch({ type: 'DELETE_CONTACT', payload: itemId }); break;
+            case 'owners':
+            case 'brokers': dispatch({ type: 'DELETE_CONTACT', payload: itemId }); break;
         }
         setEditingItem(null);
     };
@@ -345,14 +349,14 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                         properties={state.properties}
                     />
                 )}
-                {(editingItem?.type === 'tenants' || editingItem?.type === 'owners') && (
+                {(editingItem?.type === 'tenants' || editingItem?.type === 'owners' || editingItem?.type === 'brokers') && (
                     <ContactForm 
                         onSubmit={handleSubmit} 
                         onCancel={() => setEditingItem(null)} 
                         onDelete={handleDelete}
                         contactToEdit={editingItem.item}
                         existingContacts={state.contacts}
-                        fixedTypeForNew={editingItem.type === 'tenants' ? ContactType.TENANT : ContactType.OWNER}
+                        fixedTypeForNew={editingItem.type === 'tenants' ? ContactType.TENANT : editingItem.type === 'owners' ? ContactType.OWNER : ContactType.BROKER}
                     />
                 )}
             </Modal>

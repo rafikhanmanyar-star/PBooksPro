@@ -2,12 +2,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ContactType, InvoiceType, TransactionType, Transaction, Invoice } from '../../types';
-import Card from '../ui/Card';
-import Button from '../ui/Button';
-import PrintButton from '../ui/PrintButton';
-import Input from '../ui/Input';
-import ComboBox from '../ui/ComboBox';
-import DatePicker from '../ui/DatePicker';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
@@ -18,62 +12,67 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
-import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
+import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
-type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
+type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'custom';
 
 interface LedgerItem {
     id: string;
     date: string;
     tenantName: string;
     particulars: string;
-    debit: number; // Invoice amount (Due)
-    credit: number; // Payment Received
+    debit: number;
+    credit: number;
     balance: number;
     entityType: 'invoice' | 'transaction';
     entityId: string;
 }
 
+const formatLongDate = (dateStr: string): string => {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit' });
+};
+
 const TenantLedgerReport: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
-    
-    const [dateRangeType, setDateRangeType] = useState<DateRangeOption>('all');
-    const [startDate, setStartDate] = useState('2000-01-01');
-    const [endDate, setEndDate] = useState('2100-12-31');
-    
+
+    const now = new Date();
+    const [dateRangeType, setDateRangeType] = useState<DateRangeOption>('thisYear');
+    const [startDate, setStartDate] = useState(() => toLocalDateString(new Date(now.getFullYear(), 0, 1)));
+    const [endDate, setEndDate] = useState(() => toLocalDateString(new Date(now.getFullYear(), 11, 31)));
+
     const [selectedTenantId, setSelectedTenantId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [groupBy, setGroupBy] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof LedgerItem; direction: 'asc' | 'desc' } | null>(null);
-    
-    // Edit Modal State
+
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
     const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
-    
-    // Warning Modal State
     const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | 'update' | null }>({
-        isOpen: false,
-        transaction: null,
-        action: null
+        isOpen: false, transaction: null, action: null
     });
 
     const handleRangeChange = (type: DateRangeOption) => {
         setDateRangeType(type);
-        const now = new Date();
+        const n = new Date();
         if (type === 'all') {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
+        } else if (type === 'thisYear') {
+            setStartDate(toLocalDateString(new Date(n.getFullYear(), 0, 1)));
+            setEndDate(toLocalDateString(new Date(n.getFullYear(), 11, 31)));
         } else if (type === 'thisMonth') {
-            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
-            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
+            setStartDate(toLocalDateString(new Date(n.getFullYear(), n.getMonth(), 1)));
+            setEndDate(toLocalDateString(new Date(n.getFullYear(), n.getMonth() + 1, 0)));
         } else if (type === 'lastMonth') {
-            setStartDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
-            setEndDate(toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 0)));
+            setStartDate(toLocalDateString(new Date(n.getFullYear(), n.getMonth() - 1, 1)));
+            setEndDate(toLocalDateString(new Date(n.getFullYear(), n.getMonth(), 0)));
         }
     };
 
@@ -92,29 +91,20 @@ const TenantLedgerReport: React.FC = () => {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        // 1. Rental Invoices (Debit - Tenant owes us)
-        let tenantInvoices = state.invoices.filter(inv => 
+        let tenantInvoices = state.invoices.filter(inv =>
             inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE
         );
-        
         if (selectedTenantId !== 'all') {
             tenantInvoices = tenantInvoices.filter(inv => inv.contactId === selectedTenantId);
         }
 
-        // 2. Payments & Charges (Credits & Debits)
-        // INCOME: Tenant paid us (Credit)
-        // EXPENSE: Owner paid for tenant (Debit)
-        let tenantTransactions = state.transactions.filter(tx => 
-            (tx.type === TransactionType.INCOME || tx.type === TransactionType.EXPENSE) &&
-            tx.contactId
+        let tenantTransactions = state.transactions.filter(tx =>
+            (tx.type === TransactionType.INCOME || tx.type === TransactionType.EXPENSE) && tx.contactId
         );
-
         if (selectedTenantId !== 'all') {
             tenantTransactions = tenantTransactions.filter(tx => tx.contactId === selectedTenantId);
         } else {
-            // Filter to only valid tenants if 'all' is selected
             const tenantIds = new Set(tenants.map(t => t.id));
-            // Also include transactions that are linked to rental invoices even if the tenant is deleted (orphan transactions)
             tenantTransactions = tenantTransactions.filter(tx => {
                 if (tenantIds.has(tx.contactId!)) return true;
                 if (tx.invoiceId) {
@@ -126,16 +116,16 @@ const TenantLedgerReport: React.FC = () => {
         }
 
         const ledgerItems: { date: string, tenantName: string, particulars: string, debit: number, credit: number, entityType: 'invoice' | 'transaction', entityId: string }[] = [];
-        
+
         tenantInvoices.forEach(inv => {
             const invDate = new Date(inv.issueDate);
-            if(invDate >= start && invDate <= end) {
+            if (invDate >= start && invDate <= end) {
                 const tenant = state.contacts.find(c => c.id === inv.contactId);
-                ledgerItems.push({ 
-                    date: inv.issueDate, 
+                ledgerItems.push({
+                    date: inv.issueDate,
                     tenantName: tenant?.name || 'Unknown/Deleted Tenant',
-                    particulars: `Invoice #${inv.invoiceNumber} (${inv.description || 'Rent'})`, 
-                    debit: inv.amount, 
+                    particulars: `${inv.description || 'Monthly Rent'} – Unit ${inv.invoiceNumber}`,
+                    debit: inv.amount,
                     credit: 0,
                     entityType: 'invoice' as const,
                     entityId: inv.id
@@ -143,7 +133,6 @@ const TenantLedgerReport: React.FC = () => {
             }
         });
 
-        // Security deposit refund: show two lines so ledger balances (owner security debit + amount refunded)
         const secRefundCategoryNames = ['Security Deposit Refund', 'Owner Security Payout'];
         const isSecRefundCategory = (categoryId: string | undefined) => {
             if (!categoryId) return false;
@@ -153,51 +142,33 @@ const TenantLedgerReport: React.FC = () => {
 
         tenantTransactions.forEach(tx => {
             const txDate = new Date(tx.date);
-            if(txDate >= start && txDate <= end) {
+            if (txDate >= start && txDate <= end) {
                 const tenant = state.contacts.find(c => c.id === tx.contactId);
                 const tenantName = tenant?.name || 'Unknown/Deleted Tenant';
                 const isExpense = tx.type === TransactionType.EXPENSE;
                 const isSecRefund = isExpense && isSecRefundCategory(tx.categoryId);
 
                 if (isSecRefund) {
-                    // Line 1: Owner security debit (liability released) – debit so balance steps up
                     ledgerItems.push({
-                        date: tx.date,
-                        tenantName,
-                        particulars: 'Owner security debit',
-                        debit: tx.amount,
-                        credit: 0,
-                        entityType: 'transaction' as const,
-                        entityId: `${tx.id}-release`
+                        date: tx.date, tenantName, particulars: 'Owner security debit',
+                        debit: tx.amount, credit: 0, entityType: 'transaction' as const, entityId: `${tx.id}-release`
                     });
-                    // Line 2: Amount refunded – credit so balance returns to zero
                     ledgerItems.push({
-                        date: tx.date,
-                        tenantName,
-                        particulars: tx.description || 'Security deposit refund',
-                        debit: 0,
-                        credit: tx.amount,
-                        entityType: 'transaction' as const,
-                        entityId: tx.id
+                        date: tx.date, tenantName, particulars: tx.description || 'Security Deposit Refund',
+                        debit: 0, credit: tx.amount, entityType: 'transaction' as const, entityId: tx.id
                     });
                 } else {
-                    // Non-refund: INCOME = credit, EXPENSE = debit (charge paid by owner)
-                    const asDebit = isExpense;
-                    const asCredit = !isExpense;
                     ledgerItems.push({
-                        date: tx.date,
-                        tenantName,
-                        particulars: tx.description || (isExpense ? 'Charge Paid by Owner' : 'Payment Received'),
-                        debit: asDebit ? tx.amount : 0,
-                        credit: asCredit ? tx.amount : 0,
-                        entityType: 'transaction' as const,
-                        entityId: tx.id
+                        date: tx.date, tenantName,
+                        particulars: tx.description || (isExpense ? 'Charge Paid by Owner' : `Rent Payment – Ref #${tx.id.slice(-5)}`),
+                        debit: isExpense ? tx.amount : 0,
+                        credit: !isExpense ? tx.amount : 0,
+                        entityType: 'transaction' as const, entityId: tx.id
                     });
                 }
             }
         });
 
-        // Sort chronologically; for same date keep debit before credit (so refund pair shows debit then credit)
         ledgerItems.sort((a, b) => {
             if (groupBy === 'tenant') {
                 if (a.tenantName < b.tenantName) return -1;
@@ -211,9 +182,7 @@ const TenantLedgerReport: React.FC = () => {
 
         let runningBalance = 0;
         let currentTenantName = '';
-        let finalItems: LedgerItem[] = [];
-
-        finalItems = ledgerItems.map((item, index) => {
+        let finalItems: LedgerItem[] = ledgerItems.map((item, index) => {
             if (groupBy === 'tenant' && item.tenantName !== currentTenantName) {
                 currentTenantName = item.tenantName;
                 runningBalance = 0;
@@ -221,12 +190,11 @@ const TenantLedgerReport: React.FC = () => {
             runningBalance += item.debit - item.credit;
             return { ...item, id: `${item.date}-${index}`, balance: runningBalance };
         });
-        
+
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            finalItems = finalItems.filter(item => 
-                item.particulars.toLowerCase().includes(q) ||
-                item.tenantName.toLowerCase().includes(q)
+            finalItems = finalItems.filter(item =>
+                item.particulars.toLowerCase().includes(q) || item.tenantName.toLowerCase().includes(q)
             );
         }
 
@@ -239,14 +207,11 @@ const TenantLedgerReport: React.FC = () => {
         }
 
         return finalItems;
-
     }, [state, startDate, endDate, selectedTenantId, searchQuery, tenants, groupBy, sortConfig]);
-    
+
     const requestSort = (key: keyof LedgerItem) => {
         let direction: 'asc' | 'desc' = 'asc';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-            direction = 'desc';
-        }
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
         setSortConfig({ key, direction });
     };
 
@@ -257,6 +222,51 @@ const TenantLedgerReport: React.FC = () => {
             return acc;
         }, { debit: 0, credit: 0 });
     }, [reportData]);
+
+    const summaryStats = useMemo(() => {
+        const allRentalInvoices = state.invoices.filter(inv =>
+            inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE
+        );
+        const tenantIds = new Set(tenants.map(t => t.id));
+
+        const allRentalPayments = state.transactions.filter(tx =>
+            tx.type === TransactionType.INCOME && tx.contactId && tenantIds.has(tx.contactId)
+        );
+        const totalCollections = allRentalPayments.reduce((sum, tx) => sum + tx.amount, 0);
+
+        const balanceByTenant = new Map<string, number>();
+        allRentalInvoices.forEach(inv => {
+            if (!inv.contactId) return;
+            balanceByTenant.set(inv.contactId, (balanceByTenant.get(inv.contactId) || 0) + inv.amount);
+        });
+        allRentalPayments.forEach(tx => {
+            if (!tx.contactId) return;
+            balanceByTenant.set(tx.contactId, (balanceByTenant.get(tx.contactId) || 0) - tx.amount);
+        });
+
+        let outstandingArrears = 0;
+        let overdueTenantsCount = 0;
+        balanceByTenant.forEach((balance) => {
+            if (balance > 0) {
+                outstandingArrears += balance;
+                overdueTenantsCount++;
+            }
+        });
+
+        const netRevenue = totalCollections - outstandingArrears;
+
+        return { totalCollections, outstandingArrears, overdueTenantsCount, netRevenue };
+    }, [state.invoices, state.transactions, tenants]);
+
+    const alertsCount = useMemo(() => {
+        const overdueInvoices = state.invoices.filter(inv => {
+            if (inv.invoiceType !== InvoiceType.RENTAL && inv.invoiceType !== InvoiceType.SERVICE_CHARGE) return false;
+            if (!inv.dueDate) return false;
+            const due = new Date(inv.dueDate);
+            return due < new Date() && inv.status !== 'paid';
+        });
+        return overdueInvoices.length;
+    }, [state.invoices]);
 
     const { print: triggerPrint } = usePrintContext();
 
@@ -292,17 +302,6 @@ const TenantLedgerReport: React.FC = () => {
         setWarningModalState({ isOpen: false, transaction: null, action: null });
     };
 
-    const handleTransactionUpdated = () => {
-        if (transactionToEdit) {
-            const linkedItemName = getLinkedItemName(transactionToEdit);
-            if (linkedItemName && linkedItemName !== 'a linked item') {
-                showAlert(`Transaction updated successfully. The linked ${linkedItemName} has been updated to reflect the changes.`, { title: 'Transaction Updated' });
-            } else {
-                showToast('Transaction updated successfully', 'success');
-            }
-        }
-    };
-
     const handleInvoiceUpdated = () => {
         showToast('Invoice updated successfully', 'success');
     };
@@ -325,36 +324,34 @@ const TenantLedgerReport: React.FC = () => {
             await showAlert("Please select a single tenant with a contact number to send a report.");
             return;
         }
-
         try {
-            const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
-            
+            const bal = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
             let message = `*Statement for ${selectedTenant.name}*\n`;
             message += `Period: ${formatDate(startDate)} to ${formatDate(endDate)}\n\n`;
-            message += `Final Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
+            message += `Final Balance Due: *${CURRENCY} ${bal.toLocaleString()}*\n\n`;
             message += `This is an automated summary from PBooksPro.`;
-
             sendOrOpenWhatsApp(
                 { contact: selectedTenant, message, phoneNumber: selectedTenant.contactNo },
-                () => state.whatsAppMode,
-                openChat
+                () => state.whatsAppMode, openChat
             );
         } catch (error) {
             await showAlert(error instanceof Error ? error.message : 'Failed to send WhatsApp message');
         }
     };
-    
+
     const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
 
     const SortHeader: React.FC<{ label: string, sortKey: keyof LedgerItem, align?: 'left' | 'right' }> = ({ label, sortKey, align = 'left' }) => (
-        <th 
-            className={`px-3 py-2 ${align === 'right' ? 'text-right' : 'text-left'} font-semibold text-app-muted bg-app-toolbar/40 cursor-pointer hover:bg-app-toolbar/60 select-none`}
+        <th
+            className={`px-4 py-3 ${align === 'right' ? 'text-right' : 'text-left'} text-[11px] font-semibold uppercase tracking-wider text-app-muted cursor-pointer hover:text-app-text select-none transition-colors`}
             onClick={() => requestSort(sortKey)}
         >
             <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
                 {label}
-                {sortConfig?.key === sortKey && (
-                    <span className="text-xs">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                {sortConfig?.key === sortKey ? (
+                    <span className="text-[9px] text-primary">{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                ) : (
+                    <span className="text-[9px] text-app-muted/40">↕</span>
                 )}
             </div>
         </th>
@@ -363,173 +360,297 @@ const TenantLedgerReport: React.FC = () => {
     return (
         <>
             <style>{STANDARD_PRINT_STYLES}</style>
-            <div className="flex flex-col h-full space-y-4">
-                {/* Custom Toolbar - All controls in first row */}
-                <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
-                    {/* First Row: Dates, Filters, and Actions */}
-                    <div className="flex flex-wrap items-center gap-3">
-                        {/* Date Range Pills */}
-                        <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
-                            {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
-                                <button
-                                    key={opt}
-                                    onClick={() => handleRangeChange(opt)}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
-                                        dateRangeType === opt 
-                                        ? 'bg-primary text-ds-on-primary shadow-sm font-bold' 
-                                        : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
-                                    }`}
-                                >
-                                    {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Custom Date Pickers */}
-                        {dateRangeType === 'custom' && (
-                            <div className="flex items-center gap-2 animate-fade-in">
-                                <DatePicker value={startDate} onChange={(d) => handleDateChange(toLocalDateString(d), endDate)} />
-                                <span className="text-app-muted">-</span>
-                                <DatePicker value={endDate} onChange={(d) => handleDateChange(startDate, toLocalDateString(d))} />
+            <div className="flex flex-col h-full min-h-0">
+                {/* Header Section */}
+                <div className="flex-shrink-0 px-6 pt-5 pb-4 no-print">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold text-app-text tracking-tight">Tenant Ledger</h1>
+                            <div className="flex items-center gap-1.5 mt-1 text-sm text-app-muted">
+                                <div className="w-4 h-4 opacity-60">{ICONS.calendar}</div>
+                                <span>{formatLongDate(startDate)} – {formatLongDate(endDate)}</span>
                             </div>
-                        )}
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={handleWhatsApp}
+                                disabled={selectedTenantId === 'all'}
+                                className="flex items-center gap-1.5 text-sm text-app-muted hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0-12.814a2.25 2.25 0 1 0 3.935-2.186 2.25 2.25 0 0 0-3.935 2.186Zm0 12.814a2.25 2.25 0 1 0 3.933 2.185 2.25 2.25 0 0 0-3.933-2.185Z" />
+                                </svg>
+                                Share
+                            </button>
+                            <button
+                                onClick={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
+                                className="flex items-center gap-1.5 text-sm text-app-muted hover:text-primary transition-colors"
+                            >
+                                <div className="w-4 h-4">{ICONS.print}</div>
+                                Print
+                            </button>
+                            <button
+                                onClick={handleExport}
+                                className="flex items-center gap-1.5 text-sm text-app-muted hover:text-primary transition-colors"
+                            >
+                                <div className="w-4 h-4">{ICONS.export}</div>
+                                Export
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
+                {/* Filters Row */}
+                <div className="flex-shrink-0 mx-6 mb-4 no-print">
+                    <div className="bg-app-card rounded-xl border border-app-border px-5 py-3.5 flex flex-wrap items-center gap-x-6 gap-y-3">
                         {/* Tenant Filter */}
-                        <div className="w-48 flex-shrink-0">
-                            <ComboBox 
-                                items={tenantItems} 
-                                selectedId={selectedTenantId} 
-                                onSelect={(item) => setSelectedTenantId(item?.id || 'all')} 
-                                allowAddNew={false}
-                                placeholder="Filter Tenant"
-                            />
+                        <div className="flex flex-col gap-1">
+                            <label htmlFor="tenant-filter" className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">Tenant</label>
+                            <select
+                                id="tenant-filter"
+                                value={selectedTenantId}
+                                onChange={(e) => setSelectedTenantId(e.target.value)}
+                                className="ds-input-field px-3 py-1.5 text-sm min-w-[160px] rounded-md"
+                            >
+                                {tenantItems.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                            </select>
                         </div>
 
-                        {/* Group By */}
-                        <div className="w-40 flex-shrink-0">
+                        {/* Grouping Filter */}
+                        <div className="flex flex-col gap-1">
+                            <label htmlFor="grouping-filter" className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">Grouping</label>
                             <select
+                                id="grouping-filter"
                                 value={groupBy}
                                 onChange={(e) => setGroupBy(e.target.value)}
-                                className="ds-input-field block w-full px-3 py-1.5 text-sm"
-                                aria-label="Group by"
+                                className="ds-input-field px-3 py-1.5 text-sm min-w-[140px] rounded-md"
                             >
                                 <option value="">No Grouping</option>
                                 <option value="tenant">Group by Tenant</option>
                             </select>
                         </div>
 
-                        {/* Search Input */}
-                        <div className="relative flex-grow min-w-[180px]">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-                                <span className="h-4 w-4">{ICONS.search}</span>
+                        {/* Date Range Pills */}
+                        <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">Period</label>
+                            <div className="flex bg-app-toolbar rounded-md p-0.5">
+                                {(['thisYear', 'thisMonth', 'lastMonth', 'all', 'custom'] as DateRangeOption[]).map(opt => (
+                                    <button
+                                        key={opt}
+                                        onClick={() => handleRangeChange(opt)}
+                                        className={`px-2.5 py-1 text-xs font-medium rounded transition-all whitespace-nowrap ${
+                                            dateRangeType === opt
+                                                ? 'bg-primary text-ds-on-primary shadow-sm'
+                                                : 'text-app-muted hover:text-app-text'
+                                        }`}
+                                    >
+                                        {opt === 'all' ? 'All' : opt === 'thisYear' ? 'This Year' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
+                                    </button>
+                                ))}
                             </div>
-                            <Input 
-                                placeholder="Search report..." 
-                                value={searchQuery} 
-                                onChange={(e) => setSearchQuery(e.target.value)} 
-                                className="ds-input-field pl-9 py-1.5 text-sm"
-                            />
-                            {searchQuery && (
-                                <button 
-                                    onClick={() => setSearchQuery('')} 
-                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
-                                >
-                                    <div className="w-4 h-4">{ICONS.x}</div>
-                                </button>
-                            )}
                         </div>
 
-                        {/* Actions Group */}
-                        <div className="flex items-center gap-2 ml-auto">
-                            <Button 
-                                variant="secondary" 
-                                size="sm" 
-                                onClick={handleWhatsApp} 
-                                disabled={selectedTenantId === 'all'}
-                                className="text-ds-success bg-ds-success/10 hover:bg-ds-success/20 border-ds-success/30 whitespace-nowrap"
-                            >
-                                <div className="w-4 h-4 mr-1">{ICONS.whatsapp}</div> Share
-                            </Button>
-                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border">
-                                <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
-                            </Button>
-                            <PrintButton
-                                variant="secondary"
-                                size="sm"
-                                onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
-                                className="whitespace-nowrap"
-                            />
+                        {dateRangeType === 'custom' && (
+                            <div className="flex items-end gap-2 animate-fade-in">
+                                <div className="flex flex-col gap-1">
+                                    <label htmlFor="ledger-date-from" className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">From</label>
+                                    <input id="ledger-date-from" type="date" value={startDate} onChange={(e) => handleDateChange(e.target.value, endDate)} className="ds-input-field px-2 py-1.5 text-sm rounded-md" />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label htmlFor="ledger-date-to" className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">To</label>
+                                    <input id="ledger-date-to" type="date" value={endDate} onChange={(e) => handleDateChange(startDate, e.target.value)} className="ds-input-field px-2 py-1.5 text-sm rounded-md" />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Search */}
+                        <div className="flex items-end ml-auto">
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted">
+                                    <span className="w-3.5 h-3.5">{ICONS.search}</span>
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Search..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="ds-input-field pl-8 pr-7 py-1.5 text-sm w-40 rounded-md"
+                                />
+                                {searchQuery && (
+                                    <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text">
+                                        <div className="w-3.5 h-3.5">{ICONS.x}</div>
+                                    </button>
+                                )}
+                            </div>
                         </div>
+
+                        {/* Alerts Badge */}
+                        {alertsCount > 0 && (
+                            <div className="flex items-end">
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    {alertsCount} Alert{alertsCount !== 1 ? 's' : ''} pending
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                    <Card className="min-h-full">
-                        <ReportHeader />
-                        <div className="text-center mb-6">
-                            <h3 className="text-2xl font-bold text-app-text">Tenant Ledger</h3>
-                            <p className="text-sm text-app-muted">From {formatDate(startDate)} to {formatDate(endDate)}</p>
-                            <p className="text-sm text-app-muted font-semibold">
-                                Tenant: {selectedTenantId === 'all' ? 'All Tenants' : state.contacts.find(c=>c.id === selectedTenantId)?.name}
+                {/* Main Content - Scrollable */}
+                <div className="flex-grow overflow-y-auto min-h-0 px-6 pb-6">
+                    <div id="printable-area" className="printable-area">
+                        {/* Print-only header */}
+                        <div className="hidden print:block">
+                            <ReportHeader />
+                            <div className="text-center mb-4">
+                                <h3 className="text-2xl font-bold text-app-text">Tenant Ledger</h3>
+                                <p className="text-sm text-app-muted">{formatLongDate(startDate)} – {formatLongDate(endDate)}</p>
+                                {selectedTenantId !== 'all' && (
+                                    <p className="text-sm text-app-muted font-semibold">
+                                        Tenant: {state.contacts.find(c => c.id === selectedTenantId)?.name}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Data Table */}
+                        {reportData.length > 0 ? (
+                            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b border-app-border bg-app-toolbar/30">
+                                                <SortHeader label="Date" sortKey="date" align="left" />
+                                                <SortHeader label="Tenant" sortKey="tenantName" align="left" />
+                                                <SortHeader label="Particulars" sortKey="particulars" align="left" />
+                                                <SortHeader label="Debit (Due)" sortKey="debit" align="right" />
+                                                <SortHeader label="Credit (Paid)" sortKey="credit" align="right" />
+                                                <SortHeader label="Balance" sortKey="balance" align="right" />
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {reportData.map((item, idx) => {
+                                                const transaction = item.entityType === 'transaction' ? state.transactions.find(t => t.id === item.entityId) : null;
+                                                const invoice = item.entityType === 'invoice' ? state.invoices.find(i => i.id === item.entityId) : null;
+                                                return (
+                                                    <tr
+                                                        key={item.id}
+                                                        className={`border-b border-app-border/50 cursor-pointer hover:bg-primary/5 transition-colors ${idx % 2 === 0 ? 'bg-app-card' : 'bg-app-toolbar/10'}`}
+                                                        onClick={() => {
+                                                            if (transaction) setTransactionToEdit(transaction);
+                                                            if (invoice) setInvoiceToEdit(invoice);
+                                                        }}
+                                                        title="Click to edit"
+                                                    >
+                                                        <td className="px-4 py-3 whitespace-nowrap text-app-muted">{formatDate(item.date)}</td>
+                                                        <td className="px-4 py-3 whitespace-nowrap font-medium text-app-text">{item.tenantName}</td>
+                                                        <td className="px-4 py-3 text-app-muted max-w-xs truncate">{item.particulars}</td>
+                                                        <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium text-rose-600 dark:text-rose-400">
+                                                            {item.debit > 0 ? `${CURRENCY}${item.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-app-muted/40">–</span>}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium text-app-muted">
+                                                            {item.credit > 0 ? `${CURRENCY}${item.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-app-muted/40">–</span>}
+                                                        </td>
+                                                        <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold ${
+                                                            item.balance > 0 ? 'text-rose-600 dark:text-rose-400' : item.balance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
+                                                        }`}>
+                                                            {CURRENCY}{item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr className="bg-app-toolbar/40 border-t-2 border-app-border">
+                                                <td colSpan={3} className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-app-muted">Totals (Period)</td>
+                                                <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold text-rose-600 dark:text-rose-400">
+                                                    {CURRENCY}{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold text-app-text">
+                                                    {CURRENCY}{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </td>
+                                                <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold ${
+                                                    finalBalance > 0 ? 'text-rose-600 dark:text-rose-400' : finalBalance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
+                                                }`}>
+                                                    {selectedTenantId !== 'all' ? `${CURRENCY}${finalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '–'}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-16 text-center">
+                                <div className="w-12 h-12 mx-auto mb-4 text-app-muted/30">{ICONS.search}</div>
+                                <p className="text-app-muted font-medium">No ledger transactions found for the selected criteria.</p>
+                                <p className="text-app-muted/60 text-sm mt-1">Try adjusting the date range or tenant filter.</p>
+                            </div>
+                        )}
+
+                        <div className="hidden print:block"><ReportFooter /></div>
+                    </div>
+
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 no-print">
+                        {/* Total Collections */}
+                        <div className="bg-app-card rounded-xl border border-app-border p-5 shadow-ds-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Total Collections</span>
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <svg className="w-4.5 h-4.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div className="text-2xl font-bold text-app-text tabular-nums">
+                                {CURRENCY}{summaryStats.totalCollections.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </div>
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>
+                                vs last period
                             </p>
                         </div>
 
-                        {reportData.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-app-border text-sm">
-                                    <thead className="bg-app-toolbar/40 sticky top-0 z-10">
-                                        <tr>
-                                            <SortHeader label="Date" sortKey="date" align="left" />
-                                            <SortHeader label="Tenant" sortKey="tenantName" align="left" />
-                                            <SortHeader label="Particulars" sortKey="particulars" align="left" />
-                                            <SortHeader label="Debit (Due)" sortKey="debit" />
-                                            <SortHeader label="Credit (Paid)" sortKey="credit" />
-                                            <SortHeader label="Balance" sortKey="balance" />
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-app-card divide-y divide-app-border">
-                                        {reportData.map(item => {
-                                            const transaction = item.entityType === 'transaction' ? state.transactions.find(t => t.id === item.entityId) : null;
-                                            const invoice = item.entityType === 'invoice' ? state.invoices.find(i => i.id === item.entityId) : null;
-                                            return (
-                                                <tr 
-                                                    key={item.id}
-                                                    className="cursor-pointer hover:bg-app-toolbar/30 transition-colors text-app-text"
-                                                    onClick={() => {
-                                                        if (transaction) setTransactionToEdit(transaction);
-                                                        if (invoice) setInvoiceToEdit(invoice);
-                                                    }}
-                                                    title="Click to edit"
-                                                >
-                                                    <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.date)}</td>
-                                                    <td className="px-3 py-2 whitespace-normal break-words">{item.tenantName}</td>
-                                                    <td className="px-3 py-2 whitespace-normal break-words max-w-xs">{item.particulars}</td>
-                                                    <td className="px-3 py-2 text-right whitespace-nowrap">{item.debit > 0 ? `${CURRENCY} ${item.debit.toLocaleString()}` : '-'}</td>
-                                                    <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.credit > 0 ? `${CURRENCY} ${item.credit.toLocaleString()}` : '-'}</td>
-                                                    <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-app-text'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border">
-                                        <tr>
-                                            <td colSpan={3} className="px-3 py-2 text-right text-sm text-app-text">Totals (Period)</td>
-                                            <td className="px-3 py-2 text-right text-sm whitespace-nowrap">{CURRENCY} {totals.debit.toLocaleString()}</td>
-                                            <td className="px-3 py-2 text-right text-sm text-success whitespace-nowrap">{CURRENCY} {totals.credit.toLocaleString()}</td>
-                                            <td className="px-3 py-2 text-right text-sm whitespace-nowrap">
-                                                {selectedTenantId !== 'all' ? `${CURRENCY} ${finalBalance.toLocaleString()}` : '-'}
-                                            </td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
+                        {/* Outstanding Arrears */}
+                        <div className="bg-app-card rounded-xl border border-app-border p-5 shadow-ds-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Outstanding Arrears</span>
+                                <div className="w-8 h-8 rounded-lg bg-ds-warning/10 flex items-center justify-center">
+                                    <div className="w-4.5 h-4.5 text-ds-warning">{ICONS.alertTriangle}</div>
+                                </div>
                             </div>
-                        ) : (<div className="text-center py-16"><p className="text-app-muted">No ledger transactions found for the selected criteria.</p></div>)}
-                        <ReportFooter />
-                    </Card>
+                            <div className="text-2xl font-bold text-app-text tabular-nums">
+                                {CURRENCY}{summaryStats.outstandingArrears.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </div>
+                            {summaryStats.overdueTenantsCount > 0 && (
+                                <p className="text-xs text-ds-warning mt-1 flex items-center gap-1">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>
+                                    {summaryStats.overdueTenantsCount} tenant{summaryStats.overdueTenantsCount !== 1 ? 's' : ''} overdue
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Net Revenue */}
+                        <div className="bg-app-card rounded-xl border border-app-border border-l-[3px] border-l-primary p-5 shadow-ds-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Net Revenue</span>
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <svg className="w-4.5 h-4.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3H21m-3.75 3H21" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div className="text-2xl font-bold text-app-text tabular-nums">
+                                {CURRENCY}{summaryStats.netRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </div>
+                            <p className="text-xs text-app-muted mt-1">Updated just now</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Edit Transaction Modal */}
             <Modal isOpen={!!transactionToEdit} onClose={() => setTransactionToEdit(null)} title="Edit Transaction">
                 {transactionToEdit && (
                     <TransactionForm
@@ -540,7 +661,6 @@ const TenantLedgerReport: React.FC = () => {
                 )}
             </Modal>
 
-            {/* Edit Invoice Modal */}
             <Modal isOpen={!!invoiceToEdit} onClose={() => setInvoiceToEdit(null)} title="Edit Invoice">
                 {invoiceToEdit && (
                     <InvoiceBillForm
@@ -554,7 +674,6 @@ const TenantLedgerReport: React.FC = () => {
                 )}
             </Modal>
 
-            {/* Linked Transaction Warning Modal */}
             <LinkedTransactionWarningModal
                 isOpen={warningModalState.isOpen}
                 onClose={handleCloseWarning}
