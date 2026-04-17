@@ -1415,7 +1415,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const prevAuthRef = React.useRef<boolean>(false);
     const isAuthenticated = auth.isAuthenticated;
 
-    // Track tenant ID to detect tenant switches
+    // Track tenant ID to detect tenant switches (prevents cross-org data leaks)
     // Read directly from localStorage to avoid circular dependency issues
     const currentTenantId = React.useMemo(() => {
         try {
@@ -1428,6 +1428,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return null;
         }
     }, [isAuthenticated]);
+    const prevTenantIdRef = React.useRef<string | null>(currentTenantId);
+    const sessionRestoreRefreshDoneRef = useRef(false);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isInitialDataLoading, setIsInitialDataLoading] = useState(false);
@@ -1625,6 +1627,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     setStoredState(mergedInit);
                                     if (typeof sessionStorage !== 'undefined') {
                                         sessionStorage.setItem('pbooks_api_last_sync_at', new Date().toISOString());
+                                        if (currentTenantId) sessionStorage.setItem('pbooks_api_sync_tenant_id', currentTenantId);
                                     }
                                     markDbLoadCompleteRef.current?.();
                                     logger.logCategory('sync', '✅ Application state loaded from API');
@@ -2795,6 +2798,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         // Wait for initialization to complete and storedState to be ready
         if (!isInitializing && !apiStateLoadFailed && storedStateRef.current) {
+            // API/LAN mode: server is the source of truth. Never let a stale local SQLite
+            // cache overwrite the API-loaded state (prevents cross-tenant data leaks when
+            // switching organizations).
+            if (!isLocalOnlyMode()) {
+                reducerInitializedRef.current = true;
+                return;
+            }
+
             // Use ref to access storedState to avoid dependency issues
             const currentStoredState = storedStateRef.current;
 
@@ -2841,6 +2852,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stateRef.current = state;
     }, [state]);
 
+    // Tenant isolation: clear all cached state when the tenant/organization changes.
+    // Prevents data from one company leaking into another company's session.
+    useEffect(() => {
+        const prevTenantId = prevTenantIdRef.current;
+        if (
+            currentTenantId &&
+            prevTenantId &&
+            currentTenantId !== prevTenantId &&
+            !isLocalOnlyMode()
+        ) {
+            logger.logCategory('sync', `🔒 Tenant switched (${prevTenantId} → ${currentTenantId}), clearing previous tenant state`);
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('pbooks_api_last_sync_at');
+            }
+            dispatch({ type: 'SET_STATE', payload: initialState, _isRemote: true } as any);
+            setStoredState(initialState);
+            sessionRestoreRefreshDoneRef.current = false;
+        }
+        prevTenantIdRef.current = currentTenantId;
+    }, [currentTenantId, dispatch, setStoredState]);
+
     /**
      * Merge latest server state into React + persisted state (LAN / PostgreSQL API).
      * Required so User B sees projects/units created by User A without reloading the app.
@@ -2851,6 +2883,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const { getAppStateApiService, pickTenantSettingsPartial, getServerTimeIso } = await import('../services/api/appStateApi');
             const base = stateRef.current;
             const lastSync = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_last_sync_at') : null;
+            const syncTenant = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_sync_tenant_id') : null;
+
+            // Guard: if the sync cursor belongs to a different tenant, discard it to force a
+            // full load. Prevents merging another organization's deltas into the current session.
+            const cursorMatchesTenant = !lastSync || (syncTenant === currentTenantId);
 
             // Incremental sync returns deltas (vendors, contacts, rental_agreements, project_agreements, invoices, bills, accounts, transactions, categories, app settings).
             // It does not re-fetch projects, buildings, properties, etc. Using it when the baseline is
@@ -2869,7 +2906,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             let merged: AppState;
             let nextSyncCursor: string;
 
-            if (lastSync && baselineHasCoreData) {
+            if (lastSync && cursorMatchesTenant && baselineHasCoreData) {
                 try {
                     const { merged: inc, serverCursor } = await getAppStateApiService().loadStateViaIncrementalSync(lastSync, base);
                     merged = { ...base, ...inc, ...pickTenantSettingsPartial(inc) } as AppState;
@@ -2897,19 +2934,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else {
                 const partial = await getAppStateApiService().loadState();
                 const partialSettings = pickTenantSettingsPartial(partial);
+                // When the sync cursor doesn't match the current tenant (or is missing),
+                // use initialState as the baseline to avoid mixing old tenant data.
+                const safeBase = cursorMatchesTenant ? base : initialState;
                 merged = {
-                    ...base,
+                    ...safeBase,
                     ...partial,
-                    invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
+                    invoices: mergeInvoicesWithServerBaseline(safeBase.invoices || [], partial.invoices || []),
                     projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
-                        base.projectReceivedAssets || [],
+                        safeBase.projectReceivedAssets || [],
                         partial.projectReceivedAssets || []
                     ),
                     salesReturns: mergeSalesReturnsWithServerBaseline(
-                        base.salesReturns || [],
+                        safeBase.salesReturns || [],
                         partial.salesReturns || []
                     ),
-                    contracts: partial.contracts ?? base.contracts,
+                    contracts: partial.contracts ?? safeBase.contracts,
                     ...partialSettings,
                 } as AppState;
                 nextSyncCursor = await getServerTimeIso();
@@ -2917,6 +2957,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (typeof sessionStorage !== 'undefined') {
                 sessionStorage.setItem('pbooks_api_last_sync_at', nextSyncCursor);
+                if (currentTenantId) sessionStorage.setItem('pbooks_api_sync_tenant_id', currentTenantId);
             }
 
             dispatch({ type: 'SET_STATE', payload: merged, _isRemote: true } as any);
@@ -3010,7 +3051,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }, DEBOUNCE_MS);
         };
 
-        const handleEntity = (payload: { sourceUserId?: string }) => {
+        const handleEntity = (payload: { sourceUserId?: string; tenantId?: string }) => {
+            if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) {
+                return;
+            }
             if (payload?.sourceUserId && auth.user?.id && payload.sourceUserId === auth.user.id) {
                 return;
             }
@@ -3052,43 +3096,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         const handleBidirDownstreamComplete = async () => {
             try {
-                const dbService = getDatabaseService();
-                if (!dbService.isReady()) return;
-                const appStateRepo = await getAppStateRepository();
-                let loadedState = await appStateRepo.loadState();
-                // Projects/units/vendors/contacts/rental/invoices/accounts and tenant app settings are not fully loaded from SQLite in API mode; merge from server so we never wipe them here.
+                // API mode: server is the sole source of truth. Load everything from API
+                // instead of mixing SQLite (which may contain stale data from a different
+                // tenant) with server data.
                 if (!isLocalOnlyMode() && isAuthenticated) {
                     try {
                         const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
                         const partial = await getAppStateApiService().loadState();
-                        loadedState = {
-                            ...loadedState,
-                            projects: partial.projects ?? loadedState.projects,
-                            units: partial.units ?? loadedState.units,
-                            vendors: partial.vendors ?? loadedState.vendors,
-                            contacts: partial.contacts ?? loadedState.contacts,
-                            rentalAgreements: partial.rentalAgreements ?? loadedState.rentalAgreements,
-                            projectAgreements: partial.projectAgreements ?? loadedState.projectAgreements,
-                            projectReceivedAssets: partial.projectReceivedAssets ?? loadedState.projectReceivedAssets,
-                            salesReturns: partial.salesReturns ?? loadedState.salesReturns,
-                            invoices: partial.invoices ?? loadedState.invoices,
-                            accounts: partial.accounts ?? loadedState.accounts,
-                            categories: partial.categories ?? loadedState.categories,
-                            bills: partial.bills ?? loadedState.bills,
-                            transactions: partial.transactions ?? loadedState.transactions,
-                            recurringInvoiceTemplates:
-                                partial.recurringInvoiceTemplates ?? loadedState.recurringInvoiceTemplates,
-                            pmCycleAllocations: partial.pmCycleAllocations ?? loadedState.pmCycleAllocations,
-                            contracts: partial.contracts ?? loadedState.contracts,
-                            budgets: partial.budgets ?? loadedState.budgets,
-                            personalCategories: partial.personalCategories ?? loadedState.personalCategories,
-                            personalTransactions: partial.personalTransactions ?? loadedState.personalTransactions,
-                            ...pickTenantSettingsPartial(partial),
-                        };
+                        const loadedState = { ...initialState, ...partial, ...pickTenantSettingsPartial(partial) };
+                        if (
+                            loadedState &&
+                            (loadedState.transactions?.length > 0 ||
+                                loadedState.contacts?.length > 0 ||
+                                loadedState.invoices?.length > 0 ||
+                                loadedState.accounts?.length > 0 ||
+                                (loadedState.rentalAgreements?.length ?? 0) > 0)
+                        ) {
+                            dispatch({ type: 'SET_STATE', payload: loadedState, _isRemote: true } as any);
+                            setStoredState(loadedState as AppState);
+                            markDbLoadCompleteRef.current?.();
+                            logger.logCategory('sync', '✅ Reloaded AppContext from API after bidirectional sync');
+                        }
                     } catch (apiErr) {
-                        logger.warnCategory('sync', '⚠️ Bidir reload: could not merge projects/units/vendors/contacts/app settings from API:', apiErr);
+                        logger.warnCategory('sync', '⚠️ Bidir reload: could not load from API:', apiErr);
                     }
+                    return;
                 }
+                const dbService = getDatabaseService();
+                if (!dbService.isReady()) return;
+                const appStateRepo = await getAppStateRepository();
+                const loadedState = await appStateRepo.loadState();
                 if (
                     loadedState &&
                     (loadedState.transactions?.length > 0 ||
@@ -3373,7 +3410,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [dispatch]);
 
     // Auto-sync: on session restore, load from API when state is empty (init may have run before auth completed)
-    const sessionRestoreRefreshDoneRef = useRef(false);
     useEffect(() => {
         // When authenticated and init done, if state has no core records OR no projects (API-only master data), refresh from API
         if (

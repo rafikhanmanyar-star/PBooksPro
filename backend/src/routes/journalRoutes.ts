@@ -133,7 +133,7 @@ journalRouter.get('/transactions/journal/:id', async (req: AuthedRequest, res) =
         sendFailure(res, 404, 'NOT_FOUND', 'Journal entry not found');
         return;
       }
-      const reversed = await isJournalReversed(client, id);
+      const reversed = await isJournalReversed(client, id, tenantId);
       sendSuccess(res, { ...data, reversed });
     } finally {
       client.release();

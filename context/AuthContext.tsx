@@ -218,6 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('user_id');
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('pbooks_api_last_sync_at');
+          sessionStorage.removeItem('pbooks_api_sync_tenant_id');
         }
         apiClient.setLoggingOut(false);
       }
@@ -546,6 +547,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('pbooks_api_last_sync_at');
+          sessionStorage.removeItem('pbooks_api_sync_tenant_id');
         }
 
         // Verify token is valid by checking it can be decoded
@@ -678,6 +680,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('pbooks_api_last_sync_at');
+          sessionStorage.removeItem('pbooks_api_sync_tenant_id');
         }
 
         // Verify token is valid by checking it can be decoded
@@ -791,6 +794,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Force a full API load on next sync (fresh baseline after login; incremental sync covers ongoing changes)
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('pbooks_api_last_sync_at');
+        sessionStorage.removeItem('pbooks_api_sync_tenant_id');
       }
 
       setState({

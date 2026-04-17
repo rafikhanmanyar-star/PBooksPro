@@ -161,12 +161,18 @@ export async function getJournalWithLines(
 
 export async function isJournalReversed(
   client: pg.PoolClient,
-  originalJournalEntryId: string
+  originalJournalEntryId: string,
+  tenantId?: string
 ): Promise<boolean> {
-  const r = await client.query(
-    `SELECT 1 FROM journal_reversals WHERE original_journal_entry_id = $1 LIMIT 1`,
-    [originalJournalEntryId]
-  );
+  const r = tenantId
+    ? await client.query(
+        `SELECT 1 FROM journal_reversals WHERE original_journal_entry_id = $1 AND tenant_id = $2 LIMIT 1`,
+        [originalJournalEntryId, tenantId]
+      )
+    : await client.query(
+        `SELECT 1 FROM journal_reversals WHERE original_journal_entry_id = $1 LIMIT 1`,
+        [originalJournalEntryId]
+      );
   return r.rows.length > 0;
 }
 
@@ -182,7 +188,7 @@ export async function reverseJournalEntry(
   const existing = await getJournalWithLines(client, originalJournalEntryId, tenantId);
   if (!existing) throw new Error('Original journal entry not found.');
 
-  if (await isJournalReversed(client, originalJournalEntryId)) {
+  if (await isJournalReversed(client, originalJournalEntryId, tenantId)) {
     throw new Error('This journal entry has already been reversed.');
   }
 

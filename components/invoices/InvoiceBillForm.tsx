@@ -1712,14 +1712,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const renderRentalBillForm = () => {
     return (
-      <div className="space-y-5">
-        {/* ROW 1: Vendor, Bill #, Issue Date, Due Date */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="space-y-4">
+        {/* ROW 1: Vendor, Bill #, Issue Date, Due Date — 2x2 grid */}
+        <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col">
             <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Vendor / Supplier</label>
             {isPartiallyPaid ? (
               <div>
-                <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800">
+                <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800">
                   {(state.vendors || []).find(v => v.id === vendorId)?.name || state.contacts.find(c => c.id === contactId)?.name || '—'}
                 </div>
                 <p className="text-[10px] text-amber-600 mt-1">Cannot change vendor while payments exist.</p>
@@ -1755,16 +1755,16 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           </div>
         </div>
 
-        {/* ROW 2: Cost Allocation | Description | Bill Document */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* ROW 2: Cost Allocation | Description + Document side-by-side */}
+        <div className="grid grid-cols-2 gap-3">
           {/* Cost Allocation Card */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-sm">{ICONS.building || '🏢'}</span>
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Cost Allocation</h3>
+          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className="text-xs w-4 h-4">{ICONS.building || '🏢'}</span>
+              <h3 className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Cost Allocation</h3>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Building</label>
                 <ComboBox
@@ -1783,18 +1783,18 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
               {buildingId && (
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Expense Bearer</label>
-                  <div className="flex gap-2">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Expense Bearer</label>
+                  <div className="flex gap-1.5">
                     <button type="button" onClick={() => { setBillAllocationType('building'); setPropertyId(''); setAgreementId(''); setTenantId(''); }}
-                      className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${billAllocationType === 'building' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'building' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                       Building
                     </button>
                     <button type="button" onClick={() => { setBillAllocationType('owner'); setAgreementId(''); setTenantId(''); }}
-                      className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${billAllocationType === 'owner' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'owner' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                       Owner
                     </button>
                     <button type="button" onClick={() => { setBillAllocationType('tenant'); setPropertyId(''); }}
-                      className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${billAllocationType === 'tenant' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'tenant' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                       Tenant
                     </button>
                   </div>
@@ -1816,74 +1816,80 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             </div>
           </div>
 
-          {/* Description */}
-          <div className="flex flex-col">
-            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Description</label>
-            <textarea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              disabled={isAgreementCancelled}
-              placeholder="Enter bill description..."
-              rows={4}
-              className="flex-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-colors disabled:opacity-50 disabled:bg-gray-50"
-            />
-          </div>
+          {/* Description + Document stacked */}
+          <div className="flex flex-col gap-3">
+            {/* Description */}
+            <div className="flex flex-col">
+              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Description</label>
+              <textarea
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                disabled={isAgreementCancelled}
+                placeholder="Enter bill description..."
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-colors disabled:opacity-50 disabled:bg-gray-50"
+              />
+            </div>
 
-          {/* Bill Document Upload */}
-          <div className="flex flex-col">
-            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bill Document</label>
-            {(documentId || (documentPath && !documentFile)) ? (
-              <div className="flex-1 bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2">
-                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                  <div className="w-5 h-5 text-indigo-600">{ICONS.fileText}</div>
+            {/* Bill Document Upload */}
+            <div className="flex flex-col flex-1">
+              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bill Document</label>
+              {(documentId || (documentPath && !documentFile)) ? (
+                <div className="flex-1 bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-3">
+                  <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <div className="w-4 h-4 text-indigo-600">{ICONS.fileText}</div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-gray-800 truncate">
+                      {documentId ? (state.documents?.find(d => d.id === documentId)?.fileName || 'Document') : documentPath.split('/').pop()}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button type="button" onClick={async () => {
+                      if (documentId) {
+                        await openDocumentById(documentId, state.documents, url => window.open(url, '_blank'), showAlert);
+                      } else if (documentPath && (window as any).electronAPI?.openDocumentFile) {
+                        try { const result = await (window as any).electronAPI.openDocumentFile({ filePath: documentPath }); if (!result?.success) await showAlert(`Failed to open: ${result?.error || 'Unknown'}`); } catch (error) { await showAlert(error instanceof Error ? error.message : 'Error opening document'); }
+                      } else { await showAlert('File system access not available'); }
+                    }} className="text-[10px] font-medium text-indigo-600 hover:text-indigo-800 transition-colors">Open</button>
+                    <button type="button" onClick={() => { setDocumentPath(''); setDocumentId(''); setDocumentFile(null); }} className="text-[10px] font-medium text-rose-500 hover:text-rose-700 transition-colors">Remove</button>
+                  </div>
                 </div>
-                <p className="text-xs font-medium text-gray-800">Document attached</p>
-                <p className="text-[10px] text-gray-500 text-center truncate max-w-full">
-                  {documentId ? (state.documents?.find(d => d.id === documentId)?.fileName || 'Document') : documentPath.split('/').pop()}
-                </p>
-                <div className="flex gap-2 mt-1">
-                  <button type="button" onClick={async () => {
-                    if (documentId) {
-                      await openDocumentById(documentId, state.documents, url => window.open(url, '_blank'), showAlert);
-                    } else if (documentPath && (window as any).electronAPI?.openDocumentFile) {
-                      try { const result = await (window as any).electronAPI.openDocumentFile({ filePath: documentPath }); if (!result?.success) await showAlert(`Failed to open: ${result?.error || 'Unknown'}`); } catch (error) { await showAlert(error instanceof Error ? error.message : 'Error opening document'); }
-                    } else { await showAlert('File system access not available'); }
-                  }} className="text-[10px] font-medium text-indigo-600 hover:text-indigo-800 transition-colors">Open</button>
-                  <button type="button" onClick={() => { setDocumentPath(''); setDocumentId(''); setDocumentFile(null); }} className="text-[10px] font-medium text-rose-500 hover:text-rose-700 transition-colors">Remove</button>
-                </div>
-              </div>
-            ) : (
-              <label className="flex-1 cursor-pointer">
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setDocumentFile(file); setDocumentPath(''); setDocumentId(''); } }} className="hidden" disabled={isAgreementCancelled} />
-                <div className={`h-full border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 py-6 hover:border-slate-400 hover:bg-slate-50 transition-all ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  {documentFile ? (
-                    <>
-                      <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
-                        <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                      </div>
-                      <p className="text-xs font-medium text-gray-800 truncate max-w-[180px]">{documentFile.name}</p>
-                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDocumentFile(null); }} className="text-[10px] text-rose-500 hover:text-rose-700 font-medium">Clear</button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
-                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                      </div>
-                      <p className="text-xs font-medium text-gray-500">Click to upload document</p>
-                      <p className="text-[10px] text-gray-400">PDF, JPG, PNG (Max 5MB)</p>
-                    </>
-                  )}
-                </div>
-              </label>
-            )}
+              ) : (
+                <label className="flex-1 cursor-pointer">
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setDocumentFile(file); setDocumentPath(''); setDocumentId(''); } }} className="hidden" disabled={isAgreementCancelled} />
+                  <div className={`h-full border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center gap-2 py-4 hover:border-slate-400 hover:bg-slate-50 transition-all ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    {documentFile ? (
+                      <>
+                        <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        </div>
+                        <p className="text-xs font-medium text-gray-800 truncate max-w-[140px]">{documentFile.name}</p>
+                        <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDocumentFile(null); }} className="text-[10px] text-rose-500 hover:text-rose-700 font-medium ml-1">Clear</button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-gray-500">Click to upload document</p>
+                          <p className="text-[10px] text-gray-400">PDF, JPG, PNG (Max 5MB)</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </label>
+              )}
+            </div>
           </div>
         </div>
 
         {/* ROW 3: Expense Categories Table */}
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Expense Categories</h3>
-            <div className="w-48">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Expense Categories</h3>
+            <div className="w-40">
               <ComboBox
                 items={availableCategories}
                 selectedId=""
@@ -1901,15 +1907,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Category</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-28">Unit</th>
-                  <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">Qty</th>
-                  <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-28">Price</th>
-                  <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-32">Net</th>
-                  <th className="px-2 py-3 w-10"></th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Category</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Unit</th>
+                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-16">Qty</th>
+                  <th className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Price</th>
+                  <th className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-28">Net</th>
+                  <th className="px-1 py-2.5 w-8"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1918,14 +1924,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                     const category = expenseCategories.find(c => c.id === item.categoryId);
                     return (
                       <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className="font-medium text-gray-800">{category?.name || 'Unknown'}</span>
+                        <td className="px-3 py-2">
+                          <span className="font-medium text-gray-800 text-xs">{category?.name || 'Unknown'}</span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2">
                           <Select
                             value={item.unit}
                             onChange={(e) => updateExpenseCategoryItem(item.id, { unit: e.target.value as ContractExpenseCategoryItem['unit'] })}
-                            className="text-xs border-gray-200 rounded-lg h-9 w-full bg-gray-50"
+                            className="text-xs border-gray-200 rounded-lg h-8 w-full bg-gray-50"
                             disabled={isAgreementCancelled}
                             hideIcon={false}
                           >
@@ -1935,42 +1941,42 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                             <option value="quantity">quantity</option>
                           </Select>
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-3 py-2 text-center">
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             value={item.quantity?.toString() || ''}
                             onChange={(e) => { updateExpenseCategoryItem(item.id, { quantity: parseFloat(e.target.value) || 0 }); }}
-                            className="w-full text-center text-sm h-9 bg-gray-50 rounded-lg"
+                            className="w-full text-center text-xs h-8 bg-gray-50 rounded-lg"
                             disabled={isAgreementCancelled}
                           />
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-3 py-2 text-right">
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             value={item.pricePerUnit.toString() || ''}
                             onChange={(e) => { updateExpenseCategoryItem(item.id, { pricePerUnit: parseFloat(e.target.value) || 0 }); }}
-                            className="w-full text-right text-sm h-9 bg-gray-50 rounded-lg"
+                            className="w-full text-right text-xs h-8 bg-gray-50 rounded-lg"
                             disabled={isAgreementCancelled}
                           />
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2">
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             value={item.netValue?.toString() || '0'}
                             onChange={(e) => { updateExpenseCategoryItem(item.id, { netValue: parseFloat(e.target.value) || 0 }, true); }}
-                            className="w-full text-right font-semibold text-sm h-9 bg-gray-50 rounded-lg"
+                            className="w-full text-right font-semibold text-xs h-8 bg-gray-50 rounded-lg"
                             disabled={isAgreementCancelled}
                           />
                         </td>
-                        <td className="px-2 py-3 text-center">
+                        <td className="px-1 py-2 text-center">
                           <button type="button" onClick={() => handleRemoveExpenseCategoryItem(item.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-rose-500 transition-all p-1 rounded-md hover:bg-rose-50" title="Remove" disabled={isAgreementCancelled}>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
                         </td>
                       </tr>
@@ -1978,9 +1984,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center">
-                      <p className="text-sm text-gray-400">No expense categories added yet.</p>
-                      <p className="text-xs text-gray-300 mt-1">Use "Add Row" above to add categories.</p>
+                    <td colSpan={6} className="px-3 py-6 text-center">
+                      <p className="text-xs text-gray-400">No expense categories added yet.</p>
+                      <p className="text-[10px] text-gray-300 mt-1">Use "Add Row" above to add categories.</p>
                     </td>
                   </tr>
                 )}
@@ -1988,9 +1994,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             </table>
 
             {/* Total Amount Footer */}
-            <div className="bg-slate-800 text-white px-6 py-3.5 flex items-center justify-between rounded-b-xl">
-              <span className="text-sm font-semibold tracking-wide">Total Amount</span>
-              <span className="text-lg font-bold tabular-nums">
+            <div className="bg-slate-800 text-white px-4 py-3 flex items-center justify-between rounded-b-xl">
+              <span className="text-xs font-semibold tracking-wide">Total Amount</span>
+              <span className="text-sm font-bold tabular-nums">
                 {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
