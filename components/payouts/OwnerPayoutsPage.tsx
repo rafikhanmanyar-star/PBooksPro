@@ -25,7 +25,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getAllHistoricalOwnerIds } from '../../services/propertyOwnershipService';
 
 // --- Types ---
 
@@ -435,6 +435,7 @@ const OwnerPayoutsPage: React.FC = () => {
 
     // --- Per-property balance breakdown (for payout modal: which property amounts to pay) ---
     // Aligned with ownerRentalBalances: Rental Income + Owner Service Charge, expenses (excl. Broker Fee tx and bill payments), broker fee from agreements, bills from state.
+    // Includes historical owners (from closed propertyOwnership rows) so transferred properties still appear for old owners.
     const ownerPropertyBreakdown = useMemo(() => {
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
@@ -445,14 +446,12 @@ const OwnerPayoutsPage: React.FC = () => {
         const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
         const result: Record<string, { rent: PropertyBalanceItem[]; security: PropertyBalanceItem[] }> = {};
 
-        // Broker Fee expense tx ids — we count broker fee from agreements only, not from expense transactions (avoid double count)
         const brokerFeeTxIds = new Set<string>();
         if (brokerFeeCategory) {
             state.transactions.forEach(tx => {
                 if (tx.type === TransactionType.EXPENSE && tx.categoryId === brokerFeeCategory.id) brokerFeeTxIds.add(tx.id);
             });
         }
-        // Bill payment tx ids — we count bill amount from state.bills only, not from expense transactions (avoid double count)
         const ownerBillIds = new Set(state.bills.filter(b => b.propertyId && !b.projectId).map(b => b.id));
         const billPaymentTxIds = new Set<string>();
         state.transactions.forEach(tx => {
@@ -460,122 +459,129 @@ const OwnerPayoutsPage: React.FC = () => {
         });
 
         state.properties.forEach(prop => {
-            if (!prop.ownerId) return;
-            if (!result[prop.ownerId]) result[prop.ownerId] = { rent: [], security: [] };
+            const allOwnerIds = getAllHistoricalOwnerIds(state, prop.id);
+            if (allOwnerIds.size === 0 && prop.ownerId) allOwnerIds.add(prop.ownerId);
             const propIdStr = String(prop.id);
 
-            if (rentalIncomeCategory) {
-                let collected = 0;
-                let paid = 0;
-                // Rental Income — same rule as main balance: attribute by property, use tx.ownerId when set
-                state.transactions
-                    .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && String(tx.propertyId) === propIdStr)
-                    .forEach(tx => {
-                        const ownerIdForTx = tx.ownerId ?? prop.ownerId;
-                        if (ownerIdForTx !== prop.ownerId) return;
-                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (isNaN(amount)) return;
-                        if (amount > 0) collected += amount;
-                        else paid += Math.abs(amount);
-                    });
-                // Owner Service Charge Payment — when tx has propertyId, add to that property; when no propertyId, add to first property of owner
-                if (ownerSvcPayCategory) {
-                    const isFirstPropertyForOwner = result[prop.ownerId].rent.length === 0;
-                    let unallocatedSvc = 0;
+            for (const ownerId of allOwnerIds) {
+                if (!result[ownerId]) result[ownerId] = { rent: [], security: [] };
+
+                if (rentalIncomeCategory) {
+                    let collected = 0;
+                    let paid = 0;
                     state.transactions
-                        .filter(tx =>
-                            tx.type === TransactionType.INCOME &&
-                            tx.categoryId === ownerSvcPayCategory.id &&
-                            tx.contactId === prop.ownerId
-                        )
+                        .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && String(tx.propertyId) === propIdStr)
+                        .forEach(tx => {
+                            const ownerIdForTx = tx.ownerId ?? prop.ownerId;
+                            if (ownerIdForTx !== ownerId) return;
+                            const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                            if (isNaN(amount)) return;
+                            if (amount > 0) collected += amount;
+                            else paid += Math.abs(amount);
+                        });
+                    if (ownerSvcPayCategory) {
+                        const isFirstPropertyForOwner = result[ownerId].rent.length === 0;
+                        let unallocatedSvc = 0;
+                        state.transactions
+                            .filter(tx =>
+                                tx.type === TransactionType.INCOME &&
+                                tx.categoryId === ownerSvcPayCategory.id &&
+                                tx.contactId === ownerId
+                            )
+                            .forEach(tx => {
+                                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                                if (isNaN(amount) || amount <= 0) return;
+                                if (tx.propertyId != null && String(tx.propertyId) === propIdStr) {
+                                    collected += amount;
+                                } else if (!tx.propertyId) {
+                                    unallocatedSvc += amount;
+                                }
+                            });
+                        if (isFirstPropertyForOwner && unallocatedSvc > 0) collected += unallocatedSvc;
+                    }
+                    state.transactions
+                        .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr && !brokerFeeTxIds.has(tx.id) && !billPaymentTxIds.has(tx.id))
                         .forEach(tx => {
                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                             if (isNaN(amount) || amount <= 0) return;
-                            if (tx.propertyId != null && String(tx.propertyId) === propIdStr) {
-                                collected += amount;
-                            } else if (!tx.propertyId) {
-                                unallocatedSvc += amount;
+                            if (tx.categoryId === ownerPayoutCategory?.id) {
+                                if (tx.contactId === ownerId) paid += amount;
+                                return;
+                            }
+                            const ownerIdForTx = tx.ownerId ?? prop.ownerId;
+                            if (ownerIdForTx !== ownerId) return;
+                            const category = state.categories.find(c => c.id === tx.categoryId);
+                            const catName = category?.name || '';
+                            if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
+                            paid += amount;
+                        });
+                    state.rentalAgreements
+                        .filter(ra => {
+                            if (ra.previousAgreementId) return false;
+                            const propId = ra.propertyId ?? (ra as any).property_id;
+                            const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
+                            return propId && String(propId) === String(prop.id) && ra.brokerId && !isNaN(fee) && fee > 0;
+                        })
+                        .forEach(ra => {
+                            if (ra.ownerId === ownerId || (!ra.ownerId && prop.ownerId === ownerId)) {
+                                const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
+                                if (!isNaN(fee)) paid += fee;
                             }
                         });
-                    if (isFirstPropertyForOwner && unallocatedSvc > 0) collected += unallocatedSvc;
+                    if (ownerId === prop.ownerId) {
+                        state.bills
+                            .filter(b => String(b.propertyId) === propIdStr && !b.projectId)
+                            .forEach(b => {
+                                const amt = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount ?? 0));
+                                if (!isNaN(amt) && amt > 0) paid += amt;
+                            });
+                    }
+                    const balance = collected - paid;
+                    if (collected > 0.01 || paid > 0.01) {
+                        result[ownerId].rent.push({
+                            propertyId: prop.id,
+                            propertyName: prop.name || 'Unit',
+                            balanceDue: Math.max(0, balance),
+                        });
+                    }
                 }
-                // Expenses: exclude Broker Fee tx (counted from agreements) and bill payments (counted from state.bills)
-                state.transactions
-                    .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr && !brokerFeeTxIds.has(tx.id) && !billPaymentTxIds.has(tx.id))
-                    .forEach(tx => {
-                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (isNaN(amount) || amount <= 0) return;
-                        if (tx.categoryId === ownerPayoutCategory?.id) {
-                            paid += amount;
-                            return;
-                        }
-                        const category = state.categories.find(c => c.id === tx.categoryId);
-                        const catName = category?.name || '';
-                        if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
-                        paid += amount;
-                    });
-                state.rentalAgreements
-                    .filter(ra => {
-                        if (ra.previousAgreementId) return false;
-                        const propId = ra.propertyId ?? (ra as any).property_id;
-                        const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
-                        return propId && String(propId) === String(prop.id) && ra.brokerId && !isNaN(fee) && fee > 0;
-                    })
-                    .forEach(ra => {
-                        const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
-                        if (!isNaN(fee)) paid += fee;
-                    });
-                state.bills
-                    .filter(b => String(b.propertyId) === propIdStr && !b.projectId)
-                    .forEach(b => {
-                        const amt = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount ?? 0));
-                        if (!isNaN(amt) && amt > 0) paid += amt;
-                    });
-                const balance = collected - paid;
-                // Include every property so user sees all units; show balance (0 if none due)
-                result[prop.ownerId].rent.push({
-                    propertyId: prop.id,
-                    propertyName: prop.name || 'Unit',
-                    balanceDue: Math.max(0, balance),
-                });
-            }
 
-            if (secDepCategory) {
-                let collected = 0;
-                let paid = 0;
-                state.transactions
-                    .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && String(tx.propertyId) === propIdStr)
-                    .forEach(tx => {
-                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (!isNaN(amount) && amount > 0) collected += amount;
+                if (secDepCategory && ownerId === prop.ownerId) {
+                    let collected = 0;
+                    let paid = 0;
+                    state.transactions
+                        .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && String(tx.propertyId) === propIdStr)
+                        .forEach(tx => {
+                            const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                            if (!isNaN(amount) && amount > 0) collected += amount;
+                        });
+                    state.transactions
+                        .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
+                        .forEach(tx => {
+                            const category = state.categories.find(c => c.id === tx.categoryId);
+                            const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                            if (isNaN(amount) || amount <= 0) return;
+                            if (secRefCategory && tx.categoryId === secRefCategory.id) {
+                                paid += amount;
+                                return;
+                            }
+                            if (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) {
+                                paid += amount;
+                                return;
+                            }
+                            if (category?.name?.includes('(Tenant)')) paid += amount;
+                        });
+                    const balance = collected - paid;
+                    result[ownerId].security.push({
+                        propertyId: prop.id,
+                        propertyName: prop.name || 'Unit',
+                        balanceDue: Math.max(0, balance),
                     });
-                state.transactions
-                    .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
-                    .forEach(tx => {
-                        const category = state.categories.find(c => c.id === tx.categoryId);
-                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (isNaN(amount) || amount <= 0) return;
-                        if (secRefCategory && tx.categoryId === secRefCategory.id) {
-                            paid += amount;
-                            return;
-                        }
-                        if (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) {
-                            paid += amount;
-                            return;
-                        }
-                        if (category?.name?.includes('(Tenant)')) paid += amount;
-                    });
-                const balance = collected - paid;
-                // Include every property so user sees all units; show balance (0 if none due)
-                result[prop.ownerId].security.push({
-                    propertyId: prop.id,
-                    propertyName: prop.name || 'Unit',
-                    balanceDue: Math.max(0, balance),
-                });
+                }
             }
         });
         return result;
-    }, [state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills]);
+    }, [state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership]);
 
     // When a unit is selected, show its name in the properties column
     const selectedUnitName = useMemo(() => {
@@ -585,6 +591,7 @@ const OwnerPayoutsPage: React.FC = () => {
     }, [selectedUnitId, state.properties]);
 
     // --- Payout tree data (full portfolio; table scope follows building / owner / unit / broker selection) ---
+    // Includes historical owners so transferred properties still show old owner with pending balance.
     const ownerStyleTreeNodes = useMemo((): PayoutTreeNode[] => {
         const mode: 'rent' | 'security' = activeCategory === 'securityDeposit' ? 'security' : 'rent';
         const buildings = [...state.buildings].sort((a, b) =>
@@ -594,25 +601,32 @@ const OwnerPayoutsPage: React.FC = () => {
 
         for (const b of buildings) {
             const propsInB = state.properties.filter(p => p.buildingId === b.id);
-            const byOwner = new Map<string, typeof state.properties>();
+
+            // Build owner→property mapping including historical owners from propertyOwnership rows
+            const byOwner = new Map<string, Set<string>>();
             for (const p of propsInB) {
-                if (!p.ownerId) continue;
-                if (!byOwner.has(p.ownerId)) byOwner.set(p.ownerId, []);
-                byOwner.get(p.ownerId)!.push(p);
+                const allOwners = getAllHistoricalOwnerIds(state, p.id);
+                if (allOwners.size === 0 && p.ownerId) allOwners.add(p.ownerId);
+                for (const oid of allOwners) {
+                    if (!byOwner.has(oid)) byOwner.set(oid, new Set());
+                    byOwner.get(oid)!.add(String(p.id));
+                }
             }
 
             const ownerChildren: PayoutTreeNode[] = [];
 
-            for (const [ownerId, props] of byOwner) {
+            for (const [ownerId, propIdSet] of byOwner) {
                 const contact = state.contacts.find(c => c.id === ownerId);
                 if (!contact) continue;
 
                 const propNodes: PayoutTreeNode[] = [];
                 let oSum = 0;
 
-                for (const prop of props) {
+                for (const propIdStr of propIdSet) {
+                    const prop = propsInB.find(p => String(p.id) === propIdStr);
+                    if (!prop) continue;
                     const items = ownerPropertyBreakdown[ownerId]?.[mode] ?? [];
-                    const item = items.find(i => String(i.propertyId) === String(prop.id));
+                    const item = items.find(i => String(i.propertyId) === propIdStr);
                     const raw = item?.balanceDue ?? 0;
                     const due = Math.max(0, raw);
                     if (due <= 0.01) continue;
@@ -652,7 +666,7 @@ const OwnerPayoutsPage: React.FC = () => {
         }
 
         return root;
-    }, [state.buildings, state.properties, state.contacts, ownerPropertyBreakdown, activeCategory]);
+    }, [state.buildings, state.properties, state.contacts, ownerPropertyBreakdown, activeCategory, state.propertyOwnership]);
 
     const brokerPayoutTreeNodes = useMemo((): PayoutTreeNode[] => {
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
@@ -966,7 +980,8 @@ const OwnerPayoutsPage: React.FC = () => {
         const rows: PayeeRow[] = [];
         const propsLabel = (ownerId: string) => {
             if (selectedUnitName) return selectedUnitName;
-            const list = state.properties.filter(p => p.ownerId === ownerId).map(p => p.name);
+            const propIds = getPropertyIdsForOwner(state, ownerId);
+            const list = state.properties.filter(p => propIds.has(String(p.id))).map(p => p.name);
             return list.slice(0, 3).join(', ') + (list.length > 3 ? ` +${list.length - 3}` : '');
         };
 

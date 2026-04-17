@@ -77,16 +77,16 @@ export function getOwnershipSharesForPropertyOnDate(
 }
 
 /** Primary display owner: highest %, then lexicographic owner id. */
-/** Properties where this owner is primary OR has a co-ownership row. */
+/** Properties where this owner is primary OR has a co-ownership row (including closed/historical rows). */
 export function getPropertyIdsForOwner(
   state: Pick<AppState, 'properties' | 'propertyOwnership'>,
   ownerId: string,
   buildingId?: string
 ): Set<string> {
-  // Normalize ids — property.id and property_ownership.property_id may differ as string vs number in state.
+  // Include ALL ownership rows (active + closed) so transferred-away properties still appear for old owners.
   const stake = new Set(
     (state.propertyOwnership || [])
-      .filter((r) => r.ownerId === ownerId)
+      .filter((r) => r.ownerId === ownerId && !r.deletedAt)
       .map((r) => String(r.propertyId))
   );
   const out = new Set<string>();
@@ -95,6 +95,40 @@ export function getPropertyIdsForOwner(
     if (p.ownerId === ownerId || stake.has(String(p.id))) out.add(String(p.id));
   }
   return out;
+}
+
+/**
+ * Resolve the owner of a property on a given date, using propertyOwnership rows
+ * (co-ownership with date ranges) then falling back to propertyOwnershipHistory,
+ * then to the current property.ownerId.
+ */
+export function resolveOwnerForPropertyOnDate(
+  state: Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory'>,
+  propertyId: string,
+  dateYyyyMmDd: string
+): string | undefined {
+  const shares = getOwnershipSharesForPropertyOnDate(state, propertyId, dateYyyyMmDd);
+  if (shares.length > 0) return primaryOwnerIdFromShares(shares);
+  const prop = state.properties.find((p) => String(p.id) === String(propertyId));
+  return prop?.ownerId;
+}
+
+/**
+ * Returns the set of all owner IDs that have ever owned a given property
+ * (current owner + any owner from closed propertyOwnership rows).
+ */
+export function getAllHistoricalOwnerIds(
+  state: Pick<AppState, 'properties' | 'propertyOwnership'>,
+  propertyId: string
+): Set<string> {
+  const pid = String(propertyId);
+  const owners = new Set<string>();
+  const prop = state.properties.find((p) => String(p.id) === pid);
+  if (prop?.ownerId) owners.add(prop.ownerId);
+  (state.propertyOwnership || []).forEach((r) => {
+    if (String(r.propertyId) === pid && !r.deletedAt) owners.add(r.ownerId);
+  });
+  return owners;
 }
 
 export function hasMultipleOwnersOnDate(
