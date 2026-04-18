@@ -24,6 +24,7 @@ interface BrokerPayoutModalProps {
     broker: Contact | null;
     balanceDue: number; 
     context?: 'Rental' | 'Project';
+    propertyId?: string;
 }
 
 interface CommissionItem {
@@ -39,7 +40,7 @@ interface CommissionItem {
     isSelected: boolean;
 }
 
-const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, broker, context }) => {
+const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, broker, context, propertyId: filterPropertyId }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
@@ -70,6 +71,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
             if (!context || context === 'Rental') {
                 state.rentalAgreements.forEach(ra => {
                     if (ra.previousAgreementId) return;
+                    if (filterPropertyId && ra.propertyId !== filterPropertyId) return;
                     if (ra.brokerId === broker.id && (ra.brokerFee || 0) > 0) {
                         const property = state.properties.find(p => p.id === ra.propertyId);
                         const owner = state.contacts.find(c => c.id === property?.ownerId);

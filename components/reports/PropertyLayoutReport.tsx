@@ -99,7 +99,7 @@ const PropertyLayoutReport: React.FC = () => {
     const [invoicePick, setInvoicePick] = useState<{
         propertyId: string;
         propertyName: string;
-        type: InvoiceType.RENTAL | InvoiceType.SECURITY_DEPOSIT;
+        type: InvoiceType.RENTAL | InvoiceType.SECURITY_DEPOSIT | 'ALL';
     } | null>(null);
     const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
     const [mscForPropertyId, setMscForPropertyId] = useState<string | null>(null);
@@ -116,6 +116,7 @@ const PropertyLayoutReport: React.FC = () => {
     const [brokerPayoutState, setBrokerPayoutState] = useState<{
         broker: typeof state.contacts[0] | null;
         balanceDue: number;
+        propertyId?: string;
     } | null>(null);
 
     /** Warm rental invoices query while user is on Visual Layout so Invoices view opens faster. */
@@ -279,17 +280,31 @@ const PropertyLayoutReport: React.FC = () => {
 
                 // Financials
                 const propertyInvoices = state.invoices.filter(inv => inv.propertyId === prop.id);
-                const receivable = propertyInvoices
-                    .filter(inv => inv.status !== InvoiceStatus.PAID)
-                    .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
-
-                // Calculate security deposit due from unpaid invoices
+                // Security deposit due: standalone security invoices + security portion of mixed invoices
                 const securityDue = propertyInvoices
-                    .filter(inv => inv.status !== InvoiceStatus.PAID && inv.securityDepositCharge)
+                    .filter(inv => inv.status !== InvoiceStatus.PAID)
                     .reduce((sum, inv) => {
-                        const outstanding = inv.amount - inv.paidAmount;
-                        const securityRatio = inv.securityDepositCharge / inv.amount;
-                        return sum + (outstanding * securityRatio);
+                        if (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) {
+                            return sum + (inv.amount - inv.paidAmount);
+                        }
+                        if (inv.securityDepositCharge && inv.amount > 0) {
+                            const outstanding = inv.amount - inv.paidAmount;
+                            const securityRatio = inv.securityDepositCharge / inv.amount;
+                            return sum + (outstanding * securityRatio);
+                        }
+                        return sum;
+                    }, 0);
+
+                // Rental receivable: exclude security deposit invoices (shown separately above)
+                const receivable = propertyInvoices
+                    .filter(inv => inv.status !== InvoiceStatus.PAID && inv.invoiceType !== InvoiceType.SECURITY_DEPOSIT)
+                    .reduce((sum, inv) => {
+                        if (inv.securityDepositCharge && inv.amount > 0) {
+                            const outstanding = inv.amount - inv.paidAmount;
+                            const rentalRatio = 1 - (inv.securityDepositCharge / inv.amount);
+                            return sum + (outstanding * rentalRatio);
+                        }
+                        return sum + (inv.amount - inv.paidAmount);
                     }, 0);
 
                 const propIncome = state.transactions
@@ -728,14 +743,14 @@ const PropertyLayoutReport: React.FC = () => {
                             setInvoicePick({
                                 propertyId: propId,
                                 propertyName: propName,
-                                type: InvoiceType.RENTAL,
+                                type: 'ALL',
                             });
                         }}
                         onPayoutToOwner={(owner, balanceDue, payoutType, breakdown) => {
                             setOwnerPayoutState({ owner, balanceDue, payoutType, propertyBreakdown: breakdown });
                         }}
                         onPayoutToBroker={(broker, balanceDue) => {
-                            setBrokerPayoutState({ broker, balanceDue });
+                            setBrokerPayoutState({ broker, balanceDue, propertyId: selectedPropertyId || undefined });
                         }}
                         onPayoutSecurity={(owner, balanceDue, breakdown, tenant, tenantUnpaidAmount) => {
                             setOwnerPayoutState({ owner, balanceDue, payoutType: 'Security', propertyBreakdown: breakdown, tenant, tenantUnpaidAmount });
@@ -795,6 +810,7 @@ const PropertyLayoutReport: React.FC = () => {
                         broker={brokerPayoutState.broker}
                         balanceDue={brokerPayoutState.balanceDue}
                         context="Rental"
+                        propertyId={brokerPayoutState.propertyId}
                     />
                 )}
             </Suspense>

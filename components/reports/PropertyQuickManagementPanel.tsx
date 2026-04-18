@@ -96,6 +96,27 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
         [activeAgreement, state.contacts]
     );
 
+    const brokerPendingFee = useMemo(() => {
+        if (!broker || !activeAgreement || !activeAgreement.brokerFee) return 0;
+        if (activeAgreement.previousAgreementId) return 0;
+
+        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+        const feeCatId = brokerFeeCategory?.id;
+        const rebateCatId = rebateCategory?.id;
+
+        const paidAlready = state.transactions
+            .filter(tx =>
+                tx.type === TransactionType.EXPENSE &&
+                tx.contactId === broker.id &&
+                (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
+                (tx.agreementId === activeAgreement.id || tx.propertyId === propertyId)
+            )
+            .reduce((sum, tx) => sum + tx.amount, 0);
+
+        return Math.max(0, (activeAgreement.brokerFee || 0) - paidAlready);
+    }, [broker, activeAgreement, propertyId, state.transactions, state.categories]);
+
     const financials = useMemo(() => {
         const propertyInvoices = state.invoices.filter(inv => inv.propertyId === propertyId);
 
@@ -254,9 +275,9 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
         const monthlyServiceCharge = property?.monthlyServiceCharge || 0;
         const canDeductServiceCharges = !serviceChargeDeductedThisMonth && monthlyServiceCharge > 0;
 
-        const hasUnpaidRental = propertyInvoices.some(
+        const hasUnpaidInvoice = propertyInvoices.some(
             inv =>
-                inv.invoiceType === InvoiceType.RENTAL &&
+                (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) &&
                 inv.status !== InvoiceStatus.PAID &&
                 inv.status !== InvoiceStatus.DRAFT &&
                 inv.amount - (inv.paidAmount || 0) > 0.01
@@ -275,7 +296,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             ownerSecurityBalance,
             tenantUnpaidAmount,
             canDeductServiceCharges,
-            hasUnpaidRental,
+            hasUnpaidInvoice,
             monthlyRent,
             annualYield: annualYield > 0 ? annualYield.toFixed(1) : '0',
             monthlyServiceCharge,
@@ -530,7 +551,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                             <button
                                 type="button"
                                 onClick={() => onReceivePayment(propertyId, property?.name || '')}
-                                disabled={!financials.hasUnpaidRental}
+                                disabled={!financials.hasUnpaidInvoice}
                                 className="flex items-center gap-3 p-3 rounded-xl border border-app-border bg-app-card hover:bg-app-toolbar/50 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed group"
                             >
                                 <div className="w-8 h-8 rounded-lg bg-app-toolbar flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
@@ -538,7 +559,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <span className="text-xs font-semibold text-app-text block">Receive Unpaid</span>
-                                    <span className="text-[10px] text-app-muted">Record tenant payment</span>
+                                    <span className="text-[10px] text-app-muted">Rent or security payment</span>
                                 </div>
                                 <ChevronRight className="w-4 h-4 text-app-muted flex-shrink-0" />
                             </button>
@@ -565,15 +586,22 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                             {broker && (
                                 <button
                                     type="button"
-                                    onClick={() => onPayoutToBroker(broker, 0)}
-                                    className="flex items-center gap-3 p-3 rounded-xl border border-app-border bg-app-card hover:bg-app-toolbar/50 transition-colors text-left group"
+                                    onClick={() => onPayoutToBroker(broker, brokerPendingFee)}
+                                    disabled={brokerPendingFee <= 0}
+                                    className="flex items-center gap-3 p-3 rounded-xl border border-app-border bg-app-card hover:bg-app-toolbar/50 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed group"
                                 >
                                     <div className="w-8 h-8 rounded-lg bg-app-toolbar flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
                                         <HandCoins className="w-4 h-4 text-app-text" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <span className="text-xs font-semibold text-app-text block">Pay Broker</span>
-                                        <span className="text-[10px] text-app-muted truncate block">{broker.name}</span>
+                                        {brokerPendingFee > 0 ? (
+                                            <span className="text-[10px] text-ds-danger truncate block">
+                                                Pending: {CURRENCY} {brokerPendingFee.toLocaleString()}
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] text-ds-success truncate block">Fully Paid</span>
+                                        )}
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-app-muted flex-shrink-0" />
                                 </button>

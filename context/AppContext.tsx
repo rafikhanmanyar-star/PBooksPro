@@ -427,6 +427,21 @@ const createLogEntry = (action: TransactionLogEntry['action'], entityType: Trans
     data
 });
 
+/**
+ * Stamp ownerId on a transaction when it has a propertyId but no ownerId set.
+ * Resolves the owner from property_ownership date ranges at the transaction date.
+ * NEVER overwrites an existing ownerId — preserves historical ownership.
+ */
+function stampTransactionOwnerId(tx: Transaction, state: AppState): Transaction {
+    if (tx.ownerId) return tx;
+    if (!tx.propertyId) return tx;
+    const d = (tx.date || '').slice(0, 10);
+    if (!d) return tx;
+    const resolved = resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
+    if (!resolved) return tx;
+    return { ...tx, ownerId: resolved };
+}
+
 /** When category_id is missing on a bill payment, inherit from the bill (same rules as pay modal). */
 function enrichExpenseBillPaymentCategory(tx: Transaction, state: AppState): Transaction {
     if (tx.type !== TransactionType.EXPENSE || !tx.billId) return tx;
@@ -455,7 +470,22 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                     changed = true;
                 }
             }
-            return changed ? next : state;
+            if (!changed) return state;
+            // Backfill ownerId on transactions loaded without one (historical data fix).
+            if (payload.transactions && next.properties?.length > 0) {
+                let anyStamped = false;
+                const stamped = next.transactions.map(tx => {
+                    if (tx.ownerId || !tx.propertyId) return tx;
+                    const d = (tx.date || '').slice(0, 10);
+                    if (!d) return tx;
+                    const resolved = resolveOwnerForPropertyOnDate(next, tx.propertyId, d);
+                    if (!resolved) return tx;
+                    anyStamped = true;
+                    return { ...tx, ownerId: resolved };
+                });
+                if (anyStamped) next.transactions = stamped;
+            }
+            return next;
         }
         case 'BATCH_UPSERT_ENTITIES': {
             const entities = action.payload;
@@ -712,7 +742,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
 
         case 'BATCH_ADD_TRANSACTIONS': {
-            const txs = (action.payload as Transaction[]).map(tx => enrichExpenseBillPaymentCategory(tx, state));
+            const txs = (action.payload as Transaction[]).map(tx => enrichExpenseBillPaymentCategory(stampTransactionOwnerId(tx, state), state));
             let batchState = { ...state, transactions: [...state.transactions, ...txs] };
             txs.forEach(tx => {
                 batchState = applyTransactionEffect(batchState, tx, true);
@@ -724,7 +754,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
 
         case 'RESTORE_TRANSACTION': {
-            const txToRestore = enrichExpenseBillPaymentCategory(action.payload as Transaction, state);
+            const txToRestore = enrichExpenseBillPaymentCategory(stampTransactionOwnerId(action.payload as Transaction, state), state);
             if (state.transactions.find(t => t.id === txToRestore.id)) return state; // Already exists
             let restoredState = { ...state, transactions: [...state.transactions, txToRestore] };
             restoredState = applyTransactionEffect(restoredState, txToRestore, true);

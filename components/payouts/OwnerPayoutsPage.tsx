@@ -170,6 +170,12 @@ const OwnerPayoutsPage: React.FC = () => {
                 .filter((r) => String(r.propertyId) === String(pid))
                 .forEach((r) => ownersInScope.add(r.ownerId));
         });
+        // Include owners referenced by transaction ownerId (historical ownership preserved on ledger entries)
+        state.transactions.forEach(tx => {
+            if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
+                ownersInScope.add(tx.ownerId);
+            }
+        });
 
         // Exclude broker fee payment transactions from expenses (broker fee is deducted from agreements below)
         const brokerFeeTxIds = new Set<string>();
@@ -341,6 +347,11 @@ const OwnerPayoutsPage: React.FC = () => {
             (state.propertyOwnership || [])
                 .filter((r) => String(r.propertyId) === String(pid) && !r.deletedAt)
                 .forEach((r) => ownersInScope.add(r.ownerId));
+        });
+        state.transactions.forEach(tx => {
+            if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
+                ownersInScope.add(tx.ownerId);
+            }
         });
 
         const ownerData: Record<string, { collected: number; paid: number }> = {};
