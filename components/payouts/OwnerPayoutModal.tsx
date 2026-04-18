@@ -36,18 +36,23 @@ interface OwnerPayoutModalProps {
     balanceDue: number;
     payoutType?: 'Rent' | 'Security';
     preSelectedBuildingId?: string;
-    transactionToEdit?: Transaction; // Transaction to edit (if provided, modal is in edit mode)
+    transactionToEdit?: Transaction;
     /** Per-property amounts so user can select which property(ies) to pay */
     propertyBreakdown?: PropertyBalanceItem[];
+    /** Tenant contact for security refund-to-tenant option */
+    tenant?: Contact | null;
+    /** Tenant's total unpaid invoice amount for security adjustment option */
+    tenantUnpaidAmount?: number;
 }
 
-const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, owner, balanceDue, payoutType = 'Rent', preSelectedBuildingId, transactionToEdit, propertyBreakdown = [] }) => {
+const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, owner, balanceDue, payoutType = 'Rent', preSelectedBuildingId, transactionToEdit, propertyBreakdown = [], tenant, tenantUnpaidAmount = 0 }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
 
     const isEditMode = !!transactionToEdit;
     const showPropertyTable = propertyBreakdown.length > 0 && !isEditMode;
+    const isSecurityMode = payoutType === 'Security';
 
     const [items, setItems] = useState<OwnerPayoutRow[]>([]);
     const [amount, setAmount] = useState('0');
@@ -60,6 +65,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const [showWhatsAppConfirm, setShowWhatsAppConfirm] = useState(false);
     const [lastPaidAmount, setLastPaidAmount] = useState(0);
     const [lastReference, setLastReference] = useState('');
+    const [securityAllocations, setSecurityAllocations] = useState<{ owner: number; tenant: number; adjust: number }>({ owner: 0, tenant: 0, adjust: 0 });
 
     const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
     const buildingsForOwner = useMemo(() => {
@@ -97,11 +103,12 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 setBuildingId(preSelectedBuildingId || '');
                 setReference('');
                 setNotes('');
+                if (isSecurityMode) {
+                    setSecurityAllocations({ owner: balanceDue, tenant: 0, adjust: 0 });
+                }
                 if (propertyBreakdown.length > 0) {
                     const sumDue = propertyBreakdown.reduce((s, p) => s + (p.balanceDue || 0), 0);
-                    // If breakdown sums to 0 but parent balanceDue is positive, apply total to first row so user can pay
                     const useTotalForFirst = sumDue < 0.01 && balanceDue > 0.01 && propertyBreakdown.length > 0;
-                    // If breakdown sum is less than total owner balance (e.g. per-property under-counts), add shortfall to first row so Total Payment matches Owner Income
                     const shortfall = balanceDue > sumDue ? balanceDue - sumDue : 0;
                     const newItems: OwnerPayoutRow[] = propertyBreakdown.map((p, idx) => {
                         const prop = state.properties.find(pr => String(pr.id) === String(p.propertyId));
@@ -127,7 +134,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             }
             setError('');
         }
-    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings]);
+    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings, isSecurityMode]);
 
     const totalToPay = items.filter(i => i.isSelected).reduce((sum, i) => sum + i.paymentAmount, 0);
 
@@ -153,7 +160,24 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     };
 
     useEffect(() => {
-        if (showPropertyTable) {
+        if (isSecurityMode && !isEditMode) {
+            const total = securityAllocations.owner + securityAllocations.tenant + securityAllocations.adjust;
+            if (total <= 0) {
+                setError('Enter a positive amount for at least one option.');
+            } else if (total > balanceDue + 0.01) {
+                setError(`Total allocations (${CURRENCY} ${total.toLocaleString()}) exceed the security balance of ${CURRENCY} ${balanceDue.toLocaleString()}.`);
+            } else if (securityAllocations.tenant > 0.01 && !tenant) {
+                setError('No tenant found for this property to refund.');
+            } else if (securityAllocations.adjust > 0.01 && !tenant) {
+                setError('No tenant found for invoice adjustment.');
+            } else if (securityAllocations.adjust > 0.01 && tenantUnpaidAmount < 0.01) {
+                setError('No unpaid invoices to adjust against.');
+            } else if (securityAllocations.adjust > tenantUnpaidAmount + 0.01) {
+                setError(`Adjustment amount exceeds tenant unpaid balance of ${CURRENCY} ${tenantUnpaidAmount.toLocaleString()}.`);
+            } else {
+                setError('');
+            }
+        } else if (showPropertyTable) {
             if (items.filter(i => i.isSelected).length === 0) {
                 setError('Select at least one property to pay.');
             } else if (totalToPay <= 0) {
@@ -167,10 +191,26 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             else if (numericAmount <= 0) setError('Amount must be positive.');
             else setError('');
         }
-    }, [showPropertyTable, items, totalToPay, amount, balanceDue, isEditMode]);
+    }, [showPropertyTable, items, totalToPay, amount, balanceDue, isEditMode, isSecurityMode, securityAllocations, tenant, tenantUnpaidAmount]);
 
-    const getPayoutCategory = (): Category | null => {
+    const getPayoutCategory = (mode?: 'owner' | 'tenant' | 'adjust'): Category | null => {
         if (payoutType === 'Security') {
+            if (mode === 'tenant') {
+                let refCat = state.categories.find(c => c.name === 'Security Deposit Refund');
+                if (!refCat) {
+                    const newCat: Category = {
+                        id: `cat-sec-dep-ref-${Date.now()}`,
+                        name: 'Security Deposit Refund',
+                        type: TransactionType.EXPENSE,
+                        isPermanent: true,
+                        isRental: true,
+                        description: 'Refund of security deposit to tenant.'
+                    };
+                    dispatch({ type: 'ADD_CATEGORY', payload: newCat });
+                    refCat = newCat;
+                }
+                return refCat;
+            }
             let secCat = state.categories.find(c => c.name === 'Owner Security Payout');
             if (!secCat) {
                 const newCat: Category = {
@@ -189,12 +229,108 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         return state.categories.find(c => c.name === 'Owner Payout') || null;
     };
 
+    const securityTotal = securityAllocations.owner + securityAllocations.tenant + securityAllocations.adjust;
+
     const handleSubmit = async () => {
         if (error || !owner) return;
 
         const payoutAccount = state.accounts.find(a => a.id === accountId);
         if (!payoutAccount) {
             await showAlert(`Error: Please select a valid account to pay from.`);
+            return;
+        }
+
+        // --- Security mode: create separate transactions per allocation ---
+        if (isSecurityMode && !isEditMode) {
+            const allTxs: Transaction[] = [];
+            const baseId = Date.now();
+            const descSuffix = (notes ? ` - ${notes}` : '') + (reference ? ` (Ref: ${reference})` : '');
+            const singleProp = propertyBreakdown.length === 1 ? propertyBreakdown[0] : null;
+            const prop = singleProp ? state.properties.find(p => p.id === singleProp.propertyId) : null;
+            const propBuildingId = prop?.buildingId || buildingId || preSelectedBuildingId || '';
+            const propLabel = singleProp ? ` [${singleProp.propertyName}]` : '';
+
+            if (securityAllocations.owner > 0.01) {
+                const cat = getPayoutCategory('owner');
+                if (!cat) { await showAlert("'Owner Security Payout' category not found."); return; }
+                allTxs.push({
+                    type: TransactionType.EXPENSE, amount: securityAllocations.owner, date,
+                    description: `Security Deposit Payout to ${owner.name}${descSuffix}${propLabel}`,
+                    accountId: payoutAccount.id, contactId: owner.id, categoryId: cat.id,
+                    buildingId: propBuildingId || undefined, propertyId: singleProp?.propertyId,
+                    id: `tx-${baseId}-own`,
+                });
+            }
+            if (securityAllocations.tenant > 0.01 && tenant) {
+                const cat = getPayoutCategory('tenant');
+                if (!cat) { await showAlert("'Security Deposit Refund' category not found."); return; }
+                allTxs.push({
+                    type: TransactionType.EXPENSE, amount: securityAllocations.tenant, date,
+                    description: `Security Deposit Refund to ${tenant.name}${descSuffix}${propLabel}`,
+                    accountId: payoutAccount.id, contactId: tenant.id, categoryId: cat.id,
+                    buildingId: propBuildingId || undefined, propertyId: singleProp?.propertyId,
+                    id: `tx-${baseId}-ten`,
+                });
+            }
+            if (securityAllocations.adjust > 0.01 && tenant) {
+                const unpaidInvoices = state.invoices
+                    .filter(inv =>
+                        inv.propertyId === singleProp?.propertyId &&
+                        inv.invoiceType === 'RENTAL' &&
+                        inv.status !== 'PAID' && inv.status !== 'DRAFT' &&
+                        inv.amount - (inv.paidAmount || 0) > 0.01
+                    )
+                    .sort((a, b) => new Date(a.dueDate || a.issueDate).getTime() - new Date(b.dueDate || b.issueDate).getTime());
+
+                let remaining = securityAllocations.adjust;
+                for (const inv of unpaidInvoices) {
+                    if (remaining <= 0.01) break;
+                    const outstanding = inv.amount - (inv.paidAmount || 0);
+                    const applyAmount = Math.min(remaining, outstanding);
+                    remaining -= applyAmount;
+
+                    const secDepCat = state.categories.find(c => c.name === 'Security Deposit');
+                    const txCatId = secDepCat?.id || '';
+                    allTxs.push({
+                        type: TransactionType.INCOME, amount: applyAmount, date,
+                        description: `Security deposit adjustment against invoice${descSuffix}${propLabel}`,
+                        accountId: payoutAccount.id, contactId: tenant.id, categoryId: txCatId,
+                        buildingId: propBuildingId || undefined, propertyId: singleProp?.propertyId,
+                        invoiceId: inv.id,
+                        id: `tx-${baseId}-adj-${inv.id.slice(-5)}`,
+                    });
+
+                    const updatedInv = { ...inv, paidAmount: (inv.paidAmount || 0) + applyAmount };
+                    if (updatedInv.paidAmount >= updatedInv.amount - 0.01) {
+                        updatedInv.status = 'PAID' as any;
+                    } else {
+                        updatedInv.status = 'PARTIALLY_PAID' as any;
+                    }
+                    dispatch({ type: 'UPDATE_INVOICE', payload: updatedInv });
+                }
+
+                const refCat = getPayoutCategory('tenant');
+                if (refCat) {
+                    allTxs.push({
+                        type: TransactionType.EXPENSE, amount: securityAllocations.adjust, date,
+                        description: `Security deposit adjusted against tenant unpaid invoices${descSuffix}${propLabel}`,
+                        accountId: payoutAccount.id, contactId: tenant.id, categoryId: refCat.id,
+                        buildingId: propBuildingId || undefined, propertyId: singleProp?.propertyId,
+                        id: `tx-${baseId}-adj-exp`,
+                    });
+                }
+            }
+
+            if (allTxs.length === 0) {
+                await showAlert('Enter a positive amount for at least one payout option.');
+                return;
+            }
+            dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: allTxs });
+            const totalPaid = allTxs.filter(t => t.type === TransactionType.EXPENSE).reduce((s, t) => s + t.amount, 0);
+            showToast(`Security deposit processed (${allTxs.length} transaction${allTxs.length > 1 ? 's' : ''}).`, 'success');
+            setLastPaidAmount(totalPaid);
+            setLastReference(reference);
+            setShowWhatsAppConfirm(true);
             return;
         }
 
@@ -376,7 +512,137 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     </div>
                 </div>
 
-                {showPropertyTable ? (
+                {/* --- Security Mode: allocation UI --- */}
+                {isSecurityMode && !isEditMode ? (
+                    <>
+                        <div className="p-4 bg-slate-50 rounded-lg">
+                            <div className="flex justify-between font-bold text-lg">
+                                <span>Security Deposit Balance:</span>
+                                <span>{CURRENCY} {balanceDue.toLocaleString()}</span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1">
+                                Allocate the security deposit across one or more of the options below.
+                            </p>
+                        </div>
+
+                        <div className="space-y-3">
+                            {/* Pay to Owner */}
+                            <div className={`border rounded-lg p-3 transition-colors ${securityAllocations.owner > 0.01 ? 'border-indigo-300 bg-indigo-50/50' : 'border-slate-200'}`}>
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex-1">
+                                        <div className="text-sm font-semibold text-slate-800">Pay to Owner</div>
+                                        <div className="text-xs text-slate-500">Transfer security deposit to {owner?.name || 'owner'}</div>
+                                    </div>
+                                    <input
+                                        type="number"
+                                        className="w-36 border rounded px-3 py-1.5 text-right text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        value={securityAllocations.owner || ''}
+                                        onChange={e => {
+                                            const v = parseFloat(e.target.value) || 0;
+                                            setSecurityAllocations(prev => ({ ...prev, owner: Math.max(0, v) }));
+                                        }}
+                                        onKeyDown={e => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
+                                        placeholder="0"
+                                        aria-label="Amount to pay to owner"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Refund to Tenant */}
+                            <div className={`border rounded-lg p-3 transition-colors ${securityAllocations.tenant > 0.01 ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-200'} ${!tenant ? 'opacity-50' : ''}`}>
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex-1">
+                                        <div className="text-sm font-semibold text-slate-800">Refund to Tenant</div>
+                                        <div className="text-xs text-slate-500">
+                                            {tenant ? `Refund to ${tenant.name}` : 'No active tenant'}
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="number"
+                                        className="w-36 border rounded px-3 py-1.5 text-right text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        value={securityAllocations.tenant || ''}
+                                        onChange={e => {
+                                            const v = parseFloat(e.target.value) || 0;
+                                            setSecurityAllocations(prev => ({ ...prev, tenant: Math.max(0, v) }));
+                                        }}
+                                        onKeyDown={e => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
+                                        disabled={!tenant}
+                                        placeholder="0"
+                                        aria-label="Amount to refund to tenant"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Adjust in Unpaid Invoices */}
+                            <div className={`border rounded-lg p-3 transition-colors ${securityAllocations.adjust > 0.01 ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200'} ${!tenant || tenantUnpaidAmount < 0.01 ? 'opacity-50' : ''}`}>
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex-1">
+                                        <div className="text-sm font-semibold text-slate-800">Adjust in Unpaid Invoices</div>
+                                        <div className="text-xs text-slate-500">
+                                            {tenant && tenantUnpaidAmount > 0.01
+                                                ? `Apply against ${tenant.name}'s unpaid balance of ${CURRENCY} ${tenantUnpaidAmount.toLocaleString()}`
+                                                : tenant ? 'No unpaid invoices' : 'No active tenant'}
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="number"
+                                        className="w-36 border rounded px-3 py-1.5 text-right text-sm focus:ring-2 focus:ring-amber-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        value={securityAllocations.adjust || ''}
+                                        onChange={e => {
+                                            const v = parseFloat(e.target.value) || 0;
+                                            setSecurityAllocations(prev => ({ ...prev, adjust: Math.max(0, v) }));
+                                        }}
+                                        onKeyDown={e => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
+                                        disabled={!tenant || tenantUnpaidAmount < 0.01}
+                                        placeholder="0"
+                                        aria-label="Amount to adjust against unpaid invoices"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Quick-fill buttons */}
+                        <div className="flex flex-wrap gap-2">
+                            <button type="button" onClick={() => setSecurityAllocations({ owner: balanceDue, tenant: 0, adjust: 0 })}
+                                className="text-xs text-indigo-600 hover:underline">Full to Owner</button>
+                            {tenant && (
+                                <>
+                                    <span className="text-slate-300">|</span>
+                                    <button type="button" onClick={() => setSecurityAllocations({ owner: 0, tenant: balanceDue, adjust: 0 })}
+                                        className="text-xs text-emerald-600 hover:underline">Full Refund to Tenant</button>
+                                </>
+                            )}
+                            {tenant && tenantUnpaidAmount > 0.01 && (
+                                <>
+                                    <span className="text-slate-300">|</span>
+                                    <button type="button" onClick={() => {
+                                        const adj = Math.min(balanceDue, tenantUnpaidAmount);
+                                        const remaining = Math.max(0, balanceDue - adj);
+                                        setSecurityAllocations({ owner: remaining, tenant: 0, adjust: adj });
+                                    }}
+                                        className="text-xs text-amber-600 hover:underline">Adjust Invoices First</button>
+                                </>
+                            )}
+                            <span className="text-slate-300">|</span>
+                            <button type="button" onClick={() => setSecurityAllocations({ owner: 0, tenant: 0, adjust: 0 })}
+                                className="text-xs text-slate-500 hover:underline">Clear All</button>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 rounded-lg">
+                            <div className="flex justify-between items-center">
+                                <span className="font-semibold text-slate-700">Total Allocated:</span>
+                                <span className={`font-bold text-xl ${securityTotal > balanceDue + 0.01 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                    {CURRENCY} {securityTotal.toLocaleString()}
+                                </span>
+                            </div>
+                            {balanceDue - securityTotal > 0.01 && (
+                                <div className="text-xs text-slate-500 text-right mt-1">
+                                    Remaining: {CURRENCY} {(balanceDue - securityTotal).toLocaleString()}
+                                </div>
+                            )}
+                        </div>
+                    </>
+                ) : showPropertyTable ? (
                     <>
                         <div className="border rounded-lg overflow-hidden">
                             <div className="bg-slate-100 px-4 py-2 font-semibold text-sm text-slate-700 grid grid-cols-12 gap-2">
@@ -448,11 +714,6 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                 <span>Balance Due:</span>
                                 <span>{CURRENCY} {balanceDue.toLocaleString()}</span>
                             </div>
-                            {payoutType === 'Security' && (
-                                <p className="text-xs text-slate-500 mt-2">
-                                    This payment will be recorded as 'Owner Security Payout', reducing the held security deposit liability.
-                                </p>
-                            )}
                             {preSelectedBuildingId && (
                                 <p className="text-xs text-indigo-600 mt-2 font-medium">
                                     * Filtered by Building: {state.buildings.find(b => b.id === preSelectedBuildingId)?.name}
@@ -508,7 +769,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
 
                 <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={handleSubmit} disabled={!!error || (showPropertyTable && totalToPay <= 0)}>
+                    <Button type="button" onClick={handleSubmit} disabled={!!error || (isSecurityMode && !isEditMode ? securityTotal <= 0 : showPropertyTable ? totalToPay <= 0 : false)}>
                         {isEditMode ? 'Update Payment' : 'Confirm Payment'}
                     </Button>
                 </div>

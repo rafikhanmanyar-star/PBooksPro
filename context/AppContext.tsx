@@ -24,6 +24,7 @@ import {
     applyLegacySingleOwnerTransfer,
     buildDefaultPropertyOwnershipRow,
     invalidatePropertyOwnershipCache,
+    resolveOwnerForPropertyOnDate,
 } from '../services/propertyOwnershipService';
 import { getCurrentTenantId } from '../services/database/tenantUtils';
 import InitializationScreen from '../components/InitializationScreen';
@@ -605,7 +606,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
         // --- TRANSACTION HANDLERS ---
         case 'ADD_TRANSACTION': {
-            const tx = enrichExpenseBillPaymentCategory(action.payload as Transaction, state);
+            const tx = enrichExpenseBillPaymentCategory(stampTransactionOwnerId(action.payload as Transaction, state), state);
 
             // Deduplicate: check if transaction with same ID exists
             const existingTxIndex = state.transactions.findIndex(t => t.id === tx.id);
@@ -635,7 +636,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
 
         case 'UPDATE_TRANSACTION': {
-            const updatedTx = enrichExpenseBillPaymentCategory(action.payload as Transaction, state);
+            const updatedTx = enrichExpenseBillPaymentCategory(stampTransactionOwnerId(action.payload as Transaction, state), state);
             const originalTx = state.transactions.find(t => t.id === updatedTx.id);
             if (!originalTx) return state;
             let tempState = applyTransactionEffect(state, originalTx, false);

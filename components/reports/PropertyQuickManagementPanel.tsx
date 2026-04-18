@@ -13,6 +13,7 @@ import {
     Shield,
     Users,
     User,
+    HandCoins,
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import {
@@ -24,6 +25,7 @@ import {
 } from '../../types';
 import { CURRENCY } from '../../constants';
 import { formatDate, currentMonthYyyyMm } from '../../utils/dateUtils';
+import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 
 interface PropertyQuickManagementPanelProps {
     isOpen: boolean;
@@ -42,7 +44,9 @@ interface PropertyQuickManagementPanelProps {
     onPayoutSecurity: (
         owner: Contact,
         balanceDue: number,
-        breakdown: { propertyId: string; propertyName: string; balanceDue: number }[]
+        breakdown: { propertyId: string; propertyName: string; balanceDue: number }[],
+        tenant?: Contact | null,
+        tenantUnpaidAmount?: number,
     ) => void;
 }
 
@@ -106,13 +110,133 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             .filter(inv => inv.status !== InvoiceStatus.PAID)
             .reduce((sum, inv) => sum + Math.max(0, inv.amount - (inv.paidAmount || 0)), 0);
 
-        const propIncome = state.transactions
-            .filter(tx => tx.propertyId === propertyId && tx.type === TransactionType.INCOME)
-            .reduce((sum, tx) => sum + tx.amount, 0);
-        const propExpense = state.transactions
-            .filter(tx => tx.propertyId === propertyId && tx.type === TransactionType.EXPENSE)
-            .reduce((sum, tx) => sum + tx.amount, 0);
-        const payoutDue = Math.max(0, propIncome - propExpense);
+        // --- Owner Rental Income (aligned with OwnerPayoutsReport / OwnerPayoutsPage) ---
+        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
+        const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
+        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+        const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
+        const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
+        const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
+        const propIdStr = String(propertyId);
+        const ownerId = activeAgreement?.ownerId || property?.ownerId || '';
+
+        const brokerFeeTxIds = new Set<string>();
+        if (brokerFeeCategory) {
+            state.transactions.forEach(tx => {
+                if (tx.type === TransactionType.EXPENSE && tx.categoryId === brokerFeeCategory.id) brokerFeeTxIds.add(tx.id);
+            });
+        }
+        const ownerBillIds = new Set(state.bills.filter(b => b.propertyId && !b.projectId).map(b => b.id));
+        const billPaymentTxIds = new Set<string>();
+        state.transactions.forEach(tx => {
+            if (tx.type === TransactionType.EXPENSE && tx.billId && ownerBillIds.has(tx.billId)) billPaymentTxIds.add(tx.id);
+        });
+
+        let rentalCollected = 0;
+        let rentalPaid = 0;
+
+        if (rentalIncomeCategory) {
+            state.transactions
+                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && String(tx.propertyId) === propIdStr)
+                .forEach(tx => {
+                    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amt)) {
+                        if (amt > 0) rentalCollected += amt;
+                        else rentalPaid += Math.abs(amt);
+                    }
+                });
+        }
+        if (ownerSvcPayCategory) {
+            state.transactions
+                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === ownerSvcPayCategory.id && tx.contactId === ownerId)
+                .forEach(tx => {
+                    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amt) && amt > 0) {
+                        if (String(tx.propertyId) === propIdStr || !tx.propertyId) rentalCollected += amt;
+                    }
+                });
+        }
+        state.transactions
+            .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr && !brokerFeeTxIds.has(tx.id) && !billPaymentTxIds.has(tx.id))
+            .forEach(tx => {
+                const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                if (isNaN(amt) || amt <= 0) return;
+                if (tx.categoryId === ownerPayoutCategory?.id) {
+                    if (tx.contactId === ownerId) rentalPaid += amt;
+                    return;
+                }
+                const category = state.categories.find(c => c.id === tx.categoryId);
+                const catName = category?.name || '';
+                if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
+                if (secDepCategory && tx.categoryId === secDepCategory.id) return;
+                const txDate = (tx.date || '').slice(0, 10);
+                const txOwnerId = (tx as any).ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : property?.ownerId);
+                if (txOwnerId === ownerId) rentalPaid += amt;
+            });
+
+        state.rentalAgreements
+            .filter(ra => {
+                if (ra.previousAgreementId) return false;
+                const raPropId = ra.propertyId ?? (ra as any).property_id;
+                const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
+                return raPropId && String(raPropId) === propIdStr && ra.brokerId && !isNaN(fee) && fee > 0;
+            })
+            .forEach(ra => {
+                const raDateStr = (ra.startDate || '').slice(0, 10);
+                const raOwnerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, propertyId, raDateStr) : property?.ownerId);
+                if (raOwnerId === ownerId) {
+                    const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
+                    if (!isNaN(fee)) rentalPaid += fee;
+                }
+            });
+
+        state.bills
+            .filter(b => String(b.propertyId) === propIdStr && !b.projectId)
+            .forEach(b => {
+                const billDate = (b.issueDate || '').slice(0, 10);
+                const billOwnerId = billDate ? resolveOwnerForPropertyOnDate(state, propIdStr, billDate) : property?.ownerId;
+                if (billOwnerId !== ownerId) return;
+                const amt = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount ?? 0));
+                if (!isNaN(amt) && amt > 0) rentalPaid += amt;
+            });
+
+        const ownerRentalIncome = Math.max(0, rentalCollected - rentalPaid);
+
+        // --- Owner Security Deposit Balance (aligned with OwnerSecurityDepositReport) ---
+        let securityCollected = 0;
+        let securityPaid = 0;
+        if (secDepCategory) {
+            state.transactions
+                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && String(tx.propertyId) === propIdStr)
+                .forEach(tx => {
+                    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amt) && amt > 0) securityCollected += amt;
+                });
+            state.transactions
+                .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
+                .forEach(tx => {
+                    const category = state.categories.find(c => c.id === tx.categoryId);
+                    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(amt) || amt <= 0) return;
+                    if (secRefCategory && tx.categoryId === secRefCategory.id) { securityPaid += amt; return; }
+                    if (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) { securityPaid += amt; return; }
+                    if (category?.name?.includes('(Tenant)')) securityPaid += amt;
+                });
+        }
+        const ownerSecurityBalance = Math.max(0, securityCollected - securityPaid);
+
+        // --- Tenant unpaid invoices (for security adjustment option) ---
+        const tenantUnpaidAmount = tenant
+            ? propertyInvoices
+                .filter(inv =>
+                    inv.invoiceType === InvoiceType.RENTAL &&
+                    inv.status !== InvoiceStatus.PAID &&
+                    inv.status !== InvoiceStatus.DRAFT &&
+                    inv.amount - (inv.paidAmount || 0) > 0.01
+                )
+                .reduce((sum, inv) => sum + Math.max(0, inv.amount - (inv.paidAmount || 0)), 0)
+            : 0;
 
         const svcIncomeCategory = state.categories.find(
             c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income'
@@ -147,14 +271,16 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             totalCollected,
             securityDeposit,
             unpaidBalance,
-            payoutDue,
+            ownerRentalIncome,
+            ownerSecurityBalance,
+            tenantUnpaidAmount,
             canDeductServiceCharges,
             hasUnpaidRental,
             monthlyRent,
             annualYield: annualYield > 0 ? annualYield.toFixed(1) : '0',
             monthlyServiceCharge,
         };
-    }, [propertyId, state.invoices, state.transactions, state.categories, property, activeAgreement]);
+    }, [propertyId, state.invoices, state.transactions, state.categories, state.rentalAgreements, state.bills, property, activeAgreement, tenant]);
 
     const recentTransactions = useMemo(() => {
         const txs = state.transactions
@@ -214,38 +340,32 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
         return `${months} Months`;
     }, [activeAgreement]);
 
-    const handlePayoutToOwner = (type: 'Rent' | 'Security') => {
+    const handlePayoutToOwner = () => {
         if (!owner) return;
+        const breakdown = [{
+            propertyId,
+            propertyName: property?.name || 'Unknown',
+            balanceDue: financials.ownerRentalIncome,
+        }];
+        onPayoutToOwner(owner, financials.ownerRentalIncome, 'Rent', breakdown);
+    };
 
-        const propIncome = state.transactions
-            .filter(tx => tx.propertyId === propertyId && tx.type === TransactionType.INCOME)
-            .reduce((sum, tx) => sum + tx.amount, 0);
-        const propExpense = state.transactions
-            .filter(tx => tx.propertyId === propertyId && tx.type === TransactionType.EXPENSE)
-            .reduce((sum, tx) => sum + tx.amount, 0);
-        const balance = Math.max(0, propIncome - propExpense);
-
-        const breakdown = [
-            {
-                propertyId: propertyId,
-                propertyName: property?.name || 'Unknown',
-                balanceDue: balance,
-            },
-        ];
-
-        if (type === 'Security') {
-            onPayoutSecurity(owner, balance, breakdown);
-        } else {
-            onPayoutToOwner(owner, balance, 'Rent', breakdown);
-        }
+    const handlePayoutSecurity = () => {
+        if (!owner) return;
+        const breakdown = [{
+            propertyId,
+            propertyName: property?.name || 'Unknown',
+            balanceDue: financials.ownerSecurityBalance,
+        }];
+        onPayoutSecurity(owner, financials.ownerSecurityBalance, breakdown, tenant, financials.tenantUnpaidAmount);
     };
 
     if (!isOpen || !property) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-stretch justify-center bg-black/30" onClick={onClose}>
+        <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/30 overflow-y-auto" onClick={onClose}>
             <div
-                className="relative w-full max-w-2xl mx-4 my-6 bg-app-card rounded-2xl shadow-xl flex flex-col overflow-hidden animate-fade-in"
+                className="relative w-full max-w-4xl mx-4 mt-20 mb-6 sm:mx-6 bg-app-card rounded-2xl shadow-xl flex flex-col overflow-hidden animate-fade-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Close button */}
@@ -262,7 +382,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                 <div className="flex-1 overflow-y-auto">
                     {/* Top Section: Property Hero + Financial Summary */}
                     <div className="p-6 pb-4">
-                        <div className="flex gap-6">
+                        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
                             {/* Left: Property Info */}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
@@ -314,7 +434,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                             </div>
 
                             {/* Right: Financial Summary Cards */}
-                            <div className="flex-shrink-0 space-y-2 w-52">
+                            <div className="flex-shrink-0 space-y-2 w-full sm:w-52 flex flex-row sm:flex-col gap-2 sm:gap-0">
                                 <div className="bg-app-toolbar/50 border border-app-border rounded-xl p-3 text-center">
                                     <span className="text-[10px] uppercase font-bold text-app-muted tracking-wider block">Total Collected</span>
                                     <span className="text-lg font-bold text-app-text tabular-nums">
@@ -425,8 +545,8 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
 
                             <button
                                 type="button"
-                                onClick={() => handlePayoutToOwner('Rent')}
-                                disabled={!owner || financials.payoutDue <= 0}
+                                onClick={handlePayoutToOwner}
+                                disabled={!owner || financials.ownerRentalIncome <= 0}
                                 className="flex items-center gap-3 p-3 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed disabled:border-app-border disabled:bg-app-card group"
                             >
                                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
@@ -434,34 +554,46 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <span className="text-xs font-semibold text-app-text block">Payout to Owner</span>
-                                    <span className="text-[10px] text-app-muted">Owner / Broker / Security</span>
+                                    <span className="text-[10px] text-app-muted">Owner rental income</span>
                                 </div>
                                 <ChevronRight className="w-4 h-4 text-app-muted flex-shrink-0" />
                             </button>
                         </div>
 
-                        {/* Sub-payout options row when owner payout is available */}
-                        {owner && financials.payoutDue > 0 && (
-                            <div className="flex gap-2 mt-2 ml-11">
-                                {broker && (
-                                    <button
-                                        type="button"
-                                        onClick={() => onPayoutToBroker(broker, 0)}
-                                        className="px-3 py-1.5 text-[10px] font-medium text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 rounded-lg transition-colors"
-                                    >
-                                        Pay Broker ({broker.name})
-                                    </button>
-                                )}
+                        {/* Additional payout actions */}
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                            {broker && (
                                 <button
                                     type="button"
-                                    onClick={() => handlePayoutToOwner('Security')}
-                                    className="px-3 py-1.5 text-[10px] font-medium text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 rounded-lg transition-colors"
+                                    onClick={() => onPayoutToBroker(broker, 0)}
+                                    className="flex items-center gap-3 p-3 rounded-xl border border-app-border bg-app-card hover:bg-app-toolbar/50 transition-colors text-left group"
                                 >
-                                    <Shield className="w-3 h-3 inline mr-1" />
-                                    Return Security
+                                    <div className="w-8 h-8 rounded-lg bg-app-toolbar flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+                                        <HandCoins className="w-4 h-4 text-app-text" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-xs font-semibold text-app-text block">Pay Broker</span>
+                                        <span className="text-[10px] text-app-muted truncate block">{broker.name}</span>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-app-muted flex-shrink-0" />
                                 </button>
-                            </div>
-                        )}
+                            )}
+                            <button
+                                type="button"
+                                onClick={handlePayoutSecurity}
+                                disabled={!owner || financials.ownerSecurityBalance <= 0}
+                                className="flex items-center gap-3 p-3 rounded-xl border border-app-border bg-app-card hover:bg-app-toolbar/50 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed group"
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-app-toolbar flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+                                    <Shield className="w-4 h-4 text-app-text" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-xs font-semibold text-app-text block">Return Security</span>
+                                    <span className="text-[10px] text-app-muted">Owner / Tenant / Adjust</span>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-app-muted flex-shrink-0" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Recent Transactions */}
@@ -474,7 +606,8 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                         </div>
 
                         {recentTransactions.length > 0 ? (
-                            <div className="border border-app-border rounded-xl overflow-hidden">
+                            <div className="border border-app-border rounded-xl overflow-hidden overflow-x-auto">
+                                <div className="min-w-[640px]">
                                 {/* Table Header */}
                                 <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-app-toolbar/50 border-b border-app-border text-[10px] font-bold uppercase text-app-muted tracking-wider">
                                     <div className="col-span-2">Transaction ID</div>
@@ -519,6 +652,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                         </div>
                                     </div>
                                 ))}
+                                </div>
                             </div>
                         ) : (
                             <div className="text-center py-8 text-app-muted text-sm border border-app-border rounded-xl bg-app-toolbar/20">

@@ -110,6 +110,8 @@ const PropertyLayoutReport: React.FC = () => {
         balanceDue: number;
         payoutType: 'Rent' | 'Security';
         propertyBreakdown: { propertyId: string; propertyName: string; balanceDue: number }[];
+        tenant?: typeof state.contacts[0] | null;
+        tenantUnpaidAmount?: number;
     } | null>(null);
     const [brokerPayoutState, setBrokerPayoutState] = useState<{
         broker: typeof state.contacts[0] | null;
@@ -735,8 +737,8 @@ const PropertyLayoutReport: React.FC = () => {
                         onPayoutToBroker={(broker, balanceDue) => {
                             setBrokerPayoutState({ broker, balanceDue });
                         }}
-                        onPayoutSecurity={(owner, balanceDue, breakdown) => {
-                            setOwnerPayoutState({ owner, balanceDue, payoutType: 'Security', propertyBreakdown: breakdown });
+                        onPayoutSecurity={(owner, balanceDue, breakdown, tenant, tenantUnpaidAmount) => {
+                            setOwnerPayoutState({ owner, balanceDue, payoutType: 'Security', propertyBreakdown: breakdown, tenant, tenantUnpaidAmount });
                         }}
                     />
                 )}
@@ -782,6 +784,8 @@ const PropertyLayoutReport: React.FC = () => {
                         balanceDue={ownerPayoutState.balanceDue}
                         payoutType={ownerPayoutState.payoutType}
                         propertyBreakdown={ownerPayoutState.propertyBreakdown}
+                        tenant={ownerPayoutState.tenant}
+                        tenantUnpaidAmount={ownerPayoutState.tenantUnpaidAmount}
                     />
                 )}
                 {brokerPayoutState && (

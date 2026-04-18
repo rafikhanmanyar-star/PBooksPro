@@ -8,7 +8,6 @@ import { Page } from '../../types';
 import RentalInvoicesPage from './RentalInvoicesPage';
 // RecurringInvoicesList import removed — recurring auto-generation is disabled
 import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
-import RentalPaymentSearch from './RentalPaymentSearch';
 import RentalBillsPage from './RentalBillsPage';
 import RentalSettingsPage from './RentalSettingsPage';
 import { useAppContext } from '../../context/AppContext';
@@ -37,7 +36,7 @@ interface RentalManagementPageProps {
 // Define all possible view keys
 type RentalView =
     | 'Rental setup'
-    | 'Agreements' | 'Invoices' | 'Monthly Service Charges' | 'Bills' | 'Payment' | 'Payouts'
+    | 'Agreements' | 'Invoices' | 'Monthly Service Charges' | 'Bills' | 'Payouts'
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
     | 'Owner Rental Income' | 'Owner Rental Income Summary'
@@ -125,7 +124,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     setActiveView(subTab as RentalView);
                 } else if (mainTab === 'Rental setup') {
                     setActiveView('Rental setup');
-                } else if (['Agreements', 'Invoices', 'Monthly Service Charges', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
+                } else if (['Agreements', 'Invoices', 'Monthly Service Charges', 'Bills', 'Payouts'].includes(mainTab)) {
                     setActiveView(mainTab as RentalView);
                 }
             });
@@ -139,7 +138,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         'Invoices',
         'Monthly Service Charges',
         'Bills',
-        'Payment',
         'Payouts',
     ];
     const isOperationalView = OPERATIONAL_VIEWS.includes(activeView);
@@ -154,7 +152,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             )}
             {activeView === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
             {activeView === 'Bills' && <RentalBillsPage />}
-            {activeView === 'Payment' && <RentalPaymentSearch />}
             {activeView === 'Payouts' && <OwnerPayoutsPage />}
         </div>
     );
@@ -229,7 +226,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <NavItem view="Invoices" label="Invoices" />
                     <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
-                    <NavItem view="Payment" label="Payment" />
                     <NavItem view="Payouts" label="Payouts" />
                 </div>
 
