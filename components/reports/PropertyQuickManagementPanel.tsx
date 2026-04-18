@@ -119,16 +119,43 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
 
     const financials = useMemo(() => {
         const propertyInvoices = state.invoices.filter(inv => inv.propertyId === propertyId);
+        const propIdStr = String(propertyId);
 
-        const totalCollected = propertyInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+        const totalCollected = state.transactions
+            .filter(tx => tx.type === TransactionType.INCOME && String(tx.propertyId) === propIdStr)
+            .reduce((sum, tx) => {
+                const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                return sum + (isNaN(amt) ? 0 : amt);
+            }, 0);
 
-        const securityInvoices = propertyInvoices.filter(
-            inv => inv.invoiceType === InvoiceType.SECURITY_DEPOSIT
-        );
-        const securityDeposit = securityInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+        const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
+        const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
+        const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
+
+        let securityCollectedForStat = 0;
+        let securityPaidForStat = 0;
+        if (secDepCategory) {
+            state.transactions
+                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && String(tx.propertyId) === propIdStr)
+                .forEach(tx => {
+                    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amt) && amt > 0) securityCollectedForStat += amt;
+                });
+            state.transactions
+                .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
+                .forEach(tx => {
+                    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(amt) || amt <= 0) return;
+                    if (secRefCategory && tx.categoryId === secRefCategory.id) { securityPaidForStat += amt; return; }
+                    if (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) { securityPaidForStat += amt; return; }
+                    const category = state.categories.find(c => c.id === tx.categoryId);
+                    if (category?.name?.includes('(Tenant)')) securityPaidForStat += amt;
+                });
+        }
+        const securityDeposit = Math.max(0, securityCollectedForStat - securityPaidForStat);
 
         const unpaidBalance = propertyInvoices
-            .filter(inv => inv.status !== InvoiceStatus.PAID)
+            .filter(inv => inv.status !== InvoiceStatus.PAID && inv.status !== InvoiceStatus.DRAFT)
             .reduce((sum, inv) => sum + Math.max(0, inv.amount - (inv.paidAmount || 0)), 0);
 
         // --- Owner Rental Income (aligned with OwnerPayoutsReport / OwnerPayoutsPage) ---
@@ -136,10 +163,6 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
         const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
         const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-        const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
-        const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
-        const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
-        const propIdStr = String(propertyId);
         const ownerId = activeAgreement?.ownerId || property?.ownerId || '';
 
         const brokerFeeTxIds = new Set<string>();
@@ -223,35 +246,14 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             });
 
         const ownerRentalIncome = Math.max(0, rentalCollected - rentalPaid);
-
-        // --- Owner Security Deposit Balance (aligned with OwnerSecurityDepositReport) ---
-        let securityCollected = 0;
-        let securityPaid = 0;
-        if (secDepCategory) {
-            state.transactions
-                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && String(tx.propertyId) === propIdStr)
-                .forEach(tx => {
-                    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (!isNaN(amt) && amt > 0) securityCollected += amt;
-                });
-            state.transactions
-                .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
-                .forEach(tx => {
-                    const category = state.categories.find(c => c.id === tx.categoryId);
-                    const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (isNaN(amt) || amt <= 0) return;
-                    if (secRefCategory && tx.categoryId === secRefCategory.id) { securityPaid += amt; return; }
-                    if (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) { securityPaid += amt; return; }
-                    if (category?.name?.includes('(Tenant)')) securityPaid += amt;
-                });
-        }
-        const ownerSecurityBalance = Math.max(0, securityCollected - securityPaid);
+        const ownerSecurityBalance = securityDeposit;
 
         // --- Tenant unpaid invoices (for security adjustment option) ---
         const tenantUnpaidAmount = tenant
             ? propertyInvoices
                 .filter(inv =>
                     inv.invoiceType === InvoiceType.RENTAL &&
+                    !(inv.securityDepositCharge && inv.securityDepositCharge > 0) &&
                     inv.status !== InvoiceStatus.PAID &&
                     inv.status !== InvoiceStatus.DRAFT &&
                     inv.amount - (inv.paidAmount || 0) > 0.01

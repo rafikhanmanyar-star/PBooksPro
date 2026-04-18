@@ -98,6 +98,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             .filter(inv =>
                 inv.propertyId === singlePropertyId &&
                 inv.invoiceType === InvoiceType.RENTAL &&
+                !(inv.securityDepositCharge && inv.securityDepositCharge > 0) &&
                 inv.status !== InvoiceStatus.PAID &&
                 inv.status !== InvoiceStatus.DRAFT &&
                 inv.amount - (inv.paidAmount || 0) > 0.01
@@ -173,7 +174,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             }
             setError('');
         }
-    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings, isSecurityMode]);
+    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings, isSecurityMode, unpaidPropertyInvoices]);
 
     const totalToPay = items.filter(i => i.isSelected).reduce((sum, i) => sum + i.paymentAmount, 0);
     const invoiceAdjustTotal = invoiceAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
@@ -673,8 +674,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                         <div className="text-sm font-semibold text-slate-800">Adjust in Unpaid Invoices</div>
                                         <div className="text-xs text-slate-500">
                                             {tenant && unpaidPropertyInvoices.length > 0
-                                                ? `Select invoices to apply ${tenant.name}'s security deposit against (${unpaidPropertyInvoices.length} unpaid)`
-                                                : tenant ? 'No unpaid invoices' : 'No active tenant'}
+                                                ? `Select rental invoices to apply ${tenant.name}'s security deposit against (${unpaidPropertyInvoices.length} unpaid rental)`
+                                                : tenant ? 'No unpaid rental invoices' : 'No active tenant'}
                                         </div>
                                     </div>
                                     <div className="text-right">
