@@ -19,6 +19,10 @@ import RentalPropertySummaryCard from './RentalPropertySummaryCard';
 const PropertyInvoicePickModal = lazy(() => import('./PropertyInvoicePickModal'));
 const RentalPaymentModal = lazy(() => import('../invoices/RentalPaymentModal'));
 const ManualServiceChargeModal = lazy(() => import('../rentalManagement/ManualServiceChargeModal'));
+const CreateRentalInvoiceModal = lazy(() => import('../rentalManagement/CreateRentalInvoiceModal'));
+const OwnerPayoutModal = lazy(() => import('../payouts/OwnerPayoutModal'));
+const BrokerPayoutModal = lazy(() => import('../payouts/BrokerPayoutModal'));
+const PropertyQuickManagementPanel = lazy(() => import('./PropertyQuickManagementPanel'));
 
 const modalSuspenseFallback = (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/10 text-app-muted text-xs">Loading…</div>
@@ -99,6 +103,18 @@ const PropertyLayoutReport: React.FC = () => {
     } | null>(null);
     const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
     const [mscForPropertyId, setMscForPropertyId] = useState<string | null>(null);
+    const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+    const [createInvoiceForPropertyId, setCreateInvoiceForPropertyId] = useState<string | null>(null);
+    const [ownerPayoutState, setOwnerPayoutState] = useState<{
+        owner: typeof state.contacts[0] | null;
+        balanceDue: number;
+        payoutType: 'Rent' | 'Security';
+        propertyBreakdown: { propertyId: string; propertyName: string; balanceDue: number }[];
+    } | null>(null);
+    const [brokerPayoutState, setBrokerPayoutState] = useState<{
+        broker: typeof state.contacts[0] | null;
+        balanceDue: number;
+    } | null>(null);
 
     /** Warm rental invoices query while user is on Visual Layout so Invoices view opens faster. */
     useEffect(() => {
@@ -542,21 +558,7 @@ const PropertyLayoutReport: React.FC = () => {
                     className={getColorClasses(unit, mode)}
                     style={backgroundColorStyle}
                     plainWhiteBackground={plainWhiteVacant}
-                    onReceiveRent={() =>
-                        setInvoicePick({
-                            propertyId: unit.id,
-                            propertyName: unit.name,
-                            type: InvoiceType.RENTAL,
-                        })
-                    }
-                    onReceiveSecurity={() =>
-                        setInvoicePick({
-                            propertyId: unit.id,
-                            propertyName: unit.name,
-                            type: InvoiceType.SECURITY_DEPOSIT,
-                        })
-                    }
-                    onDeductCharges={() => setMscForPropertyId(unit.id)}
+                    onClick={() => setSelectedPropertyId(unit.id)}
                 />
             );
         }
@@ -709,6 +711,35 @@ const PropertyLayoutReport: React.FC = () => {
             </div>
 
             <Suspense fallback={modalSuspenseFallback}>
+                {selectedPropertyId && (
+                    <PropertyQuickManagementPanel
+                        isOpen={!!selectedPropertyId}
+                        onClose={() => setSelectedPropertyId(null)}
+                        propertyId={selectedPropertyId}
+                        onDeductCharges={(propId) => {
+                            setMscForPropertyId(propId);
+                        }}
+                        onCreateInvoice={(propId) => {
+                            setCreateInvoiceForPropertyId(propId);
+                        }}
+                        onReceivePayment={(propId, propName) => {
+                            setInvoicePick({
+                                propertyId: propId,
+                                propertyName: propName,
+                                type: InvoiceType.RENTAL,
+                            });
+                        }}
+                        onPayoutToOwner={(owner, balanceDue, payoutType, breakdown) => {
+                            setOwnerPayoutState({ owner, balanceDue, payoutType, propertyBreakdown: breakdown });
+                        }}
+                        onPayoutToBroker={(broker, balanceDue) => {
+                            setBrokerPayoutState({ broker, balanceDue });
+                        }}
+                        onPayoutSecurity={(owner, balanceDue, breakdown) => {
+                            setOwnerPayoutState({ owner, balanceDue, payoutType: 'Security', propertyBreakdown: breakdown });
+                        }}
+                    />
+                )}
                 {invoicePick && (
                     <PropertyInvoicePickModal
                         isOpen={!!invoicePick}
@@ -734,6 +765,32 @@ const PropertyLayoutReport: React.FC = () => {
                         isOpen={!!mscForPropertyId}
                         onClose={() => setMscForPropertyId(null)}
                         initialPropertyId={mscForPropertyId}
+                    />
+                )}
+                {createInvoiceForPropertyId && (
+                    <CreateRentalInvoiceModal
+                        isOpen={!!createInvoiceForPropertyId}
+                        onClose={() => setCreateInvoiceForPropertyId(null)}
+                        initialPreFillPropertyId={createInvoiceForPropertyId}
+                    />
+                )}
+                {ownerPayoutState && (
+                    <OwnerPayoutModal
+                        isOpen={!!ownerPayoutState}
+                        onClose={() => setOwnerPayoutState(null)}
+                        owner={ownerPayoutState.owner}
+                        balanceDue={ownerPayoutState.balanceDue}
+                        payoutType={ownerPayoutState.payoutType}
+                        propertyBreakdown={ownerPayoutState.propertyBreakdown}
+                    />
+                )}
+                {brokerPayoutState && (
+                    <BrokerPayoutModal
+                        isOpen={!!brokerPayoutState}
+                        onClose={() => setBrokerPayoutState(null)}
+                        broker={brokerPayoutState.broker}
+                        balanceDue={brokerPayoutState.balanceDue}
+                        context="Rental"
                     />
                 )}
             </Suspense>

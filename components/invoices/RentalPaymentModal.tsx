@@ -60,11 +60,17 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         [state.accounts]
     );
 
+    const isSecurityOnlyInvoice = effectiveInvoice?.invoiceType === InvoiceType.SECURITY_DEPOSIT;
+
     const { rentRemaining, securityDepositRemaining, totalRemaining } = useMemo(() => {
         if (!effectiveInvoice) return { rentRemaining: 0, securityDepositRemaining: 0, totalRemaining: 0 };
 
-        const rentDue = effectiveInvoice.amount - (effectiveInvoice.securityDepositCharge || 0);
-        const securityDepositDue = effectiveInvoice.securityDepositCharge || 0;
+        const effectiveSecurityCharge = isSecurityOnlyInvoice
+            ? effectiveInvoice.amount
+            : (effectiveInvoice.securityDepositCharge || 0);
+
+        const rentDue = effectiveInvoice.amount - effectiveSecurityCharge;
+        const securityDepositDue = effectiveSecurityCharge;
 
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
@@ -79,7 +85,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         const totalRemaining = rentRemaining + securityDepositRemaining;
 
         return { rentRemaining, securityDepositRemaining, totalRemaining };
-    }, [effectiveInvoice, state.transactions, state.categories]);
+    }, [effectiveInvoice, isSecurityOnlyInvoice, state.transactions, state.categories]);
 
     useEffect(() => {
         if (isEditMode && transactionToEdit && isOpen) {
@@ -235,9 +241,12 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                 return;
             }
 
+            const defaultRentDesc = isSecurityOnlyInvoice
+                ? `Security Deposit for Invoice #${effectiveInvoice.invoiceNumber}`
+                : `Rent payment for Invoice #${effectiveInvoice.invoiceNumber}`;
             const rentDescription = (description && description.trim())
                 ? description.trim()
-                : `Rent payment for Invoice #${effectiveInvoice.invoiceNumber}`;
+                : defaultRentDesc;
             const tx: Omit<Transaction, 'id'> = {
                 ...baseTransaction,
                 contactId: effectiveInvoice.contactId,
@@ -424,7 +433,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                             />
                         )}
 
-                        {(effectiveInvoice.securityDepositCharge || 0) > 0 && (
+                        {(isSecurityOnlyInvoice || (effectiveInvoice.securityDepositCharge || 0) > 0) && (
                             <Input
                                 label={`Security Deposit Paid (Due: ${CURRENCY} ${securityDepositRemaining.toLocaleString()})`}
                                 type="text"

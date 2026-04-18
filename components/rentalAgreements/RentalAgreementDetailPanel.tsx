@@ -34,6 +34,11 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
     );
 
     const openInvoices = useMemo(() => linkedInvoices.filter(i => i.status !== InvoiceStatus.PAID), [linkedInvoices]);
+    const totalOutstanding = useMemo(() =>
+        openInvoices.reduce((sum, inv) => sum + Math.max(0, (inv.amount || 0) - (inv.paidAmount || 0)), 0),
+        [openInvoices]
+    );
+    const isTerminatedWithUnpaid = (agreement.status === RentalAgreementStatus.TERMINATED || agreement.status === RentalAgreementStatus.EXPIRED) && openInvoices.length > 0;
 
     // Calculate remaining days
     const remainingDays = useMemo(() => {
@@ -71,6 +76,19 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
                         <div className="w-4 h-4">{ICONS.x}</div>
                     </button>
                 </div>
+
+                {/* Terminated with unpaid invoices indicator */}
+                {isTerminatedWithUnpaid && (
+                    <div className="mt-2 p-2 bg-[color:var(--badge-unpaid-bg)] border border-ds-warning/30 rounded-lg">
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-3.5 h-3.5 text-ds-warning">{ICONS.alertTriangle}</div>
+                            <span className="text-[10px] font-bold text-ds-warning">
+                                {openInvoices.length} unpaid invoice(s) - {CURRENCY} {totalOutstanding.toLocaleString()} outstanding
+                            </span>
+                        </div>
+                        <p className="text-[10px] text-app-muted mt-0.5 ml-5">Old tenant can still pay these invoices.</p>
+                    </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="flex gap-2 mt-3">
@@ -194,7 +212,7 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
                         <h4 className="text-[10px] font-bold text-app-muted uppercase tracking-wider">Invoices ({linkedInvoices.length})</h4>
                         {openInvoices.length > 0 && (
                             <span className="text-[10px] font-bold text-ds-warning bg-ds-warning/10 border border-ds-warning/30 px-1.5 py-0.5 rounded-full">
-                                {openInvoices.length} open
+                                {openInvoices.length} open ({CURRENCY} {totalOutstanding.toLocaleString()})
                             </span>
                         )}
                     </div>

@@ -479,22 +479,7 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
           </div>
         </section>
 
-        {/* Recurring (rental) */}
-        {isRental && !isSecurityDepositOnly && !invoice.description?.includes('[Security]') && (
-          <section className={SECTION_SPACING}>
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!recurringTemplate}
-                  onChange={toggleRecurring}
-                  className="rounded text-indigo-600 focus:ring-indigo-500 h-5 w-5 border-slate-300"
-                />
-                <span className="font-medium text-indigo-900">Memorize this transaction for recurring</span>
-              </label>
-            </div>
-          </section>
-        )}
+{/* Recurring invoice option removed — recurring auto-generation is disabled */}
 
         {/* SECTION 5 — Action Buttons */}
         <section className="pt-2 pb-1">

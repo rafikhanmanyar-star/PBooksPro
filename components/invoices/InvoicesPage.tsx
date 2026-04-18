@@ -1436,7 +1436,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             />
 
             {/* Individual Payment Modals */}
-            {paymentInvoice?.invoiceType === InvoiceType.RENTAL ? (
+            {(paymentInvoice?.invoiceType === InvoiceType.RENTAL || paymentInvoice?.invoiceType === InvoiceType.SECURITY_DEPOSIT) ? (
                 <RentalPaymentModal
                     isOpen={isPaymentModalOpen}
                     onClose={() => { setIsPaymentModalOpen(false); setPaymentInvoice(null); }}

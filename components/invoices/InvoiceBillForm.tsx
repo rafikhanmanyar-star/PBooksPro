@@ -1096,35 +1096,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       return;
     }
 
-    if (addToRecurring && type === 'invoice' && invoiceType === InvoiceType.RENTAL) {
-      if (existingRecurringTemplate) {
-        setAddToRecurring(false);
-      } else {
-        let resolvedPropId = propertyId;
-        if (!resolvedPropId && agreementId) {
-          resolvedPropId = state.rentalAgreements.find(r => r.id === agreementId)?.propertyId;
-        }
-        if (!resolvedPropId) {
-          await showAlert(
-            'Cannot add to recurring: the property could not be determined. Ensure an agreement is selected.'
-          );
-          return;
-        }
-        if (!contactId) {
-          await showAlert('Cannot add to recurring: a tenant is required.');
-          return;
-        }
-        const rentAmt = parseFloat(rentAmount) || 0;
-        if (rentAmt <= 0) {
-          await showAlert('Rent amount must be greater than zero to create a recurring schedule.');
-          return;
-        }
-        if (description?.includes('[Security]')) {
-          await showAlert('This invoice cannot be added to recurring rent while marked as security.');
-          return;
-        }
-      }
-    }
+    /* Recurring template creation disabled */
 
     const finalDocumentPath = documentPath;
     const billId = itemToEdit?.id || Date.now().toString();
@@ -1140,46 +1112,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
     const formData = getFormData();
 
-    const maybeAddRecurringAfterInvoiceSave = (inv: Invoice) => {
-      if (!addToRecurring || type !== 'invoice' || invoiceType !== InvoiceType.RENTAL) return;
-      if (existingRecurringTemplate) {
-        setAddToRecurring(false);
-        return;
-      }
-      if (inv.description?.includes('[Security]')) {
-        setAddToRecurring(false);
-        return;
-      }
-      let resolvedPropId = inv.propertyId;
-      if (!resolvedPropId && inv.agreementId) {
-        resolvedPropId = state.rentalAgreements.find(r => r.id === inv.agreementId)?.propertyId;
-      }
-      const rentAmountVal = inv.amount - (inv.securityDepositCharge || 0) - (inv.serviceCharges || 0);
-      if (!resolvedPropId || !inv.contactId || rentAmountVal <= 0) {
-        setAddToRecurring(false);
-        return;
-      }
-      const issueNorm = parseStoredDateToYyyyMmDdInput(String(inv.issueDate));
-      const issueDateObj = parseYyyyMmDdToLocalDate(issueNorm);
-      const nextDueDateStr = getFirstOfNextMonthLocal(issueDateObj);
-      const newTemplate: RecurringInvoiceTemplate = {
-        id: `rec-${Date.now()}`,
-        contactId: inv.contactId,
-        propertyId: resolvedPropId,
-        buildingId: inv.buildingId || (state.properties.find(p => p.id === resolvedPropId)?.buildingId ?? ''),
-        amount: rentAmountVal,
-        descriptionTemplate: `Rent for {Month}`,
-        dayOfMonth: 1,
-        nextDueDate: nextDueDateStr,
-        active: true,
-        agreementId: inv.agreementId,
-        invoiceType: inv.invoiceType,
-        autoGenerate: true,
-        frequency: 'Monthly',
-      };
-      dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: newTemplate });
-      showToast('Memorized for recurring.', 'success');
-      setAddToRecurring(false);
+    const maybeAddRecurringAfterInvoiceSave = (_inv: Invoice) => {
+      /* Recurring template creation disabled — no-op */
     };
 
     if (itemToEdit) {
@@ -1584,30 +1518,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   {numberError && <p className="text-danger text-xs mt-1">{numberError}</p>}
                 </div>
 
-                {invoiceType === InvoiceType.RENTAL && rentVal > 0 && !description?.includes('[Security]') && (
-                  <div className="mt-4">
-                    {existingRecurringTemplate ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/90 p-3 text-sm text-slate-600">
-                        A recurring schedule already exists for this agreement or property. You can change it under Rental → Recurring Templates.
-                      </div>
-                    ) : (
-                      <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3">
-                        <label className="flex items-start gap-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={addToRecurring}
-                            onChange={e => setAddToRecurring(e.target.checked)}
-                            disabled={isAgreementCancelled}
-                            className="rounded text-indigo-600 focus:ring-indigo-500 h-5 w-5 border-slate-300 mt-0.5 shrink-0"
-                          />
-                          <span className="font-medium text-indigo-900 leading-snug">
-                            Memorize this invoice for recurring (next invoice on the 1st of the following month)
-                          </span>
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                )}
+{/* Recurring invoice option removed — recurring auto-generation is disabled */}
               </div>
             ) : (
               <div className="text-center p-8 text-slate-500 border-2 border-dashed rounded-xl bg-white">

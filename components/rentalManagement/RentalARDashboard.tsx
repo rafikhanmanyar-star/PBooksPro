@@ -16,7 +16,6 @@ import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
-import { useGenerateDueInvoices } from '../../hooks/useGenerateDueInvoices';
 import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 
 const RENTAL_INVOICE_TYPES = [InvoiceType.RENTAL, InvoiceType.SECURITY_DEPOSIT];
@@ -93,8 +92,6 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   const propertyOwnershipHistory = useStateSelector(s => s.propertyOwnershipHistory);
   const dispatch = useDispatchOnly();
   const { showConfirm, showToast, showAlert } = useNotification();
-  const { overdueCount: dueCount, handleGenerateAllDue, isGenerating } = useGenerateDueInvoices();
-
   // Filters — list and summary use separate keys so both persist
   const [viewByList, setViewByList] = useLocalStorage<ViewBy>('rental_invoices_groupBy', 'building');
   const [viewBySummary, setViewBySummary] = useLocalStorage<ViewBy>('ar_dashboard_viewBy', 'building');
@@ -859,22 +856,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-background">
-      {/* List mode: due generation banner */}
-      {listMode && dueCount > 0 && (
-        <div className="flex items-center justify-between px-3 py-2 bg-ds-warning/10 border border-ds-warning/30 rounded-lg flex-shrink-0 mx-3 mt-2">
-          <span className="text-sm font-medium text-ds-warning">
-            {dueCount} invoice{dueCount > 1 ? 's are' : ' is'} due for generation
-          </span>
-          <div className="flex gap-2">
-            <Button onClick={handleGenerateAllDue} disabled={isGenerating} size="sm" className="bg-ds-warning hover:opacity-95 text-white">
-              {isGenerating ? 'Generating...' : `Generate All (${dueCount})`}
-            </Button>
-            {onSchedulesClick && (
-              <Button variant="secondary" onClick={onSchedulesClick} size="sm">Manage Schedules</Button>
-            )}
-          </div>
-        </div>
-      )}
+{/* Recurring invoice generation banner removed — recurring auto-generation is disabled */}
 
       {/* List mode: summary cards */}
       {listMode && displaySummaryStats && (

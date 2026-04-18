@@ -1,12 +1,12 @@
 
-import React, { useState, useEffect, useLayoutEffect, memo, Suspense, startTransition, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, memo, Suspense, startTransition } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import RentalAgreementsPage from '../rentalAgreements/RentalAgreementsPage';
 import OwnerPayoutsPage from '../payouts/OwnerPayoutsPage';
 import { Page } from '../../types';
 import RentalInvoicesPage from './RentalInvoicesPage';
-import RecurringInvoicesList from './RecurringInvoicesList';
+// RecurringInvoicesList import removed — recurring auto-generation is disabled
 import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
 import RentalPaymentSearch from './RentalPaymentSearch';
 import RentalBillsPage from './RentalBillsPage';
@@ -37,7 +37,7 @@ interface RentalManagementPageProps {
 // Define all possible view keys
 type RentalView =
     | 'Rental setup'
-    | 'Agreements' | 'Invoices' | 'Recurring Templates' | 'Monthly Service Charges' | 'Bills' | 'Payment' | 'Payouts'
+    | 'Agreements' | 'Invoices' | 'Monthly Service Charges' | 'Bills' | 'Payment' | 'Payouts'
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
     | 'Owner Rental Income' | 'Owner Rental Income Summary'
@@ -125,7 +125,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     setActiveView(subTab as RentalView);
                 } else if (mainTab === 'Rental setup') {
                     setActiveView('Rental setup');
-                } else if (['Agreements', 'Invoices', 'Recurring Templates', 'Monthly Service Charges', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
+                } else if (['Agreements', 'Invoices', 'Monthly Service Charges', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
                     setActiveView(mainTab as RentalView);
                 }
             });
@@ -137,7 +137,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         'Rental setup',
         'Agreements',
         'Invoices',
-        'Recurring Templates',
         'Monthly Service Charges',
         'Bills',
         'Payment',
@@ -145,22 +144,13 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     ];
     const isOperationalView = OPERATIONAL_VIEWS.includes(activeView);
 
-    const goRecurringTemplates = useCallback(() => {
-        startTransition(() => setActiveView('Recurring Templates'));
-    }, [setActiveView]);
-
     /** Mount ONLY the active operational view — avoids mounting all 7 at once (major INP win). */
     const renderOperationalContent = () => (
         <div className="relative h-full w-full min-h-0">
             {activeView === 'Rental setup' && <RentalSettingsPage embeddedInRentalModule />}
             {activeView === 'Agreements' && <RentalAgreementsPage />}
             {activeView === 'Invoices' && (
-                <RentalInvoicesPage onNavigateToRecurringTemplates={goRecurringTemplates} />
-            )}
-            {activeView === 'Recurring Templates' && (
-                <div className="h-full min-h-0 overflow-y-auto">
-                    <RecurringInvoicesList />
-                </div>
+                <RentalInvoicesPage />
             )}
             {activeView === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
             {activeView === 'Bills' && <RentalBillsPage />}
@@ -237,7 +227,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <NavItem view="Rental setup" label="Rental setup" />
                     <NavItem view="Agreements" label="Agreements" />
                     <NavItem view="Invoices" label="Invoices" />
-                    <NavItem view="Recurring Templates" label="Recurring Templates" />
                     <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
                     <NavItem view="Payment" label="Payment" />

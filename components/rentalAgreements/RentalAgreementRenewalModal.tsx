@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { RentalAgreement, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType, RecurringInvoiceTemplate } from '../../types';
+import { RentalAgreement, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -8,7 +8,7 @@ import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY, ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
-import { formatDate, getFirstOfNextMonthLocal, toLocalDateString } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 
 interface RentalAgreementRenewalModalProps {
     isOpen: boolean;
@@ -125,11 +125,7 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
             return;
         }
 
-        // 1. Remove old recurring templates for this agreement (so only active agreement templates remain)
-        const oldTemplates = state.recurringInvoiceTemplates.filter(t => t.agreementId === agreement.id);
-        oldTemplates.forEach(t => dispatch({ type: 'DELETE_RECURRING_TEMPLATE', payload: t.id }));
-
-        // 2. Mark old as Renewed
+        // 1. Mark old as Renewed
         dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: { ...agreement, status: RentalAgreementStatus.RENEWED } });
 
         // 3. Create new agreement
@@ -207,17 +203,6 @@ const RentalAgreementRenewalModal: React.FC<RentalAgreementRenewalModalProps> = 
                     agreementId: newAgreementId, rentalMonth: startDate.slice(0, 7)
                 };
                 dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
-
-                // c. Recurring template (next invoice on 1st of next month)
-                const nextDueDateStr = getFirstOfNextMonthLocal(rnDateObj);
-                const recurringTemplate: RecurringInvoiceTemplate = {
-                    id: `rec-ren-${Date.now()}`, contactId: agreement.contactId, propertyId: agreement.propertyId,
-                    buildingId: bId || '', amount: newRent, descriptionTemplate: "Rent for {Month} [Rental]",
-                    dayOfMonth: 1, nextDueDate: nextDueDateStr,
-                    active: true, agreementId: newAgreementId, invoiceType: InvoiceType.RENTAL,
-                    autoGenerate: true, frequency: 'Monthly',
-                };
-                dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
             }
 
             if (currentNextNum > nextNumSetting) {

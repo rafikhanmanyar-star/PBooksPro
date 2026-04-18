@@ -12,8 +12,6 @@ import { selectRentalInvoicesForCache } from '../../hooks/queries/rentalInvoices
 import { cancelScheduledIdle, scheduleIdleWork } from '../../utils/interactionScheduling';
 
 export interface RentalInvoicesPageProps {
-  /** Switches rental sidebar to Recurring Templates (e.g. Manage Schedules). */
-  onNavigateToRecurringTemplates?: () => void;
 }
 
 /** Fixed-height shell to avoid CLS while AR dashboard mounts (heavy tree + grid). */
@@ -45,7 +43,7 @@ const RentalInvoicesBodySkeleton: React.FC = () => (
   </div>
 );
 
-const RentalInvoicesPage: React.FC<RentalInvoicesPageProps> = ({ onNavigateToRecurringTemplates }) => {
+const RentalInvoicesPage: React.FC<RentalInvoicesPageProps> = () => {
   const { dispatch } = useAppContext();
   const invoices = useInvoices();
   const queryClient = useQueryClient();
@@ -85,10 +83,6 @@ const RentalInvoicesPage: React.FC<RentalInvoicesPageProps> = ({ onNavigateToRec
     setPrefillPropertyId(null);
   };
 
-  const handleSchedulesClick = () => {
-    onNavigateToRecurringTemplates?.();
-  };
-
   const handleBulkImport = () => {
     startTransition(() => {
       dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.INVOICES });
@@ -112,9 +106,6 @@ const RentalInvoicesPage: React.FC<RentalInvoicesPageProps> = ({ onNavigateToRec
             <div className="w-4 h-4 mr-2">{ICONS.download}</div>
             Bulk Import
           </Button>
-          <Button variant="ghost" onClick={handleSchedulesClick} size="sm">
-            Manage Schedules
-          </Button>
         </div>
       </div>
       <div className="flex-grow overflow-hidden min-h-0">
@@ -123,7 +114,6 @@ const RentalInvoicesPage: React.FC<RentalInvoicesPageProps> = ({ onNavigateToRec
             listMode
             onCreateRentalClick={handleCreateRental}
             onCreateSecurityClick={handleCreateSecurity}
-            onSchedulesClick={handleSchedulesClick}
           />
         ) : (
           <RentalInvoicesBodySkeleton />

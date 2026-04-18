@@ -10,9 +10,6 @@ import {
     Wallet,
     Shield,
     Settings,
-    ArrowDownToLine,
-    ShieldCheck,
-    FileMinus,
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
@@ -60,9 +57,7 @@ export interface RentalPropertySummaryCardProps {
     style?: React.CSSProperties;
     /** Vacant unit with no receivable and no owner/account payout due — solid white card */
     plainWhiteBackground?: boolean;
-    onReceiveRent: () => void;
-    onReceiveSecurity: () => void;
-    onDeductCharges: () => void;
+    onClick?: () => void;
 }
 
 const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> = ({
@@ -70,9 +65,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
     className,
     style,
     plainWhiteBackground = false,
-    onReceiveRent,
-    onReceiveSecurity,
-    onDeductCharges,
+    onClick,
 }) => {
     const rentContractFmt = useMemo(() => formatCompactK(unit.monthlyRent), [unit.monthlyRent]);
     const secContractFmt = useMemo(() => formatCompactK(unit.securityDepositAmount), [unit.securityDepositAmount]);
@@ -110,8 +103,12 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
 
     return (
         <div
-            className={`relative rounded-xl border shadow-sm p-1.5 flex flex-col min-h-[12rem] transition-all ${plainWhiteBackground ? 'bg-white' : ''} ${className}`}
+            className={`relative rounded-xl border shadow-sm p-1.5 flex flex-col min-h-[12rem] transition-all cursor-pointer hover:shadow-md hover:ring-2 hover:ring-primary/30 ${plainWhiteBackground ? 'bg-white' : ''} ${className}`}
             style={plainWhiteBackground ? undefined : style}
+            onClick={onClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick?.(); }}
         >
             {showPaidWatermark && (
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-20 pointer-events-none select-none z-0">
@@ -197,59 +194,21 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                     </div>
                 </div>
 
-                {/* Bottom-right: actions */}
-                <div className="flex flex-col items-stretch justify-center gap-0.5 pl-1 pt-0.5 min-w-0">
-                    <button
-                        type="button"
-                        title="Receive rent — unpaid rental invoices"
-                        aria-label="Receive rent"
-                        disabled={!unit.hasUnpaidRental}
-                        onClick={e => {
-                            e.stopPropagation();
-                            onReceiveRent();
-                        }}
-                        className={`inline-flex items-center justify-center rounded-md border p-1 disabled:opacity-40 disabled:pointer-events-none ${
-                            unit.hasUnpaidRental
-                                ? 'border-red-300 bg-red-100 hover:bg-red-200'
-                                : 'border-app-border bg-app-toolbar/50 hover:bg-app-toolbar'
-                        }`}
-                    >
-                        <ArrowDownToLine className="w-3.5 h-3.5 text-slate-800" aria-hidden />
-                    </button>
-                    <button
-                        type="button"
-                        title="Receive security — unpaid security deposit invoices"
-                        aria-label="Receive security deposit"
-                        disabled={!unit.hasUnpaidSecurity}
-                        onClick={e => {
-                            e.stopPropagation();
-                            onReceiveSecurity();
-                        }}
-                        className={`inline-flex items-center justify-center rounded-md border p-1 disabled:opacity-40 disabled:pointer-events-none ${
-                            unit.hasUnpaidSecurity
-                                ? 'border-red-300 bg-red-100 hover:bg-red-200'
-                                : 'border-app-border bg-app-toolbar/50 hover:bg-app-toolbar'
-                        }`}
-                    >
-                        <ShieldCheck className="w-3.5 h-3.5 text-slate-800" aria-hidden />
-                    </button>
-                    <button
-                        type="button"
-                        title="Deduct service charges (manual)"
-                        aria-label="Deduct service charges"
-                        disabled={!unit.canDeductServiceCharges}
-                        onClick={e => {
-                            e.stopPropagation();
-                            onDeductCharges();
-                        }}
-                        className={`inline-flex items-center justify-center rounded-md border p-1 disabled:opacity-40 disabled:pointer-events-none ${
-                            unit.canDeductServiceCharges
-                                ? 'border-red-300 bg-red-100 hover:bg-red-200'
-                                : 'border-app-border bg-app-toolbar/50 hover:bg-app-toolbar'
-                        }`}
-                    >
-                        <FileMinus className="w-3.5 h-3.5 text-slate-800" aria-hidden />
-                    </button>
+                {/* Bottom-right: payout due */}
+                <div className="flex flex-col gap-0.5 min-w-0 pl-1 pt-0.5">
+                    <div className="flex items-center justify-between gap-0.5" title="Payout due to owner">
+                        <Banknote className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
+                        <span className={`text-[9px] font-bold tabular-nums truncate ${unit.payoutDue > 0 ? 'text-ds-warning' : 'text-slate-900'}`}>
+                            {formatCompactK(unit.payoutDue)}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-center mt-auto">
+                        <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
+                            unit.status === 'Occupied' ? 'border-ds-success/30 bg-[color:var(--badge-paid-bg)] text-ds-success' : 'border-app-border bg-app-toolbar text-app-muted'
+                        }`}>
+                            {unit.status}
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>

@@ -13,7 +13,6 @@ import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
 import { ImportType } from '../../services/importService';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { useGenerateDueInvoices } from '../../hooks/useGenerateDueInvoices';
 import { useDebounce } from '../../hooks/useDebounce';
 
 interface RentalInvoicesContentProps {
@@ -57,8 +56,6 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
   const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
   const [paymentDeleteModal, setPaymentDeleteModal] = useState<{ isOpen: boolean; transaction: Transaction | null }>({ isOpen: false, transaction: null });
-
-  const { overdueCount, handleGenerateAllDue, isGenerating } = useGenerateDueInvoices();
 
   // Shared lookup Maps — O(1) lookups replace repeated .find() calls across all memos
   const contactsById = useMemo(() => new Map(state.contacts.map(c => [c.id, c])), [state.contacts]);
@@ -410,31 +407,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-slate-50/50 pt-2 px-3 sm:pt-3 sm:px-4 pb-1 gap-2">
-      {/* Due for Generation Banner */}
-      {overdueCount > 0 && (
-        <div className="flex items-center justify-between px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-amber-800">
-              {overdueCount} invoice{overdueCount > 1 ? 's are' : ' is'} due for generation
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={handleGenerateAllDue}
-              disabled={isGenerating}
-              size="sm"
-              className="bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              {isGenerating ? 'Generating...' : `Generate All (${overdueCount})`}
-            </Button>
-            {onSchedulesClick && (
-              <Button variant="secondary" onClick={onSchedulesClick} size="sm">
-                Manage Schedules
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+{/* Recurring invoice generation banner removed — recurring auto-generation is disabled */}
 
       {/* Summary Cards - compact height */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">

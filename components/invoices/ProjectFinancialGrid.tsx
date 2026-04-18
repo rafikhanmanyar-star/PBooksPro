@@ -74,6 +74,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
     const { showToast, showAlert } = useNotification();
 
     const projectAgreements = useStateSelector(s => s.projectAgreements);
+    const invoices = useStateSelector(s => s.invoices);
 
     const contactsById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
     const propertiesById = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
@@ -81,6 +82,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
     const projectsById = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
     const unitsById = useMemo(() => new Map(units.map(u => [u.id, u])), [units]);
     const agreementsById = useMemo(() => new Map(projectAgreements.map(a => [a.id, a])), [projectAgreements]);
+    const invoicesById = useMemo(() => new Map(invoices.map(i => [i.id, i])), [invoices]);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -440,11 +442,29 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
                 typeClass = 'ds-pill-type ds-pill-type-installment';
             }
         } else if (isPayment) {
-            const descLower = description.toLowerCase();
-            if (descLower.includes('security')) { displayType = 'Sec Pmt'; typeClass = 'ds-pill-type ds-pill-type-security'; }
-            else if (descLower.includes('rent') || descLower.includes('rental')) { displayType = 'Rent Pmt'; typeClass = 'ds-pill-type ds-pill-type-payment'; }
-            else if (isBulk) { displayType = 'Bulk Pmt'; typeClass = 'ds-pill-type ds-pill-type-bulk'; }
-            else { displayType = 'Payment'; typeClass = 'ds-pill-type ds-pill-type-payment'; }
+            const tx = record.raw as Transaction;
+            const linkedInvoice = tx.invoiceId ? invoicesById.get(tx.invoiceId) : null;
+
+            if (linkedInvoice) {
+                const isSecurityPayment =
+                    linkedInvoice.invoiceType === InvoiceType.SECURITY_DEPOSIT
+                    || (linkedInvoice.description || '').toLowerCase().includes('security')
+                    || (linkedInvoice.securityDepositCharge || 0) >= linkedInvoice.amount;
+
+                if (isSecurityPayment) {
+                    displayType = 'Sec Pmt'; typeClass = 'ds-pill-type ds-pill-type-security';
+                } else {
+                    const descLower = description.toLowerCase();
+                    if (descLower.includes('security')) { displayType = 'Sec Pmt'; typeClass = 'ds-pill-type ds-pill-type-security'; }
+                    else { displayType = 'Rent Pmt'; typeClass = 'ds-pill-type ds-pill-type-payment'; }
+                }
+            } else {
+                const descLower = description.toLowerCase();
+                if (descLower.includes('security')) { displayType = 'Sec Pmt'; typeClass = 'ds-pill-type ds-pill-type-security'; }
+                else if (descLower.includes('rent') || descLower.includes('rental')) { displayType = 'Rent Pmt'; typeClass = 'ds-pill-type ds-pill-type-payment'; }
+                else if (isBulk) { displayType = 'Bulk Pmt'; typeClass = 'ds-pill-type ds-pill-type-bulk'; }
+                else { displayType = 'Payment'; typeClass = 'ds-pill-type ds-pill-type-payment'; }
+            }
         }
 
         const handleRowClick = () => {

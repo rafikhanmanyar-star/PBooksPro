@@ -249,6 +249,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 if (!cid) {
                     const catName = inv.invoiceType === InvoiceType.INSTALLMENT ? 'Unit Selling Income'
                         : inv.invoiceType === InvoiceType.SERVICE_CHARGE ? 'Service Charge Income'
+                        : inv.invoiceType === InvoiceType.SECURITY_DEPOSIT ? 'Security Deposit'
                         : inv.invoiceType === InvoiceType.RENTAL ? 'Rental Income'
                         : null;
                     if (catName) {
@@ -275,12 +276,16 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 const mkId = () =>
                     `txn-bulk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}-${inv.id}`;
 
+                const invLabel = inv.invoiceType === InvoiceType.SECURITY_DEPOSIT
+                    ? 'Security Deposit'
+                    : label;
+
                 transactions.push({
                     id: mkId(),
                     type: TransactionType.INCOME,
                     amount: payAmount,
                     date: paymentDate,
-                    description: `Bulk Payment: ${reference || label} (Inv #${inv.invoiceNumber})`,
+                    description: `Bulk Payment: ${reference || invLabel} (Inv #${inv.invoiceNumber})`,
                     accountId,
                     contactId: inv.contactId,
                     projectId: pid,

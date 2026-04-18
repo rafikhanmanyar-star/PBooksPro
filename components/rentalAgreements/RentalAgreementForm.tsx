@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
-import { RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType, RecurringInvoiceTemplate } from '../../types';
+import { RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
@@ -11,7 +11,7 @@ import Modal from '../ui/Modal';
 import ContactForm from '../settings/ContactForm';
 import { CURRENCY, ICONS } from '../../constants';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
-import { getFirstOfNextMonthLocal, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
+import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { RentalAgreementsApiRepository } from '../../services/api/repositories/rentalAgreementsApi';
 import { ContactsApiRepository, normalizeContactFromApi } from '../../services/api/repositories/contactsApi';
@@ -193,7 +193,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
         const confirmMsg = "Generate initial invoices?\n" +
             (secDep > 0 ? `- Security Deposit: ${CURRENCY} ${secDep.toLocaleString()}\n` : "") +
-            (rent > 0 ? `- First Month Rent: ${CURRENCY} ${proRatedRent.toLocaleString()}${isProrated ? ` (Pro-rata: ${remainingDays}/${daysInMonth} days)` : ''}\n- Recurring Template` : "");
+            (rent > 0 ? `- First Month Rent: ${CURRENCY} ${proRatedRent.toLocaleString()}${isProrated ? ` (Pro-rata: ${remainingDays}/${daysInMonth} days)` : ''}` : "");
 
         if (!(await showConfirm(confirmMsg, { title: "Generate Invoices", confirmLabel: "Generate" }))) return;
 
@@ -229,15 +229,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 agreementId: agreementToEdit.id, rentalMonth: startDate.slice(0, 7)
             };
             dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
-
-            const nextDueDateStr = getFirstOfNextMonthLocal(startDateObj);
-            const recurringTemplate: RecurringInvoiceTemplate = {
-                id: `rec-${Date.now()}`, contactId, propertyId, buildingId: bId || '', amount: rent,
-                descriptionTemplate: "Rent for {Month} [Rental]", dayOfMonth: 1,
-                nextDueDate: nextDueDateStr, active: true, agreementId: agreementToEdit.id,
-                invoiceType: InvoiceType.RENTAL, autoGenerate: true, frequency: 'Monthly',
-            };
-            dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
         }
 
         if (currentNextNum > nextNumSetting) {
@@ -321,7 +312,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
         // Show invoice generation prompt only after step 3 (Broker & Review) is complete
         const shouldGenerate = await showConfirm(
-            "Agreement created!\n\nGenerate initial invoices?\n\n1. Security Deposit Invoice\n2. First Month Rental Invoice\n3. Recurring Invoice Template",
+            "Agreement created!\n\nGenerate initial invoices?\n\n1. Security Deposit Invoice\n2. First Month Rental Invoice",
             { title: "Generate Invoices", confirmLabel: "Yes, Generate", cancelLabel: "No, Skip" }
         );
 
@@ -362,14 +353,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     buildingId: bId, categoryId: rentCat?.id, agreementId: agreementIdForInvoices, rentalMonth: agreementData.startDate.slice(0, 7)
                 };
                 dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
-                const nextDueDateStr = getFirstOfNextMonthLocal(sdObj);
-                const recurringTemplate: RecurringInvoiceTemplate = {
-                    id: `rec-${Date.now()}`, contactId: agreementData.contactId, propertyId: agreementData.propertyId,
-                    buildingId: bId || '', amount: agreementData.monthlyRent, descriptionTemplate: "Rent for {Month} [Rental]",
-                    dayOfMonth: 1, nextDueDate: nextDueDateStr,
-                    active: true, agreementId: agreementIdForInvoices, invoiceType: InvoiceType.RENTAL, autoGenerate: true, frequency: 'Monthly',
-                };
-                dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
             }
             if (currentNextNum > nextNumSetting) {
                 dispatch({ type: 'UPDATE_RENTAL_INVOICE_SETTINGS', payload: { ...rentalInvoiceSettings, nextNumber: currentNextNum } });
