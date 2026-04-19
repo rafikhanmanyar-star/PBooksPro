@@ -2,11 +2,17 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
-import { AppAction, Property, Contact, ContactType, RentalAgreement, RentalAgreementStatus } from '../../types';
+import {
+    AppAction,
+    AppState,
+    Property,
+    Contact,
+    ContactType,
+    RentalAgreement,
+    RentalAgreementStatus,
+} from '../../types';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { apiClient } from '../../services/api/client';
-import { applyLegacySingleOwnerTransfer } from '../../services/propertyOwnershipService';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -223,37 +229,19 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
             if (useApi) {
                 const api = getAppStateApiService();
 
-                const tenantId = apiClient.getTenantId() || 'local';
-                const afterOwnership = applyLegacySingleOwnerTransfer(state, {
-                    propertyId: property.id,
-                    newOwnerId,
+                await api.transferPropertyOwnership(property.id, {
                     transferDate,
-                    transferReference: transferReference.trim() || undefined,
+                    owners: [{ ownerId: newOwnerId, sharePercent: 100 }],
+                    transferDocument: transferReference.trim() || undefined,
                     notes: notes.trim() || undefined,
-                    tenantId,
                 });
-                const transferredProp = afterOwnership.properties.find((p) => p.id === property.id);
-                if (!transferredProp) {
-                    throw new Error('Property not found after transfer transform');
-                }
                 const updatedPropForStore: Property = {
-                    ...transferredProp,
+                    ...property,
+                    ownerId: newOwnerId,
                     description: property.description
                         ? `${property.description}\n\n[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`
                         : `[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`,
                 };
-                const ownershipRows = (afterOwnership.propertyOwnership || [])
-                    .filter((r) => String(r.propertyId) === String(property.id))
-                    .map((r) => ({
-                        id: r.id,
-                        ownerId: r.ownerId,
-                        ownershipPercentage: r.ownershipPercentage,
-                        startDate: r.startDate,
-                        endDate: r.endDate ?? null,
-                        isActive: r.isActive,
-                    }));
-
-                await api.syncPropertyOwnership(property.id, ownershipRows);
 
                 const bodyBase = {
                     name: updatedPropForStore.name,
@@ -380,115 +368,121 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                 }
             }
 
-            // 1. Ownership history + current owner (closes current row, adds new row, updates property.ownerId)
-            dispatch({
-                type: 'TRANSFER_PROPERTY_OWNERSHIP',
-                payload: {
-                    propertyId: property.id,
-                    newOwnerId,
-                    transferDate,
-                    transferReference: transferReference.trim() || undefined,
-                    notes: notes.trim() || undefined,
-                },
-            });
-
-            // 2. Update property description for display (keep server version after API persist so later edits do not 409)
-            const updatedProperty = {
-                ...property,
-                ownerId: newOwnerId,
-                description: property.description
-                    ? `${property.description}\n\n[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`
-                    : `[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`,
-                ...(persistedPropertyVersion !== undefined
-                    ? { version: persistedPropertyVersion }
-                    : {}),
-            } as Property;
-            dispatch({ type: 'UPDATE_PROPERTY', payload: updatedProperty });
-
-            // 3. Update old agreements (RENEWED, EXPIRED, TERMINATED) to preserve old owner ID
-            // This ensures historical records show the correct owner at the time of the agreement
-            oldAgreements.forEach(agreementInfo => {
-                const oldAgreement = agreementInfo.agreement;
-                // Only update if ownerId is not already set (to avoid overwriting previous transfers)
-                if (!oldAgreement.ownerId) {
-                    dispatch({
-                        type: 'UPDATE_RENTAL_AGREEMENT',
-                        payload: {
-                            ...oldAgreement,
-                            ownerId: oldOwnerId, // Preserve old owner ID for historical records
-                            description: oldAgreement.description 
-                                ? `${oldAgreement.description}\n\n[OWNERSHIP] Property ownership changed on ${transferDate}. This agreement was with ${currentOwner?.name || 'previous owner'} when active.`
-                                : `[OWNERSHIP] Property ownership changed on ${transferDate}. This agreement was with ${currentOwner?.name || 'previous owner'} when active.`
-                        },
-                        ...(useApi ? { _isRemote: true } : {}),
-                    } as AppAction);
+            if (useApi) {
+                const api = getAppStateApiService();
+                const partial = await api.loadState();
+                const patch: Partial<AppState> = {};
+                if (partial.properties != null) patch.properties = partial.properties;
+                if (partial.propertyOwnership != null) patch.propertyOwnership = partial.propertyOwnership;
+                if (partial.rentalAgreements != null) patch.rentalAgreements = partial.rentalAgreements;
+                if (partial.recurringInvoiceTemplates != null) {
+                    patch.recurringInvoiceTemplates = partial.recurringInvoiceTemplates;
                 }
-            });
-
-            // 4. Renew Active Agreements (if requested and available)
-            if (shouldRenewAgreements && activeAgreements.length > 0) {
-                const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
-                const buildingId = property.buildingId;
-
-                for (const agreementInfo of activeAgreements) {
-                    const oldAgreement = agreementInfo.agreement;
-
-                    // Mark old agreement as RENEWED and preserve old owner ID for historical records
-                    dispatch({
-                        type: 'UPDATE_RENTAL_AGREEMENT',
-                        payload: {
-                            ...oldAgreement,
-                            status: RentalAgreementStatus.RENEWED,
-                            ownerId: oldOwnerId, // Preserve old owner ID before property transfer
-                            description: oldAgreement.description 
-                                ? `${oldAgreement.description}\n\n[TRANSFERRED] Agreement ended due to property transfer on ${transferDate}. Property was transferred from ${currentOwner?.name || 'previous owner'} to ${newOwner.name}.`
-                                : `[TRANSFERRED] Agreement ended due to property transfer on ${transferDate}. Property was transferred from ${currentOwner?.name || 'previous owner'} to ${newOwner.name}.`
-                        },
-                        ...(useApi ? { _isRemote: true } : {}),
-                    } as AppAction);
-
-                    // Remove old recurring templates for this agreement (so only active agreement templates remain)
-                    const oldTemplates = state.recurringInvoiceTemplates.filter(
-                        t => t.agreementId === oldAgreement.id
-                    );
-                    oldTemplates.forEach(template => {
-                        dispatch({ type: 'DELETE_RECURRING_TEMPLATE', payload: template.id });
-                    });
-
-                    // Create new agreement
-                    const newAgreementId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-                    const newAgreementNumber = getNextAgreementNumber();
-
-                    const newAgreement: RentalAgreement = {
-                        id: newAgreementId,
-                        agreementNumber: newAgreementNumber,
-                        contactId: oldAgreement.contactId,
+                if (partial.agreementSettings != null) patch.agreementSettings = partial.agreementSettings;
+                dispatch({
+                    type: 'SET_STATE',
+                    payload: patch,
+                    _isRemote: true,
+                } as AppAction);
+            } else {
+                // 1. Ownership history + current owner (closes current row, adds new row, updates property.ownerId)
+                dispatch({
+                    type: 'TRANSFER_PROPERTY_OWNERSHIP',
+                    payload: {
                         propertyId: property.id,
-                        startDate: transferDate,
-                        endDate: oldAgreement.endDate, // Keep same end date or extend as needed
-                        monthlyRent: oldAgreement.monthlyRent,
-                        rentDueDate: oldAgreement.rentDueDate,
-                        status: RentalAgreementStatus.ACTIVE,
-                        securityDeposit: oldAgreement.securityDeposit,
-                        brokerId: oldAgreement.brokerId,
-                        brokerFee: oldAgreement.brokerFee,
-                        ownerId: newOwnerId, // Store new owner ID for this agreement
-                        previousAgreementId: oldAgreement.id,
-                        description: `Renewed due to property transfer to ${newOwner.name} on ${transferDate}. Previous agreement: ${oldAgreement.agreementNumber}`
-                    };
+                        newOwnerId,
+                        transferDate,
+                        transferReference: transferReference.trim() || undefined,
+                        notes: notes.trim() || undefined,
+                    },
+                });
 
-                    dispatch({
-                        type: 'ADD_RENTAL_AGREEMENT',
-                        payload: newAgreement,
-                        ...(useApi ? { _isRemote: true } : {}),
-                    } as AppAction);
+                // 2. Update property description for display
+                const updatedProperty = {
+                    ...property,
+                    ownerId: newOwnerId,
+                    description: property.description
+                        ? `${property.description}\n\n[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`
+                        : `[TRANSFERRED] Previously owned by ${currentOwner?.name || 'Unknown'} until ${transferDate}. Reason: ${transferReason}`,
+                    ...(persistedPropertyVersion !== undefined
+                        ? { version: persistedPropertyVersion }
+                        : {}),
+                } as Property;
+                dispatch({ type: 'UPDATE_PROPERTY', payload: updatedProperty });
 
-                    // Update agreement settings counter
-                    const nextSeq = parseInt(newAgreementNumber.slice(state.agreementSettings.prefix.length)) + 1;
-                    dispatch({
-                        type: 'UPDATE_AGREEMENT_SETTINGS',
-                        payload: { ...state.agreementSettings, nextNumber: nextSeq }
-                    });
+                // 3. Update old agreements (RENEWED, EXPIRED, TERMINATED) to preserve old owner ID
+                oldAgreements.forEach(agreementInfo => {
+                    const oldAgreement = agreementInfo.agreement;
+                    if (!oldAgreement.ownerId) {
+                        dispatch({
+                            type: 'UPDATE_RENTAL_AGREEMENT',
+                            payload: {
+                                ...oldAgreement,
+                                ownerId: oldOwnerId,
+                                description: oldAgreement.description
+                                    ? `${oldAgreement.description}\n\n[OWNERSHIP] Property ownership changed on ${transferDate}. This agreement was with ${currentOwner?.name || 'previous owner'} when active.`
+                                    : `[OWNERSHIP] Property ownership changed on ${transferDate}. This agreement was with ${currentOwner?.name || 'previous owner'} when active.`,
+                            },
+                        } as AppAction);
+                    }
+                });
+
+                // 4. Renew Active Agreements (if requested and available)
+                if (shouldRenewAgreements && activeAgreements.length > 0) {
+                    for (const agreementInfo of activeAgreements) {
+                        const oldAgreement = agreementInfo.agreement;
+
+                        dispatch({
+                            type: 'UPDATE_RENTAL_AGREEMENT',
+                            payload: {
+                                ...oldAgreement,
+                                status: RentalAgreementStatus.RENEWED,
+                                ownerId: oldOwnerId,
+                                description: oldAgreement.description
+                                    ? `${oldAgreement.description}\n\n[TRANSFERRED] Agreement ended due to property transfer on ${transferDate}. Property was transferred from ${currentOwner?.name || 'previous owner'} to ${newOwner.name}.`
+                                    : `[TRANSFERRED] Agreement ended due to property transfer on ${transferDate}. Property was transferred from ${currentOwner?.name || 'previous owner'} to ${newOwner.name}.`,
+                            },
+                        } as AppAction);
+
+                        const oldTemplates = state.recurringInvoiceTemplates.filter(
+                            t => t.agreementId === oldAgreement.id
+                        );
+                        oldTemplates.forEach(template => {
+                            dispatch({ type: 'DELETE_RECURRING_TEMPLATE', payload: template.id });
+                        });
+
+                        const newAgreementId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+                        const newAgreementNumber = getNextAgreementNumber();
+
+                        const newAgreement: RentalAgreement = {
+                            id: newAgreementId,
+                            agreementNumber: newAgreementNumber,
+                            contactId: oldAgreement.contactId,
+                            propertyId: property.id,
+                            startDate: transferDate,
+                            endDate: oldAgreement.endDate,
+                            monthlyRent: oldAgreement.monthlyRent,
+                            rentDueDate: oldAgreement.rentDueDate,
+                            status: RentalAgreementStatus.ACTIVE,
+                            securityDeposit: oldAgreement.securityDeposit,
+                            brokerId: oldAgreement.brokerId,
+                            brokerFee: oldAgreement.brokerFee,
+                            ownerId: newOwnerId,
+                            previousAgreementId: oldAgreement.id,
+                            description: `Renewed due to property transfer to ${newOwner.name} on ${transferDate}. Previous agreement: ${oldAgreement.agreementNumber}`,
+                        };
+
+                        dispatch({
+                            type: 'ADD_RENTAL_AGREEMENT',
+                            payload: newAgreement,
+                        } as AppAction);
+
+                        const nextSeq = parseInt(newAgreementNumber.slice(state.agreementSettings.prefix.length), 10) + 1;
+                        dispatch({
+                            type: 'UPDATE_AGREEMENT_SETTINGS',
+                            payload: { ...state.agreementSettings, nextNumber: nextSeq },
+                        });
+                    }
                 }
             }
 

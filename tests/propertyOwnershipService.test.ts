@@ -123,6 +123,22 @@ function baseState(): AppState {
 }
 
 {
+  assert.equal(
+    validateOwnershipSharesTotal([
+      { ownerId: 'a', percentage: 50 },
+      { ownerId: 'b', percentage: 50.01 },
+    ]),
+    null
+  );
+  assert.ok(
+    validateOwnershipSharesTotal([
+      { ownerId: 'a', percentage: 50 },
+      { ownerId: 'b', percentage: 50.02 },
+    ])
+  );
+}
+
+{
   let st = baseState();
   st = applyOwnershipTransferToState(st, {
     propertyId: 'p1',
@@ -138,6 +154,8 @@ function baseState(): AppState {
   assert.equal(active.length, 2);
   assert.ok(!hasMultipleOwnersOnDate(st, 'p1', '2025-03-01'));
   assert.ok(hasMultipleOwnersOnDate(st, 'p1', '2025-03-15'));
+  const prev = st.propertyOwnership!.find((r) => r.propertyId === 'p1' && r.ownerId === 'o1' && !r.isActive);
+  assert.equal(prev?.endDate, '2025-03-15');
 }
 
 {

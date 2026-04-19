@@ -13,7 +13,11 @@ import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappServ
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
 import { getOwnershipSharesForPropertyOnDate, primaryOwnerIdFromShares } from '../../services/propertyOwnershipService';
-import { buildOwnerRentAllocationTransactions, shouldPostOwnerRentAllocation } from '../../services/rentOwnerAllocation';
+import {
+    buildOwnerRentAllocationTransactions,
+    multiOwnerShareSplitError,
+    shouldPostOwnerRentAllocation,
+} from '../../services/rentOwnerAllocation';
 import { accountIdMatchesLogical } from '../../services/systemEntityIds';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 
@@ -184,15 +188,30 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         const property = effectiveInvoice.propertyId
             ? state.properties.find(p => p.id === effectiveInvoice.propertyId)
             : null;
+
+        // Resolve owner from the agreement that generated this invoice.
+        // After a property transfer the old agreement stores ownerId = old owner
+        // and the new agreement stores ownerId = new owner, so rental income
+        // is attributed to whoever owned the property when the agreement was active
+        // — not whoever owns it on the day the tenant happens to pay.
+        const linkedAgreement = effectiveInvoice.agreementId
+            ? state.rentalAgreements.find(a => a.id === effectiveInvoice.agreementId)
+            : null;
+        const ownerFromAgreement = linkedAgreement?.ownerId;
+
+        // Fallback: resolve from property_ownership using the INVOICE issue date,
+        // not the payment date — rent earned under the old owner stays with them.
+        const ownerResolveDate = (effectiveInvoice.issueDate || paymentDate).slice(0, 10);
         const sharesForDay = effectiveInvoice.propertyId
-            ? getOwnershipSharesForPropertyOnDate(state, effectiveInvoice.propertyId, paymentDate)
+            ? getOwnershipSharesForPropertyOnDate(state, effectiveInvoice.propertyId, ownerResolveDate)
             : [];
         const ownerId =
+            ownerFromAgreement ??
             primaryOwnerIdFromShares(sharesForDay) ??
             (effectiveInvoice.propertyId
                 ? getOwnerIdForPropertyOnDate(
                       effectiveInvoice.propertyId,
-                      paymentDate,
+                      ownerResolveDate,
                       state.propertyOwnershipHistory || [],
                       property?.ownerId
                   )
@@ -263,6 +282,15 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                 effectiveInvoice.propertyId &&
                 shouldPostOwnerRentAllocation(state, effectiveInvoice.propertyId, paymentDate)
             ) {
+                const splitErr = multiOwnerShareSplitError(
+                    state,
+                    effectiveInvoice.propertyId,
+                    paymentDate.slice(0, 10)
+                );
+                if (splitErr) {
+                    await showAlert(splitErr);
+                    return;
+                }
                 const batchId = `rent-alloc-${mkId()}`;
                 const allocLegs = buildOwnerRentAllocationTransactions(state, {
                     propertyId: effectiveInvoice.propertyId,

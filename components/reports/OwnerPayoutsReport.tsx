@@ -23,7 +23,7 @@ import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import TreeView, { TreeNode } from '../ui/TreeView';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { getAllHistoricalOwnerIds, resolveOwnerForPropertyOnDate, isFormerOwner, getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
+import { getAllHistoricalOwnerIds, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, isFormerOwner, getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
 
 type DateRangeOption = 'today' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -286,7 +286,7 @@ const OwnerPayoutsReport: React.FC = () => {
                             addIncomeToBalance(Math.round(rawAmt * s.percentage) / 100, s.ownerId, buildingId, tx.propertyId);
                         }
                     } else {
-                        const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : property?.ownerId);
+                        const ownerIdForTx = resolveOwnerForTransaction(state, tx) ?? property?.ownerId;
                         addIncomeToBalance(rawAmt, ownerIdForTx, buildingId, tx.propertyId);
                     }
                     return;
@@ -328,12 +328,11 @@ const OwnerPayoutsReport: React.FC = () => {
 
                 if (isRelevant) {
                     let buildingId = tx.buildingId;
-                    const txDate = (tx.date || '').slice(0, 10);
                     let ownerId = tx.contactId;
                     if (propertyId) {
                         const property = state.properties.find(p => p.id === propertyId);
                         if (property) {
-                            ownerId = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propertyId, txDate) : property.ownerId);
+                            ownerId = resolveOwnerForTransaction(state, tx) ?? property.ownerId;
                             if (!buildingId) buildingId = property.buildingId;
                         }
                     }
@@ -481,7 +480,7 @@ const OwnerPayoutsReport: React.FC = () => {
                         pushIncomeItem(tx, shareAmt, s.ownerId);
                     }
                 } else {
-                    const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : state.properties.find(p => p.id === tx.propertyId)?.ownerId);
+                    const ownerIdForTx = resolveOwnerForTransaction(state, tx) ?? state.properties.find(p => p.id === tx.propertyId)?.ownerId;
                     pushIncomeItem(tx, rawAmt, ownerIdForTx);
                 }
                 return;
@@ -538,12 +537,11 @@ const OwnerPayoutsReport: React.FC = () => {
                     if (isRelevant) {
                         let propertyName = '-';
                         let buildingId = tx.buildingId;
-                        const txDate = (tx.date || '').slice(0, 10);
 
                         if (propertyId) {
                             const property = state.properties.find(p => p.id === propertyId);
                             if (property) {
-                                ownerId = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propertyId, txDate) : property.ownerId);
+                                ownerId = resolveOwnerForTransaction(state, tx) ?? property.ownerId;
                                 propertyName = property.name;
                                 if (!buildingId) buildingId = property.buildingId;
                             }

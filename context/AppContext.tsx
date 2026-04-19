@@ -429,12 +429,36 @@ const createLogEntry = (action: TransactionLogEntry['action'], entityType: Trans
 
 /**
  * Stamp ownerId on a transaction when it has a propertyId but no ownerId set.
- * Resolves the owner from property_ownership date ranges at the transaction date.
+ *
+ * Resolution priority:
+ *   1. If the transaction is linked to an invoice → use the agreement's ownerId
+ *      (correctly attributes rental income to whoever owned the property when
+ *      the agreement was active, even if payment arrives after a transfer).
+ *   2. Resolve from property_ownership using the invoice issue date (not the
+ *      transaction/payment date) so pre-transfer rent stays with the old owner.
+ *   3. Fall back to the transaction date for non-invoice transactions.
+ *
  * NEVER overwrites an existing ownerId — preserves historical ownership.
  */
 function stampTransactionOwnerId(tx: Transaction, state: AppState): Transaction {
     if (tx.ownerId) return tx;
     if (!tx.propertyId) return tx;
+
+    // Try to resolve via the linked invoice's agreement
+    if (tx.invoiceId) {
+        const inv = state.invoices.find(i => i.id === tx.invoiceId);
+        if (inv?.agreementId) {
+            const agr = state.rentalAgreements.find(a => a.id === inv.agreementId);
+            if (agr?.ownerId) return { ...tx, ownerId: agr.ownerId };
+        }
+        // Use invoice issue date for ownership lookup (not payment date)
+        if (inv?.issueDate) {
+            const invDate = inv.issueDate.slice(0, 10);
+            const resolved = resolveOwnerForPropertyOnDate(state, tx.propertyId, invDate);
+            if (resolved) return { ...tx, ownerId: resolved };
+        }
+    }
+
     const d = (tx.date || '').slice(0, 10);
     if (!d) return tx;
     const resolved = resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
@@ -472,16 +496,15 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             }
             if (!changed) return state;
             // Backfill ownerId on transactions loaded without one (historical data fix).
+            // Uses agreement-aware resolution so pre-transfer rental income stays
+            // attributed to the old owner.
             if (payload.transactions && next.properties?.length > 0) {
                 let anyStamped = false;
                 const stamped = next.transactions.map(tx => {
                     if (tx.ownerId || !tx.propertyId) return tx;
-                    const d = (tx.date || '').slice(0, 10);
-                    if (!d) return tx;
-                    const resolved = resolveOwnerForPropertyOnDate(next, tx.propertyId, d);
-                    if (!resolved) return tx;
-                    anyStamped = true;
-                    return { ...tx, ownerId: resolved };
+                    const patched = stampTransactionOwnerId(tx, next);
+                    if (patched !== tx) anyStamped = true;
+                    return patched;
                 });
                 if (anyStamped) next.transactions = stamped;
             }

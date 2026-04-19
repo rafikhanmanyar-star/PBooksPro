@@ -4,7 +4,11 @@
 
 import type { AppState, Transaction } from '../types';
 import { TransactionType } from '../types';
-import { getOwnershipSharesForPropertyOnDate, primaryOwnerIdFromShares } from './propertyOwnershipService';
+import {
+  getOwnershipSharesForPropertyOnDate,
+  OWNERSHIP_TOTAL_EPS,
+  primaryOwnerIdFromShares,
+} from './propertyOwnershipService';
 import { resolveSystemCategoryId } from './systemEntityIds';
 
 function round2(n: number): number {
@@ -19,6 +23,22 @@ export function shouldPostOwnerRentAllocation(
   if (!propertyId) return false;
   const shares = getOwnershipSharesForPropertyOnDate(state, propertyId, dateYyyyMmDd);
   return shares.length > 1;
+}
+
+/** When multiple owners apply, splits require shares totaling 100% (± OWNERSHIP_TOTAL_EPS). */
+export function multiOwnerShareSplitError(
+  state: AppState,
+  propertyId: string | undefined,
+  dateYyyyMmDd: string
+): string | null {
+  if (!propertyId) return null;
+  const shares = getOwnershipSharesForPropertyOnDate(state, propertyId, dateYyyyMmDd);
+  if (shares.length <= 1) return null;
+  const sum = shares.reduce((s, x) => s + (Number(x.percentage) || 0), 0);
+  if (Math.abs(sum - 100) > OWNERSHIP_TOTAL_EPS) {
+    return `This property has multiple owners on ${dateYyyyMmDd.slice(0, 10)}, but ownership shares total ${sum.toFixed(2)}% instead of 100%. Fix ownership before posting split allocations.`;
+  }
+  return null;
 }
 
 function resolveClearingAndShareCategoryIds(state: AppState): { clearingId: string; shareId: string } | null {
@@ -59,6 +79,9 @@ export function buildOwnerRentAllocationTransactions(
 
   const shares = getOwnershipSharesForPropertyOnDate(state, args.propertyId, args.paymentDateYyyyMmDd);
   if (shares.length <= 1) return [];
+
+  const sumPct = shares.reduce((s, x) => s + (Number(x.percentage) || 0), 0);
+  if (Math.abs(sumPct - 100) > OWNERSHIP_TOTAL_EPS) return [];
 
   const primary = primaryOwnerIdFromShares(shares);
 

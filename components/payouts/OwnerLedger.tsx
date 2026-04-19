@@ -4,7 +4,7 @@ import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -81,11 +81,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         if (hasExplicitShares) return false;
                         return true;
                     }
-                    if (tx.ownerId) return tx.ownerId === ownerId;
-                    if (d && tx.propertyId) {
-                        const resolved = resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
-                        return resolved === ownerId;
-                    }
+                    const resolved = resolveOwnerForTransaction(state, tx);
+                    if (resolved) return resolved === ownerId;
                     return true;
                 }
 
@@ -225,8 +222,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
 
-                const txDate = (tx.date || '').slice(0, 10);
-                const ownerIdForTx = tx.ownerId ?? (txDate && tx.propertyId ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : undefined);
+                const ownerIdForTx = resolveOwnerForTransaction(state, tx);
                 if (ownerIdForTx && ownerIdForTx !== ownerId) return;
 
                 const property = state.properties.find(p => p.id === tx.propertyId);
@@ -291,11 +287,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 const deposits = state.transactions.filter(tx => {
                     if (tx.type !== TransactionType.INCOME || tx.categoryId !== secDepCategory.id) return false;
                     if (!tx.propertyId || !ownerPropertyIds.has(String(tx.propertyId))) return false;
-                    const d = (tx.date || '').slice(0, 10);
-                    if (d && tx.propertyId) {
-                        const resolved = tx.ownerId ?? resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
-                        if (resolved && resolved !== ownerId) return false;
-                    }
+                    const resolved = resolveOwnerForTransaction(state, tx);
+                    if (resolved && resolved !== ownerId) return false;
                     return true;
                 });
                 deposits.forEach(tx => {
@@ -337,11 +330,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 const refunds = state.transactions.filter(tx => {
                     if (tx.type !== TransactionType.EXPENSE) return false;
                     if (!tx.propertyId || !ownerPropertyIds.has(String(tx.propertyId))) return false;
-                    const d = (tx.date || '').slice(0, 10);
-                    if (d && tx.propertyId) {
-                        const resolved = tx.ownerId ?? resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
-                        if (resolved && resolved !== ownerId) return false;
-                    }
+                    const resolved = resolveOwnerForTransaction(state, tx);
+                    if (resolved && resolved !== ownerId) return false;
                     return true;
                 });
                 refunds.forEach(tx => {

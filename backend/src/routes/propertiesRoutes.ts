@@ -16,6 +16,15 @@ import {
   syncPropertyOwnershipRowsForProperty,
   type PropertyOwnershipSyncRow,
 } from '../services/propertyOwnershipPgService.js';
+import {
+  getOwnershipSegmentById,
+  listOwnershipSegmentsForTenant,
+  segmentListToApi,
+  segmentToDetailApi,
+  softDeleteOwnershipSegment,
+  transferPropertyOwnership,
+  type TransferOwnershipBody,
+} from '../services/propertyOwnershipTransferService.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
 export const propertiesRouter = Router();
@@ -59,6 +68,105 @@ propertiesRouter.get('/properties/ownership', async (req: AuthedRequest, res) =>
     }
   } catch (e) {
     handleRouteError(res, e);
+  }
+});
+
+/** Admin-style list: all ownership segments with property and owner names (newest first). */
+propertiesRouter.get('/properties/ownership/segments', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const includeDeleted = req.query.includeDeleted === '1' || req.query.includeDeleted === 'true';
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const rows = await listOwnershipSegmentsForTenant(client, tenantId, { includeDeleted });
+      sendSuccess(res, segmentListToApi(rows));
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+propertiesRouter.get('/properties/ownership/segments/:segmentId', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const { segmentId } = req.params;
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const row = await getOwnershipSegmentById(client, tenantId, segmentId);
+      if (!row) {
+        sendFailure(res, 404, 'NOT_FOUND', 'Ownership segment not found');
+        return;
+      }
+      sendSuccess(res, segmentToDetailApi(row));
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+propertiesRouter.delete('/properties/ownership/segments/:segmentId', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const { segmentId } = req.params;
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    let propertyId: string | undefined;
+    try {
+      const row = await getOwnershipSegmentById(client, tenantId, segmentId);
+      propertyId = row?.property_id;
+    } finally {
+      client.release();
+    }
+    const ok = await withTransaction((c) => softDeleteOwnershipSegment(c, tenantId, segmentId));
+    if (!ok) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Ownership segment not found or already deleted');
+      return;
+    }
+    if (propertyId) {
+      emitEntityEvent(tenantId, 'updated', 'property', { id: propertyId, sourceUserId: req.userId });
+    }
+    sendSuccess(res, { id: segmentId });
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+/** Atomic server-side ownership transfer (closes open rows, inserts new slices, updates property.owner_id). */
+propertiesRouter.post('/properties/:id/ownership/transfer', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const { id: propertyId } = req.params;
+  const body = req.body as TransferOwnershipBody;
+  try {
+    const result = await withTransaction((client) =>
+      transferPropertyOwnership(client, tenantId, propertyId, body)
+    );
+    emitEntityEvent(tenantId, 'updated', 'property', { data: result.property, sourceUserId: req.userId });
+    sendSuccess(res, result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
 });
 

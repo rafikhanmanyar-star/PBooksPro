@@ -11,7 +11,11 @@ import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
 import { getOwnershipSharesForPropertyOnDate, primaryOwnerIdFromShares } from '../../services/propertyOwnershipService';
-import { buildOwnerRentAllocationTransactions, shouldPostOwnerRentAllocation } from '../../services/rentOwnerAllocation';
+import {
+    buildOwnerRentAllocationTransactions,
+    multiOwnerShareSplitError,
+    shouldPostOwnerRentAllocation,
+} from '../../services/rentOwnerAllocation';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
 import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
@@ -233,6 +237,22 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
         const label = isRentalContext ? 'Rental' : 'Installment';
         const transactions: Transaction[] = [];
 
+        for (const inv of selectedInvoices) {
+            const payAmountPre = parseFloat(payments[inv.id] || '0');
+            if (payAmountPre <= 0) continue;
+            if (
+                inv.invoiceType === InvoiceType.RENTAL &&
+                inv.propertyId &&
+                shouldPostOwnerRentAllocation(state, inv.propertyId, paymentDate)
+            ) {
+                const splitErr = multiOwnerShareSplitError(state, inv.propertyId, paymentDate.slice(0, 10));
+                if (splitErr) {
+                    await showAlert(splitErr);
+                    return;
+                }
+            }
+        }
+
         selectedInvoices.forEach(inv => {
             const payAmount = parseFloat(payments[inv.id] || '0');
             if (payAmount > 0) {
@@ -259,15 +279,25 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 }
 
                 const property = inv.propertyId ? state.properties.find(p => p.id === inv.propertyId) : null;
+
+                // Resolve owner from agreement (preserves old owner for pre-transfer invoices)
+                const linkedAgreement = inv.agreementId
+                    ? state.rentalAgreements.find(a => a.id === inv.agreementId)
+                    : null;
+                const ownerFromAgreement = linkedAgreement?.ownerId;
+
+                // Fallback: use invoice issue date (not payment date) for ownership lookup
+                const ownerResolveDate = (inv.issueDate || paymentDate).slice(0, 10);
                 const sharesForDay = inv.propertyId
-                    ? getOwnershipSharesForPropertyOnDate(state, inv.propertyId, paymentDate)
+                    ? getOwnershipSharesForPropertyOnDate(state, inv.propertyId, ownerResolveDate)
                     : [];
                 const ownerId =
+                    ownerFromAgreement ??
                     primaryOwnerIdFromShares(sharesForDay) ??
                     (inv.propertyId
                         ? getOwnerIdForPropertyOnDate(
                               inv.propertyId,
-                              paymentDate,
+                              ownerResolveDate,
                               state.propertyOwnershipHistory || [],
                               property?.ownerId
                           )

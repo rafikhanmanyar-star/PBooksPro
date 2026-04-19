@@ -2,11 +2,12 @@
  * Percentage-based property co-ownership: resolution, transfer, and cache.
  */
 
-import type { AppState, Property, PropertyOwnership, PropertyOwnershipHistory } from '../types';
+import type { AppState, Property, PropertyOwnership, PropertyOwnershipHistory, Transaction } from '../types';
 import { getOwnerIdForPropertyOnDate } from './ownershipHistoryUtils';
 import { toLocalDateString } from '../utils/dateUtils';
 
-const EPS = 0.0001;
+/** Total ownership must equal 100% within this tolerance (aligned with co-owner UI and API). */
+export const OWNERSHIP_TOTAL_EPS = 0.01;
 
 /** Session cache: propertyId → last resolved shares signature (avoid repeated scans in tight loops). */
 const ownershipSharesCache = new Map<string, { sig: string; shares: { ownerId: string; percentage: number }[] }>();
@@ -41,6 +42,10 @@ function rowEffectiveOnDate(row: PropertyOwnership, dateYyyyMmDd: string): boole
 /**
  * Active ownership shares for a property on a calendar date (sum should be 100 for configured properties).
  * Falls back to legacy single owner when `propertyOwnership` has no rows for this property.
+ *
+ * Precedence when unit-level ownership exists in the future: resolve unit-scoped splits first when a
+ * `unitId` applies (e.g. invoice or charge line); if no unit splits exist, use these property-level
+ * `propertyOwnership` rows; if still empty, fall back to `propertyOwnershipHistory` and `property.ownerId`.
  */
 export function getOwnershipSharesForPropertyOnDate(
   state: Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory'>,
@@ -114,6 +119,42 @@ export function resolveOwnerForPropertyOnDate(
 }
 
 /**
+ * Resolve the owner for a transaction, using invoice/agreement context when
+ * available so that pre-transfer rental income stays attributed to the old owner.
+ *
+ * Priority:
+ *   1. tx.ownerId if already stamped.
+ *   2. Agreement owner (invoice → agreement → ownerId).
+ *   3. property_ownership lookup using invoice issue date.
+ *   4. property_ownership lookup using transaction date.
+ *   5. property.ownerId fallback.
+ */
+export function resolveOwnerForTransaction(
+  state: Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory' | 'invoices' | 'rentalAgreements'>,
+  tx: Pick<Transaction, 'ownerId' | 'propertyId' | 'invoiceId' | 'date'>
+): string | undefined {
+  if (tx.ownerId) return tx.ownerId;
+  if (!tx.propertyId) return undefined;
+
+  if (tx.invoiceId) {
+    const inv = state.invoices?.find(i => i.id === tx.invoiceId);
+    if (inv?.agreementId) {
+      const agr = state.rentalAgreements?.find(a => a.id === inv.agreementId);
+      if (agr?.ownerId) return agr.ownerId;
+    }
+    if (inv?.issueDate) {
+      const invDate = inv.issueDate.slice(0, 10);
+      const resolved = resolveOwnerForPropertyOnDate(state, tx.propertyId, invDate);
+      if (resolved) return resolved;
+    }
+  }
+
+  const d = (tx.date || '').slice(0, 10);
+  if (!d) return undefined;
+  return resolveOwnerForPropertyOnDate(state, tx.propertyId, d);
+}
+
+/**
  * Returns the set of all owner IDs that have ever owned a given property
  * (current owner + any owner from closed propertyOwnership rows).
  */
@@ -166,7 +207,8 @@ export function primaryOwnerIdFromShares(shares: { ownerId: string; percentage: 
 
 export function validateOwnershipSharesTotal(shares: { ownerId: string; percentage: number }[]): string | null {
   const sum = shares.reduce((s, x) => s + (Number(x.percentage) || 0), 0);
-  if (Math.abs(sum - 100) > EPS) return `Ownership percentages must total 100% (currently ${sum.toFixed(4)}).`;
+  if (Math.abs(sum - 100) > OWNERSHIP_TOTAL_EPS)
+    return `Ownership percentages must total 100% (currently ${sum.toFixed(2)}%).`;
   const seen = new Set<string>();
   for (const s of shares) {
     if (!s.ownerId) return 'Each owner is required.';
@@ -238,24 +280,6 @@ function newId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-/** Lexicographic max for YYYY-MM-DD strings (valid dates). */
-function maxYyyyMmDd(a: string, b: string): string {
-  const aa = a.slice(0, 10);
-  const bb = b.slice(0, 10);
-  return aa >= bb ? aa : bb;
-}
-
-/**
- * Calendar day to set on a closing ownership slice so PostgreSQL CHECK `end_date >= start_date` holds.
- * When the row started on the transfer day, `dayBefore` is before `start_date` — using it alone would fail the CHECK.
- */
-function closingEndDateForOwnershipRow(
-  rowStartYyyyMmDd: string,
-  dayBeforeTransfer: string
-): string {
-  return maxYyyyMmDd(dayBeforeTransfer, rowStartYyyyMmDd.slice(0, 10));
-}
-
 export function buildDefaultPropertyOwnershipRow(
   property: Property,
   tenantId: string,
@@ -282,6 +306,7 @@ export interface TransferOwnershipInput {
   transferDate: string;
   /** Each owner id and percentage; must sum to 100. */
   newOwners: { ownerId: string; percentage: number }[];
+  /** Stored as `transferDocument` on each new `propertyOwnership` row. */
   transferReference?: string;
   notes?: string;
   tenantId: string;
@@ -300,7 +325,6 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
   if (!property) throw new Error('Property not found.');
 
   const transferDay = input.transferDate.slice(0, 10);
-  const dayBefore = addCalendarDaysYyyyMmDd(transferDay, -1);
   const now = new Date().toISOString();
 
   const forProperty = (state.propertyOwnership || []).filter((r) => String(r.propertyId) === pid);
@@ -309,12 +333,13 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
   const closedPrev = forProperty.map((r) => {
     const stillOpen = r.isActive && (r.endDate == null || String(r.endDate).trim() === '');
     if (stillOpen) {
-      const endDate = closingEndDateForOwnershipRow(r.startDate, dayBefore);
-      return { ...r, endDate, isActive: false, updatedAt: now };
+      return { ...r, endDate: transferDay, isActive: false, updatedAt: now };
     }
     return { ...r };
   });
 
+  const doc = input.transferReference?.trim() || undefined;
+  const segNotes = input.notes?.trim() || undefined;
   const newRows: PropertyOwnership[] = input.newOwners.map((o) => ({
     id: `po-${input.propertyId}-${o.ownerId}-${newId()}`,
     tenantId: input.tenantId || '',
@@ -327,6 +352,8 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
     createdAt: now,
     updatedAt: now,
     version: 1,
+    ...(doc ? { transferDocument: doc } : {}),
+    ...(segNotes ? { notes: segNotes } : {}),
   }));
 
   const primary = primaryOwnerIdFromShares(
@@ -347,7 +374,7 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
       String(h.propertyId) === pid && h.ownershipEndDate == null
         ? {
             ...h,
-            ownershipEndDate: closingEndDateForOwnershipRow(h.ownershipStartDate, dayBefore),
+            ownershipEndDate: transferDay,
             updatedAt: now,
           }
         : h

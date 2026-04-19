@@ -28,6 +28,7 @@ import BrokerFeeReport from '../reports/BrokerFeeReport';
 import InvoicePaymentAnalysisReport from '../reports/InvoicePaymentAnalysisReport';
 import OwnerIncomeSummaryReport from '../reports/OwnerIncomeSummaryReport';
 import RentalReceivableReport from '../reports/RentalReceivableReport';
+import PropertyOwnershipTransfersPage from './PropertyOwnershipTransfersPage';
 
 interface RentalManagementPageProps {
     initialPage: Page;
@@ -36,7 +37,7 @@ interface RentalManagementPageProps {
 // Define all possible view keys
 type RentalView =
     | 'Rental setup'
-    | 'Agreements' | 'Invoices' | 'Monthly Service Charges' | 'Bills' | 'Payouts'
+    | 'Agreements' | 'Invoices' | 'Monthly Service Charges' | 'Bills' | 'Payouts' | 'Ownership transfers'
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
     | 'Owner Rental Income' | 'Owner Rental Income Summary'
@@ -124,7 +125,16 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     setActiveView(subTab as RentalView);
                 } else if (mainTab === 'Rental setup') {
                     setActiveView('Rental setup');
-                } else if (['Agreements', 'Invoices', 'Monthly Service Charges', 'Bills', 'Payouts'].includes(mainTab)) {
+                } else if (
+                    [
+                        'Agreements',
+                        'Invoices',
+                        'Monthly Service Charges',
+                        'Bills',
+                        'Payouts',
+                        'Ownership transfers',
+                    ].includes(mainTab)
+                ) {
                     setActiveView(mainTab as RentalView);
                 }
             });
@@ -139,6 +149,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         'Monthly Service Charges',
         'Bills',
         'Payouts',
+        'Ownership transfers',
     ];
     const isOperationalView = OPERATIONAL_VIEWS.includes(activeView);
 
@@ -227,6 +238,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
                     <NavItem view="Payouts" label="Payouts" />
+                    <NavItem view="Ownership transfers" label="Ownership transfers" />
                 </div>
 
                 <div className="pt-3 mt-2 border-t border-app-border space-y-0.5">

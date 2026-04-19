@@ -25,7 +25,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getAllHistoricalOwnerIds, resolveOwnerForPropertyOnDate, isFormerOwner, getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getAllHistoricalOwnerIds, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, isFormerOwner, getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
 
 // --- Types ---
 
@@ -252,8 +252,7 @@ const OwnerPayoutsPage: React.FC = () => {
                         if (share > 0) ownerData[oid].collected += share;
                     });
                 } else {
-                    const d2 = (tx.date || '').slice(0, 10);
-                    const ownerIdForTx = tx.ownerId ?? (d2 && tx.propertyId ? resolveOwnerForPropertyOnDate(state, tx.propertyId, d2) : state.properties.find((p) => p.id === tx.propertyId)?.ownerId);
+                    const ownerIdForTx = resolveOwnerForTransaction(state, tx);
                     if (ownerIdForTx && ownerData[ownerIdForTx]) {
                         if (amount > 0) ownerData[ownerIdForTx].collected += amount;
                         else ownerData[ownerIdForTx].paid += Math.abs(amount);
@@ -293,8 +292,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 const catName = category?.name || '';
                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
 
-                const txDate = (tx.date || '').slice(0, 10);
-                const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : state.properties.find(p => p.id === tx.propertyId)?.ownerId);
+                const ownerIdForTx = resolveOwnerForTransaction(state, tx);
                 if (ownerIdForTx && ownerData[ownerIdForTx]) {
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                     if (!isNaN(amount) && amount > 0) ownerData[ownerIdForTx].paid += amount;
@@ -359,21 +357,20 @@ const OwnerPayoutsPage: React.FC = () => {
             ownerData[ownerId] = { collected: 0, paid: 0 };
         });
 
-        // Security Deposit Income — resolve owner from date
+        // Security Deposit Income — resolve owner via invoice-aware resolution
         state.transactions.filter(tx =>
             tx.type === TransactionType.INCOME &&
             tx.categoryId === secDepCategory.id &&
             tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))
         ).forEach(tx => {
-            const txDate = (tx.date || '').slice(0, 10);
-            const ownerId = tx.ownerId ?? (txDate && tx.propertyId ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : state.properties.find(p => p.id === tx.propertyId)?.ownerId);
+            const ownerId = resolveOwnerForTransaction(state, tx);
             if (ownerId && ownerData[ownerId]) {
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (!isNaN(amount) && amount > 0) ownerData[ownerId].collected += amount;
             }
         });
 
-        // Security Outflows — resolve owner from date
+        // Security Outflows — resolve owner via invoice-aware resolution
         state.transactions.filter(tx => tx.type === TransactionType.EXPENSE).forEach(tx => {
             let ownerId = '';
             const category = state.categories.find(c => c.id === tx.categoryId);
@@ -382,8 +379,7 @@ const OwnerPayoutsPage: React.FC = () => {
             if (tx.contactId && ownerData[tx.contactId] && ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) {
                 ownerId = tx.contactId;
             } else if (tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
-                const txDate = (tx.date || '').slice(0, 10);
-                ownerId = (txDate ? resolveOwnerForPropertyOnDate(state, tx.propertyId, txDate) : state.properties.find(p => p.id === tx.propertyId)?.ownerId) || '';
+                ownerId = resolveOwnerForTransaction(state, tx) || '';
             }
 
             const isRefund = secRefCategory && tx.categoryId === secRefCategory.id;
@@ -491,8 +487,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     state.transactions
                         .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && String(tx.propertyId) === propIdStr)
                         .forEach(tx => {
-                            const txDate = (tx.date || '').slice(0, 10);
-                            const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : prop.ownerId);
+                            const ownerIdForTx = resolveOwnerForTransaction(state, tx);
                             if (ownerIdForTx !== ownerId) return;
                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                             if (isNaN(amount)) return;
@@ -528,8 +523,7 @@ const OwnerPayoutsPage: React.FC = () => {
                                 if (tx.contactId === ownerId) paid += amount;
                                 return;
                             }
-                            const txDate = (tx.date || '').slice(0, 10);
-                            const ownerIdForTx = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : prop.ownerId);
+                            const ownerIdForTx = resolveOwnerForTransaction(state, tx);
                             if (ownerIdForTx !== ownerId) return;
                             const category = state.categories.find(c => c.id === tx.categoryId);
                             const catName = category?.name || '';
@@ -576,8 +570,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     state.transactions
                         .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && String(tx.propertyId) === propIdStr)
                         .forEach(tx => {
-                            const txDate = (tx.date || '').slice(0, 10);
-                            const txOwnerId = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : prop.ownerId);
+                            const txOwnerId = resolveOwnerForTransaction(state, tx);
                             if (txOwnerId !== ownerId) return;
                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                             if (!isNaN(amount) && amount > 0) collected += amount;
@@ -585,8 +578,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     state.transactions
                         .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
                         .forEach(tx => {
-                            const txDate = (tx.date || '').slice(0, 10);
-                            const txOwnerId = tx.ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : prop.ownerId);
+                            const txOwnerId = resolveOwnerForTransaction(state, tx);
                             if (txOwnerId !== ownerId) return;
                             const category = state.categories.find(c => c.id === tx.categoryId);
                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);

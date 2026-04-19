@@ -523,6 +523,10 @@ export class ElectronDatabaseService {
           ['monthly_service_charge', 'REAL'],
           ['updated_at', "TEXT DEFAULT ''"],
         ],
+        property_ownership: [
+          ['transfer_document', 'TEXT'],
+          ['notes', 'TEXT'],
+        ],
         units: [
           ['sale_price', 'REAL'],
           ['description', 'TEXT'],

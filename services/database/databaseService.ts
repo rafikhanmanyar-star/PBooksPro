@@ -1475,6 +1475,10 @@ class DatabaseService {
                     ['monthly_service_charge', 'REAL'],
                     ['updated_at', "TEXT DEFAULT (datetime('now'))"],
                 ],
+                property_ownership: [
+                    ['transfer_document', 'TEXT'],
+                    ['notes', 'TEXT'],
+                ],
                 units: [
                     ['sale_price', 'REAL'],
                     ['description', 'TEXT'],

@@ -1194,6 +1194,8 @@ export class AppStateApiService {
         updatedAt: r.updatedAt ?? r.updated_at ?? new Date().toISOString(),
         version: typeof r.version === 'number' ? r.version : undefined,
         deletedAt: r.deletedAt ?? r.deleted_at ?? undefined,
+        transferDocument: r.transferDocument ?? r.transfer_document ?? undefined,
+        notes: r.notes ?? undefined,
       })
     );
 
@@ -2036,6 +2038,30 @@ export class AppStateApiService {
     }>
   ): Promise<void> {
     return this.propertiesRepo.syncOwnership(propertyId, rows);
+  }
+
+  async transferPropertyOwnership(
+    propertyId: string,
+    body: {
+      transferDate: string;
+      owners: Array<{ ownerId: string; sharePercent: number }>;
+      transferDocument?: string;
+      notes?: string;
+    }
+  ): Promise<{ property: AppState['properties'][0]; segments: Array<Record<string, unknown>> }> {
+    return this.propertiesRepo.transferOwnership(propertyId, body);
+  }
+
+  async listOwnershipSegments(includeDeleted?: boolean): Promise<Array<Record<string, unknown>>> {
+    return this.propertiesRepo.listOwnershipSegments(includeDeleted);
+  }
+
+  async getOwnershipSegment(segmentId: string): Promise<Record<string, unknown>> {
+    return this.propertiesRepo.getOwnershipSegment(segmentId);
+  }
+
+  async softDeleteOwnershipSegment(segmentId: string): Promise<void> {
+    return this.propertiesRepo.softDeleteOwnershipSegment(segmentId);
   }
 
   /**

@@ -142,24 +142,56 @@ async function resolveExpenseCategoryFromBill(
 }
 
 /**
- * When owner_id is not provided but property_id is, resolve the owner from property_ownership
- * date ranges at the transaction date. Falls back to properties.owner_id.
+ * When owner_id is not provided but property_id is, resolve the owner.
+ *
+ * For invoice-linked transactions the owner comes from:
+ *   1. The rental_agreement that generated the invoice (agreement.owner_id),
+ *   2. property_ownership on the *invoice issue date* (not payment date),
+ *   3. properties.owner_id as final fallback.
+ *
+ * This ensures rent collected under the old owner stays attributed to them
+ * even when the tenant pays after a property transfer.
  */
 async function resolveOwnerIdFromProperty(
   client: pg.PoolClient,
   tenantId: string,
   propertyId: string | null | undefined,
   ownerId: string | null | undefined,
-  txDate: string
+  txDate: string,
+  invoiceId?: string | null
 ): Promise<string | null | undefined> {
   if (ownerId != null && String(ownerId).trim() !== '') return ownerId;
   if (!propertyId || String(propertyId).trim() === '') return ownerId;
+
+  let resolveDate = txDate;
+
+  // Try the agreement's stored owner_id first (most reliable after transfer)
+  if (invoiceId && String(invoiceId).trim() !== '') {
+    const invR = await client.query<{ agreement_id: string | null; issue_date: string | null }>(
+      `SELECT agreement_id, issue_date FROM invoices
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [invoiceId, tenantId]
+    );
+    const inv = invR.rows[0];
+    if (inv?.agreement_id) {
+      const agrR = await client.query<{ owner_id: string | null }>(
+        `SELECT owner_id FROM rental_agreements
+         WHERE id = $1 AND tenant_id = $2`,
+        [inv.agreement_id, tenantId]
+      );
+      if (agrR.rows[0]?.owner_id) return agrR.rows[0].owner_id;
+    }
+    if (inv?.issue_date) {
+      resolveDate = String(inv.issue_date).slice(0, 10);
+    }
+  }
+
   const r = await client.query<{ owner_id: string }>(
     `SELECT owner_id FROM property_ownership
      WHERE tenant_id = $1 AND property_id = $2 AND deleted_at IS NULL
        AND $3::date >= start_date AND ($3::date <= end_date OR end_date IS NULL)
      ORDER BY ownership_percentage DESC LIMIT 1`,
-    [tenantId, propertyId, txDate]
+    [tenantId, propertyId, resolveDate]
   );
   if (r.rows[0]?.owner_id) return r.rows[0].owner_id;
   const p = await client.query<{ owner_id: string }>(
@@ -327,7 +359,7 @@ export async function createTransaction(
     p.category_id
   );
 
-  const ownerIdResolved = await resolveOwnerIdFromProperty(client, tenantId, p.property_id, p.owner_id, p.date);
+  const ownerIdResolved = await resolveOwnerIdFromProperty(client, tenantId, p.property_id, p.owner_id, p.date, p.invoice_id);
 
   await assertExpenseProjectCashAvailable(
     client,
@@ -555,7 +587,7 @@ export async function upsertTransaction(
     p.category_id
   );
 
-  const ownerIdResolvedUpsert = await resolveOwnerIdFromProperty(client, tenantId, p.property_id, p.owner_id, p.date);
+  const ownerIdResolvedUpsert = await resolveOwnerIdFromProperty(client, tenantId, p.property_id, p.owner_id, p.date, p.invoice_id);
 
   await assertExpenseProjectCashAvailable(client, tenantId, {
     type: p.type,

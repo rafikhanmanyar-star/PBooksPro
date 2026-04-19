@@ -74,6 +74,32 @@ export class PropertiesApiRepository {
     await apiClient.post(`/properties/${propertyId}/ownership/sync`, { rows });
   }
 
+  /** Server-side atomic transfer (closes open slices, inserts new rows, updates property.owner_id). */
+  async transferOwnership(
+    propertyId: string,
+    body: {
+      transferDate: string;
+      owners: Array<{ ownerId: string; sharePercent: number }>;
+      transferDocument?: string;
+      notes?: string;
+    }
+  ): Promise<{ property: Property; segments: Array<Record<string, unknown>> }> {
+    return apiClient.post(`/properties/${propertyId}/ownership/transfer`, body);
+  }
+
+  async listOwnershipSegments(includeDeleted?: boolean): Promise<Array<Record<string, unknown>>> {
+    const q = includeDeleted ? '?includeDeleted=1' : '';
+    return apiClient.get<Array<Record<string, unknown>>>(`/properties/ownership/segments${q}`);
+  }
+
+  async getOwnershipSegment(segmentId: string): Promise<Record<string, unknown>> {
+    return apiClient.get<Record<string, unknown>>(`/properties/ownership/segments/${segmentId}`);
+  }
+
+  async softDeleteOwnershipSegment(segmentId: string): Promise<void> {
+    await apiClient.delete(`/properties/ownership/segments/${segmentId}`);
+  }
+
   /**
    * Delete a property
    */

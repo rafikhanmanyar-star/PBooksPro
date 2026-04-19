@@ -17,7 +17,7 @@ import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
+import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -204,8 +204,8 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                             }
                             return;
                         }
-                        const belongsToOwner = tx.ownerId ? tx.ownerId === owner.id : (state.properties.find(p => p.id === tx.propertyId)?.ownerId === owner.id);
-                        if (belongsToOwner) unitData[tx.propertyId].collected += amount;
+                        const resolvedOwner = resolveOwnerForTransaction(state, tx) ?? state.properties.find(p => p.id === tx.propertyId)?.ownerId;
+                        if (resolvedOwner === owner.id) unitData[tx.propertyId].collected += amount;
                     }
                 }
 
@@ -233,10 +233,10 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                     // Skip bill payment transactions (bill amount is derived from bills above)
                     if (billPaymentTxIds.has(tx.id)) return;
 
-                    // A. Property-linked Expense — use tx.ownerId when set
+                    // A. Property-linked Expense — use invoice-aware owner resolution
                     if (tx.propertyId && unitData[tx.propertyId]) {
-                        const belongsToOwner = tx.ownerId ? tx.ownerId === owner.id : (state.properties.find(p => p.id === tx.propertyId)?.ownerId === owner.id);
-                        if (belongsToOwner) unitData[tx.propertyId].expenses += amount;
+                        const resolvedOwner = resolveOwnerForTransaction(state, tx) ?? state.properties.find(p => p.id === tx.propertyId)?.ownerId;
+                        if (resolvedOwner === owner.id) unitData[tx.propertyId].expenses += amount;
                     }
                     // B. Direct Owner Payout or General Expense
                     else if (tx.contactId === owner.id) {

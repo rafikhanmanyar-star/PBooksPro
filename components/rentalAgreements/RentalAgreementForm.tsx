@@ -15,6 +15,10 @@ import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/d
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { RentalAgreementsApiRepository } from '../../services/api/repositories/rentalAgreementsApi';
 import { ContactsApiRepository, normalizeContactFromApi } from '../../services/api/repositories/contactsApi';
+import {
+    getOwnershipSharesForPropertyOnDate,
+    primaryOwnerIdFromShares,
+} from '../../services/propertyOwnershipService';
 
 interface RentalAgreementFormProps {
     onClose: () => void;
@@ -99,7 +103,23 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const buildings = useMemo(() => state.buildings.map(b => ({ id: b.id, name: b.name })), [state.buildings]);
 
     const selectedProperty = useMemo(() => state.properties.find(p => p.id === propertyId), [propertyId, state.properties]);
-    const autoOwner = useMemo(() => selectedProperty ? state.contacts.find(c => c.id === selectedProperty.ownerId) : null, [selectedProperty, state.contacts]);
+    const autoOwner = useMemo(() => {
+        if (!selectedProperty || !propertyId) return null;
+        const d = (startDate || '').slice(0, 10);
+        if (!d) return state.contacts.find(c => c.id === selectedProperty.ownerId) ?? null;
+        const shares = getOwnershipSharesForPropertyOnDate(state, propertyId, d);
+        const primary = primaryOwnerIdFromShares(shares);
+        const ownerContactId = primary ?? selectedProperty.ownerId;
+        return state.contacts.find(c => c.id === ownerContactId) ?? null;
+    }, [
+        selectedProperty,
+        propertyId,
+        startDate,
+        state.contacts,
+        state.propertyOwnership,
+        state.propertyOwnershipHistory,
+        state.properties,
+    ]);
 
     // Properties filtered by building + occupancy
     const properties = useMemo(() => {

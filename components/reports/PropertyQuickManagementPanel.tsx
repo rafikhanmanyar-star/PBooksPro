@@ -24,7 +24,7 @@ import {
 } from '../../types';
 import { CURRENCY } from '../../constants';
 import { formatDate, currentMonthYyyyMm } from '../../utils/dateUtils';
-import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
+import { resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
 
 function contactInitials(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -216,8 +216,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                 const catName = category?.name || '';
                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
                 if (secDepCategory && tx.categoryId === secDepCategory.id) return;
-                const txDate = (tx.date || '').slice(0, 10);
-                const txOwnerId = (tx as any).ownerId ?? (txDate ? resolveOwnerForPropertyOnDate(state, propIdStr, txDate) : property?.ownerId);
+                const txOwnerId = resolveOwnerForTransaction(state, tx) ?? property?.ownerId;
                 if (txOwnerId === ownerId) rentalPaid += amt;
             });
 
@@ -435,6 +434,14 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
     const fmtMoney = (n: number) =>
         n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+    const ownershipSegmentsForProperty = useMemo(
+        () =>
+            (state.propertyOwnership || [])
+                .filter(r => r.propertyId === propertyId && !r.deletedAt)
+                .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || '')),
+        [propertyId, state.propertyOwnership]
+    );
+
     if (!isOpen || !property) return null;
 
     return (
@@ -519,6 +526,32 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                             <div className="text-sm font-semibold text-slate-900 dark:text-app-text">{contractLengthLabel}</div>
                         </div>
                     </div>
+
+                    {ownershipSegmentsForProperty.length > 0 && (
+                        <div className="px-6 pb-3 border-b border-slate-100 dark:border-app-border">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-app-muted mb-2">
+                                Ownership history (property)
+                            </div>
+                            <div className="max-h-32 overflow-y-auto space-y-1 text-xs">
+                                {ownershipSegmentsForProperty.map(seg => {
+                                    const oc = state.contacts.find(c => c.id === seg.ownerId);
+                                    return (
+                                        <div
+                                            key={seg.id}
+                                            className="flex justify-between gap-2 text-slate-700 dark:text-app-text"
+                                        >
+                                            <span className="truncate">{oc?.name || seg.ownerId}</span>
+                                            <span className="shrink-0 text-app-muted">
+                                                {seg.startDate?.slice(0, 10)}
+                                                {seg.endDate ? ` → ${seg.endDate.slice(0, 10)}` : ' → current'}{' '}
+                                                ({seg.ownershipPercentage}%)
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Summary cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-6 py-5">

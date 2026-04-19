@@ -509,6 +509,9 @@ export interface PropertyOwnership {
   updatedAt: string;
   version?: number;
   deletedAt?: string;
+  /** Optional transfer / deed reference (per segment). */
+  transferDocument?: string;
+  notes?: string;
 }
 
 export interface Invoice {

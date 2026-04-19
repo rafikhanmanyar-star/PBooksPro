@@ -11,6 +11,8 @@ export type PropertyOwnershipRow = {
   is_active: boolean;
   version: number;
   deleted_at: Date | string | null;
+  transfer_document?: string | null;
+  notes?: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -31,7 +33,7 @@ export function rowToPropertyOwnershipApi(row: PropertyOwnershipRow): Record<str
         ? row.end_date.toISOString().slice(0, 10)
         : String(row.end_date).slice(0, 10);
 
-  return {
+  const base: Record<string, unknown> = {
     id: row.id,
     tenantId: row.tenant_id,
     propertyId: row.property_id,
@@ -43,10 +45,17 @@ export function rowToPropertyOwnershipApi(row: PropertyOwnershipRow): Record<str
     version: row.version,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
-    ...(row.deleted_at
-      ? { deletedAt: row.deleted_at instanceof Date ? row.deleted_at.toISOString() : row.deleted_at }
-      : {}),
   };
+  if (row.deleted_at) {
+    base.deletedAt = row.deleted_at instanceof Date ? row.deleted_at.toISOString() : row.deleted_at;
+  }
+  if (row.transfer_document != null && String(row.transfer_document).trim() !== '') {
+    base.transferDocument = String(row.transfer_document);
+  }
+  if (row.notes != null && String(row.notes).trim() !== '') {
+    base.notes = String(row.notes);
+  }
+  return base;
 }
 
 export async function listPropertyOwnership(
@@ -55,7 +64,7 @@ export async function listPropertyOwnership(
 ): Promise<PropertyOwnershipRow[]> {
   const r = await client.query<PropertyOwnershipRow>(
     `SELECT id, tenant_id, property_id, owner_id, ownership_percentage, start_date, end_date, is_active,
-            version, deleted_at, created_at, updated_at
+            version, deleted_at, transfer_document, notes, created_at, updated_at
      FROM property_ownership
      WHERE tenant_id = $1 AND deleted_at IS NULL
      ORDER BY property_id, start_date ASC`,
@@ -71,7 +80,7 @@ export async function listPropertyOwnershipChangedSince(
 ): Promise<PropertyOwnershipRow[]> {
   const r = await client.query<PropertyOwnershipRow>(
     `SELECT id, tenant_id, property_id, owner_id, ownership_percentage, start_date, end_date, is_active,
-            version, deleted_at, created_at, updated_at
+            version, deleted_at, transfer_document, notes, created_at, updated_at
      FROM property_ownership WHERE tenant_id = $1 AND updated_at > $2
      ORDER BY updated_at ASC`,
     [tenantId, since]
@@ -120,8 +129,8 @@ export async function syncPropertyOwnershipRowsForProperty(
     await client.query(
       `INSERT INTO property_ownership (
         id, tenant_id, property_id, owner_id, ownership_percentage, start_date, end_date, is_active,
-        version, deleted_at, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, 1, NULL, NOW(), NOW())
+        version, deleted_at, transfer_document, notes, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, 1, NULL, NULL, NULL, NOW(), NOW())
       ON CONFLICT (id) DO UPDATE SET
         owner_id = EXCLUDED.owner_id,
         ownership_percentage = EXCLUDED.ownership_percentage,
@@ -130,6 +139,8 @@ export async function syncPropertyOwnershipRowsForProperty(
         is_active = EXCLUDED.is_active,
         version = property_ownership.version + 1,
         deleted_at = NULL,
+        transfer_document = COALESCE(EXCLUDED.transfer_document, property_ownership.transfer_document),
+        notes = COALESCE(EXCLUDED.notes, property_ownership.notes),
         updated_at = NOW()`,
       [
         r.id,
