@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, Contract, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice, RecurringInvoiceTemplate, ProjectReceivedAsset, Budget, PMCycleAllocation, Project, InstallmentPlan, PlanAmenity, Unit } from '../types';
+import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, Contract, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice, RecurringInvoiceTemplate, ProjectReceivedAsset, Budget, PMCycleAllocation, Project, InstallmentPlan, PlanAmenity, Unit, RentalAgreement } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
@@ -2640,6 +2640,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         .deleteContract(id, version)
                         .catch((err) => {
                             logger.warnCategory('sync', '⚠️ Failed to delete contract on API:', err);
+                        });
+                });
+            } else if (a.type === 'UPDATE_RENTAL_AGREEMENT') {
+                const ra = a.payload as RentalAgreement;
+                if (!ra?.id) return;
+                const version = ra.version ?? prev.rentalAgreements?.find((x) => x.id === ra.id)?.version;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .updateRentalAgreement(ra.id, { ...ra, version })
+                        .then((saved) => {
+                            if (saved?.id) {
+                                dispatch({
+                                    type: 'UPDATE_RENTAL_AGREEMENT',
+                                    payload: { ...ra, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist rental agreement update to API:', err);
                         });
                 });
             } else if (a.type === 'ADD_BUDGET' || a.type === 'UPDATE_BUDGET') {

@@ -17,15 +17,9 @@ import { useNotification } from '../../context/NotificationContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
 import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
+import { isSecurityInvoice } from '../../utils/rentalInvoiceClassification';
 
 const RENTAL_INVOICE_TYPES = [InvoiceType.RENTAL, InvoiceType.SECURITY_DEPOSIT];
-
-/** Match grid logic: invoice shows as "Security" when type is Security Deposit or has security in amount/description */
-function isSecurityInvoice(inv: Invoice): boolean {
-  return inv.invoiceType === InvoiceType.SECURITY_DEPOSIT ||
-    (inv.securityDepositCharge || 0) > 0 ||
-    (inv.description || '').toLowerCase().includes('security');
-}
 
 type ViewBy = 'building' | 'property' | 'tenant' | 'owner';
 type AgingFilter = 'all' | 'overdue' | '0-30' | '31-60' | '61-90' | '90+';

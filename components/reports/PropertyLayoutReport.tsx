@@ -13,7 +13,7 @@ import PrintButton from '../ui/PrintButton';
 import ComboBox from '../ui/ComboBox';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-import { currentMonthYyyyMm, toLocalDateString } from '../../utils/dateUtils';
+import { currentMonthYyyyMm, parseYyyyMmDdToLocalDate, toDateOnly, toLocalDateString, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import RentalPropertySummaryCard from './RentalPropertySummaryCard';
 
 const PropertyInvoicePickModal = lazy(() => import('./PropertyInvoicePickModal'));
@@ -68,6 +68,8 @@ interface PropertyBoxData {
     hasUnpaidRental: boolean;
     hasUnpaidSecurity: boolean;
     canDeductServiceCharges: boolean;
+    /** Unpaid broker fee for the active agreement (property-scoped payments). */
+    brokerPayoutPending: number;
 }
 
 interface BuildingData {
@@ -350,6 +352,31 @@ const PropertyLayoutReport: React.FC = () => {
                 const securityDepositAmount = activeAgreement?.securityDeposit ?? 0;
                 const agreementStartDate = activeAgreement?.startDate ?? null;
 
+                let brokerPayoutPending = 0;
+                if (
+                    activeAgreement?.brokerId &&
+                    activeAgreement.brokerFee &&
+                    !activeAgreement.previousAgreementId
+                ) {
+                    const brokerContact = state.contacts.find(c => c.id === activeAgreement.brokerId);
+                    if (brokerContact) {
+                        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+                        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+                        const feeCatId = brokerFeeCategory?.id;
+                        const rebateCatId = rebateCategory?.id;
+                        const paidAlready = state.transactions
+                            .filter(
+                                tx =>
+                                    tx.type === TransactionType.EXPENSE &&
+                                    tx.contactId === brokerContact.id &&
+                                    (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
+                                    (tx.agreementId === activeAgreement.id || tx.propertyId === prop.id)
+                            )
+                            .reduce((sum, tx) => sum + tx.amount, 0);
+                        brokerPayoutPending = Math.max(0, (activeAgreement.brokerFee || 0) - paidAlready);
+                    }
+                }
+
                 // Calculate last updated date
                 const propertyTransactions = state.transactions.filter(tx => tx.propertyId === prop.id);
                 const transactionDates = propertyTransactions.map(tx => tx.date);
@@ -379,9 +406,14 @@ const PropertyLayoutReport: React.FC = () => {
                 let daysUntilExpiry: number | null = null;
 
                 if (activeAgreement) {
-                    const endDate = new Date(activeAgreement.endDate);
-                    const timeDiff = endDate.getTime() - today.getTime();
-                    const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                    /** Calendar-day diff (display timezone / storage rules) — avoids UTC vs local errors from `new Date(iso)`. */
+                    const endYmd = toDateOnly(activeAgreement.endDate);
+                    const todayYmd = todayLocalYyyyMmDd();
+                    const endCal = parseYyyyMmDdToLocalDate(endYmd);
+                    const todayCal = parseYyyyMmDdToLocalDate(todayYmd);
+                    const daysDiff = Math.round(
+                        (endCal.getTime() - todayCal.getTime()) / (1000 * 3600 * 24)
+                    );
                     if (daysDiff <= 30) {
                         isExpiringSoon = true;
                     }
@@ -415,6 +447,7 @@ const PropertyLayoutReport: React.FC = () => {
                     hasUnpaidRental,
                     hasUnpaidSecurity,
                     canDeductServiceCharges,
+                    brokerPayoutPending,
                 };
 
                 if (!buildingsMap[parsed.buildingCode]) {
@@ -556,11 +589,17 @@ const PropertyLayoutReport: React.FC = () => {
 
     const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT', maxReceivable: number = 0) => {
         /** Vacant, no tenant receivables, and no net owner/account payout due — plain white card */
+        const monthlySvcDue =
+            (unit.monthlyServiceCharge || 0) > 0.01 && !unit.serviceChargeDeductedThisMonth
+                ? unit.monthlyServiceCharge || 0
+                : 0;
         const plainWhiteVacant =
             unit.status === 'Vacant' &&
             (unit.payoutDue || 0) <= 0.01 &&
             (unit.receivable || 0) <= 0.01 &&
-            (unit.securityDue || 0) <= 0.01;
+            (unit.securityDue || 0) <= 0.01 &&
+            (unit.brokerPayoutPending || 0) <= 0.01 &&
+            monthlySvcDue <= 0.01;
 
         const backgroundColorStyle =
             mode === 'RENTAL' && !plainWhiteVacant

@@ -5,6 +5,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
+import { isSecurityInvoice } from '../../utils/rentalInvoiceClassification';
 
 export interface PropertyInvoicePickModalProps {
     isOpen: boolean;
@@ -60,12 +61,13 @@ const PropertyInvoicePickModal: React.FC<PropertyInvoicePickModalProps> = ({
             inv => inv.propertyId === propertyId && isUnpaid(inv)
         );
 
-        const rental = (invoiceType === 'ALL' || invoiceType === InvoiceType.RENTAL)
-            ? propInvoices.filter(inv => inv.invoiceType === InvoiceType.RENTAL).sort(byDate)
-            : [];
-        const security = (invoiceType === 'ALL' || invoiceType === InvoiceType.SECURITY_DEPOSIT)
-            ? propInvoices.filter(inv => inv.invoiceType === InvoiceType.SECURITY_DEPOSIT).sort(byDate)
-            : [];
+        const securityRaw = propInvoices.filter(inv => isSecurityInvoice(inv)).sort(byDate);
+        const rentalRaw = propInvoices.filter(inv => !isSecurityInvoice(inv)).sort(byDate);
+
+        const rental =
+            invoiceType === 'ALL' || invoiceType === InvoiceType.RENTAL ? rentalRaw : [];
+        const security =
+            invoiceType === 'ALL' || invoiceType === InvoiceType.SECURITY_DEPOSIT ? securityRaw : [];
 
         return { rentalInvoices: rental, securityInvoices: security };
     }, [isOpen, propertyId, invoiceType, state.invoices]);
@@ -79,7 +81,10 @@ const PropertyInvoicePickModal: React.FC<PropertyInvoicePickModalProps> = ({
             ? 'Receive security — select invoice'
             : 'Receive payment — select invoice';
 
-    const renderInvoiceRow = (inv: Invoice, styles: typeof TYPE_STYLES[InvoiceType.RENTAL]) => {
+    const renderInvoiceRow = (inv: Invoice) => {
+        const styles = isSecurityInvoice(inv)
+            ? TYPE_STYLES[InvoiceType.SECURITY_DEPOSIT]
+            : TYPE_STYLES[InvoiceType.RENTAL];
         const due = inv.amount - (inv.paidAmount || 0);
         const isOverdue = new Date(inv.dueDate) < new Date();
         return (
@@ -90,7 +95,7 @@ const PropertyInvoicePickModal: React.FC<PropertyInvoicePickModalProps> = ({
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-semibold text-app-text">{inv.invoiceNumber}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${styles.rowBadge}`}>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${styles.rowBadge}`}>
                             {styles.shortLabel}
                         </span>
                         {isOverdue && (
@@ -133,7 +138,7 @@ const PropertyInvoicePickModal: React.FC<PropertyInvoicePickModalProps> = ({
                     </span>
                 </div>
                 <ul className="space-y-2">
-                    {invoices.map(inv => renderInvoiceRow(inv, styles))}
+                    {invoices.map(inv => renderInvoiceRow(inv))}
                 </ul>
             </div>
         );

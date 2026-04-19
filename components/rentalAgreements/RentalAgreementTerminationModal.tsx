@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { RentalAgreement, RentalAgreementStatus, InvoiceStatus, InvoiceType, Invoice } from '../../types';
+import { RentalAgreement, RentalAgreementStatus, InvoiceStatus, Invoice } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -10,6 +10,7 @@ import DatePicker from '../ui/DatePicker';
 import { CURRENCY, ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { isSecurityInvoice } from '../../utils/rentalInvoiceClassification';
 
 interface RentalAgreementTerminationModalProps {
     isOpen: boolean;
@@ -19,16 +20,11 @@ interface RentalAgreementTerminationModalProps {
 
 const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalProps> = ({ isOpen, onClose, agreement }) => {
     const { state, dispatch } = useAppContext();
-    const { showToast, showConfirm } = useNotification();
+    const { showToast } = useNotification();
 
     const [endDate, setEndDate] = useState(toLocalDateString(new Date()));
     const [status, setStatus] = useState<RentalAgreementStatus>(RentalAgreementStatus.TERMINATED);
     const [notes, setNotes] = useState('');
-
-    const isSecurityInvoice = (inv: { invoiceType?: string; securityDepositCharge?: number; description?: string }) =>
-        inv.invoiceType === InvoiceType.SECURITY_DEPOSIT ||
-        (inv.securityDepositCharge || 0) > 0 ||
-        (inv.description || '').toLowerCase().includes('security');
 
     const allInvoicesForAgreement = useMemo(() => {
         if (!agreement) return [];
@@ -67,31 +63,15 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
         e.preventDefault();
         if (!agreement) return;
 
-        if (openNonSecurityInvoices.length > 0) {
-            const totalDue = openNonSecurityInvoices.reduce((s, inv) => s + getInvoiceBalance(inv), 0);
-            const proceed = await showConfirm(
-                `${openNonSecurityInvoices.length} unpaid invoice(s) totalling ${CURRENCY} ${totalDue.toLocaleString()} will remain in the system.\n\nThe old tenant can pay them later. A new agreement can be created on this property with a different tenant.\n\nProceed with termination?`,
-                { title: 'Unpaid Invoices Will Remain', confirmLabel: 'Yes, Terminate', cancelLabel: 'Cancel' }
-            );
-            if (!proceed) return;
-        }
-
-        if (openSecurityInvoices.length > 0) {
-            for (const inv of openSecurityInvoices) {
-                const paid = inv.paidAmount ?? 0;
-                dispatch({
-                    type: 'UPDATE_INVOICE',
-                    payload: { ...inv, amount: paid, paidAmount: paid, status: InvoiceStatus.PAID }
-                });
-            }
-        }
-
         let desc = agreement.description || '';
         desc += ` | ${status} on ${endDate}`;
         if (notes) desc += ` | Notes: ${notes}`;
         if (openNonSecurityInvoices.length > 0) {
             const remaining = openNonSecurityInvoices.reduce((s, inv) => s + getInvoiceBalance(inv), 0);
             desc += ` | ${openNonSecurityInvoices.length} unpaid invoice(s) (${CURRENCY} ${remaining.toLocaleString()}) remain with old tenant.`;
+        }
+        if (openSecurityInvoices.length > 0) {
+            desc += ` | ${openSecurityInvoices.length} open security invoice(s); amounts unchanged at termination.`;
         }
 
         dispatch({
@@ -144,7 +124,7 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
                             <div>
                                 <h4 className="text-xs font-bold text-sky-800">Open security invoice(s)</h4>
                                 <p className="text-[10px] text-sky-700 mt-0.5">
-                                    {openSecurityInvoices.length} security invoice(s) not fully paid. On confirm, they will be closed (amount set to amount paid, status: Paid). Collected: {CURRENCY} {totalSecurityPaid.toLocaleString()}.
+                                    {openSecurityInvoices.length} security invoice(s) not fully paid. They stay open for you to settle from the Invoices page. Collected: {CURRENCY} {totalSecurityPaid.toLocaleString()}.
                                 </p>
                             </div>
                         </div>

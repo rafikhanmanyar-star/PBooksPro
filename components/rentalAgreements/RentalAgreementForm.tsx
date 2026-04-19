@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
-import { RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType } from '../../types';
+import { AppAction, RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
@@ -437,7 +437,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     dispatch({
                         type: 'UPDATE_RENTAL_AGREEMENT',
                         payload: updated,
-                    });
+                        _isRemote: true,
+                    } as AppAction);
                 } catch (err: unknown) {
                     const msg =
                         err && typeof err === 'object' && 'message' in err

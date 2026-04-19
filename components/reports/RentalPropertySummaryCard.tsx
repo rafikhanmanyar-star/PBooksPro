@@ -10,6 +10,7 @@ import {
     Wallet,
     Shield,
     Settings,
+    HandCoins,
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
@@ -39,6 +40,7 @@ export interface VisualLayoutPropertyBox {
     hasUnpaidRental: boolean;
     hasUnpaidSecurity: boolean;
     canDeductServiceCharges: boolean;
+    brokerPayoutPending: number;
 }
 
 function formatCompactK(n: number): string {
@@ -72,34 +74,47 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
     const rentRecvFmt = useMemo(() => formatCompactK(unit.receivable), [unit.receivable]);
     const secRecvFmt = useMemo(() => formatCompactK(unit.securityDue), [unit.securityDue]);
     const svcFmt = useMemo(() => formatCompactK(unit.monthlyServiceCharge), [unit.monthlyServiceCharge]);
+    const svcDueThisMonth = useMemo(() => {
+        if (unit.serviceChargeDeductedThisMonth) return 0;
+        return Math.max(0, unit.monthlyServiceCharge || 0);
+    }, [unit.monthlyServiceCharge, unit.serviceChargeDeductedThisMonth]);
+    const svcDueFmt = useMemo(() => formatCompactK(svcDueThisMonth), [svcDueThisMonth]);
 
-    const expiryLabel = useMemo(() => {
-        if (unit.daysUntilExpiry === null) return '—';
-        if (unit.daysUntilExpiry < 0) return `${Math.abs(unit.daysUntilExpiry)}d`;
-        return `${unit.daysUntilExpiry}d`;
+    /** Coerce so API/SQLite never leaves string values that break `> 30` comparisons. */
+    const daysRemaining = useMemo(() => {
+        if (unit.daysUntilExpiry === null || unit.daysUntilExpiry === undefined) return null;
+        const n = Number(unit.daysUntilExpiry);
+        return Number.isFinite(n) ? n : null;
     }, [unit.daysUntilExpiry]);
 
-    const expiryClass =
-        unit.daysUntilExpiry === null
-            ? 'text-app-muted'
-            : unit.daysUntilExpiry < 0
-              ? 'text-ds-danger'
-              : unit.daysUntilExpiry <= 30
-                ? 'text-ds-warning'
-                : 'text-app-muted';
+    const expiryLabel = useMemo(() => {
+        if (daysRemaining === null) return '—';
+        if (daysRemaining < 0) return `${Math.abs(daysRemaining)}d`;
+        return `${daysRemaining}d`;
+    }, [daysRemaining]);
 
-    /** Pulse clock when agreement ends within 30 days or already expired (active agreement only) */
+    /** Green when more than 30 calendar days left; red when 30 or fewer (including expired). */
+    const expiryClass =
+        daysRemaining === null
+            ? 'text-app-muted'
+            : daysRemaining > 30
+              ? 'text-ds-success'
+              : 'text-ds-danger';
+
+    /** Blink only when strictly under 30 days remain (not when exactly 30). */
     const expiryBlink =
-        unit.agreementEndDate != null &&
-        unit.daysUntilExpiry !== null &&
-        ((unit.daysUntilExpiry > 0 && unit.daysUntilExpiry <= 30) || unit.daysUntilExpiry < 0);
+        unit.agreementEndDate != null && daysRemaining !== null && daysRemaining < 30;
 
     const agreementDateDisplay = unit.agreementStartDate
         ? formatDate(unit.agreementStartDate.split('T')[0])
         : '—';
 
     const showPaidWatermark =
-        unit.status === 'Occupied' && (unit.receivable ?? 0) <= 0.01 && (unit.securityDue ?? 0) <= 0.01;
+        unit.status === 'Occupied' &&
+        (unit.receivable ?? 0) <= 0.01 &&
+        (unit.securityDue ?? 0) <= 0.01 &&
+        svcDueThisMonth <= 0.01 &&
+        (unit.brokerPayoutPending ?? 0) <= 0.01;
 
     return (
         <div
@@ -157,7 +172,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                         />
                         <span className="flex items-center gap-0.5 min-w-0 justify-end flex-1">
                             <Clock
-                                className={`w-3 h-3 flex-shrink-0 ${expiryBlink ? 'animate-pulse text-ds-warning' : 'text-app-muted'}`}
+                                className={`w-3 h-3 flex-shrink-0 ${expiryBlink ? 'animate-pulse' : ''} ${daysRemaining !== null ? expiryClass : 'text-app-muted'}`}
                                 aria-hidden
                             />
                             <span
@@ -176,32 +191,65 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                         <Lock className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span className="text-[9px] font-bold text-slate-900 tabular-nums truncate">{secContractFmt}</span>
                     </div>
-                </div>
-
-                {/* Bottom-left: receivables */}
-                <div className="flex flex-col gap-0.5 min-w-0 border-r border-app-border/60 pr-1 pt-0.5">
-                    <div className="flex items-center justify-between gap-0.5" title="Rental receivable">
-                        <Wallet className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
-                        <span className="text-[9px] font-bold text-slate-900 tabular-nums truncate">{rentRecvFmt}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-0.5" title="Security receivable">
-                        <Shield className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
-                        <span className="text-[9px] font-bold text-slate-900 tabular-nums truncate">{secRecvFmt}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-0.5" title="Monthly service charge">
+                    <div className="flex items-center justify-between gap-0.5" title="Monthly service charge (property setting)">
                         <Settings className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span className="text-[9px] font-bold text-slate-900 tabular-nums truncate">{svcFmt}</span>
                     </div>
                 </div>
 
+                {/* Bottom-left: receivables */}
+                <div className="flex flex-col gap-0.5 min-w-0 border-r border-app-border/60 pr-1 pt-0.5">
+                    <div className="flex items-center justify-between gap-0.5" title="Rental amount due">
+                        <Wallet className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
+                        <span
+                            className={`text-[9px] font-bold tabular-nums truncate ${
+                                (unit.receivable ?? 0) > 0.01 ? 'text-ds-danger' : 'text-slate-900'
+                            }`}
+                        >
+                            {rentRecvFmt}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-0.5" title="Security amount due">
+                        <Shield className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
+                        <span
+                            className={`text-[9px] font-bold tabular-nums truncate ${
+                                (unit.securityDue ?? 0) > 0.01 ? 'text-ds-danger' : 'text-slate-900'
+                            }`}
+                        >
+                            {secRecvFmt}
+                        </span>
+                    </div>
+                    <div
+                        className="flex items-center justify-between gap-0.5"
+                        title="Monthly service charges due (current month, after deductions)"
+                    >
+                        <Settings className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
+                        <span
+                            className={`text-[9px] font-bold tabular-nums truncate ${
+                                svcDueThisMonth > 0.01 ? 'text-ds-danger' : 'text-slate-900'
+                            }`}
+                        >
+                            {svcDueFmt}
+                        </span>
+                    </div>
+                </div>
+
                 {/* Bottom-right: payout due */}
-                <div className="flex flex-col gap-0.5 min-w-0 pl-1 pt-0.5">
+                <div className="flex flex-col gap-0.5 min-w-0 pl-1 pt-0.5 h-full">
                     <div className="flex items-center justify-between gap-0.5" title="Payout due to owner">
                         <Banknote className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span className={`text-[9px] font-bold tabular-nums truncate ${unit.payoutDue > 0 ? 'text-ds-warning' : 'text-slate-900'}`}>
                             {formatCompactK(unit.payoutDue)}
                         </span>
                     </div>
+                    {(unit.brokerPayoutPending ?? 0) > 0.01 && (
+                        <div className="flex items-center justify-between gap-0.5" title="Payout due to broker (unpaid)">
+                            <HandCoins className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
+                            <span className="text-[9px] font-bold text-ds-danger tabular-nums truncate">
+                                {formatCompactK(unit.brokerPayoutPending)}
+                            </span>
+                        </div>
+                    )}
                     <div className="flex items-center justify-center mt-auto">
                         <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
                             unit.status === 'Occupied' ? 'border-ds-success/30 bg-[color:var(--badge-paid-bg)] text-ds-success' : 'border-app-border bg-app-toolbar text-app-muted'

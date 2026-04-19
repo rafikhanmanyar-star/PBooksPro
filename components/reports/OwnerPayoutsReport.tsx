@@ -9,6 +9,7 @@ import DatePicker from '../ui/DatePicker';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
+import ServiceChargeUpdateModal from '../rentalManagement/ServiceChargeUpdateModal';
 import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -86,6 +87,8 @@ const OwnerPayoutsReport: React.FC = () => {
 
     // Edit Modal State
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
+    /** Paired Service Charge Income (credit) tx — same target as Monthly Service Charges → Edit */
+    const [serviceChargeEditTransaction, setServiceChargeEditTransaction] = useState<Transaction | null>(null);
 
     // Warning Modal State
     const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | 'update' | null }>({
@@ -797,6 +800,46 @@ const OwnerPayoutsReport: React.FC = () => {
         return 'a linked item';
     };
 
+    /** Service Charge Update modal expects the positive Service Charge Income (credit) tx — report rows use the paired debit line. */
+    const resolveServiceChargeCreditTx = useCallback((tx: Transaction | undefined): Transaction | null => {
+        const svcIncomeCategory = state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
+        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+        if (!tx || !svcIncomeCategory || !rentalIncomeCategory) return null;
+
+        if (tx.type === TransactionType.INCOME && tx.categoryId === svcIncomeCategory.id) {
+            const a = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+            if (!isNaN(a) && a > 0) return tx;
+        }
+
+        const rawAmt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+        if (
+            tx.type !== TransactionType.INCOME ||
+            tx.categoryId !== rentalIncomeCategory.id ||
+            isNaN(rawAmt) ||
+            rawAmt >= 0
+        ) {
+            return null;
+        }
+        const desc = (tx.description || '').toLowerCase();
+        if (!desc.includes('service charge')) return null;
+
+        let pairId = '';
+        if (tx.id.includes('bm-credit')) pairId = tx.id.replace('bm-credit', 'bm-debit');
+        else if (tx.id.includes('bm-debit')) pairId = tx.id.replace('bm-debit', 'bm-credit');
+        let pair = pairId ? state.transactions.find(t => t.id === pairId) : undefined;
+        if (!pair) {
+            pair = state.transactions.find(t =>
+                t.id !== tx.id &&
+                t.propertyId === tx.propertyId &&
+                t.date === tx.date &&
+                t.type === TransactionType.INCOME &&
+                t.categoryId === svcIncomeCategory.id &&
+                Math.abs((typeof t.amount === 'string' ? parseFloat(t.amount) : Number(t.amount)) + rawAmt) < 0.01
+            );
+        }
+        return pair ?? null;
+    }, [state.categories, state.transactions]);
+
     const handleShowDeleteWarning = (tx: Transaction) => {
         setTransactionToEdit(null);
         setWarningModalState({ isOpen: true, transaction: tx, action: 'delete' });
@@ -1029,12 +1072,19 @@ const OwnerPayoutsReport: React.FC = () => {
 
                                         {reportData.map((item) => {
                                             const transaction = state.transactions.find(t => t.id === item.entityId);
+                                            const serviceChargeCredit = resolveServiceChargeCreditTx(transaction);
                                             return (
                                                 <tr
                                                     key={item.id}
                                                     className="hover:bg-app-toolbar/30 cursor-pointer transition-colors"
-                                                    onClick={() => transaction && setTransactionToEdit(transaction)}
-                                                    title="Click to edit"
+                                                    onClick={() => {
+                                                        if (serviceChargeCredit) {
+                                                            setServiceChargeEditTransaction(serviceChargeCredit);
+                                                            return;
+                                                        }
+                                                        if (transaction) setTransactionToEdit(transaction);
+                                                    }}
+                                                    title={serviceChargeCredit ? 'Click to edit service charge' : 'Click to edit'}
                                                 >
                                                     <td className="px-3 py-2.5 whitespace-nowrap text-app-text">{formatDate(item.date)}</td>
                                                     <td className="px-3 py-2.5 whitespace-normal break-words text-app-text max-w-[150px]">{item.ownerName}</td>
@@ -1080,6 +1130,14 @@ const OwnerPayoutsReport: React.FC = () => {
                     />
                 )}
             </Modal>
+
+            {serviceChargeEditTransaction && (
+                <ServiceChargeUpdateModal
+                    isOpen={!!serviceChargeEditTransaction}
+                    onClose={() => setServiceChargeEditTransaction(null)}
+                    transaction={serviceChargeEditTransaction}
+                />
+            )}
 
             {/* Linked Transaction Warning Modal */}
             <LinkedTransactionWarningModal

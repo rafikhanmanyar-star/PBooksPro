@@ -247,6 +247,16 @@ const RentalAgreementsDashboard: React.FC = () => {
 
   useEffect(() => { setSelectedNode(null); }, [viewBy, statusFilter]);
 
+  useEffect(() => {
+    const agreementId = sessionStorage.getItem('openRentalAgreementId');
+    if (!agreementId) return;
+    const agreement = state.rentalAgreements.find(a => a.id === agreementId);
+    if (agreement) {
+      sessionStorage.removeItem('openRentalAgreementId');
+      setSelectedAgreement(agreement);
+    }
+  }, [state.rentalAgreements]);
+
   const nodeAgreements = useMemo(() => {
     if (!selectedNode) return filteredAgreements;
     const nodeId = selectedNode.id;

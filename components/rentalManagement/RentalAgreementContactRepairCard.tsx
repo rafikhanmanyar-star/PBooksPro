@@ -5,6 +5,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { computeRentalAgreementContactRepairs } from '../../services/repairRentalAgreementContact';
+import type { AppAction } from '../../types';
 import Button from '../ui/Button';
 
 /**
@@ -36,7 +37,7 @@ const RentalAgreementContactRepairCard: React.FC = () => {
         const api = getAppStateApiService();
         const { updated, agreements } = await api.repairRentalAgreementsMissingContactFromPrevious();
         for (const a of agreements) {
-          dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: a });
+          dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: a, _isRemote: true } as AppAction);
         }
         showToast(
           updated === 0 ? 'No agreements needed repair.' : `Updated ${updated} agreement(s).`,

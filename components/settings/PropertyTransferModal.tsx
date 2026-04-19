@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
-import { Property, Contact, ContactType, RentalAgreement, RentalAgreementStatus } from '../../types';
+import { AppAction, Property, Contact, ContactType, RentalAgreement, RentalAgreementStatus } from '../../types';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { apiClient } from '../../services/api/client';
@@ -419,8 +419,9 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                             description: oldAgreement.description 
                                 ? `${oldAgreement.description}\n\n[OWNERSHIP] Property ownership changed on ${transferDate}. This agreement was with ${currentOwner?.name || 'previous owner'} when active.`
                                 : `[OWNERSHIP] Property ownership changed on ${transferDate}. This agreement was with ${currentOwner?.name || 'previous owner'} when active.`
-                        }
-                    });
+                        },
+                        ...(useApi ? { _isRemote: true } : {}),
+                    } as AppAction);
                 }
             });
 
@@ -442,8 +443,9 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                             description: oldAgreement.description 
                                 ? `${oldAgreement.description}\n\n[TRANSFERRED] Agreement ended due to property transfer on ${transferDate}. Property was transferred from ${currentOwner?.name || 'previous owner'} to ${newOwner.name}.`
                                 : `[TRANSFERRED] Agreement ended due to property transfer on ${transferDate}. Property was transferred from ${currentOwner?.name || 'previous owner'} to ${newOwner.name}.`
-                        }
-                    });
+                        },
+                        ...(useApi ? { _isRemote: true } : {}),
+                    } as AppAction);
 
                     // Remove old recurring templates for this agreement (so only active agreement templates remain)
                     const oldTemplates = state.recurringInvoiceTemplates.filter(
@@ -477,8 +479,9 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
 
                     dispatch({
                         type: 'ADD_RENTAL_AGREEMENT',
-                        payload: newAgreement
-                    });
+                        payload: newAgreement,
+                        ...(useApi ? { _isRemote: true } : {}),
+                    } as AppAction);
 
                     // Update agreement settings counter
                     const nextSeq = parseInt(newAgreementNumber.slice(state.agreementSettings.prefix.length)) + 1;
