@@ -23,7 +23,7 @@ import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import TreeView, { TreeNode } from '../ui/TreeView';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { getAllHistoricalOwnerIds, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, isFormerOwner, getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
+import { getLedgerOwnerIdsForProperty, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, isFormerOwner, getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
 
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -38,6 +38,8 @@ interface ReportRow {
     balance: number;
     entityType: 'transaction';
     entityId: string;
+    /** Internal: running balance is computed per owner when multiple owners share the same view. */
+    ledgerOwnerId?: string;
 }
 
 type SortKey = 'date' | 'ownerName' | 'propertyName' | 'particulars' | 'rentIn' | 'paidOut' | 'balance';
@@ -100,10 +102,6 @@ const OwnerPayoutsReport: React.FC = () => {
         action: null
     });
 
-    const ownerContacts = useMemo(() => {
-        return state.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
-    }, [state.contacts]);
-
     const matchesTreeSearch = useCallback((text: string) => {
         if (!treeSearchQuery.trim()) return true;
         return text.toLowerCase().includes(treeSearchQuery.toLowerCase());
@@ -124,35 +122,25 @@ const OwnerPayoutsReport: React.FC = () => {
                 const ownerIdSet = new Set<string>();
                 const ownerIds: string[] = [];
                 for (const p of propsInBuilding) {
-                    const all = getAllHistoricalOwnerIds(state, p.id);
-                    if (all.size === 0 && p.ownerId) all.add(p.ownerId);
+                    const all = getLedgerOwnerIdsForProperty(state, p.id);
                     for (const oid of all) {
-                        if (!ownerIdSet.has(oid)) { ownerIdSet.add(oid); ownerIds.push(oid); }
+                        if (!ownerIdSet.has(oid)) {
+                            ownerIdSet.add(oid);
+                            ownerIds.push(oid);
+                        }
                     }
-                }
-
-                if (ownerIds.length <= 1) {
-                    const unitChildren: TreeNode[] = propsInBuilding
-                        .filter(p => matchesTreeSearch(p.name))
-                        .map(prop => ({ id: `unit:${prop.id}`, label: prop.name, type: 'unit' as const }));
-                    unitChildren.sort((a, b) => a.label.localeCompare(b.label));
-                    return {
-                        id: `building:${building.id}`,
-                        label: building.name,
-                        type: 'building',
-                        children: unitChildren.length ? unitChildren : undefined
-                    };
                 }
 
                 const todayStr = toLocalDateString(new Date());
                 const ownerChildren: TreeNode[] = ownerIds
                     .map(ownerId => {
-                        const owner = ownerContacts.find(c => c.id === ownerId);
-                        if (!owner || !matchesTreeSearch(owner.name)) return null;
+                        const owner = state.contacts.find(c => c.id === ownerId);
+                        const ownerLabelBase = owner?.name ?? 'Owner';
+                        if (!matchesTreeSearch(ownerLabelBase)) return null;
                         const former = isFormerOwner(state, ownerId);
                         const unitChildren: TreeNode[] = propsInBuilding
                             .filter(p => {
-                                const owners = getAllHistoricalOwnerIds(state, p.id);
+                                const owners = getLedgerOwnerIdsForProperty(state, p.id);
                                 return owners.has(ownerId) && matchesTreeSearch(p.name);
                             })
                             .map(prop => {
@@ -162,10 +150,10 @@ const OwnerPayoutsReport: React.FC = () => {
                                 return { id: `unit:${prop.id}:${ownerId}`, label: `${prop.name}${pctSuffix}`, type: 'unit' as const };
                             });
                         unitChildren.sort((a, b) => a.label.localeCompare(b.label));
-                        let ownerLabel = owner.name;
+                        let ownerLabel = ownerLabelBase;
                         if (former) ownerLabel += ' (Former)';
                         return {
-                            id: `owner:${owner.id}`,
+                            id: `owner:${ownerId}`,
                             label: ownerLabel,
                             type: 'owner',
                             children: unitChildren.length ? unitChildren : undefined
@@ -185,7 +173,7 @@ const OwnerPayoutsReport: React.FC = () => {
         buildingNodes.sort((a, b) => a.label.localeCompare(b.label));
 
         return [allNode, ...buildingNodes];
-    }, [state.buildings, state.properties, state.propertyOwnership, ownerContacts, matchesTreeSearch]);
+    }, [state.buildings, state.properties, state.propertyOwnership, state.rentalAgreements, state.transactions, state.invoices, state.contacts, matchesTreeSearch]);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -499,7 +487,8 @@ const OwnerPayoutsReport: React.FC = () => {
                     propertyName: property?.name || 'Unknown',
                     particulars: `${tx.description || 'Service Charge Deduction'}${particularsSuffix}`,
                     rentIn: 0, paidOut: Math.abs(amount),
-                    entityType: 'transaction' as const, entityId: tx.id
+                    entityType: 'transaction' as const, entityId: tx.id,
+                    ledgerOwnerId: ownerIdForTx,
                 });
             } else {
                 items.push({
@@ -508,7 +497,8 @@ const OwnerPayoutsReport: React.FC = () => {
                     propertyName: property?.name || 'Unknown',
                     particulars: `${tx.description || 'Rent Collected'}${particularsSuffix}`,
                     rentIn: amount, paidOut: 0,
-                    entityType: 'transaction' as const, entityId: tx.id
+                    entityType: 'transaction' as const, entityId: tx.id,
+                    ledgerOwnerId: ownerIdForTx,
                 });
             }
         };
@@ -641,7 +631,8 @@ const OwnerPayoutsReport: React.FC = () => {
                                     rentIn: 0,
                                     paidOut: sharePaid,
                                     entityType: 'transaction' as const,
-                                    entityId: tx.id
+                                    entityId: tx.id,
+                                    ledgerOwnerId: s.ownerId,
                                 });
                             }
                         } else {
@@ -660,7 +651,8 @@ const OwnerPayoutsReport: React.FC = () => {
                                 rentIn: 0,
                                 paidOut: rawPaid,
                                 entityType: 'transaction' as const,
-                                entityId: tx.id
+                                entityId: tx.id,
+                                ledgerOwnerId: ownerId,
                             });
                         }
                     }
@@ -704,7 +696,8 @@ const OwnerPayoutsReport: React.FC = () => {
                         rentIn: 0,
                         paidOut: shareFee,
                         entityType: 'transaction' as const,
-                        entityId: ra.id
+                        entityId: ra.id,
+                        ledgerOwnerId: s.ownerId,
                     });
                 }
             } else {
@@ -723,7 +716,8 @@ const OwnerPayoutsReport: React.FC = () => {
                     rentIn: 0,
                     paidOut: brokerFeeAmount,
                     entityType: 'transaction' as const,
-                    entityId: ra.id
+                    entityId: ra.id,
+                    ledgerOwnerId: ownerId,
                 });
             }
         });
@@ -764,7 +758,8 @@ const OwnerPayoutsReport: React.FC = () => {
                         rentIn: 0,
                         paidOut: shareAmt,
                         entityType: 'transaction' as const,
-                        entityId: bill.id
+                        entityId: bill.id,
+                        ledgerOwnerId: s.ownerId,
                     });
                 }
             } else {
@@ -783,12 +778,13 @@ const OwnerPayoutsReport: React.FC = () => {
                     rentIn: 0,
                     paidOut: billAmount,
                     entityType: 'transaction' as const,
-                    entityId: bill.id
+                    entityId: bill.id,
+                    ledgerOwnerId: ownerId,
                 });
             }
         });
 
-        // Default Sort
+        // Display sort (user columns)
         items.sort((a, b) => {
             let valA: any = a[sortConfig.key];
             let valB: any = b[sortConfig.key];
@@ -806,11 +802,36 @@ const OwnerPayoutsReport: React.FC = () => {
             return 0;
         });
 
-        let runningBalance = openingBalance;
-        let rows = items.map((item) => {
-            runningBalance += item.rentIn - item.paidOut;
-            return { ...item, balance: runningBalance };
+        const distinctLedgerOwners = new Set(items.map((i: { ledgerOwnerId?: string }) => i.ledgerOwnerId).filter(Boolean));
+        const usePerOwnerRunningBalance = selectedOwnerId === 'all' && distinctLedgerOwners.size > 1;
+
+        const balanceById: Record<string, number> = {};
+        const sortedForBalance = [...items].sort((a, b) => {
+            if (usePerOwnerRunningBalance) {
+                const oa = (a as { ledgerOwnerId?: string }).ledgerOwnerId ?? '';
+                const ob = (b as { ledgerOwnerId?: string }).ledgerOwnerId ?? '';
+                if (oa !== ob) return oa.localeCompare(ob);
+            }
+            const da = new Date(a.date).getTime();
+            const db = new Date(b.date).getTime();
+            if (da !== db) return da - db;
+            return String(a.id).localeCompare(String(b.id));
         });
+
+        const perOwnerRun = new Map<string, number>();
+        let globalRun = openingBalance;
+        sortedForBalance.forEach((item: { id: string; ledgerOwnerId?: string; rentIn: number; paidOut: number }) => {
+            if (usePerOwnerRunningBalance) {
+                const oid = item.ledgerOwnerId ?? '';
+                perOwnerRun.set(oid, (perOwnerRun.get(oid) ?? 0) + item.rentIn - item.paidOut);
+                balanceById[item.id] = perOwnerRun.get(oid)!;
+            } else {
+                globalRun += item.rentIn - item.paidOut;
+                balanceById[item.id] = globalRun;
+            }
+        });
+
+        let rows = items.map((item) => ({ ...item, balance: balanceById[item.id] ?? 0 }));
 
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
@@ -823,6 +844,13 @@ const OwnerPayoutsReport: React.FC = () => {
 
         return rows;
     }, [state, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, selectedUnitId, sortConfig, openingBalance]);
+
+    /** Multiple owners visible with no owner filter — opening balance is not a single chain; hide aggregate opening row. */
+    const perOwnerLedgerMode = useMemo(() => {
+        if (selectedOwnerId !== 'all') return false;
+        const ids = new Set(reportData.map((r) => r.ledgerOwnerId).filter(Boolean));
+        return ids.size > 1;
+    }, [reportData, selectedOwnerId]);
 
     const totals = useMemo(() => {
         const reduced = reportData.reduce((acc, curr) => ({
@@ -837,7 +865,7 @@ const OwnerPayoutsReport: React.FC = () => {
 
     const handleExport = () => {
         const exportRows: any[] = [];
-        if (openingBalance !== 0) {
+        if (openingBalance !== 0 && !perOwnerLedgerMode) {
             exportRows.push({
                 Date: formatDate(startDate),
                 Owner: activeOwnerName || '-',
@@ -871,7 +899,7 @@ const OwnerPayoutsReport: React.FC = () => {
         if (activeOwnerName) message += `Owner: ${ownerName}\n`;
         if (activePropertyName) message += `Property: ${propertyName}\n`;
         message += `\n`;
-        if (openingBalance !== 0) {
+        if (openingBalance !== 0 && !perOwnerLedgerMode) {
             message += `Opening Balance: ${CURRENCY} ${formatCurrency(openingBalance)}\n`;
         }
         reportData.forEach(r => {
@@ -1205,7 +1233,7 @@ const OwnerPayoutsReport: React.FC = () => {
                                     </thead>
                                     <tbody className="divide-y divide-app-border/50">
                                         {/* Opening Balance row */}
-                                        {openingBalance !== 0 && (
+                                        {openingBalance !== 0 && !perOwnerLedgerMode && (
                                             <tr className="bg-app-toolbar/20">
                                                 <td className="px-3 py-2.5 whitespace-nowrap text-app-text">{formatDate(startDate)}</td>
                                                 <td className="px-3 py-2.5 text-app-muted">{activeOwnerName || '-'}</td>

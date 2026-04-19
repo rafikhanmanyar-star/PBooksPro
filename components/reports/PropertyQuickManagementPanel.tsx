@@ -40,20 +40,9 @@ interface PropertyQuickManagementPanelProps {
     onDeductCharges: (propertyId: string) => void;
     onCreateInvoice: (propertyId: string) => void;
     onReceivePayment: (propertyId: string, propertyName: string) => void;
-    onPayoutToOwner: (
-        owner: Contact,
-        balanceDue: number,
-        payoutType: 'Rent' | 'Security',
-        breakdown: { propertyId: string; propertyName: string; balanceDue: number }[]
-    ) => void;
+    onPayoutToOwner: (owner: Contact) => void;
     onPayoutToBroker: (broker: Contact, balanceDue: number) => void;
-    onPayoutSecurity: (
-        owner: Contact,
-        balanceDue: number,
-        breakdown: { propertyId: string; propertyName: string; balanceDue: number }[],
-        tenant?: Contact | null,
-        tenantUnpaidAmount?: number,
-    ) => void;
+    onPayoutSecurity: (owner: Contact, tenant?: Contact | null, tenantUnpaidAmount?: number) => void;
 }
 
 const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> = ({
@@ -391,22 +380,12 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
 
     const handlePayoutToOwner = () => {
         if (!owner) return;
-        const breakdown = [{
-            propertyId,
-            propertyName: property?.name || 'Unknown',
-            balanceDue: financials.ownerRentalIncome,
-        }];
-        onPayoutToOwner(owner, financials.ownerRentalIncome, 'Rent', breakdown);
+        onPayoutToOwner(owner);
     };
 
     const handlePayoutSecurity = () => {
         if (!owner) return;
-        const breakdown = [{
-            propertyId,
-            propertyName: property?.name || 'Unknown',
-            balanceDue: financials.ownerSecurityBalance,
-        }];
-        onPayoutSecurity(owner, financials.ownerSecurityBalance, breakdown, tenant, financials.tenantUnpaidAmount);
+        onPayoutSecurity(owner, tenant, financials.tenantUnpaidAmount);
     };
 
     const escrowRef = useMemo(() => {

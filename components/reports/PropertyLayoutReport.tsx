@@ -15,6 +15,7 @@ import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { currentMonthYyyyMm, parseYyyyMmDdToLocalDate, toDateOnly, toLocalDateString, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import RentalPropertySummaryCard from './RentalPropertySummaryCard';
+import { buildOwnerPropertyBreakdown, getOwnerPayoutModalPropertyBreakdownForProperty } from '../payouts/ownerPayoutBreakdown';
 
 const PropertyInvoicePickModal = lazy(() => import('./PropertyInvoicePickModal'));
 const RentalPaymentModal = lazy(() => import('../invoices/RentalPaymentModal'));
@@ -109,9 +110,8 @@ const PropertyLayoutReport: React.FC = () => {
     const [createInvoiceForPropertyId, setCreateInvoiceForPropertyId] = useState<string | null>(null);
     const [ownerPayoutState, setOwnerPayoutState] = useState<{
         owner: typeof state.contacts[0] | null;
-        balanceDue: number;
         payoutType: 'Rent' | 'Security';
-        propertyBreakdown: { propertyId: string; propertyName: string; balanceDue: number }[];
+        propertyId: string;
         tenant?: typeof state.contacts[0] | null;
         tenantUnpaidAmount?: number;
     } | null>(null);
@@ -135,6 +135,32 @@ const PropertyLayoutReport: React.FC = () => {
     }, [queryClient, state.invoices]);
 
     const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
+
+    const ownerPropertyBreakdownLayout = useMemo(
+        () => (ownerPayoutState ? buildOwnerPropertyBreakdown(state) : null),
+        [ownerPayoutState, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership, state.invoices]
+    );
+
+    const layoutOwnerPayoutModalRows = useMemo(() => {
+        if (!ownerPayoutState?.owner || !ownerPropertyBreakdownLayout) return [];
+        return getOwnerPayoutModalPropertyBreakdownForProperty(
+            state,
+            ownerPayoutState.owner.id,
+            ownerPayoutState.propertyId,
+            ownerPayoutState.payoutType,
+            ownerPropertyBreakdownLayout
+        );
+    }, [ownerPayoutState, ownerPropertyBreakdownLayout, state]);
+
+    const layoutOwnerPayoutBalanceDue = useMemo(
+        () => layoutOwnerPayoutModalRows.reduce((s, p) => s + (p.balanceDue || 0), 0),
+        [layoutOwnerPayoutModalRows]
+    );
+
+    const layoutPayoutPreSelectedBuildingId = useMemo(() => {
+        if (!ownerPayoutState?.propertyId) return undefined;
+        return state.properties.find((p) => p.id === ownerPayoutState.propertyId)?.buildingId;
+    }, [ownerPayoutState?.propertyId, state.properties]);
 
     // --- Helper: Parse Property Name ---
     const parseProperty = (name: string, id: string): { buildingCode: string, floorIndex: number, floorLabel: string, unitIndex: number, isUnconventional: boolean, type: string } => {
@@ -785,14 +811,22 @@ const PropertyLayoutReport: React.FC = () => {
                                 type: 'ALL',
                             });
                         }}
-                        onPayoutToOwner={(owner, balanceDue, payoutType, breakdown) => {
-                            setOwnerPayoutState({ owner, balanceDue, payoutType, propertyBreakdown: breakdown });
+                        onPayoutToOwner={(owner) => {
+                            if (!selectedPropertyId) return;
+                            setOwnerPayoutState({ owner, payoutType: 'Rent', propertyId: selectedPropertyId });
                         }}
                         onPayoutToBroker={(broker, balanceDue) => {
                             setBrokerPayoutState({ broker, balanceDue, propertyId: selectedPropertyId || undefined });
                         }}
-                        onPayoutSecurity={(owner, balanceDue, breakdown, tenant, tenantUnpaidAmount) => {
-                            setOwnerPayoutState({ owner, balanceDue, payoutType: 'Security', propertyBreakdown: breakdown, tenant, tenantUnpaidAmount });
+                        onPayoutSecurity={(owner, tenant, tenantUnpaidAmount) => {
+                            if (!selectedPropertyId) return;
+                            setOwnerPayoutState({
+                                owner,
+                                payoutType: 'Security',
+                                propertyId: selectedPropertyId,
+                                tenant,
+                                tenantUnpaidAmount,
+                            });
                         }}
                     />
                 )}
@@ -835,9 +869,10 @@ const PropertyLayoutReport: React.FC = () => {
                         isOpen={!!ownerPayoutState}
                         onClose={() => setOwnerPayoutState(null)}
                         owner={ownerPayoutState.owner}
-                        balanceDue={ownerPayoutState.balanceDue}
+                        balanceDue={layoutOwnerPayoutBalanceDue}
                         payoutType={ownerPayoutState.payoutType}
-                        propertyBreakdown={ownerPayoutState.propertyBreakdown}
+                        preSelectedBuildingId={layoutPayoutPreSelectedBuildingId}
+                        propertyBreakdown={layoutOwnerPayoutModalRows}
                         tenant={ownerPayoutState.tenant}
                         tenantUnpaidAmount={ownerPayoutState.tenantUnpaidAmount}
                     />

@@ -411,7 +411,21 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             }
         }
 
-        // Sort
+        // Running balance is always chronological for this owner (not driven by table sort).
+        const balanceByLineId: Record<string, number> = {};
+        let chronologicalRunning = 0;
+        [...items]
+            .sort((a, b) => {
+                const ta = new Date(a.date).getTime();
+                const tb = new Date(b.date).getTime();
+                if (ta !== tb) return ta - tb;
+                return String(a.id).localeCompare(String(b.id));
+            })
+            .forEach((row) => {
+                chronologicalRunning += row.credit - row.debit;
+                balanceByLineId[row.id] = chronologicalRunning;
+            });
+
         items.sort((a, b) => {
             let valA: any = a[sortConfig.key];
             let valB: any = b[sortConfig.key];
@@ -429,14 +443,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             return 0;
         });
 
-        let runningBalance = 0;
-        // Ensure chronological order for balance calculation regardless of display sort? 
-        // Usually ledger is displayed chronologically. If user sorts by amount, balance doesn't make sense line-by-line.
-        // For now, calculate balance based on current sort to match display.
-        return items.map(item => {
-            runningBalance += item.credit - item.debit;
-            return { ...item, balance: runningBalance };
-        });
+        return items.map((item) => ({ ...item, balance: balanceByLineId[item.id] ?? 0 }));
 
     }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership, sortConfig]);
 

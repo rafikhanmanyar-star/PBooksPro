@@ -17,7 +17,15 @@ import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
+import {
+    getPropertyIdsForOwner,
+    hasMultipleOwnersOnDate,
+    getOwnerSharePercentageOnDate,
+    resolveOwnerForTransaction,
+    getPropertyExpenseAllocatedAmountForOwner,
+    getBrokerFeeAllocatedAmountForOwner,
+    getBillCostAllocatedAmountForOwner,
+} from '../../services/propertyOwnershipService';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -90,6 +98,7 @@ const OwnerIncomeSummaryReport: React.FC = () => {
 
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
         const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
         const clearingRentCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
 
@@ -159,7 +168,9 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                 if (raDate < start || raDate > end) return;
 
                 const fee = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
-                if (!isNaN(fee)) unitData[ra.propertyId].brokerFee += fee;
+                if (isNaN(fee) || fee <= 0) return;
+                const share = getBrokerFeeAllocatedAmountForOwner(state, ra, owner.id);
+                if (share > 0) unitData[ra.propertyId!].brokerFee += share;
             });
 
             // Derive bill amounts (cost center = owner property) — even if bill not paid yet
@@ -167,8 +178,8 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                 if (!bill.propertyId || bill.projectId || !unitData[bill.propertyId]) return;
                 const billDate = new Date(bill.issueDate);
                 if (billDate < start || billDate > end) return;
-                const amount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
-                if (!isNaN(amount) && amount > 0) unitData[bill.propertyId].billAmount += amount;
+                const share = getBillCostAllocatedAmountForOwner(state, bill, owner.id);
+                if (share > 0) unitData[bill.propertyId].billAmount += share;
             });
 
             // Build set of bill payment tx IDs to exclude from expenses (bill amount already in billAmount above)
@@ -233,12 +244,23 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                     // Skip bill payment transactions (bill amount is derived from bills above)
                     if (billPaymentTxIds.has(tx.id)) return;
 
-                    // A. Property-linked Expense — use invoice-aware owner resolution
-                    if (tx.propertyId && unitData[tx.propertyId]) {
-                        const resolvedOwner = resolveOwnerForTransaction(state, tx) ?? state.properties.find(p => p.id === tx.propertyId)?.ownerId;
-                        if (resolvedOwner === owner.id) unitData[tx.propertyId].expenses += amount;
+                    // Owner Payout: 100% to payee (contact); never split by co-ownership
+                    if (ownerPayoutCategory && tx.categoryId === ownerPayoutCategory.id) {
+                        if (tx.contactId === owner.id) {
+                            if (tx.propertyId && unitData[tx.propertyId]) {
+                                unitData[tx.propertyId].expenses += amount;
+                            } else {
+                                generalPayouts += amount;
+                            }
+                        }
+                        return;
                     }
-                    // B. Direct Owner Payout or General Expense
+
+                    // A. Property-linked Expense — co-owner split matches Owner Ledger
+                    if (tx.propertyId && unitData[tx.propertyId]) {
+                        unitData[tx.propertyId].expenses += getPropertyExpenseAllocatedAmountForOwner(state, tx, amount, owner.id);
+                    }
+                    // B. Direct expense to contact (no property cost center)
                     else if (tx.contactId === owner.id) {
                         generalPayouts += amount;
                     }

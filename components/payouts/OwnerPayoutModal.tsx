@@ -231,7 +231,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                             shortfallApplied = true;
                         }
                         const hasDue = due > 0.01;
-                        const defaultSelected = hasDue && payeeOwnerId === owner.id;
+                        const multiPayeeRow = !!(p.payeeOwnerId && p.payeeOwnerId !== owner.id);
+                        const defaultSelected = hasDue && (multiPayeeRow || payeeOwnerId === owner.id);
                         return {
                             propertyId: p.propertyId,
                             propertyName: p.propertyName,

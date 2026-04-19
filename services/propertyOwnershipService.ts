@@ -2,7 +2,7 @@
  * Percentage-based property co-ownership: resolution, transfer, and cache.
  */
 
-import type { AppState, Property, PropertyOwnership, PropertyOwnershipHistory, Transaction } from '../types';
+import { ContactType, type AppState, type Property, type PropertyOwnership, type PropertyOwnershipHistory, type Transaction } from '../types';
 import { getOwnerIdForPropertyOnDate } from './ownershipHistoryUtils';
 import { toLocalDateString } from '../utils/dateUtils';
 
@@ -170,6 +170,55 @@ export function getAllHistoricalOwnerIds(
     if (String(r.propertyId) === pid && !r.deletedAt) owners.add(r.ownerId);
   });
   return owners;
+}
+
+/**
+ * All owner contacts that should appear under a property in portfolio / owner ledgers:
+ * {@link getAllHistoricalOwnerIds} plus owners found on rental agreements, stamped
+ * `transactions.owner_id`, and invoice-linked agreements (covers transfers where closed
+ * `property_ownership` rows no longer list the former owner).
+ */
+export function getLedgerOwnerIdsForProperty(
+  state: Pick<
+    AppState,
+    'properties' | 'propertyOwnership' | 'rentalAgreements' | 'transactions' | 'invoices'
+  >,
+  propertyId: string
+): Set<string> {
+  const ids = getAllHistoricalOwnerIds(state, propertyId);
+  const pid = String(propertyId);
+  (state.rentalAgreements || []).forEach((ra) => {
+    if (String(ra.propertyId) === pid && ra.ownerId) ids.add(ra.ownerId);
+  });
+  (state.transactions || []).forEach((tx) => {
+    if (tx.propertyId && String(tx.propertyId) === pid && tx.ownerId) ids.add(tx.ownerId);
+  });
+  (state.invoices || []).forEach((inv) => {
+    if (inv.propertyId && String(inv.propertyId) === pid && inv.agreementId) {
+      const agr = state.rentalAgreements?.find((a) => a.id === inv.agreementId);
+      if (agr?.ownerId) ids.add(agr.ownerId);
+    }
+  });
+  return ids;
+}
+
+/**
+ * Owners to iterate for per-unit rental payout breakdown: {@link getLedgerOwnerIdsForProperty}
+ * plus anyone with an active ownership share on the given date (e.g. 50/50 co-owners on
+ * `property_ownership` even when former-only rows were not merged into historical ids).
+ */
+export function getPayoutOwnerIdsForProperty(
+  state: Pick<
+    AppState,
+    'properties' | 'propertyOwnership' | 'propertyOwnershipHistory' | 'rentalAgreements' | 'transactions' | 'invoices'
+  >,
+  propertyId: string,
+  asOfDateYyyyMmDd?: string
+): Set<string> {
+  const ids = getLedgerOwnerIdsForProperty(state, propertyId);
+  const d = (asOfDateYyyyMmDd ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
+  getOwnershipSharesForPropertyOnDate(state, propertyId, d).forEach((s) => ids.add(s.ownerId));
+  return ids;
 }
 
 export function hasMultipleOwnersOnDate(
@@ -469,4 +518,97 @@ export function applyLegacySingleOwnerTransfer(
     notes: args.notes,
     tenantId: args.tenantId,
   });
+}
+
+// --- Owner ledger / payout allocations (match OwnerLedger.tsx co-owner rules) ---
+
+/**
+ * Part of a property expense allocated to one owner: proportional share when co-owners exist on tx date,
+ * else full amount only for the resolved single owner (0 for others).
+ * Skips amounts tied to tenant contacts (same as Owner Ledger expense filter).
+ */
+export function getPropertyExpenseAllocatedAmountForOwner(
+  state: Pick<
+    AppState,
+    'properties' | 'propertyOwnership' | 'propertyOwnershipHistory' | 'invoices' | 'rentalAgreements' | 'contacts'
+  >,
+  tx: Pick<Transaction, 'propertyId' | 'date' | 'contactId' | 'ownerId' | 'invoiceId' | 'categoryId'>,
+  rawAmount: number,
+  forOwnerId: string
+): number {
+  if (!tx.propertyId || rawAmount <= 0 || !Number.isFinite(rawAmount)) return 0;
+  if (tx.contactId) {
+    const contact = state.contacts?.find((c) => c.id === tx.contactId);
+    if (contact?.type === ContactType.TENANT) return 0;
+  }
+  const pid = String(tx.propertyId);
+  const d = (tx.date || '').slice(0, 10);
+  if (!d) return 0;
+
+  if (hasMultipleOwnersOnDate(state, pid, d)) {
+    const pct = getOwnerSharePercentageOnDate(state, pid, forOwnerId, d);
+    if (pct <= 0) return 0;
+    return Math.round(rawAmount * pct) / 100;
+  }
+  const ownerIdForTx = resolveOwnerForTransaction(state, tx as Transaction);
+  return ownerIdForTx === forOwnerId ? rawAmount : 0;
+}
+
+/**
+ * Broker fee from a rental agreement allocated to one co-owner by ownership % on agreement start date.
+ */
+export function getBrokerFeeAllocatedAmountForOwner(
+  state: Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory'>,
+  ra: {
+    propertyId?: string;
+    startDate?: string;
+    brokerFee?: number | string;
+    ownerId?: string;
+    previousAgreementId?: string | null;
+    brokerId?: string;
+  },
+  forOwnerId: string
+): number {
+  if (ra.previousAgreementId) return 0;
+  if (!ra.brokerId || !ra.propertyId) return 0;
+  const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
+  if (isNaN(fee) || fee <= 0) return 0;
+
+  const raDateStr = (ra.startDate || '').slice(0, 10);
+  const prop = state.properties.find((p) => p.id === ra.propertyId);
+  const pid = String(ra.propertyId);
+
+  if (raDateStr && hasMultipleOwnersOnDate(state, pid, raDateStr)) {
+    const pct = getOwnerSharePercentageOnDate(state, pid, forOwnerId, raDateStr);
+    if (pct <= 0) return 0;
+    return Math.round(fee * pct) / 100;
+  }
+  const raOwnerId =
+    ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, pid, raDateStr) : prop?.ownerId);
+  return raOwnerId === forOwnerId ? fee : 0;
+}
+
+/**
+ * Owner-property bill (cost center) amount allocated to one co-owner by ownership % on bill issue date.
+ */
+export function getBillCostAllocatedAmountForOwner(
+  state: Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory'>,
+  bill: { propertyId?: string; issueDate?: string; amount?: number | string; projectId?: string | null },
+  forOwnerId: string
+): number {
+  if (!bill.propertyId || bill.projectId) return 0;
+  const amount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
+  if (isNaN(amount) || amount <= 0) return 0;
+
+  const billDateStr = (bill.issueDate || '').slice(0, 10);
+  const prop = state.properties.find((p) => p.id === bill.propertyId);
+  const pid = String(bill.propertyId);
+
+  if (billDateStr && hasMultipleOwnersOnDate(state, pid, billDateStr)) {
+    const pct = getOwnerSharePercentageOnDate(state, pid, forOwnerId, billDateStr);
+    if (pct <= 0) return 0;
+    return Math.round(amount * pct) / 100;
+  }
+  const billOwnerId = billDateStr ? resolveOwnerForPropertyOnDate(state, pid, billDateStr) : prop?.ownerId;
+  return billOwnerId === forOwnerId ? amount : 0;
 }
