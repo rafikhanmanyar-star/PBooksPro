@@ -222,16 +222,37 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
 
+                const property = state.properties.find(p => p.id === tx.propertyId);
+                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                if (isNaN(amount) || amount <= 0) return;
+
+                const d = (tx.date || '').slice(0, 10);
+                const pid = String(tx.propertyId!);
+                if (d && hasMultipleOwnersOnDate(state, pid, d)) {
+                    const pct = getOwnerSharePercentageOnDate(state, pid, ownerId!, d);
+                    if (pct <= 0) return;
+                    const shareAmt = Math.round(amount * pct) / 100;
+                    if (shareAmt <= 0) return;
+                    items.push({
+                        id: `exp-${tx.id}-${ownerId}`,
+                        date: tx.date,
+                        particulars: `${category?.name || 'Expense'}: ${property?.name} (${pct.toFixed(0)}%)`,
+                        debit: shareAmt,
+                        credit: 0,
+                        type: 'Expense',
+                        transaction: tx
+                    });
+                    return;
+                }
+
                 const ownerIdForTx = resolveOwnerForTransaction(state, tx);
                 if (ownerIdForTx && ownerIdForTx !== ownerId) return;
 
-                const property = state.properties.find(p => p.id === tx.propertyId);
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 items.push({
                     id: `exp-${tx.id}`,
                     date: tx.date,
                     particulars: `${category?.name || 'Expense'}: ${property?.name}`,
-                    debit: isNaN(amount) ? 0 : amount,
+                    debit: amount,
                     credit: 0,
                     type: 'Expense',
                     transaction: tx
@@ -245,13 +266,32 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
                 if (isNaN(fee) || fee <= 0) return;
                 const raDateStr = (ra.startDate || '').slice(0, 10);
+                const property = state.properties.find(p => p.id === ra.propertyId);
+                const baseParticulars = `Broker Fee: ${property?.name || 'Unit'} (Agr #${ra.agreementNumber || ra.id})`;
+
+                if (raDateStr && hasMultipleOwnersOnDate(state, String(ra.propertyId), raDateStr)) {
+                    const pct = getOwnerSharePercentageOnDate(state, String(ra.propertyId), ownerId!, raDateStr);
+                    if (pct <= 0) return;
+                    const share = Math.round(fee * pct) / 100;
+                    if (share <= 0) return;
+                    items.push({
+                        id: `broker-fee-${ra.id}-${ownerId}`,
+                        date: ra.startDate,
+                        particulars: `${baseParticulars} (${pct.toFixed(0)}%)`,
+                        debit: share,
+                        credit: 0,
+                        type: 'Expense'
+                    });
+                    return;
+                }
+
                 const raOwnerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : undefined);
                 if (raOwnerId && raOwnerId !== ownerId) return;
-                const property = state.properties.find(p => p.id === ra.propertyId);
+
                 items.push({
                     id: `broker-fee-${ra.id}`,
                     date: ra.startDate,
-                    particulars: `Broker Fee: ${property?.name || 'Unit'} (Agr #${ra.agreementNumber || ra.id})`,
+                    particulars: baseParticulars,
                     debit: fee,
                     credit: 0,
                     type: 'Expense'
@@ -264,13 +304,32 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 const amount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
                 if (isNaN(amount) || amount <= 0) return;
                 const billDateStr = (bill.issueDate || '').slice(0, 10);
+                const property = state.properties.find(p => p.id === bill.propertyId);
+                const baseParticulars = `Bill: ${property?.name || 'Unit'} #${bill.billNumber || bill.id}`;
+
+                if (billDateStr && hasMultipleOwnersOnDate(state, String(bill.propertyId), billDateStr)) {
+                    const pct = getOwnerSharePercentageOnDate(state, String(bill.propertyId), ownerId!, billDateStr);
+                    if (pct <= 0) return;
+                    const share = Math.round(amount * pct) / 100;
+                    if (share <= 0) return;
+                    items.push({
+                        id: `bill-${bill.id}-${ownerId}`,
+                        date: bill.issueDate,
+                        particulars: `${baseParticulars} (${pct.toFixed(0)}%)`,
+                        debit: share,
+                        credit: 0,
+                        type: 'Expense'
+                    });
+                    return;
+                }
+
                 const billOwnerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : undefined;
                 if (billOwnerId && billOwnerId !== ownerId) return;
-                const property = state.properties.find(p => p.id === bill.propertyId);
+
                 items.push({
                     id: `bill-${bill.id}`,
                     date: bill.issueDate,
-                    particulars: `Bill: ${property?.name || 'Unit'} #${bill.billNumber || bill.id}`,
+                    particulars: baseParticulars,
                     debit: amount,
                     credit: 0,
                     type: 'Expense'

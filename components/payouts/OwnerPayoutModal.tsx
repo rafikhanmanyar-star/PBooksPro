@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Contact, TransactionType, Transaction, AccountType, Category, Invoice, InvoiceStatus, InvoiceType, RentalAgreementStatus } from '../../types';
 import Modal from '../ui/Modal';
@@ -17,6 +17,9 @@ export interface PropertyBalanceItem {
     propertyId: string;
     propertyName: string;
     balanceDue: number;
+    /** When set, this row pays out to that owner (Rent mode; former + current on same unit). */
+    payeeOwnerId?: string;
+    payeeOwnerName?: string;
 }
 
 interface OwnerPayoutRow {
@@ -27,6 +30,8 @@ interface OwnerPayoutRow {
     balanceDue: number;
     paymentAmount: number;
     isSelected: boolean;
+    payeeOwnerId: string;
+    payeeOwnerName: string;
 }
 
 interface InvoiceAdjustmentRow {
@@ -76,6 +81,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const [showWhatsAppConfirm, setShowWhatsAppConfirm] = useState(false);
     const [lastPaidAmount, setLastPaidAmount] = useState(0);
     const [lastReference, setLastReference] = useState('');
+    const [whatsAppPayee, setWhatsAppPayee] = useState<Contact | null>(null);
     const [securityAllocations, setSecurityAllocations] = useState<{ owner: number; tenant: number; adjust: number }>({ owner: 0, tenant: 0, adjust: 0 });
     const [invoiceAdjustments, setInvoiceAdjustments] = useState<InvoiceAdjustmentRow[]>([]);
 
@@ -160,9 +166,18 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     );
     const effectiveTenantUnpaidAmount = tenantUnpaidAmount > 0.01 ? tenantUnpaidAmount : computedUnpaidRentalTotal;
 
+    const prevIsOpenRef = useRef(false);
     useEffect(() => {
-        if (isOpen) {
-            if (isEditMode && transactionToEdit) {
+        if (isOpen && !prevIsOpenRef.current) {
+            setShowWhatsAppConfirm(false);
+            setWhatsAppPayee(null);
+        }
+        prevIsOpenRef.current = isOpen;
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (isEditMode && transactionToEdit) {
                 setAmount(String(transactionToEdit.amount));
                 setDate(parseStoredDateToYyyyMmDdInput(transactionToEdit.date));
                 setAccountId(transactionToEdit.accountId || '');
@@ -200,16 +215,23 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                         isSelected: false,
                     })));
                 }
-                if (propertyBreakdown.length > 0) {
+                if (propertyBreakdown.length > 0 && owner) {
                     const sumDue = propertyBreakdown.reduce((s, p) => s + (p.balanceDue || 0), 0);
                     const useTotalForFirst = sumDue < 0.01 && balanceDue > 0.01 && propertyBreakdown.length > 0;
                     const shortfall = balanceDue > sumDue ? balanceDue - sumDue : 0;
+                    let shortfallApplied = false;
                     const newItems: OwnerPayoutRow[] = propertyBreakdown.map((p, idx) => {
                         const prop = state.properties.find(pr => String(pr.id) === String(p.propertyId));
                         const building = prop?.buildingId ? state.buildings.find(b => b.id === prop.buildingId) : null;
+                        const payeeOwnerId = p.payeeOwnerId ?? owner.id;
+                        const payeeOwnerName = p.payeeOwnerName ?? owner.name;
                         let due = useTotalForFirst && idx === 0 ? balanceDue : (p.balanceDue || 0);
-                        if (idx === 0 && shortfall > 0.01) due += shortfall;
+                        if (shortfall > 0.01 && !shortfallApplied && payeeOwnerId === owner.id) {
+                            due += shortfall;
+                            shortfallApplied = true;
+                        }
                         const hasDue = due > 0.01;
+                        const defaultSelected = hasDue && payeeOwnerId === owner.id;
                         return {
                             propertyId: p.propertyId,
                             propertyName: p.propertyName,
@@ -217,7 +239,9 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                             buildingName: building?.name || '—',
                             balanceDue: due,
                             paymentAmount: due,
-                            isSelected: hasDue,
+                            isSelected: payoutType === 'Rent' ? defaultSelected : hasDue,
+                            payeeOwnerId,
+                            payeeOwnerName,
                         };
                     });
                     setItems(newItems);
@@ -227,8 +251,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 }
             }
             setError('');
-        }
-    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings, isSecurityMode, unpaidPropertyInvoices]);
+    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings, isSecurityMode, unpaidPropertyInvoices, payoutType, owner]);
 
     const totalToPay = items.filter(i => i.isSelected).reduce((sum, i) => sum + i.paymentAmount, 0);
     const invoiceAdjustTotal = invoiceAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
@@ -477,6 +500,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             showToast(`Security deposit processed (${allTxs.length} transaction${allTxs.length > 1 ? 's' : ''}).`, 'success');
             setLastPaidAmount(totalPaid);
             setLastReference(reference);
+            setWhatsAppPayee(owner);
             setShowWhatsAppConfirm(true);
             return;
         }
@@ -487,10 +511,18 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             return;
         }
 
-        const baseDescription = `${payoutType === 'Security' ? 'Security Deposit Payout' : 'Owner Payout'} to ${owner.name}`;
         const descriptionSuffix = (notes ? ` - ${notes}` : '') + (reference ? ` (Ref: ${reference})` : '');
 
-        const buildTransaction = (opts: { amount: number; propertyId?: string; buildingId?: string; descriptionExtra?: string; id?: string }): Transaction => {
+        const buildTransaction = (opts: {
+            amount: number;
+            propertyId?: string;
+            buildingId?: string;
+            descriptionExtra?: string;
+            id?: string;
+            payeeId: string;
+            payeeName: string;
+        }): Transaction => {
+            const baseDescription = `${payoutType === 'Security' ? 'Security Deposit Payout' : 'Owner Payout'} to ${opts.payeeName}`;
             let desc = baseDescription + descriptionSuffix;
             if (opts.descriptionExtra) desc += ` ${opts.descriptionExtra}`;
             else if (opts.buildingId) {
@@ -503,11 +535,11 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 date,
                 description: desc,
                 accountId: payoutAccount.id,
-                contactId: owner.id,
+                contactId: opts.payeeId,
                 categoryId: payoutCategory.id,
                 buildingId: opts.buildingId || undefined,
                 propertyId: opts.propertyId,
-                ownerId: owner.id,
+                ownerId: opts.payeeId,
                 id: opts.id ?? `tx-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
             };
         };
@@ -517,6 +549,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 amount: parseFloat(amount),
                 buildingId: buildingId || undefined,
                 propertyId: transactionToEdit?.propertyId,
+                payeeId: owner.id,
+                payeeName: owner.name,
             });
             payoutTransaction.id = transactionToEdit!.id;
             dispatch({ type: 'UPDATE_TRANSACTION', payload: payoutTransaction });
@@ -539,13 +573,24 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     buildingId: row.buildingId || undefined,
                     descriptionExtra: `[${row.propertyName}]`,
                     id: `tx-${baseId}-${i}`,
+                    payeeId: row.payeeOwnerId,
+                    payeeName: row.payeeOwnerName,
                 })
             );
             dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
             showToast(`${payoutType} payout recorded for ${transactions.length} propert${transactions.length === 1 ? 'y' : 'ies'}.`, 'success');
-            setLastPaidAmount(transactions.reduce((s, t) => s + t.amount, 0));
+            const totalPaid = transactions.reduce((s, t) => s + t.amount, 0);
+            setLastPaidAmount(totalPaid);
             setLastReference(reference);
-            setShowWhatsAppConfirm(true);
+            const distinctPayees = [...new Set(selectedRows.map(r => r.payeeOwnerId))];
+            if (distinctPayees.length === 1) {
+                const payee = state.contacts.find(c => c.id === distinctPayees[0]) || owner;
+                setWhatsAppPayee(payee);
+                setShowWhatsAppConfirm(true);
+            } else {
+                setWhatsAppPayee(null);
+                onClose();
+            }
             return;
         }
 
@@ -564,23 +609,27 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             amount: parseFloat(amount),
             buildingId: buildingId || preSelectedBuildingId || singleProp?.buildingId,
             propertyId: singlePropertyId,
+            payeeId: owner.id,
+            payeeName: owner.name,
         });
         dispatch({ type: 'ADD_TRANSACTION', payload: payoutTransaction });
         showToast(`${payoutType} payout recorded successfully.`, 'success');
         setLastPaidAmount(parseFloat(amount));
         setLastReference(reference);
+        setWhatsAppPayee(owner);
         setShowWhatsAppConfirm(true);
     };
 
     const handleSendWhatsAppConfirmation = () => {
-        if (!owner) return;
+        const payee = whatsAppPayee || owner;
+        if (!payee) return;
         const payoutLabel = payoutType === 'Security' ? 'Security Deposit Payout' : 'Owner Income Payout';
         const template = state.whatsAppTemplates.payoutConfirmation || 'Dear {contactName}, a {payoutType} payment of {amount} has been made to you. Reference: {reference}';
         const message = WhatsAppService.generatePayoutConfirmation(
-            template, owner, lastPaidAmount, payoutLabel, lastReference
+            template, payee, lastPaidAmount, payoutLabel, lastReference
         );
         sendOrOpenWhatsApp(
-            { contact: owner, message, phoneNumber: owner.contactNo || undefined },
+            { contact: payee, message, phoneNumber: payee.contactNo || undefined },
             () => state.whatsAppMode,
             openChat
         );
@@ -592,6 +641,16 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         setShowWhatsAppConfirm(false);
         onClose();
     };
+
+    const modalTitle = useMemo(() => {
+        if (!owner) return '';
+        if (isEditMode) return `Edit Payout - ${owner.name} (${payoutType})`;
+        const multiPayee =
+            payoutType === 'Rent' &&
+            propertyBreakdown.some((p) => p.payeeOwnerId && p.payeeOwnerId !== owner.id);
+        if (multiPayee) return `Record owner payouts (${payoutType})`;
+        return `Pay ${owner.name} (${payoutType})`;
+    }, [owner, isEditMode, payoutType, propertyBreakdown]);
     
     if (!owner) return null;
     
@@ -610,7 +669,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                             <div className="w-6 h-6 text-emerald-600">{ICONS.check}</div>
                         </div>
                         <p className="font-semibold text-emerald-800">
-                            {CURRENCY} {lastPaidAmount.toLocaleString()} paid to {owner.name}
+                            {CURRENCY} {lastPaidAmount.toLocaleString()} paid to {(whatsAppPayee || owner).name}
                         </p>
                         <p className="text-sm text-emerald-600 mt-1">
                             {payoutType === 'Security' ? 'Security Deposit' : 'Owner Income'} Payout
@@ -637,7 +696,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={isEditMode ? `Edit Payout - ${owner.name} (${payoutType})` : `Pay ${owner.name} (${payoutType})`} size={showPropertyTable ? 'xl' : undefined}>
+        <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} size={showPropertyTable ? 'xl' : undefined}>
             <div className="space-y-4">
                 {/* Pay From Account + Payment Date — same row as broker modal */}
                 <div className="flex flex-col md:flex-row gap-4">
@@ -856,14 +915,15 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                         <div className="border rounded-lg overflow-hidden">
                             <div className="bg-slate-100 px-4 py-2 font-semibold text-sm text-slate-700 grid grid-cols-12 gap-2">
                                 <div className="col-span-1 text-center">Select</div>
-                                <div className="col-span-4">Reference (Unit)</div>
+                                <div className="col-span-3">Reference (Unit)</div>
+                                <div className="col-span-3">Pay to (owner)</div>
                                 <div className="col-span-2 text-right">Due</div>
                                 <div className="col-span-3 text-right">Pay Now</div>
                             </div>
                             <div className="max-h-60 overflow-y-auto">
                                 {items.length > 0 ? (
                                     items.map((row, idx) => (
-                                        <div key={row.propertyId} className={`grid grid-cols-12 gap-2 px-4 py-3 border-b text-sm items-center ${row.isSelected ? 'bg-indigo-50' : ''}`}>
+                                        <div key={`${row.propertyId}-${row.payeeOwnerId}`} className={`grid grid-cols-12 gap-2 px-4 py-3 border-b text-sm items-center ${row.isSelected ? 'bg-indigo-50' : ''}`}>
                                             <div className="col-span-1 text-center">
                                                 <input
                                                     type="checkbox"
@@ -874,13 +934,21 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                                     title={`Select ${row.propertyName}`}
                                                 />
                                             </div>
-                                            <div className="col-span-4">
+                                            <div className="col-span-3">
                                                 <div className="font-medium text-slate-800 truncate" title={row.propertyName}>
                                                     {row.propertyName}
                                                 </div>
                                                 <div className="text-xs text-slate-500 truncate" title={row.buildingName}>
                                                     Building: {row.buildingName}
                                                 </div>
+                                            </div>
+                                            <div className="col-span-3 min-w-0">
+                                                <div className="font-medium text-slate-800 truncate" title={row.payeeOwnerName}>
+                                                    {row.payeeOwnerName}
+                                                </div>
+                                                {row.payeeOwnerId !== owner.id && (
+                                                    <div className="text-[10px] text-amber-700 font-medium">Other owner on this unit</div>
+                                                )}
                                             </div>
                                             <div className="col-span-2 text-right text-slate-600">
                                                 {CURRENCY} {row.balanceDue.toLocaleString()}

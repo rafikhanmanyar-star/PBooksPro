@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { ContactType, TransactionType, Transaction, Contact } from '../../types';
+import { AppState, ContactType, TransactionType, Transaction, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatCurrency } from '../../utils/numberUtils';
-import OwnerPayoutModal from './OwnerPayoutModal';
+import OwnerPayoutModal, { PropertyBalanceItem } from './OwnerPayoutModal';
 import PayoutTreePanel, {
     PayoutTreeNode,
     filterPayoutTreeNodes,
@@ -45,6 +45,49 @@ interface PayeeRow {
 }
 
 type SortKey = 'name' | 'category' | 'collected' | 'paid' | 'balance';
+
+/** One row per (unit, owner) so rent payouts can pay former and current owners from the same form. */
+function expandRentBreakdownForModal(
+    state: AppState,
+    modalOwnerId: string,
+    primaryItems: PropertyBalanceItem[],
+    fullBreakdown: Record<string, { rent: PropertyBalanceItem[]; security: PropertyBalanceItem[] }>
+): PropertyBalanceItem[] {
+    const out: PropertyBalanceItem[] = [];
+    const seen = new Set<string>();
+
+    for (const item of primaryItems) {
+        const pid = String(item.propertyId);
+        const ownersToShow = new Set<string>(getAllHistoricalOwnerIds(state, pid));
+        ownersToShow.add(modalOwnerId);
+
+        for (const oid of ownersToShow) {
+            const slice = fullBreakdown[oid]?.rent?.find((r) => String(r.propertyId) === pid);
+            const due = slice?.balanceDue ?? 0;
+            if (due <= 0.01) continue;
+            const key = `${pid}::${oid}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const c = state.contacts.find((x) => x.id === oid);
+            const former = isFormerOwner(state, oid);
+            const baseName = c?.name ?? 'Owner';
+            out.push({
+                propertyId: item.propertyId,
+                propertyName: item.propertyName,
+                balanceDue: due,
+                payeeOwnerId: oid,
+                payeeOwnerName: former ? `${baseName} (former)` : baseName,
+            });
+        }
+    }
+
+    out.sort((a, b) => {
+        const pn = (a.propertyName || '').localeCompare(b.propertyName || '', undefined, { sensitivity: 'base' });
+        if (pn !== 0) return pn;
+        return (a.payeeOwnerName || '').localeCompare(b.payeeOwnerName || '', undefined, { sensitivity: 'base' });
+    });
+    return out;
+}
 
 // --- Component ---
 
@@ -473,6 +516,16 @@ const OwnerPayoutsPage: React.FC = () => {
             if (tx.type === TransactionType.EXPENSE && tx.billId && ownerBillIds.has(tx.billId)) billPaymentTxIds.add(tx.id);
         });
 
+        const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+        const clearingRentCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
+        const txIdsWithShareLines = new Set<string>();
+        if (ownerShareCat) {
+            state.transactions.forEach(tx => {
+                if (tx.categoryId === ownerShareCat.id && tx.invoiceId) txIdsWithShareLines.add(tx.invoiceId);
+                if (tx.categoryId === ownerShareCat.id && tx.batchId) txIdsWithShareLines.add(tx.batchId);
+            });
+        }
+
         state.properties.forEach(prop => {
             const allOwnerIds = getAllHistoricalOwnerIds(state, prop.id);
             if (allOwnerIds.size === 0 && prop.ownerId) allOwnerIds.add(prop.ownerId);
@@ -484,15 +537,47 @@ const OwnerPayoutsPage: React.FC = () => {
                 if (rentalIncomeCategory) {
                     let collected = 0;
                     let paid = 0;
+                    // Same rules as ownerRentalBalances: gross rent + proportional split when co-owners on tx date; explicit share lines.
                     state.transactions
-                        .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && String(tx.propertyId) === propIdStr)
-                        .forEach(tx => {
-                            const ownerIdForTx = resolveOwnerForTransaction(state, tx);
-                            if (ownerIdForTx !== ownerId) return;
-                            const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                        .filter((tx) => {
+                            if (tx.type !== TransactionType.INCOME || String(tx.propertyId) !== propIdStr) return false;
+                            if (clearingRentCat && tx.categoryId === clearingRentCat.id) return false;
+                            if (tx.categoryId === rentalIncomeCategory.id) {
+                                const d = (tx.date || '').slice(0, 10);
+                                if (d && hasMultipleOwnersOnDate(state, propIdStr, d)) {
+                                    const hasExplicitShares =
+                                        (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId)) ||
+                                        (tx.batchId && txIdsWithShareLines.has(tx.batchId));
+                                    if (hasExplicitShares) return false;
+                                    return true;
+                                }
+                                return true;
+                            }
+                            if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) return true;
+                            return false;
+                        })
+                        .forEach((tx) => {
+                            let amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                             if (isNaN(amount)) return;
-                            if (amount > 0) collected += amount;
-                            else paid += Math.abs(amount);
+
+                            if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) {
+                                if (tx.contactId === ownerId && amount > 0) collected += amount;
+                                return;
+                            }
+
+                            const d = (tx.date || '').slice(0, 10);
+                            const isMultiOwner = d && hasMultipleOwnersOnDate(state, propIdStr, d);
+
+                            if (isMultiOwner) {
+                                const pct = getOwnerSharePercentageOnDate(state, propIdStr, ownerId, d);
+                                const share = Math.round(amount * pct) / 100;
+                                if (share > 0) collected += share;
+                            } else {
+                                const ownerIdForTx = resolveOwnerForTransaction(state, tx);
+                                if (ownerIdForTx !== ownerId) return;
+                                if (amount > 0) collected += amount;
+                                else paid += Math.abs(amount);
+                            }
                         });
                     if (ownerSvcPayCategory) {
                         const isFirstPropertyForOwner = result[ownerId].rent.length === 0;
@@ -605,7 +690,16 @@ const OwnerPayoutsPage: React.FC = () => {
             }
         });
         return result;
-    }, [state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership]);
+    }, [state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership, state.invoices]);
+
+    // Rent modal: show every owner slice on the same unit (former + current) so payouts post to the right contact.
+    const ownerPayoutModalPropertyBreakdown = useMemo((): PropertyBalanceItem[] => {
+        if (!ownerPayoutModal.isOpen || !ownerPayoutModal.owner) return [];
+        const mode = ownerPayoutModal.payoutType === 'Rent' ? 'rent' : 'security';
+        const raw = ownerPropertyBreakdown[ownerPayoutModal.owner.id]?.[mode] ?? [];
+        if (ownerPayoutModal.payoutType !== 'Rent') return raw;
+        return expandRentBreakdownForModal(state, ownerPayoutModal.owner.id, raw, ownerPropertyBreakdown);
+    }, [ownerPayoutModal.isOpen, ownerPayoutModal.owner?.id, ownerPayoutModal.payoutType, ownerPropertyBreakdown, state]);
 
     // When a unit is selected, show its name in the properties column
     const selectedUnitName = useMemo(() => {
@@ -1728,9 +1822,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     payoutType={ownerPayoutModal.payoutType}
                     preSelectedBuildingId={ownerPayoutModal.buildingId}
                     transactionToEdit={ownerPayoutModal.transactionToEdit}
-                    propertyBreakdown={
-                        ownerPropertyBreakdown[ownerPayoutModal.owner.id]?.[ownerPayoutModal.payoutType === 'Rent' ? 'rent' : 'security'] ?? []
-                    }
+                    propertyBreakdown={ownerPayoutModalPropertyBreakdown}
                 />
             )}
 

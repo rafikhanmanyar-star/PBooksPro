@@ -25,7 +25,7 @@ import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getAllHistoricalOwnerIds, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, isFormerOwner, getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
 
-type DateRangeOption = 'today' | 'thisMonth' | 'lastMonth' | 'custom';
+type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
 
 interface ReportRow {
     id: string;
@@ -48,9 +48,9 @@ const OwnerPayoutsReport: React.FC = () => {
     const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();
     const now = new Date();
-    const [dateRange, setDateRange] = useState<DateRangeOption>('thisMonth');
-    const [startDate, setStartDate] = useState(() => toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
-    const [endDate, setEndDate] = useState(() => toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
+    const [dateRange, setDateRange] = useState<DateRangeOption>('total');
+    const [startDate, setStartDate] = useState(() => '2000-01-01');
+    const [endDate, setEndDate] = useState(() => toLocalDateString(new Date()));
     const [searchQuery, setSearchQuery] = useState('');
     /** Single tree selection: 'all' | 'building:{id}' | 'owner:{id}' | 'unit:{propertyId}' */
     const [selectedTreeId, setSelectedTreeId] = useState<string>('all');
@@ -70,12 +70,15 @@ const OwnerPayoutsReport: React.FC = () => {
             return { selectedBuildingId: 'all', selectedOwnerId: id, selectedUnitId: 'all' };
         }
         if (selectedTreeId.startsWith('unit:')) {
-            const propertyId = selectedTreeId.slice('unit:'.length);
-            const property = state.properties.find(p => p.id === propertyId);
+            const rest = selectedTreeId.slice('unit:'.length);
+            const colonIdx = rest.indexOf(':');
+            const propertyIdStr = colonIdx === -1 ? rest : rest.slice(0, colonIdx);
+            const ownerFromTree = colonIdx === -1 ? undefined : rest.slice(colonIdx + 1);
+            const property = state.properties.find(p => String(p.id) === propertyIdStr);
             if (!property) return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
             return {
                 selectedBuildingId: property.buildingId || 'all',
-                selectedOwnerId: property.ownerId || 'all',
+                selectedOwnerId: ownerFromTree || 'all',
                 selectedUnitId: property.id
             };
         }
@@ -156,7 +159,7 @@ const OwnerPayoutsReport: React.FC = () => {
                                 const shares = getOwnershipSharesForPropertyOnDate(state, prop.id, todayStr);
                                 const ownerShare = shares.find(s => s.ownerId === ownerId);
                                 const pctSuffix = shares.length > 1 && ownerShare ? ` (${ownerShare.percentage.toFixed(0)}%)` : '';
-                                return { id: `unit:${prop.id}`, label: `${prop.name}${pctSuffix}`, type: 'unit' as const };
+                                return { id: `unit:${prop.id}:${ownerId}`, label: `${prop.name}${pctSuffix}`, type: 'unit' as const };
                             });
                         unitChildren.sort((a, b) => a.label.localeCompare(b.label));
                         let ownerLabel = owner.name;
@@ -188,10 +191,9 @@ const OwnerPayoutsReport: React.FC = () => {
         setDateRange(option);
         const n = new Date();
 
-        if (option === 'today') {
-            const today = toLocalDateString(n);
-            setStartDate(today);
-            setEndDate(today);
+        if (option === 'total') {
+            setStartDate('2000-01-01');
+            setEndDate(toLocalDateString(n));
         } else if (option === 'thisMonth') {
             setStartDate(toLocalDateString(new Date(n.getFullYear(), n.getMonth(), 1)));
             setEndDate(toLocalDateString(new Date(n.getFullYear(), n.getMonth() + 1, 0)));
@@ -328,20 +330,42 @@ const OwnerPayoutsReport: React.FC = () => {
 
                 if (isRelevant) {
                     let buildingId = tx.buildingId;
-                    let ownerId = tx.contactId;
+                    const isDirectOwnerPayout = !!(ownerPayoutCategory && tx.categoryId === ownerPayoutCategory.id);
+                    let ownerId: string | undefined = tx.contactId;
                     if (propertyId) {
                         const property = state.properties.find(p => p.id === propertyId);
                         if (property) {
-                            ownerId = resolveOwnerForTransaction(state, tx) ?? property.ownerId;
                             if (!buildingId) buildingId = property.buildingId;
+                            if (!isDirectOwnerPayout) {
+                                ownerId = resolveOwnerForTransaction(state, tx) ?? property.ownerId;
+                            }
                         }
                     }
-                    if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-                    if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-                    if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
-
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (!isNaN(amount)) balance -= amount;
+                    if (isNaN(amount)) return;
+
+                    const txDate = (tx.date || '').slice(0, 10);
+                    if (
+                        !isDirectOwnerPayout &&
+                        propertyId &&
+                        txDate &&
+                        hasMultipleOwnersOnDate(state, String(propertyId), txDate)
+                    ) {
+                        const shares = getOwnershipSharesForPropertyOnDate(state, String(propertyId), txDate);
+                        for (const s of shares) {
+                            if (s.percentage <= 0) continue;
+                            const shareAmt = Math.round(amount * s.percentage) / 100;
+                            if (selectedOwnerId !== 'all' && s.ownerId !== selectedOwnerId) continue;
+                            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
+                            if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) continue;
+                            balance -= shareAmt;
+                        }
+                    } else {
+                        if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
+                        if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                        if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
+                        balance -= amount;
+                    }
                 }
             }
         });
@@ -353,13 +377,27 @@ const OwnerPayoutsReport: React.FC = () => {
             const property = state.properties.find(p => p.id === ra.propertyId);
             if (!property) return;
             const raDateStr = (ra.startDate || '').slice(0, 10);
-            const ownerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : property.ownerId);
             const buildingId = property.buildingId;
-            if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-            if (selectedUnitId !== 'all' && ra.propertyId !== selectedUnitId) return;
             const fee = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
-            if (!isNaN(fee)) balance -= fee;
+            if (isNaN(fee)) return;
+
+            if (raDateStr && hasMultipleOwnersOnDate(state, String(ra.propertyId), raDateStr)) {
+                const shares = getOwnershipSharesForPropertyOnDate(state, String(ra.propertyId), raDateStr);
+                for (const s of shares) {
+                    if (s.percentage <= 0) continue;
+                    const shareFee = Math.round(fee * s.percentage) / 100;
+                    if (selectedOwnerId !== 'all' && s.ownerId !== selectedOwnerId) continue;
+                    if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
+                    if (selectedUnitId !== 'all' && ra.propertyId !== selectedUnitId) continue;
+                    balance -= shareFee;
+                }
+            } else {
+                const ownerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : property.ownerId);
+                if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
+                if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                if (selectedUnitId !== 'all' && ra.propertyId !== selectedUnitId) return;
+                balance -= fee;
+            }
         });
 
         (state.bills || []).forEach(bill => {
@@ -369,13 +407,27 @@ const OwnerPayoutsReport: React.FC = () => {
             const property = state.properties.find(p => p.id === bill.propertyId);
             if (!property) return;
             const billDateStr = (bill.issueDate || '').slice(0, 10);
-            const ownerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : property.ownerId;
             const buildingId = property.buildingId;
-            if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-            if (selectedUnitId !== 'all' && bill.propertyId !== selectedUnitId) return;
             const amt = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
-            if (!isNaN(amt) && amt > 0) balance -= amt;
+            if (isNaN(amt) || amt <= 0) return;
+
+            if (billDateStr && hasMultipleOwnersOnDate(state, String(bill.propertyId), billDateStr)) {
+                const shares = getOwnershipSharesForPropertyOnDate(state, String(bill.propertyId), billDateStr);
+                for (const s of shares) {
+                    if (s.percentage <= 0) continue;
+                    const shareAmt = Math.round(amt * s.percentage) / 100;
+                    if (selectedOwnerId !== 'all' && s.ownerId !== selectedOwnerId) continue;
+                    if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
+                    if (selectedUnitId !== 'all' && bill.propertyId !== selectedUnitId) continue;
+                    balance -= shareAmt;
+                }
+            } else {
+                const ownerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : property.ownerId;
+                if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
+                if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                if (selectedUnitId !== 'all' && bill.propertyId !== selectedUnitId) return;
+                balance -= amt;
+            }
         });
 
         return balance;
@@ -424,7 +476,13 @@ const OwnerPayoutsReport: React.FC = () => {
             });
         }
 
-        const pushIncomeItem = (tx: Transaction, amount: number, ownerIdForTx: string | undefined) => {
+        const pushIncomeItem = (
+            tx: Transaction,
+            amount: number,
+            ownerIdForTx: string | undefined,
+            rowId?: string,
+            particularsSuffix = ''
+        ) => {
             const property = state.properties.find(p => p.id === tx.propertyId);
             const owner = state.contacts.find(c => c.id === ownerIdForTx);
             const buildingId = tx.buildingId || property?.buildingId;
@@ -433,21 +491,22 @@ const OwnerPayoutsReport: React.FC = () => {
             if (selectedOwnerId !== 'all' && ownerIdForTx !== selectedOwnerId) return;
             if (selectedUnitId !== 'all' && tx.propertyId !== selectedUnitId) return;
 
+            const id = rowId ?? tx.id;
             if (amount < 0) {
                 items.push({
-                    id: tx.id, date: tx.date,
+                    id, date: tx.date,
                     ownerName: owner?.name || 'Unknown',
                     propertyName: property?.name || 'Unknown',
-                    particulars: tx.description || 'Service Charge Deduction',
+                    particulars: `${tx.description || 'Service Charge Deduction'}${particularsSuffix}`,
                     rentIn: 0, paidOut: Math.abs(amount),
                     entityType: 'transaction' as const, entityId: tx.id
                 });
             } else {
                 items.push({
-                    id: tx.id, date: tx.date,
+                    id, date: tx.date,
                     ownerName: owner?.name || 'Unknown',
                     propertyName: property?.name || 'Unknown',
-                    particulars: tx.description || 'Rent Collected',
+                    particulars: `${tx.description || 'Rent Collected'}${particularsSuffix}`,
                     rentIn: amount, paidOut: 0,
                     entityType: 'transaction' as const, entityId: tx.id
                 });
@@ -477,7 +536,8 @@ const OwnerPayoutsReport: React.FC = () => {
                         const pct = s.percentage;
                         if (pct <= 0) continue;
                         const shareAmt = Math.round(rawAmt * pct) / 100;
-                        pushIncomeItem(tx, shareAmt, s.ownerId);
+                        const shareLabel = shares.length > 1 ? ` (${pct.toFixed(0)}% share)` : '';
+                        pushIncomeItem(tx, shareAmt, s.ownerId, `${tx.id}-inc-${s.ownerId}`, shareLabel);
                     }
                 } else {
                     const ownerIdForTx = resolveOwnerForTransaction(state, tx) ?? state.properties.find(p => p.id === tx.propertyId)?.ownerId;
@@ -537,34 +597,72 @@ const OwnerPayoutsReport: React.FC = () => {
                     if (isRelevant) {
                         let propertyName = '-';
                         let buildingId = tx.buildingId;
+                        const isDirectOwnerPayout = !!(ownerPayoutCategory && tx.categoryId === ownerPayoutCategory.id);
 
                         if (propertyId) {
                             const property = state.properties.find(p => p.id === propertyId);
                             if (property) {
-                                ownerId = resolveOwnerForTransaction(state, tx) ?? property.ownerId;
+                                if (!isDirectOwnerPayout) {
+                                    ownerId = resolveOwnerForTransaction(state, tx) ?? property.ownerId;
+                                }
                                 propertyName = property.name;
                                 if (!buildingId) buildingId = property.buildingId;
                             }
                         }
 
-                        // Apply Filters
-                        if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-                        if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-                        if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
+                        const rawPaid =
+                            typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                        if (isNaN(rawPaid)) return;
 
-                        const owner = state.contacts.find(c => c.id === ownerId);
+                        const txDate = (tx.date || '').slice(0, 10);
+                        const baseParticulars = tx.description || 'Expense/Payout';
 
-                        items.push({
-                            id: tx.id,
-                            date: tx.date,
-                            ownerName: owner?.name || 'Unknown',
-                            propertyName: propertyName,
-                            particulars: tx.description || 'Expense/Payout',
-                            rentIn: 0,
-                            paidOut: typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount),
-                            entityType: 'transaction' as const,
-                            entityId: tx.id
-                        });
+                        if (
+                            !isDirectOwnerPayout &&
+                            propertyId &&
+                            txDate &&
+                            hasMultipleOwnersOnDate(state, String(propertyId), txDate)
+                        ) {
+                            const shares = getOwnershipSharesForPropertyOnDate(state, String(propertyId), txDate);
+                            for (const s of shares) {
+                                if (s.percentage <= 0) continue;
+                                const sharePaid = Math.round(rawPaid * s.percentage) / 100;
+                                if (selectedOwnerId !== 'all' && s.ownerId !== selectedOwnerId) continue;
+                                if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
+                                if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) continue;
+                                const o = state.contacts.find(c => c.id === s.ownerId);
+                                const shareLabel = shares.length > 1 ? ` (${s.percentage.toFixed(0)}% share)` : '';
+                                items.push({
+                                    id: `${tx.id}-exp-${s.ownerId}`,
+                                    date: tx.date,
+                                    ownerName: o?.name || 'Unknown',
+                                    propertyName,
+                                    particulars: `${baseParticulars}${shareLabel}`,
+                                    rentIn: 0,
+                                    paidOut: sharePaid,
+                                    entityType: 'transaction' as const,
+                                    entityId: tx.id
+                                });
+                            }
+                        } else {
+                            if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
+                            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                            if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
+
+                            const owner = state.contacts.find(c => c.id === ownerId);
+
+                            items.push({
+                                id: tx.id,
+                                date: tx.date,
+                                ownerName: owner?.name || 'Unknown',
+                                propertyName: propertyName,
+                                particulars: baseParticulars,
+                                rentIn: 0,
+                                paidOut: rawPaid,
+                                entityType: 'transaction' as const,
+                                entityId: tx.id
+                            });
+                        }
                     }
                 }
             });
@@ -581,27 +679,53 @@ const OwnerPayoutsReport: React.FC = () => {
             if (!property) return;
 
             const raDateStr = (ra.startDate || '').slice(0, 10);
-            const ownerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : property.ownerId);
-            const ownerContact = state.contacts.find(c => c.id === ownerId);
             const buildingId = property.buildingId;
-
-            // Apply Filters
-            if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-            if (selectedUnitId !== 'all' && ra.propertyId !== selectedUnitId) return;
-
             const brokerFeeAmount = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
-            items.push({
-                id: `broker-fee-${ra.id}`,
-                date: ra.startDate,
-                ownerName: ownerContact?.name || 'Unknown',
-                propertyName: property.name,
-                particulars: `Broker Fee: ${property.name} (Agr #${ra.agreementNumber})`,
-                rentIn: 0,
-                paidOut: isNaN(brokerFeeAmount) ? 0 : brokerFeeAmount,
-                entityType: 'transaction' as const,
-                entityId: ra.id
-            });
+            if (isNaN(brokerFeeAmount)) return;
+
+            const baseParticulars = `Broker Fee: ${property.name} (Agr #${ra.agreementNumber})`;
+
+            if (raDateStr && hasMultipleOwnersOnDate(state, String(ra.propertyId), raDateStr)) {
+                const shares = getOwnershipSharesForPropertyOnDate(state, String(ra.propertyId), raDateStr);
+                for (const s of shares) {
+                    if (s.percentage <= 0) continue;
+                    const shareFee = Math.round(brokerFeeAmount * s.percentage) / 100;
+                    if (selectedOwnerId !== 'all' && s.ownerId !== selectedOwnerId) continue;
+                    if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
+                    if (selectedUnitId !== 'all' && ra.propertyId !== selectedUnitId) continue;
+                    const o = state.contacts.find(c => c.id === s.ownerId);
+                    const shareLabel = shares.length > 1 ? ` (${s.percentage.toFixed(0)}% share)` : '';
+                    items.push({
+                        id: `broker-fee-${ra.id}-${s.ownerId}`,
+                        date: ra.startDate,
+                        ownerName: o?.name || 'Unknown',
+                        propertyName: property.name,
+                        particulars: `${baseParticulars}${shareLabel}`,
+                        rentIn: 0,
+                        paidOut: shareFee,
+                        entityType: 'transaction' as const,
+                        entityId: ra.id
+                    });
+                }
+            } else {
+                const ownerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : property.ownerId);
+                const ownerContact = state.contacts.find(c => c.id === ownerId);
+                if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
+                if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                if (selectedUnitId !== 'all' && ra.propertyId !== selectedUnitId) return;
+
+                items.push({
+                    id: `broker-fee-${ra.id}`,
+                    date: ra.startDate,
+                    ownerName: ownerContact?.name || 'Unknown',
+                    propertyName: property.name,
+                    particulars: baseParticulars,
+                    rentIn: 0,
+                    paidOut: brokerFeeAmount,
+                    entityType: 'transaction' as const,
+                    entityId: ra.id
+                });
+            }
         });
 
         // 4. Bill deductions (cost center = owner property) — show even if bill not paid yet
@@ -615,28 +739,53 @@ const OwnerPayoutsReport: React.FC = () => {
             if (!property) return;
 
             const billDateStr = (bill.issueDate || '').slice(0, 10);
-            const ownerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : property.ownerId;
-            const ownerContact = state.contacts.find(c => c.id === ownerId);
             const buildingId = property.buildingId;
-
-            if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-            if (selectedUnitId !== 'all' && bill.propertyId !== selectedUnitId) return;
-
             const billAmount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
             if (isNaN(billAmount) || billAmount <= 0) return;
 
-            items.push({
-                id: `bill-${bill.id}`,
-                date: bill.issueDate,
-                ownerName: ownerContact?.name || 'Unknown',
-                propertyName: property.name,
-                particulars: `Bill: ${property.name} #${bill.billNumber || bill.id}`,
-                rentIn: 0,
-                paidOut: billAmount,
-                entityType: 'transaction' as const,
-                entityId: bill.id
-            });
+            const baseParticulars = `Bill: ${property.name} #${bill.billNumber || bill.id}`;
+
+            if (billDateStr && hasMultipleOwnersOnDate(state, String(bill.propertyId), billDateStr)) {
+                const shares = getOwnershipSharesForPropertyOnDate(state, String(bill.propertyId), billDateStr);
+                for (const s of shares) {
+                    if (s.percentage <= 0) continue;
+                    const shareAmt = Math.round(billAmount * s.percentage) / 100;
+                    if (selectedOwnerId !== 'all' && s.ownerId !== selectedOwnerId) continue;
+                    if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
+                    if (selectedUnitId !== 'all' && bill.propertyId !== selectedUnitId) continue;
+                    const o = state.contacts.find(c => c.id === s.ownerId);
+                    const shareLabel = shares.length > 1 ? ` (${s.percentage.toFixed(0)}% share)` : '';
+                    items.push({
+                        id: `bill-${bill.id}-${s.ownerId}`,
+                        date: bill.issueDate,
+                        ownerName: o?.name || 'Unknown',
+                        propertyName: property.name,
+                        particulars: `${baseParticulars}${shareLabel}`,
+                        rentIn: 0,
+                        paidOut: shareAmt,
+                        entityType: 'transaction' as const,
+                        entityId: bill.id
+                    });
+                }
+            } else {
+                const ownerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : property.ownerId;
+                const ownerContact = state.contacts.find(c => c.id === ownerId);
+                if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
+                if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                if (selectedUnitId !== 'all' && bill.propertyId !== selectedUnitId) return;
+
+                items.push({
+                    id: `bill-${bill.id}`,
+                    date: bill.issueDate,
+                    ownerName: ownerContact?.name || 'Unknown',
+                    propertyName: property.name,
+                    particulars: baseParticulars,
+                    rentIn: 0,
+                    paidOut: billAmount,
+                    entityType: 'transaction' as const,
+                    entityId: bill.id
+                });
+            }
         });
 
         // Default Sort
@@ -967,7 +1116,7 @@ const OwnerPayoutsReport: React.FC = () => {
                                 {/* Date range pills */}
                                 <div className="flex items-center gap-3 mt-3">
                                     <div className="flex bg-app-toolbar p-0.5 rounded-lg border border-app-border">
-                                        {(['today', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
+                                        {(['total', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                                             <button
                                                 type="button"
                                                 key={opt}
@@ -977,7 +1126,7 @@ const OwnerPayoutsReport: React.FC = () => {
                                                     : 'text-app-muted hover:text-app-text hover:bg-app-toolbar/80'
                                                     }`}
                                             >
-                                                {opt === 'today' ? 'Today' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : (
+                                                {opt === 'total' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : (
                                                     <span className="flex items-center gap-1">Custom <span className="w-3.5 h-3.5 inline-block">{ICONS.calendar}</span></span>
                                                 )}
                                             </button>
