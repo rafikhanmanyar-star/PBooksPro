@@ -124,47 +124,6 @@ const RentalBillsDashboard: React.FC = () => {
     return result;
   }, [baseBills, statusFilter, searchQuery, state.vendors, state.properties, state.buildings, state.transactions]);
 
-  const summaryStats = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let totalOutstanding = 0;
-    let overdueBills = 0;
-    let paidThisMonth = 0;
-    let paidBillsCount = 0;
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    for (const b of baseBills) {
-      const { balance, status } = getEffectiveBillPaymentDisplay(b, state.transactions);
-      if (status !== 'Paid') {
-        totalOutstanding += balance;
-        if (b.dueDate && new Date(b.dueDate) < today && balance > 0.01) overdueBills++;
-      }
-      if (status === 'Paid') {
-        const paidTxs = getPaymentTransactionsForRentalBill(state.transactions, b, state.categories, state.properties);
-        for (const tx of paidTxs) {
-          if (new Date(tx.date) >= monthStart) {
-            paidThisMonth += tx.amount;
-          }
-        }
-        paidBillsCount++;
-      }
-    }
-
-    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-    let lastMonthOutstanding = 0;
-    for (const b of baseBills) {
-      const issueDate = new Date(b.issueDate);
-      if (issueDate <= lastMonthEnd) {
-        const { balance, status } = getEffectiveBillPaymentDisplay(b, state.transactions);
-        if (status !== 'Paid') lastMonthOutstanding += balance;
-      }
-    }
-    const changePercent = lastMonthOutstanding > 0 ? Math.round(((totalOutstanding - lastMonthOutstanding) / lastMonthOutstanding) * 100) : 0;
-
-    return { totalOutstanding, overdueBills, paidThisMonth, paidBillsCount, changePercent };
-  }, [baseBills, state.transactions, state.categories, state.properties]);
-
   const treeData = useMemo((): ARTreeNode[] => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -381,6 +340,46 @@ const RentalBillsDashboard: React.FC = () => {
       }
     });
   }, [selectedNode, filteredBills, state.properties, state.rentalAgreements]);
+
+  const summaryStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let totalOutstanding = 0;
+    let overdueBills = 0;
+    let paidThisMonth = 0;
+    let paidBillsCount = 0;
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    for (const b of nodeBills) {
+      const { balance, status } = getEffectiveBillPaymentDisplay(b, state.transactions);
+      if (status !== 'Paid') {
+        totalOutstanding += balance;
+        if (b.dueDate && new Date(b.dueDate) < today && balance > 0.01) overdueBills++;
+      }
+      if (status === 'Paid') {
+        const paidTxs = getPaymentTransactionsForRentalBill(state.transactions, b, state.categories, state.properties);
+        for (const tx of paidTxs) {
+          if (new Date(tx.date) >= monthStart) {
+            paidThisMonth += tx.amount;
+          }
+        }
+        paidBillsCount++;
+      }
+    }
+
+    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    let lastMonthOutstanding = 0;
+    for (const b of nodeBills) {
+      const issueDate = new Date(b.issueDate);
+      if (issueDate <= lastMonthEnd) {
+        const { balance, status } = getEffectiveBillPaymentDisplay(b, state.transactions);
+        if (status !== 'Paid') lastMonthOutstanding += balance;
+      }
+    }
+    const changePercent = lastMonthOutstanding > 0 ? Math.round(((totalOutstanding - lastMonthOutstanding) / lastMonthOutstanding) * 100) : 0;
+
+    return { totalOutstanding, overdueBills, paidThisMonth, paidBillsCount, changePercent };
+  }, [nodeBills, state.transactions, state.categories, state.properties]);
 
   const tabFilteredBills = useMemo(() => {
     if (tabFilter === 'all') return nodeBills;
