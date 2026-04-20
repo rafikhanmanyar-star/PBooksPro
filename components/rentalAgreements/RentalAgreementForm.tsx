@@ -92,6 +92,20 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const [brokerId, setBrokerId] = useState(agreementToEdit?.brokerId || '');
     const [brokerFee, setBrokerFee] = useState(agreementToEdit?.brokerFee?.toString() || '');
     const [brokerFeeManuallySet, setBrokerFeeManuallySet] = useState(!!agreementToEdit?.brokerFee);
+    const [agreementStatus, setAgreementStatus] = useState<RentalAgreementStatus>(
+        agreementToEdit?.status || RentalAgreementStatus.ACTIVE
+    );
+    /** Optional link when creating a new lease after the prior term was marked Renewed (same property + tenant). */
+    const [previousAgreementId, setPreviousAgreementId] = useState('');
+
+    useEffect(() => {
+        if (agreementToEdit) {
+            setAgreementStatus(agreementToEdit.status || RentalAgreementStatus.ACTIVE);
+        } else {
+            setAgreementStatus(RentalAgreementStatus.ACTIVE);
+            setPreviousAgreementId('');
+        }
+    }, [agreementToEdit]);
 
     // Add tenant on the fly (when user clicks "+" in Tenant ComboBox)
     const [showAddTenantModal, setShowAddTenantModal] = useState(false);
@@ -103,6 +117,27 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const buildings = useMemo(() => state.buildings.map(b => ({ id: b.id, name: b.name })), [state.buildings]);
 
     const selectedProperty = useMemo(() => state.properties.find(p => p.id === propertyId), [propertyId, state.properties]);
+
+    /** Prior terms on same property + tenant (e.g. after marking the old lease Renewed) — optional link for the new agreement. */
+    const previousAgreementChoices = useMemo(() => {
+        if (!propertyId || !contactId || agreementToEdit) return [];
+        return state.rentalAgreements.filter(
+            (ra) =>
+                ra.propertyId === propertyId &&
+                ra.contactId === contactId &&
+                ra.status === RentalAgreementStatus.RENEWED
+        );
+    }, [state.rentalAgreements, propertyId, contactId, agreementToEdit]);
+
+    useEffect(() => {
+        if (agreementToEdit) return;
+        setPreviousAgreementId((prev) => {
+            if (!prev) return prev;
+            const stillValid = previousAgreementChoices.some((r) => r.id === prev);
+            return stillValid ? prev : '';
+        });
+    }, [agreementToEdit, previousAgreementChoices]);
+
     const autoOwner = useMemo(() => {
         if (!selectedProperty || !propertyId) return null;
         const d = (startDate || '').slice(0, 10);
@@ -280,6 +315,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             description,
             ownerId: autoOwner?.id || undefined,
             status: RentalAgreementStatus.ACTIVE,
+            previousAgreementId: previousAgreementId || undefined,
         };
         const prefix = rentalInvoiceSettings?.prefix || 'INV-';
         const nextNumSetting = rentalInvoiceSettings?.nextNumber || 1;
@@ -315,6 +351,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     description: agreementData.description,
                     ownerId: agreementData.ownerId,
                     status: agreementData.status,
+                    previousAgreementId: agreementData.previousAgreementId,
                 });
                 dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newAgreement });
                 agreementIdForInvoices = newAgreement.id;
@@ -404,7 +441,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             await showAlert("Invalid Start or End Date.");
             return;
         }
-        // Explicitly clear brokerFee when empty so renewed agreements can have fee removed
+        // Explicitly clear brokerFee when empty so broker fee can be removed
         const resolvedBrokerFee = (brokerFee === '' || brokerFee == null || String(brokerFee).trim() === '')
             ? undefined
             : (parseFloat(String(brokerFee)) || undefined);
@@ -419,25 +456,23 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             brokerFee: resolvedBrokerFee,
             description,
             ownerId: autoOwner?.id || undefined,
-            status: RentalAgreementStatus.ACTIVE,
+            status: agreementStatus,
         };
 
         if (agreementToEdit) {
             const hasInvoices = state.invoices.some(inv => inv.agreementId === agreementToEdit.id);
             if (hasInvoices && agreementToEdit.status !== RentalAgreementStatus.RENEWED) {
-                // Broker and description can always be updated (they don't affect invoices)
-                const brokerOnly = (
+                const coreLeaseUnchanged =
                     agreementToEdit.contactId === contactId &&
                     agreementToEdit.propertyId === propertyId &&
                     agreementToEdit.startDate === startD.toISOString() &&
                     agreementToEdit.endDate === endD.toISOString() &&
                     (agreementToEdit.monthlyRent || 0) === (parseFloat(monthlyRent) || 0) &&
                     (agreementToEdit.securityDeposit || 0) === (parseFloat(securityDeposit) || 0) &&
-                    (agreementToEdit.rentDueDate || 1) === (parseInt(rentDueDate) || 1)
-                );
-                if (!brokerOnly) {
+                    (agreementToEdit.rentDueDate || 1) === (parseInt(rentDueDate) || 1);
+                if (!coreLeaseUnchanged) {
                     await showAlert(
-                        'This agreement has invoices. Only broker details and description can be edited. Use Renew to change other terms.',
+                        'This agreement has invoices. Only broker details, description, and status (e.g. set to Renewed) can be edited while lease terms stay the same. To change rent or dates, set Status to Renewed and save, then create a new agreement for the new term.',
                         { title: 'Edit Restricted' }
                     );
                     return;
@@ -593,6 +628,25 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                                 <DatePicker label="Start Date" value={startDate} onChange={handleStartDateChange} required className="text-sm" />
                                 <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(toLocalDateString(d))} required className="text-sm" />
                             </div>
+                            {previousAgreementChoices.length > 0 && (
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">Previous agreement (optional)</label>
+                                    <select
+                                        aria-label="Previous rental agreement"
+                                        value={previousAgreementId}
+                                        onChange={(e) => setPreviousAgreementId(e.target.value)}
+                                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                                    >
+                                        <option value="">None</option>
+                                        {previousAgreementChoices.map((ra) => (
+                                            <option key={ra.id} value={ra.id}>
+                                                {ra.agreementNumber} (Renewed)
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-slate-500 mt-1">Link to the prior term you marked Renewed for this property and tenant.</p>
+                                </div>
+                            )}
                             <div className="grid grid-cols-3 gap-3">
                                 <Input label="Monthly Rent" type="number" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required />
                                 <Input label="Due Day" type="number" min="1" max="31" value={rentDueDate} onChange={e => setRentDueDate(e.target.value)} required />
@@ -723,6 +777,22 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                         </div>
                         <DatePicker label="Start Date" value={startDate} onChange={handleStartDateChange} required className="text-sm" />
                         <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(toLocalDateString(d))} required className="text-sm" />
+                        <div className="col-span-2">
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                            <select
+                                aria-label="Agreement status"
+                                value={agreementStatus}
+                                onChange={(e) => setAgreementStatus(e.target.value as RentalAgreementStatus)}
+                                className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                            >
+                                {Object.values(RentalAgreementStatus).map((s) => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
+                            <p className="text-[10px] text-slate-500 mt-1">
+                                To start a new lease term: set this agreement to <strong>Renewed</strong>, save, then use <strong>New Agreement</strong> for the new term.
+                            </p>
+                        </div>
                     </div>
                     <div className="flex-shrink-0 p-2 rounded-lg bg-slate-50/80 border border-slate-200">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Description / Notes</label>

@@ -2665,6 +2665,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             logger.warnCategory('sync', '⚠️ Failed to delete contract on API:', err);
                         });
                 });
+            } else if (a.type === 'ADD_RENTAL_AGREEMENT') {
+                const ra = a.payload as RentalAgreement;
+                if (!ra?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    const nextList = [...(prev.rentalAgreements || []), ra];
+                    const reconciled = reconcileRentalAgreementsList(nextList);
+                    const toSave = reconciled.find((r) => r.id === ra.id) ?? ra;
+                    getAppStateApiService()
+                        .saveRentalAgreement(toSave)
+                        .then((saved) => {
+                            if (saved?.id) {
+                                dispatch({
+                                    type: 'UPDATE_RENTAL_AGREEMENT',
+                                    payload: { ...toSave, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist new rental agreement to API:', err);
+                        });
+                });
             } else if (a.type === 'UPDATE_RENTAL_AGREEMENT') {
                 const ra = a.payload as RentalAgreement;
                 if (!ra?.id) return;

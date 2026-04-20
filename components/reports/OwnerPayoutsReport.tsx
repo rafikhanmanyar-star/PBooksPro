@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType, ContactType, Transaction } from '../../types';
 import Card from '../ui/Card';
@@ -44,6 +44,52 @@ interface ReportRow {
 
 type SortKey = 'date' | 'ownerName' | 'propertyName' | 'particulars' | 'rentIn' | 'paidOut' | 'balance';
 
+/** Initial tree selection: first owner in portfolio order until the user picks a node explicitly. */
+const TREE_SELECT_AUTO = '__portfolio_auto_first_owner__';
+
+function pruneTreeNodesBySearchQuery(nodes: TreeNode[], query: string): TreeNode[] {
+    const t = query.trim().toLowerCase();
+    if (!t) return nodes;
+    const labelMatches = (label: string) => label.toLowerCase().includes(t);
+    const prune = (node: TreeNode): TreeNode | null => {
+        const childList = node.children;
+        if (!childList?.length) {
+            return labelMatches(node.label) ? node : null;
+        }
+        const nextChildren = childList
+            .map(prune)
+            .filter((n): n is TreeNode => n !== null);
+        if (labelMatches(node.label) || nextChildren.length > 0) {
+            return { ...node, children: nextChildren.length ? nextChildren : undefined };
+        }
+        return null;
+    };
+    return nodes.map(prune).filter((n): n is TreeNode => n !== null);
+}
+
+function collectTreeNodeIds(nodes: TreeNode[]): Set<string> {
+    const ids = new Set<string>();
+    const walk = (list: TreeNode[]) => {
+        for (const n of list) {
+            ids.add(n.id);
+            if (n.children?.length) walk(n.children);
+        }
+    };
+    walk(nodes);
+    return ids;
+}
+
+function findFirstOwnerTreeIdInNodes(nodes: TreeNode[]): string | null {
+    for (const n of nodes) {
+        if (n.id.startsWith('owner:')) return n.id;
+        if (n.children?.length) {
+            const inner = findFirstOwnerTreeIdInNodes(n.children);
+            if (inner) return inner;
+        }
+    }
+    return null;
+}
+
 const OwnerPayoutsReport: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert } = useNotification();
@@ -54,68 +100,12 @@ const OwnerPayoutsReport: React.FC = () => {
     const [startDate, setStartDate] = useState(() => '2000-01-01');
     const [endDate, setEndDate] = useState(() => toLocalDateString(new Date()));
     const [searchQuery, setSearchQuery] = useState('');
-    /** Single tree selection: 'all' | 'building:{id}' | 'owner:{id}' | 'unit:{propertyId}' */
-    const [selectedTreeId, setSelectedTreeId] = useState<string>('all');
+    /** Single tree selection: TREE_SELECT_AUTO | 'all' | 'building:{id}' | 'owner:{id}' | 'unit:{propertyId}' */
+    const [selectedTreeId, setSelectedTreeId] = useState<string>(TREE_SELECT_AUTO);
     const [treeSearchQuery, setTreeSearchQuery] = useState('');
 
-    // Derive filters from tree selection (so report logic stays unchanged)
-    const { selectedBuildingId, selectedOwnerId, selectedUnitId } = useMemo(() => {
-        if (selectedTreeId === 'all') {
-            return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
-        }
-        if (selectedTreeId.startsWith('building:')) {
-            const id = selectedTreeId.slice('building:'.length);
-            return { selectedBuildingId: id, selectedOwnerId: 'all', selectedUnitId: 'all' };
-        }
-        if (selectedTreeId.startsWith('owner:')) {
-            const id = selectedTreeId.slice('owner:'.length);
-            return { selectedBuildingId: 'all', selectedOwnerId: id, selectedUnitId: 'all' };
-        }
-        if (selectedTreeId.startsWith('unit:')) {
-            const rest = selectedTreeId.slice('unit:'.length);
-            const colonIdx = rest.indexOf(':');
-            const propertyIdStr = colonIdx === -1 ? rest : rest.slice(0, colonIdx);
-            const ownerFromTree = colonIdx === -1 ? undefined : rest.slice(colonIdx + 1);
-            const property = state.properties.find(p => String(p.id) === propertyIdStr);
-            if (!property) return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
-            return {
-                selectedBuildingId: property.buildingId || 'all',
-                selectedOwnerId: ownerFromTree || 'all',
-                selectedUnitId: property.id
-            };
-        }
-        return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
-    }, [selectedTreeId, state.properties]);
-
-    // Sorting State
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
-
-    // Edit Modal State
-    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
-    /** Paired Service Charge Income (credit) tx — same target as Monthly Service Charges → Edit */
-    const [serviceChargeEditTransaction, setServiceChargeEditTransaction] = useState<Transaction | null>(null);
-
-    // Warning Modal State
-    const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | 'update' | null }>({
-        isOpen: false,
-        transaction: null,
-        action: null
-    });
-
-    const matchesTreeSearch = useCallback((text: string) => {
-        if (!treeSearchQuery.trim()) return true;
-        return text.toLowerCase().includes(treeSearchQuery.toLowerCase());
-    }, [treeSearchQuery]);
-
-    const treeData = useMemo((): TreeNode[] => {
-        const allNode: TreeNode = {
-            id: 'all',
-            label: 'All Properties',
-            type: 'all'
-        };
-
+    const unfilteredBuildingNodes = useMemo((): TreeNode[] => {
         const buildingNodes: TreeNode[] = state.buildings
-            .filter(b => matchesTreeSearch(b.name))
             .map(building => {
                 const propsInBuilding = state.properties.filter(p => p.buildingId === building.id);
 
@@ -136,12 +126,11 @@ const OwnerPayoutsReport: React.FC = () => {
                     .map(ownerId => {
                         const owner = state.contacts.find(c => c.id === ownerId);
                         const ownerLabelBase = owner?.name ?? 'Owner';
-                        if (!matchesTreeSearch(ownerLabelBase)) return null;
                         const former = isFormerOwner(state, ownerId);
                         const unitChildren: TreeNode[] = propsInBuilding
                             .filter(p => {
                                 const owners = getLedgerOwnerIdsForProperty(state, p.id);
-                                return owners.has(ownerId) && matchesTreeSearch(p.name);
+                                return owners.has(ownerId);
                             })
                             .map(prop => {
                                 const shares = getOwnershipSharesForPropertyOnDate(state, prop.id, todayStr);
@@ -158,8 +147,7 @@ const OwnerPayoutsReport: React.FC = () => {
                             type: 'owner',
                             children: unitChildren.length ? unitChildren : undefined
                         } as TreeNode;
-                    })
-                    .filter((n): n is TreeNode => n !== null && (!!n.children?.length || matchesTreeSearch(n.label)));
+                    });
                 ownerChildren.sort((a, b) => a.label.localeCompare(b.label));
 
                 return {
@@ -169,11 +157,84 @@ const OwnerPayoutsReport: React.FC = () => {
                     children: ownerChildren.length ? ownerChildren : undefined
                 };
             })
-            .filter(n => n.children?.length || matchesTreeSearch(n.label));
+            .filter(n => !!n.children?.length);
         buildingNodes.sort((a, b) => a.label.localeCompare(b.label));
+        return buildingNodes;
+    }, [state.buildings, state.properties, state.propertyOwnership, state.rentalAgreements, state.transactions, state.invoices, state.contacts]);
 
-        return [allNode, ...buildingNodes];
-    }, [state.buildings, state.properties, state.propertyOwnership, state.rentalAgreements, state.transactions, state.invoices, state.contacts, matchesTreeSearch]);
+    const treeData = useMemo((): TreeNode[] => {
+        const allNode: TreeNode = {
+            id: 'all',
+            label: 'All Properties',
+            type: 'all'
+        };
+        const filteredBuildings = pruneTreeNodesBySearchQuery(unfilteredBuildingNodes, treeSearchQuery);
+        return [allNode, ...filteredBuildings];
+    }, [unfilteredBuildingNodes, treeSearchQuery]);
+
+    const treeVisibleIds = useMemo(() => collectTreeNodeIds(treeData), [treeData]);
+
+    const firstOwnerIdInTree = useMemo(() => findFirstOwnerTreeIdInNodes(treeData), [treeData]);
+
+    const resolvedTreeIdForFilters = useMemo(() => {
+        let id = selectedTreeId === TREE_SELECT_AUTO ? (firstOwnerIdInTree ?? 'all') : selectedTreeId;
+        if (id !== 'all' && !treeVisibleIds.has(id)) {
+            id = firstOwnerIdInTree ?? 'all';
+        }
+        return id;
+    }, [selectedTreeId, firstOwnerIdInTree, treeVisibleIds]);
+
+    useEffect(() => {
+        if (selectedTreeId === TREE_SELECT_AUTO) return;
+        if (selectedTreeId !== 'all' && !treeVisibleIds.has(selectedTreeId)) {
+            setSelectedTreeId(firstOwnerIdInTree ?? 'all');
+        }
+    }, [selectedTreeId, treeVisibleIds, firstOwnerIdInTree]);
+
+    // Derive filters from tree selection (so report logic stays unchanged)
+    const { selectedBuildingId, selectedOwnerId, selectedUnitId } = useMemo(() => {
+        const treeSelId = resolvedTreeIdForFilters;
+        if (treeSelId === 'all') {
+            return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
+        }
+        if (treeSelId.startsWith('building:')) {
+            const id = treeSelId.slice('building:'.length);
+            return { selectedBuildingId: id, selectedOwnerId: 'all', selectedUnitId: 'all' };
+        }
+        if (treeSelId.startsWith('owner:')) {
+            const id = treeSelId.slice('owner:'.length);
+            return { selectedBuildingId: 'all', selectedOwnerId: id, selectedUnitId: 'all' };
+        }
+        if (treeSelId.startsWith('unit:')) {
+            const rest = treeSelId.slice('unit:'.length);
+            const colonIdx = rest.indexOf(':');
+            const propertyIdStr = colonIdx === -1 ? rest : rest.slice(0, colonIdx);
+            const ownerFromTree = colonIdx === -1 ? undefined : rest.slice(colonIdx + 1);
+            const property = state.properties.find(p => String(p.id) === propertyIdStr);
+            if (!property) return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
+            return {
+                selectedBuildingId: property.buildingId || 'all',
+                selectedOwnerId: ownerFromTree || 'all',
+                selectedUnitId: property.id
+            };
+        }
+        return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
+    }, [resolvedTreeIdForFilters, state.properties]);
+
+    // Sorting State
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
+
+    // Edit Modal State
+    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
+    /** Paired Service Charge Income (credit) tx — same target as Monthly Service Charges → Edit */
+    const [serviceChargeEditTransaction, setServiceChargeEditTransaction] = useState<Transaction | null>(null);
+
+    // Warning Modal State
+    const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | 'update' | null }>({
+        isOpen: false,
+        transaction: null,
+        action: null
+    });
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -1075,23 +1136,23 @@ const OwnerPayoutsReport: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="p-1.5 border-b border-app-border">
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-app-muted">
-                                <span className="h-3.5 w-3.5">{ICONS.search}</span>
+                    <div className="p-1.5 border-b border-app-border min-w-0">
+                        <div className="relative w-full min-w-0">
+                            <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-app-muted z-10">
+                                <span className="h-3.5 w-3.5 shrink-0">{ICONS.search}</span>
                             </div>
                             <Input
                                 placeholder="Search..."
                                 value={treeSearchQuery}
                                 onChange={(e) => setTreeSearchQuery(e.target.value)}
-                                className="ds-input-field pl-7 py-1 text-xs"
+                                className="ds-input-field pl-7 py-1 text-xs w-full min-w-0 max-w-full"
                             />
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-1.5">
                         <TreeView
                             treeData={treeData}
-                            selectedId={selectedTreeId}
+                            selectedId={resolvedTreeIdForFilters}
                             onSelect={(id) => handleTreeSelect(id)}
                             showLines={true}
                             defaultExpanded={true}

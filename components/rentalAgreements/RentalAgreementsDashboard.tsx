@@ -7,7 +7,6 @@ import ARTreeView, { ARTreeNode } from '../rentalManagement/ARTreeView';
 import RentalAgreementDetailPanel from './RentalAgreementDetailPanel';
 import RentalAgreementForm from './RentalAgreementForm';
 import RentalAgreementTerminationModal from './RentalAgreementTerminationModal';
-import RentalAgreementRenewalModal from './RentalAgreementRenewalModal';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -27,7 +26,6 @@ const RentalAgreementsDashboard: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingAgreement, setEditingAgreement] = useState<RentalAgreement | null>(null);
   const [terminationAgreement, setTerminationAgreement] = useState<RentalAgreement | null>(null);
-  const [renewalAgreement, setRenewalAgreement] = useState<RentalAgreement | null>(null);
 
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('agreements_dash_sidebar', 320);
   const [isResizing, setIsResizing] = useState(false);
@@ -569,7 +567,6 @@ const RentalAgreementsDashboard: React.FC = () => {
               agreement={selectedAgreement}
               onClose={() => setSelectedAgreement(null)}
               onEdit={(a) => { setEditingAgreement(a); setSelectedAgreement(null); }}
-              onRenew={(a) => setRenewalAgreement(a)}
               onTerminate={(a) => setTerminationAgreement(a)}
             />
           )}
@@ -588,7 +585,6 @@ const RentalAgreementsDashboard: React.FC = () => {
         </div>
       </Modal>
 
-      <RentalAgreementRenewalModal isOpen={!!renewalAgreement} onClose={() => setRenewalAgreement(null)} agreement={renewalAgreement} />
       <RentalAgreementTerminationModal isOpen={!!terminationAgreement} onClose={() => setTerminationAgreement(null)} agreement={terminationAgreement} />
     </div>
   );

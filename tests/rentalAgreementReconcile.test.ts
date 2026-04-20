@@ -96,6 +96,20 @@ function run() {
   assert.strictEqual(byId.get('a4')?.brokerFee, 0);
   assert.strictEqual(byId.get('a5')?.brokerFee, 0);
 
+  // Lone Renewed row must not be flipped to Active (renewal before successor exists in the list).
+  const loneRenewed = reconcileRentalAgreementsList([
+    ra({
+      id: 'solo',
+      contactId: contact,
+      propertyId: prop,
+      startDate: '2025-02-01',
+      endDate: '2026-01-31',
+      status: RentalAgreementStatus.RENEWED,
+      agreementNumber: 'AGR-0104',
+    }),
+  ]);
+  assert.strictEqual(loneRenewed[0]?.status, RentalAgreementStatus.RENEWED);
+
   console.log('rentalAgreementReconcile.test.ts: OK');
 }
 

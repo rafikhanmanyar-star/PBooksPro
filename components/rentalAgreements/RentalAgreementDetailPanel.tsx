@@ -10,12 +10,11 @@ interface RentalAgreementDetailPanelProps {
     agreement: RentalAgreement;
     onClose: () => void;
     onEdit: (agreement: RentalAgreement) => void;
-    onRenew: (agreement: RentalAgreement) => void;
     onTerminate: (agreement: RentalAgreement) => void;
 }
 
 const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
-    agreement, onClose, onEdit, onRenew, onTerminate
+    agreement, onClose, onEdit, onTerminate
 }) => {
     const { state } = useAppContext();
 
@@ -91,19 +90,21 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
                 )}
 
                 {/* Action Buttons */}
-                <div className="flex gap-2 mt-3">
-                    <Button type="button" variant="secondary" onClick={() => onEdit(agreement)} className="!text-xs !py-1.5 !px-3 flex-1">
-                        <div className="w-3.5 h-3.5 mr-1">{ICONS.edit}</div> Edit
-                    </Button>
-                    {isActive && (
-                        <>
-                            <Button type="button" variant="secondary" onClick={() => onRenew(agreement)} className="!text-xs !py-1.5 !px-3 flex-1 !border-ds-success/35 !bg-[color:var(--badge-paid-bg)] !text-ds-success hover:!opacity-90">
-                                <div className="w-3.5 h-3.5 mr-1">{ICONS.repeat}</div> Renew
-                            </Button>
+                <div className="flex flex-col gap-2 mt-3">
+                    <div className="flex gap-2">
+                        <Button type="button" variant="secondary" onClick={() => onEdit(agreement)} className="!text-xs !py-1.5 !px-3 flex-1">
+                            <div className="w-3.5 h-3.5 mr-1">{ICONS.edit}</div> Edit
+                        </Button>
+                        {isActive && (
                             <Button type="button" variant="danger" onClick={() => onTerminate(agreement)} className="!text-xs !py-1.5 !px-3 flex-1">
                                 End
                             </Button>
-                        </>
+                        )}
+                    </div>
+                    {isActive && (
+                        <p className="text-[10px] text-app-muted leading-snug px-0.5">
+                            New lease term: open <strong>Edit</strong>, set status to <strong>Renewed</strong>, save, then use <strong>New Agreement</strong> for the new terms.
+                        </p>
                     )}
                 </div>
             </div>

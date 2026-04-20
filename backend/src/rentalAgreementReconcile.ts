@@ -68,7 +68,12 @@ export function reconcileRentalAgreementsListLike<T extends ReconcileRentalAgree
       const cur = chain[i];
       const prev = byId.get(cur.id)!;
       const prevAgreementId = i > 0 ? chain[i - 1].id : undefined;
-      const status = i === n - 1 ? ACTIVE : RENEWED;
+      // Do not promote a lone "Renewed" row to Active: that breaks renewal when only the old
+      // agreement exists in the set (e.g. client marked it Renewed before the successor row
+      // was saved, or server reconcile ran after PUT but before POST). Last-in-chain = Active
+      // only applies when there are multiple links in the renewal chain.
+      const status =
+        n === 1 ? (prev.status === RENEWED ? RENEWED : ACTIVE) : i === n - 1 ? ACTIVE : RENEWED;
       const brokerFee = i === 0 ? maxFee : 0;
 
       if (
