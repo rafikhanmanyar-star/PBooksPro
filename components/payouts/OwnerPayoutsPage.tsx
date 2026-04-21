@@ -27,15 +27,10 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import {
     getPropertyIdsForOwner,
-    hasMultipleOwnersOnDate,
-    getOwnerSharePercentageOnDate,
     resolveOwnerForPropertyOnDate,
     resolveOwnerForTransaction,
     isFormerOwner,
     getOwnershipSharesForPropertyOnDate,
-    getPropertyExpenseAllocatedAmountForOwner,
-    getBrokerFeeAllocatedAmountForOwner,
-    getBillCostAllocatedAmountForOwner,
     getLedgerOwnerIdsForProperty,
     getPayoutOwnerIdsForProperty,
 } from '../../services/propertyOwnershipService';
@@ -203,47 +198,14 @@ const OwnerPayoutsPage: React.FC = () => {
     const tableColCount = useApiRollup ? 9 : 8;
 
     // --- Owner Rental Income Balances ---
-    // Aligned with Owner Ledger / Owner Income report: broker fee is deducted from owner balance.
-    // Scoped by selected building/owner/unit so summary cards show correct totals when a filter is selected.
-    // When exactly one unit is in scope (e.g. tree property pick), use per-unit math (same as tree / modal) so
-    // owner-level-only payouts and unscoped service charges do not affect that unit's row.
+    // Sum `computeOwnerRentCollectedPaidBalanceForProperty` for every (owner × in-scope property).
+    // Matches the tree when building is selected: portfolio-wide Owner Payout / OSCP lines are not applied
+    // to rows that should only reflect the current building (or other location filters).
     const ownerRentalBalances = useMemo(() => {
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         if (!rentalIncomeCategory) return [];
+        if (propertyIdsInScope.size === 0) return [];
 
-        if (propertyIdsInScope.size === 1) {
-            const propertyIdStr = [...propertyIdsInScope][0];
-            const ownersInScope = new Set<string>();
-            propertyIdsInScope.forEach(pid => {
-                const prop = state.properties.find(p => String(p.id) === pid);
-                if (prop?.ownerId) ownersInScope.add(prop.ownerId);
-                (state.propertyOwnership || [])
-                    .filter((r) => String(r.propertyId) === String(pid))
-                    .forEach((r) => ownersInScope.add(r.ownerId));
-            });
-            state.transactions.forEach(tx => {
-                if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
-                    ownersInScope.add(tx.ownerId);
-                }
-            });
-            const out: { ownerId: string; collected: number; paid: number; balance: number }[] = [];
-            ownersInScope.forEach(ownerId => {
-                const slice = computeOwnerRentCollectedPaidBalanceForProperty(state, ownerId, propertyIdStr);
-                if (!slice) return;
-                if (Math.abs(slice.balance) > 0.01 || slice.collected > 0 || slice.paid > 0) {
-                    out.push({ ownerId, ...slice });
-                }
-            });
-            return out;
-        }
-
-        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
-        const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
-        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-        const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
-        const clearingRentCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
-
-        // Only owners that have at least one property in scope (use string id for consistency)
         const ownersInScope = new Set<string>();
         propertyIdsInScope.forEach(pid => {
             const prop = state.properties.find(p => String(p.id) === pid);
@@ -252,162 +214,29 @@ const OwnerPayoutsPage: React.FC = () => {
                 .filter((r) => String(r.propertyId) === String(pid))
                 .forEach((r) => ownersInScope.add(r.ownerId));
         });
-        // Include owners referenced by transaction ownerId (historical ownership preserved on ledger entries)
         state.transactions.forEach(tx => {
             if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
                 ownersInScope.add(tx.ownerId);
             }
         });
 
-        // Exclude broker fee payment transactions from expenses (broker fee is deducted from agreements below)
-        const brokerFeeTxIds = new Set<string>();
-        if (brokerFeeCategory) {
-            state.transactions.forEach(tx => {
-                if (tx.type === TransactionType.EXPENSE && tx.categoryId === brokerFeeCategory.id) {
-                    brokerFeeTxIds.add(tx.id);
-                }
-            });
-        }
-        // Exclude bill payment transactions where bill cost center is owner (bill amount is deducted from bills below)
-        const ownerBillIds = new Set(state.bills.filter(b => b.propertyId && !b.projectId).map(b => b.id));
-        const billPaymentTxIds = new Set<string>();
-        state.transactions.forEach(tx => {
-            if (tx.type === TransactionType.EXPENSE && tx.billId && ownerBillIds.has(tx.billId)) {
-                billPaymentTxIds.add(tx.id);
-            }
-        });
-
-        const ownerData: Record<string, { collected: number; paid: number }> = {};
+        const out: { ownerId: string; collected: number; paid: number; balance: number }[] = [];
         ownersInScope.forEach(ownerId => {
-            ownerData[ownerId] = { collected: 0, paid: 0 };
-        });
-
-        // Build set of invoice/batch IDs that already have explicit per-owner share lines
-        const txIdsWithShareLines = new Set<string>();
-        if (ownerShareCat) {
-            state.transactions.forEach(tx => {
-                if (tx.categoryId === ownerShareCat.id && tx.invoiceId) txIdsWithShareLines.add(tx.invoiceId);
-                if (tx.categoryId === ownerShareCat.id && tx.batchId) txIdsWithShareLines.add(tx.batchId);
-            });
-        }
-
-        // Rental Income — gross (single-owner) + per-owner share lines (multi-owner). Only in-scope properties.
-        // For multi-owner properties without explicit share lines, compute proportional shares on the fly.
-        state.transactions
-            .filter((tx) => {
-                if (tx.type !== TransactionType.INCOME || !tx.propertyId || !propertyIdsInScope.has(String(tx.propertyId)))
-                    return false;
-                if (clearingRentCat && tx.categoryId === clearingRentCat.id) return false;
-                if (tx.categoryId === rentalIncomeCategory.id) {
-                    const d = (tx.date || '').slice(0, 10);
-                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
-                        const hasExplicitShares = (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId))
-                            || (tx.batchId && txIdsWithShareLines.has(tx.batchId));
-                        if (hasExplicitShares) return false;
-                        return true;
-                    }
-                    return true;
-                }
-                if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) return true;
-                return false;
-            })
-            .forEach((tx) => {
-                let amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                if (isNaN(amount)) return;
-
-                if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) {
-                    const oid = tx.contactId;
-                    if (oid && ownerData[oid]) {
-                        if (amount > 0) ownerData[oid].collected += amount;
-                    }
-                    return;
-                }
-
-                const d = (tx.date || '').slice(0, 10);
-                const isMultiOwner = d && tx.propertyId && hasMultipleOwnersOnDate(state, String(tx.propertyId), d);
-
-                if (isMultiOwner) {
-                    ownersInScope.forEach(oid => {
-                        const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId!), oid, d);
-                        if (pct <= 0 || !ownerData[oid]) return;
-                        const share = Math.round(amount * pct) / 100;
-                        if (share > 0) ownerData[oid].collected += share;
-                    });
-                } else {
-                    const ownerIdForTx = resolveOwnerForTransaction(state, tx);
-                    if (ownerIdForTx && ownerData[ownerIdForTx]) {
-                        if (amount > 0) ownerData[ownerIdForTx].collected += amount;
-                        else ownerData[ownerIdForTx].paid += Math.abs(amount);
-                    }
-                }
-            });
-
-        // Owner Service Charge Payments — only for owners in scope
-        if (ownerSvcPayCategory) {
-            state.transactions
-                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === ownerSvcPayCategory.id && tx.contactId && ownersInScope.has(tx.contactId))
-                .forEach(tx => {
-                    if (tx.contactId && ownerData[tx.contactId]) {
-                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (!isNaN(amount) && amount > 0) ownerData[tx.contactId].collected += amount;
-                    }
-                });
-        }
-
-        // Expenses (excluding Broker Fee and owner bill payments). Only in-scope properties or Owner Payout to in-scope owner.
-        state.transactions.filter(tx => tx.type === TransactionType.EXPENSE).forEach(tx => {
-            if (brokerFeeTxIds.has(tx.id)) return;
-            if (billPaymentTxIds.has(tx.id)) return;
-
-            let isOwnerPayout = false;
-
-            if (tx.categoryId === ownerPayoutCategory?.id) {
-                isOwnerPayout = true;
-                if (tx.contactId && ownerData[tx.contactId]) {
-                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (!isNaN(amount) && amount > 0) ownerData[tx.contactId].paid += amount;
+            let collected = 0;
+            let paid = 0;
+            for (const pid of propertyIdsInScope) {
+                const slice = computeOwnerRentCollectedPaidBalanceForProperty(state, ownerId, String(pid));
+                if (slice) {
+                    collected += slice.collected;
+                    paid += slice.paid;
                 }
             }
-
-            if (!isOwnerPayout && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
-                const category = state.categories.find(c => c.id === tx.categoryId);
-                const catName = category?.name || '';
-                if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
-
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                if (isNaN(amount) || amount <= 0) return;
-                Object.keys(ownerData).forEach((oid) => {
-                    const allocated = getPropertyExpenseAllocatedAmountForOwner(state, tx, amount, oid);
-                    if (allocated > 0 && ownerData[oid]) ownerData[oid].paid += allocated;
-                });
+            const balance = collected - paid;
+            if (Math.abs(balance) > 0.01 || collected > 0 || paid > 0) {
+                out.push({ ownerId, collected, paid, balance });
             }
         });
-
-        // Broker fee from rental agreements — deducted from owner balance. Only in-scope properties.
-        state.rentalAgreements.forEach(ra => {
-            const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
-            if (!ra.brokerId || (fee <= 0 || isNaN(fee))) return;
-            const propId = ra.propertyId ?? (ra as any).property_id;
-            if (!propId || !propertyIdsInScope.has(String(propId))) return;
-
-            Object.keys(ownerData).forEach((oid) => {
-                const allocated = getBrokerFeeAllocatedAmountForOwner(state, ra, oid);
-                if (allocated > 0 && ownerData[oid]) ownerData[oid].paid += allocated;
-            });
-        });
-
-        // Bills with cost center = owner — only in-scope properties
-        state.bills.forEach(bill => {
-            if (!bill.propertyId || bill.projectId || !propertyIdsInScope.has(String(bill.propertyId))) return;
-            Object.keys(ownerData).forEach((oid) => {
-                const allocated = getBillCostAllocatedAmountForOwner(state, bill, oid);
-                if (allocated > 0 && ownerData[oid]) ownerData[oid].paid += allocated;
-            });
-        });
-
-        return Object.entries(ownerData)
-            .map(([ownerId, data]) => ({ ownerId, ...data, balance: data.collected - data.paid }))
-            .filter(item => Math.abs(item.balance) > 0.01 || item.collected > 0 || item.paid > 0);
+        return out;
     }, [
         state.transactions,
         state.categories,
@@ -961,8 +790,10 @@ const OwnerPayoutsPage: React.FC = () => {
         const rows: PayeeRow[] = [];
         const propsLabel = (ownerId: string) => {
             if (selectedUnitName) return selectedUnitName;
-            const propIds = getPropertyIdsForOwner(state, ownerId);
-            const list = state.properties.filter(p => propIds.has(String(p.id))).map(p => p.name);
+            const ownerPropIds = getPropertyIdsForOwner(state, ownerId);
+            const list = state.properties
+                .filter(p => ownerPropIds.has(String(p.id)) && propertyIdsInScope.has(String(p.id)))
+                .map(p => p.name);
             return list.slice(0, 3).join(', ') + (list.length > 3 ? ` +${list.length - 3}` : '');
         };
 
@@ -1033,9 +864,11 @@ const OwnerPayoutsPage: React.FC = () => {
         ownerSecurityBalances,
         state.contacts,
         state.properties,
+        state.propertyOwnership,
         state.rentalAgreements,
         selectedUnitId,
         selectedUnitName,
+        propertyIdsInScope,
         useApiRollup,
         apiRollupSuccess,
         apiOwnerNetByOwnerInScope,

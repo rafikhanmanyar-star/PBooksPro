@@ -16,6 +16,8 @@ import { findSalesReturnCategory } from '../constants/salesReturnSystemCategorie
 import { resolveSystemCategoryId } from '../services/systemEntityIds';
 import packageJson from '../package.json';
 import { isLocalOnlyMode } from '../config/apiUrl';
+import { notifyDatabaseError } from '../services/dbErrorNotification';
+import { formatApiErrorMessage } from '../services/api/client';
 import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconcile';
 import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
@@ -2011,9 +2013,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     } as AppAction);
                                 }
                             }
+                            try {
+                                const [{ getQueryClient }, { rentalRollupQueryKeys }] = await Promise.all([
+                                    import('../config/queryClient'),
+                                    import('../hooks/queries/useRentalRollupQueries'),
+                                ]);
+                                getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
+                            } catch {
+                                /* optional */
+                            }
                         })
                         .catch((err) => {
                             logger.warnCategory('sync', '⚠️ Failed to persist transaction (or linked invoice/bill) to API:', err);
+                            notifyDatabaseError(new Error(formatApiErrorMessage(err)), {
+                                title: 'Could not save to server',
+                                context:
+                                    'This change was not written to PostgreSQL. It may disappear after refresh or login and other users will not see it.',
+                            });
                         });
                 });
                 return;
@@ -2110,12 +2126,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     } as AppAction);
                                 }
                             }
+                            try {
+                                const [{ getQueryClient }, { rentalRollupQueryKeys }] = await Promise.all([
+                                    import('../config/queryClient'),
+                                    import('../hooks/queries/useRentalRollupQueries'),
+                                ]);
+                                getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
+                            } catch {
+                                /* optional */
+                            }
                         })
                         .catch((err: unknown) => {
                             logger.warnCategory('sync', '⚠️ Failed to persist batch transactions to API:', err);
                             const e = err as { status?: number; code?: string };
                             if (e?.status === 409 || e?.code === 'LOCK_HELD' || e?.code === 'CONFLICT') {
                                 void refreshFromApiRef.current?.();
+                            } else {
+                                notifyDatabaseError(new Error(formatApiErrorMessage(err)), {
+                                    title: 'Could not save to server',
+                                    context:
+                                        'These transactions were not written to PostgreSQL. They may disappear after refresh or login.',
+                                });
                             }
                         });
                 });

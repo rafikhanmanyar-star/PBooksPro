@@ -89,10 +89,21 @@ export function isStagingEnvironment(): boolean {
 }
 
 /**
- * Local-only: SQLite + Electron (default when VITE_LOCAL_ONLY is unset or not "false").
- * LAN / API: set `VITE_LOCAL_ONLY=false` and run against `getApiBaseUrl()` (e.g. npm run dev:backend).
+ * Local-only: SQLite + Electron offline builds (set `VITE_LOCAL_ONLY=true` in build scripts).
+ * LAN / API: set `VITE_LOCAL_ONLY=false` (required for packaged API client, and for dev when using .env).
+ *
+ * When the variable is **unset**: browser tabs on `http:` / `https:` are treated as API-capable so
+ * transaction mutations POST to PostgreSQL. Otherwise a dev server without `.env` would skip API sync
+ * (optimistic UI only — data lost on refresh, other users never see changes). `file://` (Electron)
+ * stays local-only unless `VITE_LOCAL_ONLY=false` is baked into the build.
  */
 export function isLocalOnlyMode(): boolean {
   const v = import.meta.env.VITE_LOCAL_ONLY;
-  return v !== 'false' && v !== false;
+  if (v === 'false' || v === false) return false;
+  if (v === 'true' || v === true) return true;
+  if (typeof window !== 'undefined') {
+    const p = window.location.protocol;
+    if (p === 'http:' || p === 'https:') return false;
+  }
+  return true;
 }
