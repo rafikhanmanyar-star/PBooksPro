@@ -60,10 +60,10 @@ export async function applyOwnerSummaryDelta(
   if (balanceDelta !== 0) {
     await client.query(
       `INSERT INTO owner_balances (tenant_id, owner_id, property_id, balance, last_updated)
-       VALUES ($1, $2, $3, $4, NOW())
+       VALUES ($1, $2, $3, $4::numeric, NOW())
        ON CONFLICT (tenant_id, owner_id, property_id)
        DO UPDATE SET
-         balance = owner_balances.balance + $4,
+         balance = owner_balances.balance + $4::numeric,
          last_updated = NOW()`,
       [tenantId, oid, pid, balanceDelta]
     );
@@ -84,13 +84,13 @@ export async function applyOwnerSummaryDelta(
   await client.query(
     `INSERT INTO monthly_owner_summary (
        tenant_id, owner_id, property_id, month, total_rent, total_expense, net_amount
-     ) VALUES ($1, $2, $3, $4::date, $5, $6, $5 - $6)
+     ) VALUES ($1, $2, $3, $4::date, $5::numeric, $6::numeric, ($5::numeric - $6::numeric))
      ON CONFLICT (tenant_id, owner_id, property_id, month)
      DO UPDATE SET
-       total_rent = monthly_owner_summary.total_rent + $5,
-       total_expense = monthly_owner_summary.total_expense + $6,
+       total_rent = monthly_owner_summary.total_rent + $5::numeric,
+       total_expense = monthly_owner_summary.total_expense + $6::numeric,
        net_amount =
-         (monthly_owner_summary.total_rent + $5) - (monthly_owner_summary.total_expense + $6)`,
+         (monthly_owner_summary.total_rent + $5::numeric) - (monthly_owner_summary.total_expense + $6::numeric)`,
     [tenantId, oid, pid, monthStart, rentDelta, expenseDelta]
   );
 }

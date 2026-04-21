@@ -19,9 +19,15 @@ export function formatDatabaseErrorMessage(error: unknown): string {
       raw
     );
   }
+  if (lower.includes('operator is not unique') && lower.includes('unknown')) {
+    return (
+      'Could not save: database type resolution failed on the server (often fixed by updating the API server).\n\n' +
+      raw
+    );
+  }
   if (
     lower.includes('constraint') ||
-    lower.includes('unique') ||
+    (lower.includes('unique') && !lower.includes('operator is not unique')) ||
     lower.includes('foreign key') ||
     lower.includes('not null')
   ) {
