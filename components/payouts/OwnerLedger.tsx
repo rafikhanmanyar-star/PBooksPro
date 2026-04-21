@@ -6,6 +6,7 @@ import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
+import { isFirstPropertyForOwnerRentSlice } from './ownerPayoutBreakdown';
 import { formatCurrency } from '../../utils/numberUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -211,33 +212,75 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 }
             });
 
-            // 1b. Owner Service Charge Payments (Credit) - skip when filtering by single unit (not unit-specific)
-            if (ownerSvcPayCategory && !propertyId) {
-                const ownerPayments = state.transactions.filter(tx =>
-                    tx.type === TransactionType.INCOME &&
-                    tx.categoryId === ownerSvcPayCategory.id &&
-                    tx.contactId === ownerId &&
-                    (!buildingId || tx.buildingId === buildingId)
-                );
+            // 1b. Owner Service Charge Payments (Credit)
+            if (ownerSvcPayCategory) {
+                if (!propertyId) {
+                    const ownerPayments = state.transactions.filter(tx =>
+                        tx.type === TransactionType.INCOME &&
+                        tx.categoryId === ownerSvcPayCategory.id &&
+                        tx.contactId === ownerId &&
+                        (!buildingId || tx.buildingId === buildingId)
+                    );
 
-                ownerPayments.forEach(tx => {
-                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (isNaN(amount) || amount <= 0) return;
+                    ownerPayments.forEach(tx => {
+                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                        if (isNaN(amount) || amount <= 0) return;
 
-                    items.push({
-                        id: `own-svc-${tx.id}`,
-                        date: tx.date,
-                        particulars: tx.description || 'Owner Service Charge Payment',
-                        debit: 0,
-                        credit: amount,
-                        type: 'Owner Payment',
-                        transaction: tx
+                        items.push({
+                            id: `own-svc-${tx.id}`,
+                            date: tx.date,
+                            particulars: tx.description || 'Owner Service Charge Payment',
+                            debit: 0,
+                            credit: amount,
+                            type: 'Owner Payment',
+                            transaction: tx
+                        });
                     });
-                });
+                } else {
+                    const propertyIdStr = String(propertyId);
+                    let unallocatedSvc = 0;
+                    let unallocatedDate = '';
+                    state.transactions
+                        .filter(
+                            tx =>
+                                tx.type === TransactionType.INCOME &&
+                                tx.categoryId === ownerSvcPayCategory.id &&
+                                tx.contactId === ownerId &&
+                                (!buildingId || tx.buildingId === buildingId)
+                        )
+                        .forEach(tx => {
+                            const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                            if (isNaN(amount) || amount <= 0) return;
+                            if (tx.propertyId != null && String(tx.propertyId) === propertyIdStr) {
+                                items.push({
+                                    id: `own-svc-${tx.id}`,
+                                    date: tx.date,
+                                    particulars: tx.description || 'Owner Service Charge Payment',
+                                    debit: 0,
+                                    credit: amount,
+                                    type: 'Owner Payment',
+                                    transaction: tx
+                                });
+                            } else if (!tx.propertyId) {
+                                unallocatedSvc += amount;
+                                if (!unallocatedDate) unallocatedDate = tx.date;
+                            }
+                        });
+                    if (unallocatedSvc > 0 && isFirstPropertyForOwnerRentSlice(state, ownerId, propertyIdStr)) {
+                        items.push({
+                            id: `own-svc-unalloc-${ownerId}-${propertyIdStr}`,
+                            date: unallocatedDate || new Date().toISOString().slice(0, 10),
+                            particulars: 'Owner Service Charge Payment (unallocated)',
+                            debit: 0,
+                            credit: unallocatedSvc,
+                            type: 'Owner Payment',
+                        });
+                    }
+                }
             }
 
             // 2. Expenses (Debit)
-            // A. Direct Payouts to Owner - skip when filtering by single unit (payouts are not per-unit)
+            // A. Direct Payouts to Owner — all when no unit filter; when filtered, only payouts posted to this unit
             if (!propertyId) {
                 const payouts = state.transactions.filter(tx => 
                     tx.type === TransactionType.EXPENSE && 
@@ -255,8 +298,32 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         debit: isNaN(amount) ? 0 : amount,
                         credit: 0,
                         type: 'Payout',
-                        transactionId: tx.id, // Store transaction ID for editing
-                        transaction: tx // Store full transaction for editing
+                        transactionId: tx.id,
+                        transaction: tx
+                    });
+                });
+            } else {
+                const propertyIdStr = String(propertyId);
+                const payouts = state.transactions.filter(tx =>
+                    tx.type === TransactionType.EXPENSE &&
+                    tx.contactId === ownerId &&
+                    tx.categoryId === ownerPayoutCategory?.id &&
+                    tx.propertyId != null &&
+                    String(tx.propertyId) === propertyIdStr &&
+                    (!buildingId || tx.buildingId === buildingId)
+                );
+
+                payouts.forEach(tx => {
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    items.push({
+                        id: `pay-${tx.id}`,
+                        date: tx.date,
+                        particulars: tx.description || 'Owner Payout',
+                        debit: isNaN(amount) ? 0 : amount,
+                        credit: 0,
+                        type: 'Payout',
+                        transactionId: tx.id,
+                        transaction: tx
                     });
                 });
             }

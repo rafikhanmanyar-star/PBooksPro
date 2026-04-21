@@ -79,3 +79,29 @@ export const formatRoundedNumber = (
   });
 };
 
+/**
+ * Thousands separators with up to 2 fraction digits; omits decimals when the amount is whole
+ * and strips trailing zeros (e.g. 2000 → "2,000", 2000.5 → "2,000.5").
+ */
+export const formatAmountNoTrailingZeros = (
+  value: number | string | null | undefined
+): string => {
+  if (value === null || value === undefined || value === '') {
+    return '0';
+  }
+
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+
+  if (isNaN(num)) {
+    return '0';
+  }
+
+  const rounded = Math.round(num * 100) / 100;
+
+  return rounded.toLocaleString('en-US', {
+    useGrouping: true,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+};
+

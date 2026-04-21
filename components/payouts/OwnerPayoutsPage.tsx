@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useAppContext } from '../../context/AppContext';
 import { ContactType, TransactionType, Transaction, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
-import { formatCurrency } from '../../utils/numberUtils';
+import { formatAmountNoTrailingZeros, formatCurrency } from '../../utils/numberUtils';
 import OwnerPayoutModal, { PropertyBalanceItem } from './OwnerPayoutModal';
 import PayoutTreePanel, {
     PayoutTreeNode,
@@ -39,7 +39,11 @@ import {
     getLedgerOwnerIdsForProperty,
     getPayoutOwnerIdsForProperty,
 } from '../../services/propertyOwnershipService';
-import { buildOwnerPropertyBreakdown, getOwnerPayoutModalPropertyBreakdown } from './ownerPayoutBreakdown';
+import {
+    buildOwnerPropertyBreakdown,
+    computeOwnerRentCollectedPaidBalanceForProperty,
+    getOwnerPayoutModalPropertyBreakdown,
+} from './ownerPayoutBreakdown';
 import { useAuth } from '../../context/AuthContext';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
@@ -201,9 +205,37 @@ const OwnerPayoutsPage: React.FC = () => {
     // --- Owner Rental Income Balances ---
     // Aligned with Owner Ledger / Owner Income report: broker fee is deducted from owner balance.
     // Scoped by selected building/owner/unit so summary cards show correct totals when a filter is selected.
+    // When exactly one unit is in scope (e.g. tree property pick), use per-unit math (same as tree / modal) so
+    // owner-level-only payouts and unscoped service charges do not affect that unit's row.
     const ownerRentalBalances = useMemo(() => {
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         if (!rentalIncomeCategory) return [];
+
+        if (propertyIdsInScope.size === 1) {
+            const propertyIdStr = [...propertyIdsInScope][0];
+            const ownersInScope = new Set<string>();
+            propertyIdsInScope.forEach(pid => {
+                const prop = state.properties.find(p => String(p.id) === pid);
+                if (prop?.ownerId) ownersInScope.add(prop.ownerId);
+                (state.propertyOwnership || [])
+                    .filter((r) => String(r.propertyId) === String(pid))
+                    .forEach((r) => ownersInScope.add(r.ownerId));
+            });
+            state.transactions.forEach(tx => {
+                if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
+                    ownersInScope.add(tx.ownerId);
+                }
+            });
+            const out: { ownerId: string; collected: number; paid: number; balance: number }[] = [];
+            ownersInScope.forEach(ownerId => {
+                const slice = computeOwnerRentCollectedPaidBalanceForProperty(state, ownerId, propertyIdStr);
+                if (!slice) return;
+                if (Math.abs(slice.balance) > 0.01 || slice.collected > 0 || slice.paid > 0) {
+                    out.push({ ownerId, ...slice });
+                }
+            });
+            return out;
+        }
 
         const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
         const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
@@ -376,7 +408,16 @@ const OwnerPayoutsPage: React.FC = () => {
         return Object.entries(ownerData)
             .map(([ownerId, data]) => ({ ownerId, ...data, balance: data.collected - data.paid }))
             .filter(item => Math.abs(item.balance) > 0.01 || item.collected > 0 || item.paid > 0);
-    }, [state.transactions, state.categories, state.properties, state.contacts, state.rentalAgreements, state.bills, propertyIdsInScope]);
+    }, [
+        state.transactions,
+        state.categories,
+        state.properties,
+        state.contacts,
+        state.propertyOwnership,
+        state.rentalAgreements,
+        state.bills,
+        propertyIdsInScope,
+    ]);
 
     // --- Owner Security Deposit Balances ---
     // Includes historical owners so former owners with pending security balances still appear.
@@ -428,6 +469,17 @@ const OwnerPayoutsPage: React.FC = () => {
                 ownerId = tx.contactId;
             } else if (tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
                 ownerId = resolveOwnerForTransaction(state, tx) || '';
+            }
+
+            // Single-unit view: do not count owner-level security payouts that are not tied to this property
+            if (
+                propertyIdsInScope.size === 1 &&
+                ownerId &&
+                ownerSecPayoutCategory &&
+                tx.categoryId === ownerSecPayoutCategory.id &&
+                (!tx.propertyId || !propertyIdsInScope.has(String(tx.propertyId)))
+            ) {
+                ownerId = '';
             }
 
             const isRefund = secRefCategory && tx.categoryId === secRefCategory.id;
@@ -563,7 +615,7 @@ const OwnerPayoutsPage: React.FC = () => {
                         id: `property-${prop.id}`,
                         type: 'property',
                         label: `${prop.name || 'Unit'}${pctSuffix}`,
-                        value: formatCurrency(due),
+                        value: formatAmountNoTrailingZeros(due),
                         sortAmount: due,
                     });
                 }
@@ -575,7 +627,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     id: `bld-${b.id}-own-${ownerId}`,
                     type: 'owner',
                     label: former ? `${contact.name} (Former)` : contact.name,
-                    value: formatCurrency(oSum),
+                    value: formatAmountNoTrailingZeros(oSum),
                     sortAmount: oSum,
                     children: propNodes,
                 });
@@ -588,7 +640,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 id: `bld-${b.id}`,
                 type: 'building',
                 label: b.name,
-                value: formatCurrency(bSum),
+                value: formatAmountNoTrailingZeros(bSum),
                 sortAmount: bSum,
                 children: ownerChildren,
             });
@@ -682,7 +734,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     id: `bld-${b.id}-brk-${brokerId}-prop-${propId}`,
                     type: 'brokerProperty',
                     label: prop.name || 'Unit',
-                    value: formatCurrency(due),
+                    value: formatAmountNoTrailingZeros(due),
                     sortAmount: due,
                 };
                 if (!byBroker.has(brokerId)) byBroker.set(brokerId, []);
@@ -699,7 +751,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     id: `bld-${b.id}-brk-${brokerId}`,
                     type: 'broker',
                     label: broker.name,
-                    value: formatCurrency(brSum),
+                    value: formatAmountNoTrailingZeros(brSum),
                     sortAmount: brSum,
                     children: propNodes,
                 });
@@ -711,7 +763,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 id: `bld-${b.id}`,
                 type: 'building',
                 label: b.name,
-                value: formatCurrency(bSum),
+                value: formatAmountNoTrailingZeros(bSum),
                 sortAmount: bSum,
                 children: brokerChildren,
             });

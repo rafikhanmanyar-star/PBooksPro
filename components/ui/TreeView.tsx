@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ICONS } from '../../constants';
+import { formatAmountNoTrailingZeros } from '../../utils/numberUtils';
 import TreeExpandCollapseControls from './TreeExpandCollapseControls';
 import { collectExpandableParentIds } from './treeExpandCollapseUtils';
 
@@ -94,7 +95,7 @@ const TreeNodeItem: React.FC<{
                         className={`text-sm font-semibold tabular-nums ${node.valueColor || (isSelected ? 'text-primary' : 'text-app-text')}`}
                     >
                         {typeof node.value === 'number'
-                            ? (node.value === 0 || Object.is(node.value, -0) ? '0' : node.value.toLocaleString())
+                            ? (node.value === 0 || Object.is(node.value, -0) ? '0' : formatAmountNoTrailingZeros(node.value))
                             : node.value}
                     </span>
                 )}
