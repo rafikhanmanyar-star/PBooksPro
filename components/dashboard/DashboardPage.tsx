@@ -41,6 +41,7 @@ const DashboardPage: React.FC = () => {
     const buildings = useStateSelector(s => s.buildings);
     const lookupMaps = useLookupMaps();
     const { allKpis, openDrilldown } = useKpis();
+    const isAdmin = currentUser?.role === 'Admin';
     const { isAuthenticated } = useAuth();
     const useApiRentalRollup = !isLocalOnlyMode() && isAuthenticated;
     const { data: monthlyRentalRollup, isFetching: monthlyRollupFetching } = useMonthlyRentalSummaryRangeQuery(
@@ -65,8 +66,6 @@ const DashboardPage: React.FC = () => {
         const id = requestAnimationFrame(() => setChartLayoutReady(true));
         return () => cancelAnimationFrame(id);
     }, []);
-
-    const isAdmin = currentUser?.role === 'Admin';
 
     useEffect(() => {
         const h = new Date().getHours();
