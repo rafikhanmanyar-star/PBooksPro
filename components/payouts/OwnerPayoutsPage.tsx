@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ContactType, TransactionType, Transaction, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
@@ -36,6 +36,7 @@ import {
 } from '../../services/propertyOwnershipService';
 import {
     buildOwnerPropertyBreakdown,
+    buildOwnerPropertyBreakdownFromApiBalances,
     computeOwnerRentCollectedPaidBalanceForProperty,
     getOwnerPayoutModalPropertyBreakdown,
 } from './ownerPayoutBreakdown';
@@ -76,7 +77,12 @@ const OwnerPayoutsPage: React.FC = () => {
         data: apiOwnerBalanceRows,
         isFetching: apiRollupFetching,
         isSuccess: apiRollupSuccess,
+        isPending: apiRollupPending,
+        isError: apiRollupError,
     } = useAllOwnerBalancesRollupQuery(useApiRollup);
+
+    /** Yields to the browser between expensive recomputes (local / full breakdown). */
+    const payoutComputeState = useDeferredValue(state);
 
     // UI state
     const [activeCategory, setActiveCategory] = useState<PayoutCategory>('ownerIncome');
@@ -145,6 +151,18 @@ const OwnerPayoutsPage: React.FC = () => {
         if (activeCategory !== 'brokerCommission') setSelectedBrokerId('all');
     }, [activeCategory]);
 
+    useEffect(() => {
+        console.warn('[PBooksPerf][OwnerPayouts] mount snapshot', {
+            tx: state.transactions.length,
+            properties: state.properties.length,
+            useApiRollup,
+            apiRollupPending,
+            apiRollupSuccess,
+            apiRollupError: !!apiRollupError,
+            rollupRowCount: apiOwnerBalanceRows?.length ?? 'n/a',
+        });
+    }, []);
+
     // Owner options: after building selection (owners with properties in that building, or all owners with properties)
     const ownerFilterOptions = useMemo(() => {
         const owners = state.contacts.filter(c => c.type === ContactType.OWNER);
@@ -197,24 +215,59 @@ const OwnerPayoutsPage: React.FC = () => {
 
     const tableColCount = useApiRollup ? 9 : 8;
 
+    const needFullOwnerPropertyBreakdown =
+        activeCategory === 'securityDeposit' ||
+        (ownerPayoutModal.isOpen && ownerPayoutModal.payoutType === 'Security');
+
     // --- Owner Rental Income Balances ---
-    // Sum `computeOwnerRentCollectedPaidBalanceForProperty` for every (owner × in-scope property).
-    // Matches the tree when building is selected: portfolio-wide Owner Payout / OSCP lines are not applied
-    // to rows that should only reflect the current building (or other location filters).
+    // API mode: aggregate server `owner_balances` (O(rows)) — avoids O(owners × properties × transactions).
+    // Local / fallback: sum `computeOwnerRentCollectedPaidBalanceForProperty` per (owner × in-scope property).
     const ownerRentalBalances = useMemo(() => {
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+        const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+
+        if (useApiRollup && !apiRollupError) {
+            if (apiRollupPending && apiOwnerBalanceRows === undefined) {
+                return [];
+            }
+            if (apiRollupSuccess) {
+                if (propertyIdsInScope.size === 0) return [];
+                const byOwner = new Map<string, number>();
+                for (const r of apiOwnerBalanceRows ?? []) {
+                    if (!propertyIdsInScope.has(String(r.propertyId))) continue;
+                    const oid = String(r.ownerId);
+                    byOwner.set(oid, (byOwner.get(oid) ?? 0) + Number(r.balance));
+                }
+                const out = [...byOwner.entries()]
+                    .map(([ownerId, balance]) => ({
+                        ownerId,
+                        /** Rollup is net-only; split for display so collected/paid columns are non-misleading vs balance. */
+                        collected: balance > 0 ? balance : 0,
+                        paid: balance < 0 ? -balance : 0,
+                        balance,
+                    }))
+                    .filter((x) => Math.abs(x.balance) > 0.01 || x.collected > 0 || x.paid > 0);
+                const ms = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
+                if (ms > 32) {
+                    console.warn('[PBooksPerf][OwnerPayouts] ownerRentalBalances(api) ms=', Math.round(ms), 'owners=', out.length, 'rollupRows=', apiOwnerBalanceRows?.length ?? 0);
+                }
+                return out;
+            }
+        }
+
+        const st = payoutComputeState;
+        const rentalIncomeCategory = st.categories.find(c => c.name === 'Rental Income');
         if (!rentalIncomeCategory) return [];
         if (propertyIdsInScope.size === 0) return [];
 
         const ownersInScope = new Set<string>();
         propertyIdsInScope.forEach(pid => {
-            const prop = state.properties.find(p => String(p.id) === pid);
+            const prop = st.properties.find(p => String(p.id) === pid);
             if (prop?.ownerId) ownersInScope.add(prop.ownerId);
-            (state.propertyOwnership || [])
+            (st.propertyOwnership || [])
                 .filter((r) => String(r.propertyId) === String(pid))
                 .forEach((r) => ownersInScope.add(r.ownerId));
         });
-        state.transactions.forEach(tx => {
+        st.transactions.forEach(tx => {
             if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
                 ownersInScope.add(tx.ownerId);
             }
@@ -225,7 +278,7 @@ const OwnerPayoutsPage: React.FC = () => {
             let collected = 0;
             let paid = 0;
             for (const pid of propertyIdsInScope) {
-                const slice = computeOwnerRentCollectedPaidBalanceForProperty(state, ownerId, String(pid));
+                const slice = computeOwnerRentCollectedPaidBalanceForProperty(st, ownerId, String(pid));
                 if (slice) {
                     collected += slice.collected;
                     paid += slice.paid;
@@ -236,35 +289,45 @@ const OwnerPayoutsPage: React.FC = () => {
                 out.push({ ownerId, collected, paid, balance });
             }
         });
+        const ms = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
+        if (ms > 200) {
+            console.warn('[PBooksPerf][OwnerPayouts] ownerRentalBalances(client-heavy) ms=', Math.round(ms), 'owners=', ownersInScope.size, 'propsInScope=', propertyIdsInScope.size, 'tx=', st.transactions.length);
+        }
         return out;
     }, [
-        state.transactions,
-        state.categories,
-        state.properties,
-        state.contacts,
-        state.propertyOwnership,
-        state.rentalAgreements,
-        state.bills,
+        useApiRollup,
+        apiRollupSuccess,
+        apiRollupPending,
+        apiRollupError,
+        apiOwnerBalanceRows,
+        payoutComputeState.transactions,
+        payoutComputeState.categories,
+        payoutComputeState.properties,
+        payoutComputeState.propertyOwnership,
+        payoutComputeState.rentalAgreements,
+        payoutComputeState.bills,
         propertyIdsInScope,
     ]);
 
     // --- Owner Security Deposit Balances ---
     // Includes historical owners so former owners with pending security balances still appear.
     const ownerSecurityBalances = useMemo(() => {
-        const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
-        const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
-        const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
+        const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+        const st = payoutComputeState;
+        const secDepCategory = st.categories.find(c => c.name === 'Security Deposit');
+        const secRefCategory = st.categories.find(c => c.name === 'Security Deposit Refund');
+        const ownerSecPayoutCategory = st.categories.find(c => c.name === 'Owner Security Payout');
         if (!secDepCategory) return [];
 
         const ownersInScope = new Set<string>();
         propertyIdsInScope.forEach(pid => {
-            const prop = state.properties.find(p => String(p.id) === pid);
+            const prop = st.properties.find(p => String(p.id) === pid);
             if (prop?.ownerId) ownersInScope.add(prop.ownerId);
-            (state.propertyOwnership || [])
+            (st.propertyOwnership || [])
                 .filter((r) => String(r.propertyId) === String(pid) && !r.deletedAt)
                 .forEach((r) => ownersInScope.add(r.ownerId));
         });
-        state.transactions.forEach(tx => {
+        st.transactions.forEach(tx => {
             if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
                 ownersInScope.add(tx.ownerId);
             }
@@ -276,12 +339,12 @@ const OwnerPayoutsPage: React.FC = () => {
         });
 
         // Security Deposit Income — resolve owner via invoice-aware resolution
-        state.transactions.filter(tx =>
+        st.transactions.filter(tx =>
             tx.type === TransactionType.INCOME &&
             tx.categoryId === secDepCategory.id &&
             tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))
         ).forEach(tx => {
-            const ownerId = resolveOwnerForTransaction(state, tx);
+            const ownerId = resolveOwnerForTransaction(st, tx);
             if (ownerId && ownerData[ownerId]) {
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (!isNaN(amount) && amount > 0) ownerData[ownerId].collected += amount;
@@ -289,15 +352,15 @@ const OwnerPayoutsPage: React.FC = () => {
         });
 
         // Security Outflows — resolve owner via invoice-aware resolution
-        state.transactions.filter(tx => tx.type === TransactionType.EXPENSE).forEach(tx => {
+        st.transactions.filter(tx => tx.type === TransactionType.EXPENSE).forEach(tx => {
             let ownerId = '';
-            const category = state.categories.find(c => c.id === tx.categoryId);
+            const category = st.categories.find(c => c.id === tx.categoryId);
             const catName = category?.name || '';
 
             if (tx.contactId && ownerData[tx.contactId] && ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) {
                 ownerId = tx.contactId;
             } else if (tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
-                ownerId = resolveOwnerForTransaction(state, tx) || '';
+                ownerId = resolveOwnerForTransaction(st, tx) || '';
             }
 
             // Single-unit view: do not count owner-level security payouts that are not tied to this property
@@ -313,7 +376,7 @@ const OwnerPayoutsPage: React.FC = () => {
 
             const isRefund = secRefCategory && tx.categoryId === secRefCategory.id;
             const isOwnerSecPayout = ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id;
-            const contact = tx.contactId ? state.contacts.find(c => c.id === tx.contactId) : null;
+            const contact = tx.contactId ? st.contacts.find(c => c.id === tx.contactId) : null;
             const isTenantDeduction = contact?.type === ContactType.TENANT || catName.includes('(Tenant)');
 
             if (ownerId && ownerData[ownerId] && (isRefund || isOwnerSecPayout || (isTenantDeduction && tx.propertyId))) {
@@ -322,22 +385,28 @@ const OwnerPayoutsPage: React.FC = () => {
             }
         });
 
-        return Object.entries(ownerData)
+        const rows = Object.entries(ownerData)
             .map(([ownerId, data]) => ({ ownerId, ...data, balance: data.collected - data.paid }))
             .filter(item => Math.abs(item.balance) > 0.01 || item.collected > 0 || item.paid > 0);
-    }, [state.transactions, state.categories, state.properties, state.contacts, state.propertyOwnership, propertyIdsInScope]);
+        const ms = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
+        if (ms > 200) {
+            console.warn('[PBooksPerf][OwnerPayouts] ownerSecurityBalances ms=', Math.round(ms), 'tx=', st.transactions.length);
+        }
+        return rows;
+    }, [payoutComputeState.transactions, payoutComputeState.categories, payoutComputeState.properties, payoutComputeState.contacts, payoutComputeState.propertyOwnership, propertyIdsInScope]);
 
     // --- Broker Commission Balances ---
     // Scoped by selected building/owner/unit so summary shows correct broker total when a filter is selected.
     const brokerCommissionBalances = useMemo(() => {
-        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+        const st = payoutComputeState;
+        const brokerFeeCategory = st.categories.find(c => c.name === 'Broker Fee');
+        const rebateCategory = st.categories.find(c => c.name === 'Rebate Amount');
         const relevantCategoryIds = [brokerFeeCategory?.id, rebateCategory?.id].filter(Boolean) as string[];
 
         const brokerData: Record<string, { earned: number; paid: number }> = {};
 
         // From Rental Agreements — only in-scope properties. Exclude renewed agreements so broker is not charged again on renewal.
-        state.rentalAgreements.forEach(ra => {
+        st.rentalAgreements.forEach(ra => {
             if (ra.previousAgreementId) return;
             const propId = ra.propertyId ?? (ra as any).property_id;
             if (!propId || !propertyIdsInScope.has(String(propId))) return;
@@ -349,7 +418,7 @@ const OwnerPayoutsPage: React.FC = () => {
         });
 
         // Payments — only count payments for in-scope properties (same filter as earned), so balance matches filtered view.
-        state.transactions
+        st.transactions
             .filter(tx =>
                 tx.type === TransactionType.EXPENSE &&
                 tx.contactId &&
@@ -357,7 +426,7 @@ const OwnerPayoutsPage: React.FC = () => {
                 !tx.projectId // Only rental context
             )
             .filter(tx => {
-                const category = state.categories.find(c => c.id === tx.categoryId);
+                const category = st.categories.find(c => c.id === tx.categoryId);
                 return category?.name !== 'Rebate Amount';
             })
             .filter(tx => {
@@ -375,12 +444,61 @@ const OwnerPayoutsPage: React.FC = () => {
         return Object.entries(brokerData)
             .map(([brokerId, data]) => ({ brokerId, ...data, balance: data.earned - data.paid }))
             .filter(item => Math.abs(item.balance) > 0.01 || item.earned > 0 || item.paid > 0);
-    }, [state.rentalAgreements, state.transactions, state.contacts, state.categories, propertyIdsInScope, selectedUnitId, selectedBuildingId]);
+    }, [payoutComputeState.rentalAgreements, payoutComputeState.transactions, payoutComputeState.contacts, payoutComputeState.categories, propertyIdsInScope, selectedUnitId, selectedBuildingId]);
 
     // --- Per-property balance breakdown (for payout modal: which property amounts to pay) ---
-    // Aligned with ownerRentalBalances: Rental Income + Owner Service Charge, expenses (excl. Broker Fee tx and bill payments), broker fee from agreements, bills from state.
-    // Includes historical owners (from closed propertyOwnership rows) so transferred properties still appear for old owners.
-    const ownerPropertyBreakdown = useMemo(() => buildOwnerPropertyBreakdown(state), [state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership, state.invoices]);
+    // API + Owner/Broker tabs: server rollup drives rent tree (fast). Security tab / security modal: full client rules (expensive, deferred state).
+    const ownerPropertyBreakdown = useMemo(() => {
+        const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+        let out: ReturnType<typeof buildOwnerPropertyBreakdown>;
+
+        if (!needFullOwnerPropertyBreakdown && useApiRollup && !apiRollupError) {
+            if (apiRollupPending && apiOwnerBalanceRows === undefined) {
+                out = {};
+            } else if (apiRollupSuccess) {
+                out =
+                    (apiOwnerBalanceRows?.length ?? 0) > 0
+                        ? buildOwnerPropertyBreakdownFromApiBalances(
+                              state,
+                              apiOwnerBalanceRows!.map((r) => ({
+                                  ownerId: r.ownerId,
+                                  propertyId: r.propertyId,
+                                  balance: Number(r.balance),
+                              }))
+                          )
+                        : {};
+            } else {
+                out = buildOwnerPropertyBreakdown(payoutComputeState);
+            }
+        } else {
+            out = buildOwnerPropertyBreakdown(payoutComputeState);
+        }
+
+        const ms = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
+        if (ms > 200) {
+            console.warn('[PBooksPerf][OwnerPayouts] ownerPropertyBreakdown ms=', Math.round(ms), {
+                mode: needFullOwnerPropertyBreakdown || !useApiRollup ? 'full-client' : 'api-rollup',
+                tx: payoutComputeState.transactions.length,
+                props: payoutComputeState.properties.length,
+            });
+        }
+        return out;
+    }, [
+        needFullOwnerPropertyBreakdown,
+        useApiRollup,
+        apiRollupSuccess,
+        apiRollupPending,
+        apiRollupError,
+        apiOwnerBalanceRows,
+        state,
+        payoutComputeState.transactions,
+        payoutComputeState.properties,
+        payoutComputeState.categories,
+        payoutComputeState.rentalAgreements,
+        payoutComputeState.bills,
+        payoutComputeState.propertyOwnership,
+        payoutComputeState.invoices,
+    ]);
 
     // Rent modal: show every owner slice on the same unit (former + current) so payouts post to the right contact.
     const ownerPayoutModalPropertyBreakdown = useMemo((): PropertyBalanceItem[] => {

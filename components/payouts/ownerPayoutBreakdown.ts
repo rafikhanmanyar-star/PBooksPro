@@ -302,6 +302,32 @@ export function buildOwnerPropertyBreakdown(state: AppState): OwnerPropertyBreak
     return result;
 }
 
+/**
+ * Rent tree + rent payout modal slices from server `owner_balances` (API mode).
+ * Security slices stay empty; use `buildOwnerPropertyBreakdown` when the Security tab or security modal needs full rules.
+ */
+export function buildOwnerPropertyBreakdownFromApiBalances(
+    state: AppState,
+    rows: ReadonlyArray<{ ownerId: string; propertyId: string; balance: number }>
+): OwnerPropertyBreakdownMap {
+    const result: OwnerPropertyBreakdownMap = {};
+    for (const r of rows) {
+        const oid = String(r.ownerId);
+        const pid = String(r.propertyId);
+        const bal = Number(r.balance);
+        if (!Number.isFinite(bal) || bal <= 0.01) continue;
+        if (!result[oid]) result[oid] = { rent: [], security: [] };
+        const prop = state.properties.find((p) => String(p.id) === pid);
+        const propertyId = (prop?.id ?? pid) as string;
+        result[oid].rent.push({
+            propertyId,
+            propertyName: prop?.name || 'Unit',
+            balanceDue: bal,
+        });
+    }
+    return result;
+}
+
 export function getOwnerPayoutModalPropertyBreakdown(
     state: AppState,
     ownerId: string,
