@@ -15,7 +15,11 @@ import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { currentMonthYyyyMm, parseYyyyMmDdToLocalDate, toDateOnly, toLocalDateString, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import RentalPropertySummaryCard from './RentalPropertySummaryCard';
-import { buildOwnerPropertyBreakdown, getOwnerPayoutModalPropertyBreakdownForProperty } from '../payouts/ownerPayoutBreakdown';
+import {
+    buildOwnerPropertyBreakdown,
+    getOwnerPayoutModalPropertyBreakdownForProperty,
+    getOwnerRentalPayoutDueForProperty,
+} from '../payouts/ownerPayoutBreakdown';
 
 const PropertyInvoicePickModal = lazy(() => import('./PropertyInvoicePickModal'));
 const RentalPaymentModal = lazy(() => import('../invoices/RentalPaymentModal'));
@@ -303,6 +307,8 @@ const PropertyLayoutReport: React.FC = () => {
                 propertiesToProcess = state.properties.filter(p => p.buildingId === selectedBuildingId);
             }
 
+            const ownerRentalPayoutBreakdown = buildOwnerPropertyBreakdown(state);
+
             propertiesToProcess.forEach(prop => {
                 const parsed = parseProperty(prop.name, prop.id);
 
@@ -335,15 +341,7 @@ const PropertyLayoutReport: React.FC = () => {
                         return sum + (inv.amount - inv.paidAmount);
                     }, 0);
 
-                const propIncome = state.transactions
-                    .filter(tx => tx.propertyId === prop.id && tx.type === TransactionType.INCOME)
-                    .reduce((sum, tx) => sum + tx.amount, 0);
-
-                const propExpense = state.transactions
-                    .filter(tx => tx.propertyId === prop.id && tx.type === TransactionType.EXPENSE)
-                    .reduce((sum, tx) => sum + tx.amount, 0);
-
-                const payoutDue = Math.max(0, propIncome - propExpense);
+                const payoutDue = getOwnerRentalPayoutDueForProperty(ownerRentalPayoutBreakdown, prop.id);
 
                 const hasUnpaidRental = propertyInvoices.some(
                     inv =>

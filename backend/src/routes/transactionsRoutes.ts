@@ -14,6 +14,7 @@ import {
 import { getBillById, rowToBillApi } from '../services/billsService.js';
 import { getInvoiceById, rowToInvoiceApi } from '../services/invoicesService.js';
 import { emitEntityEvent } from '../core/realtime.js';
+import { memoryCacheDeletePrefix } from '../utils/memoryCache.js';
 
 export const transactionsRouter = Router();
 
@@ -62,9 +63,13 @@ function parseListFilters(req: AuthedRequest): ListTransactionFilters {
     endDate: typeof q.endDate === 'string' ? q.endDate : undefined,
     type: typeof q.type === 'string' ? q.type : undefined,
     invoiceId: typeof q.invoiceId === 'string' ? q.invoiceId : undefined,
+    ownerId: typeof q.ownerId === 'string' ? q.ownerId : undefined,
+    propertyId: typeof q.propertyId === 'string' ? q.propertyId : undefined,
     rentalInvoiceOnly: rentalInvoiceOnly || undefined,
     limit: Number.isFinite(limitRaw) ? limitRaw : undefined,
     offset: Number.isFinite(offsetRaw) ? offsetRaw : undefined,
+    cursorDate: typeof q.cursorDate === 'string' ? q.cursorDate : undefined,
+    cursorId: typeof q.cursorId === 'string' ? q.cursorId : undefined,
   };
 }
 
@@ -132,6 +137,8 @@ transactionsRouter.post('/transactions', async (req: AuthedRequest, res) => {
       return;
     }
     const apiRow = rowToTransactionApi(result.row);
+    memoryCacheDeletePrefix(`rental_balances:${tenantId}:`);
+    memoryCacheDeletePrefix(`rental_monthly:${tenantId}:`);
     const action = result.wasInsert ? 'created' : 'updated';
     emitEntityEvent(tenantId, action, 'transaction', { data: apiRow, sourceUserId: req.userId });
     await emitRecalculatedInvoiceBillEvents(
@@ -174,6 +181,8 @@ transactionsRouter.put('/transactions/:id', async (req: AuthedRequest, res) => {
       return;
     }
     const apiRow = rowToTransactionApi(result.row);
+    memoryCacheDeletePrefix(`rental_balances:${tenantId}:`);
+    memoryCacheDeletePrefix(`rental_monthly:${tenantId}:`);
     emitEntityEvent(tenantId, 'updated', 'transaction', { data: apiRow, sourceUserId: req.userId });
     await emitRecalculatedInvoiceBillEvents(
       tenantId,
@@ -215,6 +224,8 @@ transactionsRouter.delete('/transactions/:id', async (req: AuthedRequest, res) =
       sendFailure(res, 404, 'NOT_FOUND', 'Transaction not found');
       return;
     }
+    memoryCacheDeletePrefix(`rental_balances:${tenantId}:`);
+    memoryCacheDeletePrefix(`rental_monthly:${tenantId}:`);
     emitEntityEvent(tenantId, 'deleted', 'transaction', { id, sourceUserId: req.userId });
     const pool = getPool();
     const c = await pool.connect();

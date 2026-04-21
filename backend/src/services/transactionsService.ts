@@ -8,6 +8,7 @@ import {
   type ExpenseCashValidationBatchContext,
   type ProjectCashTxRow,
 } from '../financial/expenseCashValidation.js';
+import { syncOwnerSummariesForTransactionChange } from './ownerRentalSummaryService.js';
 
 /** Keep invoice/bill paid_amount + status aligned with ledger (also when client saveInvoice fails, e.g. LOCK_HELD). */
 async function recalculateAggregatesForLinkedIds(
@@ -65,10 +66,15 @@ export type ListTransactionFilters = {
   endDate?: string;
   type?: string;
   invoiceId?: string;
+  ownerId?: string;
+  propertyId?: string;
   /** Only rows linked to invoices with rental module types (Rental, Security Deposit, Service Charge). */
   rentalInvoiceOnly?: boolean;
   limit?: number;
   offset?: number;
+  /** Keyset: next page after (cursorDate, cursorId); use with descending date,id order. */
+  cursorDate?: string;
+  cursorId?: string;
 };
 
 function dateToApi(d: Date | string | null | undefined): string {
@@ -286,15 +292,42 @@ export async function listTransactions(
     params.push(filters.invoiceId);
     where += ` AND t.invoice_id = $${params.length}`;
   }
+  if (filters.ownerId) {
+    params.push(filters.ownerId);
+    where += ` AND t.owner_id = $${params.length}`;
+  }
+  if (filters.propertyId) {
+    params.push(filters.propertyId);
+    where += ` AND t.property_id = $${params.length}`;
+  }
 
-  const limit = Math.min(filters.limit ?? 10000, 500000);
-  const offset = Math.max(filters.offset ?? 0, 0);
+  const useKeyset =
+    typeof filters.cursorDate === 'string' &&
+    filters.cursorDate.trim() !== '' &&
+    typeof filters.cursorId === 'string' &&
+    filters.cursorId.trim() !== '';
+
+  if (useKeyset) {
+    params.push(filters.cursorDate!.trim(), filters.cursorId!.trim());
+    const dIdx = params.length - 1;
+    const idIdx = params.length;
+    where += ` AND (t.date < $${dIdx}::date OR (t.date = $${dIdx}::date AND t.id < $${idIdx}))`;
+  }
+
+  /** Default page size 200; callers may request up to 500k for tenant-scoped bulk sync / reports. */
+  const limit = Math.min(Math.max(filters.limit ?? 200, 1), 500_000);
+  const offset = useKeyset ? 0 : Math.max(filters.offset ?? 0, 0);
   params.push(limit);
-  params.push(offset);
-  const limitIdx = params.length - 1;
-  const offsetIdx = params.length;
-
-  const q = `${SELECT_ROW} ${fromClause} ${where} ORDER BY t.date DESC, t.id ASC LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+  let q: string;
+  if (useKeyset) {
+    const limitIdx = params.length;
+    q = `${SELECT_ROW} ${fromClause} ${where} ORDER BY t.date DESC, t.id DESC LIMIT $${limitIdx}`;
+  } else {
+    params.push(offset);
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
+    q = `${SELECT_ROW} ${fromClause} ${where} ORDER BY t.date DESC, t.id DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+  }
 
   const r = await client.query<TransactionRow>(q, params);
   return r.rows;
@@ -422,6 +455,7 @@ export async function createTransaction(
     expenseCashBatchCtx.recordInsertedTransaction(rowToProjectCashTxRow(row));
   }
   await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id]);
+  await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
   return row;
 }
 
@@ -448,6 +482,15 @@ export async function updateTransaction(
     p.type,
     p.bill_id,
     p.category_id
+  );
+
+  const ownerIdResolvedUpdate = await resolveOwnerIdFromProperty(
+    client,
+    tenantId,
+    p.property_id,
+    p.owner_id,
+    p.date,
+    p.invoice_id
   );
 
   await assertExpenseProjectCashAvailable(client, tenantId, {
@@ -484,7 +527,7 @@ export async function updateTransaction(
     p.agreement_id ?? null,
     p.batch_id ?? null,
     p.project_asset_id ?? null,
-    p.owner_id ?? null,
+    ownerIdResolvedUpdate ?? null,
     p.is_system,
   ];
 
@@ -509,6 +552,7 @@ export async function updateTransaction(
     }
     const row = u.rows[0];
     await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id]);
+    await syncOwnerSummariesForTransactionChange(client, tenantId, before, row);
     const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
     const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
     return { row, conflict: false, affectedInvoiceIds, affectedBillIds };
@@ -532,6 +576,7 @@ export async function updateTransaction(
     return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
   }
   await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id]);
+  await syncOwnerSummariesForTransactionChange(client, tenantId, before, row);
   const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
   return { row, conflict: false, affectedInvoiceIds, affectedBillIds };
@@ -644,6 +689,11 @@ export async function upsertTransaction(
   const row = u.rows[0];
   if (!row) throw new Error('Transaction upsert failed.');
   await recalculateAggregatesForLinkedIds(client, tenantId, [existing.invoice_id, row.invoice_id], [existing.bill_id, row.bill_id]);
+  if (existing.deleted_at) {
+    await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
+  } else {
+    await syncOwnerSummariesForTransactionChange(client, tenantId, existing, row);
+  }
   const affectedInvoiceIds = [...new Set([existing.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([existing.bill_id, row.bill_id].filter(Boolean))] as string[];
   return { row, conflict: false, wasInsert: false, affectedInvoiceIds, affectedBillIds };
@@ -665,6 +715,8 @@ export async function softDeleteTransaction(
 
   const invoiceId = row.invoice_id;
   const billId = row.bill_id;
+
+  await syncOwnerSummariesForTransactionChange(client, tenantId, row, null);
 
   if (expectedVersion !== undefined) {
     const r = await client.query(

@@ -40,6 +40,9 @@ import {
     getPayoutOwnerIdsForProperty,
 } from '../../services/propertyOwnershipService';
 import { buildOwnerPropertyBreakdown, getOwnerPayoutModalPropertyBreakdown } from './ownerPayoutBreakdown';
+import { useAuth } from '../../context/AuthContext';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
 
 // --- Types ---
 
@@ -56,6 +59,8 @@ interface PayeeRow {
     balance: number;     // collected - paid (positive = due to payee)
     contact: Contact;
     properties?: string; // comma-separated property names for display
+    /** PostgreSQL owner_balances sum (in-scope properties); API mode only, owner income rows. */
+    serverTxNetDue?: number;
 }
 
 type SortKey = 'name' | 'category' | 'collected' | 'paid' | 'balance';
@@ -66,6 +71,13 @@ const OwnerPayoutsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { openChat } = useWhatsApp();
     const { showToast } = useNotification();
+    const { isAuthenticated } = useAuth();
+    const useApiRollup = !isLocalOnlyMode() && isAuthenticated;
+    const {
+        data: apiOwnerBalanceRows,
+        isFetching: apiRollupFetching,
+        isSuccess: apiRollupSuccess,
+    } = useAllOwnerBalancesRollupQuery(useApiRollup);
 
     // UI state
     const [activeCategory, setActiveCategory] = useState<PayoutCategory>('ownerIncome');
@@ -161,6 +173,30 @@ const OwnerPayoutsPage: React.FC = () => {
             state.properties.filter((p) => (b ? p.buildingId === b : true)).map((p) => String(p.id))
         );
     }, [selectedBuildingId, selectedOwnerId, selectedUnitId, state.properties, state.propertyOwnership]);
+
+    const apiOwnerNetByOwnerInScope = useMemo(() => {
+        const m = new Map<string, number>();
+        if (!apiOwnerBalanceRows?.length || propertyIdsInScope.size === 0) return m;
+        for (const r of apiOwnerBalanceRows) {
+            if (!propertyIdsInScope.has(String(r.propertyId))) continue;
+            const oid = String(r.ownerId);
+            m.set(oid, (m.get(oid) ?? 0) + Number(r.balance));
+        }
+        return m;
+    }, [apiOwnerBalanceRows, propertyIdsInScope]);
+
+    const apiRollupPositiveInScope = useMemo(() => {
+        if (!apiOwnerBalanceRows?.length) return null;
+        let s = 0;
+        for (const r of apiOwnerBalanceRows) {
+            if (!propertyIdsInScope.has(String(r.propertyId))) continue;
+            const b = Number(r.balance);
+            if (b > 0) s += b;
+        }
+        return s;
+    }, [apiOwnerBalanceRows, propertyIdsInScope]);
+
+    const tableColCount = useApiRollup ? 9 : 8;
 
     // --- Owner Rental Income Balances ---
     // Aligned with Owner Ledger / Owner Income report: broker fee is deducted from owner balance.
@@ -893,6 +929,10 @@ const OwnerPayoutsPage: React.FC = () => {
                 balance: ob.balance,
                 contact,
                 properties: propsLabel(ob.ownerId),
+                serverTxNetDue:
+                    useApiRollup && apiRollupSuccess
+                        ? apiOwnerNetByOwnerInScope.get(String(ob.ownerId)) ?? 0
+                        : undefined,
             });
         });
 
@@ -935,7 +975,19 @@ const OwnerPayoutsPage: React.FC = () => {
         });
 
         return rows;
-    }, [ownerRentalBalances, brokerCommissionBalances, ownerSecurityBalances, state.contacts, state.properties, state.rentalAgreements, selectedUnitId, selectedUnitName]);
+    }, [
+        ownerRentalBalances,
+        brokerCommissionBalances,
+        ownerSecurityBalances,
+        state.contacts,
+        state.properties,
+        state.rentalAgreements,
+        selectedUnitId,
+        selectedUnitName,
+        useApiRollup,
+        apiRollupSuccess,
+        apiOwnerNetByOwnerInScope,
+    ]);
 
     // --- Filtering --- (balances are already scoped by building/owner/unit; here only category and search)
     const filteredRows = useMemo(() => {
@@ -1235,6 +1287,14 @@ const OwnerPayoutsPage: React.FC = () => {
                     </div>
                     <p className="text-2xl font-bold text-ds-success">{CURRENCY} {formatCurrency(summaryTotals.ownerIncome)}</p>
                     <p className="text-xs text-app-muted mt-1">Due to property owners</p>
+                    {useApiRollup && apiRollupFetching && (
+                        <p className="text-[10px] text-app-muted mt-1">Refreshing PostgreSQL rollups…</p>
+                    )}
+                    {useApiRollup && apiRollupSuccess && apiRollupPositiveInScope != null && (
+                        <p className="text-[10px] text-app-muted mt-1" title="Sum of positive owner_balances in current building/unit scope (transaction-tagged income − expense). May differ from Amount Due when bills or broker fees are not in transactions.">
+                            Server tx rollup (in-scope, positive): {CURRENCY} {formatCurrency(apiRollupPositiveInScope)}
+                        </p>
+                    )}
                 </button>
 
                 {/* Broker Commission Card */}
@@ -1466,6 +1526,14 @@ const OwnerPayoutsPage: React.FC = () => {
                                     >
                                         Amount Due <SortIcon column="balance" />
                                     </th>
+                                    {useApiRollup && (
+                                        <th
+                                            className="px-3 py-3 text-right text-xs font-semibold text-app-muted uppercase tracking-wider hidden xl:table-cell"
+                                            title="PostgreSQL owner_balances (income − expense on transactions with owner_id + property_id). Full ledger rules may differ."
+                                        >
+                                            Tx net (DB)
+                                        </th>
+                                    )}
                                     <th className="px-3 py-3 text-center text-xs font-semibold text-app-muted uppercase tracking-wider">
                                         Actions
                                     </th>
@@ -1517,6 +1585,21 @@ const OwnerPayoutsPage: React.FC = () => {
                                                         {CURRENCY} {formatCurrency(Math.abs(row.balance))}
                                                     </span>
                                                 </td>
+                                                {useApiRollup && (
+                                                    <td className="px-3 py-3 text-right text-xs text-app-muted hidden xl:table-cell">
+                                                        {row.category === 'ownerIncome' && row.type === 'Owner' ? (
+                                                            !apiRollupSuccess ? (
+                                                                apiRollupFetching ? '…' : '—'
+                                                            ) : (
+                                                                <>
+                                                                    {CURRENCY} {formatCurrency(row.serverTxNetDue ?? 0)}
+                                                                </>
+                                                            )
+                                                        ) : (
+                                                            '—'
+                                                        )}
+                                                    </td>
+                                                )}
                                                 <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                                                     <div className="flex items-center justify-center gap-1">
                                                         {row.balance > 0.01 && (
@@ -1552,7 +1635,7 @@ const OwnerPayoutsPage: React.FC = () => {
                                             </tr>
                                             {expandedRowId === row.id && (
                                                 <tr>
-                                                    <td colSpan={8} className="p-0">
+                                                    <td colSpan={tableColCount} className="p-0">
                                                         {renderExpandedDetail(row)}
                                                     </td>
                                                 </tr>
@@ -1561,7 +1644,7 @@ const OwnerPayoutsPage: React.FC = () => {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={8} className="px-3 py-16 text-center">
+                                        <td colSpan={tableColCount} className="px-3 py-16 text-center">
                                             <p className="text-app-muted text-sm">
                                                 {searchQuery
                                                     ? 'No payees match your search.'

@@ -16,7 +16,8 @@ export function getPool(): pg.Pool {
     if (!url) {
       throw new Error('DATABASE_URL is required for the API server');
     }
-    pool = new Pool({ connectionString: url, max: 20 });
+    const max = Math.min(Math.max(parseInt(process.env.PG_POOL_MAX || '20', 10) || 20, 2), 100);
+    pool = new Pool({ connectionString: url, max });
   }
   return pool;
 }

@@ -14,10 +14,14 @@ export interface TransactionFilters {
   endDate?: string;
   type?: string;
   invoiceId?: string;
+  ownerId?: string;
+  propertyId?: string;
   /** Only payments linked to rental-module invoices (Rental, Security Deposit, Service Charge). */
   rentalInvoiceOnly?: boolean;
   limit?: number;
   offset?: number;
+  cursorDate?: string;
+  cursorId?: string;
 }
 
 export class TransactionsApiRepository {
@@ -31,9 +35,14 @@ export class TransactionsApiRepository {
     if (filters.endDate) params.append('endDate', filters.endDate);
     if (filters.type) params.append('type', filters.type);
     if (filters.invoiceId) params.append('invoiceId', filters.invoiceId);
+    if (filters.ownerId) params.append('ownerId', filters.ownerId);
+    if (filters.propertyId) params.append('propertyId', filters.propertyId);
     if (filters.rentalInvoiceOnly) params.append('rentalInvoiceOnly', 'true');
-    if (filters.limit) params.append('limit', filters.limit.toString());
+    const limit = filters.limit ?? 500_000;
+    params.append('limit', String(limit));
     if (filters.offset) params.append('offset', filters.offset.toString());
+    if (filters.cursorDate) params.append('cursorDate', filters.cursorDate);
+    if (filters.cursorId) params.append('cursorId', filters.cursorId);
 
     const queryString = params.toString();
     const endpoint = queryString ? `/transactions?${queryString}` : '/transactions';

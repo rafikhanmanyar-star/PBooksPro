@@ -1,5 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
+import { List, type RowComponentProps } from 'react-window';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
@@ -20,10 +21,82 @@ interface OwnerLedgerProps {
 
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
+type LedgerLine = {
+    id: string;
+    date: string;
+    particulars: string;
+    debit: number;
+    credit: number;
+    type: string;
+    transaction?: any;
+    transactionId?: string;
+};
+
+const LEDGER_ROW_HEIGHT = 52;
+const LEDGER_LIST_MAX_H = 520;
+
+type OwnerLedgerRowExtra = {
+    rows: Array<LedgerLine & { balance: number }>;
+    onRecordClick?: OwnerLedgerProps['onRecordClick'];
+    onPayoutClick?: OwnerLedgerProps['onPayoutClick'];
+};
+
+const OwnerLedgerRow = (props: RowComponentProps<OwnerLedgerRowExtra>) => {
+    const { index, style, ariaAttributes, rows, onRecordClick, onPayoutClick } = props;
+    const item = rows[index];
+    if (!item) return null;
+    const hasTransaction = !!item.transaction;
+    const isClickable = hasTransaction && (onRecordClick || (item.type === 'Payout' && onPayoutClick));
+    const handleRowClick = () => {
+        if (!hasTransaction) return;
+        if (onRecordClick) {
+            onRecordClick({ type: item.type, transaction: item.transaction });
+        } else if (item.type === 'Payout' && onPayoutClick) {
+            onPayoutClick(item.transaction);
+        }
+    };
+    return (
+        <div
+            {...ariaAttributes}
+            style={style}
+            onClick={handleRowClick}
+            className={`flex items-stretch border-b border-slate-200 text-sm ${
+                isClickable ? 'cursor-pointer hover:bg-indigo-50 transition-colors group' : ''
+            }`}
+        >
+            <div className="w-[108px] shrink-0 pl-4 pr-2 py-3 text-slate-700 whitespace-nowrap">{formatDate(item.date)}</div>
+            <div className="min-w-0 flex-1 px-2 py-3 text-slate-500 truncate" title={item.particulars}>
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate">{item.particulars}</span>
+                    {isClickable && (
+                        <span className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity font-medium shrink-0">
+                            (edit)
+                        </span>
+                    )}
+                </div>
+            </div>
+            <div className="w-[100px] shrink-0 px-2 py-3 text-right text-success whitespace-nowrap">
+                {item.credit > 0 ? formatCurrency(item.credit) : '-'}
+            </div>
+            <div className="w-[100px] shrink-0 px-2 py-3 text-right text-danger whitespace-nowrap">
+                {item.debit > 0 ? formatCurrency(item.debit) : '-'}
+            </div>
+            <div
+                className={`w-[112px] shrink-0 pl-2 pr-4 py-3 text-right font-medium whitespace-nowrap ${
+                    item.balance > 0 ? 'text-danger' : 'text-slate-800'
+                }`}
+            >
+                {formatCurrency(item.balance || 0)}
+            </div>
+        </div>
+    );
+};
+
 const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId, propertyId, onPayoutClick, onRecordClick }) => {
     const { state } = useAppContext();
     const { openChat } = useWhatsApp();
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+    /** Default: chronological ledger — oldest first, newest last (standard running-balance order). */
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -32,8 +105,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
         }));
     };
 
-    const ledgerItems = useMemo(() => {
-        if (!ownerId) return [];
+    const ledgerBase = useMemo(() => {
+        if (!ownerId) return { items: [] as LedgerLine[], balanceByLineId: {} as Record<string, number> };
         
         const ownerScopeIds = getPropertyIdsForOwner(state, ownerId, buildingId);
         let ownerProperties = state.properties.filter(p => ownerScopeIds.has(String(p.id)));
@@ -43,11 +116,11 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
         }
         const ownerPropertyIds = new Set(ownerProperties.map(p => String(p.id)));
         
-        let items: any[] = [];
+        let items: LedgerLine[] = [];
 
         if (ledgerType === 'Rent') {
             const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-            if (!rentalIncomeCategory) return [];
+            if (!rentalIncomeCategory) return { items: [], balanceByLineId: {} };
 
             const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
             const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
@@ -426,13 +499,22 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 balanceByLineId[row.id] = chronologicalRunning;
             });
 
-        items.sort((a, b) => {
+        return { items, balanceByLineId };
+    }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership]);
+
+    const ledgerSorted = useMemo(() => {
+        const { items, balanceByLineId } = ledgerBase;
+        const withBalance = items.map((item) => ({ ...item, balance: balanceByLineId[item.id] ?? 0 }));
+        return [...withBalance].sort((a, b) => {
             let valA: any = a[sortConfig.key];
             let valB: any = b[sortConfig.key];
 
             if (sortConfig.key === 'date') {
                 valA = new Date(valA).getTime();
                 valB = new Date(valB).getTime();
+            } else if (sortConfig.key === 'credit' || sortConfig.key === 'debit' || sortConfig.key === 'balance') {
+                valA = Number(valA);
+                valB = Number(valB);
             } else if (typeof valA === 'string') {
                 valA = valA.toLowerCase();
                 valB = valB.toLowerCase();
@@ -442,10 +524,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-
-        return items.map((item) => ({ ...item, balance: balanceByLineId[item.id] ?? 0 }));
-
-    }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership, sortConfig]);
+    }, [ledgerBase, sortConfig]);
 
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className="ml-1 text-[10px] text-slate-400">
@@ -455,17 +534,19 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
     if (!ownerId) return null;
     
-    if (ledgerItems.length === 0) {
+    if (ledgerSorted.length === 0) {
         return <p className="text-slate-500 text-center py-8">No {ledgerType === 'Rent' ? 'rental' : 'security deposit'} activity found.</p>;
     }
+
+    const listHeight = Math.min(LEDGER_LIST_MAX_H, Math.max(ledgerSorted.length * LEDGER_ROW_HEIGHT, LEDGER_ROW_HEIGHT));
 
     const handleSendWhatsApp = () => {
         if (!ownerId) return;
         const ownerContact = state.contacts.find(c => c.id === ownerId);
         if (!ownerContact) return;
 
-        const totalCollected = ledgerItems.reduce((sum, item) => sum + item.credit, 0);
-        const totalPaid = ledgerItems.reduce((sum, item) => sum + item.debit, 0);
+        const totalCollected = ledgerSorted.reduce((sum, item) => sum + item.credit, 0);
+        const totalPaid = ledgerSorted.reduce((sum, item) => sum + item.debit, 0);
         const finalBalance = totalCollected - totalPaid;
         const payoutType = ledgerType === 'Security' ? 'Security Deposit' : 'Rental Income';
 
@@ -483,55 +564,57 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
     return (
         <div className="flow-root">
             <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                    <table className="min-w-full divide-y divide-slate-300">
-                        <thead>
-                            <tr>
-                                <th onClick={() => handleSort('date')} scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0 cursor-pointer hover:bg-slate-50 select-none">Date <SortIcon column="date"/></th>
-                                <th onClick={() => handleSort('particulars')} scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 select-none">Particulars <SortIcon column="particulars"/></th>
-                                <th onClick={() => handleSort('credit')} scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 select-none">Collected <SortIcon column="credit"/></th>
-                                <th onClick={() => handleSort('debit')} scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 select-none">Paid Out <SortIcon column="debit"/></th>
-                                <th onClick={() => handleSort('balance')} scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-0 text-right text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 select-none">Balance <SortIcon column="balance"/></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200">
-                            {ledgerItems.map((item) => {
-                                const hasTransaction = !!item.transaction;
-                                const isClickable = hasTransaction && (onRecordClick || (item.type === 'Payout' && onPayoutClick));
-                                const handleRowClick = () => {
-                                    if (!hasTransaction) return;
-                                    if (onRecordClick) {
-                                        onRecordClick({ type: item.type, transaction: item.transaction });
-                                    } else if (item.type === 'Payout' && onPayoutClick) {
-                                        onPayoutClick(item.transaction);
-                                    }
-                                };
-                                
-                                return (
-                                    <tr 
-                                        key={item.id}
-                                        onClick={handleRowClick}
-                                        className={isClickable ? 'cursor-pointer hover:bg-indigo-50 transition-colors group' : ''}
-                                    >
-                                        <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-700 sm:pl-0">{formatDate(item.date)}</td>
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 max-w-xs truncate" title={item.particulars}>
-                                            <div className="flex items-center gap-2">
-                                                {item.particulars}
-                                                {isClickable && (
-                                                    <span className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-                                                        (Click to edit)
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-success">{item.credit > 0 ? formatCurrency(item.credit) : '-'}</td>
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-danger">{item.debit > 0 ? formatCurrency(item.debit) : '-'}</td>
-                                        <td className={`relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0 ${item.balance > 0 ? 'text-danger' : 'text-slate-800'}`}>{formatCurrency(item.balance || 0)}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8 min-w-[640px]">
+                    <div className="border-b border-slate-300">
+                        <div className="flex text-sm font-semibold text-gray-900">
+                            <button
+                                type="button"
+                                onClick={() => handleSort('date')}
+                                className="w-[108px] shrink-0 py-3.5 pl-4 pr-2 text-left hover:bg-slate-50 select-none"
+                            >
+                                Date <SortIcon column="date" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('particulars')}
+                                className="min-w-0 flex-1 px-2 py-3.5 text-left hover:bg-slate-50 select-none"
+                            >
+                                Particulars <SortIcon column="particulars" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('credit')}
+                                className="w-[100px] shrink-0 px-2 py-3.5 text-right hover:bg-slate-50 select-none"
+                            >
+                                Collected <SortIcon column="credit" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('debit')}
+                                className="w-[100px] shrink-0 px-2 py-3.5 text-right hover:bg-slate-50 select-none"
+                            >
+                                Paid Out <SortIcon column="debit" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('balance')}
+                                className="w-[112px] shrink-0 pl-2 pr-4 py-3.5 text-right hover:bg-slate-50 select-none"
+                            >
+                                Balance <SortIcon column="balance" />
+                            </button>
+                        </div>
+                    </div>
+                    <List<OwnerLedgerRowExtra>
+                        rowHeight={LEDGER_ROW_HEIGHT}
+                        rowCount={ledgerSorted.length}
+                        rowProps={{
+                            rows: ledgerSorted,
+                            onRecordClick,
+                            onPayoutClick,
+                        }}
+                        rowComponent={OwnerLedgerRow}
+                        style={{ height: listHeight, width: '100%' }}
+                    />
                 </div>
             </div>
             {/* WhatsApp Send Ledger Button */}

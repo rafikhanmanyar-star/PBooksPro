@@ -288,3 +288,18 @@ export function getOwnerPayoutModalPropertyBreakdownForProperty(
     if (payoutType !== 'Rent') return raw;
     return expandRentBreakdownForModal(state, ownerId, raw, fullBreakdown);
 }
+
+/**
+ * Total owner rental payout due for one unit: sum of rent `balanceDue` across all owners with a slice on that property.
+ * Matches Owner Payouts page / Owner Payout modal (not raw property income minus expenses).
+ */
+export function getOwnerRentalPayoutDueForProperty(breakdown: OwnerPropertyBreakdownMap, propertyId: string): number {
+    const pid = String(propertyId);
+    let sum = 0;
+    for (const ownerId of Object.keys(breakdown)) {
+        for (const row of breakdown[ownerId]?.rent ?? []) {
+            if (String(row.propertyId) === pid) sum += row.balanceDue ?? 0;
+        }
+    }
+    return Math.max(0, sum);
+}

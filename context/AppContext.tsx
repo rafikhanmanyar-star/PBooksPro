@@ -3089,6 +3089,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 pmCycleAllocations: merged.pmCycleAllocations?.length ?? 0,
                 incremental: !!(lastSync && baselineHasCoreData),
             });
+            try {
+                const [{ getQueryClient }, { rentalRollupQueryKeys }] = await Promise.all([
+                    import('../config/queryClient'),
+                    import('../hooks/queries/useRentalRollupQueries'),
+                ]);
+                getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
+            } catch {
+                /* optional: query client not ready */
+            }
             _onCriticalLoaded?.();
         } catch (e) {
             logger.warnCategory('sync', '⚠️ refreshFromApi failed:', e);

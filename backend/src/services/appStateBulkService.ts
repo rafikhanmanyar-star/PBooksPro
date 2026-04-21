@@ -137,7 +137,9 @@ export async function getBulkAppState(
   ] = await Promise.all([
     wantEntity('accounts', filter) ? listAccounts(client, tenantId) : Promise.resolve([]),
     wantEntity('contacts', filter) ? listContacts(client, tenantId) : Promise.resolve([]),
-    wantEntity('transactions', filter) ? listTransactions(client, tenantId) : Promise.resolve([]),
+    wantEntity('transactions', filter)
+      ? listTransactions(client, tenantId, { limit: 500_000 })
+      : Promise.resolve([]),
     wantEntity('categories', filter) ? listCategories(client, tenantId) : Promise.resolve([]),
     wantEntity('projects', filter) ? listProjects(client, tenantId) : Promise.resolve([]),
     wantEntity('buildings', filter) ? listBuildings(client, tenantId) : Promise.resolve([]),

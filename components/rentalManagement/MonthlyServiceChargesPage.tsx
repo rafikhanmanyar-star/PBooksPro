@@ -61,6 +61,18 @@ interface LedgerRow {
     shortfall: number;
 }
 
+/** First unit (property) in tree order — depth-first, same order as the sidebar list. */
+function getFirstPropertyNodeInTree(nodes: ARTreeNode[]): ARTreeNode | null {
+    for (const n of nodes) {
+        if (n.type === 'property') return n;
+        if (n.children?.length) {
+            const found = getFirstPropertyNodeInTree(n.children);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
 function endOfMonthIso(monthKey: string): string {
     const [y, m] = monthKey.split('-').map(Number);
     if (!y || !m) return monthKey;
@@ -221,6 +233,8 @@ const MonthlyServiceChargesPage: React.FC = () => {
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('msc_sidebar_width', 340);
     const [isResizing, setIsResizing] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    /** When true, keep ledger unscoped (all units matching filters) until filters change. Set by "Clear". */
+    const skipAutoSelectLedgerScopeRef = useRef(false);
 
     /** Default: month ascending (oldest at top, newest at bottom). */
     const [ledgerSort, setLedgerSort] = useState<{ key: 'month' | 'unit'; dir: 'asc' | 'desc' }>({ key: 'month', dir: 'asc' });
@@ -672,8 +686,16 @@ const MonthlyServiceChargesPage: React.FC = () => {
     }, [filteredPropertyRows, viewBy, state.buildings, state.contacts, state.transactions, svcIncomeCategory, selectedMonth, getActiveTenantId]);
 
     useEffect(() => {
+        skipAutoSelectLedgerScopeRef.current = false;
         setSelectedNode(null);
     }, [viewBy, mscStatusFilter, entityFilterId, selectedMonth, debouncedSearch]);
+
+    useEffect(() => {
+        if (skipAutoSelectLedgerScopeRef.current) return;
+        if (selectedNode !== null) return;
+        const first = getFirstPropertyNodeInTree(treeData);
+        if (first) setSelectedNode(first);
+    }, [treeData, selectedNode]);
 
     const selectedPropertyRowsForLedger = useMemo(() => {
         if (!selectedNode) return filteredPropertyRows;
@@ -776,19 +798,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
     const gridData = filteredPropertyRows;
 
     const summaryStats = useMemo(() => {
-        const sumDeductedForPropertyIds = (propertyIds: Set<string>) => {
-            if (!svcIncomeCategory) return 0;
-            return state.transactions
-                .filter(tx => {
-                    if (tx.type !== TransactionType.INCOME || tx.categoryId !== svcIncomeCategory.id) return false;
-                    if (!tx.propertyId || !propertyIds.has(tx.propertyId)) return false;
-                    if (selectedMonth !== 'all' && !tx.date?.startsWith(selectedMonth)) return false;
-                    return true;
-                })
-                .reduce((sum, tx) => sum + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0);
-        };
-
-        /** Portfolio-wide period total (same as before tree selection was added). */
+        /** Portfolio-wide / filter-bar scope (ledger tree selection does not shrink KPI cards). */
         const sumDeductedAllProperties = () => {
             if (!svcIncomeCategory) return 0;
             return state.transactions
@@ -799,36 +809,6 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 })
                 .reduce((sum, tx) => sum + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0);
         };
-
-        if (selectedNode) {
-            const rows = selectedPropertyRowsForLedger;
-            const total = rows.length;
-            const rented = rows.filter(d => d.status === 'Rented').length;
-            const vacant = total - rented;
-            const totalCharges = rows.reduce((sum, d) => sum + d.monthlyCharge, 0);
-            const deductedCount = rows.filter(d => d.deductedThisMonth).length;
-            const pendingCount = rows.filter(d => !d.deductedThisMonth).length;
-            const propIds = new Set(rows.map(r => r.propertyId));
-            const deductedAmount = sumDeductedForPropertyIds(propIds);
-
-            const ownerIdsInScope = new Set(rows.map(r => r.ownerId).filter(Boolean));
-            const ownersNegative = Object.entries(ownerBalances).filter(
-                ([id, bal]) => ownerIdsInScope.has(id) && bal < -0.01
-            );
-            const totalNegative = ownersNegative.reduce((sum, [, bal]) => sum + bal, 0);
-
-            return {
-                total,
-                rented,
-                vacant,
-                totalCharges,
-                deductedCount,
-                pendingCount,
-                ownersNegativeCount: ownersNegative.length,
-                totalNegative,
-                deductedAmount,
-            };
-        }
 
         const total = propertiesWithCharges.length;
         const rented = propertiesWithCharges.filter(p => getPropertyStatus(p.id) === 'Rented').length;
@@ -843,8 +823,6 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
         return { total, rented, vacant, totalCharges, deductedCount, pendingCount, ownersNegativeCount: ownersNegative.length, totalNegative, deductedAmount };
     }, [
-        selectedNode,
-        selectedPropertyRowsForLedger,
         propertiesWithCharges,
         gridData,
         getPropertyStatus,
@@ -1350,7 +1328,10 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                 {selectedNode && (
                                     <button
                                         type="button"
-                                        onClick={() => setSelectedNode(null)}
+                                        onClick={() => {
+                                            skipAutoSelectLedgerScopeRef.current = true;
+                                            setSelectedNode(null);
+                                        }}
                                         className="text-[10px] text-slate-400 hover:text-slate-600 px-1.5 py-0.5 rounded hover:bg-slate-200"
                                     >
                                         Clear

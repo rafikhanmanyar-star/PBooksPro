@@ -7,7 +7,7 @@ import { useKpis } from '../../context/KPIContext';
 import KPICard from './KPI_Card';
 import Button from '../ui/Button';
 import { ICONS, CURRENCY } from '../../constants';
-import { formatRoundedNumber } from '../../utils/numberUtils';
+import { formatRoundedNumber, formatCurrency } from '../../utils/numberUtils';
 import DashboardConfigModal from './DashboardConfigModal';
 import Card from '../ui/Card';
 import SimpleInvoiceBillItem from './SimpleInvoiceBillItem';
@@ -20,6 +20,9 @@ import AccountConsistencyReport from './AccountConsistencyReport';
 import Tabs from '../ui/Tabs';
 import { formatDate } from '../../utils/dateUtils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { useAuth } from '../../context/AuthContext';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useMonthlyRentalSummaryRangeQuery } from '../../hooks/queries/useRentalRollupQueries';
 
 const DashboardPage: React.FC = () => {
     const dispatch = useDispatchOnly();
@@ -38,6 +41,12 @@ const DashboardPage: React.FC = () => {
     const buildings = useStateSelector(s => s.buildings);
     const lookupMaps = useLookupMaps();
     const { allKpis, openDrilldown } = useKpis();
+    const { isAuthenticated } = useAuth();
+    const useApiRentalRollup = !isLocalOnlyMode() && isAuthenticated;
+    const { data: monthlyRentalRollup, isFetching: monthlyRollupFetching } = useMonthlyRentalSummaryRangeQuery(
+        useApiRentalRollup && isAdmin,
+        5
+    );
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     const [isTransferReportOpen, setIsTransferReportOpen] = useState(false);
     const [greeting, setGreeting] = useState('');
@@ -110,6 +119,11 @@ const DashboardPage: React.FC = () => {
         return Object.values(months);
     }, [transactions, excludedCategoryIds, isAdmin]);
 
+    const rentalOwnerNetServer6mo = useMemo(() => {
+        if (!monthlyRentalRollup?.length) return null;
+        return monthlyRentalRollup.reduce((s, r) => s + r.netAmount, 0);
+    }, [monthlyRentalRollup]);
+
     const recentActivity = useMemo(() => {
         const recentInvoices = [...invoices].sort((a, b) => new Date(b.issueDate || b.dueDate).getTime() - new Date(a.issueDate || a.dueDate).getTime()).slice(0, 3).map(i => ({
             id: i.id, type: 'Invoice', title: `Invoice #${i.invoiceNumber}`, amount: i.amount, date: i.issueDate || i.dueDate, status: i.status
@@ -128,6 +142,20 @@ const DashboardPage: React.FC = () => {
                 <div>
                     <h1 className="text-xl md:text-2xl font-bold text-app-text">{greeting}, {currentUser?.name?.split(' ')[0]}</h1>
                     <p className="text-app-muted text-xs md:text-sm mt-1">Here's what's happening with your projects today.</p>
+                    {isAdmin && useApiRentalRollup && (
+                        <p className="text-[11px] text-app-muted mt-2 max-w-xl" title="From PostgreSQL monthly_owner_summary: rental invoice income vs expenses per owner/property, last six calendar months in the feed.">
+                            {monthlyRollupFetching && !monthlyRentalRollup?.length ? (
+                                <span>Loading rental owner summary from server…</span>
+                            ) : rentalOwnerNetServer6mo != null ? (
+                                <span>
+                                    Rental owner net (server, 6 mo):{' '}
+                                    <span className="font-semibold text-app-text">
+                                        {CURRENCY} {formatCurrency(rentalOwnerNetServer6mo)}
+                                    </span>
+                                </span>
+                            ) : null}
+                        </p>
+                    )}
                 </div>
                 <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto">
                     <Button variant="secondary" onClick={() => setIsConfigModalOpen(true)} className="text-app-muted border-app-border hover:bg-app-toolbar text-xs md:text-sm flex-1 md:flex-none">

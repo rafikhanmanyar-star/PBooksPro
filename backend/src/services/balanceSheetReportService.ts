@@ -45,7 +45,11 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
   const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap, projectRows] =
     await Promise.all([
       listAccounts(client, tenantId),
-      listTransactions(client, tenantId, { endDate: asOfDate, limit: 500000, offset: 0 }),
+      listTransactions(client, tenantId, {
+        endDate: asOfDate,
+        limit: 500_000,
+        offset: 0,
+      }),
       listCategories(client, tenantId),
       listInvoices(client, tenantId),
       listBills(client, tenantId),

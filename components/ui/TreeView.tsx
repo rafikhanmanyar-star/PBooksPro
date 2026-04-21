@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ICONS } from '../../constants';
 import TreeExpandCollapseControls from './TreeExpandCollapseControls';
 import { collectExpandableParentIds } from './treeExpandCollapseUtils';
@@ -143,20 +143,67 @@ const TreeView: React.FC<TreeViewProps> = ({
 
     const allExpandableIds = useMemo(() => collectExpandableParentIds(data), [data]);
 
+    /** Stable while tree shape is unchanged (amount/label updates only) — avoids scroll restore every render. */
+    const expandableStructureSig = useMemo(() => [...allExpandableIds].sort().join('|'), [allExpandableIds]);
+
     const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
         if (!defaultExpanded || allExpandableIds.length === 0) return new Set();
         return new Set(allExpandableIds);
     });
 
+    /**
+     * When `nodes` is rebuilt on every app refresh (new array reference, same ids), we must NOT
+     * re-apply "expand all" — that was resetting collapsed branches and scroll on realtime updates.
+     * Only sync expanded state when the set of expandable parent ids actually changes.
+     */
+    const prevExpandableIdsRef = useRef<string[] | null>(null);
+
     useEffect(() => {
-        setExpandedIds(prev => {
-            const next = new Set(prev);
-            allExpandableIds.forEach(id => {
-                if (defaultExpanded) next.add(id);
-            });
+        const ids = collectExpandableParentIds(data);
+        const prev = prevExpandableIdsRef.current;
+
+        if (prev === null) {
+            prevExpandableIdsRef.current = ids;
+            return;
+        }
+
+        const currSet = new Set(ids);
+        const sameSet = prev.length === ids.length && prev.every(id => currSet.has(id));
+
+        if (sameSet) return;
+
+        const prevSet = new Set(prev);
+        setExpandedIds(prevExpanded => {
+            const next = new Set(prevExpanded);
+            for (const id of prevExpanded) {
+                if (!currSet.has(id)) next.delete(id);
+            }
+            if (defaultExpanded) {
+                ids.forEach(id => {
+                    if (!prevSet.has(id)) next.add(id);
+                });
+            }
             return next;
         });
-    }, [allExpandableIds, defaultExpanded]);
+        prevExpandableIdsRef.current = ids;
+    }, [data, defaultExpanded]);
+
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const treeScrollTopRef = useRef(0);
+    const prevStructureSigForScrollRef = useRef<string | null>(null);
+
+    /** Runs on every `data` refresh; only restores scroll when tree shape (ids) is unchanged. */
+    useLayoutEffect(() => {
+        if (!scrollableContent) return;
+        const el = scrollContainerRef.current;
+        if (!el) return;
+        const prev = prevStructureSigForScrollRef.current;
+        const curr = expandableStructureSig;
+        if (prev === null || prev === curr) {
+            el.scrollTop = treeScrollTopRef.current;
+        }
+        prevStructureSigForScrollRef.current = curr;
+    }, [data, expandableStructureSig, scrollableContent]);
 
     const toggleExpanded = useCallback((id: string) => {
         setExpandedIds(prev => {
@@ -269,7 +316,13 @@ const TreeView: React.FC<TreeViewProps> = ({
                 </div>
             ) : null}
             {scrollableContent ? (
-                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-[color:var(--border-color)] scrollbar-track-transparent pr-0.5">
+                <div
+                    ref={scrollContainerRef}
+                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-[color:var(--border-color)] scrollbar-track-transparent pr-0.5"
+                    onScroll={e => {
+                        treeScrollTopRef.current = e.currentTarget.scrollTop;
+                    }}
+                >
                     {nodeList}
                 </div>
             ) : (

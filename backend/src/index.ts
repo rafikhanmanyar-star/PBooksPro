@@ -46,6 +46,7 @@ import { balanceSheetRouter } from './routes/balanceSheetRoutes.js';
 import { profitLossRouter } from './routes/profitLossRoutes.js';
 import { cashFlowRouter } from './routes/cashFlowRoutes.js';
 import { trialBalanceRouter } from './routes/trialBalanceRoutes.js';
+import { rentalOwnerSummariesRouter } from './routes/rentalOwnerSummariesRoutes.js';
 import { authMiddleware } from './middleware/authMiddleware.js';
 import { seedDevIfEnabled } from './seed.js';
 import { sendFailure, sendSuccess } from './utils/apiResponse.js';
@@ -136,6 +137,7 @@ app.use('/api', authMiddleware, profitLossRouter);
 app.use('/api', authMiddleware, cashFlowRouter);
 
 app.use('/api', authMiddleware, trialBalanceRouter);
+app.use('/api', authMiddleware, rentalOwnerSummariesRouter);
 
 app.use('/api', authMiddleware, accountsRouter);
 
