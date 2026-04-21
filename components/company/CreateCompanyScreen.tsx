@@ -5,7 +5,8 @@
 
 import React, { useState } from 'react';
 import { useCompany } from '../../context/CompanyContext';
-import { Database, ArrowLeft, AlertCircle, Check } from 'lucide-react';
+import { Database, ArrowLeft, AlertCircle, Check, Server } from 'lucide-react';
+import { setSessionDataSource } from '../../config/apiUrl';
 
 interface Props {
   onBack?: () => void;
@@ -118,6 +119,18 @@ const CreateCompanyScreen: React.FC<Props> = ({ onBack }) => {
                 Create Company
               </>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSessionDataSource('postgres_api');
+              window.location.reload();
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 text-sm text-[#5A4EDD] border border-[#5A4EDD]/40 rounded-lg hover:bg-[#5A4EDD]/5"
+          >
+            <Server className="w-4 h-4 shrink-0" />
+            Sign in via PBooks API Server instead
           </button>
 
           {onBack && (

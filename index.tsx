@@ -6,11 +6,13 @@ import './index.css';
 import { setupElectronFocusRecovery } from './utils/electronFocusRecovery';
 import { initStabilityLayer } from './services/stability/stabilityLayer';
 import { getQueryClient } from './config/queryClient';
+import { ensureLegacyOfflineApiSessionMarked } from './config/apiUrl';
 
 // Get root element
 const rootElement = document.getElementById('root');
 
 initStabilityLayer();
+ensureLegacyOfflineApiSessionMarked();
 
 /**
  * Repair keyboard focus when the window gains focus (e.g. restore from taskbar).

@@ -8,7 +8,8 @@ export const rentalRollupQueryKeys = {
     [...rentalRollupQueryKeys.root, 'monthly', startMonth, endMonth] as const,
 };
 
-const ROLLUP_STALE_MS = 45_000;
+/** Longer stale window avoids refetch storms when switching views after a full sync (large tenants). */
+const ROLLUP_STALE_MS = 120_000;
 
 /** Full tenant owner_balances list (for Payouts / dashboards). */
 export function useAllOwnerBalancesRollupQuery(enabled: boolean) {

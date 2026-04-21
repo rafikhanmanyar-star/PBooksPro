@@ -62,6 +62,10 @@ function _notifyStateListeners() {
  */
 const transactionApiSaveQueues = new Map<string, Promise<void>>();
 
+/** Avoid refetching large rollup payloads on every socket/tab refresh (still invalidate immediately on tx writes). */
+const RENTAL_ROLLUP_SYNC_INVALIDATE_MIN_MS = 90_000;
+let rentalRollupLastInvalidateAfterSyncAt = 0;
+
 function enqueueTransactionApiSave(txId: string, task: () => Promise<void>): Promise<void> {
     const previous = transactionApiSaveQueues.get(txId) ?? Promise.resolve();
     const next = previous.catch(() => {}).then(() => task());
@@ -3123,11 +3127,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 incremental: !!(lastSync && baselineHasCoreData),
             });
             try {
-                const [{ getQueryClient }, { rentalRollupQueryKeys }] = await Promise.all([
-                    import('../config/queryClient'),
-                    import('../hooks/queries/useRentalRollupQueries'),
-                ]);
-                getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
+                const now = Date.now();
+                if (now - rentalRollupLastInvalidateAfterSyncAt < RENTAL_ROLLUP_SYNC_INVALIDATE_MIN_MS) {
+                    /* skip: rollup queries refetch is heavy for large tenants; tx saves still invalidate */
+                } else {
+                    rentalRollupLastInvalidateAfterSyncAt = now;
+                    const [{ getQueryClient }, { rentalRollupQueryKeys }] = await Promise.all([
+                        import('../config/queryClient'),
+                        import('../hooks/queries/useRentalRollupQueries'),
+                    ]);
+                    getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
+                }
             } catch {
                 /* optional: query client not ready */
             }

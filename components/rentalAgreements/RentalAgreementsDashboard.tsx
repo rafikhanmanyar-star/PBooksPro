@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { RentalAgreement, RentalAgreementStatus } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
@@ -82,6 +82,9 @@ const RentalAgreementsDashboard: React.FC = () => {
     return result;
   }, [state.rentalAgreements, statusFilter, searchQuery, contactMap, propertyMap, buildingMap, isExpiringSoon]);
 
+  /** Keeps filters/table in sync while letting React yield during huge tree builds after full API merges. */
+  const deferredAgreementsForTree = useDeferredValue(filteredAgreements);
+
   const treeData = useMemo((): ARTreeNode[] => {
     const calcStats = (agreements: RentalAgreement[]) => {
       let activeRent = 0;
@@ -108,7 +111,7 @@ const RentalAgreementsDashboard: React.FC = () => {
 
     if (viewBy === 'building') {
       const grouped = new Map<string, RentalAgreement[]>();
-      for (const ra of filteredAgreements) {
+      for (const ra of deferredAgreementsForTree) {
         const { buildingId } = getPropertyDetails(ra.propertyId);
         if (!grouped.has(buildingId)) grouped.set(buildingId, []);
         grouped.get(buildingId)!.push(ra);
@@ -157,7 +160,7 @@ const RentalAgreementsDashboard: React.FC = () => {
 
     if (viewBy === 'property') {
       const grouped = new Map<string, RentalAgreement[]>();
-      for (const ra of filteredAgreements) {
+      for (const ra of deferredAgreementsForTree) {
         if (!grouped.has(ra.propertyId)) grouped.set(ra.propertyId, []);
         grouped.get(ra.propertyId)!.push(ra);
       }
@@ -186,7 +189,7 @@ const RentalAgreementsDashboard: React.FC = () => {
 
     if (viewBy === 'tenant') {
       const grouped = new Map<string, RentalAgreement[]>();
-      for (const ra of filteredAgreements) {
+      for (const ra of deferredAgreementsForTree) {
         if (!grouped.has(ra.contactId)) grouped.set(ra.contactId, []);
         grouped.get(ra.contactId)!.push(ra);
       }
@@ -204,7 +207,7 @@ const RentalAgreementsDashboard: React.FC = () => {
 
     if (viewBy === 'owner') {
       const grouped = new Map<string, RentalAgreement[]>();
-      for (const ra of filteredAgreements) {
+      for (const ra of deferredAgreementsForTree) {
         const { ownerId } = getPropertyDetails(ra.propertyId);
         const effectiveOwnerId = ra.ownerId || ownerId;
         if (!grouped.has(effectiveOwnerId)) grouped.set(effectiveOwnerId, []);
@@ -241,7 +244,7 @@ const RentalAgreementsDashboard: React.FC = () => {
     }
 
     return [];
-  }, [filteredAgreements, viewBy, contactMap, propertyMap, buildingMap, isExpiringSoon]);
+  }, [deferredAgreementsForTree, viewBy, contactMap, propertyMap, buildingMap, isExpiringSoon]);
 
   useEffect(() => { setSelectedNode(null); }, [viewBy, statusFilter]);
 

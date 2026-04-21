@@ -7,7 +7,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { isLocalOnlyMode } from '../config/apiUrl';
+import { isLocalOnlyMode, setSessionDataSource } from '../config/apiUrl';
 import { logger } from '../services/logger';
 import { applyDisplayTimezoneFromProfile, setDisplayTimeZoneUserContext } from '../utils/dateUtils';
 
@@ -193,6 +193,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
             if (stored) {
               const { companyId, user } = JSON.parse(stored);
               if (companyId === company.id && user?.id && user?.username) {
+                setSessionDataSource('sqlite');
                 setAuthenticatedUser(user);
                 setIsLoading(false);
                 setScreen('app');
@@ -208,6 +209,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
             setScreen('login');
           } else {
             // No users (edge case): treat as default admin
+            setSessionDataSource('sqlite');
             setAuthenticatedUser({
               id: 'local-user',
               username: 'admin',
@@ -323,6 +325,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
       setForcePasswordChange(true);
       setScreen('app');
+      setSessionDataSource('sqlite');
 
       // Reload to ensure clean state with new DB
       window.location.reload();
@@ -392,6 +395,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
           user: defaultUser,
         }));
       }
+      setSessionDataSource('sqlite');
 
       // 6. Reload to load the new company data
       window.location.reload();
@@ -448,6 +452,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         name: 'Administrator',
         role: 'SUPER_ADMIN',
       });
+      setSessionDataSource('sqlite');
 
       // Reload to initialize all services with the new DB
       window.location.reload();
@@ -479,6 +484,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         name: 'Administrator',
         role: 'SUPER_ADMIN',
       });
+      setSessionDataSource('sqlite');
       window.location.reload();
       return { ok: true };
     } catch (err) {
@@ -551,6 +557,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       } catch (_) {}
 
+      setSessionDataSource('sqlite');
       // Reload to initialize with the new DB
       window.location.reload();
       return { ok: true };

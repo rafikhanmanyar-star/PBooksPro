@@ -6,8 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { getApiBaseUrl } from '../config/apiUrl';
-import { isLocalOnlyMode } from '../config/apiUrl';
+import { getApiBaseUrl, isLocalOnlyMode, setSessionDataSource, clearSessionDataSource } from '../config/apiUrl';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
 import { useCompanyOptional } from './CompanyContext';
@@ -137,6 +136,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Local-only: save all data to SQLite first, then clear state (prevents loss of agreements etc. on logout)
     if (isLocalOnlyMode()) {
       if (typeof window !== 'undefined') {
+        try {
+          clearSessionDataSource();
+        } catch {
+          /* ignore */
+        }
         try {
           logger.logCategory('auth', '💾 Saving data to SQLite before logout (local-only)...');
           await new Promise<void>((resolve) => {
@@ -508,6 +512,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error: null,
       });
       syncDisplayTimezoneFromUser(user);
+      setSessionDataSource('sqlite');
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('auth:login-success'));
       }
@@ -544,6 +549,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
+        setSessionDataSource('postgres_api');
 
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('pbooks_api_last_sync_at');
@@ -636,6 +642,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error: null,
       });
       syncDisplayTimezoneFromUser(user);
+      setSessionDataSource('sqlite');
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('auth:login-success'));
       }
@@ -677,6 +684,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
+        setSessionDataSource('postgres_api');
 
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('pbooks_api_last_sync_at');
@@ -790,6 +798,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Set authentication
       apiClient.setAuth(response.token, response.tenant.id);
+      setSessionDataSource('postgres_api');
 
       // Force a full API load on next sync (fresh baseline after login; incremental sync covers ongoing changes)
       if (typeof window !== 'undefined') {

@@ -16,6 +16,53 @@ const API_PORT = DEFAULT_LAN_API_PORT;
 /** Persisted by the API login screen / setBaseUrl so Electron (file://) can reach a LAN server without rebuilding. */
 export const PBOOKS_API_BASE_STORAGE_KEY = 'pbooks_api_base_url';
 
+/**
+ * Offline desktop build (`VITE_LOCAL_ONLY=true`) can still sign in against PBooks API Server (PostgreSQL).
+ * When set to `postgres_api`, `isLocalOnlyMode()` is false so REST sync + Socket.IO run.
+ * Local company files set `sqlite` before reload.
+ */
+export const PBOOKS_SESSION_DATA_SOURCE_KEY = 'pbooks_session_data_source';
+
+export type SessionDataSource = 'sqlite' | 'postgres_api';
+
+export function setSessionDataSource(source: SessionDataSource): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PBOOKS_SESSION_DATA_SOURCE_KEY, source);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearSessionDataSource(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(PBOOKS_SESSION_DATA_SOURCE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Older offline builds could save a PostgreSQL JWT but still treat the app as local-only (no sync, no Socket.IO).
+ * If we find a non-local tenant token and no explicit session mode, assume API session.
+ */
+export function ensureLegacyOfflineApiSessionMarked(): void {
+  if (typeof window === 'undefined') return;
+  const v = import.meta.env.VITE_LOCAL_ONLY;
+  if (v !== 'true' && v !== true) return;
+  try {
+    if (localStorage.getItem(PBOOKS_SESSION_DATA_SOURCE_KEY)) return;
+    const token = localStorage.getItem('auth_token');
+    const tid = localStorage.getItem('tenant_id');
+    if (token && tid && tid !== 'local') {
+      localStorage.setItem(PBOOKS_SESSION_DATA_SOURCE_KEY, 'postgres_api');
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 function normalizeApiBaseUrl(url: string): string {
   const u = url.trim().replace(/\/?$/, '');
   return u.endsWith('/api') ? u : `${u}/api`;
@@ -95,11 +142,23 @@ export function isStagingEnvironment(): boolean {
  * When the variable is **unset**: browser tabs on `http:` / `https:` are treated as API-capable so
  * transaction mutations POST to PostgreSQL. Otherwise a dev server without `.env` would skip API sync
  * (optimistic UI only — data lost on refresh, other users never see changes). `file://` (Electron)
- * stays local-only unless `VITE_LOCAL_ONLY=false` is baked into the build.
+ * stays local-only unless `VITE_LOCAL_ONLY=false` is baked into the build, or the user chose
+ * organization server sign-in (`pbooks_session_data_source=postgres_api`).
  */
 export function isLocalOnlyMode(): boolean {
   const v = import.meta.env.VITE_LOCAL_ONLY;
   if (v === 'false' || v === false) return false;
+
+  if (typeof window !== 'undefined') {
+    try {
+      if (localStorage.getItem(PBOOKS_SESSION_DATA_SOURCE_KEY) === 'postgres_api') {
+        return false;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (v === 'true' || v === true) return true;
   if (typeof window !== 'undefined') {
     const p = window.location.protocol;

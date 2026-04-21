@@ -16,7 +16,9 @@ import {
   LogIn,
   DatabaseBackup,
   Trash2,
+  Server,
 } from 'lucide-react';
+import { setSessionDataSource } from '../../config/apiUrl';
 
 const ACCENT = 'bg-[#5A4EDD] hover:bg-[#4b41c9] focus:ring-[#5A4EDD]';
 const ACCENT_RING = 'ring-[#5A4EDD]';
@@ -266,6 +268,24 @@ const CompanySelectScreen: React.FC = () => {
               Browse for company file
               {browsing && <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />}
             </button>
+
+            <div className="mt-auto pt-4 border-t border-gray-200">
+              <p className="text-xs font-medium text-gray-500 mb-2">Organization server (PostgreSQL)</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSessionDataSource('postgres_api');
+                  window.location.reload();
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 text-sm text-[#5A4EDD] border border-[#5A4EDD]/40 rounded-lg hover:bg-[#5A4EDD]/5"
+              >
+                <Server className="w-4 h-4 shrink-0" />
+                Sign in via PBooks API Server
+              </button>
+              <p className="text-[10px] text-gray-400 mt-1.5 leading-snug">
+                Use this when PBooks Pro API Server is running. Data loads through the API (port 3000), not a local company file. Enables real-time sync (Socket.IO).
+              </p>
+            </div>
 
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
