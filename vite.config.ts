@@ -35,8 +35,10 @@ const suppressSqlJsWarnings = () => {
 
 const isElectronBuild = process.env.VITE_ELECTRON_BUILD === 'true';
 
-// Use relative base for Electron (file://) compatibility; also works for web deployment
-const base = isElectronBuild ? './' : process.env.VITE_BASE || '/';
+// Relative base so `dist/` loads from file:// in Electron when using `electron .` or loadFile().
+// Plain `npm run build` must not emit `/assets/...` (breaks file://). Use VITE_BASE=/ or VITE_BASE=/subpath/
+// when your host requires absolute public paths.
+const base = isElectronBuild ? './' : (process.env.VITE_BASE || './');
 
 // https://vitejs.dev/config/
 export default defineConfig({
