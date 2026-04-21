@@ -17,7 +17,7 @@ import { resolveSystemCategoryId } from '../services/systemEntityIds';
 import packageJson from '../package.json';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { notifyDatabaseError } from '../services/dbErrorNotification';
-import { formatApiErrorMessage } from '../services/api/client';
+import { formatApiErrorMessage } from '../utils/formatApiErrorMessage';
 import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconcile';
 import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
@@ -2013,15 +2013,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     } as AppAction);
                                 }
                             }
-                            try {
-                                const [{ getQueryClient }, { rentalRollupQueryKeys }] = await Promise.all([
+                            queueMicrotask(() => {
+                                void Promise.all([
                                     import('../config/queryClient'),
                                     import('../hooks/queries/useRentalRollupQueries'),
-                                ]);
-                                getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
-                            } catch {
-                                /* optional */
-                            }
+                                ])
+                                    .then(([{ getQueryClient }, { rentalRollupQueryKeys }]) => {
+                                        getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
+                                    })
+                                    .catch(() => {});
+                            });
                         })
                         .catch((err) => {
                             logger.warnCategory('sync', '⚠️ Failed to persist transaction (or linked invoice/bill) to API:', err);
@@ -2126,15 +2127,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     } as AppAction);
                                 }
                             }
-                            try {
-                                const [{ getQueryClient }, { rentalRollupQueryKeys }] = await Promise.all([
+                            queueMicrotask(() => {
+                                void Promise.all([
                                     import('../config/queryClient'),
                                     import('../hooks/queries/useRentalRollupQueries'),
-                                ]);
-                                getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
-                            } catch {
-                                /* optional */
-                            }
+                                ])
+                                    .then(([{ getQueryClient }, { rentalRollupQueryKeys }]) => {
+                                        getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
+                                    })
+                                    .catch(() => {});
+                            });
                         })
                         .catch((err: unknown) => {
                             logger.warnCategory('sync', '⚠️ Failed to persist batch transactions to API:', err);

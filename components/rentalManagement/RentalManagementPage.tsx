@@ -1,34 +1,40 @@
 
-import React, { useState, useEffect, useLayoutEffect, memo, Suspense, startTransition } from 'react';
+import React, { useState, useEffect, useLayoutEffect, memo, Suspense, startTransition, lazy } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
-import RentalAgreementsPage from '../rentalAgreements/RentalAgreementsPage';
-import OwnerPayoutsPage from '../payouts/OwnerPayoutsPage';
 import { Page } from '../../types';
-import RentalInvoicesPage from './RentalInvoicesPage';
-// RecurringInvoicesList import removed — recurring auto-generation is disabled
-import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
-import RentalBillsPage from './RentalBillsPage';
-import RentalSettingsPage from './RentalSettingsPage';
 import { useAppContext } from '../../context/AppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 
-// Static report imports for file:// (Electron) compatibility — dynamic import can fail there
-import PropertyLayoutReport from '../reports/PropertyLayoutReport';
-import UnitStatusReport from '../reports/UnitStatusReport';
-import AgreementExpiryReport from '../reports/AgreementExpiryReport';
-import BuildingAccountsReport from '../reports/BuildingAccountsReport';
-import BMAnalysisReport from '../reports/BMAnalysisReport';
-import OwnerPayoutsReport from '../reports/OwnerPayoutsReport';
-import ServiceChargesDeductionReport from '../reports/ServiceChargesDeductionReport';
-import TenantLedgerReport from '../reports/TenantLedgerReport';
-import VendorLedgerReport from '../reports/VendorLedgerReport';
-import OwnerSecurityDepositReport from '../reports/OwnerSecurityDepositReport';
-import BrokerFeeReport from '../reports/BrokerFeeReport';
-import InvoicePaymentAnalysisReport from '../reports/InvoicePaymentAnalysisReport';
-import OwnerIncomeSummaryReport from '../reports/OwnerIncomeSummaryReport';
-import RentalReceivableReport from '../reports/RentalReceivableReport';
-import PropertyOwnershipTransfersPage from './PropertyOwnershipTransfersPage';
+/** Lazy-load each rental sub-page so opening the module does not parse one giant bundle on the main thread. */
+const RentalSettingsPage = lazy(() => import('./RentalSettingsPage'));
+const RentalAgreementsPage = lazy(() => import('../rentalAgreements/RentalAgreementsPage'));
+const RentalInvoicesPage = lazy(() => import('./RentalInvoicesPage'));
+const MonthlyServiceChargesPage = lazy(() => import('./MonthlyServiceChargesPage'));
+const RentalBillsPage = lazy(() => import('./RentalBillsPage'));
+const OwnerPayoutsPage = lazy(() => import('../payouts/OwnerPayoutsPage'));
+const PropertyOwnershipTransfersPage = lazy(() => import('./PropertyOwnershipTransfersPage'));
+
+const PropertyLayoutReport = lazy(() => import('../reports/PropertyLayoutReport'));
+const UnitStatusReport = lazy(() => import('../reports/UnitStatusReport'));
+const AgreementExpiryReport = lazy(() => import('../reports/AgreementExpiryReport'));
+const BuildingAccountsReport = lazy(() => import('../reports/BuildingAccountsReport'));
+const BMAnalysisReport = lazy(() => import('../reports/BMAnalysisReport'));
+const OwnerPayoutsReport = lazy(() => import('../reports/OwnerPayoutsReport'));
+const ServiceChargesDeductionReport = lazy(() => import('../reports/ServiceChargesDeductionReport'));
+const TenantLedgerReport = lazy(() => import('../reports/TenantLedgerReport'));
+const VendorLedgerReport = lazy(() => import('../reports/VendorLedgerReport'));
+const OwnerSecurityDepositReport = lazy(() => import('../reports/OwnerSecurityDepositReport'));
+const BrokerFeeReport = lazy(() => import('../reports/BrokerFeeReport'));
+const InvoicePaymentAnalysisReport = lazy(() => import('../reports/InvoicePaymentAnalysisReport'));
+const OwnerIncomeSummaryReport = lazy(() => import('../reports/OwnerIncomeSummaryReport'));
+const RentalReceivableReport = lazy(() => import('../reports/RentalReceivableReport'));
+
+const RENTAL_LAZY_FALLBACK = (
+    <div className="flex items-center justify-center h-full min-h-[200px] text-app-muted text-sm">
+        Loading…
+    </div>
+);
 
 interface RentalManagementPageProps {
     initialPage: Page;
@@ -164,6 +170,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             {activeView === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
             {activeView === 'Bills' && <RentalBillsPage />}
             {activeView === 'Payouts' && <OwnerPayoutsPage />}
+            {activeView === 'Ownership transfers' && <PropertyOwnershipTransfersPage />}
         </div>
     );
 
@@ -344,11 +351,9 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 </div>
 
             <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
-                {isOperationalView ? renderOperationalContent() : (
-                    <Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading report...</div>}>
-                        {renderReportContent()}
-                    </Suspense>
-                )}
+                <Suspense fallback={RENTAL_LAZY_FALLBACK}>
+                    {isOperationalView ? renderOperationalContent() : renderReportContent()}
+                </Suspense>
             </div>
         </div>
     );
