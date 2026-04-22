@@ -43,7 +43,7 @@ export interface VisualLayoutPropertyBox {
     brokerPayoutPending: number;
 }
 
-function formatCompactK(n: number): string {
+function formatCompactKAbs(n: number): string {
     if (n <= 0 || Number.isNaN(n)) return '0';
     if (n >= 1000) {
         const k = n / 1000;
@@ -51,6 +51,16 @@ function formatCompactK(n: number): string {
         return `${s}k`;
     }
     return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function formatCompactK(n: number): string {
+    return formatCompactKAbs(Math.max(0, n));
+}
+
+/** Signed net (e.g. owner payout: negative = receive from owner). */
+function formatCompactKSigned(n: number): string {
+    if (Number.isNaN(n) || Math.abs(n) < 0.01) return '0';
+    return (n < 0 ? '-' : '') + formatCompactKAbs(Math.abs(n));
 }
 
 export interface RentalPropertySummaryCardProps {
@@ -236,10 +246,21 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
 
                 {/* Bottom-right: payout due */}
                 <div className="flex flex-col gap-0.5 min-w-0 pl-1 pt-0.5 h-full">
-                    <div className="flex items-center justify-between gap-0.5" title="Payout due to owner">
+                    <div
+                        className="flex items-center justify-between gap-0.5"
+                        title="Net owner rental balance (ledger): positive = payout due, negative = receive from owner"
+                    >
                         <Banknote className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
-                        <span className={`text-[9px] font-bold tabular-nums truncate ${unit.payoutDue > 0 ? 'text-ds-warning' : 'text-slate-900'}`}>
-                            {formatCompactK(unit.payoutDue)}
+                        <span
+                            className={`text-[9px] font-bold tabular-nums truncate ${
+                                unit.payoutDue > 0.01
+                                    ? 'text-ds-warning'
+                                    : unit.payoutDue < -0.01
+                                      ? 'text-ds-success'
+                                      : 'text-slate-900'
+                            }`}
+                        >
+                            {formatCompactKSigned(unit.payoutDue)}
                         </span>
                     </div>
                     {(unit.brokerPayoutPending ?? 0) > 0.01 && (

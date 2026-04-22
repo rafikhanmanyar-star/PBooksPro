@@ -36,7 +36,6 @@ import {
 } from '../../services/propertyOwnershipService';
 import {
     buildOwnerPropertyBreakdown,
-    buildOwnerPropertyBreakdownFromApiBalances,
     computeOwnerRentCollectedPaidBalanceForProperty,
     getOwnerPayoutModalPropertyBreakdown,
 } from './ownerPayoutBreakdown';
@@ -215,45 +214,11 @@ const OwnerPayoutsPage: React.FC = () => {
 
     const tableColCount = useApiRollup ? 9 : 8;
 
-    const needFullOwnerPropertyBreakdown =
-        activeCategory === 'securityDeposit' ||
-        (ownerPayoutModal.isOpen && ownerPayoutModal.payoutType === 'Security');
-
     // --- Owner Rental Income Balances ---
-    // API mode: aggregate server `owner_balances` (O(rows)) — avoids O(owners × properties × transactions).
-    // Local / fallback: sum `computeOwnerRentCollectedPaidBalanceForProperty` per (owner × in-scope property).
+    // Always use the same rules as OwnerLedger / Owner Rental Income (per-property slices), not PostgreSQL owner_balances,
+    // so summary rows and cards match the expanded ledger.
     const ownerRentalBalances = useMemo(() => {
         const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-
-        if (useApiRollup && !apiRollupError) {
-            if (apiRollupPending && apiOwnerBalanceRows === undefined) {
-                return [];
-            }
-            if (apiRollupSuccess) {
-                if (propertyIdsInScope.size === 0) return [];
-                const byOwner = new Map<string, number>();
-                for (const r of apiOwnerBalanceRows ?? []) {
-                    if (!propertyIdsInScope.has(String(r.propertyId))) continue;
-                    const oid = String(r.ownerId);
-                    byOwner.set(oid, (byOwner.get(oid) ?? 0) + Number(r.balance));
-                }
-                const out = [...byOwner.entries()]
-                    .map(([ownerId, balance]) => ({
-                        ownerId,
-                        /** Rollup is net-only; split for display so collected/paid columns are non-misleading vs balance. */
-                        collected: balance > 0 ? balance : 0,
-                        paid: balance < 0 ? -balance : 0,
-                        balance,
-                    }))
-                    .filter((x) => Math.abs(x.balance) > 0.01 || x.collected > 0 || x.paid > 0);
-                const ms = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
-                if (ms > 32) {
-                    console.warn('[PBooksPerf][OwnerPayouts] ownerRentalBalances(api) ms=', Math.round(ms), 'owners=', out.length, 'rollupRows=', apiOwnerBalanceRows?.length ?? 0);
-                }
-                return out;
-            }
-        }
-
         const st = payoutComputeState;
         const rentalIncomeCategory = st.categories.find(c => c.name === 'Rental Income');
         if (!rentalIncomeCategory) return [];
@@ -291,15 +256,10 @@ const OwnerPayoutsPage: React.FC = () => {
         });
         const ms = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
         if (ms > 200) {
-            console.warn('[PBooksPerf][OwnerPayouts] ownerRentalBalances(client-heavy) ms=', Math.round(ms), 'owners=', ownersInScope.size, 'propsInScope=', propertyIdsInScope.size, 'tx=', st.transactions.length);
+            console.warn('[PBooksPerf][OwnerPayouts] ownerRentalBalances(ledger-aligned) ms=', Math.round(ms), 'owners=', ownersInScope.size, 'propsInScope=', propertyIdsInScope.size, 'tx=', st.transactions.length);
         }
         return out;
     }, [
-        useApiRollup,
-        apiRollupSuccess,
-        apiRollupPending,
-        apiRollupError,
-        apiOwnerBalanceRows,
         payoutComputeState.transactions,
         payoutComputeState.categories,
         payoutComputeState.properties,
@@ -446,51 +406,19 @@ const OwnerPayoutsPage: React.FC = () => {
             .filter(item => Math.abs(item.balance) > 0.01 || item.earned > 0 || item.paid > 0);
     }, [payoutComputeState.rentalAgreements, payoutComputeState.transactions, payoutComputeState.contacts, payoutComputeState.categories, propertyIdsInScope, selectedUnitId, selectedBuildingId]);
 
-    // --- Per-property balance breakdown (for payout modal: which property amounts to pay) ---
-    // API + Owner/Broker tabs: server rollup drives rent tree (fast). Security tab / security modal: full client rules (expensive, deferred state).
+    // --- Per-property balance breakdown (for payout modal + tree): same rules as OwnerLedger (not PostgreSQL rollup).
     const ownerPropertyBreakdown = useMemo(() => {
         const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-        let out: ReturnType<typeof buildOwnerPropertyBreakdown>;
-
-        if (!needFullOwnerPropertyBreakdown && useApiRollup && !apiRollupError) {
-            if (apiRollupPending && apiOwnerBalanceRows === undefined) {
-                out = {};
-            } else if (apiRollupSuccess) {
-                out =
-                    (apiOwnerBalanceRows?.length ?? 0) > 0
-                        ? buildOwnerPropertyBreakdownFromApiBalances(
-                              state,
-                              apiOwnerBalanceRows!.map((r) => ({
-                                  ownerId: r.ownerId,
-                                  propertyId: r.propertyId,
-                                  balance: Number(r.balance),
-                              }))
-                          )
-                        : {};
-            } else {
-                out = buildOwnerPropertyBreakdown(payoutComputeState);
-            }
-        } else {
-            out = buildOwnerPropertyBreakdown(payoutComputeState);
-        }
-
+        const out = buildOwnerPropertyBreakdown(payoutComputeState);
         const ms = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
         if (ms > 200) {
             console.warn('[PBooksPerf][OwnerPayouts] ownerPropertyBreakdown ms=', Math.round(ms), {
-                mode: needFullOwnerPropertyBreakdown || !useApiRollup ? 'full-client' : 'api-rollup',
                 tx: payoutComputeState.transactions.length,
                 props: payoutComputeState.properties.length,
             });
         }
         return out;
     }, [
-        needFullOwnerPropertyBreakdown,
-        useApiRollup,
-        apiRollupSuccess,
-        apiRollupPending,
-        apiRollupError,
-        apiOwnerBalanceRows,
-        state,
         payoutComputeState.transactions,
         payoutComputeState.properties,
         payoutComputeState.categories,
@@ -552,43 +480,56 @@ const OwnerPayoutsPage: React.FC = () => {
                     const items = ownerPropertyBreakdown[ownerId]?.[mode] ?? [];
                     const item = items.find(i => String(i.propertyId) === propIdStr);
                     const raw = item?.balanceDue ?? 0;
-                    const due = Math.max(0, raw);
-                    if (due <= 0.01 && !isFormerOwner(state, ownerId) && String(prop.ownerId) !== String(ownerId)) continue;
-                    oSum += due;
+                    const absRaw = Math.abs(raw);
+                    if (
+                        absRaw <= 0.01 &&
+                        !isFormerOwner(state, ownerId) &&
+                        String(prop.ownerId) !== String(ownerId)
+                    ) {
+                        continue;
+                    }
+                    oSum += raw;
                     const shares = getOwnershipSharesForPropertyOnDate(state, propIdStr, todayStr);
                     const ownerShare = shares.find(s => s.ownerId === ownerId);
                     const pctSuffix = shares.length > 1 && ownerShare ? ` (${ownerShare.percentage.toFixed(0)}%)` : '';
+                    const valueStr =
+                        (raw < -0.01 ? '-' : '') + formatAmountNoTrailingZeros(absRaw);
                     propNodes.push({
                         id: `property-${prop.id}`,
                         type: 'property',
                         label: `${prop.name || 'Unit'}${pctSuffix}`,
-                        value: formatAmountNoTrailingZeros(due),
-                        sortAmount: due,
+                        value: valueStr,
+                        sortAmount: absRaw,
+                        rollupSigned: mode === 'rent' ? raw : undefined,
                     });
                 }
 
                 if (propNodes.length === 0) continue;
 
                 const former = isFormerOwner(state, ownerId);
+                const oSumAbs = Math.abs(oSum);
                 ownerChildren.push({
                     id: `bld-${b.id}-own-${ownerId}`,
                     type: 'owner',
                     label: former ? `${contact.name} (Former)` : contact.name,
-                    value: formatAmountNoTrailingZeros(oSum),
-                    sortAmount: oSum,
+                    value: (oSum < -0.01 ? '-' : '') + formatAmountNoTrailingZeros(oSumAbs),
+                    sortAmount: oSumAbs,
+                    rollupSigned: mode === 'rent' ? oSum : undefined,
                     children: propNodes,
                 });
             }
 
             if (ownerChildren.length === 0) continue;
 
-            const bSum = ownerChildren.reduce((s, c) => s + (c.sortAmount ?? 0), 0);
+            const bSum = ownerChildren.reduce((s, c) => s + (c.rollupSigned ?? c.sortAmount ?? 0), 0);
+            const bSumAbs = Math.abs(bSum);
             root.push({
                 id: `bld-${b.id}`,
                 type: 'building',
                 label: b.name,
-                value: formatAmountNoTrailingZeros(bSum),
-                sortAmount: bSum,
+                value: (bSum < -0.01 ? '-' : '') + formatAmountNoTrailingZeros(bSumAbs),
+                sortAmount: bSumAbs,
+                rollupSigned: mode === 'rent' ? bSum : undefined,
                 children: ownerChildren,
             });
         }
@@ -1058,8 +999,8 @@ const OwnerPayoutsPage: React.FC = () => {
         const brokerRows = rowsForSummary.filter(r => r.category === 'brokerCommission');
         const securityRows = rowsForSummary.filter(r => r.category === 'securityDeposit');
 
-        const ownerIncome = ownerRows.reduce((sum, r) => sum + Math.max(0, r.balance), 0);
-        const ownerIncomeCount = ownerRows.filter(r => r.balance > 0.01).length;
+        const ownerIncome = ownerRows.reduce((sum, r) => sum + r.balance, 0);
+        const ownerIncomeCount = ownerRows.filter(r => Math.abs(r.balance) > 0.01).length;
         const brokerComm = brokerRows.reduce((sum, r) => sum + Math.max(0, r.balance), 0);
         const brokerCount = brokerRows.filter(r => r.balance > 0.01).length;
         const security = securityRows.reduce((sum, r) => sum + Math.max(0, r.balance), 0);
@@ -1288,8 +1229,25 @@ const OwnerPayoutsPage: React.FC = () => {
                         </div>
                         <span className="text-xs text-app-muted">{summaryTotals.ownerIncomeCount} owners</span>
                     </div>
-                    <p className="text-2xl font-bold text-ds-success">{CURRENCY} {formatCurrency(summaryTotals.ownerIncome)}</p>
-                    <p className="text-xs text-app-muted mt-1">Due to property owners</p>
+                    <p
+                        className={`text-2xl font-bold ${
+                            summaryTotals.ownerIncome > 0.01
+                                ? 'text-ds-danger'
+                                : summaryTotals.ownerIncome < -0.01
+                                  ? 'text-ds-success'
+                                  : 'text-app-muted'
+                        }`}
+                    >
+                        {summaryTotals.ownerIncome < -0.01 && '-'}
+                        {CURRENCY} {formatCurrency(Math.abs(summaryTotals.ownerIncome))}
+                    </p>
+                    <p className="text-xs text-app-muted mt-1">
+                        {summaryTotals.ownerIncome > 0.01
+                            ? 'Net due to property owners (ledger)'
+                            : summaryTotals.ownerIncome < -0.01
+                              ? 'Net to receive from owners (ledger)'
+                              : 'No net owner income balance in scope'}
+                    </p>
                     {useApiRollup && apiRollupFetching && (
                         <p className="text-[10px] text-app-muted mt-1">Refreshing PostgreSQL rollups…</p>
                     )}

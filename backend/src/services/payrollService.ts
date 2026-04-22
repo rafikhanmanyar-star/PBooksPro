@@ -1123,6 +1123,7 @@ export async function processPayrollRun(
       skipCount++;
       continue;
     }
+
     if (isPayrollPeriodBeforeJoiningDate(dateStr(emp.joining_date), run.year, month1)) {
       if (singleId) {
         throw new Error("This payroll period is before the employee's joining date.");
@@ -1131,18 +1132,58 @@ export async function processPayrollRun(
     }
 
     const computed = computeMonthlyPayslip(employeeRowToLike(emp), run.year, month1);
-    const psId = `ps_${randomUUID().replace(/-/g, '')}`;
     const assignmentSnapshot = JSON.stringify({
       projects: j(emp.projects, []),
       buildings: j(emp.buildings, []),
     });
+    const adjustmentJson = JSON.stringify(j(emp.adjustments, []));
+
+    const softDel = await client.query<{ id: string }>(
+      `SELECT id FROM payslips
+       WHERE tenant_id = $1 AND payroll_run_id = $2 AND employee_id = $3 AND deleted_at IS NOT NULL
+       LIMIT 1`,
+      [tenantId, runId, emp.id]
+    );
+    if (softDel.rows[0]) {
+      const reviveId = softDel.rows[0].id;
+      await client.query(
+        `UPDATE payslips SET
+          basic_pay = $1, total_allowances = $2, total_deductions = $3, total_adjustments = $4,
+          gross_pay = $5, net_pay = $6,
+          allowance_details = $7::jsonb, deduction_details = $8::jsonb, adjustment_details = $9::jsonb,
+          assignment_snapshot = $10::jsonb,
+          is_paid = false, paid_amount = 0, paid_at = NULL, transaction_id = NULL,
+          deleted_at = NULL, updated_at = NOW()
+        WHERE id = $11 AND tenant_id = $12`,
+        [
+          computed.basic_pay,
+          computed.total_allowances,
+          computed.total_deductions,
+          computed.total_adjustments,
+          computed.gross_pay,
+          computed.net_pay,
+          JSON.stringify(computed.allowance_details),
+          JSON.stringify(computed.deduction_details),
+          adjustmentJson,
+          assignmentSnapshot,
+          reviveId,
+          tenantId,
+        ]
+      );
+      newCount++;
+      newAmount += computed.net_pay;
+      existingEmp.add(emp.id);
+      continue;
+    }
+
+    const psId = `ps_${randomUUID().replace(/-/g, '')}`;
     toInsert.push({
       id: psId,
       tenantId,
       runId,
       employeeId: emp.id,
       computed,
-      adjustmentJson: JSON.stringify(j(emp.adjustments, [])),
+      adjustmentJson,
       assignmentSnapshot,
     });
     newCount++;
