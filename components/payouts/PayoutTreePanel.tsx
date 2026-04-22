@@ -3,8 +3,6 @@ import TreeView, { TreeNode } from '../ui/TreeView';
 
 export interface PayoutTreeNode extends TreeNode {
     sortAmount?: number;
-    /** Net balance for owner-income rows (signed); parent building totals sum this when present. */
-    rollupSigned?: number;
 }
 
 export function filterPayoutTreeNodes(nodes: PayoutTreeNode[], query: string): PayoutTreeNode[] {

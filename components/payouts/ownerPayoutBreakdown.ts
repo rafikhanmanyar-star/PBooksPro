@@ -96,10 +96,7 @@ export function computeOwnerRentCollectedPaidBalanceForProperty(
             if (isNaN(amount)) return;
 
             if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) {
-                if (tx.contactId === ownerId) {
-                    if (amount > 0) collected += amount;
-                    else if (amount < 0) paid += Math.abs(amount);
-                }
+                if (tx.contactId === ownerId && amount > 0) collected += amount;
                 return;
             }
 
@@ -110,7 +107,6 @@ export function computeOwnerRentCollectedPaidBalanceForProperty(
                 const pct = getOwnerSharePercentageOnDate(state, propertyIdStr, ownerId, d);
                 const share = Math.round((amount * pct) / 100);
                 if (share > 0) collected += share;
-                else if (share < 0) paid += Math.abs(share);
             } else {
                 const ownerIdForTx = resolveOwnerForTransaction(state, tx);
                 if (ownerIdForTx !== ownerId) return;
@@ -253,16 +249,12 @@ export function buildOwnerPropertyBreakdown(state: AppState): OwnerPropertyBreak
 
             if (rentalIncomeCategory) {
                 const slice = computeOwnerRentCollectedPaidBalanceForProperty(state, ownerId, propIdStr);
-                if (
-                    slice &&
-                    (Math.abs(slice.balance) > 0.01 || slice.collected > 0.01 || slice.paid > 0.01)
-                ) {
+                if (slice && (slice.collected > 0.01 || slice.paid > 0.01)) {
                     const { balance } = slice;
                     result[ownerId].rent.push({
                         propertyId: prop.id,
                         propertyName: prop.name || 'Unit',
-                        /** Signed net = OwnerLedger running balance (credits − debits). */
-                        balanceDue: balance,
+                        balanceDue: Math.max(0, balance),
                     });
                 }
             }
@@ -363,8 +355,8 @@ export function getOwnerPayoutModalPropertyBreakdownForProperty(
 }
 
 /**
- * Net owner rental balance for one unit: sum of signed rent `balanceDue` across owners with a slice on that property.
- * Aligns with OwnerLedger / Owner Payouts (negative = net to receive from owners).
+ * Total owner rental payout due for one unit: sum of rent `balanceDue` across all owners with a slice on that property.
+ * Matches Owner Payouts page / Owner Payout modal (not raw property income minus expenses).
  */
 export function getOwnerRentalPayoutDueForProperty(breakdown: OwnerPropertyBreakdownMap, propertyId: string): number {
     const pid = String(propertyId);
@@ -374,5 +366,5 @@ export function getOwnerRentalPayoutDueForProperty(breakdown: OwnerPropertyBreak
             if (String(row.propertyId) === pid) sum += row.balanceDue ?? 0;
         }
     }
-    return sum;
+    return Math.max(0, sum);
 }

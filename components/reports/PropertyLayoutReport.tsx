@@ -619,7 +619,7 @@ const PropertyLayoutReport: React.FC = () => {
                 : 0;
         const plainWhiteVacant =
             unit.status === 'Vacant' &&
-            Math.abs(unit.payoutDue || 0) <= 0.01 &&
+            (unit.payoutDue || 0) <= 0.01 &&
             (unit.receivable || 0) <= 0.01 &&
             (unit.securityDue || 0) <= 0.01 &&
             (unit.brokerPayoutPending || 0) <= 0.01 &&
