@@ -11,8 +11,10 @@ import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
+import LedgerSummaryCards from './LedgerSummaryCards';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { formatCurrency } from '../../utils/numberUtils';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { usePrintContext } from '../../context/PrintContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -29,10 +31,18 @@ import {
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
-type SortKey = 'propertyName' | 'buildingName' | 'agreements' | 'totalFee' | 'paid' | 'amountDue';
+type SortKey =
+    | 'earliestStartDate'
+    | 'propertyName'
+    | 'buildingName'
+    | 'agreements'
+    | 'totalFee'
+    | 'paid'
+    | 'amountDue';
 
 interface PropertyReportRow {
     id: string;
+    earliestStartDate: string;
     propertyName: string;
     buildingName: string;
     agreements: string;
@@ -53,7 +63,7 @@ const BrokerFeeReport: React.FC = () => {
 
     const [searchQuery, setSearchQuery] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
-        key: 'propertyName',
+        key: 'earliestStartDate',
         direction: 'asc',
     });
 
@@ -105,6 +115,7 @@ const BrokerFeeReport: React.FC = () => {
     const reportData = useMemo((): PropertyReportRow[] => {
         let rows = propertyRowsRaw.map((r) => ({
             id: r.propertyId,
+            earliestStartDate: r.earliestStartDate,
             propertyName: r.propertyName,
             buildingName: r.buildingName,
             agreements: r.agreementSummary,
@@ -132,7 +143,10 @@ const BrokerFeeReport: React.FC = () => {
         rows.sort((a, b) => {
             let av: string | number = a[sk];
             let bv: string | number = b[sk];
-            if (typeof av === 'string') {
+            if (sk === 'earliestStartDate') {
+                av = new Date(av as string).getTime();
+                bv = new Date(bv as string).getTime();
+            } else if (typeof av === 'string') {
                 av = av.toLowerCase();
                 bv = (bv as string).toLowerCase();
             }
@@ -216,6 +230,21 @@ const BrokerFeeReport: React.FC = () => {
             { totalFee: 0, paid: 0, due: 0 }
         );
     }, [reportData]);
+
+    const showLedgerSummary = selectedBrokerId !== 'all';
+
+    const ledgerSummaryCards = useMemo(
+        () => [
+            { label: 'Total in', value: `${CURRENCY} ${formatCurrency(totals.totalFee)}`, tone: 'in' as const },
+            { label: 'Total out', value: `${CURRENCY} ${formatCurrency(totals.paid)}`, tone: 'out' as const },
+            {
+                label: 'Net',
+                value: `${CURRENCY} ${formatCurrency(totals.due)}`,
+                tone: totals.due > 0.01 ? ('out' as const) : ('neutral' as const),
+            },
+        ],
+        [totals.totalFee, totals.paid, totals.due]
+    );
 
     const handleExport = () => {
         const brokerName =
@@ -312,7 +341,7 @@ const BrokerFeeReport: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex flex-col flex-1 min-w-0 min-h-0">
+                    <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                         <div className="flex-shrink-0 no-print border-b border-app-border bg-app-card px-3 py-2">
                             <div className="flex flex-wrap items-center gap-3">
                                 <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
@@ -415,10 +444,12 @@ const BrokerFeeReport: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                            <Card className="min-h-full border-0 rounded-none shadow-none">
-                                <ReportHeader />
-                                <div className="text-center mb-4 px-6">
+                        <div className="flex flex-col flex-1 min-h-0 overflow-hidden printable-area" id="printable-area">
+                            <Card className="flex flex-col flex-1 min-h-0 min-w-0 border-0 rounded-none shadow-none">
+                                <div className="flex-shrink-0">
+                                    <ReportHeader />
+                                </div>
+                                <div className="text-center mb-4 px-6 flex-shrink-0">
                                     <h3 className="text-2xl font-bold text-app-text">Broker Fee Report</h3>
                                     <p className="text-sm text-app-muted">
                                         Broker: <span className="font-semibold text-app-text">{brokerDisplayName}</span>
@@ -442,17 +473,26 @@ const BrokerFeeReport: React.FC = () => {
                                     </p>
                                 </div>
 
+                                <LedgerSummaryCards show={showLedgerSummary} cards={ledgerSummaryCards} />
+
                                 {selectedBrokerId === 'all' ? (
-                                    <div className="text-center py-16 px-6">
+                                    <div className="text-center py-16 px-6 flex-shrink-0">
                                         <p className="text-app-muted">
                                             Select a broker in the tree to see commission by property.
                                         </p>
                                     </div>
                                 ) : reportData.length > 0 ? (
-                                    <div className="overflow-x-auto px-6 pb-4">
+                                    <div className="flex-1 min-h-0 flex flex-col px-6 pb-2">
+                                        <div className="flex-1 min-h-0 overflow-auto rounded-md border border-app-border">
                                         <table className="min-w-full divide-y divide-app-border text-sm">
-                                            <thead className="bg-app-toolbar/40">
+                                            <thead className="bg-app-toolbar/40 sticky top-0 z-20 border-b border-app-border">
                                                 <tr>
+                                                    <th
+                                                        onClick={() => handleSort('earliestStartDate')}
+                                                        className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer select-none whitespace-nowrap"
+                                                    >
+                                                        Agreement from <SortIcon column="earliestStartDate" />
+                                                    </th>
                                                     <th
                                                         onClick={() => handleSort('propertyName')}
                                                         className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer select-none"
@@ -494,6 +534,9 @@ const BrokerFeeReport: React.FC = () => {
                                             <tbody className="bg-app-card divide-y divide-app-border">
                                                 {reportData.map((r) => (
                                                     <tr key={r.id}>
+                                                        <td className="px-3 py-2 text-app-muted whitespace-nowrap">
+                                                            {formatDate(r.earliestStartDate)}
+                                                        </td>
                                                         <td className="px-3 py-2 text-app-text font-medium">{r.propertyName}</td>
                                                         <td className="px-3 py-2 text-app-muted">{r.buildingName}</td>
                                                         <td className="px-3 py-2 text-app-muted max-w-xs break-words">
@@ -511,9 +554,9 @@ const BrokerFeeReport: React.FC = () => {
                                                     </tr>
                                                 ))}
                                             </tbody>
-                                            <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border">
+                                            <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border sticky bottom-0 z-10">
                                                 <tr>
-                                                    <td colSpan={3} className="px-3 py-2 text-right text-app-text">
+                                                    <td colSpan={4} className="px-3 py-2 text-right text-app-text">
                                                         Totals
                                                     </td>
                                                     <td className="px-3 py-2 text-right text-success whitespace-nowrap">
@@ -528,15 +571,18 @@ const BrokerFeeReport: React.FC = () => {
                                                 </tr>
                                             </tfoot>
                                         </table>
+                                        </div>
                                     </div>
                                 ) : (
-                                    <div className="text-center py-16 px-6">
+                                    <div className="text-center py-16 px-6 flex-shrink-0">
                                         <p className="text-app-muted">
                                             No rental commission rows for this broker (or filter has no matches).
                                         </p>
                                     </div>
                                 )}
-                                <ReportFooter />
+                                <div className="flex-shrink-0">
+                                    <ReportFooter />
+                                </div>
                             </Card>
                         </div>
                     </div>

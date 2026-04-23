@@ -15,6 +15,7 @@ import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
+import LedgerSummaryCards from './LedgerSummaryCards';
 import { formatCurrency } from '../../utils/numberUtils';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
@@ -836,6 +837,21 @@ const OwnerPayoutsReport: React.FC = () => {
         };
     }, [reportData]);
 
+    const showLedgerSummary = resolvedTreeIdForFilters !== 'all';
+
+    const ledgerSummaryCards = useMemo(
+        () => [
+            { label: 'Total in', value: `${CURRENCY} ${formatCurrency(totals.totalIn)}`, tone: 'in' as const },
+            { label: 'Total out', value: `${CURRENCY} ${formatCurrency(totals.totalOut)}`, tone: 'out' as const },
+            {
+                label: 'Net',
+                value: `${CURRENCY} ${formatCurrency(totals.netBalance)}`,
+                tone: totals.netBalance >= 0 ? ('neutral' as const) : ('out' as const),
+            },
+        ],
+        [totals.totalIn, totals.totalOut, totals.netBalance]
+    );
+
     const handleExport = () => {
         const exportRows: any[] = [];
         if (openingBalance !== 0 && !perOwnerLedgerMode) {
@@ -1072,14 +1088,16 @@ const OwnerPayoutsReport: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Right: Report area */}
-                <div className="flex flex-col flex-1 min-w-0">
-                    <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                        <Card className="min-h-full border-0 rounded-none shadow-none">
-                            <ReportHeader />
+                {/* Right: Report area — table scrolls internally; header/summary stay fixed */}
+                <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+                    <div className="flex flex-col flex-1 min-h-0 overflow-hidden printable-area" id="printable-area">
+                        <Card className="flex flex-col flex-1 min-h-0 min-w-0 border-0 rounded-none shadow-none">
+                            <div className="flex-shrink-0">
+                                <ReportHeader />
+                            </div>
 
                             {/* Report header row: title + actions + date pills */}
-                            <div className="px-6 pt-4 pb-3 no-print">
+                            <div className="px-6 pt-4 pb-3 no-print flex-shrink-0">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div>
                                         <h3 className="text-2xl font-bold text-app-text">Owner Rental Income</h3>
@@ -1158,7 +1176,7 @@ const OwnerPayoutsReport: React.FC = () => {
                             </div>
 
                             {/* Print-only header */}
-                            <div className="hidden print:block text-center mb-4 px-6">
+                            <div className="hidden print:block text-center mb-4 px-6 flex-shrink-0">
                                 <h3 className="text-2xl font-bold text-app-text">Owner Rental Income</h3>
                                 <p className="text-sm text-app-muted mt-1">
                                     {formatDate(startDate)} - {formatDate(endDate)}
@@ -1174,7 +1192,7 @@ const OwnerPayoutsReport: React.FC = () => {
 
                             {/* Active filter pills */}
                             {activeFilters.length > 0 && (
-                                <div className="px-6 pb-3 no-print">
+                                <div className="px-6 pb-3 no-print flex-shrink-0">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="text-xs font-medium text-app-muted uppercase tracking-wider">Active Filters:</span>
                                         {activeFilters.map(f => (
@@ -1204,11 +1222,14 @@ const OwnerPayoutsReport: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* Data table */}
-                            <div className="px-6 pb-4 overflow-x-auto">
-                                <table className="min-w-full text-sm">
-                                    <thead>
-                                        <tr className="border-b-2 border-app-border">
+                            <LedgerSummaryCards show={showLedgerSummary} cards={ledgerSummaryCards} />
+
+                            {/* Data table (scroll container) */}
+                            <div className="flex-1 min-h-0 flex flex-col px-6 pb-2">
+                                <div className="flex-1 min-h-0 overflow-auto rounded-md border border-app-border">
+                                    <table className="min-w-full text-sm">
+                                    <thead className="sticky top-0 z-20 bg-app-card border-b-2 border-app-border">
+                                        <tr>
                                             <th onClick={() => handleSort('date')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
                                             <th onClick={() => handleSort('ownerName')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Owner <SortIcon column="ownerName" /></th>
                                             <th onClick={() => handleSort('propertyName')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Property <SortIcon column="propertyName" /></th>
@@ -1264,7 +1285,7 @@ const OwnerPayoutsReport: React.FC = () => {
                                             </tr>
                                         )}
                                     </tbody>
-                                    <tfoot>
+                                    <tfoot className="sticky bottom-0 z-10 bg-app-toolbar/30">
                                         <tr className="border-t-2 border-app-border bg-app-toolbar/30">
                                             <td colSpan={4} className="px-3 py-2.5 text-right text-sm font-bold text-app-text uppercase tracking-wide">Totals (Period)</td>
                                             <td className="px-3 py-2.5 text-right text-sm font-bold text-success whitespace-nowrap">{formatCurrency(totals.totalIn)}</td>
@@ -1275,8 +1296,11 @@ const OwnerPayoutsReport: React.FC = () => {
                                         </tr>
                                     </tfoot>
                                 </table>
+                                </div>
                             </div>
-                            <ReportFooter />
+                            <div className="flex-shrink-0">
+                                <ReportFooter />
+                            </div>
                         </Card>
                     </div>
                 </div>
@@ -1320,7 +1344,7 @@ const OwnerPayoutsReport: React.FC = () => {
                     preSelectedBuildingId={payModalProperty?.buildingId}
                 />
             )}
-        </div >
+        </div>
     );
 };
 

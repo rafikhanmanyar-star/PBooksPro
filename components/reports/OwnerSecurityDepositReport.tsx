@@ -20,7 +20,9 @@ import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
+import LedgerSummaryCards from './LedgerSummaryCards';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { formatCurrency } from '../../utils/numberUtils';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -78,7 +80,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
 
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
         key: 'date',
-        direction: 'desc',
+        direction: 'asc',
     });
 
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
@@ -361,6 +363,21 @@ const OwnerSecurityDepositReport: React.FC = () => {
         );
     }, [reportData]);
 
+    const showLedgerSummary = resolvedTreeIdForFilters !== 'all';
+
+    const ledgerSummaryCards = useMemo(() => {
+        const net = totals.totalDepositIn - totals.totalRefundOut;
+        return [
+            { label: 'Total in', value: `${CURRENCY} ${formatCurrency(totals.totalDepositIn)}`, tone: 'in' as const },
+            { label: 'Total out', value: `${CURRENCY} ${formatCurrency(totals.totalRefundOut)}`, tone: 'out' as const },
+            {
+                label: 'Net',
+                value: `${CURRENCY} ${formatCurrency(net)}`,
+                tone: net >= 0 ? ('neutral' as const) : ('out' as const),
+            },
+        ];
+    }, [totals.totalDepositIn, totals.totalRefundOut]);
+
     const handleExport = () => {
         const data = reportData.map((r) => ({
             Date: formatDate(r.date),
@@ -458,7 +475,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="flex flex-col flex-1 min-w-0 min-h-0">
+                <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                     <div className="flex-shrink-0 no-print border-b border-app-border bg-app-card px-3 py-2">
                         <div className="flex flex-wrap items-center gap-3">
                             <div className="flex bg-app-toolbar p-1 rounded-lg flex-shrink-0 overflow-x-auto">
@@ -554,10 +571,12 @@ const OwnerSecurityDepositReport: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
-                        <Card className="min-h-full border-0 rounded-none shadow-none">
-                            <ReportHeader />
-                            <div className="text-center mb-6 px-6">
+                    <div className="flex flex-col flex-1 min-h-0 overflow-hidden printable-area" id="printable-area">
+                        <Card className="flex flex-col flex-1 min-h-0 min-w-0 border-0 rounded-none shadow-none">
+                            <div className="flex-shrink-0">
+                                <ReportHeader />
+                            </div>
+                            <div className="text-center mb-4 px-6 flex-shrink-0">
                                 <h3 className="text-2xl font-bold text-app-text">Tenant Security Deposit Liability</h3>
                                 <p className="text-sm text-app-muted mt-1">
                                     {formatDate(startDate)} - {formatDate(endDate)}
@@ -574,9 +593,12 @@ const OwnerSecurityDepositReport: React.FC = () => {
                                 )}
                             </div>
 
-                            <div className="overflow-x-auto px-6 pb-4">
+                            <LedgerSummaryCards show={showLedgerSummary} cards={ledgerSummaryCards} />
+
+                            <div className="flex-1 min-h-0 flex flex-col px-6 pb-2">
+                                <div className="flex-1 min-h-0 overflow-auto rounded-md border border-app-border">
                                 <table className="min-w-full divide-y divide-app-border text-sm">
-                                    <thead className="bg-app-toolbar/40 sticky top-0 z-10">
+                                    <thead className="bg-app-toolbar/40 sticky top-0 z-20 border-b border-app-border">
                                         <tr>
                                             <th
                                                 onClick={() => handleSort('date')}
@@ -691,7 +713,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
                                             </tr>
                                         )}
                                     </tbody>
-                                    <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border sticky bottom-0">
+                                    <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border sticky bottom-0 z-10">
                                         <tr>
                                             <td colSpan={6} className="px-3 py-2 text-right text-app-text">
                                                 Totals (Period)
@@ -706,8 +728,11 @@ const OwnerSecurityDepositReport: React.FC = () => {
                                         </tr>
                                     </tfoot>
                                 </table>
+                                </div>
                             </div>
-                            <ReportFooter />
+                            <div className="flex-shrink-0">
+                                <ReportFooter />
+                            </div>
                         </Card>
                     </div>
                 </div>

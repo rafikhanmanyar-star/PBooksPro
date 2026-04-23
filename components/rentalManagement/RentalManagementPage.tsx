@@ -73,6 +73,19 @@ const LEDGER_REPORTS: RentalView[] = [
     'Rental Receivable',
 ];
 
+/** Ledger reports that keep their React state when switching to other rental views or app pages (Rental tab stays mounted). */
+type PersistedLedgerReportView = 'Owner Rental Income' | 'Broker Fees' | 'Owner Security Deposit';
+
+const PERSISTED_LEDGER_REPORTS: PersistedLedgerReportView[] = [
+    'Owner Rental Income',
+    'Broker Fees',
+    'Owner Security Deposit',
+];
+
+function isPersistedLedgerReportView(v: RentalView): v is PersistedLedgerReportView {
+    return v === 'Owner Rental Income' || v === 'Broker Fees' || v === 'Owner Security Deposit';
+}
+
 const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage }) => {
     const { state, dispatch } = useAppContext();
     const { initialTabs } = state;
@@ -170,6 +183,19 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     ];
     const isOperationalView = OPERATIONAL_VIEWS.includes(normalizedView);
 
+    const [persistedLedgerMounted, setPersistedLedgerMounted] = useState<
+        Record<PersistedLedgerReportView, boolean>
+    >({
+        'Owner Rental Income': false,
+        'Broker Fees': false,
+        'Owner Security Deposit': false,
+    });
+
+    useEffect(() => {
+        if (!isPersistedLedgerReportView(normalizedView)) return;
+        setPersistedLedgerMounted((prev) => (prev[normalizedView] ? prev : { ...prev, [normalizedView]: true }));
+    }, [normalizedView]);
+
     /** Mount ONLY the active operational view — avoids mounting all operational panes at once (major INP win). */
     const renderOperationalContent = () => (
         <div className="relative h-full w-full min-h-0">
@@ -184,23 +210,45 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         </div>
     );
 
-    const renderReportContent = () => {
+    const persistedLedgerShellClass = (view: PersistedLedgerReportView) =>
+        !isOperationalView && normalizedView === view
+            ? 'absolute inset-0 z-10 flex flex-col min-h-0 overflow-hidden'
+            : 'absolute inset-0 z-0 flex flex-col min-h-0 overflow-hidden invisible pointer-events-none';
+
+    /** Reports other than the three persisted ledger views (those render in a keep-alive layer below). */
+    const renderEphemeralReportContent = () => {
+        const wrap = (node: React.ReactNode) => (
+            <div className="absolute inset-0 z-10 flex flex-col min-h-0 overflow-hidden">{node}</div>
+        );
         switch (normalizedView) {
-            case 'Visual Layout': return <PropertyLayoutReport />;
-            case 'Tabular Layout': return <UnitStatusReport />;
-            case 'Agreement Expiry': return <AgreementExpiryReport />;
-            case 'Building Analysis': return <BuildingAccountsReport />;
-            case 'BM Analysis': return <BMAnalysisReport />;
-            case 'Invoice & Payment Analysis': return <InvoicePaymentAnalysisReport />;
-            case 'Owner Rental Income': return <OwnerPayoutsReport />;
-            case 'Owner Rental Income Summary': return <OwnerIncomeSummaryReport />;
-            case 'Service Charges Deduction': return <ServiceChargesDeductionReport />;
-            case 'Tenant Ledger': return <TenantLedgerReport />;
-            case 'Vendor Ledger': return <VendorLedgerReport context="Rental" />;
-            case 'Owner Security Deposit': return <OwnerSecurityDepositReport />;
-            case 'Broker Fees': return <BrokerFeeReport />;
-            case 'Rental Receivable': return <RentalReceivableReport />;
-            default: return null;
+            case 'Owner Rental Income':
+            case 'Broker Fees':
+            case 'Owner Security Deposit':
+                return null;
+            case 'Visual Layout':
+                return wrap(<PropertyLayoutReport />);
+            case 'Tabular Layout':
+                return wrap(<UnitStatusReport />);
+            case 'Agreement Expiry':
+                return wrap(<AgreementExpiryReport />);
+            case 'Building Analysis':
+                return wrap(<BuildingAccountsReport />);
+            case 'BM Analysis':
+                return wrap(<BMAnalysisReport />);
+            case 'Invoice & Payment Analysis':
+                return wrap(<InvoicePaymentAnalysisReport />);
+            case 'Owner Rental Income Summary':
+                return wrap(<OwnerIncomeSummaryReport />);
+            case 'Service Charges Deduction':
+                return wrap(<ServiceChargesDeductionReport />);
+            case 'Tenant Ledger':
+                return wrap(<TenantLedgerReport />);
+            case 'Vendor Ledger':
+                return wrap(<VendorLedgerReport context="Rental" />);
+            case 'Rental Receivable':
+                return wrap(<RentalReceivableReport />);
+            default:
+                return null;
         }
     };
 
@@ -359,9 +407,30 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     </select>
                 </div>
 
-            <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col relative">
                 <Suspense fallback={RENTAL_LAZY_FALLBACK}>
-                    {isOperationalView ? renderOperationalContent() : renderReportContent()}
+                    {isOperationalView && (
+                        <div className="absolute inset-0 z-20 flex flex-col min-h-0 overflow-hidden">
+                            {renderOperationalContent()}
+                        </div>
+                    )}
+                    {PERSISTED_LEDGER_REPORTS.map((view) => {
+                        const keepMounted =
+                            persistedLedgerMounted[view] || (!isOperationalView && normalizedView === view);
+                        if (!keepMounted) return null;
+                        return (
+                            <div
+                                key={view}
+                                className={persistedLedgerShellClass(view)}
+                                {...(isOperationalView || normalizedView !== view ? { 'aria-hidden': true } : {})}
+                            >
+                                {view === 'Owner Rental Income' && <OwnerPayoutsReport />}
+                                {view === 'Broker Fees' && <BrokerFeeReport />}
+                                {view === 'Owner Security Deposit' && <OwnerSecurityDepositReport />}
+                            </div>
+                        );
+                    })}
+                    {!isOperationalView && renderEphemeralReportContent()}
                 </Suspense>
             </div>
         </div>

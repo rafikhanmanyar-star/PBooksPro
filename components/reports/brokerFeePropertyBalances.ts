@@ -8,11 +8,13 @@ export interface BrokerPropertyBalanceRow {
     propertyId: string;
     propertyName: string;
     buildingName: string;
+    /** Earliest qualifying agreement start date on this property (YYYY-MM-DD) for default chronological ordering. */
+    earliestStartDate: string;
     agreementSummary: string;
     totalFee: number;
     paid: number;
     amountDue: number;
-    agreements: { agreementId: string; agreementNumber: string; fee: number }[];
+    agreements: { agreementId: string; agreementNumber: string; fee: number; startDate: string }[];
 }
 
 function brokerFeeCategoryIds(state: AppState): { fee?: string; rebate?: string } {
@@ -51,7 +53,7 @@ export function getBrokerPropertyBalanceRows(state: AppState, brokerId: string):
     const byProp = new Map<
         string,
         {
-            agreements: { agreementId: string; agreementNumber: string; fee: number }[];
+            agreements: { agreementId: string; agreementNumber: string; fee: number; startDate: string }[];
             propertyName: string;
             buildingName: string;
         }
@@ -78,10 +80,12 @@ export function getBrokerPropertyBalanceRows(state: AppState, brokerId: string):
             };
             byProp.set(pid, bucket);
         }
+        const startD = (ra.startDate || '').slice(0, 10);
         bucket.agreements.push({
             agreementId: ra.id,
             agreementNumber: ra.agreementNumber || ra.id.slice(0, 8),
             fee: feeN,
+            startDate: startD || '9999-12-31',
         });
     }
 
@@ -90,10 +94,15 @@ export function getBrokerPropertyBalanceRows(state: AppState, brokerId: string):
         const totalFee = b.agreements.reduce((s, a) => s + a.fee, 0);
         const paid = totalBrokerPaymentsOnProperty(state, brokerId, propertyId);
         const amountDue = Math.max(0, totalFee - paid);
+        const earliestStartDate = b.agreements.reduce(
+            (min, a) => (a.startDate < min ? a.startDate : min),
+            b.agreements[0]?.startDate ?? '9999-12-31'
+        );
         rows.push({
             propertyId,
             propertyName: b.propertyName,
             buildingName: b.buildingName,
+            earliestStartDate,
             agreementSummary: b.agreements.map((a) => a.agreementNumber).join(', '),
             totalFee,
             paid,
@@ -102,9 +111,11 @@ export function getBrokerPropertyBalanceRows(state: AppState, brokerId: string):
         });
     }
 
-    rows.sort((a, b) =>
-        a.propertyName.localeCompare(b.propertyName, undefined, { sensitivity: 'base' })
-    );
+    rows.sort((a, b) => {
+        const d = a.earliestStartDate.localeCompare(b.earliestStartDate);
+        if (d !== 0) return d;
+        return a.propertyName.localeCompare(b.propertyName, undefined, { sensitivity: 'base' });
+    });
     return rows;
 }
 

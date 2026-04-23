@@ -71,12 +71,10 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
     useEffect(() => {
         const n = parseFloat(amount) || 0;
         if (n <= 0) setError('Amount must be positive.');
-        else if (n > reportPayableBalance + 0.01)
-            setError(`Amount cannot exceed payable balance (${CURRENCY} ${reportPayableBalance.toLocaleString()}).`);
         else if (!property && !buildingId && !preSelectedBuildingId)
             setError('Select a building for this payout.');
         else setError('');
-    }, [amount, reportPayableBalance, property, buildingId, preSelectedBuildingId]);
+    }, [amount, property, buildingId, preSelectedBuildingId]);
 
     const accountsWithBalance = userSelectableAccounts.map((acc) => ({
         ...acc,
@@ -96,7 +94,7 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
             return;
         }
         const num = parseFloat(amount) || 0;
-        if (num <= 0 || num > reportPayableBalance + 0.01) return;
+        if (num <= 0) return;
 
         const propBuildingId = property?.buildingId;
         const effectiveBuildingId = propBuildingId || buildingId || preSelectedBuildingId || '';
@@ -157,8 +155,8 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
                         </span>
                     </div>
                     <p className="text-[11px] text-app-muted">
-                        Payable matches the closing balance for the selected period and tree filters (ignores table
-                        search).
+                        This figure is the report closing balance for the selected period and tree filters (ignores
+                        table search). You may enter a higher amount to record an advance payout to the owner.
                     </p>
                 </div>
 
