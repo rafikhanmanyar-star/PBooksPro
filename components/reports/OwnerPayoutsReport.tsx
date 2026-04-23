@@ -21,9 +21,18 @@ import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import TreeView, { TreeNode } from '../ui/TreeView';
+import OwnerRentalIncomePayModal from './OwnerRentalIncomePayModal';
+import {
+    TREE_SELECT_AUTO,
+    pruneTreeNodesBySearchQuery,
+    collectTreeNodeIds,
+    findFirstOwnerTreeIdInNodes,
+    buildRentalPortfolioTreeNodes,
+    resolvePortfolioTreeSelection,
+} from './rentalPortfolioReportTree';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { getLedgerOwnerIdsForProperty, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, isFormerOwner, getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
+import { getLedgerOwnerIdsForProperty, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
 
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -44,52 +53,6 @@ interface ReportRow {
 
 type SortKey = 'date' | 'ownerName' | 'propertyName' | 'particulars' | 'rentIn' | 'paidOut' | 'balance';
 
-/** Initial tree selection: first owner in portfolio order until the user picks a node explicitly. */
-const TREE_SELECT_AUTO = '__portfolio_auto_first_owner__';
-
-function pruneTreeNodesBySearchQuery(nodes: TreeNode[], query: string): TreeNode[] {
-    const t = query.trim().toLowerCase();
-    if (!t) return nodes;
-    const labelMatches = (label: string) => label.toLowerCase().includes(t);
-    const prune = (node: TreeNode): TreeNode | null => {
-        const childList = node.children;
-        if (!childList?.length) {
-            return labelMatches(node.label) ? node : null;
-        }
-        const nextChildren = childList
-            .map(prune)
-            .filter((n): n is TreeNode => n !== null);
-        if (labelMatches(node.label) || nextChildren.length > 0) {
-            return { ...node, children: nextChildren.length ? nextChildren : undefined };
-        }
-        return null;
-    };
-    return nodes.map(prune).filter((n): n is TreeNode => n !== null);
-}
-
-function collectTreeNodeIds(nodes: TreeNode[]): Set<string> {
-    const ids = new Set<string>();
-    const walk = (list: TreeNode[]) => {
-        for (const n of list) {
-            ids.add(n.id);
-            if (n.children?.length) walk(n.children);
-        }
-    };
-    walk(nodes);
-    return ids;
-}
-
-function findFirstOwnerTreeIdInNodes(nodes: TreeNode[]): string | null {
-    for (const n of nodes) {
-        if (n.id.startsWith('owner:')) return n.id;
-        if (n.children?.length) {
-            const inner = findFirstOwnerTreeIdInNodes(n.children);
-            if (inner) return inner;
-        }
-    }
-    return null;
-}
-
 const OwnerPayoutsReport: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert } = useNotification();
@@ -104,63 +67,10 @@ const OwnerPayoutsReport: React.FC = () => {
     const [selectedTreeId, setSelectedTreeId] = useState<string>(TREE_SELECT_AUTO);
     const [treeSearchQuery, setTreeSearchQuery] = useState('');
 
-    const unfilteredBuildingNodes = useMemo((): TreeNode[] => {
-        const buildingNodes: TreeNode[] = state.buildings
-            .map(building => {
-                const propsInBuilding = state.properties.filter(p => p.buildingId === building.id);
-
-                const ownerIdSet = new Set<string>();
-                const ownerIds: string[] = [];
-                for (const p of propsInBuilding) {
-                    const all = getLedgerOwnerIdsForProperty(state, p.id);
-                    for (const oid of all) {
-                        if (!ownerIdSet.has(oid)) {
-                            ownerIdSet.add(oid);
-                            ownerIds.push(oid);
-                        }
-                    }
-                }
-
-                const todayStr = toLocalDateString(new Date());
-                const ownerChildren: TreeNode[] = ownerIds
-                    .map(ownerId => {
-                        const owner = state.contacts.find(c => c.id === ownerId);
-                        const ownerLabelBase = owner?.name ?? 'Owner';
-                        const former = isFormerOwner(state, ownerId);
-                        const unitChildren: TreeNode[] = propsInBuilding
-                            .filter(p => {
-                                const owners = getLedgerOwnerIdsForProperty(state, p.id);
-                                return owners.has(ownerId);
-                            })
-                            .map(prop => {
-                                const shares = getOwnershipSharesForPropertyOnDate(state, prop.id, todayStr);
-                                const ownerShare = shares.find(s => s.ownerId === ownerId);
-                                const pctSuffix = shares.length > 1 && ownerShare ? ` (${ownerShare.percentage.toFixed(0)}%)` : '';
-                                return { id: `unit:${prop.id}:${ownerId}`, label: `${prop.name}${pctSuffix}`, type: 'unit' as const };
-                            });
-                        unitChildren.sort((a, b) => a.label.localeCompare(b.label));
-                        let ownerLabel = ownerLabelBase;
-                        if (former) ownerLabel += ' (Former)';
-                        return {
-                            id: `owner:${ownerId}`,
-                            label: ownerLabel,
-                            type: 'owner',
-                            children: unitChildren.length ? unitChildren : undefined
-                        } as TreeNode;
-                    });
-                ownerChildren.sort((a, b) => a.label.localeCompare(b.label));
-
-                return {
-                    id: `building:${building.id}`,
-                    label: building.name,
-                    type: 'building',
-                    children: ownerChildren.length ? ownerChildren : undefined
-                };
-            })
-            .filter(n => !!n.children?.length);
-        buildingNodes.sort((a, b) => a.label.localeCompare(b.label));
-        return buildingNodes;
-    }, [state.buildings, state.properties, state.propertyOwnership, state.rentalAgreements, state.transactions, state.invoices, state.contacts]);
+    const unfilteredBuildingNodes = useMemo(
+        () => buildRentalPortfolioTreeNodes(state),
+        [state.buildings, state.properties, state.propertyOwnership, state.rentalAgreements, state.transactions, state.invoices, state.contacts]
+    );
 
     const treeData = useMemo((): TreeNode[] => {
         const allNode: TreeNode = {
@@ -192,34 +102,10 @@ const OwnerPayoutsReport: React.FC = () => {
     }, [selectedTreeId, treeVisibleIds, firstOwnerIdInTree]);
 
     // Derive filters from tree selection (so report logic stays unchanged)
-    const { selectedBuildingId, selectedOwnerId, selectedUnitId } = useMemo(() => {
-        const treeSelId = resolvedTreeIdForFilters;
-        if (treeSelId === 'all') {
-            return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
-        }
-        if (treeSelId.startsWith('building:')) {
-            const id = treeSelId.slice('building:'.length);
-            return { selectedBuildingId: id, selectedOwnerId: 'all', selectedUnitId: 'all' };
-        }
-        if (treeSelId.startsWith('owner:')) {
-            const id = treeSelId.slice('owner:'.length);
-            return { selectedBuildingId: 'all', selectedOwnerId: id, selectedUnitId: 'all' };
-        }
-        if (treeSelId.startsWith('unit:')) {
-            const rest = treeSelId.slice('unit:'.length);
-            const colonIdx = rest.indexOf(':');
-            const propertyIdStr = colonIdx === -1 ? rest : rest.slice(0, colonIdx);
-            const ownerFromTree = colonIdx === -1 ? undefined : rest.slice(colonIdx + 1);
-            const property = state.properties.find(p => String(p.id) === propertyIdStr);
-            if (!property) return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
-            return {
-                selectedBuildingId: property.buildingId || 'all',
-                selectedOwnerId: ownerFromTree || 'all',
-                selectedUnitId: property.id
-            };
-        }
-        return { selectedBuildingId: 'all', selectedOwnerId: 'all', selectedUnitId: 'all' };
-    }, [resolvedTreeIdForFilters, state.properties]);
+    const { selectedBuildingId, selectedOwnerId, selectedUnitId } = useMemo(
+        () => resolvePortfolioTreeSelection(resolvedTreeIdForFilters, state.properties),
+        [resolvedTreeIdForFilters, state.properties]
+    );
 
     // Sorting State
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
@@ -235,6 +121,7 @@ const OwnerPayoutsReport: React.FC = () => {
         transaction: null,
         action: null
     });
+    const [payModalOpen, setPayModalOpen] = useState(false);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -482,7 +369,7 @@ const OwnerPayoutsReport: React.FC = () => {
         return balance;
     }, [state, startDate, selectedBuildingId, selectedOwnerId, selectedUnitId]);
 
-    const reportData = useMemo<ReportRow[]>(() => {
+    const { reportData, fullLedgerClosingBalance } = useMemo(() => {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
@@ -492,7 +379,7 @@ const OwnerPayoutsReport: React.FC = () => {
         const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
 
-        if (!rentalIncomeCategory) return [];
+        if (!rentalIncomeCategory) return { reportData: [] as ReportRow[], fullLedgerClosingBalance: 0 };
 
         // Build set of broker fee transaction IDs to exclude from expenses (avoid double-counting with agreement fees)
         const brokerFeeTxIds = new Set<string>();
@@ -903,7 +790,9 @@ const OwnerPayoutsReport: React.FC = () => {
             );
         }
 
-        return rows;
+        const fullLedgerClosingBalance = usePerOwnerRunningBalance ? 0 : globalRun;
+
+        return { reportData: rows, fullLedgerClosingBalance };
     }, [state, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, selectedUnitId, sortConfig, openingBalance]);
 
     /** Multiple owners visible with no owner filter — opening balance is not a single chain; hide aggregate opening row. */
@@ -912,6 +801,29 @@ const OwnerPayoutsReport: React.FC = () => {
         const ids = new Set(reportData.map((r) => r.ledgerOwnerId).filter(Boolean));
         return ids.size > 1;
     }, [reportData, selectedOwnerId]);
+
+    /** Pay is only for a specific owner or unit in the tree, with a single running ledger and amount owed > 0. */
+    const payFromReportEligible = useMemo(() => {
+        const id = resolvedTreeIdForFilters;
+        if (id === 'all' || id.startsWith('building:')) return false;
+        if (!id.startsWith('owner:') && !id.startsWith('unit:')) return false;
+        if (perOwnerLedgerMode) return false;
+        return fullLedgerClosingBalance > 0.01;
+    }, [resolvedTreeIdForFilters, perOwnerLedgerMode, fullLedgerClosingBalance]);
+
+    useEffect(() => {
+        if (!payFromReportEligible && payModalOpen) setPayModalOpen(false);
+    }, [payFromReportEligible, payModalOpen]);
+
+    const payModalOwner = useMemo(
+        () => (selectedOwnerId !== 'all' ? state.contacts.find((c) => c.id === selectedOwnerId) ?? null : null),
+        [selectedOwnerId, state.contacts]
+    );
+
+    const payModalProperty = useMemo(
+        () => (selectedUnitId !== 'all' ? state.properties.find((p) => p.id === selectedUnitId) ?? null : null),
+        [selectedUnitId, state.properties]
+    );
 
     const totals = useMemo(() => {
         const reduced = reportData.reduce((acc, curr) => ({
@@ -1175,6 +1087,20 @@ const OwnerPayoutsReport: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-2 flex-shrink-0">
                                         <Button
+                                            variant="primary"
+                                            size="sm"
+                                            onClick={() => setPayModalOpen(true)}
+                                            disabled={!payFromReportEligible}
+                                            className="h-8 min-w-[100px] px-6 bg-blue-600 text-white border border-blue-600 hover:bg-blue-700 hover:border-blue-700 active:bg-blue-800 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            title={
+                                                payFromReportEligible
+                                                    ? 'Record a rental income payout to this owner'
+                                                    : 'Select an owner or unit in the tree with a closing balance greater than zero'
+                                            }
+                                        >
+                                            Pay
+                                        </Button>
+                                        <Button
                                             variant="secondary"
                                             size="sm"
                                             onClick={handleShare}
@@ -1383,6 +1309,17 @@ const OwnerPayoutsReport: React.FC = () => {
                 action={warningModalState.action as 'delete' | 'update'}
                 linkedItemName={getLinkedItemName(warningModalState.transaction)}
             />
+
+            {payModalOwner && (
+                <OwnerRentalIncomePayModal
+                    isOpen={payModalOpen}
+                    onClose={() => setPayModalOpen(false)}
+                    owner={payModalOwner}
+                    property={payModalProperty}
+                    reportPayableBalance={fullLedgerClosingBalance}
+                    preSelectedBuildingId={payModalProperty?.buildingId}
+                />
+            )}
         </div >
     );
 };

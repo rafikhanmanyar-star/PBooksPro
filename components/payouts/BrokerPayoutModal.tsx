@@ -17,6 +17,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { toLocalDateString } from '../../utils/dateUtils';
+import { getBrokerPropertyBalanceRows } from '../reports/brokerFeePropertyBalances';
 
 interface BrokerPayoutModalProps {
     isOpen: boolean;
@@ -24,7 +25,12 @@ interface BrokerPayoutModalProps {
     broker: Contact | null;
     balanceDue: number; 
     context?: 'Rental' | 'Project';
+    /** @deprecated Prefer scopePropertyIds for multiple units (e.g. owner-level report filter). */
     propertyId?: string;
+    /** When set, only rental agreements whose propertyId is in this set are included. */
+    scopePropertyIds?: Set<string>;
+    /** One row per rental property with pay amount split across agreements on submit. */
+    aggregateRentalByProperty?: boolean;
 }
 
 interface CommissionItem {
@@ -38,9 +44,19 @@ interface CommissionItem {
     remaining: number;
     paymentAmount: number; 
     isSelected: boolean;
+    /** When paying by property, split `paymentAmount` across these agreements (by fee weight). */
+    splitAgreements?: { agreementId: string; fee: number }[];
 }
 
-const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, broker, context, propertyId: filterPropertyId }) => {
+const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
+    isOpen,
+    onClose,
+    broker,
+    context,
+    propertyId: filterPropertyId,
+    scopePropertyIds,
+    aggregateRentalByProperty = false,
+}) => {
     const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
@@ -53,6 +69,12 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
     
     // Filter for Bank Accounts (exclude Internal Clearing)
     const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
+
+    const rentalPropertyScope = useMemo(() => {
+        if (scopePropertyIds && scopePropertyIds.size > 0) return scopePropertyIds;
+        if (filterPropertyId) return new Set([String(filterPropertyId)]);
+        return null;
+    }, [scopePropertyIds, filterPropertyId]);
     
     useEffect(() => {
         if (isOpen && broker) {
@@ -69,40 +91,72 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
 
             // 1. Rental Agreements (exclude renewed agreements so broker is not charged again on renewal)
             if (!context || context === 'Rental') {
-                state.rentalAgreements.forEach(ra => {
-                    if (ra.previousAgreementId) return;
-                    if (filterPropertyId && ra.propertyId !== filterPropertyId) return;
-                    if (ra.brokerId === broker.id && (ra.brokerFee || 0) > 0) {
-                        const property = state.properties.find(p => p.id === ra.propertyId);
-                        const owner = state.contacts.find(c => c.id === property?.ownerId);
-                        
-                        const paidAlready = state.transactions
-                            .filter(tx => 
-                                tx.type === TransactionType.EXPENSE &&
-                                tx.contactId === broker.id &&
-                                (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
-                                (tx.agreementId === ra.id || (tx.propertyId === ra.propertyId))
-                            )
-                            .reduce((sum, tx) => sum + tx.amount, 0);
-
-                        const remaining = Math.max(0, (ra.brokerFee || 0) - paidAlready);
-
-                        if ((ra.brokerFee || 0) > 0) {
-                            newItems.push({
-                                agreementId: ra.id,
-                                type: 'Rental',
-                                entityId: ra.propertyId,
-                                entityName: property?.name || 'Unknown Property',
-                                ownerName: owner?.name || 'Unknown Owner',
-                                totalFee: ra.brokerFee || 0,
-                                paidAlready,
-                                remaining,
-                                paymentAmount: remaining,
-                                isSelected: remaining > 0
-                            });
-                        }
+                if (aggregateRentalByProperty) {
+                    let rows = getBrokerPropertyBalanceRows(state, broker.id);
+                    if (rentalPropertyScope) {
+                        rows = rows.filter((r) => rentalPropertyScope.has(String(r.propertyId)));
                     }
-                });
+                    for (const r of rows) {
+                        const property = state.properties.find((p) => p.id === r.propertyId);
+                        const owner = property
+                            ? state.contacts.find((c) => c.id === property.ownerId)
+                            : null;
+                        const splitAgreements = r.agreements.map((a) => ({
+                            agreementId: a.agreementId,
+                            fee: a.fee,
+                        }));
+                        newItems.push({
+                            agreementId: r.agreements[0]?.agreementId || '',
+                            type: 'Rental',
+                            entityId: r.propertyId,
+                            entityName: r.propertyName,
+                            ownerName: owner?.name || 'Unknown Owner',
+                            totalFee: r.totalFee,
+                            paidAlready: r.paid,
+                            remaining: r.amountDue,
+                            paymentAmount: r.amountDue,
+                            isSelected: r.amountDue > 0.01,
+                            splitAgreements: splitAgreements.length > 0 ? splitAgreements : undefined,
+                        });
+                    }
+                } else {
+                    state.rentalAgreements.forEach(ra => {
+                        if (ra.previousAgreementId) return;
+                        if (rentalPropertyScope) {
+                            if (!ra.propertyId || !rentalPropertyScope.has(String(ra.propertyId))) return;
+                        }
+                        if (ra.brokerId === broker.id && (ra.brokerFee || 0) > 0) {
+                            const property = state.properties.find(p => p.id === ra.propertyId);
+                            const owner = state.contacts.find(c => c.id === property?.ownerId);
+                            
+                            const paidAlready = state.transactions
+                                .filter(tx => 
+                                    tx.type === TransactionType.EXPENSE &&
+                                    tx.contactId === broker.id &&
+                                    (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
+                                    (tx.agreementId === ra.id || (tx.propertyId === ra.propertyId))
+                                )
+                                .reduce((sum, tx) => sum + tx.amount, 0);
+
+                            const remaining = Math.max(0, (ra.brokerFee || 0) - paidAlready);
+
+                            if ((ra.brokerFee || 0) > 0) {
+                                newItems.push({
+                                    agreementId: ra.id,
+                                    type: 'Rental',
+                                    entityId: ra.propertyId,
+                                    entityName: property?.name || 'Unknown Property',
+                                    ownerName: owner?.name || 'Unknown Owner',
+                                    totalFee: ra.brokerFee || 0,
+                                    paidAlready,
+                                    remaining,
+                                    paymentAmount: remaining,
+                                    isSelected: remaining > 0
+                                });
+                            }
+                        }
+                    });
+                }
             }
 
             // 2. Project Agreements
@@ -143,7 +197,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
 
             setItems(newItems);
         }
-    }, [isOpen, broker, context, state.rentalAgreements, state.projectAgreements, state.transactions, state.properties, state.contacts, state.categories, userSelectableAccounts, state.projects]);
+    }, [isOpen, broker, context, aggregateRentalByProperty, rentalPropertyScope, state.rentalAgreements, state.projectAgreements, state.transactions, state.properties, state.contacts, state.categories, userSelectableAccounts, state.projects]);
 
     const selectAllRef = useRef<HTMLInputElement>(null);
     const allSelected = items.length > 0 && items.every(i => i.isSelected);
@@ -196,12 +250,74 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
         const particularsNote = paymentParticulars.trim();
 
         const newTransactions: Transaction[] = [];
+        const pushRentalPayout = (opts: {
+            amount: number;
+            agreementId: string;
+            propertyId: string;
+            entityName: string;
+        }) => {
+            const categoryId = brokerFeeCategory?.id;
+            if (!categoryId) return;
+            const baseDescription = `Broker Commission for ${opts.entityName}`;
+            const description = particularsNote
+                ? `${baseDescription} — ${particularsNote}`
+                : baseDescription;
+            const payoutTransaction: Omit<Transaction, 'id'> = {
+                type: TransactionType.EXPENSE,
+                amount: opts.amount,
+                date: paymentDate,
+                description,
+                accountId: payoutAccount.id,
+                contactId: broker.id,
+                categoryId,
+                agreementId: opts.agreementId,
+                propertyId: opts.propertyId,
+                buildingId: state.properties.find(p => p.id === opts.propertyId)?.buildingId,
+            };
+            newTransactions.push({
+                ...payoutTransaction,
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+            });
+        };
+
         for (const item of selectedItems) {
             const categoryId = item.type === 'Project' ? (rebateCategory?.id || brokerFeeCategory?.id) : brokerFeeCategory?.id;
             if (!categoryId) {
                 await showAlert('Missing Broker Fee / Rebate category. Add categories in Settings, then try again.');
                 return;
             }
+
+            if (
+                item.type === 'Rental' &&
+                item.splitAgreements &&
+                item.splitAgreements.length > 1 &&
+                item.paymentAmount > 0.01
+            ) {
+                const cap = Math.min(item.paymentAmount, item.remaining);
+                const parts = item.splitAgreements.filter((p) => p.fee > 0.01);
+                const sumW = parts.reduce((s, p) => s + p.fee, 0);
+                if (sumW <= 0) continue;
+                const totalCents = Math.round(cap * 100);
+                let allocatedCents = 0;
+                parts.forEach((p, idx) => {
+                    const isLast = idx === parts.length - 1;
+                    const shareCents = isLast
+                        ? totalCents - allocatedCents
+                        : Math.floor((totalCents * p.fee) / sumW);
+                    allocatedCents += shareCents;
+                    const share = shareCents / 100;
+                    if (share > 0.009) {
+                        pushRentalPayout({
+                            amount: share,
+                            agreementId: p.agreementId,
+                            propertyId: item.entityId,
+                            entityName: item.entityName,
+                        });
+                    }
+                });
+                continue;
+            }
+
             const baseDescription = `Broker Commission for ${item.entityName}`;
             const description = particularsNote
                 ? `${baseDescription} — ${particularsNote}`

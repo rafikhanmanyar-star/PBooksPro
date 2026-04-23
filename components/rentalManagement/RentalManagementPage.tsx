@@ -12,7 +12,6 @@ const RentalAgreementsPage = lazy(() => import('../rentalAgreements/RentalAgreem
 const RentalInvoicesPage = lazy(() => import('./RentalInvoicesPage'));
 const MonthlyServiceChargesPage = lazy(() => import('./MonthlyServiceChargesPage'));
 const RentalBillsPage = lazy(() => import('./RentalBillsPage'));
-const OwnerPayoutsPage = lazy(() => import('../payouts/OwnerPayoutsPage'));
 const PropertyOwnershipTransfersPage = lazy(() => import('./PropertyOwnershipTransfersPage'));
 
 const PropertyLayoutReport = lazy(() => import('../reports/PropertyLayoutReport'));
@@ -81,6 +80,15 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     const [activeView, setActiveView] = useLocalStorage<RentalView>('rentalManagement_activeView', 'Agreements');
     const [reportsExpanded, setReportsExpanded] = useState(true);
 
+    /** Legacy “Payouts” sub-page removed from nav; map to Owner Rental Income report. */
+    const normalizedView: RentalView = activeView === 'Payouts' ? 'Owner Rental Income' : activeView;
+    useEffect(() => {
+        if (activeView === 'Payouts') {
+            setActiveView('Owner Rental Income');
+            setReportsExpanded(true);
+        }
+    }, [activeView, setActiveView]);
+
     const {
         effectiveCollapsed: subNavCollapsed,
         toggle: toggleSubNav,
@@ -90,7 +98,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     const isReportActive = [
         ...ANALYSIS_REPORTS,
         ...LEDGER_REPORTS,
-    ].includes(activeView);
+    ].includes(normalizedView);
 
     useEffect(() => {
         if (isReportActive) setReportsExpanded(true);
@@ -113,7 +121,9 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     setActiveView('Agreements');
                     break;
                 case 'ownerPayouts':
-                    setActiveView('Payouts');
+                    setActiveView('Owner Rental Income');
+                    setReportsExpanded(true);
+                    dispatch({ type: 'SET_PAGE', payload: 'rentalManagement' });
                     break;
                 case 'rentalManagement':
                     break;
@@ -131,13 +141,15 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     setActiveView(subTab as RentalView);
                 } else if (mainTab === 'Rental setup') {
                     setActiveView('Rental setup');
+                } else if (mainTab === 'Payouts') {
+                    setActiveView('Owner Rental Income');
+                    setReportsExpanded(true);
                 } else if (
                     [
                         'Agreements',
                         'Invoices',
                         'Monthly Service Charges',
                         'Bills',
-                        'Payouts',
                         'Ownership transfers',
                     ].includes(mainTab)
                 ) {
@@ -154,28 +166,26 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         'Invoices',
         'Monthly Service Charges',
         'Bills',
-        'Payouts',
         'Ownership transfers',
     ];
-    const isOperationalView = OPERATIONAL_VIEWS.includes(activeView);
+    const isOperationalView = OPERATIONAL_VIEWS.includes(normalizedView);
 
-    /** Mount ONLY the active operational view — avoids mounting all 7 at once (major INP win). */
+    /** Mount ONLY the active operational view — avoids mounting all operational panes at once (major INP win). */
     const renderOperationalContent = () => (
         <div className="relative h-full w-full min-h-0">
-            {activeView === 'Rental setup' && <RentalSettingsPage embeddedInRentalModule />}
-            {activeView === 'Agreements' && <RentalAgreementsPage />}
-            {activeView === 'Invoices' && (
+            {normalizedView === 'Rental setup' && <RentalSettingsPage embeddedInRentalModule />}
+            {normalizedView === 'Agreements' && <RentalAgreementsPage />}
+            {normalizedView === 'Invoices' && (
                 <RentalInvoicesPage />
             )}
-            {activeView === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
-            {activeView === 'Bills' && <RentalBillsPage />}
-            {activeView === 'Payouts' && <OwnerPayoutsPage />}
-            {activeView === 'Ownership transfers' && <PropertyOwnershipTransfersPage />}
+            {normalizedView === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
+            {normalizedView === 'Bills' && <RentalBillsPage />}
+            {normalizedView === 'Ownership transfers' && <PropertyOwnershipTransfersPage />}
         </div>
     );
 
     const renderReportContent = () => {
-        switch (activeView) {
+        switch (normalizedView) {
             case 'Visual Layout': return <PropertyLayoutReport />;
             case 'Tabular Layout': return <UnitStatusReport />;
             case 'Agreement Expiry': return <AgreementExpiryReport />;
@@ -195,7 +205,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     };
 
     const NavItem = ({ view, label }: { view: RentalView; label: string }) => {
-        const on = activeView === view;
+        const on = normalizedView === view;
         const short = rentalNavLabelShort(label);
         const onNavigate = () => startTransition(() => setActiveView(view));
         if (subNavCollapsed) {
@@ -244,7 +254,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <NavItem view="Invoices" label="Invoices" />
                     <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
-                    <NavItem view="Payouts" label="Payouts" />
                     <NavItem view="Ownership transfers" label="Ownership transfers" />
                 </div>
 
@@ -328,7 +337,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <label htmlFor="rental-module-view" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Rental</label>
                     <select
                         id="rental-module-view"
-                        value={activeView}
+                        value={normalizedView}
                         onChange={(e) => {
                             const v = e.target.value as RentalView;
                             startTransition(() => setActiveView(v));
