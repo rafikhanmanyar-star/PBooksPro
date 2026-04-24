@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
+import { List, type RowComponentProps } from 'react-window';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType, ContactType, Transaction } from '../../types';
 import Card from '../ui/Card';
@@ -11,7 +12,7 @@ import TransactionForm from '../transactions/TransactionForm';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import OwnerPayoutModal from '../payouts/OwnerPayoutModal';
 import {
-    buildOwnerPropertyBreakdown,
+    buildOwnerSecurityPropertyBreakdownOnly,
     getOwnerPayoutModalPropertyBreakdown,
     getOwnerPayoutModalPropertyBreakdownForProperty,
 } from '../payouts/ownerPayoutBreakdown';
@@ -27,7 +28,7 @@ import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import TreeView, { TreeNode } from '../ui/TreeView';
-import { getLedgerOwnerIdsForProperty } from '../../services/propertyOwnershipService';
+import { buildLedgerOwnerIdsByPropertyId } from '../../services/propertyOwnershipService';
 import {
     TREE_SELECT_AUTO,
     pruneTreeNodesBySearchQuery,
@@ -64,6 +65,81 @@ type SortKey =
     | 'refundOut'
     | 'balance';
 
+const SD_ROW_HEIGHT = 40;
+const SD_VIRTUALIZE_THRESHOLD = 80;
+
+type SecurityDepositReportRow = SecurityDepositRow & { balance: number };
+
+function SortIconHeader({
+    column,
+    sortConfig,
+}: {
+    column: SortKey;
+    sortConfig: { key: SortKey; direction: 'asc' | 'desc' };
+}) {
+    if (sortConfig.key !== column)
+        return <span className="text-app-muted opacity-50 ml-1 text-[10px]">↕</span>;
+    return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+}
+
+type VirtualSdRowExtra = {
+    rows: SecurityDepositReportRow[];
+    transactionById: Map<string, Transaction | undefined>;
+    onRowClick: (tx: Transaction) => void;
+};
+
+const VirtualSdListRow = memo(function VirtualSdListRow(props: RowComponentProps<VirtualSdRowExtra>) {
+    const { index, style, ariaAttributes, rows, transactionById, onRowClick } = props;
+    const item = rows[index];
+    if (!item) return null;
+    const transaction = transactionById.get(item.entityId);
+    return (
+        <div
+            {...ariaAttributes}
+            style={style}
+            role="button"
+            tabIndex={0}
+            className="flex items-stretch border-b border-app-border bg-app-card text-sm hover:bg-app-toolbar/30 cursor-pointer transition-colors"
+            onClick={() => transaction && onRowClick(transaction)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (transaction) onRowClick(transaction);
+                }
+            }}
+            title="Click to edit"
+        >
+            <div className="w-[88px] shrink-0 px-3 py-2 whitespace-nowrap text-app-text">{formatDate(item.date)}</div>
+            <div className="w-[120px] shrink-0 px-3 py-2 whitespace-nowrap text-app-text truncate" title={item.buildingName}>
+                {item.buildingName}
+            </div>
+            <div className="w-[100px] shrink-0 px-3 py-2 whitespace-nowrap text-app-text truncate" title={item.ownerName}>
+                {item.ownerName}
+            </div>
+            <div className="w-[100px] shrink-0 px-3 py-2 whitespace-nowrap text-app-text truncate" title={item.tenantName}>
+                {item.tenantName}
+            </div>
+            <div className="w-[100px] shrink-0 px-3 py-2 whitespace-nowrap text-app-text truncate" title={item.propertyName}>
+                {item.propertyName}
+            </div>
+            <div className="min-w-[120px] flex-1 max-w-[220px] px-3 py-2 truncate text-app-muted" title={item.particulars}>
+                {item.particulars}
+            </div>
+            <div className="w-[92px] shrink-0 px-3 py-2 text-right text-success">
+                {item.depositIn > 0 ? `${CURRENCY} ${(item.depositIn || 0).toLocaleString()}` : '-'}
+            </div>
+            <div className="w-[92px] shrink-0 px-3 py-2 text-right text-danger">
+                {item.refundOut > 0 ? `${CURRENCY} ${(item.refundOut || 0).toLocaleString()}` : '-'}
+            </div>
+            <div
+                className={`w-[96px] shrink-0 px-3 py-2 text-right font-bold ${item.balance >= 0 ? 'text-app-text' : 'text-danger'}`}
+            >
+                {CURRENCY} {(item.balance || 0).toLocaleString()}
+            </div>
+        </div>
+    );
+});
+
 const OwnerSecurityDepositReport: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast } = useNotification();
@@ -97,7 +173,16 @@ const OwnerSecurityDepositReport: React.FC = () => {
 
     const unfilteredBuildingNodes = useMemo(
         () => buildRentalPortfolioTreeNodes(state),
-        [state.buildings, state.properties, state.propertyOwnership, state.rentalAgreements, state.transactions, state.invoices, state.contacts]
+        [
+            state.buildings,
+            state.properties,
+            state.propertyOwnership,
+            state.propertyOwnershipHistory,
+            state.rentalAgreements,
+            state.transactions,
+            state.invoices,
+            state.contacts,
+        ]
     );
 
     const treeData = useMemo((): TreeNode[] => {
@@ -164,7 +249,18 @@ const OwnerSecurityDepositReport: React.FC = () => {
         }));
     };
 
-    const ownerPropertyBreakdown = useMemo(() => buildOwnerPropertyBreakdown(state), [state]);
+    const ownerPropertyBreakdown = useMemo(
+        () => buildOwnerSecurityPropertyBreakdownOnly(state),
+        [
+            state.transactions,
+            state.invoices,
+            state.properties,
+            state.propertyOwnership,
+            state.propertyOwnershipHistory,
+            state.rentalAgreements,
+            state.categories,
+        ]
+    );
 
     const securityModalBreakdown = useMemo(() => {
         if (selectedOwnerId === 'all') return [];
@@ -178,7 +274,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
             );
         }
         return getOwnerPayoutModalPropertyBreakdown(state, selectedOwnerId, 'Security', ownerPropertyBreakdown);
-    }, [state, selectedOwnerId, selectedUnitId, ownerPropertyBreakdown]);
+    }, [selectedOwnerId, selectedUnitId, ownerPropertyBreakdown]);
 
     const securityPayableTotal = useMemo(
         () => securityModalBreakdown.reduce((s, r) => s + (r.balanceDue || 0), 0),
@@ -206,7 +302,24 @@ const OwnerSecurityDepositReport: React.FC = () => {
         [selectedUnitId, state.properties]
     );
 
-    const { reportData } = useMemo(() => {
+    const transactionById = useMemo(
+        () => new Map(state.transactions.map((t) => [t.id, t])),
+        [state.transactions]
+    );
+
+    const filterSubtitle = useMemo(() => {
+        const buildingName =
+            selectedBuildingId !== 'all'
+                ? state.buildings.find((b) => b.id === selectedBuildingId)?.name
+                : undefined;
+        const ownerName =
+            selectedOwnerId !== 'all' ? state.contacts.find((c) => c.id === selectedOwnerId)?.name : undefined;
+        const unitName =
+            selectedUnitId !== 'all' ? state.properties.find((p) => p.id === selectedUnitId)?.name : undefined;
+        return { buildingName, ownerName, unitName };
+    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, state.buildings, state.contacts, state.properties]);
+
+    const reportData = useMemo((): SecurityDepositReportRow[] => {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
@@ -216,13 +329,22 @@ const OwnerSecurityDepositReport: React.FC = () => {
         const refundCategory = state.categories.find((c) => c.name === 'Security Deposit Refund');
         const ownerPayoutCategory = state.categories.find((c) => c.name === 'Owner Security Payout');
 
-        if (!securityDepositCategory) return { reportData: [] as SecurityDepositRow[] };
+        if (!securityDepositCategory) return [];
 
-        const rows: any[] = [];
+        const categoryById = new Map(state.categories.map((c) => [c.id, c]));
+        const invoiceById = new Map(state.invoices.map((i) => [i.id, i]));
+        const propertyById = new Map(state.properties.map((p) => [String(p.id), p]));
+        const contactById = new Map(state.contacts.map((c) => [c.id, c]));
+        const buildingById = new Map(state.buildings.map((b) => [b.id, b]));
 
-        state.transactions.forEach((tx) => {
+        const ledgerOwnersByPropertyId =
+            selectedOwnerId !== 'all' ? buildLedgerOwnerIdsByPropertyId(state) : null;
+
+        const rows: SecurityDepositRow[] = [];
+
+        for (const tx of state.transactions) {
             const txDate = new Date(tx.date);
-            if (txDate < start || txDate > end) return;
+            if (txDate < start || txDate > end) continue;
 
             let isRelevant = false;
             let type: 'Deposit' | 'Refund' | 'Deduction' | 'Payout' = 'Deposit';
@@ -231,7 +353,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
                 isRelevant = true;
                 type = 'Deposit';
             } else if (tx.type === TransactionType.EXPENSE) {
-                const category = state.categories.find((c) => c.id === tx.categoryId);
+                const category = categoryById.get(tx.categoryId);
 
                 if (ownerPayoutCategory && tx.categoryId === ownerPayoutCategory.id) {
                     isRelevant = true;
@@ -240,7 +362,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
                     isRelevant = true;
                     type = 'Refund';
                 } else {
-                    const contact = state.contacts.find((c) => c.id === tx.contactId);
+                    const contact = tx.contactId ? contactById.get(tx.contactId) : undefined;
                     if (contact?.type === ContactType.TENANT) {
                         isRelevant = true;
                         type = 'Deduction';
@@ -251,72 +373,71 @@ const OwnerSecurityDepositReport: React.FC = () => {
                 }
             }
 
-            if (isRelevant) {
-                let propertyId = tx.propertyId;
-                let ownerId = '';
-                let buildingId = tx.buildingId;
-                let tenantId = tx.contactId;
+            if (!isRelevant) continue;
 
-                if (!propertyId && tx.invoiceId) {
-                    const inv = state.invoices.find((i) => i.id === tx.invoiceId);
-                    if (inv) {
-                        propertyId = inv.propertyId;
-                        if (!buildingId) buildingId = inv.buildingId;
-                    }
+            let propertyId = tx.propertyId;
+            let ownerId = '';
+            let buildingId = tx.buildingId;
+            const tenantId = tx.contactId;
+
+            if (!propertyId && tx.invoiceId) {
+                const inv = invoiceById.get(tx.invoiceId);
+                if (inv) {
+                    propertyId = inv.propertyId;
+                    if (!buildingId) buildingId = inv.buildingId;
                 }
-
-                if (tx.contactId) {
-                    if (type === 'Payout') ownerId = tx.contactId;
-                }
-
-                if (propertyId) {
-                    const property = state.properties.find((p) => p.id === propertyId);
-                    if (property) {
-                        if (!ownerId) ownerId = property.ownerId;
-                        if (!buildingId) buildingId = property.buildingId;
-                    }
-                }
-
-                if (selectedUnitId !== 'all') {
-                    if (!propertyId || String(propertyId) !== String(selectedUnitId)) return;
-                }
-                if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-                if (selectedOwnerId !== 'all') {
-                    if (propertyId) {
-                        if (!getLedgerOwnerIdsForProperty(state, propertyId).has(selectedOwnerId)) return;
-                    } else if (ownerId !== selectedOwnerId) {
-                        return;
-                    }
-                }
-
-                const owner = state.contacts.find((c) => c.id === ownerId);
-                const tenant = type === 'Payout' ? null : state.contacts.find((c) => c.id === tenantId);
-                const property = state.properties.find((p) => p.id === propertyId);
-                const building = state.buildings.find((b) => b.id === buildingId);
-
-                rows.push({
-                    id: tx.id,
-                    date: tx.date,
-                    ownerName: owner?.name || 'Unknown',
-                    tenantName: tenant?.name || (type === 'Payout' ? '-' : 'Unknown'),
-                    propertyName: property?.name || '-',
-                    buildingName: building?.name || '-',
-                    particulars: tx.description || type,
-                    depositIn: type === 'Deposit' ? tx.amount : 0,
-                    refundOut: type === 'Refund' || type === 'Deduction' || type === 'Payout' ? tx.amount : 0,
-                    entityType: 'transaction' as const,
-                    entityId: tx.id,
-                });
             }
-        });
+
+            if (tx.contactId && type === 'Payout') ownerId = tx.contactId;
+
+            if (propertyId) {
+                const property = propertyById.get(String(propertyId));
+                if (property) {
+                    if (!ownerId) ownerId = property.ownerId;
+                    if (!buildingId) buildingId = property.buildingId;
+                }
+            }
+
+            if (selectedUnitId !== 'all') {
+                if (!propertyId || String(propertyId) !== String(selectedUnitId)) continue;
+            }
+            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
+            if (selectedOwnerId !== 'all') {
+                if (propertyId) {
+                    const owners = ledgerOwnersByPropertyId?.get(String(propertyId));
+                    if (!owners?.has(selectedOwnerId)) continue;
+                } else if (ownerId !== selectedOwnerId) {
+                    continue;
+                }
+            }
+
+            const owner = ownerId ? contactById.get(ownerId) : undefined;
+            const tenant = type === 'Payout' ? null : tenantId ? contactById.get(tenantId) : undefined;
+            const property = propertyId ? propertyById.get(String(propertyId)) : undefined;
+            const building = buildingId ? buildingById.get(buildingId) : undefined;
+
+            rows.push({
+                id: tx.id,
+                date: tx.date,
+                ownerName: owner?.name || 'Unknown',
+                tenantName: tenant?.name || (type === 'Payout' ? '-' : 'Unknown'),
+                propertyName: property?.name || '-',
+                buildingName: building?.name || '-',
+                particulars: tx.description || type,
+                depositIn: type === 'Deposit' ? tx.amount : 0,
+                refundOut: type === 'Refund' || type === 'Deduction' || type === 'Payout' ? tx.amount : 0,
+                entityType: 'transaction' as const,
+                entityId: tx.id,
+            });
+        }
 
         rows.sort((a, b) => {
-            let valA: any = a[sortConfig.key];
-            let valB: any = b[sortConfig.key];
+            let valA: string | number = a[sortConfig.key] as string | number;
+            let valB: string | number = b[sortConfig.key] as string | number;
 
             if (sortConfig.key === 'date') {
-                valA = new Date(valA).getTime();
-                valB = new Date(valB).getTime();
+                valA = new Date(a.date).getTime();
+                valB = new Date(b.date).getTime();
 
                 if (valA === valB) {
                     if (a.depositIn > 0 && b.depositIn === 0) return -1;
@@ -325,7 +446,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
                 }
             } else if (typeof valA === 'string') {
                 valA = valA.toLowerCase();
-                valB = valB.toLowerCase();
+                valB = (valB as string).toLowerCase();
             }
 
             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -334,7 +455,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
         });
 
         let runningBalance = 0;
-        let processedRows = rows.map((row) => {
+        let processedRows: SecurityDepositReportRow[] = rows.map((row) => {
             runningBalance += row.depositIn - row.refundOut;
             return { ...row, balance: runningBalance };
         });
@@ -350,8 +471,24 @@ const OwnerSecurityDepositReport: React.FC = () => {
             );
         }
 
-        return { reportData: processedRows };
-    }, [state, startDate, endDate, selectedBuildingId, selectedOwnerId, selectedUnitId, sortConfig, searchQuery]);
+        return processedRows;
+    }, [
+        state.transactions,
+        state.invoices,
+        state.properties,
+        state.buildings,
+        state.categories,
+        state.contacts,
+        state.propertyOwnership,
+        state.rentalAgreements,
+        startDate,
+        endDate,
+        selectedBuildingId,
+        selectedOwnerId,
+        selectedUnitId,
+        sortConfig,
+        searchQuery,
+    ]);
 
     const totals = useMemo(() => {
         return reportData.reduce(
@@ -428,11 +565,43 @@ const OwnerSecurityDepositReport: React.FC = () => {
         setWarningModalState({ isOpen: false, transaction: null, action: null });
     };
 
-    const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column)
-            return <span className="text-app-muted opacity-50 ml-1 text-[10px]">↕</span>;
-        return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
-    };
+    const sdVirtualBodyRef = useRef<HTMLDivElement>(null);
+    const [sdVirtualListHeight, setSdVirtualListHeight] = useState(360);
+    const useSdVirtualList = reportData.length >= SD_VIRTUALIZE_THRESHOLD;
+
+    useEffect(() => {
+        if (!useSdVirtualList) return;
+        const el = sdVirtualBodyRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((entries) => {
+            for (const e of entries) {
+                setSdVirtualListHeight(Math.max(120, Math.floor(e.contentRect.height)));
+            }
+        });
+        ro.observe(el);
+        const h = el.getBoundingClientRect().height;
+        if (h > 0) setSdVirtualListHeight(Math.max(120, Math.floor(h)));
+        return () => ro.disconnect();
+    }, [useSdVirtualList, reportData.length]);
+
+    const handleSdRowClick = useCallback((tx: Transaction) => {
+        setTransactionToEdit(tx);
+    }, []);
+
+    const sdVirtualRowProps = useMemo(
+        () =>
+            ({
+                rows: reportData,
+                transactionById,
+                onRowClick: handleSdRowClick,
+            }) satisfies VirtualSdRowExtra,
+        [reportData, transactionById, handleSdRowClick]
+    );
+
+    const SdVirtualRow = useCallback(
+        (p: RowComponentProps<VirtualSdRowExtra>) => <VirtualSdListRow {...p} />,
+        []
+    );
 
     return (
         <div className="flex flex-col h-full">
@@ -583,12 +752,15 @@ const OwnerSecurityDepositReport: React.FC = () => {
                                 </p>
                                 {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all' || selectedUnitId !== 'all') && (
                                     <p className="text-xs text-app-muted mt-1">
-                                        {selectedBuildingId !== 'all' &&
-                                            `Building: ${state.buildings.find((b) => b.id === selectedBuildingId)?.name} `}
-                                        {selectedOwnerId !== 'all' &&
-                                            `Owner: ${state.contacts.find((c) => c.id === selectedOwnerId)?.name} `}
-                                        {selectedUnitId !== 'all' &&
-                                            `Unit: ${state.properties.find((p) => p.id === selectedUnitId)?.name}`}
+                                        {selectedBuildingId !== 'all' && filterSubtitle.buildingName
+                                            ? `Building: ${filterSubtitle.buildingName} `
+                                            : ''}
+                                        {selectedOwnerId !== 'all' && filterSubtitle.ownerName
+                                            ? `Owner: ${filterSubtitle.ownerName} `
+                                            : ''}
+                                        {selectedUnitId !== 'all' && filterSubtitle.unitName
+                                            ? `Unit: ${filterSubtitle.unitName}`
+                                            : ''}
                                     </p>
                                 )}
                             </div>
@@ -596,138 +768,244 @@ const OwnerSecurityDepositReport: React.FC = () => {
                             <LedgerSummaryCards show={showLedgerSummary} cards={ledgerSummaryCards} />
 
                             <div className="flex-1 min-h-0 flex flex-col px-6 pb-2">
-                                <div className="flex-1 min-h-0 overflow-auto rounded-md border border-app-border">
-                                <table className="min-w-full divide-y divide-app-border text-sm">
-                                    <thead className="bg-app-toolbar/40 sticky top-0 z-20 border-b border-app-border">
-                                        <tr>
-                                            <th
-                                                onClick={() => handleSort('date')}
-                                                className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap"
-                                            >
-                                                Date <SortIcon column="date" />
-                                            </th>
-                                            <th
-                                                onClick={() => handleSort('buildingName')}
-                                                className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
-                                            >
-                                                Building <SortIcon column="buildingName" />
-                                            </th>
-                                            <th
-                                                onClick={() => handleSort('ownerName')}
-                                                className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
-                                            >
-                                                Owner <SortIcon column="ownerName" />
-                                            </th>
-                                            <th
-                                                onClick={() => handleSort('tenantName')}
-                                                className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
-                                            >
-                                                Tenant <SortIcon column="tenantName" />
-                                            </th>
-                                            <th
-                                                onClick={() => handleSort('propertyName')}
-                                                className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
-                                            >
-                                                Property <SortIcon column="propertyName" />
-                                            </th>
-                                            <th
-                                                onClick={() => handleSort('particulars')}
-                                                className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
-                                            >
-                                                Particulars <SortIcon column="particulars" />
-                                            </th>
-                                            <th
-                                                onClick={() => handleSort('depositIn')}
-                                                className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
-                                            >
-                                                Collected <SortIcon column="depositIn" />
-                                            </th>
-                                            <th
-                                                onClick={() => handleSort('refundOut')}
-                                                className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
-                                            >
-                                                Paid Out <SortIcon column="refundOut" />
-                                            </th>
-                                            <th
-                                                onClick={() => handleSort('balance')}
-                                                className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
-                                            >
-                                                Net Held <SortIcon column="balance" />
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-app-border bg-app-card">
-                                        {reportData.map((item) => {
-                                            const transaction = state.transactions.find((t) => t.id === item.entityId);
-                                            return (
-                                                <tr
-                                                    key={item.id}
-                                                    className="hover:bg-app-toolbar/30 cursor-pointer transition-colors"
-                                                    onClick={() => transaction && setTransactionToEdit(transaction)}
-                                                    title="Click to edit"
+                                <div
+                                    className={`flex-1 min-h-0 flex flex-col min-h-[200px] rounded-md border border-app-border ${
+                                        useSdVirtualList ? 'overflow-hidden' : 'overflow-auto'
+                                    }`}
+                                >
+                                    {useSdVirtualList ? (
+                                        <>
+                                            <div className="flex shrink-0 items-stretch border-b border-app-border bg-app-toolbar/40 text-xs font-semibold text-app-muted z-20">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('date')}
+                                                    className="w-[88px] shrink-0 px-3 py-2 text-left hover:bg-app-toolbar/60 select-none whitespace-nowrap"
                                                 >
-                                                    <td className="px-3 py-2 whitespace-nowrap text-app-text">
-                                                        {formatDate(item.date)}
-                                                    </td>
-                                                    <td className="px-3 py-2 whitespace-nowrap text-app-text">
-                                                        {item.buildingName}
-                                                    </td>
-                                                    <td className="px-3 py-2 whitespace-nowrap text-app-text">
-                                                        {item.ownerName}
-                                                    </td>
-                                                    <td className="px-3 py-2 whitespace-nowrap text-app-text">
-                                                        {item.tenantName}
-                                                    </td>
-                                                    <td className="px-3 py-2 whitespace-nowrap text-app-text">
-                                                        {item.propertyName}
-                                                    </td>
-                                                    <td
-                                                        className="px-3 py-2 max-w-xs truncate text-app-muted"
-                                                        title={item.particulars}
+                                                    Date <SortIconHeader column="date" sortConfig={sortConfig} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('buildingName')}
+                                                    className="w-[120px] shrink-0 px-3 py-2 text-left hover:bg-app-toolbar/60 select-none"
+                                                >
+                                                    Building <SortIconHeader column="buildingName" sortConfig={sortConfig} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('ownerName')}
+                                                    className="w-[100px] shrink-0 px-3 py-2 text-left hover:bg-app-toolbar/60 select-none"
+                                                >
+                                                    Owner <SortIconHeader column="ownerName" sortConfig={sortConfig} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('tenantName')}
+                                                    className="w-[100px] shrink-0 px-3 py-2 text-left hover:bg-app-toolbar/60 select-none"
+                                                >
+                                                    Tenant <SortIconHeader column="tenantName" sortConfig={sortConfig} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('propertyName')}
+                                                    className="w-[100px] shrink-0 px-3 py-2 text-left hover:bg-app-toolbar/60 select-none"
+                                                >
+                                                    Property <SortIconHeader column="propertyName" sortConfig={sortConfig} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('particulars')}
+                                                    className="min-w-[120px] flex-1 max-w-[220px] px-3 py-2 text-left hover:bg-app-toolbar/60 select-none"
+                                                >
+                                                    Particulars <SortIconHeader column="particulars" sortConfig={sortConfig} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('depositIn')}
+                                                    className="w-[92px] shrink-0 px-3 py-2 text-right hover:bg-app-toolbar/60 select-none"
+                                                >
+                                                    Collected <SortIconHeader column="depositIn" sortConfig={sortConfig} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('refundOut')}
+                                                    className="w-[92px] shrink-0 px-3 py-2 text-right hover:bg-app-toolbar/60 select-none"
+                                                >
+                                                    Paid Out <SortIconHeader column="refundOut" sortConfig={sortConfig} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort('balance')}
+                                                    className="w-[96px] shrink-0 px-3 py-2 text-right hover:bg-app-toolbar/60 select-none"
+                                                >
+                                                    Net Held <SortIconHeader column="balance" sortConfig={sortConfig} />
+                                                </button>
+                                            </div>
+                                            {reportData.length === 0 ? (
+                                                <div className="px-3 py-8 text-center text-app-muted text-sm">
+                                                    No records found for the selected criteria.
+                                                </div>
+                                            ) : (
+                                                <div ref={sdVirtualBodyRef} className="flex-1 min-h-0 overflow-hidden">
+                                                    <List<VirtualSdRowExtra>
+                                                        style={{ height: sdVirtualListHeight, width: '100%' }}
+                                                        rowCount={reportData.length}
+                                                        rowHeight={SD_ROW_HEIGHT}
+                                                        rowProps={sdVirtualRowProps}
+                                                        rowComponent={SdVirtualRow}
+                                                    />
+                                                </div>
+                                            )}
+                                            <div className="flex shrink-0 items-stretch border-t border-app-border bg-app-toolbar/40 font-bold text-sm z-10">
+                                                <div className="w-[88px] shrink-0 px-3 py-2" />
+                                                <div className="w-[120px] shrink-0 px-3 py-2" />
+                                                <div className="w-[100px] shrink-0 px-3 py-2" />
+                                                <div className="w-[100px] shrink-0 px-3 py-2" />
+                                                <div className="w-[100px] shrink-0 px-3 py-2" />
+                                                <div className="min-w-[120px] flex-1 max-w-[220px] px-3 py-2 text-right text-app-text">
+                                                    Totals (Period)
+                                                </div>
+                                                <div className="w-[92px] shrink-0 px-3 py-2 text-right text-success">
+                                                    {CURRENCY} {(totals.totalDepositIn || 0).toLocaleString()}
+                                                </div>
+                                                <div className="w-[92px] shrink-0 px-3 py-2 text-right text-danger">
+                                                    {CURRENCY} {(totals.totalRefundOut || 0).toLocaleString()}
+                                                </div>
+                                                <div className="w-[96px] shrink-0 px-3 py-2 text-right" />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <table className="min-w-full divide-y divide-app-border text-sm">
+                                            <thead className="bg-app-toolbar/40 sticky top-0 z-20 border-b border-app-border">
+                                                <tr>
+                                                    <th
+                                                        onClick={() => handleSort('date')}
+                                                        className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none whitespace-nowrap"
                                                     >
-                                                        {item.particulars}
+                                                        Date <SortIconHeader column="date" sortConfig={sortConfig} />
+                                                    </th>
+                                                    <th
+                                                        onClick={() => handleSort('buildingName')}
+                                                        className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
+                                                    >
+                                                        Building <SortIconHeader column="buildingName" sortConfig={sortConfig} />
+                                                    </th>
+                                                    <th
+                                                        onClick={() => handleSort('ownerName')}
+                                                        className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
+                                                    >
+                                                        Owner <SortIconHeader column="ownerName" sortConfig={sortConfig} />
+                                                    </th>
+                                                    <th
+                                                        onClick={() => handleSort('tenantName')}
+                                                        className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
+                                                    >
+                                                        Tenant <SortIconHeader column="tenantName" sortConfig={sortConfig} />
+                                                    </th>
+                                                    <th
+                                                        onClick={() => handleSort('propertyName')}
+                                                        className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
+                                                    >
+                                                        Property <SortIconHeader column="propertyName" sortConfig={sortConfig} />
+                                                    </th>
+                                                    <th
+                                                        onClick={() => handleSort('particulars')}
+                                                        className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
+                                                    >
+                                                        Particulars <SortIconHeader column="particulars" sortConfig={sortConfig} />
+                                                    </th>
+                                                    <th
+                                                        onClick={() => handleSort('depositIn')}
+                                                        className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
+                                                    >
+                                                        Collected <SortIconHeader column="depositIn" sortConfig={sortConfig} />
+                                                    </th>
+                                                    <th
+                                                        onClick={() => handleSort('refundOut')}
+                                                        className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
+                                                    >
+                                                        Paid Out <SortIconHeader column="refundOut" sortConfig={sortConfig} />
+                                                    </th>
+                                                    <th
+                                                        onClick={() => handleSort('balance')}
+                                                        className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar/60 select-none"
+                                                    >
+                                                        Net Held <SortIconHeader column="balance" sortConfig={sortConfig} />
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-app-border bg-app-card">
+                                                {reportData.map((item) => {
+                                                    const transaction = transactionById.get(item.entityId);
+                                                    return (
+                                                        <tr
+                                                            key={item.id}
+                                                            className="hover:bg-app-toolbar/30 cursor-pointer transition-colors"
+                                                            onClick={() => transaction && setTransactionToEdit(transaction)}
+                                                            title="Click to edit"
+                                                        >
+                                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">
+                                                                {formatDate(item.date)}
+                                                            </td>
+                                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">
+                                                                {item.buildingName}
+                                                            </td>
+                                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">
+                                                                {item.ownerName}
+                                                            </td>
+                                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">
+                                                                {item.tenantName}
+                                                            </td>
+                                                            <td className="px-3 py-2 whitespace-nowrap text-app-text">
+                                                                {item.propertyName}
+                                                            </td>
+                                                            <td
+                                                                className="px-3 py-2 max-w-xs truncate text-app-muted"
+                                                                title={item.particulars}
+                                                            >
+                                                                {item.particulars}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right text-success">
+                                                                {item.depositIn > 0
+                                                                    ? `${CURRENCY} ${(item.depositIn || 0).toLocaleString()}`
+                                                                    : '-'}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right text-danger">
+                                                                {item.refundOut > 0
+                                                                    ? `${CURRENCY} ${(item.refundOut || 0).toLocaleString()}`
+                                                                    : '-'}
+                                                            </td>
+                                                            <td
+                                                                className={`px-3 py-2 text-right font-bold ${item.balance >= 0 ? 'text-app-text' : 'text-danger'}`}
+                                                            >
+                                                                {CURRENCY} {(item.balance || 0).toLocaleString()}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {reportData.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={9} className="px-3 py-8 text-center text-app-muted">
+                                                            No records found for the selected criteria.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                            <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border sticky bottom-0 z-10">
+                                                <tr>
+                                                    <td colSpan={6} className="px-3 py-2 text-right text-app-text">
+                                                        Totals (Period)
                                                     </td>
                                                     <td className="px-3 py-2 text-right text-success">
-                                                        {item.depositIn > 0
-                                                            ? `${CURRENCY} ${(item.depositIn || 0).toLocaleString()}`
-                                                            : '-'}
+                                                        {CURRENCY} {(totals.totalDepositIn || 0).toLocaleString()}
                                                     </td>
                                                     <td className="px-3 py-2 text-right text-danger">
-                                                        {item.refundOut > 0
-                                                            ? `${CURRENCY} ${(item.refundOut || 0).toLocaleString()}`
-                                                            : '-'}
+                                                        {CURRENCY} {(totals.totalRefundOut || 0).toLocaleString()}
                                                     </td>
-                                                    <td
-                                                        className={`px-3 py-2 text-right font-bold ${item.balance >= 0 ? 'text-app-text' : 'text-danger'}`}
-                                                    >
-                                                        {CURRENCY} {(item.balance || 0).toLocaleString()}
-                                                    </td>
+                                                    <td className="px-3 py-2 text-right"></td>
                                                 </tr>
-                                            );
-                                        })}
-                                        {reportData.length === 0 && (
-                                            <tr>
-                                                <td colSpan={9} className="px-3 py-8 text-center text-app-muted">
-                                                    No records found for the selected criteria.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                    <tfoot className="bg-app-toolbar/40 font-bold border-t border-app-border sticky bottom-0 z-10">
-                                        <tr>
-                                            <td colSpan={6} className="px-3 py-2 text-right text-app-text">
-                                                Totals (Period)
-                                            </td>
-                                            <td className="px-3 py-2 text-right text-success">
-                                                {CURRENCY} {(totals.totalDepositIn || 0).toLocaleString()}
-                                            </td>
-                                            <td className="px-3 py-2 text-right text-danger">
-                                                {CURRENCY} {(totals.totalRefundOut || 0).toLocaleString()}
-                                            </td>
-                                            <td className="px-3 py-2 text-right"></td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
+                                            </tfoot>
+                                        </table>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex-shrink-0">

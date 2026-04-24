@@ -1,8 +1,7 @@
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, startTransition, useDeferredValue } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType, Transaction, Category, RentalAgreementStatus, ContactType } from '../../types';
-import type { AppState } from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -15,11 +14,20 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
-import { getOwnershipSharesForPropertyOnDate, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
+import { getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
 import ARTreeView, { ARTreeNode } from './ARTreeView';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
 import { currentMonthYyyyMm, isValidYyyyMmDdDate } from '../../utils/dateUtils';
+import {
+    buildServiceChargeIndexes,
+    buildLedgerMetricMaps,
+    getScSecondaryAmount,
+    sumScSecondaryForPropertyRows,
+    type MscLedgerRow,
+} from '../../services/monthlyServiceChargesLedger';
+import { cancelScheduledIdle, scheduleIdleWork } from '../../utils/interactionScheduling';
+import { VirtualizedMscLedgerTable, VIRTUALIZE_THRESHOLD } from './VirtualizedMscLedgerTable';
 
 type ViewBy = 'building' | 'property' | 'tenant' | 'owner';
 type MscStatusFilter = 'All' | 'Deducted' | 'Pending';
@@ -46,20 +54,7 @@ interface OwnerNegativeBalance {
 }
 
 /** One row per Service Charge Income (credit) transaction — edit/delete target that pair. */
-interface LedgerRow {
-    /** Credit transaction id (Service Charge Income) */
-    id: string;
-    monthKey: string;
-    propertyId: string;
-    unit: string;
-    ownerName: string;
-    ownerId: string;
-    status: 'Rented' | 'Vacant';
-    totalDeducted: number;
-    runningBalance: number;
-    totalOwnerIncome: number;
-    shortfall: number;
-}
+type LedgerRow = MscLedgerRow;
 
 /** First unit (property) in tree order — depth-first, same order as the sidebar list. */
 function getFirstPropertyNodeInTree(nodes: ARTreeNode[]): ARTreeNode | null {
@@ -73,142 +68,25 @@ function getFirstPropertyNodeInTree(nodes: ARTreeNode[]): ARTreeNode | null {
     return null;
 }
 
-function endOfMonthIso(monthKey: string): string {
-    const [y, m] = monthKey.split('-').map(Number);
-    if (!y || !m) return monthKey;
-    const d = new Date(y, m, 0);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${d.getFullYear()}-${mm}-${dd}`;
-}
-
-/** Owner balance including all transactions on or before asOfDate (YYYY-MM-DD). Mirrors page logic. */
-function computeOwnerBalanceAsOf(ownerId: string, asOfDate: string, state: AppState): number {
-    const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-    const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
-    const ownerSvcPayCategory = state.categories.find(c => c.id === 'sys-cat-own-svc-pay' || c.name === 'Owner Service Charge Payment');
-    const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
-    const clearingRentCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
-
-    const balances: Record<string, number> = {};
-    state.contacts.filter(c => c.type === ContactType.OWNER).forEach(owner => {
-        balances[owner.id] = 0;
-    });
-
-    const txDateOk = (d: string | undefined) => d && d.slice(0, 10) <= asOfDate;
-
-    if (rentalIncomeCategory) {
-        state.transactions
-            .filter(tx => tx.type === TransactionType.INCOME && txDateOk(tx.date))
-            .forEach(tx => {
-                if (clearingRentCat && tx.categoryId === clearingRentCat.id) return;
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                if (isNaN(amount)) return;
-
-                if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId && balances[tx.contactId] !== undefined) {
-                    balances[tx.contactId] += amount;
-                    return;
-                }
-
-                if (tx.categoryId !== rentalIncomeCategory.id) return;
-                if (!tx.propertyId) return;
-                const d = (tx.date || '').slice(0, 10);
-                if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
-                    // Multi-owner without explicit share lines: distribute proportionally
-                    const hasExplicitShares = ownerShareCat && state.transactions.some(
-                        st => st.categoryId === ownerShareCat.id &&
-                            ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
-                    );
-                    if (!hasExplicitShares) {
-                        Object.keys(balances).forEach(oid => {
-                            const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId!), oid, d);
-                            if (pct > 0) balances[oid] += Math.round(amount * pct) / 100;
-                        });
-                    }
-                    return;
-                }
-                const property = state.properties.find(p => p.id === tx.propertyId);
-                if (property?.ownerId && balances[property.ownerId] !== undefined) {
-                    balances[property.ownerId] += amount;
-                }
-            });
-    }
-
-    if (ownerSvcPayCategory) {
-        state.transactions
-            .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === ownerSvcPayCategory.id && txDateOk(tx.date))
-            .forEach(tx => {
-                if (tx.contactId && balances[tx.contactId] !== undefined) {
-                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (!isNaN(amount)) balances[tx.contactId] += amount;
-                }
-            });
-    }
-
-    state.transactions
-        .filter(tx => tx.type === TransactionType.EXPENSE && txDateOk(tx.date))
-        .forEach(tx => {
-            if (tx.categoryId === ownerPayoutCategory?.id && tx.contactId && balances[tx.contactId] !== undefined) {
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                if (!isNaN(amount) && amount > 0) balances[tx.contactId] -= amount;
-            } else if (tx.propertyId) {
-                const category = state.categories.find(c => c.id === tx.categoryId);
-                const catName = category?.name || '';
-                if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
-                if (tx.categoryId === ownerPayoutCategory?.id) return;
-
-                const property = state.properties.find(p => p.id === tx.propertyId);
-                if (property?.ownerId && balances[property.ownerId] !== undefined) {
-                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (!isNaN(amount) && amount > 0) balances[property.ownerId] -= amount;
-                }
-            }
-        });
-
-    return balances[ownerId] ?? 0;
-}
-
-function rentalIncomeForOwnerInMonth(
-    ownerId: string,
-    monthKey: string,
-    rentalIncomeCategoryId: string | undefined,
-    state: AppState
-): number {
-    const shareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
-    const clearCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
-    let sum = 0;
-    for (const tx of state.transactions) {
-        if (tx.type !== TransactionType.INCOME || !tx.date?.startsWith(monthKey)) continue;
-        if (!tx.propertyId) continue;
-        if (clearCat && tx.categoryId === clearCat.id) continue;
-
-        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-        if (isNaN(amount) || amount <= 0) continue;
-
-        if (shareCat && tx.categoryId === shareCat.id && tx.contactId === ownerId) {
-            sum += amount;
-            continue;
-        }
-
-        if (!rentalIncomeCategoryId || tx.categoryId !== rentalIncomeCategoryId) continue;
-        const d = (tx.date || '').slice(0, 10);
-        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
-            const hasExplicitShares = shareCat && state.transactions.some(
-                st => st.categoryId === shareCat.id &&
-                    ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
-            );
-            if (!hasExplicitShares) {
-                const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId), ownerId, d);
-                if (pct > 0) sum += Math.round(amount * pct) / 100;
-            }
-            continue;
-        }
-        const prop = state.properties.find(p => p.id === tx.propertyId);
-        if (prop?.ownerId !== ownerId) continue;
-        sum += amount;
-    }
-    return sum;
-}
+const MonthlyServiceChargesBodySkeleton: React.FC = () => (
+    <div
+        className="flex-1 min-h-[280px] mx-3 mb-2 rounded-xl border border-slate-200 bg-white overflow-hidden flex gap-2 p-2 animate-pulse"
+        aria-busy
+        aria-label="Loading service charges"
+    >
+        <div className="w-[280px] shrink-0 space-y-2 hidden md:block">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <div key={i} className="h-8 rounded bg-slate-100" style={{ animationDelay: `${i * 40}ms` }} />
+            ))}
+        </div>
+        <div className="flex-1 space-y-2 min-w-0">
+            <div className="h-8 bg-slate-100 rounded" />
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+                <div key={i} className="h-9 rounded bg-slate-50" style={{ animationDelay: `${i * 25}ms` }} />
+            ))}
+        </div>
+    </div>
+);
 
 const MonthlyServiceChargesPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -238,6 +116,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
     /** Default: month ascending (oldest at top, newest at bottom). */
     const [ledgerSort, setLedgerSort] = useState<{ key: 'month' | 'unit'; dir: 'asc' | 'desc' }>({ key: 'month', dir: 'asc' });
+    const [bodyReady, setBodyReady] = useState(false);
 
     const getPropertyStatus = useCallback((propertyId: string): 'Rented' | 'Vacant' => {
         return state.rentalAgreements.some(
@@ -317,26 +196,6 @@ const MonthlyServiceChargesPage: React.FC = () => {
         return state.properties.filter(p => (p.monthlyServiceCharge || 0) > 0);
     }, [state.properties]);
 
-    /**
-     * Properties shown on this page: configured monthly charge OR any Service Charge Income on the ledger
-     * (e.g. manual deduction without a predefined amount in Settings → Asset / Property).
-     */
-    const propertiesWithCharges = useMemo(() => {
-        const svc = state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
-        const ids = new Set<string>();
-        for (const p of state.properties) {
-            if ((p.monthlyServiceCharge || 0) > 0) ids.add(p.id);
-        }
-        if (svc) {
-            for (const tx of state.transactions) {
-                if (tx.type === TransactionType.INCOME && tx.categoryId === svc.id && tx.propertyId) {
-                    ids.add(tx.propertyId);
-                }
-            }
-        }
-        return state.properties.filter(p => ids.has(p.id));
-    }, [state.properties, state.categories, state.transactions]);
-
     const svcIncomeCategory = useMemo(() => {
         return state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
     }, [state.categories]);
@@ -344,6 +203,31 @@ const MonthlyServiceChargesPage: React.FC = () => {
     const rentalIncomeCategory = useMemo(() => {
         return state.categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
     }, [state.categories]);
+
+    const propertiesById = useMemo(
+        () => new Map(state.properties.map(p => [p.id, p])),
+        [state.properties]
+    );
+
+    const scIndexes = useMemo(
+        () => buildServiceChargeIndexes(state.transactions, svcIncomeCategory?.id ?? null, propertiesById),
+        [state.transactions, svcIncomeCategory?.id, propertiesById]
+    );
+
+    /**
+     * Properties shown on this page: configured monthly charge OR any Service Charge Income on the ledger
+     * (e.g. manual deduction without a predefined amount in Settings → Asset / Property).
+     */
+    const propertiesWithCharges = useMemo(() => {
+        const ids = new Set<string>();
+        for (const p of state.properties) {
+            if ((p.monthlyServiceCharge || 0) > 0) ids.add(p.id);
+        }
+        for (const pid of scIndexes.propertyHasScIncome) {
+            ids.add(pid);
+        }
+        return state.properties.filter(p => ids.has(p.id));
+    }, [state.properties, scIndexes]);
 
     /** Ids of this credit tx + paired rental-income deduction (single deduction record). */
     const getPairIdsForServiceChargeCreditTx = useCallback((creditTx: Transaction): string[] => {
@@ -373,15 +257,11 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
     const monthOptions = useMemo(() => {
         if (!svcIncomeCategory) return [{ value: 'all', label: 'All' }];
-        const months = new Set<string>();
-        state.transactions
-            .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === svcIncomeCategory.id && tx.date)
-            .forEach(tx => months.add(tx.date.slice(0, 7)));
-        const current = currentMonthYyyyMm();
-        months.add(current);
+        const months = new Set<string>(scIndexes.monthsWithScIncome);
+        months.add(currentMonthYyyyMm());
         const sortedMonthKeys = Array.from(months).sort((a, b) => b.localeCompare(a));
         return [{ value: 'all', label: 'All' }, ...sortedMonthKeys.map(m => ({ value: m, label: `${m}` }))];
-    }, [state.transactions, svcIncomeCategory]);
+    }, [svcIncomeCategory, scIndexes]);
 
     const rawPropertyRows = useMemo((): PropertyRow[] => {
         return propertiesWithCharges.map(property => {
@@ -389,21 +269,14 @@ const MonthlyServiceChargesPage: React.FC = () => {
             const owner = state.contacts.find(c => c.id === property.ownerId);
             const status = getPropertyStatus(property.id);
 
-            const deductedEver = svcIncomeCategory
-                ? state.transactions.some(tx =>
-                    tx.propertyId === property.id && tx.categoryId === svcIncomeCategory.id
-                )
-                : false;
-
-            const deductedThisMonth = svcIncomeCategory && selectedMonth !== 'all'
-                ? state.transactions.some(tx =>
-                    tx.propertyId === property.id &&
-                    tx.categoryId === svcIncomeCategory.id &&
-                    tx.date.startsWith(selectedMonth)
-                )
-                : (svcIncomeCategory && selectedMonth === 'all'
-                    ? deductedEver
-                    : false);
+            const deductedEver = svcIncomeCategory ? scIndexes.propertyHasScIncome.has(property.id) : false;
+            const monthSet = scIndexes.propertyMonthsWithSc.get(property.id);
+            const deductedThisMonth =
+                svcIncomeCategory && selectedMonth !== 'all'
+                    ? !!monthSet?.has(selectedMonth)
+                    : svcIncomeCategory && selectedMonth === 'all'
+                      ? deductedEver
+                      : false;
 
             return {
                 propertyId: property.id,
@@ -419,7 +292,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 ownerBalance: property.ownerId ? (ownerBalances[property.ownerId] || 0) : 0,
             };
         });
-    }, [propertiesWithCharges, state.buildings, state.contacts, state.transactions, svcIncomeCategory, selectedMonth, getPropertyStatus, ownerBalances]);
+    }, [propertiesWithCharges, state.buildings, state.contacts, scIndexes, svcIncomeCategory, selectedMonth, getPropertyStatus, ownerBalances]);
 
     const tenantsWithSvc = useMemo(() => {
         const ids = new Set<string>();
@@ -480,6 +353,8 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
     const treeData = useMemo((): ARTreeNode[] => {
         const rows = filteredPropertyRows;
+        const monthScope = selectedMonth === 'all' ? 'all' : selectedMonth;
+
         const calcStats = (list: PropertyRow[]) => {
             let outstanding = 0;
             let overdue = 0;
@@ -492,24 +367,8 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     if (!r.deductedThisMonth) overdue += r.monthlyCharge;
                 }
             }
-            if (svcIncomeCategory && selectedMonth !== 'all') {
-                for (const r of list) {
-                    const amt = state.transactions
-                        .filter(tx =>
-                            tx.propertyId === r.propertyId &&
-                            tx.categoryId === svcIncomeCategory.id &&
-                            tx.date?.startsWith(selectedMonth)
-                        )
-                        .reduce((s, tx) => s + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0);
-                    secondary += amt;
-                }
-            } else if (svcIncomeCategory && selectedMonth === 'all') {
-                for (const r of list) {
-                    const amt = state.transactions
-                        .filter(tx => tx.propertyId === r.propertyId && tx.categoryId === svcIncomeCategory.id)
-                        .reduce((s, tx) => s + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0);
-                    secondary += amt;
-                }
+            if (svcIncomeCategory) {
+                secondary = sumScSecondaryForPropertyRows(scIndexes, list, monthScope);
             }
             return {
                 outstanding,
@@ -536,15 +395,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     outstanding: r.monthlyCharge,
                     overdue: selectedMonth === 'all' ? (r.deductedEver ? 0 : r.monthlyCharge) : (r.deductedThisMonth ? 0 : r.monthlyCharge),
                     invoiceCount: 1,
-                    secondary: svcIncomeCategory
-                        ? state.transactions
-                            .filter(tx =>
-                                tx.propertyId === r.propertyId &&
-                                tx.categoryId === svcIncomeCategory.id &&
-                                (selectedMonth === 'all' || (tx.date && tx.date.startsWith(selectedMonth)))
-                            )
-                            .reduce((s, tx) => s + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0)
-                        : 0,
+                    secondary: svcIncomeCategory ? getScSecondaryAmount(scIndexes, r.propertyId, monthScope) : 0,
                 }));
                 return {
                     id: buildingId === '__unassigned' ? '__building_unassigned' : buildingId,
@@ -566,15 +417,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 type: 'property' as const,
                 outstanding: r.monthlyCharge,
                 overdue: selectedMonth === 'all' ? (r.deductedEver ? 0 : r.monthlyCharge) : (r.deductedThisMonth ? 0 : r.monthlyCharge),
-                secondary: svcIncomeCategory
-                    ? state.transactions
-                        .filter(tx =>
-                            tx.propertyId === r.propertyId &&
-                            tx.categoryId === svcIncomeCategory.id &&
-                            (selectedMonth === 'all' || (tx.date && tx.date.startsWith(selectedMonth)))
-                        )
-                        .reduce((s, tx) => s + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0)
-                    : 0,
+                secondary: svcIncomeCategory ? getScSecondaryAmount(scIndexes, r.propertyId, monthScope) : 0,
                 invoiceCount: 1,
             }));
         }
@@ -596,15 +439,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     outstanding: r.monthlyCharge,
                     overdue: selectedMonth === 'all' ? (r.deductedEver ? 0 : r.monthlyCharge) : (r.deductedThisMonth ? 0 : r.monthlyCharge),
                     invoiceCount: 1,
-                    secondary: svcIncomeCategory
-                        ? state.transactions
-                            .filter(tx =>
-                                tx.propertyId === r.propertyId &&
-                                tx.categoryId === svcIncomeCategory.id &&
-                                (selectedMonth === 'all' || (tx.date && tx.date.startsWith(selectedMonth)))
-                            )
-                            .reduce((s, tx) => s + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0)
-                        : 0,
+                    secondary: svcIncomeCategory ? getScSecondaryAmount(scIndexes, r.propertyId, monthScope) : 0,
                 }));
                 return {
                     id: tenantId === '__no_tenant' ? '__tenant_vacant' : tenantId,
@@ -647,15 +482,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                         outstanding: r.monthlyCharge,
                         overdue: selectedMonth === 'all' ? (r.deductedEver ? 0 : r.monthlyCharge) : (r.deductedThisMonth ? 0 : r.monthlyCharge),
                         invoiceCount: 1,
-                        secondary: svcIncomeCategory
-                            ? state.transactions
-                                .filter(tx =>
-                                    tx.propertyId === r.propertyId &&
-                                    tx.categoryId === svcIncomeCategory.id &&
-                                    (selectedMonth === 'all' || (tx.date && tx.date.startsWith(selectedMonth)))
-                                )
-                                .reduce((s, tx) => s + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0)
-                            : 0,
+                        secondary: svcIncomeCategory ? getScSecondaryAmount(scIndexes, r.propertyId, monthScope) : 0,
                     }));
                     return {
                         id: bId === '__unassigned' ? `bld-unassigned-${ownerId}` : `${bId}-owner-${ownerId}`,
@@ -683,7 +510,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
         }
 
         return [];
-    }, [filteredPropertyRows, viewBy, state.buildings, state.contacts, state.transactions, svcIncomeCategory, selectedMonth, getActiveTenantId]);
+    }, [filteredPropertyRows, viewBy, state.buildings, state.contacts, scIndexes, svcIncomeCategory, selectedMonth, getActiveTenantId]);
 
     useEffect(() => {
         skipAutoSelectLedgerScopeRef.current = false;
@@ -732,20 +559,17 @@ const MonthlyServiceChargesPage: React.FC = () => {
         const rid = rentalIncomeCategory.id;
         const propIds = new Set(selectedPropertyRowsForLedger.map(r => r.propertyId));
 
-        const ownerMonthSvcTotal = (ownerId: string, monthKey: string): number => {
-            let sum = 0;
-            for (const t of state.transactions) {
-                if (t.type !== TransactionType.INCOME || t.categoryId !== svcIncomeCategory.id) continue;
-                if (!t.date?.startsWith(monthKey) || !t.propertyId) continue;
-                const prop = state.properties.find(p => p.id === t.propertyId);
-                if (prop?.ownerId !== ownerId) continue;
-                const a = typeof t.amount === 'string' ? parseFloat(t.amount) : Number(t.amount);
-                if (!isNaN(a) && a > 0) sum += a;
-            }
-            return sum;
-        };
+        const selectedByProp = new Map<string, PropertyRow>();
+        for (const r of selectedPropertyRowsForLedger) {
+            selectedByProp.set(r.propertyId, r);
+        }
+        const fallbackByProp = new Map<string, PropertyRow>();
+        for (const r of rawPropertyRows) {
+            if (!fallbackByProp.has(r.propertyId)) fallbackByProp.set(r.propertyId, r);
+        }
 
-        const rows: LedgerRow[] = [];
+        type Cand = { tx: Transaction; mk: string; propRow: PropertyRow };
+        const candidates: Cand[] = [];
         for (const tx of state.transactions) {
             if (tx.type !== TransactionType.INCOME || tx.categoryId !== svcIncomeCategory.id) continue;
             if (!tx.propertyId || !propIds.has(tx.propertyId)) continue;
@@ -755,14 +579,31 @@ const MonthlyServiceChargesPage: React.FC = () => {
             const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
             if (isNaN(amt) || amt <= 0) continue;
 
-            const propRow = selectedPropertyRowsForLedger.find(r => r.propertyId === tx.propertyId)
-                || rawPropertyRows.find(r => r.propertyId === tx.propertyId);
+            const propRow = selectedByProp.get(tx.propertyId) ?? fallbackByProp.get(tx.propertyId);
             if (!propRow) continue;
+            candidates.push({ tx, mk, propRow });
+        }
 
-            const asOf = endOfMonthIso(mk);
-            const runningBalance = computeOwnerBalanceAsOf(propRow.ownerId, asOf, state);
-            const totalOwnerIncome = rentalIncomeForOwnerInMonth(propRow.ownerId, mk, rid, state);
-            const svcTotalOwnerMonth = ownerMonthSvcTotal(propRow.ownerId, mk);
+        const uniqueOwnerMonths = new Map<string, { ownerId: string; monthKey: string }>();
+        for (const { propRow, mk } of candidates) {
+            if (!propRow.ownerId) continue;
+            const ukey = `${propRow.ownerId}|${mk}`;
+            if (!uniqueOwnerMonths.has(ukey)) uniqueOwnerMonths.set(ukey, { ownerId: propRow.ownerId, monthKey: mk });
+        }
+
+        const { runningBalanceByOwnerMonth, rentalIncomeByOwnerMonth } = buildLedgerMetricMaps(
+            state,
+            uniqueOwnerMonths,
+            rid
+        );
+
+        const rows: LedgerRow[] = [];
+        for (const { tx, mk, propRow } of candidates) {
+            const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+            const omKey = `${propRow.ownerId}|${mk}`;
+            const runningBalance = runningBalanceByOwnerMonth.get(omKey) ?? 0;
+            const totalOwnerIncome = rentalIncomeByOwnerMonth.get(omKey) ?? 0;
+            const svcTotalOwnerMonth = scIndexes.ownerMonthScTotal.get(omKey) ?? 0;
             const shortfall = Math.max(0, svcTotalOwnerMonth - totalOwnerIncome);
 
             rows.push({
@@ -793,22 +634,67 @@ const MonthlyServiceChargesPage: React.FC = () => {
             return ledgerSort.dir === 'asc' ? cmp : -cmp;
         });
         return rows;
-    }, [svcIncomeCategory, rentalIncomeCategory, state, selectedPropertyRowsForLedger, selectedMonth, rawPropertyRows, ledgerSort]);
+    }, [
+        svcIncomeCategory,
+        rentalIncomeCategory,
+        state.transactions,
+        state.categories,
+        state.properties,
+        state.contacts,
+        state.rentalAgreements,
+        state.propertyOwnership,
+        state.propertyOwnershipHistory,
+        scIndexes,
+        selectedPropertyRowsForLedger,
+        selectedMonth,
+        rawPropertyRows,
+        ledgerSort,
+    ]);
 
     const gridData = filteredPropertyRows;
 
+    const transactionsById = useMemo(
+        () => new Map(state.transactions.map(t => [t.id, t])),
+        [state.transactions]
+    );
+
+    const deferredLedgerRows = useDeferredValue(ledgerRows);
+
+    const ledgerTableFooterTotal = useMemo(
+        () => deferredLedgerRows.reduce((s, r) => s + r.totalDeducted, 0),
+        [deferredLedgerRows]
+    );
+
+    useEffect(() => {
+        const idleId = scheduleIdleWork(() => {
+            startTransition(() => setBodyReady(true));
+        }, { timeout: 400 });
+        return () => cancelScheduledIdle(idleId);
+    }, []);
+
+    const onLedgerReceive = useCallback((row: LedgerRow) => {
+        setReceiveOwner({
+            ownerId: row.ownerId,
+            ownerName: row.ownerName,
+            amount: Math.abs(row.runningBalance),
+        });
+    }, []);
+
+    const onLedgerEdit = useCallback(
+        (row: LedgerRow) => {
+            const tx = transactionsById.get(row.id);
+            if (tx) setEditingTransaction(tx);
+        },
+        [transactionsById]
+    );
+
     const summaryStats = useMemo(() => {
-        /** Portfolio-wide / filter-bar scope (ledger tree selection does not shrink KPI cards). */
-        const sumDeductedAllProperties = () => {
-            if (!svcIncomeCategory) return 0;
-            return state.transactions
-                .filter(tx => {
-                    if (tx.type !== TransactionType.INCOME || tx.categoryId !== svcIncomeCategory.id) return false;
-                    if (selectedMonth !== 'all' && !tx.date?.startsWith(selectedMonth)) return false;
-                    return true;
-                })
-                .reduce((sum, tx) => sum + (typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount) || 0), 0);
-        };
+        const deductedAmount =
+            !svcIncomeCategory
+                ? 0
+                : selectedMonth === 'all'
+                  ? scIndexes.portfolioScAllTime
+                  : (scIndexes.portfolioScByMonth.get(selectedMonth) || 0);
 
         const total = propertiesWithCharges.length;
         const rented = propertiesWithCharges.filter(p => getPropertyStatus(p.id) === 'Rented').length;
@@ -819,7 +705,6 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
         const ownersNegative = Object.entries(ownerBalances).filter(([, bal]) => bal < -0.01);
         const totalNegative = ownersNegative.reduce((sum, [, bal]) => sum + bal, 0);
-        const deductedAmount = sumDeductedAllProperties();
 
         return { total, rented, vacant, totalCharges, deductedCount, pendingCount, ownersNegativeCount: ownersNegative.length, totalNegative, deductedAmount };
     }, [
@@ -828,7 +713,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
         getPropertyStatus,
         ownerBalances,
         svcIncomeCategory,
-        state.transactions,
+        scIndexes,
         selectedMonth,
     ]);
 
@@ -1284,6 +1169,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 </div>
             </div>
 
+            {bodyReady ? (
             <div ref={containerRef} className="flex flex-1 min-h-0 overflow-hidden px-3 pb-2">
                     <div
                         className="flex-shrink-0 border-r border-slate-200 overflow-hidden hidden md:flex flex-col rounded-l-lg bg-white border border-slate-200 border-r-0"
@@ -1364,14 +1250,14 @@ const MonthlyServiceChargesPage: React.FC = () => {
                             </select>
                         </div>
 
-                        <div className="flex-1 min-h-0 overflow-auto">
-                            <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead className="bg-slate-50 sticky top-0 z-10">
-                                    <tr>
-                                        <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">
+                        <div className="flex-1 min-h-0 flex flex-col min-w-0 overflow-hidden">
+                            {deferredLedgerRows.length >= VIRTUALIZE_THRESHOLD ? (
+                                <>
+                                    <div className="flex-shrink-0 flex items-stretch border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 z-10">
+                                        <div className="w-[88px] shrink-0 px-3 py-2.5">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center gap-0.5 hover:text-slate-900"
+                                                className="inline-flex items-center gap-0.5 hover:text-slate-900 whitespace-nowrap"
                                                 onClick={() => setLedgerSort(p => ({
                                                     key: 'month',
                                                     dir: p.key === 'month' && p.dir === 'desc' ? 'asc' : 'desc',
@@ -1380,11 +1266,11 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                                 Month
                                                 <span className="text-[9px] text-slate-400">{ledgerSort.key === 'month' ? (ledgerSort.dir === 'desc' ? '▼' : '▲') : '↕'}</span>
                                             </button>
-                                        </th>
-                                        <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">
+                                        </div>
+                                        <div className="w-[100px] shrink-0 px-3 py-2.5">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center gap-0.5 hover:text-slate-900"
+                                                className="inline-flex items-center gap-0.5 hover:text-slate-900 whitespace-nowrap"
                                                 onClick={() => setLedgerSort(p => (
                                                     p.key === 'unit'
                                                         ? { key: 'unit', dir: p.dir === 'asc' ? 'desc' : 'asc' }
@@ -1394,99 +1280,159 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                                 Unit
                                                 <span className="text-[9px] text-slate-400">{ledgerSort.key === 'unit' ? (ledgerSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                                             </button>
-                                        </th>
-                                        <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">Owner</th>
-                                        <th className="px-3 py-2.5 text-center font-semibold text-slate-600 whitespace-nowrap">Status</th>
-                                        <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Total deducted</th>
-                                        <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Running balance</th>
-                                        <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Owner income (mo.)</th>
-                                        <th className="px-3 py-2.5 text-center font-semibold text-slate-600 whitespace-nowrap">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200">
-                                    {ledgerRows.length > 0 ? ledgerRows.map(row => (
-                                        <tr key={row.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 font-medium">{row.monthKey}</td>
-                                            <td className="px-3 py-2.5 text-slate-800">{row.unit}</td>
-                                            <td className="px-3 py-2.5 text-slate-700">{row.ownerName}</td>
-                                            <td className="px-3 py-2.5 text-center">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                                    row.status === 'Rented' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                                                }`}>
-                                                    {row.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-3 py-2.5 text-right font-mono text-slate-800">{CURRENCY} {formatCurrency(row.totalDeducted)}</td>
-                                            <td className={`px-3 py-2.5 text-right font-mono font-semibold ${row.runningBalance < -0.01 ? 'text-red-600' : 'text-slate-700'}`}>
-                                                {CURRENCY} {formatCurrency(row.runningBalance)}
-                                            </td>
-                                            <td className="px-3 py-2.5 text-right font-mono text-slate-700">{CURRENCY} {formatCurrency(row.totalOwnerIncome)}</td>
-                                            <td className="px-3 py-2.5 text-center">
-                                                <div className="flex flex-wrap items-center justify-center gap-1.5">
-                                                    {row.runningBalance < -0.01 && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setReceiveOwner({
-                                                                ownerId: row.ownerId,
-                                                                ownerName: row.ownerName,
-                                                                amount: Math.abs(row.runningBalance),
-                                                            })}
-                                                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1.5 py-0.5 rounded hover:bg-indigo-50"
-                                                        >
-                                                            Receive
-                                                        </button>
-                                                    )}
-                                                    {(row.runningBalance < -0.01 || row.shortfall > 0.01) && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => void handleWhatsAppServiceChargeOwner(row)}
-                                                            className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 px-1.5 py-0.5 rounded bg-green-50 hover:bg-green-100 transition-colors"
-                                                            title="Message owner about pending service charge / balance"
-                                                        >
-                                                            <span className="w-3.5 h-3.5 flex-shrink-0">{ICONS.whatsapp}</span>
-                                                            WhatsApp
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const tx = state.transactions.find(t => t.id === row.id);
-                                                            if (tx) setEditingTransaction(tx);
-                                                        }}
-                                                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1.5 py-0.5 rounded hover:bg-indigo-50"
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDeleteLedgerRow(row)}
-                                                        className="text-xs font-semibold text-red-600 hover:text-red-800 px-1.5 py-0.5 rounded hover:bg-red-50"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )) : (
-                                        <tr>
-                                            <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
-                                                {filteredPropertyRows.length === 0
+                                        </div>
+                                        <div className="min-w-[100px] flex-1 px-3 py-2.5">Owner</div>
+                                        <div className="w-[88px] shrink-0 px-3 py-2.5 text-center">Status</div>
+                                        <div className="w-[112px] shrink-0 px-3 py-2.5 text-right">Total deducted</div>
+                                        <div className="w-[120px] shrink-0 px-3 py-2.5 text-right">Running balance</div>
+                                        <div className="w-[120px] shrink-0 px-3 py-2.5 text-right">Owner income (mo.)</div>
+                                        <div className="w-[200px] shrink-0 px-3 py-2.5 text-center">Actions</div>
+                                    </div>
+                                    <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                                        <VirtualizedMscLedgerTable
+                                            rows={deferredLedgerRows}
+                                            transactionsById={transactionsById}
+                                            onReceive={onLedgerReceive}
+                                            onWhatsApp={handleWhatsAppServiceChargeOwner}
+                                            onEdit={onLedgerEdit}
+                                            onDelete={(row) => void handleDeleteLedgerRow(row)}
+                                            emptyMessage={
+                                                filteredPropertyRows.length === 0
                                                     ? 'No properties with service charges match the filters.'
-                                                    : 'No deduction records for this selection. Run monthly deduction or use Manual Deduction.'}
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                                    : 'No deduction records for this selection. Run monthly deduction or use Manual Deduction.'
+                                            }
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex-1 min-h-0 overflow-auto">
+                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                        <thead className="bg-slate-50 sticky top-0 z-10">
+                                            <tr>
+                                                <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex items-center gap-0.5 hover:text-slate-900"
+                                                        onClick={() => setLedgerSort(p => ({
+                                                            key: 'month',
+                                                            dir: p.key === 'month' && p.dir === 'desc' ? 'asc' : 'desc',
+                                                        }))}
+                                                    >
+                                                        Month
+                                                        <span className="text-[9px] text-slate-400">{ledgerSort.key === 'month' ? (ledgerSort.dir === 'desc' ? '▼' : '▲') : '↕'}</span>
+                                                    </button>
+                                                </th>
+                                                <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex items-center gap-0.5 hover:text-slate-900"
+                                                        onClick={() => setLedgerSort(p => (
+                                                            p.key === 'unit'
+                                                                ? { key: 'unit', dir: p.dir === 'asc' ? 'desc' : 'asc' }
+                                                                : { key: 'unit', dir: 'asc' }
+                                                        ))}
+                                                    >
+                                                        Unit
+                                                        <span className="text-[9px] text-slate-400">{ledgerSort.key === 'unit' ? (ledgerSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                                                    </button>
+                                                </th>
+                                                <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">Owner</th>
+                                                <th className="px-3 py-2.5 text-center font-semibold text-slate-600 whitespace-nowrap">Status</th>
+                                                <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Total deducted</th>
+                                                <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Running balance</th>
+                                                <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Owner income (mo.)</th>
+                                                <th className="px-3 py-2.5 text-center font-semibold text-slate-600 whitespace-nowrap">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-200">
+                                            {deferredLedgerRows.length > 0 ? deferredLedgerRows.map(row => (
+                                                <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 font-medium">{row.monthKey}</td>
+                                                    <td className="px-3 py-2.5 text-slate-800">{row.unit}</td>
+                                                    <td className="px-3 py-2.5 text-slate-700">{row.ownerName}</td>
+                                                    <td className="px-3 py-2.5 text-center">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                            row.status === 'Rented' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                                        }`}>
+                                                            {row.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-3 py-2.5 text-right font-mono text-slate-800">{CURRENCY} {formatCurrency(row.totalDeducted)}</td>
+                                                    <td className={`px-3 py-2.5 text-right font-mono font-semibold ${row.runningBalance < -0.01 ? 'text-red-600' : 'text-slate-700'}`}>
+                                                        {CURRENCY} {formatCurrency(row.runningBalance)}
+                                                    </td>
+                                                    <td className="px-3 py-2.5 text-right font-mono text-slate-700">{CURRENCY} {formatCurrency(row.totalOwnerIncome)}</td>
+                                                    <td className="px-3 py-2.5 text-center">
+                                                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                                                            {row.runningBalance < -0.01 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setReceiveOwner({
+                                                                        ownerId: row.ownerId,
+                                                                        ownerName: row.ownerName,
+                                                                        amount: Math.abs(row.runningBalance),
+                                                                    })}
+                                                                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1.5 py-0.5 rounded hover:bg-indigo-50"
+                                                                >
+                                                                    Receive
+                                                                </button>
+                                                            )}
+                                                            {(row.runningBalance < -0.01 || row.shortfall > 0.01) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void handleWhatsAppServiceChargeOwner(row)}
+                                                                    className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 px-1.5 py-0.5 rounded bg-green-50 hover:bg-green-100 transition-colors"
+                                                                    title="Message owner about pending service charge / balance"
+                                                                >
+                                                                    <span className="w-3.5 h-3.5 flex-shrink-0">{ICONS.whatsapp}</span>
+                                                                    WhatsApp
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const tx = transactionsById.get(row.id);
+                                                                    if (tx) setEditingTransaction(tx);
+                                                                }}
+                                                                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1.5 py-0.5 rounded hover:bg-indigo-50"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void handleDeleteLedgerRow(row)}
+                                                                className="text-xs font-semibold text-red-600 hover:text-red-800 px-1.5 py-0.5 rounded hover:bg-red-50"
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )) : (
+                                                <tr>
+                                                    <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                                                        {filteredPropertyRows.length === 0
+                                                            ? 'No properties with service charges match the filters.'
+                                                            : 'No deduction records for this selection. Run monthly deduction or use Manual Deduction.'}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
                         <div className="p-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm flex-shrink-0">
                             <span className="text-slate-500">{selectedPropertyRowsForLedger.length} unit{selectedPropertyRowsForLedger.length !== 1 ? 's' : ''} in scope</span>
                             <span className="font-bold text-slate-700">
-                                Total deducted (table): {CURRENCY} {formatCurrency(ledgerRows.reduce((s, r) => s + r.totalDeducted, 0))}
+                                Total deducted (table): {CURRENCY} {formatCurrency(ledgerTableFooterTotal)}
                             </span>
                         </div>
                     </div>
                 </div>
+            ) : (
+                <MonthlyServiceChargesBodySkeleton />
+            )}
 
             {ownerNegativeBalances.length > 0 && (
                 <div className={`flex-shrink-0 bg-white rounded-lg border border-red-200 shadow-sm overflow-hidden transition-all mx-3 mb-2 ${isNegativePanelOpen ? '' : 'max-h-12'}`}>

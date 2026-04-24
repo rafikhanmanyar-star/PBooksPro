@@ -13,8 +13,19 @@ import {
     Lock,
     Check,
 } from 'lucide-react';
-import { useAppContext } from '../../context/AppContext';
+import { _getAppState } from '../../context/AppContext';
 import { usePrintContext } from '../../context/PrintContext';
+import {
+    useBills,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useInvoices,
+    useProperties,
+    useRentalAgreements,
+    useStateSelector,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
 import {
     Contact,
     TransactionType,
@@ -56,47 +67,61 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
     onPayoutToBroker,
     onPayoutSecurity,
 }) => {
-    const { state, dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
     const { print: triggerPrint } = usePrintContext();
+    const properties = useProperties();
+    const invoices = useInvoices();
+    const transactions = useTransactions();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const rentalAgreements = useRentalAgreements();
+    const bills = useBills();
+    const propertyOwnership = useStateSelector((s) => s.propertyOwnership ?? []);
+
+    const categoryById = useMemo(() => {
+        const m = new Map<string, (typeof categories)[number]>();
+        for (const c of categories) m.set(c.id, c);
+        return m;
+    }, [categories]);
 
     const property = useMemo(
-        () => state.properties.find(p => p.id === propertyId),
-        [propertyId, state.properties]
+        () => properties.find(p => p.id === propertyId),
+        [propertyId, properties]
     );
 
     const activeAgreement = useMemo(
         () =>
-            state.rentalAgreements.find(
+            rentalAgreements.find(
                 ra => ra.propertyId === propertyId && ra.status === RentalAgreementStatus.ACTIVE
             ),
-        [propertyId, state.rentalAgreements]
+        [propertyId, rentalAgreements]
     );
 
     const tenant = useMemo(
-        () => (activeAgreement ? state.contacts.find(c => c.id === activeAgreement.contactId) : null),
-        [activeAgreement, state.contacts]
+        () => (activeAgreement ? contacts.find(c => c.id === activeAgreement.contactId) : null),
+        [activeAgreement, contacts]
     );
 
     const owner = useMemo(() => {
         const ownerId = activeAgreement?.ownerId || property?.ownerId;
-        return ownerId ? state.contacts.find(c => c.id === ownerId) : null;
-    }, [activeAgreement, property, state.contacts]);
+        return ownerId ? contacts.find(c => c.id === ownerId) : null;
+    }, [activeAgreement, property, contacts]);
 
     const broker = useMemo(
-        () => (activeAgreement?.brokerId ? state.contacts.find(c => c.id === activeAgreement.brokerId) : null),
-        [activeAgreement, state.contacts]
+        () => (activeAgreement?.brokerId ? contacts.find(c => c.id === activeAgreement.brokerId) : null),
+        [activeAgreement, contacts]
     );
 
     const brokerPendingFee = useMemo(() => {
         if (!broker || !activeAgreement || !activeAgreement.brokerFee) return 0;
         if (activeAgreement.previousAgreementId) return 0;
 
-        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+        const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
+        const rebateCategory = categories.find(c => c.name === 'Rebate Amount');
         const feeCatId = brokerFeeCategory?.id;
         const rebateCatId = rebateCategory?.id;
 
-        const paidAlready = state.transactions
+        const paidAlready = transactions
             .filter(tx =>
                 tx.type === TransactionType.EXPENSE &&
                 tx.contactId === broker.id &&
@@ -106,40 +131,41 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             .reduce((sum, tx) => sum + tx.amount, 0);
 
         return Math.max(0, (activeAgreement.brokerFee || 0) - paidAlready);
-    }, [broker, activeAgreement, propertyId, state.transactions, state.categories]);
+    }, [broker, activeAgreement, propertyId, transactions, categories]);
 
     const financials = useMemo(() => {
-        const propertyInvoices = state.invoices.filter(inv => inv.propertyId === propertyId);
+        const st = _getAppState();
+        const propertyInvoices = invoices.filter(inv => inv.propertyId === propertyId);
         const propIdStr = String(propertyId);
 
-        const totalCollected = state.transactions
+        const totalCollected = transactions
             .filter(tx => tx.type === TransactionType.INCOME && String(tx.propertyId) === propIdStr)
             .reduce((sum, tx) => {
                 const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 return sum + (isNaN(amt) ? 0 : amt);
             }, 0);
 
-        const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
-        const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
-        const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
+        const secDepCategory = categories.find(c => c.name === 'Security Deposit');
+        const secRefCategory = categories.find(c => c.name === 'Security Deposit Refund');
+        const ownerSecPayoutCategory = categories.find(c => c.name === 'Owner Security Payout');
 
         let securityCollectedForStat = 0;
         let securityPaidForStat = 0;
         if (secDepCategory) {
-            state.transactions
+            transactions
                 .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && String(tx.propertyId) === propIdStr)
                 .forEach(tx => {
                     const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                     if (!isNaN(amt) && amt > 0) securityCollectedForStat += amt;
                 });
-            state.transactions
+            transactions
                 .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
                 .forEach(tx => {
                     const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                     if (isNaN(amt) || amt <= 0) return;
                     if (secRefCategory && tx.categoryId === secRefCategory.id) { securityPaidForStat += amt; return; }
                     if (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) { securityPaidForStat += amt; return; }
-                    const category = state.categories.find(c => c.id === tx.categoryId);
+                    const category = tx.categoryId ? categoryById.get(tx.categoryId) : undefined;
                     if (category?.name?.includes('(Tenant)')) securityPaidForStat += amt;
                 });
         }
@@ -150,21 +176,21 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             .reduce((sum, inv) => sum + Math.max(0, inv.amount - (inv.paidAmount || 0)), 0);
 
         // --- Owner Rental Income (aligned with OwnerPayoutsReport / OwnerPayoutsPage) ---
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
-        const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
-        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+        const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
+        const ownerPayoutCategory = categories.find(c => c.name === 'Owner Payout');
+        const ownerSvcPayCategory = categories.find(c => c.name === 'Owner Service Charge Payment');
+        const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
         const ownerId = activeAgreement?.ownerId || property?.ownerId || '';
 
         const brokerFeeTxIds = new Set<string>();
         if (brokerFeeCategory) {
-            state.transactions.forEach(tx => {
+            transactions.forEach(tx => {
                 if (tx.type === TransactionType.EXPENSE && tx.categoryId === brokerFeeCategory.id) brokerFeeTxIds.add(tx.id);
             });
         }
-        const ownerBillIds = new Set(state.bills.filter(b => b.propertyId && !b.projectId).map(b => b.id));
+        const ownerBillIds = new Set(bills.filter(b => b.propertyId && !b.projectId).map(b => b.id));
         const billPaymentTxIds = new Set<string>();
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             if (tx.type === TransactionType.EXPENSE && tx.billId && ownerBillIds.has(tx.billId)) billPaymentTxIds.add(tx.id);
         });
 
@@ -172,7 +198,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
         let rentalPaid = 0;
 
         if (rentalIncomeCategory) {
-            state.transactions
+            transactions
                 .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && String(tx.propertyId) === propIdStr)
                 .forEach(tx => {
                     const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
@@ -183,7 +209,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                 });
         }
         if (ownerSvcPayCategory) {
-            state.transactions
+            transactions
                 .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === ownerSvcPayCategory.id && tx.contactId === ownerId)
                 .forEach(tx => {
                     const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
@@ -192,7 +218,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                     }
                 });
         }
-        state.transactions
+        transactions
             .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr && !brokerFeeTxIds.has(tx.id) && !billPaymentTxIds.has(tx.id))
             .forEach(tx => {
                 const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
@@ -201,15 +227,15 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                     if (tx.contactId === ownerId) rentalPaid += amt;
                     return;
                 }
-                const category = state.categories.find(c => c.id === tx.categoryId);
+                const category = tx.categoryId ? categoryById.get(tx.categoryId) : undefined;
                 const catName = category?.name || '';
                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
                 if (secDepCategory && tx.categoryId === secDepCategory.id) return;
-                const txOwnerId = resolveOwnerForTransaction(state, tx) ?? property?.ownerId;
+                const txOwnerId = resolveOwnerForTransaction(st, tx) ?? property?.ownerId;
                 if (txOwnerId === ownerId) rentalPaid += amt;
             });
 
-        state.rentalAgreements
+        rentalAgreements
             .filter(ra => {
                 if (ra.previousAgreementId) return false;
                 const raPropId = ra.propertyId ?? (ra as any).property_id;
@@ -218,18 +244,18 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             })
             .forEach(ra => {
                 const raDateStr = (ra.startDate || '').slice(0, 10);
-                const raOwnerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, propertyId, raDateStr) : property?.ownerId);
+                const raOwnerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(st, propertyId, raDateStr) : property?.ownerId);
                 if (raOwnerId === ownerId) {
                     const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
                     if (!isNaN(fee)) rentalPaid += fee;
                 }
             });
 
-        state.bills
+        bills
             .filter(b => String(b.propertyId) === propIdStr && !b.projectId)
             .forEach(b => {
                 const billDate = (b.issueDate || '').slice(0, 10);
-                const billOwnerId = billDate ? resolveOwnerForPropertyOnDate(state, propIdStr, billDate) : property?.ownerId;
+                const billOwnerId = billDate ? resolveOwnerForPropertyOnDate(st, propIdStr, billDate) : property?.ownerId;
                 if (billOwnerId !== ownerId) return;
                 const amt = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount ?? 0));
                 if (!isNaN(amt) && amt > 0) rentalPaid += amt;
@@ -251,14 +277,14 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                 .reduce((sum, inv) => sum + Math.max(0, inv.amount - (inv.paidAmount || 0)), 0)
             : 0;
 
-        const svcIncomeCategory = state.categories.find(
+        const svcIncomeCategory = categories.find(
             c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income'
         );
         const today = new Date();
         const monthPrefix = currentMonthYyyyMm(today);
         const serviceChargeDeductedThisMonth =
             !!svcIncomeCategory &&
-            state.transactions.some(
+            transactions.some(
                 tx =>
                     tx.propertyId === propertyId &&
                     tx.categoryId === svcIncomeCategory.id &&
@@ -281,7 +307,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
         const sumIncomeInQuarter = (year: number, quarterIndex: number) => {
             const start = new Date(year, quarterIndex * 3, 1);
             const end = new Date(year, quarterIndex * 3 + 3, 0, 23, 59, 59, 999);
-            return state.transactions
+            return transactions
                 .filter(tx => {
                     if (tx.type !== TransactionType.INCOME || String(tx.propertyId) !== propIdStr) return false;
                     const d = new Date((tx.date || '').slice(0, 10));
@@ -324,18 +350,30 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             monthlyServiceCharge,
             quarterTrendLabel,
         };
-    }, [propertyId, state.invoices, state.transactions, state.categories, state.rentalAgreements, state.bills, property, activeAgreement, tenant]);
+    }, [
+        propertyId,
+        invoices,
+        transactions,
+        categories,
+        categoryById,
+        rentalAgreements,
+        bills,
+        property,
+        activeAgreement,
+        tenant,
+        propertyOwnership,
+    ]);
 
     const recentTransactions = useMemo(() => {
-        const txs = state.transactions
+        const txs = transactions
             .filter(tx => tx.propertyId === propertyId)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             .slice(0, 10);
 
         return txs.map(tx => {
-            const contact = state.contacts.find(c => c.id === tx.contactId);
-            const category = state.categories.find(c => c.id === tx.categoryId);
-            const invoice = tx.invoiceId ? state.invoices.find(i => i.id === tx.invoiceId) : null;
+            const contact = contacts.find(c => c.id === tx.contactId);
+            const category = tx.categoryId ? categoryById.get(tx.categoryId) : undefined;
+            const invoice = tx.invoiceId ? invoices.find(i => i.id === tx.invoiceId) : null;
 
             const label = tx.description || category?.name || 'Transaction';
             let categoryDisplay = category?.name || 'General';
@@ -368,7 +406,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                 statusPill,
             };
         });
-    }, [propertyId, state.transactions, state.contacts, state.categories, state.invoices]);
+    }, [propertyId, transactions, contacts, categoryById, invoices]);
 
     const agreementDuration = useMemo(() => {
         if (!activeAgreement) return '—';
@@ -415,10 +453,10 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
 
     const ownershipSegmentsForProperty = useMemo(
         () =>
-            (state.propertyOwnership || [])
+            propertyOwnership
                 .filter(r => r.propertyId === propertyId && !r.deletedAt)
                 .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || '')),
-        [propertyId, state.propertyOwnership]
+        [propertyId, propertyOwnership]
     );
 
     if (!isOpen || !property) return null;
@@ -513,7 +551,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                             </div>
                             <div className="max-h-32 overflow-y-auto space-y-1 text-xs">
                                 {ownershipSegmentsForProperty.map(seg => {
-                                    const oc = state.contacts.find(c => c.id === seg.ownerId);
+                                    const oc = contacts.find(c => c.id === seg.ownerId);
                                     return (
                                         <div
                                             key={seg.id}

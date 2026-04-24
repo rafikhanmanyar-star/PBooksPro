@@ -303,6 +303,74 @@ export function buildOwnerPropertyBreakdown(state: AppState): OwnerPropertyBreak
 }
 
 /**
+ * Security-deposit slices only (no rent collected/paid math). Used by Owner Security Deposit report
+ * so opening that page does not run {@link computeOwnerRentCollectedPaidBalanceForProperty} for every owner×property.
+ */
+export function buildOwnerSecurityPropertyBreakdownOnly(state: AppState): OwnerPropertyBreakdownMap {
+    const secDepCategory = state.categories.find((c) => c.name === 'Security Deposit');
+    const secRefCategory = state.categories.find((c) => c.name === 'Security Deposit Refund');
+    const ownerSecPayoutCategory = state.categories.find((c) => c.name === 'Owner Security Payout');
+    const result: OwnerPropertyBreakdownMap = {};
+    if (!secDepCategory) return result;
+
+    const categoryById = new Map(state.categories.map((c) => [c.id, c]));
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    state.properties.forEach((prop) => {
+        const allOwnerIds = getPayoutOwnerIdsForProperty(state, prop.id, todayStr);
+        if (allOwnerIds.size === 0 && prop.ownerId) allOwnerIds.add(prop.ownerId);
+        const propIdStr = String(prop.id);
+
+        for (const ownerId of allOwnerIds) {
+            if (!result[ownerId]) result[ownerId] = { rent: [], security: [] };
+
+            let collected = 0;
+            let paid = 0;
+            state.transactions
+                .filter(
+                    (tx) =>
+                        tx.type === TransactionType.INCOME &&
+                        tx.categoryId === secDepCategory.id &&
+                        String(tx.propertyId) === propIdStr
+                )
+                .forEach((tx) => {
+                    const txOwnerId = resolveOwnerForTransaction(state, tx);
+                    if (txOwnerId !== ownerId) return;
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amount) && amount > 0) collected += amount;
+                });
+            state.transactions
+                .filter((tx) => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr)
+                .forEach((tx) => {
+                    const txOwnerId = resolveOwnerForTransaction(state, tx);
+                    if (txOwnerId !== ownerId) return;
+                    const category = categoryById.get(tx.categoryId);
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(amount) || amount <= 0) return;
+                    if (secRefCategory && tx.categoryId === secRefCategory.id) {
+                        paid += amount;
+                        return;
+                    }
+                    if (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) {
+                        paid += amount;
+                        return;
+                    }
+                    if (category?.name?.includes('(Tenant)')) paid += amount;
+                });
+            const balance = collected - paid;
+            if (collected > 0.01 || paid > 0.01) {
+                result[ownerId].security.push({
+                    propertyId: prop.id,
+                    propertyName: prop.name || 'Unit',
+                    balanceDue: Math.max(0, balance),
+                });
+            }
+        }
+    });
+    return result;
+}
+
+/**
  * Rent tree + rent payout modal slices from server `owner_balances` (API mode).
  * Security slices stay empty; use `buildOwnerPropertyBreakdown` when the Security tab or security modal needs full rules.
  */

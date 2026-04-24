@@ -1,7 +1,7 @@
 import type { AppState } from '../../types';
 import type { TreeNode } from '../ui/TreeView';
 import {
-    getLedgerOwnerIdsForProperty,
+    buildLedgerOwnerIdsByPropertyId,
     isFormerOwner,
     getOwnershipSharesForPropertyOnDate,
 } from '../../services/propertyOwnershipService';
@@ -55,6 +55,7 @@ export function findFirstOwnerTreeIdInNodes(nodes: TreeNode[]): string | null {
 
 /** Building → owner → unit tree for rental reports (matches Owner Rental Income). */
 export function buildRentalPortfolioTreeNodes(state: AppState): TreeNode[] {
+    const ledgerOwnerIdsByPropertyId = buildLedgerOwnerIdsByPropertyId(state);
     const buildingNodes: TreeNode[] = state.buildings
         .map((building) => {
             const propsInBuilding = state.properties.filter((p) => p.buildingId === building.id);
@@ -62,7 +63,8 @@ export function buildRentalPortfolioTreeNodes(state: AppState): TreeNode[] {
             const ownerIdSet = new Set<string>();
             const ownerIds: string[] = [];
             for (const p of propsInBuilding) {
-                const all = getLedgerOwnerIdsForProperty(state, p.id);
+                const all = ledgerOwnerIdsByPropertyId.get(String(p.id));
+                if (!all) continue;
                 for (const oid of all) {
                     if (!ownerIdSet.has(oid)) {
                         ownerIdSet.add(oid);
@@ -79,8 +81,8 @@ export function buildRentalPortfolioTreeNodes(state: AppState): TreeNode[] {
                     const former = isFormerOwner(state, ownerId);
                     const unitChildren: TreeNode[] = propsInBuilding
                         .filter((p) => {
-                            const owners = getLedgerOwnerIdsForProperty(state, p.id);
-                            return owners.has(ownerId);
+                            const owners = ledgerOwnerIdsByPropertyId.get(String(p.id));
+                            return owners?.has(ownerId) ?? false;
                         })
                         .map((prop) => {
                             const shares = getOwnershipSharesForPropertyOnDate(state, prop.id, todayStr);

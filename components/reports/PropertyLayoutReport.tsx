@@ -1,12 +1,27 @@
 
 import React, { useMemo, useState, Suspense, lazy, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAppContext } from '../../context/AppContext';
+import { _getAppState } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 import { queryKeys } from '../../hooks/queries/queryKeys';
 import { selectRentalInvoicesForCache } from '../../hooks/queries/rentalInvoicesCache';
+import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
+import {
+    useBills,
+    useBuildings,
+    useCategories,
+    useContacts,
+    useInvoices,
+    useProperties,
+    useProjects,
+    useRentalAgreements,
+    useStateSelector,
+    useTransactions,
+    useUnits,
+} from '../../hooks/useSelectiveState';
 import { cancelScheduledIdle, scheduleIdleWork } from '../../utils/interactionScheduling';
-import { CURRENCY } from '../../constants';
-import { Invoice, InvoiceStatus, TransactionType, InvoiceType, RentalAgreementStatus } from '../../types';
+import { Invoice, InvoiceStatus, TransactionType, Transaction, InvoiceType, RentalAgreementStatus, Contact } from '../../types';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import PrintButton from '../ui/PrintButton';
@@ -17,8 +32,10 @@ import { currentMonthYyyyMm, parseYyyyMmDdToLocalDate, toDateOnly, toLocalDateSt
 import RentalPropertySummaryCard from './RentalPropertySummaryCard';
 import {
     buildOwnerPropertyBreakdown,
+    buildOwnerPropertyBreakdownFromApiBalances,
     getOwnerPayoutModalPropertyBreakdownForProperty,
     getOwnerRentalPayoutDueForProperty,
+    type OwnerPropertyBreakdownMap,
 } from '../payouts/ownerPayoutBreakdown';
 
 const PropertyInvoicePickModal = lazy(() => import('./PropertyInvoicePickModal'));
@@ -98,10 +115,77 @@ interface ProjectLayoutData {
     unconventional: UnitBoxData[];
 }
 
+function indexInvoicesByPropertyId(invoices: Invoice[]): Map<string, Invoice[]> {
+    const m = new Map<string, Invoice[]>();
+    for (const inv of invoices) {
+        const pid = inv.propertyId;
+        if (pid == null || pid === '') continue;
+        const k = String(pid);
+        let arr = m.get(k);
+        if (!arr) {
+            arr = [];
+            m.set(k, arr);
+        }
+        arr.push(inv);
+    }
+    return m;
+}
+
+function indexInvoicesByUnitId(invoices: Invoice[]): Map<string, Invoice[]> {
+    const m = new Map<string, Invoice[]>();
+    for (const inv of invoices) {
+        const uid = inv.unitId;
+        if (uid == null || uid === '') continue;
+        const k = String(uid);
+        let arr = m.get(k);
+        if (!arr) {
+            arr = [];
+            m.set(k, arr);
+        }
+        arr.push(inv);
+    }
+    return m;
+}
+
+function indexTransactionsByPropertyId(transactions: Transaction[]): Map<string, Transaction[]> {
+    const m = new Map<string, Transaction[]>();
+    for (const tx of transactions) {
+        const pid = tx.propertyId;
+        if (pid == null || pid === '') continue;
+        const k = String(pid);
+        let arr = m.get(k);
+        if (!arr) {
+            arr = [];
+            m.set(k, arr);
+        }
+        arr.push(tx);
+    }
+    return m;
+}
+
 const PropertyLayoutReport: React.FC = () => {
-    const { state } = useAppContext();
+    const properties = useProperties();
+    const buildings = useBuildings();
+    const invoices = useInvoices();
+    const transactions = useTransactions();
+    const contacts = useContacts();
+    const categories = useCategories();
+    const rentalAgreements = useRentalAgreements();
+    const bills = useBills();
+    const projects = useProjects();
+    const units = useUnits();
+    const projectAgreements = useStateSelector((s) => s.projectAgreements);
+    const propertyOwnership = useStateSelector((s) => s.propertyOwnership ?? []);
     const queryClient = useQueryClient();
     const { print: triggerPrint } = usePrintContext();
+    const { isAuthenticated } = useAuth();
+    const useApiRollup = !isLocalOnlyMode() && isAuthenticated;
+    const {
+        data: apiOwnerBalanceRows,
+        isSuccess: apiRollupSuccess,
+        isPending: apiRollupPending,
+        isError: apiRollupError,
+    } = useAllOwnerBalancesRollupQuery(useApiRollup);
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [invoicePick, setInvoicePick] = useState<{
         propertyId: string;
@@ -113,14 +197,14 @@ const PropertyLayoutReport: React.FC = () => {
     const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
     const [createInvoiceForPropertyId, setCreateInvoiceForPropertyId] = useState<string | null>(null);
     const [ownerPayoutState, setOwnerPayoutState] = useState<{
-        owner: typeof state.contacts[0] | null;
+        owner: Contact | null;
         payoutType: 'Rent' | 'Security';
         propertyId: string;
-        tenant?: typeof state.contacts[0] | null;
+        tenant?: Contact | null;
         tenantUnpaidAmount?: number;
     } | null>(null);
     const [brokerPayoutState, setBrokerPayoutState] = useState<{
-        broker: typeof state.contacts[0] | null;
+        broker: Contact | null;
         balanceDue: number;
         propertyId?: string;
     } | null>(null);
@@ -128,7 +212,7 @@ const PropertyLayoutReport: React.FC = () => {
     /** Warm rental invoices query while user is on Visual Layout so Invoices view opens faster. */
     useEffect(() => {
         const idleId = scheduleIdleWork(() => {
-            const slice = selectRentalInvoicesForCache(state.invoices);
+            const slice = selectRentalInvoicesForCache(invoices);
             queryClient.setQueryData(queryKeys.rental.invoicesList(), slice);
             void queryClient.prefetchQuery({
                 queryKey: queryKeys.rental.invoicesList(),
@@ -136,25 +220,83 @@ const PropertyLayoutReport: React.FC = () => {
             });
         }, { timeout: 2500 });
         return () => cancelScheduledIdle(idleId);
-    }, [queryClient, state.invoices]);
+    }, [queryClient, invoices]);
 
-    const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
+    /** Prefetch modal chunks so first card click / payment is not blocked on dynamic import. */
+    useEffect(() => {
+        const idleId = scheduleIdleWork(() => {
+            void import('./PropertyQuickManagementPanel');
+            void import('./PropertyInvoicePickModal');
+            void import('../invoices/RentalPaymentModal');
+        }, { timeout: 600 });
+        return () => cancelScheduledIdle(idleId);
+    }, []);
 
-    const ownerPropertyBreakdownLayout = useMemo(
-        () => (ownerPayoutState ? buildOwnerPropertyBreakdown(state) : null),
-        [ownerPayoutState, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership, state.invoices]
-    );
+    const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...buildings], [buildings]);
+
+    const needFullOwnerPropertyBreakdownModal =
+        !!ownerPayoutState && ownerPayoutState.payoutType === 'Security';
+
+    const ownerPropertyBreakdownLayout = useMemo((): OwnerPropertyBreakdownMap | null => {
+        if (!ownerPayoutState) return null;
+        const st = _getAppState();
+        if (!needFullOwnerPropertyBreakdownModal && useApiRollup && !apiRollupError) {
+            if (apiRollupPending && apiOwnerBalanceRows === undefined) {
+                return {};
+            }
+            if (apiRollupSuccess) {
+                return (apiOwnerBalanceRows?.length ?? 0) > 0
+                    ? buildOwnerPropertyBreakdownFromApiBalances(
+                          st,
+                          apiOwnerBalanceRows!.map((r) => ({
+                              ownerId: r.ownerId,
+                              propertyId: r.propertyId,
+                              balance: Number(r.balance),
+                          }))
+                      )
+                    : {};
+            }
+            return buildOwnerPropertyBreakdown(st);
+        }
+        return buildOwnerPropertyBreakdown(st);
+    }, [
+        ownerPayoutState,
+        needFullOwnerPropertyBreakdownModal,
+        useApiRollup,
+        apiRollupError,
+        apiRollupPending,
+        apiRollupSuccess,
+        apiOwnerBalanceRows,
+        transactions,
+        properties,
+        categories,
+        rentalAgreements,
+        bills,
+        invoices,
+        propertyOwnership,
+    ]);
 
     const layoutOwnerPayoutModalRows = useMemo(() => {
         if (!ownerPayoutState?.owner || !ownerPropertyBreakdownLayout) return [];
         return getOwnerPayoutModalPropertyBreakdownForProperty(
-            state,
+            _getAppState(),
             ownerPayoutState.owner.id,
             ownerPayoutState.propertyId,
             ownerPayoutState.payoutType,
             ownerPropertyBreakdownLayout
         );
-    }, [ownerPayoutState, ownerPropertyBreakdownLayout, state]);
+    }, [
+        ownerPayoutState,
+        ownerPropertyBreakdownLayout,
+        transactions,
+        properties,
+        categories,
+        rentalAgreements,
+        bills,
+        invoices,
+        contacts,
+        propertyOwnership,
+    ]);
 
     const layoutOwnerPayoutBalanceDue = useMemo(
         () => layoutOwnerPayoutModalRows.reduce((s, p) => s + (p.balanceDue || 0), 0),
@@ -163,8 +305,8 @@ const PropertyLayoutReport: React.FC = () => {
 
     const layoutPayoutPreSelectedBuildingId = useMemo(() => {
         if (!ownerPayoutState?.propertyId) return undefined;
-        return state.properties.find((p) => p.id === ownerPayoutState.propertyId)?.buildingId;
-    }, [ownerPayoutState?.propertyId, state.properties]);
+        return properties.find((p) => p.id === ownerPayoutState.propertyId)?.buildingId;
+    }, [ownerPayoutState?.propertyId, properties]);
 
     // --- Helper: Parse Property Name ---
     const parseProperty = (name: string, id: string): { buildingCode: string, floorIndex: number, floorLabel: string, unitIndex: number, isUnconventional: boolean, type: string } => {
@@ -287,33 +429,64 @@ const PropertyLayoutReport: React.FC = () => {
     };
 
     const data = useMemo(() => {
-        // --- RENTAL MODE ---
-        // If properties exist, prioritize Rental View. 
+        const tLayout0 = typeof performance !== 'undefined' ? performance.now() : 0;
 
-        if (state.properties.length > 0) {
+        // --- RENTAL MODE ---
+        // If properties exist, prioritize Rental View.
+
+        if (properties.length > 0) {
+            const st = _getAppState();
             const buildingsMap: { [code: string]: BuildingData } = {};
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
             // Use local time for current month string to align with user expectation
             const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-            const svcIncomeCategory = state.categories.find(
+            const svcIncomeCategory = categories.find(
                 c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income'
             );
             const monthPrefix = currentMonthYyyyMm(today);
+            const invoicesByProperty = indexInvoicesByPropertyId(invoices);
+            const transactionsByProperty = indexTransactionsByPropertyId(transactions);
 
-            let propertiesToProcess = state.properties;
+            let propertiesToProcess = properties;
             if (selectedBuildingId !== 'all') {
-                propertiesToProcess = state.properties.filter(p => p.buildingId === selectedBuildingId);
+                propertiesToProcess = properties.filter(p => p.buildingId === selectedBuildingId);
             }
 
-            const ownerRentalPayoutBreakdown = buildOwnerPropertyBreakdown(state);
+            let ownerRentalPayoutBreakdown: OwnerPropertyBreakdownMap;
+            if (useApiRollup && !apiRollupError) {
+                if (apiRollupPending && apiOwnerBalanceRows === undefined) {
+                    ownerRentalPayoutBreakdown = {};
+                } else if (apiRollupSuccess) {
+                    ownerRentalPayoutBreakdown =
+                        (apiOwnerBalanceRows?.length ?? 0) > 0
+                            ? buildOwnerPropertyBreakdownFromApiBalances(
+                                  st,
+                                  apiOwnerBalanceRows!.map((r) => ({
+                                      ownerId: r.ownerId,
+                                      propertyId: r.propertyId,
+                                      balance: Number(r.balance),
+                                  }))
+                              )
+                            : {};
+                } else {
+                    ownerRentalPayoutBreakdown = buildOwnerPropertyBreakdown(st);
+                }
+            } else {
+                ownerRentalPayoutBreakdown = buildOwnerPropertyBreakdown(st);
+            }
+
+            const brokerFeeCategory = categories.find((c) => c.name === 'Broker Fee');
+            const rebateCategory = categories.find((c) => c.name === 'Rebate Amount');
+            const feeCatId = brokerFeeCategory?.id;
+            const rebateCatId = rebateCategory?.id;
 
             propertiesToProcess.forEach(prop => {
                 const parsed = parseProperty(prop.name, prop.id);
-
-                // Financials
-                const propertyInvoices = state.invoices.filter(inv => inv.propertyId === prop.id);
+                const propIdStr = String(prop.id);
+                const propertyInvoices = invoicesByProperty.get(propIdStr) ?? [];
+                const propertyTxs = transactionsByProperty.get(propIdStr) ?? [];
                 // Security deposit due: standalone security invoices + security portion of mixed invoices
                 const securityDue = propertyInvoices
                     .filter(inv => inv.status !== InvoiceStatus.PAID)
@@ -359,9 +532,8 @@ const PropertyLayoutReport: React.FC = () => {
                 );
                 const serviceChargeDeductedThisMonth =
                     !!svcIncomeCategory &&
-                    state.transactions.some(
+                    propertyTxs.some(
                         tx =>
-                            tx.propertyId === prop.id &&
                             tx.categoryId === svcIncomeCategory!.id &&
                             tx.date.startsWith(monthPrefix)
                     );
@@ -369,9 +541,9 @@ const PropertyLayoutReport: React.FC = () => {
                 const canDeductServiceCharges = !serviceChargeDeductedThisMonth && monthlyServiceCharge > 0;
 
                 // Owner & Tenant
-                const owner = state.contacts.find(c => c.id === prop.ownerId);
-                const activeAgreement = state.rentalAgreements.find(ra => ra.propertyId === prop.id && ra.status === RentalAgreementStatus.ACTIVE);
-                const tenant = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.contactId) : null;
+                const owner = contacts.find(c => c.id === prop.ownerId);
+                const activeAgreement = rentalAgreements.find(ra => ra.propertyId === prop.id && ra.status === RentalAgreementStatus.ACTIVE);
+                const tenant = activeAgreement ? contacts.find(c => c.id === activeAgreement.contactId) : null;
                 const monthlyRent = activeAgreement?.monthlyRent ?? 0;
                 const securityDepositAmount = activeAgreement?.securityDeposit ?? 0;
                 const agreementStartDate = activeAgreement?.startDate ?? null;
@@ -382,19 +554,15 @@ const PropertyLayoutReport: React.FC = () => {
                     activeAgreement.brokerFee &&
                     !activeAgreement.previousAgreementId
                 ) {
-                    const brokerContact = state.contacts.find(c => c.id === activeAgreement.brokerId);
+                    const brokerContact = contacts.find(c => c.id === activeAgreement.brokerId);
                     if (brokerContact) {
-                        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-                        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
-                        const feeCatId = brokerFeeCategory?.id;
-                        const rebateCatId = rebateCategory?.id;
-                        const paidAlready = state.transactions
+                        const paidAlready = propertyTxs
                             .filter(
                                 tx =>
                                     tx.type === TransactionType.EXPENSE &&
                                     tx.contactId === brokerContact.id &&
                                     (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
-                                    (tx.agreementId === activeAgreement.id || tx.propertyId === prop.id)
+                                    (tx.agreementId === activeAgreement.id || String(tx.propertyId) === propIdStr)
                             )
                             .reduce((sum, tx) => sum + tx.amount, 0);
                         brokerPayoutPending = Math.max(0, (activeAgreement.brokerFee || 0) - paidAlready);
@@ -402,7 +570,7 @@ const PropertyLayoutReport: React.FC = () => {
                 }
 
                 // Calculate last updated date
-                const propertyTransactions = state.transactions.filter(tx => tx.propertyId === prop.id);
+                const propertyTransactions = propertyTxs;
                 const transactionDates = propertyTransactions.map(tx => tx.date);
                 const invoiceDates = propertyInvoices.map(inv => inv.issueDate);
                 const agreementDates = activeAgreement ? [activeAgreement.endDate] : [];
@@ -412,8 +580,7 @@ const PropertyLayoutReport: React.FC = () => {
                     : toLocalDateString(new Date());
 
                 // Check all invoices for the current month
-                const currentMonthInvoices = state.invoices.filter(inv =>
-                    inv.propertyId === prop.id &&
+                const currentMonthInvoices = propertyInvoices.filter(inv =>
                     inv.invoiceType === InvoiceType.RENTAL &&
                     (
                         (inv.rentalMonth === currentMonthStr) ||
@@ -511,18 +678,35 @@ const PropertyLayoutReport: React.FC = () => {
                 });
             });
 
+            if (import.meta.env.DEV && typeof performance !== 'undefined') {
+                const ms = performance.now() - tLayout0;
+                if (ms > 200) {
+                    const mode =
+                        useApiRollup && !apiRollupError && apiRollupSuccess && (apiOwnerBalanceRows?.length ?? 0) > 0
+                            ? 'api-rollup'
+                            : 'full-client';
+                    console.warn('[PBooksPerf][VisualLayout] layoutMemo ms=', Math.round(ms), {
+                        mode,
+                        props: propertiesToProcess.length,
+                        inv: invoices.length,
+                        tx: transactions.length,
+                    });
+                }
+            }
+
             return { type: 'RENTAL', data: sortedBuildings, maxReceivable };
         }
 
         // --- PROJECT MODE ---
         else {
             const projectsMap: { [id: string]: ProjectLayoutData } = {};
+            const invoicesByUnit = indexInvoicesByUnitId(invoices);
 
-            state.projects.forEach(project => {
+            projects.forEach(project => {
                 projectsMap[project.id] = { id: project.id, name: project.name, floors: [], unconventional: [] };
             });
 
-            state.units.forEach(unit => {
+            units.forEach(unit => {
                 if (!projectsMap[unit.projectId] && unit.projectId) return;
                 const projectId = unit.projectId || 'unknown';
                 if (!projectsMap[projectId]) {
@@ -530,12 +714,12 @@ const PropertyLayoutReport: React.FC = () => {
                 }
 
                 const parsed = parseUnit(unit.name);
-                const activeAgreement = state.projectAgreements.find(pa =>
+                const activeAgreement = projectAgreements.find(pa =>
                     pa.unitIds?.includes(unit.id) && pa.status === 'Active'
                 );
-                const client = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.clientId) : null;
+                const client = activeAgreement ? contacts.find(c => c.id === activeAgreement.clientId) : null;
 
-                const unitInvoices = state.invoices.filter(inv => inv.unitId === unit.id);
+                const unitInvoices = invoicesByUnit.get(String(unit.id)) ?? [];
                 const receivable = unitInvoices
                     .filter(inv => inv.status !== InvoiceStatus.PAID)
                     .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
@@ -573,12 +757,40 @@ const PropertyLayoutReport: React.FC = () => {
                 p.unconventional.sort((u1, u2) => u1.name.localeCompare(u2.name));
             });
 
+            if (import.meta.env.DEV && typeof performance !== 'undefined') {
+                const ms = performance.now() - tLayout0;
+                if (ms > 200) {
+                    console.warn('[PBooksPerf][VisualLayout] layoutMemo(project) ms=', Math.round(ms), {
+                        units: units.length,
+                        inv: invoices.length,
+                    });
+                }
+            }
+
             return {
                 type: 'PROJECT',
                 data: Object.values(projectsMap).filter(p => p.floors.length > 0 || p.unconventional.length > 0).sort((a, b) => a.name.localeCompare(b.name))
             };
         }
-    }, [state, selectedBuildingId]);
+    }, [
+        properties,
+        selectedBuildingId,
+        invoices,
+        transactions,
+        categories,
+        rentalAgreements,
+        contacts,
+        projects,
+        units,
+        projectAgreements,
+        useApiRollup,
+        apiRollupSuccess,
+        apiRollupPending,
+        apiRollupError,
+        apiOwnerBalanceRows,
+        bills,
+        propertyOwnership,
+    ]);
 
 
     /** Light red (unpaid) → light green (paid) from account receivable vs max receivable on the layout. */
@@ -790,8 +1002,8 @@ const PropertyLayoutReport: React.FC = () => {
                 </div>
             </div>
 
-            <Suspense fallback={modalSuspenseFallback}>
-                {selectedPropertyId && (
+            {selectedPropertyId && (
+                <Suspense fallback={modalSuspenseFallback}>
                     <PropertyQuickManagementPanel
                         isOpen={!!selectedPropertyId}
                         onClose={() => setSelectedPropertyId(null)}
@@ -827,8 +1039,10 @@ const PropertyLayoutReport: React.FC = () => {
                             });
                         }}
                     />
-                )}
-                {invoicePick && (
+                </Suspense>
+            )}
+            {invoicePick && (
+                <Suspense fallback={modalSuspenseFallback}>
                     <PropertyInvoicePickModal
                         isOpen={!!invoicePick}
                         onClose={() => setInvoicePick(null)}
@@ -840,29 +1054,37 @@ const PropertyLayoutReport: React.FC = () => {
                             setInvoicePick(null);
                         }}
                     />
-                )}
-                {paymentInvoice && (
+                </Suspense>
+            )}
+            {paymentInvoice && (
+                <Suspense fallback={modalSuspenseFallback}>
                     <RentalPaymentModal
                         isOpen={!!paymentInvoice}
                         onClose={() => setPaymentInvoice(null)}
                         invoice={paymentInvoice}
                     />
-                )}
-                {mscForPropertyId && (
+                </Suspense>
+            )}
+            {mscForPropertyId && (
+                <Suspense fallback={modalSuspenseFallback}>
                     <ManualServiceChargeModal
                         isOpen={!!mscForPropertyId}
                         onClose={() => setMscForPropertyId(null)}
                         initialPropertyId={mscForPropertyId}
                     />
-                )}
-                {createInvoiceForPropertyId && (
+                </Suspense>
+            )}
+            {createInvoiceForPropertyId && (
+                <Suspense fallback={modalSuspenseFallback}>
                     <CreateRentalInvoiceModal
                         isOpen={!!createInvoiceForPropertyId}
                         onClose={() => setCreateInvoiceForPropertyId(null)}
                         initialPreFillPropertyId={createInvoiceForPropertyId}
                     />
-                )}
-                {ownerPayoutState && (
+                </Suspense>
+            )}
+            {ownerPayoutState && (
+                <Suspense fallback={modalSuspenseFallback}>
                     <OwnerPayoutModal
                         isOpen={!!ownerPayoutState}
                         onClose={() => setOwnerPayoutState(null)}
@@ -874,8 +1096,10 @@ const PropertyLayoutReport: React.FC = () => {
                         tenant={ownerPayoutState.tenant}
                         tenantUnpaidAmount={ownerPayoutState.tenantUnpaidAmount}
                     />
-                )}
-                {brokerPayoutState && (
+                </Suspense>
+            )}
+            {brokerPayoutState && (
+                <Suspense fallback={modalSuspenseFallback}>
                     <BrokerPayoutModal
                         isOpen={!!brokerPayoutState}
                         onClose={() => setBrokerPayoutState(null)}
@@ -884,8 +1108,8 @@ const PropertyLayoutReport: React.FC = () => {
                         context="Rental"
                         propertyId={brokerPayoutState.propertyId}
                     />
-                )}
-            </Suspense>
+                </Suspense>
+            )}
         </div>
     );
 };

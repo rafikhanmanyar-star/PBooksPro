@@ -203,6 +203,52 @@ export function getLedgerOwnerIdsForProperty(
 }
 
 /**
+ * Batch version of {@link getLedgerOwnerIdsForProperty}: one pass over agreements, transactions,
+ * and invoices (with O(1) agreement lookup) plus per-property historical owners — avoids
+ * O(properties × (transactions + invoices × agreements)) when building portfolio trees.
+ */
+export function buildLedgerOwnerIdsByPropertyId(
+  state: Pick<
+    AppState,
+    'properties' | 'propertyOwnership' | 'rentalAgreements' | 'transactions' | 'invoices'
+  >
+): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  const ensure = (propertyId: string): Set<string> => {
+    const pid = String(propertyId);
+    let s = map.get(pid);
+    if (!s) {
+      s = getAllHistoricalOwnerIds(state, pid);
+      map.set(pid, s);
+    }
+    return s;
+  };
+
+  for (const prop of state.properties || []) {
+    ensure(String(prop.id));
+  }
+
+  const agreementOwnerById = new Map<string, string>();
+  for (const a of state.rentalAgreements || []) {
+    if (a?.id && a.ownerId) agreementOwnerById.set(String(a.id), a.ownerId);
+  }
+
+  for (const ra of state.rentalAgreements || []) {
+    if (ra.propertyId && ra.ownerId) ensure(String(ra.propertyId)).add(ra.ownerId);
+  }
+  for (const tx of state.transactions || []) {
+    if (tx.propertyId && tx.ownerId) ensure(String(tx.propertyId)).add(tx.ownerId);
+  }
+  for (const inv of state.invoices || []) {
+    if (!inv.propertyId || !inv.agreementId) continue;
+    const ow = agreementOwnerById.get(String(inv.agreementId));
+    if (ow) ensure(String(inv.propertyId)).add(ow);
+  }
+
+  return map;
+}
+
+/**
  * Owners to iterate for per-unit rental payout breakdown: {@link getLedgerOwnerIdsForProperty}
  * plus anyone with an active ownership share on the given date (e.g. 50/50 co-owners on
  * `property_ownership` even when former-only rows were not merged into historical ids).

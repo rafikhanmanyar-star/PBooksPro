@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.242",
+  "version": "1.2.243",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -45,6 +45,7 @@
     "delete-project-agreement": "node scripts/delete-project-agreement-by-number.cjs",
     "insert-pg-dp-invoice": "dotenv -e .env -- node scripts/insert-pg-missing-dp-invoice.cjs",
     "delete-pg-dp-invoice": "dotenv -e .env -- node scripts/insert-pg-missing-dp-invoice.cjs --delete",
+    "repair:pg-invoice-ledger": "dotenv -e .env -- node scripts/reconcile-pg-invoice-from-ledger.cjs",
     "sync-db-to-blob": "node scripts/sync-db-to-blob.cjs",
     "postinstall": "node scripts/rebuild-native.cjs",
     "rebuild:native": "node scripts/rebuild-native.cjs",
