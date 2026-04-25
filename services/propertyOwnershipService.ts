@@ -420,6 +420,7 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
   if (!property) throw new Error('Property not found.');
 
   const transferDay = input.transferDate.slice(0, 10);
+  const prevDay = addCalendarDaysYyyyMmDd(transferDay, -1);
   const now = new Date().toISOString();
 
   const forProperty = (state.propertyOwnership || []).filter((r) => String(r.propertyId) === pid);
@@ -428,7 +429,7 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
   const closedPrev = forProperty.map((r) => {
     const stillOpen = r.isActive && (r.endDate == null || String(r.endDate).trim() === '');
     if (stillOpen) {
-      return { ...r, endDate: transferDay, isActive: false, updatedAt: now };
+      return { ...r, endDate: prevDay, isActive: false, updatedAt: now };
     }
     return { ...r };
   });
@@ -469,7 +470,7 @@ export function applyOwnershipTransferToState(state: AppState, input: TransferOw
       String(h.propertyId) === pid && h.ownershipEndDate == null
         ? {
             ...h,
-            ownershipEndDate: transferDay,
+            ownershipEndDate: prevDay,
             updatedAt: now,
           }
         : h

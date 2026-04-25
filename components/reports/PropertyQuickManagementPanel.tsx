@@ -637,12 +637,12 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                 type="button"
                                 onClick={() => onDeductCharges(propertyId)}
                                 disabled={!financials.canDeductServiceCharges}
-                                className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-app-border bg-white dark:bg-app-card hover:bg-slate-50 dark:hover:bg-app-toolbar/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[5.5rem]"
+                                className="group flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-amber-200 dark:border-amber-800/70 bg-gradient-to-b from-amber-50 to-amber-100/90 dark:from-amber-950/40 dark:to-amber-900/40 text-amber-900 dark:text-amber-200 shadow-[0_3px_0_rgba(180,83,9,0.24)] hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(180,83,9,0.28)] active:translate-y-0 active:shadow-[0_2px_0_rgba(180,83,9,0.2)] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_3px_0_rgba(180,83,9,0.24)] min-h-[5.5rem]"
                             >
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-app-toolbar flex items-center justify-center">
-                                    <Minus className="w-4 h-4 text-slate-500 dark:text-app-muted" />
+                                <div className="w-10 h-10 rounded-lg bg-white/80 dark:bg-amber-900/35 border border-amber-200/80 dark:border-amber-700/70 flex items-center justify-center shadow-sm">
+                                    <Minus className="w-4 h-4 text-amber-700 dark:text-amber-300" />
                                 </div>
-                                <span className="text-[9px] font-bold text-slate-600 dark:text-app-text uppercase tracking-wide text-center leading-tight">
+                                <span className="text-[9px] font-bold text-amber-800 dark:text-amber-200 uppercase tracking-wide text-center leading-tight">
                                     Deduct charges
                                 </span>
                             </button>
@@ -650,12 +650,12 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                 type="button"
                                 onClick={() => onCreateInvoice(propertyId)}
                                 disabled={!activeAgreement}
-                                className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-app-border bg-white dark:bg-app-card hover:bg-slate-50 dark:hover:bg-app-toolbar/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[5.5rem]"
+                                className="group flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-sky-200 dark:border-sky-800/70 bg-gradient-to-b from-sky-50 to-sky-100/90 dark:from-sky-950/40 dark:to-sky-900/40 text-sky-900 dark:text-sky-200 shadow-[0_3px_0_rgba(2,132,199,0.24)] hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(2,132,199,0.28)] active:translate-y-0 active:shadow-[0_2px_0_rgba(2,132,199,0.2)] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_3px_0_rgba(2,132,199,0.24)] min-h-[5.5rem]"
                             >
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-app-toolbar flex items-center justify-center">
-                                    <FileText className="w-4 h-4 text-slate-500 dark:text-app-muted" />
+                                <div className="w-10 h-10 rounded-lg bg-white/80 dark:bg-sky-900/35 border border-sky-200/80 dark:border-sky-700/70 flex items-center justify-center shadow-sm">
+                                    <FileText className="w-4 h-4 text-sky-700 dark:text-sky-300" />
                                 </div>
-                                <span className="text-[9px] font-bold text-slate-600 dark:text-app-text uppercase tracking-wide text-center leading-tight">
+                                <span className="text-[9px] font-bold text-sky-800 dark:text-sky-200 uppercase tracking-wide text-center leading-tight">
                                     Create invoice
                                 </span>
                             </button>
@@ -663,12 +663,12 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                 type="button"
                                 onClick={() => onReceivePayment(propertyId, property?.name || '')}
                                 disabled={!financials.hasUnpaidInvoice}
-                                className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-app-border bg-white dark:bg-app-card hover:bg-slate-50 dark:hover:bg-app-toolbar/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[5.5rem]"
+                                className="group flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-emerald-200 dark:border-emerald-800/70 bg-gradient-to-b from-emerald-50 to-emerald-100/90 dark:from-emerald-950/40 dark:to-emerald-900/40 text-emerald-900 dark:text-emerald-200 shadow-[0_3px_0_rgba(5,150,105,0.24)] hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(5,150,105,0.28)] active:translate-y-0 active:shadow-[0_2px_0_rgba(5,150,105,0.2)] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_3px_0_rgba(5,150,105,0.24)] min-h-[5.5rem]"
                             >
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-app-toolbar flex items-center justify-center">
-                                    <Banknote className="w-4 h-4 text-slate-500 dark:text-app-muted" />
+                                <div className="w-10 h-10 rounded-lg bg-white/80 dark:bg-emerald-900/35 border border-emerald-200/80 dark:border-emerald-700/70 flex items-center justify-center shadow-sm">
+                                    <Banknote className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
                                 </div>
-                                <span className="text-[9px] font-bold text-slate-600 dark:text-app-text uppercase tracking-wide text-center leading-tight">
+                                <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-200 uppercase tracking-wide text-center leading-tight">
                                     Receive unpaid
                                 </span>
                             </button>
@@ -676,12 +676,12 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                 type="button"
                                 onClick={handlePayoutToOwner}
                                 disabled={!owner || financials.ownerRentalIncome <= 0}
-                                className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-app-border bg-white dark:bg-app-card hover:bg-slate-50 dark:hover:bg-app-toolbar/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[5.5rem]"
+                                className="group flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-violet-200 dark:border-violet-800/70 bg-gradient-to-b from-violet-50 to-violet-100/90 dark:from-violet-950/40 dark:to-violet-900/40 text-violet-900 dark:text-violet-200 shadow-[0_3px_0_rgba(124,58,237,0.24)] hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(124,58,237,0.28)] active:translate-y-0 active:shadow-[0_2px_0_rgba(124,58,237,0.2)] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_3px_0_rgba(124,58,237,0.24)] min-h-[5.5rem]"
                             >
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-app-toolbar flex items-center justify-center">
-                                    <Building2 className="w-4 h-4 text-slate-500 dark:text-app-muted" />
+                                <div className="w-10 h-10 rounded-lg bg-white/80 dark:bg-violet-900/35 border border-violet-200/80 dark:border-violet-700/70 flex items-center justify-center shadow-sm">
+                                    <Building2 className="w-4 h-4 text-violet-700 dark:text-violet-300" />
                                 </div>
-                                <span className="text-[9px] font-bold text-slate-600 dark:text-app-text uppercase tracking-wide text-center leading-tight">
+                                <span className="text-[9px] font-bold text-violet-800 dark:text-violet-200 uppercase tracking-wide text-center leading-tight">
                                     Payout to owner
                                 </span>
                             </button>
@@ -689,12 +689,12 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                 type="button"
                                 onClick={() => broker && onPayoutToBroker(broker, brokerPendingFee)}
                                 disabled={!broker || brokerPendingFee <= 0}
-                                className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-app-border bg-white dark:bg-app-card hover:bg-slate-50 dark:hover:bg-app-toolbar/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[5.5rem]"
+                                className="group flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-fuchsia-200 dark:border-fuchsia-800/70 bg-gradient-to-b from-fuchsia-50 to-fuchsia-100/90 dark:from-fuchsia-950/40 dark:to-fuchsia-900/40 text-fuchsia-900 dark:text-fuchsia-200 shadow-[0_3px_0_rgba(192,38,211,0.24)] hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(192,38,211,0.28)] active:translate-y-0 active:shadow-[0_2px_0_rgba(192,38,211,0.2)] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_3px_0_rgba(192,38,211,0.24)] min-h-[5.5rem]"
                             >
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-app-toolbar flex items-center justify-center">
-                                    <Handshake className="w-4 h-4 text-slate-500 dark:text-app-muted" />
+                                <div className="w-10 h-10 rounded-lg bg-white/80 dark:bg-fuchsia-900/35 border border-fuchsia-200/80 dark:border-fuchsia-700/70 flex items-center justify-center shadow-sm">
+                                    <Handshake className="w-4 h-4 text-fuchsia-700 dark:text-fuchsia-300" />
                                 </div>
-                                <span className="text-[9px] font-bold text-slate-600 dark:text-app-text uppercase tracking-wide text-center leading-tight">
+                                <span className="text-[9px] font-bold text-fuchsia-800 dark:text-fuchsia-200 uppercase tracking-wide text-center leading-tight">
                                     Pay broker
                                 </span>
                             </button>
@@ -702,12 +702,12 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                                 type="button"
                                 onClick={handlePayoutSecurity}
                                 disabled={!owner || financials.ownerSecurityBalance <= 0}
-                                className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-app-border bg-white dark:bg-app-card hover:bg-slate-50 dark:hover:bg-app-toolbar/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[5.5rem]"
+                                className="group flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-rose-200 dark:border-rose-800/70 bg-gradient-to-b from-rose-50 to-rose-100/90 dark:from-rose-950/40 dark:to-rose-900/40 text-rose-900 dark:text-rose-200 shadow-[0_3px_0_rgba(225,29,72,0.24)] hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(225,29,72,0.28)] active:translate-y-0 active:shadow-[0_2px_0_rgba(225,29,72,0.2)] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_3px_0_rgba(225,29,72,0.24)] min-h-[5.5rem]"
                             >
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-app-toolbar flex items-center justify-center">
-                                    <ArrowLeft className="w-4 h-4 text-slate-500 dark:text-app-muted" />
+                                <div className="w-10 h-10 rounded-lg bg-white/80 dark:bg-rose-900/35 border border-rose-200/80 dark:border-rose-700/70 flex items-center justify-center shadow-sm">
+                                    <ArrowLeft className="w-4 h-4 text-rose-700 dark:text-rose-300" />
                                 </div>
-                                <span className="text-[9px] font-bold text-slate-600 dark:text-app-text uppercase tracking-wide text-center leading-tight">
+                                <span className="text-[9px] font-bold text-rose-800 dark:text-rose-200 uppercase tracking-wide text-center leading-tight">
                                     Return security
                                 </span>
                             </button>
@@ -805,6 +805,13 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                         className="rounded-lg bg-[#1e293b] hover:bg-[#0f172a] text-white text-sm font-semibold px-4 py-2 shadow-sm transition-colors"
                     >
                         Edit unit details
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg border border-slate-300 dark:border-app-border text-slate-700 dark:text-app-text text-sm font-semibold px-4 py-2 hover:bg-slate-50 dark:hover:bg-app-toolbar/40 transition-colors"
+                    >
+                        Close
                     </button>
                 </div>
             </div>

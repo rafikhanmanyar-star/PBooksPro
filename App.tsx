@@ -544,8 +544,10 @@ const App: React.FC = () => {
       order.unshift(activeGroup);
       visitOrderRef.current = order;
 
-      // Keep only the most recent N pages
+      // Keep only the most recent N pages, but pin RENTAL once visited so rental sub-page state
+      // (agreements/invoices/bills filters, selection, scroll, etc.) survives cross-module navigation.
       const keepSet = new Set(order.slice(0, MAX_PERSISTENT_PAGES));
+      if (order.includes('RENTAL')) keepSet.add('RENTAL');
       // Check if the set actually changed to avoid unnecessary re-renders
       if (keepSet.size === prev.size && [...keepSet].every(g => prev.has(g))) {
         return prev;

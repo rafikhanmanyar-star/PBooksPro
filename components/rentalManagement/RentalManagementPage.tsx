@@ -75,15 +75,38 @@ const LEDGER_REPORTS: RentalView[] = [
 
 /** Ledger reports that keep their React state when switching to other rental views or app pages (Rental tab stays mounted). */
 type PersistedLedgerReportView = 'Owner Rental Income' | 'Broker Fees' | 'Owner Security Deposit';
+type PersistedOperationalView =
+    | 'Agreements'
+    | 'Invoices'
+    | 'Bills'
+    | 'Monthly Service Charges'
+    | 'Ownership transfers';
 
 const PERSISTED_LEDGER_REPORTS: PersistedLedgerReportView[] = [
     'Owner Rental Income',
     'Broker Fees',
     'Owner Security Deposit',
 ];
+const PERSISTED_OPERATIONAL_VIEWS: PersistedOperationalView[] = [
+    'Agreements',
+    'Invoices',
+    'Bills',
+    'Monthly Service Charges',
+    'Ownership transfers',
+];
 
 function isPersistedLedgerReportView(v: RentalView): v is PersistedLedgerReportView {
     return v === 'Owner Rental Income' || v === 'Broker Fees' || v === 'Owner Security Deposit';
+}
+
+function isPersistedOperationalView(v: RentalView): v is PersistedOperationalView {
+    return (
+        v === 'Agreements'
+        || v === 'Invoices'
+        || v === 'Bills'
+        || v === 'Monthly Service Charges'
+        || v === 'Ownership transfers'
+    );
 }
 
 const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage }) => {
@@ -190,23 +213,48 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         'Broker Fees': false,
         'Owner Security Deposit': false,
     });
+    const [persistedOperationalMounted, setPersistedOperationalMounted] = useState<Record<PersistedOperationalView, boolean>>({
+        Agreements: false,
+        Invoices: false,
+        Bills: false,
+        'Monthly Service Charges': false,
+        'Ownership transfers': false,
+    });
 
     useEffect(() => {
         if (!isPersistedLedgerReportView(normalizedView)) return;
         setPersistedLedgerMounted((prev) => (prev[normalizedView] ? prev : { ...prev, [normalizedView]: true }));
     }, [normalizedView]);
 
-    /** Mount ONLY the active operational view — avoids mounting all operational panes at once (major INP win). */
+    useEffect(() => {
+        if (!isPersistedOperationalView(normalizedView)) return;
+        setPersistedOperationalMounted((prev) => (prev[normalizedView] ? prev : { ...prev, [normalizedView]: true }));
+    }, [normalizedView]);
+
+    /** Keep key rental operational views mounted after first open so in-page state survives cross-view navigation. */
     const renderOperationalContent = () => (
         <div className="relative h-full w-full min-h-0">
             {normalizedView === 'Rental setup' && <RentalSettingsPage embeddedInRentalModule />}
-            {normalizedView === 'Agreements' && <RentalAgreementsPage />}
-            {normalizedView === 'Invoices' && (
-                <RentalInvoicesPage />
-            )}
-            {normalizedView === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
-            {normalizedView === 'Bills' && <RentalBillsPage />}
-            {normalizedView === 'Ownership transfers' && <PropertyOwnershipTransfersPage />}
+            {PERSISTED_OPERATIONAL_VIEWS.map((view) => {
+                const keepMounted = persistedOperationalMounted[view] || normalizedView === view;
+                if (!keepMounted) return null;
+                const isActive = normalizedView === view;
+                return (
+                    <div
+                        key={view}
+                        className={isActive
+                            ? 'absolute inset-0 z-10 flex flex-col min-h-0 overflow-hidden'
+                            : 'absolute inset-0 z-0 flex flex-col min-h-0 overflow-hidden invisible pointer-events-none'}
+                        {...(!isActive ? { 'aria-hidden': true } : {})}
+                    >
+                        {view === 'Agreements' && <RentalAgreementsPage />}
+                        {view === 'Invoices' && <RentalInvoicesPage />}
+                        {view === 'Bills' && <RentalBillsPage />}
+                        {view === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
+                        {view === 'Ownership transfers' && <PropertyOwnershipTransfersPage />}
+                    </div>
+                );
+            })}
         </div>
     );
 

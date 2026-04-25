@@ -120,7 +120,7 @@ export async function transferPropertyOwnership(
 
   await client.query(
     `UPDATE property_ownership
-     SET end_date = $3::date, is_active = FALSE, version = version + 1, updated_at = NOW()
+     SET end_date = ($3::date - INTERVAL '1 day')::date, is_active = FALSE, version = version + 1, updated_at = NOW()
      WHERE tenant_id = $1 AND property_id = $2 AND deleted_at IS NULL
        AND is_active = TRUE AND end_date IS NULL`,
     [tenantId, propertyId, ymd]

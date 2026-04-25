@@ -4,7 +4,11 @@
 
 import type { AppState, Transaction } from '../types';
 import { TransactionType, ContactType } from '../types';
-import { hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from './propertyOwnershipService';
+import {
+    hasMultipleOwnersOnDate,
+    getOwnerSharePercentageOnDate,
+    resolveOwnerForTransaction,
+} from './propertyOwnershipService';
 
 export interface MscLedgerRow {
     id: string;
@@ -48,7 +52,7 @@ export function endOfMonthIso(monthKey: string): string {
 export function buildServiceChargeIndexes(
     transactions: Transaction[],
     svcCategoryId: string | null,
-    propertiesById: Map<string, { ownerId?: string | null }>
+    state: Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory' | 'invoices' | 'rentalAgreements'>
 ): ServiceChargeIndexes {
     const propertyHasScIncome = new Set<string>();
     const propertyMonthsWithSc = new Map<string, Set<string>>();
@@ -97,8 +101,7 @@ export function buildServiceChargeIndexes(
         scTotalByProperty.set(pid, (scTotalByProperty.get(pid) || 0) + amt);
         portfolioScAllTime += amt;
 
-        const prop = propertiesById.get(pid);
-        const oid = prop?.ownerId;
+        const oid = resolveOwnerForTransaction(state, tx);
         if (oid && mk) {
             const ok = `${oid}|${mk}`;
             ownerMonthScTotal.set(ok, (ownerMonthScTotal.get(ok) || 0) + amt);
@@ -220,9 +223,9 @@ export function computeOwnerBalanceAsOf(ownerId: string, asOfDate: string, state
                 }
                 continue;
             }
-            const property = state.properties.find(p => p.id === tx.propertyId);
-            if (property?.ownerId && balances[property.ownerId] !== undefined) {
-                balances[property.ownerId] += amount;
+            const resolvedOwnerId = resolveOwnerForTransaction(state, tx);
+            if (resolvedOwnerId && balances[resolvedOwnerId] !== undefined) {
+                balances[resolvedOwnerId] += amount;
             }
         }
     }
@@ -248,10 +251,10 @@ export function computeOwnerBalanceAsOf(ownerId: string, asOfDate: string, state
             if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) continue;
             if (tx.categoryId === ownerPayoutCategory?.id) continue;
 
-            const property = state.properties.find(p => p.id === tx.propertyId);
-            if (property?.ownerId && balances[property.ownerId] !== undefined) {
+            const resolvedOwnerId = resolveOwnerForTransaction(state, tx);
+            if (resolvedOwnerId && balances[resolvedOwnerId] !== undefined) {
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                if (!isNaN(amount) && amount > 0) balances[property.ownerId] -= amount;
+                if (!isNaN(amount) && amount > 0) balances[resolvedOwnerId] -= amount;
             }
         }
     }
@@ -297,8 +300,8 @@ export function rentalIncomeForOwnerInMonth(
             }
             continue;
         }
-        const prop = state.properties.find(p => p.id === tx.propertyId);
-        if (prop?.ownerId !== ownerId) continue;
+        const resolvedOwnerId = resolveOwnerForTransaction(state, tx);
+        if (!resolvedOwnerId || resolvedOwnerId !== ownerId) continue;
         sum += amount;
     }
     return sum;

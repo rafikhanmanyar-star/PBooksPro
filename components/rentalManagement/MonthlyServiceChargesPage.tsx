@@ -117,19 +117,42 @@ const MonthlyServiceChargesPage: React.FC = () => {
     /** Default: month ascending (oldest at top, newest at bottom). */
     const [ledgerSort, setLedgerSort] = useState<{ key: 'month' | 'unit'; dir: 'asc' | 'desc' }>({ key: 'month', dir: 'asc' });
     const [bodyReady, setBodyReady] = useState(false);
+    const initializedDefaultEntityRef = useRef(false);
+
+    const propertyById = useMemo(
+        () => new Map(state.properties.map((p) => [p.id, p])),
+        [state.properties]
+    );
+    const buildingById = useMemo(
+        () => new Map(state.buildings.map((b) => [b.id, b])),
+        [state.buildings]
+    );
+    const contactById = useMemo(
+        () => new Map(state.contacts.map((c) => [c.id, c])),
+        [state.contacts]
+    );
+    const categoryById = useMemo(
+        () => new Map(state.categories.map((c) => [c.id, c])),
+        [state.categories]
+    );
+    const activeTenantByPropertyId = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const ag of state.rentalAgreements) {
+            if (ag.status !== RentalAgreementStatus.ACTIVE) continue;
+            if (!map.has(ag.propertyId) && ag.contactId) {
+                map.set(ag.propertyId, ag.contactId);
+            }
+        }
+        return map;
+    }, [state.rentalAgreements]);
 
     const getPropertyStatus = useCallback((propertyId: string): 'Rented' | 'Vacant' => {
-        return state.rentalAgreements.some(
-            a => a.propertyId === propertyId && a.status === RentalAgreementStatus.ACTIVE
-        ) ? 'Rented' : 'Vacant';
-    }, [state.rentalAgreements]);
+        return activeTenantByPropertyId.has(propertyId) ? 'Rented' : 'Vacant';
+    }, [activeTenantByPropertyId]);
 
     const getActiveTenantId = useCallback((propertyId: string): string | null => {
-        const ag = state.rentalAgreements.find(
-            a => a.propertyId === propertyId && a.status === RentalAgreementStatus.ACTIVE
-        );
-        return ag?.contactId ?? null;
-    }, [state.rentalAgreements]);
+        return activeTenantByPropertyId.get(propertyId) ?? null;
+    }, [activeTenantByPropertyId]);
 
     const ownerBalances = useMemo(() => {
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
@@ -147,7 +170,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id)
                 .forEach(tx => {
                     if (tx.propertyId) {
-                        const property = state.properties.find(p => p.id === tx.propertyId);
+                        const property = propertyById.get(tx.propertyId);
                         if (property?.ownerId && balances[property.ownerId] !== undefined) {
                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                             if (!isNaN(amount)) balances[property.ownerId] += amount;
@@ -175,12 +198,12 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     if (!isNaN(amount) && amount > 0) balances[tx.contactId] -= amount;
                 }
                 else if (tx.propertyId) {
-                    const category = state.categories.find(c => c.id === tx.categoryId);
+                    const category = categoryById.get(tx.categoryId);
                     const catName = category?.name || '';
                     if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
                     if (tx.categoryId === ownerPayoutCategory?.id) return;
 
-                    const property = state.properties.find(p => p.id === tx.propertyId);
+                    const property = propertyById.get(tx.propertyId);
                     if (property?.ownerId && balances[property.ownerId] !== undefined) {
                         const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                         if (!isNaN(amount) && amount > 0) balances[property.ownerId] -= amount;
@@ -189,7 +212,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
             });
 
         return balances;
-    }, [state.transactions, state.categories, state.properties, state.contacts]);
+    }, [state.transactions, state.contacts, categoryById, propertyById]);
 
     /** Used for "Run Monthly Deduction" only — properties with an amount configured on the asset. */
     const propertiesWithPredefinedCharge = useMemo(() => {
@@ -204,14 +227,9 @@ const MonthlyServiceChargesPage: React.FC = () => {
         return state.categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
     }, [state.categories]);
 
-    const propertiesById = useMemo(
-        () => new Map(state.properties.map(p => [p.id, p])),
-        [state.properties]
-    );
-
     const scIndexes = useMemo(
-        () => buildServiceChargeIndexes(state.transactions, svcIncomeCategory?.id ?? null, propertiesById),
-        [state.transactions, svcIncomeCategory?.id, propertiesById]
+        () => buildServiceChargeIndexes(state.transactions, svcIncomeCategory?.id ?? null, state),
+        [state.transactions, svcIncomeCategory?.id, state]
     );
 
     /**
@@ -313,6 +331,24 @@ const MonthlyServiceChargesPage: React.FC = () => {
         return state.buildings.filter(b => ids.has(b.id));
     }, [propertiesWithCharges, state.buildings]);
 
+    const firstBuildingWithSvcId = useMemo(() => buildingsWithSvc[0]?.id ?? null, [buildingsWithSvc]);
+    const firstPropertyWithSvcId = useMemo(() => propertiesWithCharges[0]?.id ?? null, [propertiesWithCharges]);
+
+    const getDefaultEntityFilterId = useCallback((view: ViewBy): string => {
+        if (view === 'building') return firstBuildingWithSvcId ?? 'all';
+        if (view === 'property') return firstPropertyWithSvcId ?? 'all';
+        return 'all';
+    }, [firstBuildingWithSvcId, firstPropertyWithSvcId]);
+
+    useEffect(() => {
+        if (initializedDefaultEntityRef.current) return;
+        const defaultId = getDefaultEntityFilterId(viewBy);
+        if (defaultId !== 'all') {
+            setEntityFilterId(defaultId);
+            initializedDefaultEntityRef.current = true;
+        }
+    }, [viewBy, getDefaultEntityFilterId]);
+
     const filteredPropertyRows = useMemo(() => {
         let data = [...rawPropertyRows];
 
@@ -340,7 +376,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 d.unit.toLowerCase().includes(q) ||
                 d.ownerName.toLowerCase().includes(q) ||
                 d.buildingName.toLowerCase().includes(q) ||
-                (getActiveTenantId(d.propertyId) && state.contacts.find(c => c.id === getActiveTenantId(d.propertyId))?.name.toLowerCase().includes(q))
+                ((contactById.get(getActiveTenantId(d.propertyId) ?? '')?.name || '').toLowerCase().includes(q))
             );
         }
 
@@ -349,7 +385,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
             if (ba !== 0) return ba;
             return a.unit.toLowerCase().localeCompare(b.unit.toLowerCase());
         });
-    }, [rawPropertyRows, mscStatusFilter, selectedMonth, entityFilterId, viewBy, debouncedSearch, getActiveTenantId, state.contacts]);
+    }, [rawPropertyRows, mscStatusFilter, selectedMonth, entityFilterId, viewBy, debouncedSearch, getActiveTenantId, contactById]);
 
     const treeData = useMemo((): ARTreeNode[] => {
         const rows = filteredPropertyRows;
@@ -386,7 +422,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 grouped.get(bid)!.push(r);
             }
             return Array.from(grouped.entries()).map(([buildingId, list]) => {
-                const building = state.buildings.find(b => b.id === buildingId);
+                const building = buildingById.get(buildingId);
                 const stats = calcStats(list);
                 const children: ARTreeNode[] = list.map(r => ({
                     id: r.propertyId,
@@ -430,7 +466,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 grouped.get(tid)!.push(r);
             }
             return Array.from(grouped.entries()).map(([tenantId, list]) => {
-                const contact = state.contacts.find(c => c.id === tenantId);
+                const contact = contactById.get(tenantId);
                 const stats = calcStats(list);
                 const children: ARTreeNode[] = list.map(r => ({
                     id: r.propertyId,
@@ -462,7 +498,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 grouped.get(oid)!.push(r);
             }
             return Array.from(grouped.entries()).map(([ownerId, list]) => {
-                const owner = state.contacts.find(c => c.id === ownerId);
+                const owner = contactById.get(ownerId);
                 const stats = calcStats(list);
 
                 const buildingGrouped = new Map<string, PropertyRow[]>();
@@ -473,7 +509,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 }
 
                 const children: ARTreeNode[] = Array.from(buildingGrouped.entries()).map(([bId, bRows]) => {
-                    const building = state.buildings.find(b => b.id === bId);
+                    const building = buildingById.get(bId);
                     const bStats = calcStats(bRows);
                     const propChildren: ARTreeNode[] = bRows.map(r => ({
                         id: `${r.propertyId}-owner-${ownerId}`,
@@ -510,7 +546,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
         }
 
         return [];
-    }, [filteredPropertyRows, viewBy, state.buildings, state.contacts, scIndexes, svcIncomeCategory, selectedMonth, getActiveTenantId]);
+    }, [filteredPropertyRows, viewBy, buildingById, contactById, scIndexes, svcIncomeCategory, selectedMonth, getActiveTenantId]);
 
     useEffect(() => {
         skipAutoSelectLedgerScopeRef.current = false;
@@ -722,7 +758,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
         Object.entries(ownerBalances).forEach(([ownerId, balance]) => {
             if (balance < -0.01) {
-                const owner = state.contacts.find(c => c.id === ownerId);
+                const owner = contactById.get(ownerId);
                 const vacantProps = state.properties
                     .filter(p => p.ownerId === ownerId && getPropertyStatus(p.id) === 'Vacant')
                     .map(p => p.name);
@@ -737,7 +773,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
         });
 
         return negativeOwners.sort((a, b) => a.totalOwed - b.totalOwed);
-    }, [ownerBalances, state.contacts, state.properties, getPropertyStatus]);
+    }, [ownerBalances, contactById, state.properties, getPropertyStatus]);
 
     const handleDeleteLedgerRow = async (row: LedgerRow) => {
         const creditTx = state.transactions.find(t => t.id === row.id);
@@ -1108,7 +1144,10 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                 <button
                                     key={g}
                                     type="button"
-                                    onClick={() => { setViewBy(g); setEntityFilterId('all'); }}
+                                    onClick={() => {
+                                        setViewBy(g);
+                                        setEntityFilterId(getDefaultEntityFilterId(g));
+                                    }}
                                     className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize ${
                                         viewBy === g ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                     }`}

@@ -679,7 +679,7 @@ const EnhancedLedgerPage: React.FC = () => {
                 </div>
 
                 {/* Main Table Area */}
-                <div className="min-h-[400px] md:min-h-[500px] bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex flex-col relative printable-area transition-shadow duration-ds">
+                <div className="flex-1 min-h-[400px] md:min-h-[500px] bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex flex-col relative printable-area transition-shadow duration-ds">
                 {isLoadingTransactions && paginatedTransactions.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center bg-app-toolbar/30">
                         <div className="relative w-12 h-12 mb-4">
@@ -721,11 +721,6 @@ const EnhancedLedgerPage: React.FC = () => {
                 {/* Status Bar */}
                 <div className="px-3 py-1.5 bg-app-toolbar border-t border-app-border flex items-center justify-between text-[9px] font-bold text-app-muted uppercase tracking-widest flex-shrink-0">
                     <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-1.5">
-                            <div className={`w-1.5 h-1.5 rounded-full ${isUsingNative ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`}></div>
-                            <span>Backend: {isUsingNative ? 'High Perf (Native)' : 'Standard (SQL.js)'}</span>
-                        </div>
-                        <div className="w-px h-3 bg-app-border"></div>
                         <span>
                             Records: {paginatedTransactions.length}
                             {totalCount !== null && ` of ${totalCount}`}
@@ -741,8 +736,6 @@ const EnhancedLedgerPage: React.FC = () => {
                         {isNativeEnabled && !isUsingNative && (
                             <span className="text-amber-500 animate-pulse">Switching to native recommended for large data</span>
                         )}
-                        <span className="text-app-border">|</span>
-                        <span>V1.1.2</span>
                     </div>
                 </div>
             </div>

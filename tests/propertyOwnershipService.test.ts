@@ -155,7 +155,7 @@ function baseState(): AppState {
   assert.ok(!hasMultipleOwnersOnDate(st, 'p1', '2025-03-01'));
   assert.ok(hasMultipleOwnersOnDate(st, 'p1', '2025-03-15'));
   const prev = st.propertyOwnership!.find((r) => r.propertyId === 'p1' && r.ownerId === 'o1' && !r.isActive);
-  assert.equal(prev?.endDate, '2025-03-15');
+  assert.equal(prev?.endDate, '2025-03-14');
 }
 
 {
