@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { usePrintContext } from '../../context/PrintContext';
@@ -872,7 +872,19 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     else return unitsInProject;
   }, [projectId, contactId, state.units, agreementForInvoice]);
 
-  useEffect(() => { if (!agreementForInvoice) setUnitId(''); }, [projectId, agreementForInvoice]);
+  /** Only reset unit when the project actually changes — not on mount (duplicate prefill was wiped by the old effect). */
+  const prevProjectIdForUnitRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (agreementForInvoice) return;
+    if (prevProjectIdForUnitRef.current === null) {
+      prevProjectIdForUnitRef.current = projectId;
+      return;
+    }
+    if (prevProjectIdForUnitRef.current !== projectId) {
+      setUnitId('');
+      prevProjectIdForUnitRef.current = projectId;
+    }
+  }, [projectId, agreementForInvoice]);
 
   useEffect(() => {
     const selectedUnit = state.units.find(u => u.id === unitId);

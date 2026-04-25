@@ -99,7 +99,9 @@ export function buildRentalPortfolioTreeNodes(state: AppState): TreeNode[] {
                     let ownerLabel = ownerLabelBase;
                     if (former) ownerLabel += ' (Former)';
                     return {
-                        id: `owner:${ownerId}`,
+                        // Keep building context in owner IDs so selecting an owner under a building
+                        // remains scoped to that building (owner can exist in multiple buildings).
+                        id: `owner:${building.id}:${ownerId}`,
                         label: ownerLabel,
                         type: 'owner',
                         children: unitChildren.length ? unitChildren : undefined,
@@ -131,8 +133,20 @@ export function resolvePortfolioTreeSelection(
         return { selectedBuildingId: id, selectedOwnerId: 'all', selectedUnitId: 'all' };
     }
     if (treeSelId.startsWith('owner:')) {
-        const id = treeSelId.slice('owner:'.length);
-        return { selectedBuildingId: 'all', selectedOwnerId: id, selectedUnitId: 'all' };
+        const rest = treeSelId.slice('owner:'.length);
+        const firstColonIdx = rest.indexOf(':');
+        // New format: owner:{buildingId}:{ownerId}
+        if (firstColonIdx !== -1) {
+            const buildingId = rest.slice(0, firstColonIdx);
+            const ownerId = rest.slice(firstColonIdx + 1);
+            return {
+                selectedBuildingId: buildingId || 'all',
+                selectedOwnerId: ownerId || 'all',
+                selectedUnitId: 'all',
+            };
+        }
+        // Backward compatibility: owner:{ownerId}
+        return { selectedBuildingId: 'all', selectedOwnerId: rest, selectedUnitId: 'all' };
     }
     if (treeSelId.startsWith('unit:')) {
         const rest = treeSelId.slice('unit:'.length);

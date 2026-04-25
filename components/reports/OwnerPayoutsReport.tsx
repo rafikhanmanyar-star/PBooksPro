@@ -930,7 +930,10 @@ const OwnerPayoutsReport: React.FC = () => {
             const unit = state.properties.find(p => p.id === selectedUnitId);
             if (unit) filters.push({ key: 'unit', label: 'Unit', value: unit.name, onClear: () => {
                 if (selectedOwnerId !== 'all') {
-                    setSelectedTreeId(`owner:${selectedOwnerId}`);
+                    const ownerNodeId = selectedBuildingId !== 'all'
+                        ? `owner:${selectedBuildingId}:${selectedOwnerId}`
+                        : `owner:${selectedOwnerId}`;
+                    setSelectedTreeId(ownerNodeId);
                 } else if (selectedBuildingId !== 'all') {
                     setSelectedTreeId(`building:${selectedBuildingId}`);
                 } else {
@@ -1285,8 +1288,8 @@ const OwnerPayoutsReport: React.FC = () => {
                                             </tr>
                                         )}
                                     </tbody>
-                                    <tfoot className="sticky bottom-0 z-10 bg-app-toolbar/30">
-                                        <tr className="border-t-2 border-app-border bg-app-toolbar/30">
+                                    <tfoot>
+                                        <tr className="border-t-2 border-app-border bg-app-card">
                                             <td colSpan={4} className="px-3 py-2.5 text-right text-sm font-bold text-app-text uppercase tracking-wide">Totals (Period)</td>
                                             <td className="px-3 py-2.5 text-right text-sm font-bold text-success whitespace-nowrap">{formatCurrency(totals.totalIn)}</td>
                                             <td className="px-3 py-2.5 text-right text-sm font-bold text-danger whitespace-nowrap">{formatCurrency(totals.totalOut)}</td>

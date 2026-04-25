@@ -2,28 +2,32 @@
 import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useThemeOptional } from '../../context/ThemeContext';
-import { CURRENCY } from '../../constants';
 import { InvoiceStatus, TransactionType } from '../../types';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
+import ComboBox from '../ui/ComboBox';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-import ProjectUnitDetailModal from './ProjectUnitDetailModal';
+import ProjectSellingUnitSummaryCard, { type ProjectSellingUnitCardModel } from './ProjectSellingUnitSummaryCard';
+import ProjectSellingUnitQuickPanel from './ProjectSellingUnitQuickPanel';
 
 interface UnitBoxData {
     id: string;
     name: string;
     projectName: string;
     clientName: string;
-    receivable: number; // Invoiced but not paid
+    receivable: number; // Invoiced but not paid (per-unit display; prorated when multi-unit)
     received: number;
     floorIndex: number;
     floorLabel: string;
     unitIndex: number;
     status: 'Sold' | 'Available';
     type: string;
+    listPrice: number;
+    sellingPrice: number;
+    agreementIssueDate: string | null;
+    brokerRebateDue: number; // prorated for card when multi-unit agreement
 }
 
 interface ProjectLayoutData {
@@ -42,7 +46,8 @@ const ProjectLayoutReport: React.FC = () => {
     const themeCtx = useThemeOptional();
     const isDark = themeCtx?.theme === 'dark';
     const { print: triggerPrint } = usePrintContext();
-    const [selectedUnit, setSelectedUnit] = useState<{ id: string; name: string } | null>(null);
+    const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+    const [selectedProjectId, setSelectedProjectId] = useState<string>('');
 
     // --- Helper: Parse Unit Name (Project Context) ---
     const parseUnit = (name: string): { floorIndex: number, floorLabel: string, unitIndex: number, isUnconventional: boolean, type: string } => {
@@ -143,13 +148,43 @@ const ProjectLayoutReport: React.FC = () => {
                 .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
 
             // If unit has an active agreement and we used agreement invoices, split received/receivable by unit count for multi-unit agreements
+            let unitCountForProrate = 1;
             if (activeAgreement && unitInvoices.length === 0 && agreementInvoices.length > 0) {
-                const unitCount = activeAgreement.unitIds?.length || 1;
-                if (unitCount > 1) {
-                    received = Math.round(received / unitCount);
-                    receivable = Math.round(receivable / unitCount);
+                unitCountForProrate = activeAgreement.unitIds?.length || 1;
+                if (unitCountForProrate > 1) {
+                    received = Math.round(received / unitCountForProrate);
+                    receivable = Math.round(receivable / unitCountForProrate);
                 }
             }
+
+            const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+            const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+            const feeCatId = brokerFeeCategory?.id;
+            const rebateCatId = rebateCategory?.id;
+            let brokerRebateDue = 0;
+            if (activeAgreement?.rebateBrokerId && (activeAgreement.rebateAmount || 0) > 0) {
+                const brokerId = activeAgreement.rebateBrokerId;
+                const paidAlready = state.transactions
+                    .filter(
+                        tx =>
+                            tx.type === TransactionType.EXPENSE &&
+                            tx.contactId === brokerId &&
+                            (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
+                            tx.agreementId === activeAgreement.id
+                    )
+                    .reduce((sum, tx) => sum + tx.amount, 0);
+                let remaining = Math.max(0, (activeAgreement.rebateAmount || 0) - paidAlready);
+                if (activeAgreement && unitInvoices.length === 0 && agreementInvoices.length > 0 && unitCountForProrate > 1) {
+                    remaining = Math.round(remaining / unitCountForProrate);
+                }
+                brokerRebateDue = remaining;
+            }
+
+            const listPrice = activeAgreement?.listPrice ?? 0;
+            const sellingPrice = activeAgreement?.sellingPrice ?? 0;
+            const agreementIssueDate = activeAgreement?.issueDate
+                ? activeAgreement.issueDate.split('T')[0]
+                : null;
 
             const boxData: UnitBoxData = {
                 id: unit.id,
@@ -163,6 +198,10 @@ const ProjectLayoutReport: React.FC = () => {
                 floorLabel: parsed.floorLabel,
                 unitIndex: parsed.unitIndex,
                 type: parsed.type,
+                listPrice,
+                sellingPrice,
+                agreementIssueDate,
+                brokerRebateDue,
             };
 
             if (parsed.isUnconventional) {
@@ -188,6 +227,25 @@ const ProjectLayoutReport: React.FC = () => {
             data: Object.values(projectsMap).filter(p => p.floors.length > 0 || p.unconventional.length > 0).sort((a, b) => a.name.localeCompare(b.name)) 
         };
     }, [state]);
+
+    const projectPickerItems = useMemo(
+        () => data.data.map((p) => ({ id: p.id, name: p.name })),
+        [data.data]
+    );
+
+    /** Keeps grid stable on first paint; falls back to first project with units when selection is empty or stale. */
+    const displayProjectId = useMemo(() => {
+        const rows = data.data;
+        if (rows.length === 0) return '';
+        if (selectedProjectId && rows.some((p) => p.id === selectedProjectId)) return selectedProjectId;
+        return rows[0].id;
+    }, [data.data, selectedProjectId]);
+
+    const visibleProjects = useMemo(() => {
+        if (!displayProjectId) return [];
+        const one = data.data.find((p) => p.id === displayProjectId);
+        return one ? [one] : [];
+    }, [data.data, displayProjectId]);
 
     const legendSwatch = {
         available: 'bg-app-toolbar border-app-border',
@@ -229,81 +287,34 @@ const ProjectLayoutReport: React.FC = () => {
         return 'bg-[color:var(--badge-unpaid-bg)] border-ds-danger';
     };
     
-    const isFullyPaid = (u: UnitBoxData) => {
-        if (u.status !== 'Sold') return false;
-        const total = u.received + u.receivable;
-        // Only show Fully Paid when there is a real total and nothing is due (100% received)
-        return total > 0 && u.receivable <= 0;
+    const handleCardClick = (unit: UnitBoxData) => {
+        setSelectedUnitId(unit.id);
     };
 
-    const handleCardClick = (unit: UnitBoxData) => {
-        setSelectedUnit({ id: unit.id, name: unit.name });
-    };
+    const toCardModel = (u: UnitBoxData): ProjectSellingUnitCardModel => ({
+        id: u.id,
+        name: u.name,
+        type: u.type,
+        clientName: u.clientName,
+        status: u.status,
+        listPrice: u.listPrice,
+        sellingPrice: u.sellingPrice,
+        agreementIssueDate: u.agreementIssueDate,
+        invoiceDue: u.receivable,
+        brokerRebateDue: u.brokerRebateDue,
+        totalReceived: u.received,
+    });
 
     const renderBox = (unit: UnitBoxData) => {
         const paymentBg = getPaymentBackground(unit);
         return (
-        <div 
-            key={unit.id} 
-            onClick={() => handleCardClick(unit)}
-            className={`relative rounded border-2 shadow-ds-card p-2 flex flex-col justify-between transition-all duration-ds h-32 overflow-hidden cursor-pointer hover:shadow-md hover:scale-[1.02]
-                ${getColorClasses(unit)}
-            `}
-            style={paymentBg ? { backgroundColor: paymentBg } : undefined}
-            title="Click to view details"
-        >
-            {/* Fully Paid stamp */}
-            {isFullyPaid(unit) && (
-                <div
-                    className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0"
-                    aria-hidden
-                >
-                    <span className="text-ds-success/35 font-bold text-sm uppercase tracking-wider transform -rotate-[-18deg] whitespace-nowrap drop-shadow-sm">
-                        Fully Paid
-                    </span>
-                </div>
-            )}
-            {/* Header */}
-            <div className="flex justify-between items-start mb-1 relative z-10">
-                <div className="min-w-0">
-                    <span className="font-bold text-sm text-app-text block truncate" title={unit.name}>{unit.name}</span>
-                    <span className="text-[10px] font-semibold text-app-muted uppercase tracking-tighter block">{unit.type}</span>
-                </div>
-                 {unit.status === 'Sold' && (
-                    <div className="rounded-full bg-ds-success flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
-                 )}
-            </div>
-            
-            {/* Content */}
-            <div className="text-[10px] leading-tight space-y-0.5 flex-grow relative z-10">
-                <div className={`truncate font-medium ${unit.status === 'Available' ? 'text-app-muted italic' : 'text-app-text'}`} title={unit.clientName}>
-                    {unit.clientName}
-                </div>
-                <div className={`text-[9px] uppercase font-bold ${unit.status === 'Available' ? 'text-app-muted' : 'text-app-muted'}`}>
-                    {unit.status}
-                </div>
-            </div>
-
-            {/* Footer */}
-            <div className="mt-1 pt-1 border-t border-app-border/60 text-[10px] flex justify-between items-center relative z-10">
-                {unit.status === 'Sold' && (
-                    <>
-                        <div className="flex flex-col">
-                            <span className="text-app-muted text-[9px] uppercase">Recv</span>
-                            <span className="font-medium text-ds-success">
-                                {(unit.received / 1000).toFixed(0)}k
-                            </span>
-                        </div>
-                        <div className="flex flex-col text-right">
-                            <span className="text-app-muted text-[9px] uppercase">Due</span>
-                            <span className={`font-bold ${unit.receivable > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
-                                {(unit.receivable / 1000).toFixed(0)}k
-                            </span>
-                        </div>
-                    </>
-                )}
-            </div>
-        </div>
+            <ProjectSellingUnitSummaryCard
+                key={unit.id}
+                unit={toCardModel(unit)}
+                className={getColorClasses(unit)}
+                style={paymentBg ? { backgroundColor: paymentBg } : undefined}
+                onClick={() => handleCardClick(unit)}
+            />
         );
     };
 
@@ -311,8 +322,24 @@ const ProjectLayoutReport: React.FC = () => {
         <div className="h-full flex flex-col space-y-4 bg-background">
              <style>{STANDARD_PRINT_STYLES}</style>
 
-            <div className="flex flex-col sm:flex-row justify-end items-center gap-4 mb-2 no-print flex-shrink-0">
-                <div className="ml-auto">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-2 no-print flex-shrink-0">
+                <div className="w-full sm:w-80 min-w-0">
+                    <label htmlFor="project-visual-layout-project" className="block text-sm font-medium text-app-muted mb-1">
+                        Project
+                    </label>
+                    <ComboBox
+                        id="project-visual-layout-project"
+                        label={undefined}
+                        items={projectPickerItems}
+                        selectedId={displayProjectId}
+                        onSelect={(item) => setSelectedProjectId(item?.id ?? '')}
+                        placeholder="Search project…"
+                        allowAddNew={false}
+                        compact
+                        entityType="project"
+                    />
+                </div>
+                <div className="sm:ml-auto sm:self-end">
                     <PrintButton onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })} label="Print Layout" />
                 </div>
             </div>
@@ -335,7 +362,7 @@ const ProjectLayoutReport: React.FC = () => {
                     <div className="text-center py-10 text-app-muted">No project units found to display.</div>
                 ) : (
                     <div className="space-y-8">
-                        {data.data.map((group) => (
+                        {visibleProjects.map((group) => (
                             <div key={group.id} className="break-inside-avoid border-2 border-app-border rounded-xl p-4 bg-app-card shadow-ds-card">
                                 <h3 className="text-lg font-bold text-app-text mb-4 border-b border-app-border pb-2 pl-1">
                                     {group.name}
@@ -366,12 +393,11 @@ const ProjectLayoutReport: React.FC = () => {
                 <ReportFooter />
             </div>
 
-            {selectedUnit && (
-                <ProjectUnitDetailModal
-                    isOpen={!!selectedUnit}
-                    onClose={() => setSelectedUnit(null)}
-                    unitId={selectedUnit.id}
-                    unitName={selectedUnit.name}
+            {selectedUnitId && (
+                <ProjectSellingUnitQuickPanel
+                    isOpen={!!selectedUnitId}
+                    onClose={() => setSelectedUnitId(null)}
+                    unitId={selectedUnitId}
                 />
             )}
         </div>

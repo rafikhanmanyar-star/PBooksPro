@@ -284,8 +284,12 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
         const updateDimensions = () => {
             if (containerRef.current) {
                 const rect = containerRef.current.getBoundingClientRect();
+                const availableHeight = rect.height - 36;
+                const viewportBasedFallback = window.innerHeight - rect.top - 90;
                 setDimensions({
-                    height: Math.max(rect.height - 40, 400),
+                    // Prefer measured container height; if layout reports too small temporarily,
+                    // fall back to viewport-derived space so rows still fill down to footer.
+                    height: Math.max(availableHeight, viewportBasedFallback, 420),
                     width: rect.width || 1200,
                 });
             }
@@ -350,7 +354,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
     }
 
     return (
-        <div ref={containerRef} className="w-full flex-1 flex flex-col bg-app-card overflow-hidden">
+        <div ref={containerRef} className="w-full flex-1 min-h-0 flex flex-col bg-app-card overflow-hidden">
             <div className="overflow-x-auto bg-app-table-header border-b border-app-border scrollbar-hide">
                 <div className="flex items-center h-8 min-w-[1000px] text-[10px] font-bold uppercase tracking-wider text-app-muted px-0">
                     <div
@@ -393,7 +397,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                 </div>
             </div>
 
-            <div className="flex-1 min-w-[1000px]">
+            <div className="flex-1 min-h-0 min-w-[1000px]">
                 <List
                     listRef={listRef as any}
                     defaultHeight={dimensions.height}

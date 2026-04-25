@@ -236,11 +236,14 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
 
                 {/* Bottom-right: payout due */}
                 <div className="flex flex-col gap-0.5 min-w-0 pl-1 pt-0.5 h-full">
-                    <div className="flex items-center justify-between gap-0.5" title="Payout due to owner">
+                    <div className="flex items-center justify-between gap-0.5" title="Payout due to current owner">
                         <Banknote className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span className={`text-[9px] font-bold tabular-nums truncate ${unit.payoutDue > 0 ? 'text-ds-warning' : 'text-slate-900'}`}>
                             {formatCompactK(unit.payoutDue)}
                         </span>
+                    </div>
+                    <div className="text-[8px] text-app-muted leading-tight">
+                        Current owner due
                     </div>
                     {(unit.brokerPayoutPending ?? 0) > 0.01 && (
                         <div className="flex items-center justify-between gap-0.5" title="Payout due to broker (unpaid)">

@@ -35,6 +35,7 @@ import {
     buildOwnerPropertyBreakdownFromApiBalances,
     getOwnerPayoutModalPropertyBreakdownForProperty,
     getOwnerRentalPayoutDueForProperty,
+    getOwnerRentalPayoutDueForOwnerOnProperty,
     type OwnerPropertyBreakdownMap,
 } from '../payouts/ownerPayoutBreakdown';
 
@@ -454,28 +455,9 @@ const PropertyLayoutReport: React.FC = () => {
                 propertiesToProcess = properties.filter(p => p.buildingId === selectedBuildingId);
             }
 
-            let ownerRentalPayoutBreakdown: OwnerPropertyBreakdownMap;
-            if (useApiRollup && !apiRollupError) {
-                if (apiRollupPending && apiOwnerBalanceRows === undefined) {
-                    ownerRentalPayoutBreakdown = {};
-                } else if (apiRollupSuccess) {
-                    ownerRentalPayoutBreakdown =
-                        (apiOwnerBalanceRows?.length ?? 0) > 0
-                            ? buildOwnerPropertyBreakdownFromApiBalances(
-                                  st,
-                                  apiOwnerBalanceRows!.map((r) => ({
-                                      ownerId: r.ownerId,
-                                      propertyId: r.propertyId,
-                                      balance: Number(r.balance),
-                                  }))
-                              )
-                            : {};
-                } else {
-                    ownerRentalPayoutBreakdown = buildOwnerPropertyBreakdown(st);
-                }
-            } else {
-                ownerRentalPayoutBreakdown = buildOwnerPropertyBreakdown(st);
-            }
+            // Visual cards must stay strictly property + owner scoped and match owner ledger behavior.
+            // Use full client-side breakdown here (no API rollup shortcut) to avoid cross-property bleed.
+            const ownerRentalPayoutBreakdown: OwnerPropertyBreakdownMap = buildOwnerPropertyBreakdown(st);
 
             const brokerFeeCategory = categories.find((c) => c.name === 'Broker Fee');
             const rebateCategory = categories.find((c) => c.name === 'Rebate Amount');
@@ -514,8 +496,6 @@ const PropertyLayoutReport: React.FC = () => {
                         return sum + (inv.amount - inv.paidAmount);
                     }, 0);
 
-                const payoutDue = getOwnerRentalPayoutDueForProperty(ownerRentalPayoutBreakdown, prop.id);
-
                 const hasUnpaidRental = propertyInvoices.some(
                     inv =>
                         inv.invoiceType === InvoiceType.RENTAL &&
@@ -541,9 +521,13 @@ const PropertyLayoutReport: React.FC = () => {
                 const canDeductServiceCharges = !serviceChargeDeductedThisMonth && monthlyServiceCharge > 0;
 
                 // Owner & Tenant
-                const owner = contacts.find(c => c.id === prop.ownerId);
                 const activeAgreement = rentalAgreements.find(ra => ra.propertyId === prop.id && ra.status === RentalAgreementStatus.ACTIVE);
+                const visualOwnerId = activeAgreement?.ownerId || prop.ownerId;
+                const owner = contacts.find(c => c.id === visualOwnerId);
                 const tenant = activeAgreement ? contacts.find(c => c.id === activeAgreement.contactId) : null;
+                const payoutDue = visualOwnerId
+                    ? getOwnerRentalPayoutDueForOwnerOnProperty(ownerRentalPayoutBreakdown, visualOwnerId, prop.id)
+                    : getOwnerRentalPayoutDueForProperty(ownerRentalPayoutBreakdown, prop.id);
                 const monthlyRent = activeAgreement?.monthlyRent ?? 0;
                 const securityDepositAmount = activeAgreement?.securityDeposit ?? 0;
                 const agreementStartDate = activeAgreement?.startDate ?? null;

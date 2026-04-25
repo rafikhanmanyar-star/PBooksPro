@@ -421,7 +421,6 @@ const ProjectBuildingFundsReport: React.FC = () => {
                                     <th className="px-4 py-3 text-right font-semibold text-purple-600 whitespace-nowrap">Loan Taken</th>
                                 </>
                             )}
-                            <th onClick={() => handleSort('loanNetBalance')} className="px-4 py-3 text-right font-semibold text-purple-600 cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Loan Net Balance <SortIcon column="loanNetBalance"/></th>
                             <th onClick={() => handleSort('netBalance')} className="px-4 py-3 text-right font-bold text-app-text cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap bg-app-toolbar transition-colors duration-ds">Net Balance <SortIcon column="netBalance"/></th>
                         </tr>
                     </thead>
@@ -459,9 +458,6 @@ const ProjectBuildingFundsReport: React.FC = () => {
                                         </td>
                                     </>
                                 )}
-                                <td className={`px-4 py-3 text-right tabular-nums border-b border-app-border ${row.loanNetBalance >= 0 ? 'text-purple-600' : 'text-purple-700'}`}>
-                                    {CURRENCY} {formatRoundedNumber(row.loanNetBalance)}
-                                </td>
                                 <td className={`px-4 py-3 text-right font-bold tabular-nums border-b border-app-border ${row.netBalance >= 0 ? 'text-app-text bg-app-toolbar/50' : 'text-ds-danger bg-[color:var(--badge-unpaid-bg)]'}`}>
                                     {CURRENCY} {formatRoundedNumber(row.netBalance)}
                                 </td>
@@ -469,7 +465,7 @@ const ProjectBuildingFundsReport: React.FC = () => {
                         ))}
                         {reportData.length === 0 && (
                             <tr>
-                                <td colSpan={reportData.some(row => row.type === 'Loan') ? 9 : 7} className="px-4 py-8 text-center text-app-muted">No projects or buildings found.</td>
+                                <td colSpan={reportData.some(row => row.type === 'Loan') ? 8 : 6} className="px-4 py-8 text-center text-app-muted">No projects or buildings found.</td>
                             </tr>
                         )}
                     </tbody>

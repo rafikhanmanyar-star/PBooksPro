@@ -794,6 +794,13 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                 <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-app-border bg-white dark:bg-app-card shrink-0">
                     <button
                         type="button"
+                        onClick={onClose}
+                        className="rounded-lg bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600 text-white text-sm font-semibold px-4 py-2 shadow-sm transition-colors"
+                    >
+                        Close
+                    </button>
+                    <button
+                        type="button"
                         onClick={handlePrintLedger}
                         className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-app-muted dark:hover:text-app-text px-2 py-1.5"
                     >
@@ -805,13 +812,6 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                         className="rounded-lg bg-[#1e293b] hover:bg-[#0f172a] text-white text-sm font-semibold px-4 py-2 shadow-sm transition-colors"
                     >
                         Edit unit details
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="rounded-lg border border-slate-300 dark:border-app-border text-slate-700 dark:text-app-text text-sm font-semibold px-4 py-2 hover:bg-slate-50 dark:hover:bg-app-toolbar/40 transition-colors"
-                    >
-                        Close
                     </button>
                 </div>
             </div>

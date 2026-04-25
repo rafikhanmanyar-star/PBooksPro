@@ -689,7 +689,7 @@ const EnhancedLedgerPage: React.FC = () => {
                         <p className="text-sm font-medium text-app-muted">Retrieving ledger data...</p>
                     </div>
                 ) : (
-                    <div className="flex-1 overflow-auto p-1 custom-scrollbar">
+                    <div className="flex-1 min-h-0 overflow-hidden p-1 custom-scrollbar">
                         {useVirtualization && sortedTransactions.length > 20 ? (
                             <VirtualizedLedgerTable
                                 groups={groupedTransactions}
@@ -719,7 +719,7 @@ const EnhancedLedgerPage: React.FC = () => {
                 )}
 
                 {/* Status Bar */}
-                <div className="px-3 py-1.5 bg-app-toolbar border-t border-app-border flex items-center justify-between text-[9px] font-bold text-app-muted uppercase tracking-widest flex-shrink-0">
+                <div className="px-3 py-1.5 bg-app-toolbar border-t border-app-border flex items-center text-[9px] font-bold text-app-muted uppercase tracking-widest flex-shrink-0">
                     <div className="flex items-center gap-4">
                         <span>
                             Records: {paginatedTransactions.length}
@@ -730,11 +730,6 @@ const EnhancedLedgerPage: React.FC = () => {
                             <span className="text-primary normal-case font-medium ml-2">
                                 (Scroll for more)
                             </span>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {isNativeEnabled && !isUsingNative && (
-                            <span className="text-amber-500 animate-pulse">Switching to native recommended for large data</span>
                         )}
                     </div>
                 </div>

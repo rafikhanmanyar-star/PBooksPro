@@ -436,3 +436,18 @@ export function getOwnerRentalPayoutDueForProperty(breakdown: OwnerPropertyBreak
     }
     return Math.max(0, sum);
 }
+
+/** Owner-specific rental payout due for one unit (used by visual unit cards). */
+export function getOwnerRentalPayoutDueForOwnerOnProperty(
+    breakdown: OwnerPropertyBreakdownMap,
+    ownerId: string,
+    propertyId: string
+): number {
+    const pid = String(propertyId);
+    return Math.max(
+        0,
+        (breakdown[String(ownerId)]?.rent ?? [])
+            .filter((row) => String(row.propertyId) === pid)
+            .reduce((sum, row) => sum + (row.balanceDue ?? 0), 0)
+    );
+}
