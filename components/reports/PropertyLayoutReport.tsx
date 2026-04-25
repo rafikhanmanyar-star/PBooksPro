@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState, Suspense, lazy, useEffect } from 'react';
+import React, { useMemo, useState, Suspense, lazy, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { _getAppState } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -238,10 +238,10 @@ const PropertyLayoutReport: React.FC = () => {
     const needFullOwnerPropertyBreakdownModal =
         !!ownerPayoutState && ownerPayoutState.payoutType === 'Security';
 
-    const ownerPropertyBreakdownLayout = useMemo((): OwnerPropertyBreakdownMap | null => {
-        if (!ownerPayoutState) return null;
+    const layoutOwnerRentalPayoutBreakdown = useMemo((): OwnerPropertyBreakdownMap => {
+        if (properties.length === 0) return {};
         const st = _getAppState();
-        if (!needFullOwnerPropertyBreakdownModal && useApiRollup && !apiRollupError) {
+        if (useApiRollup && !apiRollupError) {
             if (apiRollupPending && apiOwnerBalanceRows === undefined) {
                 return {};
             }
@@ -257,17 +257,34 @@ const PropertyLayoutReport: React.FC = () => {
                       )
                     : {};
             }
-            return buildOwnerPropertyBreakdown(st);
         }
         return buildOwnerPropertyBreakdown(st);
     }, [
-        ownerPayoutState,
-        needFullOwnerPropertyBreakdownModal,
         useApiRollup,
         apiRollupError,
         apiRollupPending,
         apiRollupSuccess,
         apiOwnerBalanceRows,
+        transactions,
+        properties,
+        categories,
+        rentalAgreements,
+        bills,
+        propertyOwnership,
+    ]);
+
+    const ownerPropertyBreakdownLayout = useMemo((): OwnerPropertyBreakdownMap | null => {
+        if (!ownerPayoutState) return null;
+        if (!needFullOwnerPropertyBreakdownModal && useApiRollup && !apiRollupError) {
+            return layoutOwnerRentalPayoutBreakdown;
+        }
+        return buildOwnerPropertyBreakdown(_getAppState());
+    }, [
+        ownerPayoutState,
+        needFullOwnerPropertyBreakdownModal,
+        useApiRollup,
+        apiRollupError,
+        layoutOwnerRentalPayoutBreakdown,
         transactions,
         properties,
         categories,
@@ -436,8 +453,8 @@ const PropertyLayoutReport: React.FC = () => {
         // If properties exist, prioritize Rental View.
 
         if (properties.length > 0) {
-            const st = _getAppState();
             const buildingsMap: { [code: string]: BuildingData } = {};
+            const floorGroupsByBuilding = new Map<string, Map<number, BuildingData['floors'][number]>>();
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
@@ -447,17 +464,25 @@ const PropertyLayoutReport: React.FC = () => {
                 c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income'
             );
             const monthPrefix = currentMonthYyyyMm(today);
+            const todayYmd = todayLocalYyyyMmDd();
             const invoicesByProperty = indexInvoicesByPropertyId(invoices);
             const transactionsByProperty = indexTransactionsByPropertyId(transactions);
+            const contactById = new Map(contacts.map((c) => [c.id, c]));
+            const activeAgreementByPropertyId = new Map<string, typeof rentalAgreements[number]>();
+            for (const agreement of rentalAgreements) {
+                if (agreement.status !== RentalAgreementStatus.ACTIVE || !agreement.propertyId) continue;
+                const propertyId = String(agreement.propertyId);
+                if (!activeAgreementByPropertyId.has(propertyId)) {
+                    activeAgreementByPropertyId.set(propertyId, agreement);
+                }
+            }
 
             let propertiesToProcess = properties;
             if (selectedBuildingId !== 'all') {
                 propertiesToProcess = properties.filter(p => p.buildingId === selectedBuildingId);
             }
 
-            // Visual cards must stay strictly property + owner scoped and match owner ledger behavior.
-            // Use full client-side breakdown here (no API rollup shortcut) to avoid cross-property bleed.
-            const ownerRentalPayoutBreakdown: OwnerPropertyBreakdownMap = buildOwnerPropertyBreakdown(st);
+            const ownerRentalPayoutBreakdown = layoutOwnerRentalPayoutBreakdown;
 
             const brokerFeeCategory = categories.find((c) => c.name === 'Broker Fee');
             const rebateCategory = categories.find((c) => c.name === 'Rebate Amount');
@@ -469,62 +494,66 @@ const PropertyLayoutReport: React.FC = () => {
                 const propIdStr = String(prop.id);
                 const propertyInvoices = invoicesByProperty.get(propIdStr) ?? [];
                 const propertyTxs = transactionsByProperty.get(propIdStr) ?? [];
-                // Security deposit due: standalone security invoices + security portion of mixed invoices
-                const securityDue = propertyInvoices
-                    .filter(inv => inv.status !== InvoiceStatus.PAID)
-                    .reduce((sum, inv) => {
+
+                let securityDue = 0;
+                let receivable = 0;
+                let hasUnpaidRental = false;
+                let hasUnpaidSecurity = false;
+                let currentMonthRentalInvoiceCount = 0;
+                let currentMonthPaidRentalInvoiceCount = 0;
+                let lastUpdated = '';
+
+                for (const inv of propertyInvoices) {
+                    if (inv.issueDate && inv.issueDate > lastUpdated) lastUpdated = inv.issueDate;
+                    const amount = Number(inv.amount) || 0;
+                    const paidAmount = Number(inv.paidAmount) || 0;
+                    const outstanding = amount - paidAmount;
+
+                    if (inv.status !== InvoiceStatus.PAID) {
                         if (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) {
-                            return sum + (inv.amount - inv.paidAmount);
+                            securityDue += outstanding;
+                        } else if (inv.securityDepositCharge && amount > 0) {
+                            const securityRatio = inv.securityDepositCharge / amount;
+                            securityDue += outstanding * securityRatio;
+                            receivable += outstanding * (1 - securityRatio);
+                        } else {
+                            receivable += outstanding;
                         }
-                        if (inv.securityDepositCharge && inv.amount > 0) {
-                            const outstanding = inv.amount - inv.paidAmount;
-                            const securityRatio = inv.securityDepositCharge / inv.amount;
-                            return sum + (outstanding * securityRatio);
-                        }
-                        return sum;
-                    }, 0);
+                    }
 
-                // Rental receivable: exclude security deposit invoices (shown separately above)
-                const receivable = propertyInvoices
-                    .filter(inv => inv.status !== InvoiceStatus.PAID && inv.invoiceType !== InvoiceType.SECURITY_DEPOSIT)
-                    .reduce((sum, inv) => {
-                        if (inv.securityDepositCharge && inv.amount > 0) {
-                            const outstanding = inv.amount - inv.paidAmount;
-                            const rentalRatio = 1 - (inv.securityDepositCharge / inv.amount);
-                            return sum + (outstanding * rentalRatio);
-                        }
-                        return sum + (inv.amount - inv.paidAmount);
-                    }, 0);
-
-                const hasUnpaidRental = propertyInvoices.some(
-                    inv =>
+                    if (
                         inv.invoiceType === InvoiceType.RENTAL &&
                         inv.status !== InvoiceStatus.PAID &&
                         inv.status !== InvoiceStatus.DRAFT &&
-                        inv.amount - (inv.paidAmount || 0) > 0.01
-                );
-                const hasUnpaidSecurity = propertyInvoices.some(
-                    inv =>
+                        outstanding > 0.01
+                    ) {
+                        hasUnpaidRental = true;
+                    }
+                    if (
                         inv.invoiceType === InvoiceType.SECURITY_DEPOSIT &&
                         inv.status !== InvoiceStatus.PAID &&
                         inv.status !== InvoiceStatus.DRAFT &&
-                        inv.amount - (inv.paidAmount || 0) > 0.01
-                );
-                const serviceChargeDeductedThisMonth =
-                    !!svcIncomeCategory &&
-                    propertyTxs.some(
-                        tx =>
-                            tx.categoryId === svcIncomeCategory!.id &&
-                            tx.date.startsWith(monthPrefix)
-                    );
+                        outstanding > 0.01
+                    ) {
+                        hasUnpaidSecurity = true;
+                    }
+                    if (
+                        inv.invoiceType === InvoiceType.RENTAL &&
+                        (inv.rentalMonth === currentMonthStr || inv.issueDate.startsWith(currentMonthStr))
+                    ) {
+                        currentMonthRentalInvoiceCount += 1;
+                        if (outstanding <= 0.01) currentMonthPaidRentalInvoiceCount += 1;
+                    }
+                }
+
+                let serviceChargeDeductedThisMonth = false;
                 const monthlyServiceCharge = prop.monthlyServiceCharge || 0;
-                const canDeductServiceCharges = !serviceChargeDeductedThisMonth && monthlyServiceCharge > 0;
 
                 // Owner & Tenant
-                const activeAgreement = rentalAgreements.find(ra => ra.propertyId === prop.id && ra.status === RentalAgreementStatus.ACTIVE);
+                const activeAgreement = activeAgreementByPropertyId.get(propIdStr);
                 const visualOwnerId = activeAgreement?.ownerId || prop.ownerId;
-                const owner = contacts.find(c => c.id === visualOwnerId);
-                const tenant = activeAgreement ? contacts.find(c => c.id === activeAgreement.contactId) : null;
+                const owner = visualOwnerId ? contactById.get(visualOwnerId) : undefined;
+                const tenant = activeAgreement ? contactById.get(activeAgreement.contactId) : null;
                 const payoutDue = visualOwnerId
                     ? getOwnerRentalPayoutDueForOwnerOnProperty(ownerRentalPayoutBreakdown, visualOwnerId, prop.id)
                     : getOwnerRentalPayoutDueForProperty(ownerRentalPayoutBreakdown, prop.id);
@@ -533,48 +562,42 @@ const PropertyLayoutReport: React.FC = () => {
                 const agreementStartDate = activeAgreement?.startDate ?? null;
 
                 let brokerPayoutPending = 0;
+                let brokerPaidAlready = 0;
+                const brokerContact = activeAgreement?.brokerId ? contactById.get(activeAgreement.brokerId) : undefined;
+                for (const tx of propertyTxs) {
+                    if (tx.date && tx.date > lastUpdated) lastUpdated = tx.date;
+                    if (svcIncomeCategory && !serviceChargeDeductedThisMonth && tx.categoryId === svcIncomeCategory.id && tx.date.startsWith(monthPrefix)) {
+                        serviceChargeDeductedThisMonth = true;
+                    }
+                    if (
+                        activeAgreement &&
+                        brokerContact &&
+                        tx.type === TransactionType.EXPENSE &&
+                        tx.contactId === brokerContact.id &&
+                        (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
+                        (tx.agreementId === activeAgreement.id || String(tx.propertyId) === propIdStr)
+                    ) {
+                        brokerPaidAlready += Number(tx.amount) || 0;
+                    }
+                }
+                const canDeductServiceCharges = !serviceChargeDeductedThisMonth && monthlyServiceCharge > 0;
                 if (
                     activeAgreement?.brokerId &&
                     activeAgreement.brokerFee &&
-                    !activeAgreement.previousAgreementId
+                    !activeAgreement.previousAgreementId &&
+                    brokerContact
                 ) {
-                    const brokerContact = contacts.find(c => c.id === activeAgreement.brokerId);
-                    if (brokerContact) {
-                        const paidAlready = propertyTxs
-                            .filter(
-                                tx =>
-                                    tx.type === TransactionType.EXPENSE &&
-                                    tx.contactId === brokerContact.id &&
-                                    (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
-                                    (tx.agreementId === activeAgreement.id || String(tx.propertyId) === propIdStr)
-                            )
-                            .reduce((sum, tx) => sum + tx.amount, 0);
-                        brokerPayoutPending = Math.max(0, (activeAgreement.brokerFee || 0) - paidAlready);
-                    }
+                    brokerPayoutPending = Math.max(0, (activeAgreement.brokerFee || 0) - brokerPaidAlready);
                 }
 
                 // Calculate last updated date
-                const propertyTransactions = propertyTxs;
-                const transactionDates = propertyTransactions.map(tx => tx.date);
-                const invoiceDates = propertyInvoices.map(inv => inv.issueDate);
-                const agreementDates = activeAgreement ? [activeAgreement.endDate] : [];
-                const allDates = [...transactionDates, ...invoiceDates, ...agreementDates];
-                const lastUpdated = allDates.length > 0
-                    ? allDates.sort().reverse()[0]
-                    : toLocalDateString(new Date());
-
-                // Check all invoices for the current month
-                const currentMonthInvoices = propertyInvoices.filter(inv =>
-                    inv.invoiceType === InvoiceType.RENTAL &&
-                    (
-                        (inv.rentalMonth === currentMonthStr) ||
-                        (inv.issueDate.startsWith(currentMonthStr))
-                    )
-                );
+                if (activeAgreement?.endDate && activeAgreement.endDate > lastUpdated) lastUpdated = activeAgreement.endDate;
+                if (!lastUpdated) lastUpdated = toLocalDateString(new Date());
 
                 // Mark as PAID only if invoices exist and all are fully paid (balance near 0)
-                const isCurrentMonthRentPaid = currentMonthInvoices.length > 0 &&
-                    currentMonthInvoices.every(inv => (inv.amount - inv.paidAmount) <= 0.01);
+                const isCurrentMonthRentPaid =
+                    currentMonthRentalInvoiceCount > 0 &&
+                    currentMonthPaidRentalInvoiceCount === currentMonthRentalInvoiceCount;
 
                 let isExpiringSoon = false;
                 let agreementEndDate: string | null = null;
@@ -583,7 +606,6 @@ const PropertyLayoutReport: React.FC = () => {
                 if (activeAgreement) {
                     /** Calendar-day diff (display timezone / storage rules) — avoids UTC vs local errors from `new Date(iso)`. */
                     const endYmd = toDateOnly(activeAgreement.endDate);
-                    const todayYmd = todayLocalYyyyMmDd();
                     const endCal = parseYyyyMmDdToLocalDate(endYmd);
                     const todayCal = parseYyyyMmDdToLocalDate(todayYmd);
                     const daysDiff = Math.round(
@@ -627,15 +649,18 @@ const PropertyLayoutReport: React.FC = () => {
 
                 if (!buildingsMap[parsed.buildingCode]) {
                     buildingsMap[parsed.buildingCode] = { code: parsed.buildingCode, floors: [], unconventional: [] };
+                    floorGroupsByBuilding.set(parsed.buildingCode, new Map());
                 }
 
                 if (parsed.isUnconventional) {
                     buildingsMap[parsed.buildingCode].unconventional.push(boxData);
                 } else {
-                    let floorGroup = buildingsMap[parsed.buildingCode].floors.find(f => f.index === parsed.floorIndex);
+                    const floorGroups = floorGroupsByBuilding.get(parsed.buildingCode)!;
+                    let floorGroup = floorGroups.get(parsed.floorIndex);
                     if (!floorGroup) {
                         floorGroup = { index: parsed.floorIndex, label: parsed.floorLabel, units: [] };
                         buildingsMap[parsed.buildingCode].floors.push(floorGroup);
+                        floorGroups.set(parsed.floorIndex, floorGroup);
                     }
                     floorGroup.units.push(boxData);
                 }
@@ -666,8 +691,12 @@ const PropertyLayoutReport: React.FC = () => {
                 const ms = performance.now() - tLayout0;
                 if (ms > 200) {
                     const mode =
-                        useApiRollup && !apiRollupError && apiRollupSuccess && (apiOwnerBalanceRows?.length ?? 0) > 0
-                            ? 'api-rollup'
+                        useApiRollup && !apiRollupError
+                            ? apiRollupPending && apiOwnerBalanceRows === undefined
+                                ? 'api-rollup-pending'
+                                : apiRollupSuccess
+                                  ? 'api-rollup'
+                                  : 'full-client'
                             : 'full-client';
                     console.warn('[PBooksPerf][VisualLayout] layoutMemo ms=', Math.round(ms), {
                         mode,
@@ -767,6 +796,7 @@ const PropertyLayoutReport: React.FC = () => {
         projects,
         units,
         projectAgreements,
+        layoutOwnerRentalPayoutBreakdown,
         useApiRollup,
         apiRollupSuccess,
         apiRollupPending,
@@ -778,7 +808,7 @@ const PropertyLayoutReport: React.FC = () => {
 
 
     /** Light red (unpaid) → light green (paid) from account receivable vs max receivable on the layout. */
-    const getReceivableBackgroundStyle = (receivable: number, maxReceivable: number): React.CSSProperties => {
+    const getReceivableBackgroundStyle = useCallback((receivable: number, maxReceivable: number): React.CSSProperties => {
         const r = Math.max(0, receivable);
         const max = Math.max(0, maxReceivable);
         let paidRatio: number;
@@ -792,9 +822,9 @@ const PropertyLayoutReport: React.FC = () => {
         return {
             backgroundColor: `color-mix(in srgb, ${lightGreen} ${paidRatio * 100}%, ${lightRed} ${(1 - paidRatio) * 100}%)`,
         };
-    };
+    }, []);
 
-    const getColorClasses = (unit: any, mode: 'RENTAL' | 'PROJECT') => {
+    const getColorClasses = useCallback((unit: any, mode: 'RENTAL' | 'PROJECT') => {
         if (mode === 'RENTAL') {
             if (unit.isExpiringSoon) return 'border-ds-warning';
             if (unit.status === 'Occupied') return 'border-ds-success';
@@ -805,9 +835,43 @@ const PropertyLayoutReport: React.FC = () => {
             if (unit.receivable < 50000) return 'border-ds-warning';
             return 'border-ds-danger';
         }
-    };
+    }, []);
 
-    const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT', maxReceivable: number = 0) => {
+    const rentalCardStylesById = useMemo(() => {
+        const styles = new Map<string, React.CSSProperties>();
+        if (data.type !== 'RENTAL') return styles;
+
+        const addStyle = (unit: PropertyBoxData) => {
+            const monthlySvcDue =
+                (unit.monthlyServiceCharge || 0) > 0.01 && !unit.serviceChargeDeductedThisMonth
+                    ? unit.monthlyServiceCharge || 0
+                    : 0;
+            const plainWhiteVacant =
+                unit.status === 'Vacant' &&
+                (unit.payoutDue || 0) <= 0.01 &&
+                (unit.receivable || 0) <= 0.01 &&
+                (unit.securityDue || 0) <= 0.01 &&
+                (unit.brokerPayoutPending || 0) <= 0.01 &&
+                monthlySvcDue <= 0.01;
+            if (!plainWhiteVacant) {
+                styles.set(unit.id, getReceivableBackgroundStyle(unit.receivable || 0, data.maxReceivable || 0));
+            }
+        };
+
+        for (const group of data.data as BuildingData[]) {
+            for (const floor of group.floors) {
+                for (const unit of floor.units) addStyle(unit);
+            }
+            for (const unit of group.unconventional) addStyle(unit);
+        }
+        return styles;
+    }, [data, getReceivableBackgroundStyle]);
+
+    const handlePropertyCardClick = useCallback((propertyId: string) => {
+        setSelectedPropertyId(propertyId);
+    }, []);
+
+    const renderBox = useCallback((unit: any, mode: 'RENTAL' | 'PROJECT', maxReceivable: number = 0) => {
         /** Vacant, no tenant receivables, and no net owner/account payout due — plain white card */
         const monthlySvcDue =
             (unit.monthlyServiceCharge || 0) > 0.01 && !unit.serviceChargeDeductedThisMonth
@@ -823,7 +887,7 @@ const PropertyLayoutReport: React.FC = () => {
 
         const backgroundColorStyle =
             mode === 'RENTAL' && !plainWhiteVacant
-                ? getReceivableBackgroundStyle(unit.receivable || 0, maxReceivable)
+                ? rentalCardStylesById.get(unit.id) ?? getReceivableBackgroundStyle(unit.receivable || 0, maxReceivable)
                 : undefined;
 
         if (mode === 'RENTAL') {
@@ -834,7 +898,7 @@ const PropertyLayoutReport: React.FC = () => {
                     className={getColorClasses(unit, mode)}
                     style={backgroundColorStyle}
                     plainWhiteBackground={plainWhiteVacant}
-                    onClick={() => setSelectedPropertyId(unit.id)}
+                    onClick={handlePropertyCardClick}
                 />
             );
         }
@@ -884,7 +948,7 @@ const PropertyLayoutReport: React.FC = () => {
                 </div>
             </div>
         );
-    };
+    }, [getColorClasses, getReceivableBackgroundStyle, handlePropertyCardClick, rentalCardStylesById]);
 
     return (
         <div className="flex flex-col h-full min-h-0 overflow-hidden">

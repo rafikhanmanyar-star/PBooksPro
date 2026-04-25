@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { List } from 'react-window';
-import { Invoice, Transaction, InvoiceType, Contact } from '../../types';
+import { Invoice, Transaction, InvoiceType, Contact, TransactionType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate, parseStoredDateToYyyyMmDdInput, parseYyyyMmDdToLocalDate } from '../../utils/dateUtils';
 import Select from '../ui/Select';
@@ -89,6 +89,11 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
     const units = useUnits();
     const rentalAgreements = useRentalAgreements();
     const invoices = useStateSelector(s => s.invoices);
+    const categories = useStateSelector(s => s.categories);
+    const securityDepositCategoryId = useMemo(
+        () => categories.find(c => c.name === 'Security Deposit' && c.type === TransactionType.INCOME)?.id,
+        [categories]
+    );
     const whatsAppTemplates = useStateSelector(s => s.whatsAppTemplates);
     const whatsAppMode = useStateSelector(s => s.whatsAppMode);
     const { showToast, showAlert } = useNotification();
@@ -489,7 +494,8 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
 
             if (linkedInvoice) {
                 const isSecurityPayment =
-                    linkedInvoice.invoiceType === InvoiceType.SECURITY_DEPOSIT
+                    (securityDepositCategoryId && tx.categoryId === securityDepositCategoryId)
+                    || linkedInvoice.invoiceType === InvoiceType.SECURITY_DEPOSIT
                     || (linkedInvoice.description || '').toLowerCase().includes('security')
                     || (linkedInvoice.securityDepositCharge || 0) >= linkedInvoice.amount;
 

@@ -13,3 +13,15 @@ export function isSecurityInvoice(inv: Invoice): boolean {
     (inv.description || '').toLowerCase().includes('security')
   );
 }
+
+/**
+ * Invoice whose balance is entirely security (no rent component).
+ * Used when posting payments so the transaction uses Security Deposit, not Rental Income.
+ * Covers explicit SECURITY_DEPOSIT type and legacy RENTAL rows where amount === security deposit charge.
+ */
+export function isPureSecurityDepositInvoice(inv: Invoice): boolean {
+  if (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) return true;
+  const sec = inv.securityDepositCharge || 0;
+  const rentPortion = Math.max(0, inv.amount - sec);
+  return inv.invoiceType === InvoiceType.RENTAL && sec > 0.01 && rentPortion < 0.01;
+}

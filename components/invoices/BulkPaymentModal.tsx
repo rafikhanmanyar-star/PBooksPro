@@ -20,6 +20,7 @@ import { findProjectAssetCategory } from '../../constants/projectAssetSystemCate
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
 import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
 import { toLocalDateString } from '../../utils/dateUtils';
+import { isPureSecurityDepositInvoice } from '../../utils/rentalInvoiceClassification';
 const ASSET_TYPES: { value: ProjectReceivedAssetType; label: string }[] = [
     { value: 'Plot', label: 'Plot' },
     { value: 'Car', label: 'Car' },
@@ -236,12 +237,17 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
         const batchId = `batch-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const label = isRentalContext ? 'Rental' : 'Installment';
         const transactions: Transaction[] = [];
+        const securityDepositIncomeCategory = state.categories.find(
+            c => c.name === 'Security Deposit' && c.type === TransactionType.INCOME
+        );
 
         for (const inv of selectedInvoices) {
             const payAmountPre = parseFloat(payments[inv.id] || '0');
             if (payAmountPre <= 0) continue;
+            const pureSecurity = isPureSecurityDepositInvoice(inv);
             if (
                 inv.invoiceType === InvoiceType.RENTAL &&
+                !pureSecurity &&
                 inv.propertyId &&
                 shouldPostOwnerRentAllocation(state, inv.propertyId, paymentDate)
             ) {
@@ -253,9 +259,20 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
             }
         }
 
+        for (const inv of selectedInvoices) {
+            const pre = parseFloat(payments[inv.id] || '0');
+            if (pre > 0 && isPureSecurityDepositInvoice(inv) && !securityDepositIncomeCategory) {
+                await showAlert(
+                    "The 'Security Deposit' income category is not set up. Add it in categories or check Settings before recording this payment."
+                );
+                return;
+            }
+        }
+
         selectedInvoices.forEach(inv => {
             const payAmount = parseFloat(payments[inv.id] || '0');
             if (payAmount > 0) {
+                const pureSec = isPureSecurityDepositInvoice(inv);
                 let pid = inv.projectId;
                 let uid = inv.unitId;
                 let cid = inv.categoryId;
@@ -276,6 +293,9 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                         const cat = state.categories.find(c => c.name === catName && c.type === TransactionType.INCOME);
                         if (cat) cid = cat.id;
                     }
+                }
+                if (pureSec && securityDepositIncomeCategory) {
+                    cid = securityDepositIncomeCategory.id;
                 }
 
                 const property = inv.propertyId ? state.properties.find(p => p.id === inv.propertyId) : null;
@@ -306,9 +326,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 const mkId = () =>
                     `txn-bulk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}-${inv.id}`;
 
-                const invLabel = inv.invoiceType === InvoiceType.SECURITY_DEPOSIT
-                    ? 'Security Deposit'
-                    : label;
+                const invLabel = pureSec ? 'Security Deposit' : label;
 
                 transactions.push({
                     id: mkId(),
@@ -330,6 +348,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
 
                 if (
                     inv.invoiceType === InvoiceType.RENTAL &&
+                    !pureSec &&
                     inv.propertyId &&
                     shouldPostOwnerRentAllocation(state, inv.propertyId, paymentDate)
                 ) {

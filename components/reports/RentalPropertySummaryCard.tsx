@@ -59,7 +59,7 @@ export interface RentalPropertySummaryCardProps {
     style?: React.CSSProperties;
     /** Vacant unit with no receivable and no owner/account payout due — solid white card */
     plainWhiteBackground?: boolean;
-    onClick?: () => void;
+    onClick?: (propertyId: string) => void;
 }
 
 const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> = ({
@@ -120,10 +120,10 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
         <div
             className={`relative rounded-xl border shadow-sm p-1.5 flex flex-col min-h-[12rem] transition-all cursor-pointer hover:shadow-md hover:ring-2 hover:ring-primary/30 ${plainWhiteBackground ? 'bg-white' : ''} ${className}`}
             style={plainWhiteBackground ? undefined : style}
-            onClick={onClick}
+            onClick={() => onClick?.(unit.id)}
             role="button"
             tabIndex={0}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick?.(); }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick?.(unit.id); }}
         >
             {showPaidWatermark && (
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-20 pointer-events-none select-none z-0">
