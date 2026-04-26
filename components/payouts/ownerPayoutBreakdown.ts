@@ -18,6 +18,39 @@ export type OwnerPropertyBreakdownMap = Record<
     { rent: PropertyBalanceItem[]; security: PropertyBalanceItem[] }
 >;
 
+/** Payee for Owner Payout: UI sets `contactId`; some imports/API rows only set `ownerId`. */
+export function resolveOwnerPayoutPayeeId(tx: Pick<Transaction, 'contactId' | 'ownerId'>): string | undefined {
+    const c = tx.contactId != null && String(tx.contactId).trim() !== '' ? String(tx.contactId) : undefined;
+    if (c) return c;
+    const o = tx.ownerId != null && String(tx.ownerId).trim() !== '' ? String(tx.ownerId) : undefined;
+    return o;
+}
+
+/**
+ * If the payout description includes `[Property Name]` (as used by pay modals), match the longest
+ * property name among the candidates so a building-only payout can be tied to the right unit when
+ * the owner has several units in the same building.
+ */
+function tryResolvePropertyIdFromPayoutBrackets(
+    state: AppState,
+    description: string | undefined,
+    candidatePropertyIds: string[]
+): string | undefined {
+    if (!description || candidatePropertyIds.length <= 1) return undefined;
+    const lower = description.toLowerCase();
+    const sorted = [...candidatePropertyIds]
+        .map((id) => {
+            const p = state.properties.find((x) => String(x.id) === id);
+            return { id, name: (p?.name || '').trim() };
+        })
+        .filter((x) => x.name.length > 0)
+        .sort((a, b) => b.name.length - a.name.length);
+    for (const { id, name } of sorted) {
+        if (lower.includes(`[${name.toLowerCase()}]`)) return id;
+    }
+    return undefined;
+}
+
 /**
  * First property in `state.properties` order where this owner is a payee (matches breakdown iteration).
  * Used to attribute unallocated Owner Service Charge payments to one unit.
@@ -43,12 +76,13 @@ export function shouldAttributeUnallocatedOwnerPayoutToProperty(
     state: AppState,
     ownerId: string,
     propertyIdStr: string,
-    tx: Pick<Transaction, 'propertyId' | 'buildingId' | 'contactId'>
+    tx: Pick<Transaction, 'propertyId' | 'buildingId' | 'contactId' | 'ownerId' | 'description'>
 ): boolean {
     if (tx.propertyId != null && String(tx.propertyId).trim() !== '') {
         return String(tx.propertyId) === String(propertyIdStr);
     }
-    if (tx.contactId !== ownerId) return false;
+    const payee = resolveOwnerPayoutPayeeId(tx);
+    if (payee !== ownerId) return false;
 
     const property = state.properties.find((p) => String(p.id) === String(propertyIdStr));
     if (!property) return false;
@@ -58,6 +92,7 @@ export function shouldAttributeUnallocatedOwnerPayoutToProperty(
     if (tx.buildingId) {
         if (property.buildingId !== tx.buildingId) return false;
     } else {
+        // No building on transaction (e.g. project cost center, or legacy row): only if this owner has exactly one property.
         const only = getPropertyIdsForOwner(state, ownerId);
         if (only.size !== 1 || !only.has(String(propertyIdStr))) return false;
     }
@@ -90,6 +125,8 @@ export function shouldAttributeUnallocatedOwnerPayoutToProperty(
 
     if (ownerPropsInBuilding.length === 0) return false;
     if (ownerPropsInBuilding.length === 1) return ownerPropsInBuilding[0] === String(propertyIdStr);
+    const fromDesc = tryResolvePropertyIdFromPayoutBrackets(state, tx.description, ownerPropsInBuilding);
+    if (fromDesc) return fromDesc === String(propertyIdStr);
     return ownerPropsInBuilding[0] === String(propertyIdStr);
 }
 
@@ -217,7 +254,7 @@ export function computeOwnerRentCollectedPaidBalanceForProperty(
             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
             if (isNaN(amount) || amount <= 0) return;
             if (tx.categoryId === ownerPayoutCategory?.id) {
-                if (tx.contactId === ownerId) paid += amount;
+                if (resolveOwnerPayoutPayeeId(tx) === ownerId) paid += amount;
                 return;
             }
             const category = state.categories.find((c) => c.id === tx.categoryId);

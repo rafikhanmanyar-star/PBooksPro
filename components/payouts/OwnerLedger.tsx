@@ -6,7 +6,11 @@ import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
-import { isFirstPropertyForOwnerRentSlice, shouldAttributeUnallocatedOwnerPayoutToProperty } from './ownerPayoutBreakdown';
+import {
+    isFirstPropertyForOwnerRentSlice,
+    resolveOwnerPayoutPayeeId,
+    shouldAttributeUnallocatedOwnerPayoutToProperty,
+} from './ownerPayoutBreakdown';
 import { formatCurrency } from '../../utils/numberUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -284,7 +288,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             if (!propertyId) {
                 const payouts = state.transactions.filter(tx => 
                     tx.type === TransactionType.EXPENSE && 
-                    tx.contactId === ownerId && 
+                    resolveOwnerPayoutPayeeId(tx) === ownerId && 
                     tx.categoryId === ownerPayoutCategory?.id &&
                     (!buildingId || tx.buildingId === buildingId)
                 );
@@ -306,7 +310,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 const propertyIdStr = String(propertyId);
                 const payouts = state.transactions.filter((tx) => {
                     if (tx.type !== TransactionType.EXPENSE) return false;
-                    if (tx.contactId !== ownerId) return false;
+                    if (resolveOwnerPayoutPayeeId(tx) !== ownerId) return false;
                     if (tx.categoryId !== ownerPayoutCategory?.id) return false;
                     if (buildingId && tx.buildingId !== buildingId) return false;
                     if (String(tx.propertyId) === propertyIdStr) return true;

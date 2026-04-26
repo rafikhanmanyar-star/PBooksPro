@@ -37,6 +37,7 @@ import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAg
 import { CURRENCY } from '../../constants';
 import { formatDate, currentMonthYyyyMm } from '../../utils/dateUtils';
 import { resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
+import { resolveOwnerPayoutPayeeId, shouldAttributeUnallocatedOwnerPayoutToProperty } from '../payouts/ownerPayoutBreakdown';
 
 function contactInitials(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -217,12 +218,21 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                 });
         }
         transactions
-            .filter(tx => tx.type === TransactionType.EXPENSE && String(tx.propertyId) === propIdStr && !brokerFeeTxIds.has(tx.id) && !billPaymentTxIds.has(tx.id))
+            .filter(
+                tx =>
+                    tx.type === TransactionType.EXPENSE &&
+                    !brokerFeeTxIds.has(tx.id) &&
+                    !billPaymentTxIds.has(tx.id) &&
+                    (String(tx.propertyId) === propIdStr ||
+                        (ownerId &&
+                            tx.categoryId === ownerPayoutCategory?.id &&
+                            shouldAttributeUnallocatedOwnerPayoutToProperty(st, ownerId, propIdStr, tx)))
+            )
             .forEach(tx => {
                 const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(amt) || amt <= 0) return;
                 if (tx.categoryId === ownerPayoutCategory?.id) {
-                    if (tx.contactId === ownerId) rentalPaid += amt;
+                    if (resolveOwnerPayoutPayeeId(tx) === ownerId) rentalPaid += amt;
                     return;
                 }
                 const category = tx.categoryId ? categoryById.get(tx.categoryId) : undefined;

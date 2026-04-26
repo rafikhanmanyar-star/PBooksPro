@@ -34,7 +34,7 @@ import {
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getLedgerOwnerIdsForProperty, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
-import { shouldAttributeUnallocatedOwnerPayoutToProperty } from '../payouts/ownerPayoutBreakdown';
+import { resolveOwnerPayoutPayeeId, shouldAttributeUnallocatedOwnerPayoutToProperty } from '../payouts/ownerPayoutBreakdown';
 
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -269,7 +269,7 @@ const OwnerPayoutsReport: React.FC = () => {
                 if (isRelevant) {
                     let buildingId = tx.buildingId;
                     const isDirectOwnerPayout = !!(ownerPayoutCategory && tx.categoryId === ownerPayoutCategory.id);
-                    let ownerId: string | undefined = tx.contactId;
+                    let ownerId: string | undefined = resolveOwnerPayoutPayeeId(tx);
                     if (propertyId) {
                         const property = state.properties.find(p => p.id === propertyId);
                         if (property) {
@@ -516,7 +516,7 @@ const OwnerPayoutsReport: React.FC = () => {
                     if (billPaymentTxIds.has(tx.id)) return;
 
                     let isRelevant = false;
-                    let ownerId = tx.contactId;
+                    let ownerId = resolveOwnerPayoutPayeeId(tx);
                     let propertyId = tx.propertyId;
 
                     // CRITICAL: If cost center is explicitly a Tenant, DO NOT include in owner report
