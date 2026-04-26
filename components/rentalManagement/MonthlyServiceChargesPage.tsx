@@ -68,6 +68,17 @@ function getFirstPropertyNodeInTree(nodes: ARTreeNode[]): ARTreeNode | null {
     return null;
 }
 
+function findArtTreeNodeById(nodes: ARTreeNode[], id: string): ARTreeNode | null {
+    for (const n of nodes) {
+        if (n.id === id) return n;
+        if (n.children?.length) {
+            const f = findArtTreeNodeById(n.children, id);
+            if (f) return f;
+        }
+    }
+    return null;
+}
+
 const MonthlyServiceChargesBodySkeleton: React.FC = () => (
     <div
         className="flex-1 min-h-[280px] mx-3 mb-2 rounded-xl border border-slate-200 bg-white overflow-hidden flex gap-2 p-2 animate-pulse"
@@ -95,29 +106,36 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
     const [viewBy, setViewBy] = useLocalStorage<ViewBy>('msc_viewBy', 'building');
     const [mscStatusFilter, setMscStatusFilter] = useLocalStorage<MscStatusFilter>('msc_statusFilter', 'All');
-    const [entityFilterId, setEntityFilterId] = useState<string>('all');
+    const [entityFilterByView, setEntityFilterByView] = useLocalStorage<Partial<Record<ViewBy, string>>>(
+        'msc_entityFilterByView',
+        {}
+    );
 
-    const [selectedMonth, setSelectedMonth] = useState<string>('all');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedMonth, setSelectedMonth] = useLocalStorage<string>('msc_selectedMonth', 'all');
+    const [searchQuery, setSearchQuery] = useLocalStorage<string>('msc_searchQuery', '');
     const debouncedSearch = useDebounce(searchQuery, 300);
     const [isManualModalOpen, setIsManualModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [receiveOwner, setReceiveOwner] = useState<{ ownerId: string; ownerName: string; amount: number } | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    const [isNegativePanelOpen, setIsNegativePanelOpen] = useState(true);
+    const [isNegativePanelOpen, setIsNegativePanelOpen] = useLocalStorage<boolean>('msc_negativePanelOpen', false);
 
     const [selectedNode, setSelectedNode] = useState<ARTreeNode | null>(null);
+    const [persistedTreeNodeId, setPersistedTreeNodeId] = useLocalStorage<string | null>('msc_selectedTreeNodeId', null);
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('msc_sidebar_width', 340);
     const [isResizing, setIsResizing] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     /** When true, keep ledger unscoped (all units matching filters) until filters change. Set by "Clear". */
     const skipAutoSelectLedgerScopeRef = useRef(false);
+    const prevMscFilterKeyRef = useRef<string | null>(null);
 
     /** Default: month ascending (oldest at top, newest at bottom). */
-    const [ledgerSort, setLedgerSort] = useState<{ key: 'month' | 'unit'; dir: 'asc' | 'desc' }>({ key: 'month', dir: 'asc' });
+    const [ledgerSort, setLedgerSort] = useLocalStorage<{ key: 'month' | 'unit'; dir: 'asc' | 'desc' }>(
+        'msc_ledgerSort',
+        { key: 'month', dir: 'asc' }
+    );
     const [bodyReady, setBodyReady] = useState(false);
-    const initializedDefaultEntityRef = useRef(false);
 
     const propertyById = useMemo(
         () => new Map(state.properties.map((p) => [p.id, p])),
@@ -328,11 +346,27 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
     const buildingsWithSvc = useMemo(() => {
         const ids = new Set(propertiesWithCharges.map(p => p.buildingId).filter(Boolean) as string[]);
-        return state.buildings.filter(b => ids.has(b.id));
+        return state.buildings
+            .filter(b => ids.has(b.id))
+            .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
     }, [propertiesWithCharges, state.buildings]);
 
-    const firstBuildingWithSvcId = useMemo(() => buildingsWithSvc[0]?.id ?? null, [buildingsWithSvc]);
-    const firstPropertyWithSvcId = useMemo(() => propertiesWithCharges[0]?.id ?? null, [propertiesWithCharges]);
+    /** Same order as sidebar / tree: building name, then unit. */
+    const propertiesWithChargesSorted = useMemo(() => {
+        return [...propertiesWithCharges].sort((a, b) => {
+            const ba = (buildingById.get(a.buildingId)?.name || '').toLowerCase().localeCompare(
+                (buildingById.get(b.buildingId)?.name || '').toLowerCase()
+            );
+            if (ba !== 0) return ba;
+            return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+        });
+    }, [propertiesWithCharges, buildingById]);
+
+    const firstBuildingWithSvcId = useMemo(() => {
+        const bid = propertiesWithChargesSorted[0]?.buildingId;
+        return bid || null;
+    }, [propertiesWithChargesSorted]);
+    const firstPropertyWithSvcId = useMemo(() => propertiesWithChargesSorted[0]?.id ?? null, [propertiesWithChargesSorted]);
 
     const getDefaultEntityFilterId = useCallback((view: ViewBy): string => {
         if (view === 'building') return firstBuildingWithSvcId ?? 'all';
@@ -340,14 +374,56 @@ const MonthlyServiceChargesPage: React.FC = () => {
         return 'all';
     }, [firstBuildingWithSvcId, firstPropertyWithSvcId]);
 
+    const isValidEntityFilterId = useCallback(
+        (view: ViewBy, id: string): boolean => {
+            if (id === 'all') return true;
+            switch (view) {
+                case 'tenant':
+                    return tenantsWithSvc.some(t => t.id === id);
+                case 'owner':
+                    return ownersWithSvc.some(o => o.id === id);
+                case 'property':
+                    return propertiesWithCharges.some(p => p.id === id);
+                case 'building':
+                    return buildingsWithSvc.some(b => b.id === id);
+                default:
+                    return false;
+            }
+        },
+        [tenantsWithSvc, ownersWithSvc, propertiesWithCharges, buildingsWithSvc]
+    );
+
+    const entityFilterId = useMemo(() => {
+        const raw = entityFilterByView[viewBy];
+        if (raw === 'all') return 'all';
+        if (raw && isValidEntityFilterId(viewBy, raw)) return raw;
+        return getDefaultEntityFilterId(viewBy);
+    }, [entityFilterByView, viewBy, isValidEntityFilterId, getDefaultEntityFilterId]);
+
+    const setEntityFilterId = useCallback(
+        (id: string) => {
+            setEntityFilterByView(prev => ({ ...prev, [viewBy]: id }));
+        },
+        [viewBy, setEntityFilterByView]
+    );
+
     useEffect(() => {
-        if (initializedDefaultEntityRef.current) return;
-        const defaultId = getDefaultEntityFilterId(viewBy);
-        if (defaultId !== 'all') {
-            setEntityFilterId(defaultId);
-            initializedDefaultEntityRef.current = true;
+        const raw = entityFilterByView[viewBy];
+        if (raw !== undefined) return;
+        const def = getDefaultEntityFilterId(viewBy);
+        if (def !== 'all') {
+            setEntityFilterByView(prev => ({ ...prev, [viewBy]: def }));
         }
-    }, [viewBy, getDefaultEntityFilterId]);
+    }, [viewBy, entityFilterByView, getDefaultEntityFilterId, setEntityFilterByView]);
+
+    useEffect(() => {
+        const raw = entityFilterByView[viewBy];
+        if (raw === undefined || raw === 'all') return;
+        if (!isValidEntityFilterId(viewBy, raw)) {
+            const def = getDefaultEntityFilterId(viewBy);
+            setEntityFilterByView(prev => ({ ...prev, [viewBy]: def !== 'all' ? def : 'all' }));
+        }
+    }, [viewBy, entityFilterByView, isValidEntityFilterId, getDefaultEntityFilterId, setEntityFilterByView]);
 
     const filteredPropertyRows = useMemo(() => {
         let data = [...rawPropertyRows];
@@ -548,17 +624,33 @@ const MonthlyServiceChargesPage: React.FC = () => {
         return [];
     }, [filteredPropertyRows, viewBy, buildingById, contactById, scIndexes, svcIncomeCategory, selectedMonth, getActiveTenantId]);
 
+    const mscFilterKey = `${viewBy}|${mscStatusFilter}|${entityFilterId}|${selectedMonth}|${debouncedSearch}`;
+
     useEffect(() => {
         skipAutoSelectLedgerScopeRef.current = false;
+        if (prevMscFilterKeyRef.current !== null && prevMscFilterKeyRef.current !== mscFilterKey) {
+            setPersistedTreeNodeId(null);
+        }
+        prevMscFilterKeyRef.current = mscFilterKey;
         setSelectedNode(null);
-    }, [viewBy, mscStatusFilter, entityFilterId, selectedMonth, debouncedSearch]);
+    }, [mscFilterKey, setPersistedTreeNodeId]);
 
     useEffect(() => {
         if (skipAutoSelectLedgerScopeRef.current) return;
         if (selectedNode !== null) return;
+        if (persistedTreeNodeId) {
+            const restored = findArtTreeNodeById(treeData, persistedTreeNodeId);
+            if (restored) {
+                setSelectedNode(restored);
+                return;
+            }
+        }
         const first = getFirstPropertyNodeInTree(treeData);
-        if (first) setSelectedNode(first);
-    }, [treeData, selectedNode]);
+        if (first) {
+            setSelectedNode(first);
+            setPersistedTreeNodeId(first.id);
+        }
+    }, [treeData, selectedNode, persistedTreeNodeId, setPersistedTreeNodeId]);
 
     const selectedPropertyRowsForLedger = useMemo(() => {
         if (!selectedNode) return filteredPropertyRows;
@@ -1050,17 +1142,6 @@ const MonthlyServiceChargesPage: React.FC = () => {
     const filterInputClass =
         'w-full pl-2.5 py-1.5 text-sm border border-slate-300 rounded-md shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white';
 
-    const findNodeById = useCallback((nodes: ARTreeNode[], id: string): ARTreeNode | null => {
-        for (const n of nodes) {
-            if (n.id === id) return n;
-            if (n.children) {
-                const f = findNodeById(n.children, id);
-                if (f) return f;
-            }
-        }
-        return null;
-    }, []);
-
     return (
         <div className="flex flex-col h-full min-h-0 overflow-hidden bg-slate-50/50">
             <div className="flex-shrink-0 space-y-4 px-3 pt-2 overflow-y-auto max-h-[45vh] lg:max-h-none">
@@ -1146,7 +1227,6 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                     type="button"
                                     onClick={() => {
                                         setViewBy(g);
-                                        setEntityFilterId(getDefaultEntityFilterId(g));
                                     }}
                                     className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize ${
                                         viewBy === g ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1172,7 +1252,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                             {viewBy === 'owner' && ownersWithSvc.map(o => (
                                 <option key={o.id} value={o.id}>{o.name}</option>
                             ))}
-                            {viewBy === 'property' && propertiesWithCharges.map(p => (
+                            {viewBy === 'property' && propertiesWithChargesSorted.map(p => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                             {viewBy === 'building' && buildingsWithSvc.map(b => (
@@ -1226,7 +1306,10 @@ const MonthlyServiceChargesPage: React.FC = () => {
                             <ARTreeView
                                 treeData={treeData}
                                 selectedNodeId={selectedNode?.id || null}
-                                onNodeSelect={setSelectedNode}
+                                onNodeSelect={node => {
+                                    setSelectedNode(node);
+                                    setPersistedTreeNodeId(node?.id ?? null);
+                                }}
                                 searchQuery={debouncedSearch}
                                 amountLabel="Monthly"
                                 secondaryLabel={selectedMonth === 'all' ? 'Ded. (all)' : 'Ded.'}
@@ -1256,6 +1339,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                         onClick={() => {
                                             skipAutoSelectLedgerScopeRef.current = true;
                                             setSelectedNode(null);
+                                            setPersistedTreeNodeId(null);
                                         }}
                                         className="text-[10px] text-slate-400 hover:text-slate-600 px-1.5 py-0.5 rounded hover:bg-slate-200"
                                     >
@@ -1273,9 +1357,14 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                 value={selectedNode?.id || ''}
                                 onChange={e => {
                                     const id = e.target.value;
-                                    if (!id) { setSelectedNode(null); return; }
-                                    const n = findNodeById(treeData, id);
+                                    if (!id) {
+                                        setSelectedNode(null);
+                                        setPersistedTreeNodeId(null);
+                                        return;
+                                    }
+                                    const n = findArtTreeNodeById(treeData, id);
                                     setSelectedNode(n);
+                                    setPersistedTreeNodeId(n?.id ?? id);
                                 }}
                                 className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md"
                                 aria-label="Select tree node"

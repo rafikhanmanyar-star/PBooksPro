@@ -96,7 +96,10 @@ export function computeOwnerRentCollectedPaidBalanceForProperty(
             if (isNaN(amount)) return;
 
             if (ownerShareCat && tx.categoryId === ownerShareCat.id && tx.contactId) {
-                if (tx.contactId === ownerId && amount > 0) collected += amount;
+                if (tx.contactId === ownerId) {
+                    if (amount > 0) collected += amount;
+                    else if (amount < 0) paid += Math.abs(amount);
+                }
                 return;
             }
 
@@ -107,6 +110,7 @@ export function computeOwnerRentCollectedPaidBalanceForProperty(
                 const pct = getOwnerSharePercentageOnDate(state, propertyIdStr, ownerId, d);
                 const share = Math.round((amount * pct) / 100);
                 if (share > 0) collected += share;
+                else if (share < 0) paid += Math.abs(share);
             } else {
                 const ownerIdForTx = resolveOwnerForTransaction(state, tx);
                 if (ownerIdForTx !== ownerId) return;

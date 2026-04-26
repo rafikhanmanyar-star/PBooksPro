@@ -113,6 +113,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
         unit.status === 'Occupied' &&
         (unit.receivable ?? 0) <= 0.01 &&
         (unit.securityDue ?? 0) <= 0.01 &&
+        (unit.payoutDue ?? 0) <= 0.01 &&
         svcDueThisMonth <= 0.01 &&
         (unit.brokerPayoutPending ?? 0) <= 0.01;
 

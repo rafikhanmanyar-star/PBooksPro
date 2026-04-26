@@ -238,6 +238,12 @@ const PropertyLayoutReport: React.FC = () => {
     const needFullOwnerPropertyBreakdownModal =
         !!ownerPayoutState && ownerPayoutState.payoutType === 'Security';
 
+    /** Full ledger rules (matches OwnerLedger / Owner Payouts client path). */
+    const clientOwnerPropertyBreakdown = useMemo((): OwnerPropertyBreakdownMap => {
+        if (properties.length === 0) return {};
+        return buildOwnerPropertyBreakdown(_getAppState());
+    }, [transactions, properties, categories, rentalAgreements, bills, propertyOwnership]);
+
     const layoutOwnerRentalPayoutBreakdown = useMemo((): OwnerPropertyBreakdownMap => {
         if (properties.length === 0) return {};
         const st = _getAppState();
@@ -258,19 +264,14 @@ const PropertyLayoutReport: React.FC = () => {
                     : {};
             }
         }
-        return buildOwnerPropertyBreakdown(st);
+        return clientOwnerPropertyBreakdown;
     }, [
         useApiRollup,
         apiRollupError,
         apiRollupPending,
         apiRollupSuccess,
         apiOwnerBalanceRows,
-        transactions,
-        properties,
-        categories,
-        rentalAgreements,
-        bills,
-        propertyOwnership,
+        clientOwnerPropertyBreakdown,
     ]);
 
     const ownerPropertyBreakdownLayout = useMemo((): OwnerPropertyBreakdownMap | null => {
@@ -278,13 +279,14 @@ const PropertyLayoutReport: React.FC = () => {
         if (!needFullOwnerPropertyBreakdownModal && useApiRollup && !apiRollupError) {
             return layoutOwnerRentalPayoutBreakdown;
         }
-        return buildOwnerPropertyBreakdown(_getAppState());
+        return clientOwnerPropertyBreakdown;
     }, [
         ownerPayoutState,
         needFullOwnerPropertyBreakdownModal,
         useApiRollup,
         apiRollupError,
         layoutOwnerRentalPayoutBreakdown,
+        clientOwnerPropertyBreakdown,
         transactions,
         properties,
         categories,
@@ -482,7 +484,7 @@ const PropertyLayoutReport: React.FC = () => {
                 propertiesToProcess = properties.filter(p => p.buildingId === selectedBuildingId);
             }
 
-            const ownerRentalPayoutBreakdown = layoutOwnerRentalPayoutBreakdown;
+            const ownerRentalPayoutBreakdown = clientOwnerPropertyBreakdown;
 
             const brokerFeeCategory = categories.find((c) => c.name === 'Broker Fee');
             const rebateCategory = categories.find((c) => c.name === 'Rebate Amount');
@@ -690,16 +692,8 @@ const PropertyLayoutReport: React.FC = () => {
             if (import.meta.env.DEV && typeof performance !== 'undefined') {
                 const ms = performance.now() - tLayout0;
                 if (ms > 200) {
-                    const mode =
-                        useApiRollup && !apiRollupError
-                            ? apiRollupPending && apiOwnerBalanceRows === undefined
-                                ? 'api-rollup-pending'
-                                : apiRollupSuccess
-                                  ? 'api-rollup'
-                                  : 'full-client'
-                            : 'full-client';
                     console.warn('[PBooksPerf][VisualLayout] layoutMemo ms=', Math.round(ms), {
-                        mode,
+                        ownerDueSource: 'ledger-aligned-breakdown',
                         props: propertiesToProcess.length,
                         inv: invoices.length,
                         tx: transactions.length,
@@ -796,12 +790,7 @@ const PropertyLayoutReport: React.FC = () => {
         projects,
         units,
         projectAgreements,
-        layoutOwnerRentalPayoutBreakdown,
-        useApiRollup,
-        apiRollupSuccess,
-        apiRollupPending,
-        apiRollupError,
-        apiOwnerBalanceRows,
+        clientOwnerPropertyBreakdown,
         bills,
         propertyOwnership,
     ]);
