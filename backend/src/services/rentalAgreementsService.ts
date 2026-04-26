@@ -6,6 +6,8 @@ import {
   reconcileRentalAgreementsListLike,
   type ReconcileRentalAgreementLike,
 } from '../rentalAgreementReconcile.js';
+import { getPropertyById } from './propertiesService.js';
+import { createInvoice, rowToInvoiceApi } from './invoicesService.js';
 
 export type RentalAgreementRow = {
   id: string;
@@ -24,6 +26,7 @@ export type RentalAgreementRow = {
   broker_fee: string | null;
   owner_id: string | null;
   previous_agreement_id: string | null;
+  auto_renew_lease: boolean;
   version: number;
   deleted_at: Date | null;
   created_at: Date;
@@ -53,6 +56,7 @@ export function rowToRentalAgreementApi(row: RentalAgreementRow): Record<string,
     brokerFee: numToApi(row.broker_fee),
     ownerId: row.owner_id ?? undefined,
     previousAgreementId: row.previous_agreement_id ?? undefined,
+    autoRenewLease: row.auto_renew_lease === true,
     version: row.version,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
@@ -72,7 +76,7 @@ export async function listRentalAgreementsChangedSince(
 ): Promise<RentalAgreementRow[]> {
   const r = await client.query<RentalAgreementRow>(
     `SELECT id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-            rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
+            rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, auto_renew_lease,
             version, deleted_at, created_at, updated_at
      FROM rental_agreements WHERE tenant_id = $1 AND updated_at > $2
      ORDER BY updated_at ASC`,
@@ -117,6 +121,12 @@ function pickBody(body: Record<string, unknown>) {
         : undefined,
     owner_id: (body.ownerId ?? body.owner_id) as string | undefined | null,
     previous_agreement_id: (body.previousAgreementId ?? body.previous_agreement_id) as string | undefined | null,
+    auto_renew_lease: (() => {
+      const v = body.autoRenewLease ?? body.auto_renew_lease;
+      if (v === true || v === 1 || v === '1') return true;
+      if (v === false || v === 0 || v === '0') return false;
+      return false;
+    })(),
     version: typeof body.version === 'number' ? body.version : undefined,
   };
 }
@@ -128,7 +138,7 @@ export async function listRentalAgreements(
 ): Promise<RentalAgreementRow[]> {
   const params: unknown[] = [tenantId];
   let q = `SELECT id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-           rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
+           rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, auto_renew_lease,
            version, deleted_at, created_at, updated_at
            FROM rental_agreements WHERE tenant_id = $1 AND deleted_at IS NULL`;
   if (filters?.status) {
@@ -151,7 +161,7 @@ export async function getRentalAgreementById(
 ): Promise<RentalAgreementRow | null> {
   const r = await client.query<RentalAgreementRow>(
     `SELECT id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-            rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
+            rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, auto_renew_lease,
             version, deleted_at, created_at, updated_at
      FROM rental_agreements WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
@@ -171,15 +181,30 @@ export async function createRentalAgreement(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `ra_${randomUUID().replace(/-/g, '')}`;
 
+  const statusNorm = String(p.status || '').trim().toLowerCase();
+  if (statusNorm === 'active') {
+    const dup = await client.query<{ c: string }>(
+      `SELECT 1 as c FROM rental_agreements
+       WHERE tenant_id = $1 AND property_id = $2 AND LOWER(TRIM(status)) = 'active' AND deleted_at IS NULL
+       LIMIT 1`,
+      [tenantId, p.property_id]
+    );
+    if (dup.rows.length > 0) {
+      throw new Error(
+        'This property already has an active agreement. Use Renew agreement, or end the existing lease, before creating another active lease.'
+      );
+    }
+  }
+
   const r = await client.query<RentalAgreementRow>(
     `INSERT INTO rental_agreements (
        id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent, rent_due_date,
-       status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, version, deleted_at, created_at, updated_at
+       status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, auto_renew_lease, version, deleted_at, created_at, updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, 1, NULL, NOW(), NOW()
+       $1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 1, NULL, NOW(), NOW()
      )
      RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
+               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, auto_renew_lease,
                version, deleted_at, created_at, updated_at`,
     [
       id,
@@ -200,6 +225,7 @@ export async function createRentalAgreement(
       p.previous_agreement_id && String(p.previous_agreement_id).trim()
         ? String(p.previous_agreement_id).trim()
         : null,
+      p.auto_renew_lease,
     ]
   );
   return r.rows[0];
@@ -220,10 +246,11 @@ export async function updateRentalAgreement(
          agreement_number = $3, contact_id = $4, property_id = $5, start_date = $6::date, end_date = $7::date,
          monthly_rent = $8, rent_due_date = $9, status = $10, description = $11,
          security_deposit = $12, broker_id = $13, broker_fee = $14, owner_id = $15, previous_agreement_id = $16,
+         auto_renew_lease = $17,
          version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $17
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $18
        RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-                 rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
+                 rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, auto_renew_lease,
                  version, deleted_at, created_at, updated_at`,
       [
         id,
@@ -244,6 +271,7 @@ export async function updateRentalAgreement(
         p.previous_agreement_id && String(p.previous_agreement_id).trim()
           ? String(p.previous_agreement_id).trim()
           : null,
+        p.auto_renew_lease,
         expectedVersion,
       ]
     );
@@ -260,10 +288,11 @@ export async function updateRentalAgreement(
        agreement_number = $3, contact_id = $4, property_id = $5, start_date = $6::date, end_date = $7::date,
        monthly_rent = $8, rent_due_date = $9, status = $10, description = $11,
        security_deposit = $12, broker_id = $13, broker_fee = $14, owner_id = $15, previous_agreement_id = $16,
+       auto_renew_lease = $17,
        version = version + 1, updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
      RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
+               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, auto_renew_lease,
                version, deleted_at, created_at, updated_at`,
     [
       id,
@@ -284,6 +313,7 @@ export async function updateRentalAgreement(
       p.previous_agreement_id && String(p.previous_agreement_id).trim()
         ? String(p.previous_agreement_id).trim()
         : null,
+      p.auto_renew_lease,
     ]
   );
   return { row: u.rows[0] ?? null, conflict: false };
@@ -367,6 +397,169 @@ export async function repairMissingContactIdsFromPreviousAgreement(
     [tenantId]
   );
   return { updated: r.rowCount ?? 0, ids: r.rows.map((x) => x.id) };
+}
+
+function proRataFirstMonthRentLikeForm(monthlyRent: number, startYmd: string): number {
+  const parts = startYmd.split('-').map((x) => parseInt(x, 10));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return monthlyRent;
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const remainingDays = daysInMonth - d + 1;
+  if (remainingDays >= daysInMonth) return monthlyRent;
+  return Math.ceil((monthlyRent / daysInMonth) * remainingDays / 100) * 100;
+}
+
+/**
+ * Mark the current term as Renewed and create a new active agreement (no security or broker; optional first-month rent invoice).
+ * Caller must run inside a transaction; calls syncReconcileRentalAgreementsForTenant.
+ */
+export async function renewRentalAgreement(
+  client: pg.PoolClient,
+  tenantId: string,
+  oldAgreementId: string,
+  body: Record<string, unknown>,
+  actorUserId: string | null
+): Promise<{
+  oldRow: RentalAgreementRow;
+  newRow: RentalAgreementRow;
+  generatedInvoices: Record<string, unknown>[];
+  nextInvoiceNumber?: number;
+}> {
+  const old = await getRentalAgreementById(client, tenantId, oldAgreementId);
+  if (!old) throw new Error('Agreement not found.');
+  if (String(old.status).trim().toLowerCase() !== 'active') {
+    throw new Error('Only an active agreement can be renewed.');
+  }
+
+  const expectedVersion = body.oldVersion ?? body.serverVersion;
+  if (typeof expectedVersion !== 'number' || !Number.isFinite(expectedVersion)) {
+    throw new Error('oldVersion (current agreement version) is required to renew safely.');
+  }
+
+  const uOld = await client.query<RentalAgreementRow>(
+    `UPDATE rental_agreements SET status = 'Renewed', version = version + 1, updated_at = NOW()
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       AND LOWER(TRIM(status)) = 'active' AND version = $3
+     RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
+               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, auto_renew_lease,
+               version, deleted_at, created_at, updated_at`,
+    [oldAgreementId, tenantId, expectedVersion]
+  );
+  if (uOld.rows.length === 0) {
+    const again = await getRentalAgreementById(client, tenantId, oldAgreementId);
+    if (!again) throw new Error('Agreement not found.');
+    throw new Error('This agreement was updated elsewhere. Please refresh and try again.');
+  }
+
+  const newId =
+    typeof body.newAgreementId === 'string' && body.newAgreementId.trim()
+      ? body.newAgreementId.trim()
+      : `ra_${randomUUID().replace(/-/g, '')}`;
+  const agreementNumber = String(body.agreementNumber ?? body.agreement_number ?? '').trim();
+  if (!agreementNumber) throw new Error('agreementNumber is required.');
+
+  const startDate = parseIsoDate('startDate', body.startDate ?? body.start_date);
+  const endDate = parseIsoDate('endDate', body.endDate ?? body.end_date);
+  const monthlyRent = Number(body.monthlyRent ?? body.monthly_rent ?? 0);
+  const rentDueDate =
+    body.rentDueDate != null || body.rent_due_date != null
+      ? Number(body.rentDueDate ?? body.rent_due_date)
+      : 1;
+  const description =
+    body.description === undefined ? undefined : body.description === null ? null : String(body.description);
+  const newAutoRenew = (() => {
+    const v = body.autoRenewLease ?? body.auto_renew_lease;
+    if (v === true || v === 1 || v === '1') return true;
+    return false;
+  })();
+  const ownerForNew =
+    body.ownerId != null && String(body.ownerId).trim()
+      ? String(body.ownerId).trim()
+      : body.owner_id != null && String(body.owner_id).trim()
+        ? String(body.owner_id).trim()
+        : old.owner_id && String(old.owner_id).trim()
+          ? String(old.owner_id).trim()
+          : null;
+
+  const newRowInserted = await createRentalAgreement(client, tenantId, {
+    id: newId,
+    agreementNumber,
+    contactId: old.contact_id,
+    propertyId: old.property_id,
+    startDate,
+    endDate,
+    monthlyRent,
+    rentDueDate: Number.isFinite(rentDueDate) ? rentDueDate : 1,
+    status: 'Active',
+    description: description ?? undefined,
+    securityDeposit: 0,
+    brokerId: undefined,
+    brokerFee: undefined,
+    ownerId: ownerForNew || undefined,
+    previousAgreementId: oldAgreementId,
+    autoRenewLease: newAutoRenew,
+  });
+  let newRow = (await getRentalAgreementById(client, tenantId, newRowInserted.id)) ?? newRowInserted;
+  await syncReconcileRentalAgreementsForTenant(client, tenantId);
+  newRow = (await getRentalAgreementById(client, tenantId, newId)) ?? newRow;
+  const oldRow = (await getRentalAgreementById(client, tenantId, oldAgreementId)) ?? uOld.rows[0]!;
+
+  const generated: Record<string, unknown>[] = [];
+  let nextInvoiceNumber: number | undefined;
+
+  const wantInvoice =
+    body.generateFirstMonthRentInvoice === true ||
+    body.generateInvoices === true ||
+    body.generateFirstMonthRent === true;
+  if (wantInvoice && monthlyRent > 0) {
+    const property = await getPropertyById(client, tenantId, old.property_id);
+    const invPrefix = String(body.invoicePrefix ?? 'INV-');
+    const invPadding = Number((body as { invoicePadding?: unknown }).invoicePadding ?? 5);
+    let invNext = Number((body as { invoiceNextNumber?: unknown }).invoiceNextNumber ?? 1);
+    if (!Number.isFinite(invNext)) invNext = 1;
+    const pad = Number.isFinite(invPadding) && invPadding >= 1 ? Math.floor(invPadding) : 5;
+
+    const numPart = (n: number) => String(n).padStart(pad, '0');
+    const invoiceNumber = `${invPrefix}${numPart(invNext)}`;
+    const cat = await client.query<{ id: string }>(
+      `SELECT id FROM categories WHERE tenant_id = $1 AND (deleted_at IS NULL) AND LOWER(TRIM(name)) = 'rental income' LIMIT 1`,
+      [tenantId]
+    );
+    const categoryId = cat.rows[0]?.id;
+    const amount = proRataFirstMonthRentLikeForm(monthlyRent, startDate);
+    const startNorm = /^\d{4}-\d{2}-\d{2}/.test(startDate) ? startDate : startDate;
+    const monthName = new Date(
+      startNorm.length >= 10 ? `${startNorm.slice(0, 10)}T12:00:00` : startNorm
+    ).toLocaleString('default', { month: 'long', year: 'numeric' });
+    const inv = await createInvoice(
+      client,
+      tenantId,
+      {
+        invoiceNumber,
+        contactId: old.contact_id,
+        amount,
+        paidAmount: 0,
+        status: 'Unpaid',
+        issueDate: startDate,
+        dueDate: startDate,
+        invoiceType: 'Rental',
+        description: `Rent for ${monthName} [Rental]`,
+        buildingId: property?.building_id ?? undefined,
+        propertyId: old.property_id,
+        categoryId: categoryId ?? undefined,
+        agreementId: newId,
+        rentalMonth: startDate.slice(0, 7),
+        userId: actorUserId ?? undefined,
+      },
+      actorUserId
+    );
+    nextInvoiceNumber = invNext + 1;
+    generated.push(rowToInvoiceApi(inv));
+  }
+
+  return { oldRow, newRow, generatedInvoices: generated, nextInvoiceNumber };
 }
 
 export async function softDeleteRentalAgreement(

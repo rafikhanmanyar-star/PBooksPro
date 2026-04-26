@@ -13,11 +13,16 @@ import {
   transactionIncludedInPlLoop,
   isResolvedPlCategoryInDrilldownRow,
 } from '../reports/projectProfitLossComputation';
+import { transactionMatchesProjectCategoryDrilldown } from '../reports/projectCategoryReportDrilldown';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
+
+export type ProjectTransactionModalListMode = 'profitLoss' | 'categoryReport';
 
 interface ProjectTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** categoryReport matches Income/Expense by Category report (bill payment lines); profitLoss matches Project P&L drill-down. */
+  listMode?: ProjectTransactionModalListMode;
   data: {
     projectId: string;
     projectName: string;
@@ -29,13 +34,18 @@ interface ProjectTransactionModalProps {
   } | null;
 }
 
-const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({ isOpen, onClose, data }) => {
+const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
+  isOpen,
+  onClose,
+  data,
+  listMode = 'profitLoss',
+}) => {
   const { state } = useAppContext();
 
   const processedBillsForPl = useMemo(() => {
-    if (!data) return new Set<string>();
+    if (!data || listMode === 'categoryReport') return new Set<string>();
     return computePlProcessedBills(state, data.projectId, data.startDate, data.endDate);
-  }, [data, state.bills, state.categories, state.projects]);
+  }, [data, listMode, state.bills, state.categories, state.projects]);
 
   const filteredTransactions = useMemo(() => {
     if (!data) return [];
@@ -50,6 +60,20 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({ isOpe
       data.categoryId === 'uncategorized_income' ||
       data.categoryId === 'uncategorized_expense';
     const plType = data.type === 'Income' ? TransactionType.INCOME : TransactionType.EXPENSE;
+
+    if (listMode === 'categoryReport' && data.categoryId) {
+      return state.transactions
+        .filter((tx) =>
+          transactionMatchesProjectCategoryDrilldown(tx, state, {
+            type: plType,
+            selectedProjectId: data.projectId,
+            start,
+            end,
+            drilldownCategoryId: data.categoryId!,
+          })
+        )
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }
 
     return state.transactions
       .filter((tx) => {
@@ -94,7 +118,7 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({ isOpe
         return true;
       })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [data, state, state.transactions, processedBillsForPl]);
+  }, [data, listMode, state, state.transactions, processedBillsForPl]);
 
   const totalAmount = useMemo(() => {
     return filteredTransactions.reduce((sum, tx) => sum + tx.amount, 0);

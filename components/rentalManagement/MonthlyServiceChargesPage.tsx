@@ -245,9 +245,26 @@ const MonthlyServiceChargesPage: React.FC = () => {
         return state.categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
     }, [state.categories]);
 
+    const scIndexState = useMemo(
+        () => ({
+            properties: state.properties,
+            propertyOwnership: state.propertyOwnership,
+            propertyOwnershipHistory: state.propertyOwnershipHistory,
+            invoices: state.invoices,
+            rentalAgreements: state.rentalAgreements,
+        }),
+        [
+            state.properties,
+            state.propertyOwnership,
+            state.propertyOwnershipHistory,
+            state.invoices,
+            state.rentalAgreements,
+        ]
+    );
+
     const scIndexes = useMemo(
-        () => buildServiceChargeIndexes(state.transactions, svcIncomeCategory?.id ?? null, state),
-        [state.transactions, svcIncomeCategory?.id, state]
+        () => buildServiceChargeIndexes(state.transactions, svcIncomeCategory?.id ?? null, scIndexState),
+        [state.transactions, svcIncomeCategory?.id, scIndexState]
     );
 
     /**
@@ -328,7 +345,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 ownerBalance: property.ownerId ? (ownerBalances[property.ownerId] || 0) : 0,
             };
         });
-    }, [propertiesWithCharges, state.buildings, state.contacts, scIndexes, svcIncomeCategory, selectedMonth, getPropertyStatus, ownerBalances]);
+    }, [propertiesWithCharges, buildingById, contactById, scIndexes, svcIncomeCategory, selectedMonth, getPropertyStatus, ownerBalances]);
 
     const tenantsWithSvc = useMemo(() => {
         const ids = new Set<string>();
@@ -628,11 +645,14 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
     useEffect(() => {
         skipAutoSelectLedgerScopeRef.current = false;
-        if (prevMscFilterKeyRef.current !== null && prevMscFilterKeyRef.current !== mscFilterKey) {
+        const prev = prevMscFilterKeyRef.current;
+        if (prev !== null && prev !== mscFilterKey) {
             setPersistedTreeNodeId(null);
         }
+        if (prev !== mscFilterKey) {
+            setSelectedNode(null);
+        }
         prevMscFilterKeyRef.current = mscFilterKey;
-        setSelectedNode(null);
     }, [mscFilterKey, setPersistedTreeNodeId]);
 
     useEffect(() => {

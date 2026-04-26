@@ -6,10 +6,12 @@ import { formatDate } from '../../utils/dateUtils';
 import ARTreeView, { ARTreeNode } from '../rentalManagement/ARTreeView';
 import RentalAgreementDetailPanel from './RentalAgreementDetailPanel';
 import RentalAgreementForm from './RentalAgreementForm';
+import RentalRenewalForm from './RentalRenewalForm';
 import RentalAgreementTerminationModal from './RentalAgreementTerminationModal';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import { useRentalAutoRenewal } from '../../hooks/useRentalAutoRenewal';
 
 type ViewBy = 'building' | 'property' | 'tenant' | 'owner';
 type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
@@ -25,7 +27,10 @@ const RentalAgreementsDashboard: React.FC = () => {
   const [selectedAgreement, setSelectedAgreement] = useState<RentalAgreement | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingAgreement, setEditingAgreement] = useState<RentalAgreement | null>(null);
+  const [renewalAgreement, setRenewalAgreement] = useState<RentalAgreement | null>(null);
   const [terminationAgreement, setTerminationAgreement] = useState<RentalAgreement | null>(null);
+
+  useRentalAutoRenewal();
 
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('agreements_dash_sidebar', 320);
   const [isResizing, setIsResizing] = useState(false);
@@ -570,6 +575,7 @@ const RentalAgreementsDashboard: React.FC = () => {
               agreement={selectedAgreement}
               onClose={() => setSelectedAgreement(null)}
               onEdit={(a) => { setEditingAgreement(a); setSelectedAgreement(null); }}
+              onRenew={(a) => { setRenewalAgreement(a); setSelectedAgreement(null); }}
               onTerminate={(a) => setTerminationAgreement(a)}
             />
           )}
@@ -585,6 +591,20 @@ const RentalAgreementsDashboard: React.FC = () => {
       <Modal isOpen={!!editingAgreement} onClose={() => setEditingAgreement(null)} title={editingAgreement ? `Edit Agreement ${editingAgreement.agreementNumber}` : ''} size="xl" disableScroll>
         <div className="h-full min-h-0 flex flex-col p-4">
           <RentalAgreementForm key={editingAgreement?.id || 'edit'} onClose={() => setEditingAgreement(null)} agreementToEdit={editingAgreement} />
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!renewalAgreement}
+        onClose={() => setRenewalAgreement(null)}
+        title={renewalAgreement ? `Renew — ${renewalAgreement.agreementNumber}` : 'Renew agreement'}
+        size="lg"
+        disableScroll
+      >
+        <div className="p-4 max-h-[80vh] overflow-y-auto">
+          {renewalAgreement && (
+            <RentalRenewalForm renewFrom={renewalAgreement} onClose={() => setRenewalAgreement(null)} />
+          )}
         </div>
       </Modal>
 

@@ -1052,6 +1052,20 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       return;
     }
 
+    // Project construction / project management bills: require vendor and project before save
+    if (type === 'bill' && projectContext) {
+      const missing: string[] = [];
+      if (!String(vendorId || contactId).trim()) missing.push('Vendor');
+      if (!projectId?.trim()) missing.push('Project');
+      if (missing.length > 0) {
+        await showAlert(
+          `Please complete the following before saving:\n\n${missing.map((m) => `• ${m}`).join('\n')}`,
+          { title: 'Required fields missing' }
+        );
+        return;
+      }
+    }
+
     // Validate tenant bill has agreement selected
     if (type === 'bill' && rentalContext && billAllocationType === 'tenant' && !agreementId) {
       await showAlert('Please select a tenant and agreement for tenant-borne expenses.');
@@ -2017,6 +2031,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               selectedId={projectId || ''}
               onSelect={(item) => { setProjectId(item?.id || ''); setUnitId(''); }}
               placeholder="Search projects..."
+              required
               entityType="project"
               onAddNew={(entityType, name) => {
                 entityFormModal.openForm('project', name, undefined, undefined, (newId) => {

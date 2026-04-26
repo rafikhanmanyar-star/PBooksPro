@@ -29,6 +29,7 @@ import ComboBox from '../ui/ComboBox';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { currentMonthYyyyMm, parseYyyyMmDdToLocalDate, toDateOnly, toLocalDateString, todayLocalYyyyMmDd } from '../../utils/dateUtils';
+import { buildActiveAgreementByPropertyId } from '../../utils/rentalActiveAgreementPick';
 import RentalPropertySummaryCard from './RentalPropertySummaryCard';
 import {
     buildOwnerPropertyBreakdown,
@@ -470,14 +471,7 @@ const PropertyLayoutReport: React.FC = () => {
             const invoicesByProperty = indexInvoicesByPropertyId(invoices);
             const transactionsByProperty = indexTransactionsByPropertyId(transactions);
             const contactById = new Map(contacts.map((c) => [c.id, c]));
-            const activeAgreementByPropertyId = new Map<string, typeof rentalAgreements[number]>();
-            for (const agreement of rentalAgreements) {
-                if (agreement.status !== RentalAgreementStatus.ACTIVE || !agreement.propertyId) continue;
-                const propertyId = String(agreement.propertyId);
-                if (!activeAgreementByPropertyId.has(propertyId)) {
-                    activeAgreementByPropertyId.set(propertyId, agreement);
-                }
-            }
+            const activeAgreementByPropertyId = buildActiveAgreementByPropertyId(rentalAgreements);
 
             let propertiesToProcess = properties;
             if (selectedBuildingId !== 'all') {

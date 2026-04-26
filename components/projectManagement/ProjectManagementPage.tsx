@@ -214,25 +214,29 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         return renderContent();
     };
 
+    /** Keep Contracts / Bills / PM Payouts mounted when viewing reports so filters, scroll, and sidebar state are preserved. */
     const renderConstructionPersistentContent = () => {
-        if (CONSTRUCTION_PERSISTENT_VIEWS.includes(activeView)) {
-            return (
-                <div className="relative h-full w-full">
-                    {CONSTRUCTION_PERSISTENT_VIEWS.map((view) => (
-                        <div
-                            key={view}
-                            className={`absolute inset-0 h-full w-full overflow-auto ${activeView === view ? 'visible z-10' : 'invisible z-0 pointer-events-none'}`}
-                            {...(activeView !== view ? { 'aria-hidden': true } : {})}
-                        >
-                            {view === 'Contracts' && <ProjectContractsPage />}
-                            {view === 'Bills' && <BillsPage projectContext={true} />}
-                            {view === 'PM Payouts' && <ProjectPMPayouts />}
-                        </div>
-                    ))}
-                </div>
-            );
-        }
-        return renderContent();
+        const operationalVisible = CONSTRUCTION_PERSISTENT_VIEWS.includes(activeView);
+        return (
+            <div className="relative h-full w-full">
+                {CONSTRUCTION_PERSISTENT_VIEWS.map((view) => (
+                    <div
+                        key={view}
+                        className={`absolute inset-0 h-full w-full overflow-auto ${
+                            operationalVisible && activeView === view ? 'visible z-10' : 'invisible z-0 pointer-events-none'
+                        }`}
+                        {...(operationalVisible && activeView === view ? {} : { 'aria-hidden': true })}
+                    >
+                        {view === 'Contracts' && <ProjectContractsPage />}
+                        {view === 'Bills' && <BillsPage projectContext={true} />}
+                        {view === 'PM Payouts' && <ProjectPMPayouts />}
+                    </div>
+                ))}
+                {!operationalVisible && (
+                    <div className="absolute inset-0 h-full w-full min-w-0 overflow-auto z-10">{renderContent()}</div>
+                )}
+            </div>
+        );
     };
 
     const sellingReportKeys = [...(isAdmin ? SELLING_FINANCIAL_REPORTS : []), ...SELLING_OTHER_REPORTS];

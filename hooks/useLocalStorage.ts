@@ -1,5 +1,4 @@
-
-import { useState, useEffect, useRef, Dispatch, SetStateAction } from 'react';
+import { useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from 'react';
 
 function useLocalStorage<T>(key: string, initialValue: T): [T, Dispatch<SetStateAction<T>>] {
   const [storedValue, setStoredValue] = useState<T>(() => {
@@ -34,15 +33,13 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, Dispatch<SetState
     };
   }, [storedValue, key]);
 
-  const setValue: Dispatch<SetStateAction<T>> = (value) => {
+  const setValue = useCallback<Dispatch<SetStateAction<T>>>((value) => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      // We do NOT write to localStorage here anymore, the useEffect handles it
+      setStoredValue((prev) => (value instanceof Function ? value(prev) : value));
     } catch (error) {
       console.error(error);
     }
-  };
+  }, []);
 
   return [storedValue, setValue];
 }

@@ -30,6 +30,7 @@ export function normalizeRentalAgreementFromApi(raw: Record<string, unknown>): R
     brokerFee: raw.brokerFee != null ? Number(raw.brokerFee) : undefined,
     ownerId: raw.ownerId != null ? String(raw.ownerId) : undefined,
     previousAgreementId: raw.previousAgreementId != null ? String(raw.previousAgreementId) : undefined,
+    autoRenewLease: raw.autoRenewLease === true || raw.auto_renew_lease === true,
     version: typeof raw.version === 'number' ? raw.version : undefined,
   };
 }
@@ -120,27 +121,28 @@ export class RentalAgreementsApiRepository {
   /**
    * Renew a rental agreement (server-side logic)
    */
-  async renewAgreement(id: string, data: {
-    newAgreementId: string;
-    agreementNumber: string;
-    startDate: string;
-    endDate: string;
-    monthlyRent: number;
-    rentDueDate: number;
-    securityDeposit?: number;
-    brokerId?: string;
-    brokerFee?: number;
-    description?: string;
-    ownerId?: string;
-    generateInvoices: boolean;
-    invoiceSettings?: { prefix: string; padding: number; nextNumber: number };
-  }): Promise<{
+  async renewAgreement(
+    id: string,
+    data: Record<string, unknown>
+  ): Promise<{
     oldAgreement: RentalAgreement;
     newAgreement: RentalAgreement;
-    generatedInvoices: any[];
+    generatedInvoices: unknown[];
     nextInvoiceNumber?: number;
   }> {
-    return apiClient.post(`/rental-agreements/${id}/renew`, data);
+    const raw = await apiClient.post<Record<string, unknown>>(`/rental-agreements/${id}/renew`, data);
+    const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    return {
+      oldAgreement: normalizeRentalAgreementFromApi(
+        (r.oldAgreement as Record<string, unknown>) || {}
+      ),
+      newAgreement: normalizeRentalAgreementFromApi(
+        (r.newAgreement as Record<string, unknown>) || {}
+      ),
+      generatedInvoices: Array.isArray(r.generatedInvoices) ? r.generatedInvoices : [],
+      nextInvoiceNumber:
+        typeof r.nextInvoiceNumber === 'number' ? r.nextInvoiceNumber : undefined,
+    };
   }
 
   /**

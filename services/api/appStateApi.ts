@@ -2442,6 +2442,7 @@ export class AppStateApiService {
       })(),
       ownerId: ra.owner_id || ra.ownerId || undefined,
       previousAgreementId: ra.previous_agreement_id || ra.previousAgreementId || undefined,
+      autoRenewLease: ra.autoRenewLease === true || ra.auto_renew_lease === true,
       version: typeof ra.version === 'number' ? ra.version : undefined,
     };
   }

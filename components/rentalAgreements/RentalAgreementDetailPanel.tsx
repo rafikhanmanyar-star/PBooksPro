@@ -10,11 +10,12 @@ interface RentalAgreementDetailPanelProps {
     agreement: RentalAgreement;
     onClose: () => void;
     onEdit: (agreement: RentalAgreement) => void;
+    onRenew: (agreement: RentalAgreement) => void;
     onTerminate: (agreement: RentalAgreement) => void;
 }
 
 const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
-    agreement, onClose, onEdit, onTerminate
+    agreement, onClose, onEdit, onRenew, onTerminate
 }) => {
     const { state } = useAppContext();
 
@@ -91,19 +92,24 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
 
                 {/* Action Buttons */}
                 <div className="flex flex-col gap-2 mt-3">
-                    <div className="flex gap-2">
-                        <Button type="button" variant="secondary" onClick={() => onEdit(agreement)} className="!text-xs !py-1.5 !px-3 flex-1">
+                    <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="secondary" onClick={() => onEdit(agreement)} className="!text-xs !py-1.5 !px-3 flex-1 min-w-[100px]">
                             <div className="w-3.5 h-3.5 mr-1">{ICONS.edit}</div> Edit
                         </Button>
                         {isActive && (
-                            <Button type="button" variant="danger" onClick={() => onTerminate(agreement)} className="!text-xs !py-1.5 !px-3 flex-1">
+                            <Button type="button" onClick={() => onRenew(agreement)} className="!text-xs !py-1.5 !px-3 flex-1 min-w-[100px]">
+                                Renew
+                            </Button>
+                        )}
+                        {isActive && (
+                            <Button type="button" variant="danger" onClick={() => onTerminate(agreement)} className="!text-xs !py-1.5 !px-3 flex-1 min-w-[100px]">
                                 End
                             </Button>
                         )}
                     </div>
                     {isActive && (
                         <p className="text-[10px] text-app-muted leading-snug px-0.5">
-                            New lease term: open <strong>Edit</strong>, set status to <strong>Renewed</strong>, save, then use <strong>New Agreement</strong> for the new terms.
+                            <strong>Renew</strong> closes this term (marked Renewed) and opens a new active lease with a fresh rent and dates. Security and broker are not charged again.
                         </p>
                     )}
                 </div>

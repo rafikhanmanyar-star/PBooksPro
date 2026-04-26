@@ -84,6 +84,8 @@ export function dbToObjectFormat<T extends Record<string, any>>(obj: Record<stri
             } catch {
                 result[camelKey] = value;
             }
+        } else if (key === 'auto_renew_lease' && (value === 0 || value === 1)) {
+            result[camelKey] = value === 1;
         } else if (typeof value === 'string' && value.trim().length > 0) {
             const trimmed = value.trim();
             if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 

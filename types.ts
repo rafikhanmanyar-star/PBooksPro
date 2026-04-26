@@ -618,6 +618,8 @@ export interface RentalAgreement {
   brokerFee?: number;
   ownerId?: string; // Optional: stores owner at time of agreement (for historical accuracy after property transfer)
   previousAgreementId?: string; // Links to the previous agreement in a renewal chain
+  /** When true, a background job can roll into a new term after end date (security/broker omitted on the new term). */
+  autoRenewLease?: boolean;
   /** Set when loaded from LAN API (optimistic concurrency) */
   version?: number;
 }

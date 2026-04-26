@@ -33,6 +33,7 @@ import {
     InvoiceStatus,
     RentalAgreementStatus,
 } from '../../types';
+import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
 import { CURRENCY } from '../../constants';
 import { formatDate, currentMonthYyyyMm } from '../../utils/dateUtils';
 import { resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
@@ -90,10 +91,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
     );
 
     const activeAgreement = useMemo(
-        () =>
-            rentalAgreements.find(
-                ra => ra.propertyId === propertyId && ra.status === RentalAgreementStatus.ACTIVE
-            ),
+        () => getDisplayActiveAgreementForProperty(rentalAgreements, propertyId),
         [propertyId, rentalAgreements]
     );
 

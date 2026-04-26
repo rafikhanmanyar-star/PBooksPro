@@ -11,7 +11,7 @@ import { BillTreeNode } from '../bills/BillTreeView';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import Select from '../ui/Select';
-import { formatDate, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
+import { formatDate, parseStoredDateToYyyyMmDdInput, toLocalDateString, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
@@ -667,6 +667,32 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         state.bills.filter(b => selectedBillIds.has(b.id)),
         [state.bills, selectedBillIds]);
 
+    /** New bill prefill from project filter + tree (Project Construction): project, vendor, and today when both are known. */
+    const newBillContextPrefill = useMemo((): Partial<Bill> | undefined => {
+        if (!projectContext || billToEdit || duplicateBillData) return undefined;
+
+        let resolvedProjectId: string | undefined;
+        if (selectedNode?.type === 'vendor' && selectedNode.parentId && selectedNode.parentId !== 'unassigned') {
+            resolvedProjectId = selectedNode.parentId;
+        } else if (selectedNode?.type === 'group' && selectedNode.id !== 'unassigned') {
+            resolvedProjectId = selectedNode.id;
+        } else if (projectFilter !== 'all') {
+            resolvedProjectId = projectFilter;
+        }
+
+        const resolvedVendorId = selectedNode?.type === 'vendor' ? selectedNode.id : undefined;
+
+        if (!resolvedProjectId && !resolvedVendorId) return undefined;
+
+        const prefill: Partial<Bill> = {};
+        if (resolvedProjectId) prefill.projectId = resolvedProjectId;
+        if (resolvedVendorId) prefill.vendorId = resolvedVendorId;
+        if (resolvedProjectId && resolvedVendorId) {
+            prefill.issueDate = todayLocalYyyyMmDd();
+        }
+        return prefill;
+    }, [projectContext, billToEdit, duplicateBillData, selectedNode, projectFilter]);
+
     const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
         e.stopPropagation();
         const vendorId = bill.vendorId;
@@ -1099,7 +1125,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     onClose={() => { setIsCreateModalOpen(false); setBillToEdit(null); setDuplicateBillData(null); }}
                     type="bill"
                     itemToEdit={billToEdit || undefined}
-                    initialData={duplicateBillData || undefined}
+                    initialData={duplicateBillData || newBillContextPrefill || undefined}
                     projectContext={projectContext}
                 />
             </Modal>

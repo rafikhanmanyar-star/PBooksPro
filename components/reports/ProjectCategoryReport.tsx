@@ -423,6 +423,7 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
             <ProjectTransactionModal
                 isOpen={!!drilldownData?.isOpen}
                 onClose={closeDrilldown}
+                listMode="categoryReport"
                 data={drilldownData ? {
                     projectId: selectedProjectId,
                     projectName: projectLabel || 'All Projects',

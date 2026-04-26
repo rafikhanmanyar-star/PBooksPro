@@ -7,6 +7,7 @@ import {
   getRentalAgreementById,
   listRentalAgreements,
   repairMissingContactIdsFromPreviousAgreement,
+  renewRentalAgreement,
   rowToRentalAgreementApi,
   softDeleteRentalAgreement,
   syncReconcileRentalAgreementsForTenant,
@@ -136,6 +137,47 @@ rentalAgreementsRouter.post('/rental-agreements', async (req: AuthedRequest, res
     sendSuccess(res, apiRow, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+/** Renew: marks agreement Renewed and creates the next active term (no security/broker on new term). */
+rentalAgreementsRouter.post('/rental-agreements/:id/renew', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const { id } = req.params;
+  try {
+    const result = await withTransaction(async (client) =>
+      renewRentalAgreement(
+        client,
+        tenantId,
+        id,
+        req.body as Record<string, unknown>,
+        req.userId ?? null
+      )
+    );
+    const oldApi = rowToRentalAgreementApi(result.oldRow);
+    const newApi = rowToRentalAgreementApi(result.newRow);
+    emitEntityEvent(tenantId, 'updated', 'rental_agreement', { data: oldApi, sourceUserId: req.userId });
+    emitEntityEvent(tenantId, 'created', 'rental_agreement', { data: newApi, sourceUserId: req.userId });
+    for (const inv of result.generatedInvoices) {
+      emitEntityEvent(tenantId, 'created', 'invoice', { data: inv, sourceUserId: req.userId });
+    }
+    sendSuccess(res, {
+      oldAgreement: oldApi,
+      newAgreement: newApi,
+      generatedInvoices: result.generatedInvoices,
+      nextInvoiceNumber: result.nextInvoiceNumber,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('updated elsewhere') || msg.includes('Please refresh')) {
+      sendFailure(res, 409, 'CONFLICT', msg);
+      return;
+    }
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
 });
