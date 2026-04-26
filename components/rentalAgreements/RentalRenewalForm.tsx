@@ -5,7 +5,7 @@ import { RentalAgreement, RentalAgreementStatus } from '../../types';
 import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import Input from '../ui/Input';
-import { CURRENCY, ICONS } from '../../constants';
+import { ICONS } from '../../constants';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -43,7 +43,6 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
     String(renewFrom.rentDueDate != null ? renewFrom.rentDueDate : 1)
   );
   const [description, setDescription] = useState(renewFrom.description || '');
-  const [autoRenewLease, setAutoRenewLease] = useState(renewFrom.autoRenewLease === true);
   const [genFirstRent, setGenFirstRent] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -88,7 +87,6 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
         monthlyRent: rent,
         rentDueDate: parseInt(rentDueDate, 10) || 1,
         description: description.trim() || undefined,
-        autoRenewLease,
         generateFirstMonthRentInvoice: genFirstRent,
       });
       showToast('Agreement renewed. The previous term is marked Renewed.', 'success');
@@ -191,16 +189,6 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
           placeholder="Optional"
         />
       </div>
-
-      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-        <input
-          type="checkbox"
-          className="rounded border-slate-300"
-          checked={autoRenewLease}
-          onChange={(e) => setAutoRenewLease(e.target.checked)}
-        />
-        Auto-renew this new term (same day after end: roll into a new 1-year term, rent unchanged)
-      </label>
 
       <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
         <input

@@ -30,7 +30,6 @@ export function normalizeRentalAgreementFromApi(raw: Record<string, unknown>): R
     brokerFee: raw.brokerFee != null ? Number(raw.brokerFee) : undefined,
     ownerId: raw.ownerId != null ? String(raw.ownerId) : undefined,
     previousAgreementId: raw.previousAgreementId != null ? String(raw.previousAgreementId) : undefined,
-    autoRenewLease: raw.autoRenewLease === true || raw.auto_renew_lease === true,
     version: typeof raw.version === 'number' ? raw.version : undefined,
   };
 }

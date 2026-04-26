@@ -84,7 +84,6 @@ export type RenewalFormInput = {
   monthlyRent: number;
   rentDueDate: number;
   description?: string;
-  autoRenewLease: boolean;
   generateFirstMonthRentInvoice: boolean;
 };
 
@@ -130,7 +129,6 @@ export async function executeRentalRenewal(
       brokerFee: undefined,
       ownerId: ownerId || undefined,
       previousAgreementId: old.id,
-      autoRenewLease: form.autoRenewLease,
     };
     dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newA });
     dispatch({
@@ -190,7 +188,6 @@ export async function executeRentalRenewal(
     rentDueDate: form.rentDueDate,
     description: form.description,
     ownerId: ownerId || undefined,
-    autoRenewLease: form.autoRenewLease,
     generateFirstMonthRentInvoice: form.generateFirstMonthRentInvoice,
     invoicePrefix: state.rentalInvoiceSettings?.prefix || 'INV-',
     invoicePadding: state.rentalInvoiceSettings?.padding ?? 5,
@@ -225,30 +222,4 @@ export function agreementDateToYmd(iso: string | undefined): string {
   const t = String(iso).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
   return toLocalDateString(new Date(t));
-}
-
-/**
- * One automatic renewal: same rent and due day, new calendar term; no security/broker; preserves auto-renew flag.
- * Uses executeRentalRenewal with default term from old end date.
- */
-export async function runAutoLeaseRenewalForAgreement(
-  state: AppState,
-  dispatch: Dispatch<AppAction>,
-  old: RentalAgreement
-): Promise<void> {
-  const endY = agreementDateToYmd(old.endDate);
-  const startY = ymdAddDays(endY, 1);
-  const endNew = ymdAddOneYearMinusOneDay(startY);
-  const rent =
-    typeof old.monthlyRent === 'number' ? old.monthlyRent : parseFloat(String(old.monthlyRent)) || 0;
-  const due = old.rentDueDate != null ? Number(old.rentDueDate) : 1;
-  await executeRentalRenewal(state, dispatch, old, {
-    startDate: startY,
-    endDate: endNew,
-    monthlyRent: rent,
-    rentDueDate: Number.isFinite(due) && due >= 1 && due <= 31 ? due : 1,
-    description: old.description,
-    autoRenewLease: old.autoRenewLease === true,
-    generateFirstMonthRentInvoice: true,
-  });
 }

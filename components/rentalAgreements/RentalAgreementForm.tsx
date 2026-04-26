@@ -98,11 +98,9 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     /** Optional link when creating a new lease after the prior term was marked Renewed (same property + tenant). */
     const [previousAgreementId, setPreviousAgreementId] = useState('');
 
-    const [autoRenewLeaseOnEdit, setAutoRenewLeaseOnEdit] = useState(agreementToEdit?.autoRenewLease === true);
     useEffect(() => {
         if (agreementToEdit) {
             setAgreementStatus(agreementToEdit.status || RentalAgreementStatus.ACTIVE);
-            setAutoRenewLeaseOnEdit(agreementToEdit.autoRenewLease === true);
         } else {
             setAgreementStatus(RentalAgreementStatus.ACTIVE);
             setPreviousAgreementId('');
@@ -328,7 +326,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             ownerId: autoOwner?.id || undefined,
             status: RentalAgreementStatus.ACTIVE,
             previousAgreementId: previousAgreementId || undefined,
-            autoRenewLease: false,
         };
         const prefix = rentalInvoiceSettings?.prefix || 'INV-';
         const nextNumSetting = rentalInvoiceSettings?.nextNumber || 1;
@@ -365,7 +362,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     ownerId: agreementData.ownerId,
                     status: agreementData.status,
                     previousAgreementId: agreementData.previousAgreementId,
-                    autoRenewLease: agreementData.autoRenewLease,
                 });
                 dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newAgreement });
                 agreementIdForInvoices = newAgreement.id;
@@ -471,7 +467,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             description,
             ownerId: autoOwner?.id || undefined,
             status: agreementStatus,
-            autoRenewLease: autoRenewLeaseOnEdit,
         };
 
         if (agreementToEdit) {
@@ -808,23 +803,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                                 To start a new lease term: set this agreement to <strong>Renewed</strong> and add a <strong>new</strong> agreement, or use <strong>Renew</strong> in the side panel.
                             </p>
                         </div>
-                        {agreementToEdit && agreementToEdit.status === RentalAgreementStatus.ACTIVE && (
-                            <div className="col-span-2">
-                                <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        className="mt-0.5 rounded border-slate-300"
-                                        checked={autoRenewLeaseOnEdit}
-                                        onChange={(e) => setAutoRenewLeaseOnEdit(e.target.checked)}
-                                    />
-                                    <span>
-                                        <span className="font-medium">Auto-renew</span> when this term ends: after the
-                                        end date, a new 1-year term is created (same rent, no new security or broker)
-                                        when you have the Rental agreements page open.
-                                    </span>
-                                </label>
-                            </div>
-                        )}
                     </div>
                     <div className="flex-shrink-0 p-2 rounded-lg bg-slate-50/80 border border-slate-200">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Description / Notes</label>

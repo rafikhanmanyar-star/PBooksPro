@@ -1439,7 +1439,6 @@ class DatabaseService {
                     ['broker_id', 'TEXT'],
                     ['broker_fee', 'REAL'],
                     ['owner_id', 'TEXT'],
-                    ['auto_renew_lease', 'INTEGER NOT NULL DEFAULT 0'],
                     ['updated_at', "TEXT DEFAULT (datetime('now'))"],
                 ],
                 transactions: [

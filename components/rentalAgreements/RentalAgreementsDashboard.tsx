@@ -11,7 +11,6 @@ import RentalAgreementTerminationModal from './RentalAgreementTerminationModal';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { useRentalAutoRenewal } from '../../hooks/useRentalAutoRenewal';
 
 type ViewBy = 'building' | 'property' | 'tenant' | 'owner';
 type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
@@ -29,8 +28,6 @@ const RentalAgreementsDashboard: React.FC = () => {
   const [editingAgreement, setEditingAgreement] = useState<RentalAgreement | null>(null);
   const [renewalAgreement, setRenewalAgreement] = useState<RentalAgreement | null>(null);
   const [terminationAgreement, setTerminationAgreement] = useState<RentalAgreement | null>(null);
-
-  useRentalAutoRenewal();
 
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('agreements_dash_sidebar', 320);
   const [isResizing, setIsResizing] = useState(false);
