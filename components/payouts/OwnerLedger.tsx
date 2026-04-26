@@ -6,7 +6,7 @@ import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
-import { isFirstPropertyForOwnerRentSlice } from './ownerPayoutBreakdown';
+import { isFirstPropertyForOwnerRentSlice, shouldAttributeUnallocatedOwnerPayoutToProperty } from './ownerPayoutBreakdown';
 import { formatCurrency } from '../../utils/numberUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -304,14 +304,14 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 });
             } else {
                 const propertyIdStr = String(propertyId);
-                const payouts = state.transactions.filter(tx =>
-                    tx.type === TransactionType.EXPENSE &&
-                    tx.contactId === ownerId &&
-                    tx.categoryId === ownerPayoutCategory?.id &&
-                    tx.propertyId != null &&
-                    String(tx.propertyId) === propertyIdStr &&
-                    (!buildingId || tx.buildingId === buildingId)
-                );
+                const payouts = state.transactions.filter((tx) => {
+                    if (tx.type !== TransactionType.EXPENSE) return false;
+                    if (tx.contactId !== ownerId) return false;
+                    if (tx.categoryId !== ownerPayoutCategory?.id) return false;
+                    if (buildingId && tx.buildingId !== buildingId) return false;
+                    if (String(tx.propertyId) === propertyIdStr) return true;
+                    return shouldAttributeUnallocatedOwnerPayoutToProperty(state, ownerId, propertyIdStr, tx);
+                });
 
                 payouts.forEach(tx => {
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);

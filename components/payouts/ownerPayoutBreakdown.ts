@@ -1,6 +1,7 @@
-import { AppState, TransactionType } from '../../types';
+import { AppState, TransactionType, type Transaction } from '../../types';
 import {
     getPayoutOwnerIdsForProperty,
+    getPropertyIdsForOwner,
     hasMultipleOwnersOnDate,
     getOwnerSharePercentageOnDate,
     resolveOwnerForTransaction,
@@ -33,8 +34,69 @@ export function isFirstPropertyForOwnerRentSlice(state: AppState, ownerId: strin
 }
 
 /**
+ * When an Owner Payout has no `propertyId` (building-level / cost center only), attribute it to at most
+ * one unit in that building for unit-scoped ledgers: same building, same payee, and this property is
+ * the sole match for the owner in the building, or the first by name if there are several (same idea as
+ * unallocated service charges).
+ */
+export function shouldAttributeUnallocatedOwnerPayoutToProperty(
+    state: AppState,
+    ownerId: string,
+    propertyIdStr: string,
+    tx: Pick<Transaction, 'propertyId' | 'buildingId' | 'contactId'>
+): boolean {
+    if (tx.propertyId != null && String(tx.propertyId).trim() !== '') {
+        return String(tx.propertyId) === String(propertyIdStr);
+    }
+    if (tx.contactId !== ownerId) return false;
+
+    const property = state.properties.find((p) => String(p.id) === String(propertyIdStr));
+    if (!property) return false;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    if (tx.buildingId) {
+        if (property.buildingId !== tx.buildingId) return false;
+    } else {
+        const only = getPropertyIdsForOwner(state, ownerId);
+        if (only.size !== 1 || !only.has(String(propertyIdStr))) return false;
+    }
+
+    const bid = property.buildingId;
+    if (!bid) {
+        return getPropertyIdsForOwner(state, ownerId).size === 1;
+    }
+
+    const inBuilding = state.properties.filter((p) => p.buildingId === bid).map((p) => String(p.id));
+
+    const ownerPropsInBuilding: string[] = [];
+    for (const pid of inBuilding) {
+        const allOwnerIds = getPayoutOwnerIdsForProperty(state, pid, todayStr);
+        const set =
+            allOwnerIds.size > 0
+                ? allOwnerIds
+                : (() => {
+                      const pr = state.properties.find((x) => String(x.id) === pid);
+                      return pr?.ownerId ? new Set([pr.ownerId]) : new Set<string>();
+                  })();
+        if (set.has(ownerId)) ownerPropsInBuilding.push(pid);
+    }
+
+    ownerPropsInBuilding.sort((a, b) => {
+        const na = state.properties.find((p) => String(p.id) === a)?.name || '';
+        const nb = state.properties.find((p) => String(p.id) === b)?.name || '';
+        return na.localeCompare(nb, undefined, { sensitivity: 'base' });
+    });
+
+    if (ownerPropsInBuilding.length === 0) return false;
+    if (ownerPropsInBuilding.length === 1) return ownerPropsInBuilding[0] === String(propertyIdStr);
+    return ownerPropsInBuilding[0] === String(propertyIdStr);
+}
+
+/**
  * Collected / paid / net balance for one owner on one unit — same rules as Owner Payouts tree and modal.
- * Owner Payout expenses without `propertyId` are excluded (they belong to portfolio view, not a single unit).
+ * Owner Payout expenses without `propertyId` are attributed to a unit when building and payee match
+ * (see {@link shouldAttributeUnallocatedOwnerPayoutToProperty}).
  */
 export function computeOwnerRentCollectedPaidBalanceForProperty(
     state: AppState,
@@ -145,9 +207,11 @@ export function computeOwnerRentCollectedPaidBalanceForProperty(
         .filter(
             (tx) =>
                 tx.type === TransactionType.EXPENSE &&
-                String(tx.propertyId) === propertyIdStr &&
                 !brokerFeeTxIds.has(tx.id) &&
-                !billPaymentTxIds.has(tx.id)
+                !billPaymentTxIds.has(tx.id) &&
+                (String(tx.propertyId) === propertyIdStr ||
+                    (tx.categoryId === ownerPayoutCategory?.id &&
+                        shouldAttributeUnallocatedOwnerPayoutToProperty(state, ownerId, propertyIdStr, tx)))
         )
         .forEach((tx) => {
             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);

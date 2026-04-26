@@ -677,6 +677,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   /** When creating a new bill and user links a contract, pre-fill expense categories and total from contract. */
   const applyContractExpenseCategoriesToBill = (contract: Contract) => {
+    // Project construction bills: contract may still be linked for budget tracking, but line items are entered manually.
+    if (projectContext) return;
     if (type !== 'bill' || itemToEdit || !contract.expenseCategoryItems || contract.expenseCategoryItems.length === 0) return;
     const cloned = contract.expenseCategoryItems.map((item, i) => ({
       ...item,

@@ -34,6 +34,7 @@ import {
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getLedgerOwnerIdsForProperty, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
+import { shouldAttributeUnallocatedOwnerPayoutToProperty } from '../payouts/ownerPayoutBreakdown';
 
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -299,8 +300,13 @@ const OwnerPayoutsReport: React.FC = () => {
                         }
                     } else {
                         if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-                        if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-                        if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
+                        if (isDirectOwnerPayout && !propertyId) {
+                            if (selectedBuildingId !== 'all' && tx.buildingId && tx.buildingId !== selectedBuildingId) return;
+                            if (selectedUnitId !== 'all' && ownerId && !shouldAttributeUnallocatedOwnerPayoutToProperty(state, ownerId, selectedUnitId, tx)) return;
+                        } else {
+                            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                            if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
+                        }
                         balance -= amount;
                     }
                 }
@@ -586,8 +592,17 @@ const OwnerPayoutsReport: React.FC = () => {
                             }
                         } else {
                             if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-                            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
-                            if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
+                            if (isDirectOwnerPayout && !propertyId) {
+                                if (selectedBuildingId !== 'all' && tx.buildingId && tx.buildingId !== selectedBuildingId) return;
+                                if (selectedUnitId !== 'all' && ownerId && !shouldAttributeUnallocatedOwnerPayoutToProperty(state, ownerId, selectedUnitId, tx)) return;
+                                if (selectedUnitId !== 'all') {
+                                    const u = state.properties.find(p => p.id === selectedUnitId);
+                                    if (u) propertyName = u.name;
+                                }
+                            } else {
+                                if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                                if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
+                            }
 
                             const owner = state.contacts.find(c => c.id === ownerId);
 
