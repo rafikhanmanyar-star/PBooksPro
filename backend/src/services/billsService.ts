@@ -183,6 +183,43 @@ export async function getBillByIdIncludingDeleted(
   return r.rows[0] ?? null;
 }
 
+/** Unique index is on (tenant_id, bill_number) for all rows; used to reconcile POST upserts when client id drifts. */
+export async function getBillByTenantAndBillNumberIncludingDeleted(
+  client: pg.PoolClient,
+  tenantId: string,
+  billNumber: string
+): Promise<BillRow | null> {
+  const num = billNumber.trim();
+  if (!num) return null;
+  const r = await client.query<BillRow>(
+    `SELECT id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
+            description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
+            expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
+     FROM bills WHERE tenant_id = $1 AND bill_number = $2
+     ORDER BY CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END
+     LIMIT 1`,
+    [tenantId, num]
+  );
+  return r.rows[0] ?? null;
+}
+
+function isDuplicateBillNumberConstraint(e: unknown): boolean {
+  const msg =
+    e && typeof e === 'object' && 'message' in e && typeof (e as { message?: string }).message === 'string'
+      ? (e as { message: string }).message
+      : e instanceof Error
+        ? e.message
+        : String(e);
+  const lower = msg.toLowerCase();
+  const code =
+    e && typeof e === 'object' && 'code' in e ? String((e as { code?: string }).code ?? '') : '';
+  return (
+    code === '23505' ||
+    lower.includes('bills_tenant_id_bill_number') ||
+    (lower.includes('duplicate key') && lower.includes('bill_number'))
+  );
+}
+
 export async function createBill(
   client: pg.PoolClient,
   tenantId: string,
@@ -319,15 +356,31 @@ export async function upsertBill(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `bill_${randomUUID().replace(/-/g, '')}`;
 
-  const existing = await getBillByIdIncludingDeleted(client, tenantId, id);
+  let existing = await getBillByIdIncludingDeleted(client, tenantId, id);
+  /** Row already in DB under same bill_number but different id (sync / stale client id after refresh). */
   if (!existing) {
-    const row = await createBill(client, tenantId, { ...body, id }, actorUserId);
-    return { row, conflict: false, wasInsert: true };
+    const byNumber = await getBillByTenantAndBillNumberIncludingDeleted(client, tenantId, p.bill_number);
+    if (byNumber) {
+      existing = byNumber;
+    }
   }
 
+  if (!existing) {
+    try {
+      const row = await createBill(client, tenantId, { ...body, id }, actorUserId);
+      return { row, conflict: false, wasInsert: true };
+    } catch (e) {
+      if (!isDuplicateBillNumberConstraint(e)) throw e;
+      const byNumber = await getBillByTenantAndBillNumberIncludingDeleted(client, tenantId, p.bill_number);
+      if (!byNumber) throw e;
+      existing = byNumber;
+    }
+  }
+
+  const effectiveId = existing!.id;
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined && existing!.version !== expectedVersion) {
+    return { row: existing!, conflict: true, wasInsert: false };
   }
 
   const vals = [
@@ -367,7 +420,7 @@ export async function upsertBill(
      RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
                description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
                expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
+    [effectiveId, tenantId, ...vals]
   );
   const row = u.rows[0];
   if (!row) throw new Error('Bill upsert failed.');
