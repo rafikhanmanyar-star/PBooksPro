@@ -20,8 +20,6 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
     projects: [{ id: 'p1', name: 'P1' }],
     buildings: [],
     properties: [],
-    propertyOwnershipHistory: [],
-    propertyOwnership: [],
     units: [],
     transactions: [],
     invoices: [],

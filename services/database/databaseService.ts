@@ -1343,6 +1343,19 @@ class DatabaseService {
                         } catch (_) { }
                     }
 
+                    if (currentVersion < 23) {
+                        try {
+                            this.rawExecute('PRAGMA foreign_keys = OFF');
+                            this.rawExecute('DROP TABLE IF EXISTS property_ownership');
+                            this.rawExecute('DROP TABLE IF EXISTS property_ownership_history');
+                            this.rawExecute('PRAGMA foreign_keys = ON');
+                        } catch (_) {
+                            try {
+                                this.rawExecute('PRAGMA foreign_keys = ON');
+                            } catch (_2) { /* ignore */ }
+                        }
+                    }
+
                     // Update schema version directly (setMetadata relies on isReady)
                     this.rawExecute(
                         'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
@@ -1474,10 +1487,6 @@ class DatabaseService {
                     ['description', 'TEXT'],
                     ['monthly_service_charge', 'REAL'],
                     ['updated_at', "TEXT DEFAULT (datetime('now'))"],
-                ],
-                property_ownership: [
-                    ['transfer_document', 'TEXT'],
-                    ['notes', 'TEXT'],
                 ],
                 units: [
                     ['sale_price', 'REAL'],

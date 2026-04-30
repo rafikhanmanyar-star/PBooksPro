@@ -9,13 +9,7 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
-import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
-import { getOwnershipSharesForPropertyOnDate, primaryOwnerIdFromShares } from '../../services/propertyOwnershipService';
-import {
-    buildOwnerRentAllocationTransactions,
-    multiOwnerShareSplitError,
-    shouldPostOwnerRentAllocation,
-} from '../../services/rentOwnerAllocation';
+import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
 import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
@@ -77,6 +71,11 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
     const isRentalContext = useMemo(() => {
         return selectedInvoices.some(inv => inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT);
     }, [selectedInvoices]);
+
+    const receivedAssetsAccountId = useMemo(
+        () => resolveSystemAccountId(state.accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets',
+        [state.accounts]
+    );
 
     // Only initialize when modal transitions from closed to open. This prevents the effect from
     // re-running when parent re-renders (e.g. context updates) and resets form state while the
@@ -242,24 +241,6 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
         );
 
         for (const inv of selectedInvoices) {
-            const payAmountPre = parseFloat(payments[inv.id] || '0');
-            if (payAmountPre <= 0) continue;
-            const pureSecurity = isPureSecurityDepositInvoice(inv);
-            if (
-                inv.invoiceType === InvoiceType.RENTAL &&
-                !pureSecurity &&
-                inv.propertyId &&
-                shouldPostOwnerRentAllocation(state, inv.propertyId, paymentDate)
-            ) {
-                const splitErr = multiOwnerShareSplitError(state, inv.propertyId, paymentDate.slice(0, 10));
-                if (splitErr) {
-                    await showAlert(splitErr);
-                    return;
-                }
-            }
-        }
-
-        for (const inv of selectedInvoices) {
             const pre = parseFloat(payments[inv.id] || '0');
             if (pre > 0 && isPureSecurityDepositInvoice(inv) && !securityDepositIncomeCategory) {
                 await showAlert(
@@ -308,19 +289,10 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
 
                 // Fallback: use invoice issue date (not payment date) for ownership lookup
                 const ownerResolveDate = (inv.issueDate || paymentDate).slice(0, 10);
-                const sharesForDay = inv.propertyId
-                    ? getOwnershipSharesForPropertyOnDate(state, inv.propertyId, ownerResolveDate)
-                    : [];
                 const ownerId =
                     ownerFromAgreement ??
-                    primaryOwnerIdFromShares(sharesForDay) ??
                     (inv.propertyId
-                        ? getOwnerIdForPropertyOnDate(
-                              inv.propertyId,
-                              ownerResolveDate,
-                              state.propertyOwnershipHistory || [],
-                              property?.ownerId
-                          )
+                        ? resolveOwnerForPropertyOnDate(state, inv.propertyId, ownerResolveDate)
                         : undefined);
 
                 const mkId = () =>
@@ -346,25 +318,6 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                     ownerId,
                 });
 
-                if (
-                    inv.invoiceType === InvoiceType.RENTAL &&
-                    !pureSec &&
-                    inv.propertyId &&
-                    shouldPostOwnerRentAllocation(state, inv.propertyId, paymentDate)
-                ) {
-                    const allocBatch = `${batchId}-rent-alloc-${inv.id}`;
-                    const legs = buildOwnerRentAllocationTransactions(state, {
-                        propertyId: inv.propertyId,
-                        buildingId: inv.buildingId,
-                        paymentDateYyyyMmDd: paymentDate.slice(0, 10),
-                        rentAmount: payAmount,
-                        accountId,
-                        invoiceId: inv.id,
-                        baseDescription: `Bulk Payment: ${reference || label} (Inv #${inv.invoiceNumber})`,
-                        batchId: allocBatch,
-                    }).map((leg) => ({ ...leg, id: mkId() })) as Transaction[];
-                    transactions.push(...legs);
-                }
             }
         });
 

@@ -518,7 +518,6 @@ export class AppStateApiService {
     projects: 'projects',
     buildings: 'buildings',
     properties: 'properties',
-    property_ownership: 'propertyOwnership',
     units: 'units',
     transactions: 'transactions',
     invoices: 'invoices',
@@ -827,7 +826,6 @@ export class AppStateApiService {
         projects,
         buildings,
         properties,
-        propertyOwnershipRaw,
         units,
         invoices,
         bills,
@@ -875,10 +873,6 @@ export class AppStateApiService {
         }),
         this.propertiesRepo.findAll().catch(err => {
           console.error('Error loading properties from API:', err);
-          return [];
-        }),
-        this.propertiesRepo.findAllOwnership().catch(err => {
-          console.error('Error loading property ownership from API:', err);
           return [];
         }),
         this.unitsRepo.findAll().catch(err => {
@@ -981,7 +975,6 @@ export class AppStateApiService {
         projects: projects.length,
         buildings: buildings.length,
         properties: properties.length,
-        propertyOwnership: propertyOwnershipRaw.length,
         units: units.length,
         invoices: invoices.length,
         bills: bills.length,
@@ -1012,7 +1005,6 @@ export class AppStateApiService {
         projects,
         buildings,
         properties,
-        propertyOwnership: propertyOwnershipRaw,
         units,
         invoices,
         bills,
@@ -1103,7 +1095,6 @@ export class AppStateApiService {
     const projects = raw.projects || [];
     const buildings = raw.buildings || [];
     const properties = raw.properties || [];
-    const propertyOwnershipRaw = raw.propertyOwnership || raw.property_ownership || [];
     const units = raw.units || [];
     const invoices = raw.invoices || [];
     const bills = raw.bills || [];
@@ -1169,35 +1160,6 @@ export class AppStateApiService {
 
       return normalizedProperty;
     });
-
-    const normalizedPropertyOwnership = (Array.isArray(propertyOwnershipRaw) ? propertyOwnershipRaw : []).map(
-      (r: any) => ({
-        id: r.id,
-        tenantId: r.tenantId ?? r.tenant_id ?? '',
-        propertyId: r.propertyId ?? r.property_id ?? '',
-        ownerId: r.ownerId ?? r.owner_id ?? '',
-        ownershipPercentage:
-          typeof r.ownershipPercentage === 'number'
-            ? r.ownershipPercentage
-            : parseFloat(String(r.ownership_percentage ?? r.ownershipPercentage ?? '0')) || 0,
-        startDate: (() => {
-          const v = r.startDate ?? r.start_date;
-          return v ? parseStoredDateToYyyyMmDdInput(String(v)) : '';
-        })(),
-        endDate: (() => {
-          const v = r.endDate ?? r.end_date;
-          if (v == null || v === '') return null;
-          return parseStoredDateToYyyyMmDdInput(String(v));
-        })(),
-        isActive: r.isActive === true || r.is_active === true || r.is_active === 1,
-        createdAt: r.createdAt ?? r.created_at ?? new Date().toISOString(),
-        updatedAt: r.updatedAt ?? r.updated_at ?? new Date().toISOString(),
-        version: typeof r.version === 'number' ? r.version : undefined,
-        deletedAt: r.deletedAt ?? r.deleted_at ?? undefined,
-        transferDocument: r.transferDocument ?? r.transfer_document ?? undefined,
-        notes: r.notes ?? undefined,
-      })
-    );
 
     // Normalize units from API (PostgreSQL: unit_number, owner_contact_id, status)
     const normalizedUnits = units.map((u: any) => {
@@ -1506,7 +1468,6 @@ export class AppStateApiService {
       projects: normalizedProjects,
       buildings: normalizedBuildings,
       properties: normalizedProperties,
-      propertyOwnership: normalizedPropertyOwnership,
       units: normalizedUnits,
       invoices: normalizedInvoices,
       bills: normalizedBills,
@@ -2021,47 +1982,6 @@ export class AppStateApiService {
       })(),
       version: parseApiEntityVersion((saved as any).version),
     };
-  }
-
-  /**
-   * Persist ownership rows for one property after transfer (PostgreSQL).
-   */
-  async syncPropertyOwnership(
-    propertyId: string,
-    rows: Array<{
-      id: string;
-      ownerId: string;
-      ownershipPercentage: number;
-      startDate: string;
-      endDate: string | null;
-      isActive: boolean;
-    }>
-  ): Promise<void> {
-    return this.propertiesRepo.syncOwnership(propertyId, rows);
-  }
-
-  async transferPropertyOwnership(
-    propertyId: string,
-    body: {
-      transferDate: string;
-      owners: Array<{ ownerId: string; sharePercent: number }>;
-      transferDocument?: string;
-      notes?: string;
-    }
-  ): Promise<{ property: AppState['properties'][0]; segments: Array<Record<string, unknown>> }> {
-    return this.propertiesRepo.transferOwnership(propertyId, body);
-  }
-
-  async listOwnershipSegments(includeDeleted?: boolean): Promise<Array<Record<string, unknown>>> {
-    return this.propertiesRepo.listOwnershipSegments(includeDeleted);
-  }
-
-  async getOwnershipSegment(segmentId: string): Promise<Record<string, unknown>> {
-    return this.propertiesRepo.getOwnershipSegment(segmentId);
-  }
-
-  async softDeleteOwnershipSegment(segmentId: string): Promise<void> {
-    return this.propertiesRepo.softDeleteOwnershipSegment(segmentId);
   }
 
   /**

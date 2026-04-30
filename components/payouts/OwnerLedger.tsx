@@ -571,7 +571,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             });
 
         return { items, balanceByLineId };
-    }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills, state.propertyOwnership]);
+    }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills]);
 
     const ledgerSorted = useMemo(() => {
         const { items, balanceByLineId } = ledgerBase;

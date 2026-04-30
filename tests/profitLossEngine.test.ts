@@ -52,8 +52,6 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     projects: [proj],
     buildings: [],
     properties: [],
-    propertyOwnershipHistory: [],
-    propertyOwnership: [],
     units: [],
     transactions: [],
     invoices: [],

@@ -11,13 +11,7 @@ import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
-import { getOwnershipSharesForPropertyOnDate, primaryOwnerIdFromShares } from '../../services/propertyOwnershipService';
-import {
-    buildOwnerRentAllocationTransactions,
-    multiOwnerShareSplitError,
-    shouldPostOwnerRentAllocation,
-} from '../../services/rentOwnerAllocation';
+import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { accountIdMatchesLogical } from '../../services/systemEntityIds';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 
@@ -199,22 +193,12 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             : null;
         const ownerFromAgreement = linkedAgreement?.ownerId;
 
-        // Fallback: resolve from property_ownership using the INVOICE issue date,
-        // not the payment date — rent earned under the old owner stays with them.
+        // Fallback: current property.owner_id effective for invoice issue date (single-owner model).
         const ownerResolveDate = (effectiveInvoice.issueDate || paymentDate).slice(0, 10);
-        const sharesForDay = effectiveInvoice.propertyId
-            ? getOwnershipSharesForPropertyOnDate(state, effectiveInvoice.propertyId, ownerResolveDate)
-            : [];
         const ownerId =
             ownerFromAgreement ??
-            primaryOwnerIdFromShares(sharesForDay) ??
             (effectiveInvoice.propertyId
-                ? getOwnerIdForPropertyOnDate(
-                      effectiveInvoice.propertyId,
-                      ownerResolveDate,
-                      state.propertyOwnershipHistory || [],
-                      property?.ownerId
-                  )
+                ? resolveOwnerForPropertyOnDate(state, effectiveInvoice.propertyId, ownerResolveDate)
                 : undefined);
         const baseTransaction = {
             date: paymentDate,
@@ -278,34 +262,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             };
             const mkId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
             const grossTx: Transaction = { ...tx, id: mkId() };
-            if (
-                effectiveInvoice.propertyId &&
-                shouldPostOwnerRentAllocation(state, effectiveInvoice.propertyId, paymentDate)
-            ) {
-                const splitErr = multiOwnerShareSplitError(
-                    state,
-                    effectiveInvoice.propertyId,
-                    paymentDate.slice(0, 10)
-                );
-                if (splitErr) {
-                    await showAlert(splitErr);
-                    return;
-                }
-                const batchId = `rent-alloc-${mkId()}`;
-                const allocLegs = buildOwnerRentAllocationTransactions(state, {
-                    propertyId: effectiveInvoice.propertyId,
-                    buildingId: effectiveInvoice.buildingId,
-                    paymentDateYyyyMmDd: paymentDate.slice(0, 10),
-                    rentAmount: rentPayment,
-                    accountId,
-                    invoiceId: effectiveInvoice.id,
-                    baseDescription: rentDescription,
-                    batchId,
-                }).map((leg) => ({ ...leg, id: mkId() })) as Transaction[];
-                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: [grossTx, ...allocLegs] });
-            } else {
-                dispatch({ type: 'ADD_TRANSACTION', payload: grossTx });
-            }
+            dispatch({ type: 'ADD_TRANSACTION', payload: grossTx });
         }
 
         // Security Deposit Logic - Credits both Bank and Security Liability

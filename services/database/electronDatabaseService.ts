@@ -192,6 +192,7 @@ export class ElectronDatabaseService {
             }
           } catch (_) { }
         }
+        if (currentVersion < 23) this.dropPropertyOwnershipTables();
         this.rawExecute(
           'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
           ['schema_version', SCHEMA_VERSION.toString()]
@@ -213,6 +214,22 @@ export class ElectronDatabaseService {
       this.isInitialized = false;
       logger.errorCategory('database', '❌ Native SQLite init failed:', this.initializationError);
       throw this.initializationError;
+    }
+  }
+
+  /** v23+: remove multi-owner / transfer tables (SQLite has no FK from other tables onto these). */
+  private dropPropertyOwnershipTables(): void {
+    try {
+      this.rawExecute('PRAGMA foreign_keys = OFF');
+      this.rawExecute('DROP TABLE IF EXISTS property_ownership');
+      this.rawExecute('DROP TABLE IF EXISTS property_ownership_history');
+      this.rawExecute('PRAGMA foreign_keys = ON');
+      logger.logCategory('database', '✅ Removed property_ownership tables (rollback)');
+    } catch (e) {
+      logger.warnCategory('database', 'property_ownership drop:', e);
+      try {
+        this.rawExecute('PRAGMA foreign_keys = ON');
+      } catch (_) { }
     }
   }
 
@@ -522,10 +539,6 @@ export class ElectronDatabaseService {
           ['description', 'TEXT'],
           ['monthly_service_charge', 'REAL'],
           ['updated_at', "TEXT DEFAULT ''"],
-        ],
-        property_ownership: [
-          ['transfer_document', 'TEXT'],
-          ['notes', 'TEXT'],
         ],
         units: [
           ['sale_price', 'REAL'],

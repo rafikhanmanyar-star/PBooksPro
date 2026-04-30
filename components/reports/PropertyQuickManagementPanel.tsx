@@ -23,7 +23,6 @@ import {
     useInvoices,
     useProperties,
     useRentalAgreements,
-    useStateSelector,
     useTransactions,
 } from '../../hooks/useSelectiveState';
 import {
@@ -78,7 +77,6 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
     const contacts = useContacts();
     const rentalAgreements = useRentalAgreements();
     const bills = useBills();
-    const propertyOwnership = useStateSelector((s) => s.propertyOwnership ?? []);
 
     const categoryById = useMemo(() => {
         const m = new Map<string, (typeof categories)[number]>();
@@ -369,7 +367,6 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
         property,
         activeAgreement,
         tenant,
-        propertyOwnership,
     ]);
 
     const recentTransactions = useMemo(() => {
@@ -459,14 +456,6 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
     const fmtMoney = (n: number) =>
         n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    const ownershipSegmentsForProperty = useMemo(
-        () =>
-            propertyOwnership
-                .filter(r => r.propertyId === propertyId && !r.deletedAt)
-                .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || '')),
-        [propertyId, propertyOwnership]
-    );
-
     if (!isOpen || !property) return null;
 
     return (
@@ -551,32 +540,6 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
                             <div className="text-sm font-semibold text-slate-900 dark:text-app-text">{contractLengthLabel}</div>
                         </div>
                     </div>
-
-                    {ownershipSegmentsForProperty.length > 0 && (
-                        <div className="px-6 pb-3 border-b border-slate-100 dark:border-app-border">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-app-muted mb-2">
-                                Ownership history (property)
-                            </div>
-                            <div className="max-h-32 overflow-y-auto space-y-1 text-xs">
-                                {ownershipSegmentsForProperty.map(seg => {
-                                    const oc = contacts.find(c => c.id === seg.ownerId);
-                                    return (
-                                        <div
-                                            key={seg.id}
-                                            className="flex justify-between gap-2 text-slate-700 dark:text-app-text"
-                                        >
-                                            <span className="truncate">{oc?.name || seg.ownerId}</span>
-                                            <span className="shrink-0 text-app-muted">
-                                                {seg.startDate?.slice(0, 10)}
-                                                {seg.endDate ? ` → ${seg.endDate.slice(0, 10)}` : ' → current'}{' '}
-                                                ({seg.ownershipPercentage}%)
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
 
                     {/* Summary cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-6 py-5">

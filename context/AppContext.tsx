@@ -23,9 +23,6 @@ import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayment
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
 import { toLocalDateString } from '../utils/dateUtils';
 import {
-    applyLegacySingleOwnerTransfer,
-    buildDefaultPropertyOwnershipRow,
-    invalidatePropertyOwnershipCache,
     resolveOwnerForPropertyOnDate,
 } from '../services/propertyOwnershipService';
 import { getCurrentTenantId } from '../services/database/tenantUtils';
@@ -236,8 +233,6 @@ const initialState: AppState = {
     projects: [],
     buildings: [],
     properties: [],
-    propertyOwnershipHistory: [],
-    propertyOwnership: [],
     units: [],
     transactions: [],
     invoices: [],
@@ -435,29 +430,19 @@ const createLogEntry = (action: TransactionLogEntry['action'], entityType: Trans
 
 /**
  * Stamp ownerId on a transaction when it has a propertyId but no ownerId set.
- *
- * Resolution priority:
- *   1. If the transaction is linked to an invoice → use the agreement's ownerId
- *      (correctly attributes rental income to whoever owned the property when
- *      the agreement was active, even if payment arrives after a transfer).
- *   2. Resolve from property_ownership using the invoice issue date (not the
- *      transaction/payment date) so pre-transfer rent stays with the old owner.
- *   3. Fall back to the transaction date for non-invoice transactions.
- *
- * NEVER overwrites an existing ownerId — preserves historical ownership.
+ * Uses agreement.ownerId when linked via invoice; else current property.ownerId.
+ * NEVER overwrites an existing ownerId.
  */
 function stampTransactionOwnerId(tx: Transaction, state: AppState): Transaction {
     if (tx.ownerId) return tx;
     if (!tx.propertyId) return tx;
 
-    // Try to resolve via the linked invoice's agreement
     if (tx.invoiceId) {
         const inv = state.invoices.find(i => i.id === tx.invoiceId);
         if (inv?.agreementId) {
             const agr = state.rentalAgreements.find(a => a.id === inv.agreementId);
             if (agr?.ownerId) return { ...tx, ownerId: agr.ownerId };
         }
-        // Use invoice issue date for ownership lookup (not payment date)
         if (inv?.issueDate) {
             const invDate = inv.issueDate.slice(0, 10);
             const resolved = resolveOwnerForPropertyOnDate(state, tx.propertyId, invDate);
@@ -532,8 +517,6 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 pm_cycle_allocations: 'pmCycleAllocations',
                 sales_returns: 'salesReturns',
                 project_received_assets: 'projectReceivedAssets',
-                inventory_items: 'inventoryItems',
-                property_ownership: 'propertyOwnership',
             };
 
             for (const [rawKey, items] of Object.entries(entities)) {
@@ -870,12 +853,9 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             if (existingProperty) {
                 return { ...state, properties: state.properties.map(p => p.id === action.payload.id ? action.payload : p) };
             }
-            const po = buildDefaultPropertyOwnershipRow(action.payload, getCurrentTenantId());
-            invalidatePropertyOwnershipCache(action.payload.id);
             return {
                 ...state,
                 properties: [...state.properties, action.payload],
-                propertyOwnership: [...(state.propertyOwnership || []), po],
             };
         }
         case 'UPDATE_PROPERTY':
@@ -886,11 +866,9 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 ),
             };
         case 'DELETE_PROPERTY': {
-            invalidatePropertyOwnershipCache(action.payload);
             return {
                 ...state,
                 properties: state.properties.filter(p => p.id !== action.payload),
-                propertyOwnership: (state.propertyOwnership || []).filter(r => r.propertyId !== action.payload),
             };
         }
 
@@ -1330,16 +1308,6 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, defaultProjectId: action.payload };
         case 'SET_LAST_SERVICE_CHARGE_RUN':
             return { ...state, lastServiceChargeRun: action.payload };
-        case 'TRANSFER_PROPERTY_OWNERSHIP':
-            return applyLegacySingleOwnerTransfer(state, { ...action.payload, tenantId: getCurrentTenantId() });
-        case 'REPLACE_PROPERTY_OWNERSHIP_FOR_PROPERTY': {
-            invalidatePropertyOwnershipCache(action.payload.propertyId);
-            const rest = (state.propertyOwnership || []).filter(r => r.propertyId !== action.payload.propertyId);
-            return { ...state, propertyOwnership: [...rest, ...action.payload.rows] };
-        }
-        case 'SET_PROPERTY_OWNERSHIP':
-            invalidatePropertyOwnershipCache();
-            return { ...state, propertyOwnership: action.payload };
         case 'SET_WHATSAPP_MODE':
             return { ...state, whatsAppMode: action.payload };
 

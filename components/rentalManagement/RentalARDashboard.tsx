@@ -82,8 +82,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   const buildings = useBuildings();
   const accounts = useAccounts();
   const transactions = useTransactions();
-  const propertyOwnership = useStateSelector(s => s.propertyOwnership);
-  const propertyOwnershipHistory = useStateSelector(s => s.propertyOwnershipHistory);
+  const rentalAgreements = useStateSelector((s) => s.rentalAgreements);
   const dispatch = useDispatchOnly();
   const { showConfirm, showToast, showAlert } = useNotification();
   // Filters — list and summary use separate keys so both persist
@@ -136,15 +135,16 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   }, [rentalInvoices, contacts]);
   const ownersWithInvoices = useMemo(() => {
     const ids = new Set<string>();
-    const ownerState = { properties, propertyOwnership: propertyOwnership || [], propertyOwnershipHistory: propertyOwnershipHistory || [] };
     rentalInvoices.forEach(inv => {
       if (!inv.propertyId) return;
-      const ownerId = resolveOwnerForPropertyOnDate(ownerState, inv.propertyId, (inv.issueDate || '').slice(0, 10))
-        || properties.find(p => p.id === inv.propertyId)?.ownerId;
+      const agr = inv.agreementId ? rentalAgreements.find((a) => a.id === inv.agreementId) : undefined;
+      const ownerId =
+        agr?.ownerId ??
+        resolveOwnerForPropertyOnDate({ properties }, inv.propertyId, (inv.issueDate || '').slice(0, 10));
       if (ownerId) ids.add(ownerId);
     });
     return contacts.filter(c => ids.has(c.id));
-  }, [rentalInvoices, properties, contacts, propertyOwnership, propertyOwnershipHistory]);
+  }, [rentalInvoices, properties, contacts, rentalAgreements]);
   const propertiesWithInvoices = useMemo(() => {
     const ids = new Set(rentalInvoices.map(inv => inv.propertyId).filter(Boolean) as string[]);
     return properties.filter(p => ids.has(p.id));
@@ -161,11 +161,12 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
       if (entityFilterId && entityFilterId !== 'all') {
         if (viewBy === 'tenant') result = result.filter(inv => inv.contactId === entityFilterId);
         else if (viewBy === 'owner') {
-          const ownerState = { properties, propertyOwnership: propertyOwnership || [], propertyOwnershipHistory: propertyOwnershipHistory || [] };
           result = result.filter(inv => {
             if (!inv.propertyId) return false;
-            const ownerId = resolveOwnerForPropertyOnDate(ownerState, inv.propertyId, (inv.issueDate || '').slice(0, 10))
-              || properties.find(p => p.id === inv.propertyId)?.ownerId;
+            const agr = inv.agreementId ? rentalAgreements.find((a) => a.id === inv.agreementId) : undefined;
+            const ownerId =
+              agr?.ownerId ??
+              resolveOwnerForPropertyOnDate({ properties }, inv.propertyId, (inv.issueDate || '').slice(0, 10));
             return ownerId === entityFilterId;
           });
         } else if (viewBy === 'property') result = result.filter(inv => inv.propertyId === entityFilterId);
@@ -231,7 +232,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     }
 
     return result;
-  }, [rentalInvoices, listMode, statusFilter, entityFilterId, typeFilter, dateFilter, viewBy, agingFilter, debouncedSearch, contacts, properties, buildings, propertyOwnership, propertyOwnershipHistory]);
+  }, [rentalInvoices, listMode, statusFilter, entityFilterId, typeFilter, dateFilter, viewBy, agingFilter, debouncedSearch, contacts, properties, buildings, rentalAgreements]);
 
   // Summary stats for list mode: Rental vs Security breakdown + totals (for cards)
   // Use same Security vs Rental split as grid (Security = SECURITY_DEPOSIT type or securityDepositCharge or description has 'security')
@@ -297,14 +298,14 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
       return properties.find(p => p.id === propertyId)?.buildingId || null;
     };
 
-    const getPropertyOwnerId = (propertyId?: string, dateStr?: string) => {
+    const getPropertyOwnerId = (propertyId?: string, dateStr?: string, agreementId?: string) => {
+      if (agreementId) {
+        const agr = rentalAgreements.find(a => a.id === agreementId);
+        if (agr?.ownerId) return agr.ownerId;
+      }
       if (!propertyId) return null;
       if (dateStr) {
-        const resolved = resolveOwnerForPropertyOnDate(
-          { properties, propertyOwnership: propertyOwnership || [], propertyOwnershipHistory: propertyOwnershipHistory || [] },
-          propertyId,
-          dateStr.slice(0, 10)
-        );
+        const resolved = resolveOwnerForPropertyOnDate({ properties }, propertyId, dateStr.slice(0, 10));
         if (resolved) return resolved;
       }
       return properties.find(p => p.id === propertyId)?.ownerId || null;
@@ -429,7 +430,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     if (viewBy === 'owner') {
       const grouped = new Map<string, Invoice[]>();
       for (const inv of filteredInvoices) {
-        const ownerId = getPropertyOwnerId(inv.propertyId, inv.issueDate) || '__unassigned';
+        const ownerId = getPropertyOwnerId(inv.propertyId, inv.issueDate, inv.agreementId) || '__unassigned';
         if (!grouped.has(ownerId)) grouped.set(ownerId, []);
         grouped.get(ownerId)!.push(inv);
       }
@@ -503,7 +504,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     }
 
     return [];
-  }, [filteredInvoices, viewBy, buildings, properties, contacts, propertyOwnership, propertyOwnershipHistory]);
+  }, [filteredInvoices, viewBy, buildings, properties, contacts, rentalAgreements]);
 
   // Clear selection when filters change
   useEffect(() => {

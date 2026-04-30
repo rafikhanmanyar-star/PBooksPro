@@ -8,8 +8,7 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
-import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
-import { getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
+import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { currentMonthYyyyMm, firstDayOfMonthFromYyyyMm } from '../../utils/dateUtils';
 
 interface ManualServiceChargeModalProps {
@@ -137,83 +136,39 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
         const baseTimestamp = Date.now();
         const isRented = getPropertyStatus(propertyId) === 'Rented';
         const statusLabel = isRented ? 'Rented' : 'Vacant';
-        const shares = getOwnershipSharesForPropertyOnDate(state, property.id, dateStr);
-        const round2 = (n: number) => Math.round(n * 100) / 100;
+        const ownerId =
+            resolveOwnerForPropertyOnDate(state, property.id, dateStr) ?? property.ownerId ?? undefined;
+
         const newTxs: Transaction[] = [];
 
-        if (shares.length <= 1) {
-            const ownerId = getOwnerIdForPropertyOnDate(
-                property.id,
-                dateStr,
-                state.propertyOwnershipHistory || [],
-                property.ownerId
-            );
+        newTxs.push({
+            id: `bm-debit-man-${baseTimestamp}`,
+            type: TransactionType.INCOME,
+            amount: -numAmount,
+            date: dateStr,
+            description: `Service Charge Deduction for ${property.name} (Manual, ${statusLabel})`,
+            accountId: cashAccount.id,
+            categoryId: rentalIncomeCategory.id,
+            propertyId: property.id,
+            buildingId: property.buildingId,
+            contactId: property.ownerId,
+            ownerId,
+            isSystem: true,
+        });
 
-            newTxs.push({
-                id: `bm-debit-man-${baseTimestamp}`,
-                type: TransactionType.INCOME,
-                amount: -numAmount,
-                date: dateStr,
-                description: `Service Charge Deduction for ${property.name} (Manual, ${statusLabel})`,
-                accountId: cashAccount.id,
-                categoryId: rentalIncomeCategory.id,
-                propertyId: property.id,
-                buildingId: property.buildingId,
-                contactId: property.ownerId,
-                ownerId,
-                isSystem: true,
-            });
-
-            newTxs.push({
-                id: `bm-credit-man-${baseTimestamp}`,
-                type: TransactionType.INCOME,
-                amount: numAmount,
-                date: dateStr,
-                description: `Service Charge Allocation for ${property.name} (Manual, ${statusLabel})`,
-                accountId: cashAccount.id,
-                categoryId: serviceIncomeCategory.id,
-                propertyId: property.id,
-                buildingId: property.buildingId,
-                ownerId,
-                isSystem: true,
-            });
-        } else {
-            let allocated = 0;
-            shares.forEach((s, si) => {
-                const isLast = si === shares.length - 1;
-                const portion = isLast ? round2(numAmount - allocated) : round2((numAmount * s.percentage) / 100);
-                if (!isLast) allocated += portion;
-                if (Math.abs(portion) < 0.001 && !isLast) return;
-                const oid = s.ownerId;
-                newTxs.push({
-                    id: `bm-debit-man-${baseTimestamp}-${si}`,
-                    type: TransactionType.INCOME,
-                    amount: -portion,
-                    date: dateStr,
-                    description: `Service Charge Deduction for ${property.name} (Manual, ${statusLabel}) [${s.percentage.toFixed(2)}%]`,
-                    accountId: cashAccount.id,
-                    categoryId: rentalIncomeCategory.id,
-                    propertyId: property.id,
-                    buildingId: property.buildingId,
-                    contactId: oid,
-                    ownerId: oid,
-                    isSystem: true,
-                });
-                newTxs.push({
-                    id: `bm-credit-man-${baseTimestamp}-${si}`,
-                    type: TransactionType.INCOME,
-                    amount: portion,
-                    date: dateStr,
-                    description: `Service Charge Allocation for ${property.name} (Manual, ${statusLabel}) [${s.percentage.toFixed(2)}%]`,
-                    accountId: cashAccount.id,
-                    categoryId: serviceIncomeCategory.id,
-                    propertyId: property.id,
-                    buildingId: property.buildingId,
-                    ownerId: oid,
-                    isSystem: true,
-                });
-            });
-        }
+        newTxs.push({
+            id: `bm-credit-man-${baseTimestamp}`,
+            type: TransactionType.INCOME,
+            amount: numAmount,
+            date: dateStr,
+            description: `Service Charge Allocation for ${property.name} (Manual, ${statusLabel})`,
+            accountId: cashAccount.id,
+            categoryId: serviceIncomeCategory.id,
+            propertyId: property.id,
+            buildingId: property.buildingId,
+            ownerId,
+            isSystem: true,
+        });
 
         dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: newTxs });
         dispatch({ type: 'SET_LAST_SERVICE_CHARGE_RUN', payload: new Date().toISOString() });

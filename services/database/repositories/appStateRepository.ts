@@ -25,8 +25,7 @@ import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigr
 import {
     UsersRepository, AccountsRepository, ContactsRepository, CategoriesRepository, PlCategoryMappingRepository,
     CashflowCategoryMappingRepository,
-    ProjectsRepository, BuildingsRepository, PropertiesRepository, PropertyOwnershipHistoryRepository,
-    PropertyOwnershipRepository,
+    ProjectsRepository, BuildingsRepository, PropertiesRepository,
     UnitsRepository, TransactionsRepository, InvoicesRepository, BillsRepository, BudgetsRepository,
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
     InstallmentPlansRepository, PlanAmenitiesRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository,
@@ -36,7 +35,6 @@ import {
 } from './index';
 
 import { getCurrentTenantId } from '../tenantUtils';
-import { buildDefaultPropertyOwnershipRow } from '../../propertyOwnershipService';
 import { getCurrentUserId } from '../userUtils';
 import { BaseRepository } from './baseRepository';
 import { isLocalOnlyMode } from '../../../config/apiUrl';
@@ -85,8 +83,6 @@ export class AppStateRepository {
     private projectsRepo = new ProjectsRepository();
     private buildingsRepo = new BuildingsRepository();
     private propertiesRepo = new PropertiesRepository();
-    private propertyOwnershipHistoryRepo = new PropertyOwnershipHistoryRepository();
-    private propertyOwnershipRepo = new PropertyOwnershipRepository();
     private unitsRepo = new UnitsRepository();
     private transactionsRepo = new TransactionsRepository();
     private invoicesRepo = new InvoicesRepository();
@@ -155,8 +151,6 @@ export class AppStateRepository {
         const projects: AppState['projects'] = [];
         const buildings = this.buildingsRepo.findAll();
         const properties = this.propertiesRepo.findAll();
-        const propertyOwnershipHistory = this.propertyOwnershipHistoryRepo.findAll();
-        let propertyOwnership = this.propertyOwnershipRepo.findAll() as AppState['propertyOwnership'];
         const units: AppState['units'] = [];
         // Vendors: source of truth is PostgreSQL API — not loaded from SQLite (GET /vendors).
         const vendors: AppState['vendors'] = [];
@@ -204,22 +198,6 @@ export class AppStateRepository {
             monthlyServiceCharge: p.monthlyServiceCharge != null ? Number(p.monthlyServiceCharge) : 0,
         }));
 
-        const propIdsWithOwnership = new Set((propertyOwnership || []).map((r: any) => r.propertyId));
-        const missingOwnership: AppState['propertyOwnership'] = [];
-        for (const p of normalizedProperties) {
-            if (!propIdsWithOwnership.has(p.id)) {
-                missingOwnership.push(buildDefaultPropertyOwnershipRow(p, getCurrentTenantId()));
-            }
-        }
-        if (missingOwnership.length > 0) {
-            propertyOwnership = [...(propertyOwnership || []), ...missingOwnership];
-            try {
-                this.propertyOwnershipRepo.saveAll(missingOwnership, true);
-            } catch (e) {
-                console.warn('[LocalDB] property_ownership backfill save skipped:', e);
-            }
-        }
-
         let cashFlowCategoryMappings: CashflowCategoryMappingEntry[] = [];
         try {
             cashFlowCategoryMappings = this.cashflowCategoryMappingRepo
@@ -256,8 +234,6 @@ export class AppStateRepository {
             projects,
             buildings,
             properties: normalizedProperties,
-            propertyOwnershipHistory: propertyOwnershipHistory || [],
-            propertyOwnership: propertyOwnership || [],
             units,
             transactions: repairedTransactions,
             invoices: repairedInvoices.map((inv: any) => ({
@@ -666,8 +642,6 @@ export class AppStateRepository {
             projects: this.projectsRepo,
             buildings: this.buildingsRepo,
             properties: this.propertiesRepo,
-            property_ownership_history: this.propertyOwnershipHistoryRepo,
-            property_ownership: this.propertyOwnershipRepo,
             units: this.unitsRepo,
             categories: this.categoriesRepo,
             users: this.usersRepo,
@@ -1437,18 +1411,6 @@ export class AppStateRepository {
                                     };
                                 });
                                 this.propertiesRepo.saveAll(validProperties, skipOrphan);
-                                // property ownership history: valid property_id and owner_id
-                                const contactIdsForOwnership = new Set(state.contacts.map(c => c.id));
-                                const validOwnershipHistory = (state.propertyOwnershipHistory || []).filter(
-                                    h => state.properties.some(p => p.id === h.propertyId) && contactIdsForOwnership.has(h.ownerId)
-                                );
-                                this.propertyOwnershipHistoryRepo.saveAll(validOwnershipHistory, skipOrphan);
-                                const validPropertyOwnership = (state.propertyOwnership || []).filter(
-                                    (r) =>
-                                        state.properties.some((p) => p.id === r.propertyId) &&
-                                        contactIdsForOwnership.has(r.ownerId)
-                                );
-                                this.propertyOwnershipRepo.saveAll(validPropertyOwnership, skipOrphan);
                                 // units: sanitize FKs but keep all records
                                 const validUnits = state.units.map(u => {
                                     const pid = u.projectId ?? (u as any).project_id ?? '';
@@ -1881,8 +1843,6 @@ export class AppStateRepository {
             projects: this.projectsRepo,
             buildings: this.buildingsRepo,
             properties: this.propertiesRepo,
-            property_ownership_history: this.propertyOwnershipHistoryRepo,
-            property_ownership: this.propertyOwnershipRepo,
             units: this.unitsRepo,
             transactions: this.transactionsRepo,
             invoices: this.invoicesRepo,

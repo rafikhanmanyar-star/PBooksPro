@@ -38,39 +38,9 @@ test('buildServiceChargeIndexes aggregates by property and month', () => {
             { id: 'p1', ownerId: 'o2' },
             { id: 'p2', ownerId: 'o1' },
         ],
-        propertyOwnership: [
-            {
-                id: 'po-1',
-                propertyId: 'p1',
-                ownerId: 'o1',
-                ownershipPercentage: 100,
-                startDate: '2026-01-01',
-                endDate: '2026-03-31',
-                isActive: false,
-            },
-            {
-                id: 'po-2',
-                propertyId: 'p1',
-                ownerId: 'o2',
-                ownershipPercentage: 100,
-                startDate: '2026-04-01',
-                endDate: null,
-                isActive: true,
-            },
-            {
-                id: 'po-3',
-                propertyId: 'p2',
-                ownerId: 'o1',
-                ownershipPercentage: 100,
-                startDate: '2026-01-01',
-                endDate: null,
-                isActive: true,
-            },
-        ],
-        propertyOwnershipHistory: [],
         invoices: [],
         rentalAgreements: [],
-    } as unknown as Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory' | 'invoices' | 'rentalAgreements'>;
+    } as Pick<AppState, 'properties' | 'invoices' | 'rentalAgreements'>;
 
     const idx = buildServiceChargeIndexes(transactions, svcId, state);
 
@@ -82,7 +52,7 @@ test('buildServiceChargeIndexes aggregates by property and month', () => {
     assert.equal(idx.portfolioScByMonth.get('2026-04'), 200);
     assert(idx.propertyHasScIncome.has('p1'));
     assert(idx.propertyMonthsWithSc.get('p1')?.has('2026-03'));
-    assert.equal(idx.ownerMonthScTotal.get('o1|2026-03'), 150);
+    assert.equal(idx.ownerMonthScTotal.get('o2|2026-03'), 150);
     assert.equal(idx.ownerMonthScTotal.get('o1|2026-04'), 200);
     assert.equal(idx.ownerMonthScTotal.get('o2|2026-04') || 0, 0);
 });

@@ -176,8 +176,6 @@ const OwnerSecurityDepositReport: React.FC = () => {
         [
             state.buildings,
             state.properties,
-            state.propertyOwnership,
-            state.propertyOwnershipHistory,
             state.rentalAgreements,
             state.transactions,
             state.invoices,
@@ -255,8 +253,6 @@ const OwnerSecurityDepositReport: React.FC = () => {
             state.transactions,
             state.invoices,
             state.properties,
-            state.propertyOwnership,
-            state.propertyOwnershipHistory,
             state.rentalAgreements,
             state.categories,
         ]
@@ -479,7 +475,6 @@ const OwnerSecurityDepositReport: React.FC = () => {
         state.buildings,
         state.categories,
         state.contacts,
-        state.propertyOwnership,
         state.rentalAgreements,
         startDate,
         endDate,

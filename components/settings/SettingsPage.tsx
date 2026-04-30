@@ -26,7 +26,6 @@ import UpdateCheck from './UpdateCheck';
 import { CompanyManagementSection } from '../company/CompanyManagementSection';
 import DbHealthPanel from '../diagnostics/DbHealthPanel';
 import ManualJournalEntrySection from './ManualJournalEntrySection';
-import PropertyTransferModal from './PropertyTransferModal';
 import LicenseManagement from '../license/LicenseManagement';
 import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
@@ -124,7 +123,6 @@ const SettingsPage: React.FC = () => {
     const [activePreferenceTab, setActivePreferenceTab] = useState<string>('General');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'asc' });
     const [ledgerModalState, setLedgerModalState] = useState<{ isOpen: boolean; entityId: string; entityType: 'account' | 'category' | 'contact' | 'project' | 'building' | 'property' | 'unit'; entityName: string } | null>(null);
-    const [propertyToTransfer, setPropertyToTransfer] = useState<Property | null>(null);
     const [isAddNewMenuOpen, setIsAddNewMenuOpen] = useState(false);
     const [isClearTransactionsModalOpen, setIsClearTransactionsModalOpen] = useState(false);
     const [displayTz, setDisplayTz] = useState<string>(() => getDisplayTimeZone() ?? 'auto');
@@ -460,12 +458,6 @@ const SettingsPage: React.FC = () => {
         if (type) dispatch({ type: 'SET_EDITING_ENTITY', payload: { type, id: item.id } });
     };
 
-    const handleTransferProperty = (e: React.MouseEvent, item: TableRowData) => {
-        e.stopPropagation();
-        const property = state.properties.find(p => p.id === item.id);
-        if (property) setPropertyToTransfer(property);
-    };
-
     const handleRowClick = (item: TableRowData) => {
         let entityType: any = null;
         if (activeCategory === 'accounts') entityType = item.entityKind === 'CATEGORY' ? 'category' : 'account';
@@ -570,9 +562,6 @@ const SettingsPage: React.FC = () => {
                                         <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                             <div className={`flex justify-end gap-2 transition-opacity ${activeCategory === 'properties' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                                                 <button onClick={(e) => handleEdit(e, item)} className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 p-1.5 rounded-md transition-colors" title="Edit"><div className="w-4 h-4">{ICONS.edit}</div></button>
-                                                {activeCategory === 'properties' && (
-                                                    <button onClick={(e) => handleTransferProperty(e, item)} className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded-md transition-colors" title="Transfer ownership"><div className="w-4 h-4">{ICONS.arrowRight}</div></button>
-                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -1159,9 +1148,6 @@ const SettingsPage: React.FC = () => {
                 <SettingsLedgerModal isOpen={ledgerModalState.isOpen} onClose={() => setLedgerModalState(null)} entityId={ledgerModalState.entityId} entityType={ledgerModalState.entityType} entityName={ledgerModalState.entityName} />
             )}
 
-            {propertyToTransfer && (
-                <PropertyTransferModal isOpen={!!propertyToTransfer} onClose={() => setPropertyToTransfer(null)} property={propertyToTransfer} />
-            )}
 
             <Modal isOpen={activePreferenceModal === 'messaging'} onClose={() => setActivePreferenceModal(null)} title="Messaging Templates" size="xl">
                 <MessagingTemplatesForm />

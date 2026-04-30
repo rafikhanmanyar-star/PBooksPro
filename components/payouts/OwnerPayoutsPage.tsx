@@ -168,7 +168,7 @@ const OwnerPayoutsPage: React.FC = () => {
         const owners = state.contacts.filter(c => c.type === ContactType.OWNER);
         const b = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
         return owners.filter((o) => getPropertyIdsForOwner(state, o.id, b).size > 0);
-    }, [state.contacts, state.properties, state.propertyOwnership, selectedBuildingId]);
+    }, [state.contacts, state.properties, selectedBuildingId]);
 
     // Unit options: after owner selection (properties of that owner, optionally in selected building)
     const unitFilterOptions = useMemo(() => {
@@ -176,7 +176,7 @@ const OwnerPayoutsPage: React.FC = () => {
         const b = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
         const keys = getPropertyIdsForOwner(state, selectedOwnerId, b);
         return state.properties.filter((p) => keys.has(String(p.id)));
-    }, [state.properties, state.propertyOwnership, selectedOwnerId, selectedBuildingId]);
+    }, [state.properties, selectedOwnerId, selectedBuildingId]);
 
     // Property scope for filters: when building/owner/unit selected, balances and summary show only that scope.
     // Use string ids so comparisons with rentalAgreement.propertyId (may be string or number) always match.
@@ -189,7 +189,7 @@ const OwnerPayoutsPage: React.FC = () => {
         return new Set(
             state.properties.filter((p) => (b ? p.buildingId === b : true)).map((p) => String(p.id))
         );
-    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, state.properties, state.propertyOwnership]);
+    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, state.properties]);
 
     const apiOwnerNetByOwnerInScope = useMemo(() => {
         const m = new Map<string, number>();
@@ -260,12 +260,8 @@ const OwnerPayoutsPage: React.FC = () => {
         if (propertyIdsInScope.size === 0) return [];
 
         const ownersInScope = new Set<string>();
-        propertyIdsInScope.forEach(pid => {
-            const prop = st.properties.find(p => String(p.id) === pid);
-            if (prop?.ownerId) ownersInScope.add(prop.ownerId);
-            (st.propertyOwnership || [])
-                .filter((r) => String(r.propertyId) === String(pid))
-                .forEach((r) => ownersInScope.add(r.ownerId));
+        propertyIdsInScope.forEach((pid) => {
+            getLedgerOwnerIdsForProperty(st, pid).forEach((oid) => ownersInScope.add(oid));
         });
         st.transactions.forEach(tx => {
             if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
@@ -303,9 +299,9 @@ const OwnerPayoutsPage: React.FC = () => {
         payoutComputeState.transactions,
         payoutComputeState.categories,
         payoutComputeState.properties,
-        payoutComputeState.propertyOwnership,
         payoutComputeState.rentalAgreements,
         payoutComputeState.bills,
+        payoutComputeState.invoices,
         propertyIdsInScope,
     ]);
 
@@ -320,12 +316,8 @@ const OwnerPayoutsPage: React.FC = () => {
         if (!secDepCategory) return [];
 
         const ownersInScope = new Set<string>();
-        propertyIdsInScope.forEach(pid => {
-            const prop = st.properties.find(p => String(p.id) === pid);
-            if (prop?.ownerId) ownersInScope.add(prop.ownerId);
-            (st.propertyOwnership || [])
-                .filter((r) => String(r.propertyId) === String(pid) && !r.deletedAt)
-                .forEach((r) => ownersInScope.add(r.ownerId));
+        propertyIdsInScope.forEach((pid) => {
+            getLedgerOwnerIdsForProperty(st, pid).forEach((oid) => ownersInScope.add(oid));
         });
         st.transactions.forEach(tx => {
             if (tx.ownerId && tx.propertyId && propertyIdsInScope.has(String(tx.propertyId))) {
@@ -393,7 +385,7 @@ const OwnerPayoutsPage: React.FC = () => {
             console.warn('[PBooksPerf][OwnerPayouts] ownerSecurityBalances ms=', Math.round(ms), 'tx=', st.transactions.length);
         }
         return rows;
-    }, [payoutComputeState.transactions, payoutComputeState.categories, payoutComputeState.properties, payoutComputeState.contacts, payoutComputeState.propertyOwnership, propertyIdsInScope]);
+    }, [payoutComputeState.transactions, payoutComputeState.categories, payoutComputeState.properties, payoutComputeState.contacts, propertyIdsInScope]);
 
     // --- Broker Commission Balances ---
     // Scoped by selected building/owner/unit so summary shows correct broker total when a filter is selected.
@@ -496,7 +488,6 @@ const OwnerPayoutsPage: React.FC = () => {
         payoutComputeState.categories,
         payoutComputeState.rentalAgreements,
         payoutComputeState.bills,
-        payoutComputeState.propertyOwnership,
         payoutComputeState.invoices,
     ]);
 
@@ -525,7 +516,7 @@ const OwnerPayoutsPage: React.FC = () => {
         for (const b of buildings) {
             const propsInB = state.properties.filter(p => p.buildingId === b.id);
 
-            // Build owner→property mapping including historical owners from propertyOwnership rows
+            // Build owner→property mapping (current owner, agreement/invoice/tx history)
             const byOwner = new Map<string, Set<string>>();
             for (const p of propsInB) {
                 const allOwners = getLedgerOwnerIdsForProperty(state, p.id);
@@ -594,7 +585,7 @@ const OwnerPayoutsPage: React.FC = () => {
         }
 
         return root;
-    }, [state.buildings, state.properties, state.contacts, ownerPropertyBreakdown, activeCategory, state.propertyOwnership, state.rentalAgreements, state.transactions, state.invoices]);
+    }, [state.buildings, state.properties, state.contacts, ownerPropertyBreakdown, activeCategory, state.rentalAgreements, state.transactions, state.invoices]);
 
     const brokerPayoutTreeNodes = useMemo((): PayoutTreeNode[] => {
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
@@ -982,7 +973,6 @@ const OwnerPayoutsPage: React.FC = () => {
         ownerSecurityBalances,
         state.contacts,
         state.properties,
-        state.propertyOwnership,
         state.rentalAgreements,
         selectedUnitId,
         selectedUnitName,

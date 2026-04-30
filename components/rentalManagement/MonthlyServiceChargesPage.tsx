@@ -13,8 +13,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { formatCurrency } from '../../utils/numberUtils';
-import { getOwnerIdForPropertyOnDate } from '../../services/ownershipHistoryUtils';
-import { getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
+import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import ARTreeView, { ARTreeNode } from './ARTreeView';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -248,18 +247,10 @@ const MonthlyServiceChargesPage: React.FC = () => {
     const scIndexState = useMemo(
         () => ({
             properties: state.properties,
-            propertyOwnership: state.propertyOwnership,
-            propertyOwnershipHistory: state.propertyOwnershipHistory,
             invoices: state.invoices,
             rentalAgreements: state.rentalAgreements,
         }),
-        [
-            state.properties,
-            state.propertyOwnership,
-            state.propertyOwnershipHistory,
-            state.invoices,
-            state.rentalAgreements,
-        ]
+        [state.properties, state.invoices, state.rentalAgreements]
     );
 
     const scIndexes = useMemo(
@@ -790,8 +781,6 @@ const MonthlyServiceChargesPage: React.FC = () => {
         state.properties,
         state.contacts,
         state.rentalAgreements,
-        state.propertyOwnership,
-        state.propertyOwnershipHistory,
         scIndexes,
         selectedPropertyRowsForLedger,
         selectedMonth,
@@ -1024,81 +1013,36 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
                     const amount = property.monthlyServiceCharge || 0;
                     const isRented = getPropertyStatus(property.id) === 'Rented';
-                    const shares = getOwnershipSharesForPropertyOnDate(state, property.id, dateStr);
-                    const round2 = (n: number) => Math.round(n * 100) / 100;
-
-                    if (shares.length <= 1) {
-                        const ownerId = getOwnerIdForPropertyOnDate(
-                            property.id,
-                            dateStr,
-                            state.propertyOwnershipHistory || [],
-                            property.ownerId
-                        );
-                        const debitTx: Transaction = {
-                            id: `bm-debit-${baseTimestamp}-${i}`,
-                            type: TransactionType.INCOME,
-                            amount: -amount,
-                            date: dateStr,
-                            description: `Service Charge Deduction for ${property.name} (${isRented ? 'Rented' : 'Vacant'})`,
-                            accountId: cashAccount.id,
-                            categoryId: rentalIncomeCategory.id,
-                            propertyId: property.id,
-                            buildingId: property.buildingId,
-                            contactId: property.ownerId,
-                            ownerId,
-                            isSystem: true,
-                        };
-                        const creditTx: Transaction = {
-                            id: `bm-credit-${baseTimestamp}-${i}`,
-                            type: TransactionType.INCOME,
-                            amount: amount,
-                            date: dateStr,
-                            description: `Service Charge Allocation for ${property.name} (${isRented ? 'Rented' : 'Vacant'})`,
-                            accountId: cashAccount.id,
-                            categoryId: svcCat!.id,
-                            propertyId: property.id,
-                            buildingId: property.buildingId,
-                            ownerId,
-                            isSystem: true,
-                        };
-                        newTxs.push(debitTx, creditTx);
-                    } else {
-                        let allocated = 0;
-                        shares.forEach((s, si) => {
-                            const isLast = si === shares.length - 1;
-                            const portion = isLast ? round2(amount - allocated) : round2((amount * s.percentage) / 100);
-                            if (!isLast) allocated += portion;
-                            if (Math.abs(portion) < 0.001 && !isLast) return;
-                            const oid = s.ownerId;
-                            newTxs.push({
-                                id: `bm-debit-${baseTimestamp}-${i}-${si}`,
-                                type: TransactionType.INCOME,
-                                amount: -portion,
-                                date: dateStr,
-                                description: `Service Charge Deduction for ${property.name} (${isRented ? 'Rented' : 'Vacant'}) [${s.percentage.toFixed(2)}%]`,
-                                accountId: cashAccount.id,
-                                categoryId: rentalIncomeCategory.id,
-                                propertyId: property.id,
-                                buildingId: property.buildingId,
-                                contactId: oid,
-                                ownerId: oid,
-                                isSystem: true,
-                            });
-                            newTxs.push({
-                                id: `bm-credit-${baseTimestamp}-${i}-${si}`,
-                                type: TransactionType.INCOME,
-                                amount: portion,
-                                date: dateStr,
-                                description: `Service Charge Allocation for ${property.name} (${isRented ? 'Rented' : 'Vacant'}) [${s.percentage.toFixed(2)}%]`,
-                                accountId: cashAccount.id,
-                                categoryId: svcCat!.id,
-                                propertyId: property.id,
-                                buildingId: property.buildingId,
-                                ownerId: oid,
-                                isSystem: true,
-                            });
-                        });
-                    }
+                    const ownerId =
+                        resolveOwnerForPropertyOnDate(state, property.id, dateStr) ?? property.ownerId ?? undefined;
+                    const debitTx: Transaction = {
+                        id: `bm-debit-${baseTimestamp}-${i}`,
+                        type: TransactionType.INCOME,
+                        amount: -amount,
+                        date: dateStr,
+                        description: `Service Charge Deduction for ${property.name} (${isRented ? 'Rented' : 'Vacant'})`,
+                        accountId: cashAccount.id,
+                        categoryId: rentalIncomeCategory.id,
+                        propertyId: property.id,
+                        buildingId: property.buildingId,
+                        contactId: property.ownerId,
+                        ownerId,
+                        isSystem: true,
+                    };
+                    const creditTx: Transaction = {
+                        id: `bm-credit-${baseTimestamp}-${i}`,
+                        type: TransactionType.INCOME,
+                        amount: amount,
+                        date: dateStr,
+                        description: `Service Charge Allocation for ${property.name} (${isRented ? 'Rented' : 'Vacant'})`,
+                        accountId: cashAccount.id,
+                        categoryId: svcCat!.id,
+                        propertyId: property.id,
+                        buildingId: property.buildingId,
+                        ownerId,
+                        isSystem: true,
+                    };
+                    newTxs.push(debitTx, creditTx);
                     if (isRented) rentedCount++;
                     else vacantCount++;
                 }

@@ -12,8 +12,6 @@ const RentalAgreementsPage = lazy(() => import('../rentalAgreements/RentalAgreem
 const RentalInvoicesPage = lazy(() => import('./RentalInvoicesPage'));
 const MonthlyServiceChargesPage = lazy(() => import('./MonthlyServiceChargesPage'));
 const RentalBillsPage = lazy(() => import('./RentalBillsPage'));
-const PropertyOwnershipTransfersPage = lazy(() => import('./PropertyOwnershipTransfersPage'));
-
 const PropertyLayoutReport = lazy(() => import('../reports/PropertyLayoutReport'));
 const UnitStatusReport = lazy(() => import('../reports/UnitStatusReport'));
 const AgreementExpiryReport = lazy(() => import('../reports/AgreementExpiryReport'));
@@ -42,7 +40,7 @@ interface RentalManagementPageProps {
 // Define all possible view keys
 type RentalView =
     | 'Rental setup'
-    | 'Agreements' | 'Invoices' | 'Monthly Service Charges' | 'Bills' | 'Payouts' | 'Ownership transfers'
+    | 'Agreements' | 'Invoices' | 'Monthly Service Charges' | 'Bills' | 'Payouts'
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
     | 'Owner Rental Income' | 'Owner Rental Income Summary'
@@ -79,8 +77,7 @@ type PersistedOperationalView =
     | 'Agreements'
     | 'Invoices'
     | 'Bills'
-    | 'Monthly Service Charges'
-    | 'Ownership transfers';
+    | 'Monthly Service Charges';
 
 const PERSISTED_LEDGER_REPORTS: PersistedLedgerReportView[] = [
     'Owner Rental Income',
@@ -92,7 +89,6 @@ const PERSISTED_OPERATIONAL_VIEWS: PersistedOperationalView[] = [
     'Invoices',
     'Bills',
     'Monthly Service Charges',
-    'Ownership transfers',
 ];
 
 function isPersistedLedgerReportView(v: RentalView): v is PersistedLedgerReportView {
@@ -105,7 +101,6 @@ function isPersistedOperationalView(v: RentalView): v is PersistedOperationalVie
         || v === 'Invoices'
         || v === 'Bills'
         || v === 'Monthly Service Charges'
-        || v === 'Ownership transfers'
     );
 }
 
@@ -116,8 +111,17 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     const [activeView, setActiveView] = useLocalStorage<RentalView>('rentalManagement_activeView', 'Agreements');
     const [reportsExpanded, setReportsExpanded] = useState(true);
 
+    useEffect(() => {
+        if ((activeView as string) === 'Ownership transfers') setActiveView('Agreements');
+    }, [activeView, setActiveView]);
+
     /** Legacy “Payouts” sub-page removed from nav; map to Owner Rental Income report. */
-    const normalizedView: RentalView = activeView === 'Payouts' ? 'Owner Rental Income' : activeView;
+    const normalizedView: RentalView =
+        activeView === 'Payouts'
+            ? 'Owner Rental Income'
+            : (activeView as string) === 'Ownership transfers'
+              ? 'Agreements'
+              : activeView;
     useEffect(() => {
         if (activeView === 'Payouts') {
             setActiveView('Owner Rental Income');
@@ -186,7 +190,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                         'Invoices',
                         'Monthly Service Charges',
                         'Bills',
-                        'Ownership transfers',
                     ].includes(mainTab)
                 ) {
                     setActiveView(mainTab as RentalView);
@@ -202,7 +205,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         'Invoices',
         'Monthly Service Charges',
         'Bills',
-        'Ownership transfers',
     ];
     const isOperationalView = OPERATIONAL_VIEWS.includes(normalizedView);
 
@@ -218,7 +220,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         Invoices: false,
         Bills: false,
         'Monthly Service Charges': false,
-        'Ownership transfers': false,
     });
 
     useEffect(() => {
@@ -251,7 +252,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                         {view === 'Invoices' && <RentalInvoicesPage />}
                         {view === 'Bills' && <RentalBillsPage />}
                         {view === 'Monthly Service Charges' && <MonthlyServiceChargesPage />}
-                        {view === 'Ownership transfers' && <PropertyOwnershipTransfersPage />}
                     </div>
                 );
             })}
@@ -350,7 +350,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <NavItem view="Invoices" label="Invoices" />
                     <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
-                    <NavItem view="Ownership transfers" label="Ownership transfers" />
                 </div>
 
                 <div className="pt-3 mt-2 border-t border-app-border space-y-0.5">

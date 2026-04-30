@@ -475,43 +475,10 @@ export interface Transaction {
   payslipId?: string;
   reference?: string;
   projectAssetId?: string; // Link to project_received_assets when recording asset sale
-  ownerId?: string; // Owner at time of transaction (for rent attribution when property ownership changes)
+  ownerId?: string; // Owner at time of transaction (optional; fallback to property owner in UI/reports)
   children?: Transaction[];
   /** Server optimistic-lock / sync (PostgreSQL API); optional in local-only SQLite. */
   version?: number;
-}
-
-/** One row per ownership period; only one per property has ownershipEndDate === null (current owner). */
-export interface PropertyOwnershipHistory {
-  id: string;
-  tenantId: string;
-  propertyId: string;
-  ownerId: string;
-  ownershipStartDate: string;
-  ownershipEndDate: string | null;
-  transferReference?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** Percentage-based co-ownership; multiple rows may be active (sum 100%). History preserved via endDate / isActive. */
-export interface PropertyOwnership {
-  id: string;
-  tenantId: string;
-  propertyId: string;
-  ownerId: string;
-  ownershipPercentage: number;
-  startDate: string;
-  endDate: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  version?: number;
-  deletedAt?: string;
-  /** Optional transfer / deed reference (per segment). */
-  transferDocument?: string;
-  notes?: string;
 }
 
 export interface Invoice {
@@ -616,7 +583,7 @@ export interface RentalAgreement {
   securityDeposit?: number;
   brokerId?: string;
   brokerFee?: number;
-  ownerId?: string; // Optional: stores owner at time of agreement (for historical accuracy after property transfer)
+  ownerId?: string; // Optional: agreement-level owner stamp (legacy)
   previousAgreementId?: string; // Links to the previous agreement in a renewal chain
   /** Set when loaded from LAN API (optimistic concurrency) */
   version?: number;
@@ -929,9 +896,6 @@ export interface AppState {
   projects: Project[];
   buildings: Building[];
   properties: Property[];
-  propertyOwnershipHistory: PropertyOwnershipHistory[];
-  /** Co-ownership slices (%); empty array means "use legacy single-owner (property.ownerId + history only)". */
-  propertyOwnership: PropertyOwnership[];
   units: Unit[];
 
   transactions: Transaction[];
@@ -1027,11 +991,6 @@ export type AppAction =
   | { type: 'ADD_PROPERTY'; payload: Property }
   | { type: 'UPDATE_PROPERTY'; payload: Property }
   | { type: 'DELETE_PROPERTY'; payload: string }
-  | { type: 'ADD_PROPERTY_OWNERSHIP_HISTORY'; payload: PropertyOwnershipHistory }
-  | { type: 'UPDATE_PROPERTY_OWNERSHIP_HISTORY'; payload: PropertyOwnershipHistory }
-  | { type: 'TRANSFER_PROPERTY_OWNERSHIP'; payload: { propertyId: string; newOwnerId: string; transferDate: string; transferReference?: string; notes?: string } }
-  | { type: 'REPLACE_PROPERTY_OWNERSHIP_FOR_PROPERTY'; payload: { propertyId: string; rows: PropertyOwnership[] } }
-  | { type: 'SET_PROPERTY_OWNERSHIP'; payload: PropertyOwnership[] }
   | { type: 'ADD_UNIT'; payload: Unit }
   | { type: 'UPDATE_UNIT'; payload: Unit }
   | { type: 'DELETE_UNIT'; payload: string }

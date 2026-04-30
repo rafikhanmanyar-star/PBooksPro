@@ -177,7 +177,6 @@ const PropertyLayoutReport: React.FC = () => {
     const projects = useProjects();
     const units = useUnits();
     const projectAgreements = useStateSelector((s) => s.projectAgreements);
-    const propertyOwnership = useStateSelector((s) => s.propertyOwnership ?? []);
     const queryClient = useQueryClient();
     const { print: triggerPrint } = usePrintContext();
     const { isAuthenticated } = useAuth();
@@ -243,7 +242,7 @@ const PropertyLayoutReport: React.FC = () => {
     const clientOwnerPropertyBreakdown = useMemo((): OwnerPropertyBreakdownMap => {
         if (properties.length === 0) return {};
         return buildOwnerPropertyBreakdown(_getAppState());
-    }, [transactions, properties, categories, rentalAgreements, bills, propertyOwnership]);
+    }, [transactions, properties, categories, rentalAgreements, bills]);
 
     const layoutOwnerRentalPayoutBreakdown = useMemo((): OwnerPropertyBreakdownMap => {
         if (properties.length === 0) return {};
@@ -294,7 +293,6 @@ const PropertyLayoutReport: React.FC = () => {
         rentalAgreements,
         bills,
         invoices,
-        propertyOwnership,
     ]);
 
     const layoutOwnerPayoutModalRows = useMemo(() => {
@@ -316,7 +314,6 @@ const PropertyLayoutReport: React.FC = () => {
         bills,
         invoices,
         contacts,
-        propertyOwnership,
     ]);
 
     const layoutOwnerPayoutBalanceDue = useMemo(
@@ -786,7 +783,6 @@ const PropertyLayoutReport: React.FC = () => {
         projectAgreements,
         clientOwnerPropertyBreakdown,
         bills,
-        propertyOwnership,
     ]);
 
 

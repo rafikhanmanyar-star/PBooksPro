@@ -4,11 +4,7 @@
 
 import type { AppState, Transaction } from '../types';
 import { TransactionType, ContactType } from '../types';
-import {
-    hasMultipleOwnersOnDate,
-    getOwnerSharePercentageOnDate,
-    resolveOwnerForTransaction,
-} from './propertyOwnershipService';
+import { resolveOwnerForTransaction } from './propertyOwnershipService';
 
 export interface MscLedgerRow {
     id: string;
@@ -52,7 +48,7 @@ export function endOfMonthIso(monthKey: string): string {
 export function buildServiceChargeIndexes(
     transactions: Transaction[],
     svcCategoryId: string | null,
-    state: Pick<AppState, 'properties' | 'propertyOwnership' | 'propertyOwnershipHistory' | 'invoices' | 'rentalAgreements'>
+    state: Pick<AppState, 'properties' | 'invoices' | 'rentalAgreements'>
 ): ServiceChargeIndexes {
     const propertyHasScIncome = new Set<string>();
     const propertyMonthsWithSc = new Map<string, Set<string>>();
@@ -206,23 +202,6 @@ export function computeOwnerBalanceAsOf(ownerId: string, asOfDate: string, state
 
             if (tx.categoryId !== rentalIncomeCategory.id) continue;
             if (!tx.propertyId) continue;
-            const d = (tx.date || '').slice(0, 10);
-            if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
-                const hasExplicitShares =
-                    ownerShareCat &&
-                    state.transactions.some(
-                        st =>
-                            st.categoryId === ownerShareCat.id &&
-                            ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
-                    );
-                if (!hasExplicitShares) {
-                    for (const oid of Object.keys(balances)) {
-                        const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId), oid, d);
-                        if (pct > 0) balances[oid] += Math.round(amount * pct) / 100;
-                    }
-                }
-                continue;
-            }
             const resolvedOwnerId = resolveOwnerForTransaction(state, tx);
             if (resolvedOwnerId && balances[resolvedOwnerId] !== undefined) {
                 balances[resolvedOwnerId] += amount;
@@ -285,21 +264,6 @@ export function rentalIncomeForOwnerInMonth(
         }
 
         if (!rentalIncomeCategoryId || tx.categoryId !== rentalIncomeCategoryId) continue;
-        const d = (tx.date || '').slice(0, 10);
-        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
-            const hasExplicitShares =
-                shareCat &&
-                state.transactions.some(
-                    st =>
-                        st.categoryId === shareCat.id &&
-                        ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
-                );
-            if (!hasExplicitShares) {
-                const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId), ownerId, d);
-                if (pct > 0) sum += Math.round(amount * pct) / 100;
-            }
-            continue;
-        }
         const resolvedOwnerId = resolveOwnerForTransaction(state, tx);
         if (!resolvedOwnerId || resolvedOwnerId !== ownerId) continue;
         sum += amount;

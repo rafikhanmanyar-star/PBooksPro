@@ -8,7 +8,7 @@
 
 // Aligned with PostgreSQL (postgresql-schema.sql + hardening). PostgreSQL is source of truth.
 // Bump when schema changes; keep electron/schemaVersion.json in sync (npm run electron:extract-schema).
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 export const CREATE_SCHEMA_SQL = `
 -- PBooksPro Schema (PRAGMAs set in sqliteBridge.cjs)
@@ -219,42 +219,6 @@ CREATE TABLE IF NOT EXISTS properties (
     deleted_at TEXT,
     FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT,
     FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE RESTRICT
-);
-
--- Property ownership history (one active row per property: ownership_end_date IS NULL)
-CREATE TABLE IF NOT EXISTS property_ownership_history (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL DEFAULT '',
-    property_id TEXT NOT NULL,
-    owner_id TEXT NOT NULL,
-    ownership_start_date TEXT NOT NULL,
-    ownership_end_date TEXT,
-    transfer_reference TEXT,
-    notes TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-    FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT
-);
-
--- Property co-ownership (percentage-based; multiple rows may be active per property)
-CREATE TABLE IF NOT EXISTS property_ownership (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL DEFAULT '',
-    property_id TEXT NOT NULL,
-    owner_id TEXT NOT NULL,
-    ownership_percentage REAL NOT NULL,
-    start_date TEXT NOT NULL,
-    end_date TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    version INTEGER NOT NULL DEFAULT 1,
-    deleted_at TEXT,
-    transfer_document TEXT,
-    notes TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-    FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT
 );
 
 -- Units table (aligned with PostgreSQL)
@@ -922,16 +886,6 @@ CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agree
 CREATE INDEX IF NOT EXISTS idx_properties_building ON properties(building_id);
 CREATE INDEX IF NOT EXISTS idx_properties_owner ON properties(owner_id);
 CREATE INDEX IF NOT EXISTS idx_properties_tenant ON properties(tenant_id);
-
--- Property ownership history
-CREATE INDEX IF NOT EXISTS idx_property_ownership_history_property ON property_ownership_history(property_id);
-CREATE INDEX IF NOT EXISTS idx_property_ownership_history_owner ON property_ownership_history(owner_id);
-CREATE INDEX IF NOT EXISTS idx_property_ownership_history_start ON property_ownership_history(ownership_start_date);
-CREATE INDEX IF NOT EXISTS idx_property_ownership_history_property_end ON property_ownership_history(property_id, ownership_end_date);
-
-CREATE INDEX IF NOT EXISTS idx_property_ownership_property_dates ON property_ownership(property_id, start_date, end_date);
-CREATE INDEX IF NOT EXISTS idx_property_ownership_owner ON property_ownership(owner_id);
-CREATE INDEX IF NOT EXISTS idx_property_ownership_active ON property_ownership(property_id, is_active);
 
 -- Units
 CREATE INDEX IF NOT EXISTS idx_units_project ON units(project_id);

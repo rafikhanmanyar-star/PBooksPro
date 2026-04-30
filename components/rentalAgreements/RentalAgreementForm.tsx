@@ -151,8 +151,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         propertyId,
         startDate,
         state.contacts,
-        state.propertyOwnership,
-        state.propertyOwnershipHistory,
         state.properties,
     ]);
 

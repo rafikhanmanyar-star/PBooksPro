@@ -11,7 +11,6 @@ import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
-import PropertyTransferModal from './PropertyTransferModal';
 import { parseApiEntityVersion } from '../../utils/parseApiVersion';
 
 function is409Conflict(err: unknown): boolean {
@@ -45,7 +44,6 @@ const AssetsManagement: React.FC = () => {
     const [selectedType, setSelectedType] = useState<AssetType>('project');
     const [selectedAssetTypeFilter, setSelectedAssetTypeFilter] = useState<AssetType | null>(null);
     const [editingEntity, setEditingEntity] = useState<AssetEntity | null>(null);
-    const [propertyToTransfer, setPropertyToTransfer] = useState<Property | null>(null);
     
     // Common fields
     const [name, setName] = useState('');
@@ -1199,19 +1197,6 @@ const AssetsManagement: React.FC = () => {
                                                             >
                                                                 <div className="w-3.5 h-3.5">{ICONS.edit}</div>
                                                             </button>
-                                                            {isProperty && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const property = appState.properties.find(p => p.id === entity.id);
-                                                                        if (property) setPropertyToTransfer(property);
-                                                                    }}
-                                                                    className="text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 p-1 rounded transition-colors"
-                                                                    title="Transfer ownership"
-                                                                >
-                                                                    <div className="w-3.5 h-3.5">{ICONS.arrowRight}</div>
-                                                                </button>
-                                                            )}
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleDelete(entity); }}
                                                                 className="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 p-1 rounded transition-colors"
@@ -1270,13 +1255,6 @@ const AssetsManagement: React.FC = () => {
             </div>
         </div>
 
-        {propertyToTransfer && (
-            <PropertyTransferModal
-                isOpen={!!propertyToTransfer}
-                onClose={() => setPropertyToTransfer(null)}
-                property={propertyToTransfer}
-            />
-        )}
     </>
     );
 };

@@ -71,7 +71,7 @@ const OwnerPayoutsReport: React.FC = () => {
 
     const unfilteredBuildingNodes = useMemo(
         () => buildRentalPortfolioTreeNodes(state),
-        [state.buildings, state.properties, state.propertyOwnership, state.rentalAgreements, state.transactions, state.invoices, state.contacts]
+        [state]
     );
 
     const treeData = useMemo((): TreeNode[] => {
