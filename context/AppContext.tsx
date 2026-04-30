@@ -1409,6 +1409,19 @@ function mergeInvoicesWithServerBaseline(base: Invoice[], server: Invoice[]): In
     return out;
 }
 
+/** Same merge policy as invoices: keep optimistic bill rows until the server acknowledges them with a version. */
+function mergeBillsWithServerBaseline(base: Bill[], server: Bill[]): Bill[] {
+    const serverIds = new Set(server.map((b) => b.id).filter(Boolean));
+    const out = [...server];
+    for (const bill of base) {
+        if (!bill.id || serverIds.has(bill.id)) continue;
+        const hadServerVersion = typeof bill.version === 'number' && bill.version >= 1;
+        if (hadServerVersion) continue;
+        out.push(bill);
+    }
+    return out;
+}
+
 function mergeProjectReceivedAssetsWithServerBaseline(base: ProjectReceivedAsset[], server: ProjectReceivedAsset[]): ProjectReceivedAsset[] {
     const serverIds = new Set(server.map((a) => a.id).filter(Boolean));
     const out = [...server];
@@ -1794,8 +1807,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             }, 300);
                         }
                         }
-                    } else {
-                        // Load from local database (offline mode)
+                    } else if (isLocalOnlyMode()) {
+                        // Load from local database (offline mode only)
                         // Try to initialize database (but don't fail if it doesn't work)
                         try {
                             const dbService = getDatabaseService();
@@ -1833,6 +1846,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         if (timeoutId) clearTimeout(timeoutId);
                         if (forceTimeoutId) clearTimeout(forceTimeoutId);
 
+                        setInitProgress(100);
+                        setInitMessage('Ready!');
+                        setTimeout(() => {
+                            if (isMounted) setIsInitializing(false);
+                        }, 300);
+                    } else {
+                        // LAN/PostgreSQL API: not logged in yet — do not read SQLite into app state (wrong tenant / stale).
+                        if (!isMounted) return;
+                        if (timeoutId) clearTimeout(timeoutId);
+                        if (forceTimeoutId) clearTimeout(forceTimeoutId);
                         setInitProgress(100);
                         setInitMessage('Ready!');
                         setTimeout(() => {
@@ -2500,8 +2523,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     getAppStateApiService()
                         .saveBill(bill)
+                        .then((saved) => {
+                            if (saved && typeof saved.version === 'number') {
+                                dispatch({
+                                    type: 'UPDATE_BILL',
+                                    payload: { ...bill, ...saved },
+                                    _isRemote: true,
+                                } as AppAction);
+                            }
+                        })
                         .catch((err) => {
                             logger.warnCategory('sync', '⚠️ Failed to persist bill to API:', err);
+                            notifyDatabaseError(new Error(formatApiErrorMessage(err)), {
+                                title: 'Could not save to server',
+                                context:
+                                    'This bill was not written to PostgreSQL. It may disappear after refresh or login.',
+                            });
                         });
                 });
             } else if (a.type === 'ADD_PM_CYCLE_ALLOCATION' || a.type === 'UPDATE_PM_CYCLE_ALLOCATION') {
@@ -2994,12 +3031,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // It does not re-fetch projects, buildings, properties, etc. Using it when the baseline is
             // still empty would leave PostgreSQL-backed data missing after a fresh login or when sessionStorage still
             // has pbooks_api_last_sync_at from an earlier tab session.
+            // Do not use accounts/categories length: initialState always includes system seeds, which falsely
+            // marked the baseline as "hydrated" and caused incremental-only merges to drop rental bills.
             const baselineHasCoreData =
-                (base.accounts?.length ?? 0) > 0 ||
-                (base.categories?.length ?? 0) > 0 ||
                 (base.projects?.length ?? 0) > 0 ||
                 (base.contacts?.length ?? 0) > 0 ||
                 (base.buildings?.length ?? 0) > 0 ||
+                (base.properties?.length ?? 0) > 0 ||
+                (base.vendors?.length ?? 0) > 0 ||
+                (base.rentalAgreements?.length ?? 0) > 0 ||
                 (base.invoices?.length ?? 0) > 0 ||
                 (base.bills?.length ?? 0) > 0 ||
                 (base.transactions?.length ?? 0) > 0;
@@ -3019,6 +3059,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         ...base,
                         ...partial,
                         invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
+                        bills: mergeBillsWithServerBaseline(base.bills || [], partial.bills || []),
                         projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
                             base.projectReceivedAssets || [],
                             partial.projectReceivedAssets || []
@@ -3042,6 +3083,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     ...safeBase,
                     ...partial,
                     invoices: mergeInvoicesWithServerBaseline(safeBase.invoices || [], partial.invoices || []),
+                    bills: mergeBillsWithServerBaseline(safeBase.bills || [], partial.bills || []),
                     projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
                         safeBase.projectReceivedAssets || [],
                         partial.projectReceivedAssets || []

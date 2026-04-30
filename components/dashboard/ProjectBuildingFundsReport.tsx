@@ -415,12 +415,6 @@ const ProjectBuildingFundsReport: React.FC = () => {
                             <th onClick={() => handleSort('expense')} className="px-4 py-3 text-right font-semibold text-ds-danger cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Expense <SortIcon column="expense"/></th>
                             <th onClick={() => handleSort('investment')} className="px-4 py-3 text-right font-semibold text-primary cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Total Investment <SortIcon column="investment"/></th>
                             <th onClick={() => handleSort('equityOut')} className="px-4 py-3 text-right font-semibold text-ds-warning cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap transition-colors duration-ds">Equity Moved Out <SortIcon column="equityOut"/></th>
-                            {reportData.some(row => row.type === 'Loan') && (
-                                <>
-                                    <th className="px-4 py-3 text-right font-semibold text-purple-600 whitespace-nowrap">Loan Given</th>
-                                    <th className="px-4 py-3 text-right font-semibold text-purple-600 whitespace-nowrap">Loan Taken</th>
-                                </>
-                            )}
                             <th onClick={() => handleSort('netBalance')} className="px-4 py-3 text-right font-bold text-app-text cursor-pointer hover:bg-app-toolbar select-none whitespace-nowrap bg-app-toolbar transition-colors duration-ds">Net Balance <SortIcon column="netBalance"/></th>
                         </tr>
                     </thead>
@@ -440,24 +434,6 @@ const ProjectBuildingFundsReport: React.FC = () => {
                                 <td className="px-4 py-3 text-right text-ds-danger tabular-nums border-b border-app-border">{CURRENCY} {formatRoundedNumber(row.expense)}</td>
                                 <td className="px-4 py-3 text-right text-primary tabular-nums border-b border-app-border">{CURRENCY} {formatRoundedNumber(row.investment)}</td>
                                 <td className="px-4 py-3 text-right text-ds-warning tabular-nums border-b border-app-border">{CURRENCY} {formatRoundedNumber(row.equityOut)}</td>
-                                {reportData.some(r => r.type === 'Loan') && (
-                                    <>
-                                        <td className="px-4 py-3 text-right text-purple-600 tabular-nums border-b border-app-border">
-                                            {row.type === 'Loan' && row.loanGiven !== undefined ? (
-                                                <>{CURRENCY} {formatRoundedNumber(row.loanGiven)}</>
-                                            ) : (
-                                                <span className="text-app-muted">-</span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-purple-600 tabular-nums border-b border-app-border">
-                                            {row.type === 'Loan' && row.loanTaken !== undefined ? (
-                                                <>{CURRENCY} {formatRoundedNumber(row.loanTaken)}</>
-                                            ) : (
-                                                <span className="text-app-muted">-</span>
-                                            )}
-                                        </td>
-                                    </>
-                                )}
                                 <td className={`px-4 py-3 text-right font-bold tabular-nums border-b border-app-border ${row.netBalance >= 0 ? 'text-app-text bg-app-toolbar/50' : 'text-ds-danger bg-[color:var(--badge-unpaid-bg)]'}`}>
                                     {CURRENCY} {formatRoundedNumber(row.netBalance)}
                                 </td>
@@ -465,7 +441,7 @@ const ProjectBuildingFundsReport: React.FC = () => {
                         ))}
                         {reportData.length === 0 && (
                             <tr>
-                                <td colSpan={reportData.some(row => row.type === 'Loan') ? 8 : 6} className="px-4 py-8 text-center text-app-muted">No projects or buildings found.</td>
+                                <td colSpan={6} className="px-4 py-8 text-center text-app-muted">No projects or buildings found.</td>
                             </tr>
                         )}
                     </tbody>
