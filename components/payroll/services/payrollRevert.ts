@@ -18,13 +18,94 @@ export interface TransactionLike {
 
 export function getTenantIdForPayroll(): string {
   if (typeof window === 'undefined') return 'local';
-  return window.localStorage.getItem('tenant_id') || 'local';
+  return (
+    window.localStorage.getItem('tenant_id') ||
+    window.localStorage.getItem('last_tenant_id') ||
+    'local'
+  );
+}
+
+/** Minimal transaction shape for collecting affected payslip ids. */
+export type TransactionPayslipSyncInput = {
+  id?: string;
+  payslipId?: string;
+  amount: number;
+  date?: string;
+};
+
+/**
+ * After transaction mutations, recompute each affected payslip's paid_amount / is_paid from the
+ * current transaction list and persist via storage (local + SQLite). Call from the app reducer
+ * layer so local-only and API client state stay aligned with the ledger.
+ */
+export function syncPayslipsAfterTransactionAction(
+  tenantId: string,
+  actionType: string,
+  payload: unknown,
+  prevTxs: TransactionPayslipSyncInput[],
+  nextTxs: TransactionPayslipSyncInput[]
+): void {
+  if (!tenantId) return;
+
+  const ids = new Set<string>();
+  const add = (pid?: string) => {
+    if (pid && String(pid).trim()) ids.add(String(pid).trim());
+  };
+
+  switch (actionType) {
+    case 'DELETE_TRANSACTION': {
+      const id = payload as string;
+      const tx = prevTxs.find((t) => t.id === id);
+      add(tx?.payslipId);
+      break;
+    }
+    case 'BATCH_DELETE_TRANSACTIONS': {
+      const { transactionIds } = (payload as { transactionIds?: string[] }) || {};
+      for (const tid of transactionIds || []) {
+        const tx = prevTxs.find((t) => t.id === tid);
+        add(tx?.payslipId);
+      }
+      break;
+    }
+    case 'UPDATE_TRANSACTION': {
+      const updated = payload as TransactionPayslipSyncInput & { id: string };
+      const orig = prevTxs.find((t) => t.id === updated.id);
+      add(orig?.payslipId);
+      add(updated.payslipId);
+      break;
+    }
+    case 'ADD_TRANSACTION':
+    case 'RESTORE_TRANSACTION': {
+      const tx = payload as TransactionPayslipSyncInput;
+      add(tx.payslipId);
+      break;
+    }
+    case 'BATCH_ADD_TRANSACTIONS': {
+      for (const tx of (payload as TransactionPayslipSyncInput[]) || []) add(tx.payslipId);
+      break;
+    }
+    default:
+      return;
+  }
+
+  if (ids.size === 0) return;
+
+  const like = (t: TransactionPayslipSyncInput): TransactionLike => ({
+    payslipId: t.payslipId,
+    amount: t.amount,
+    date: t.date,
+    id: t.id,
+  });
+  const nextLike = nextTxs.map(like);
+  for (const pid of ids) {
+    syncPayslipPaidFromTransactions(tenantId, pid, nextLike);
+  }
 }
 
 /**
  * Recalculate and persist a payslip's paid_amount and status from the given list of
  * transactions (e.g. after a delete or edit). If no transactions reference this payslip,
- * or total is 0, the payslip is set to unpaid.
+ * paid_amount becomes 0 and the payslip is unpaid.
  */
 export function syncPayslipPaidFromTransactions(
   tenantId: string,

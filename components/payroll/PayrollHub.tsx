@@ -211,6 +211,12 @@ const PayrollHub: React.FC = () => {
     setPayslipsRefreshKey((k) => k + 1);
   }, [tenantId, selectedRunId]);
 
+  /** Payslip paid_amount in storage is reconciled when transactions change (see payrollRevert); refresh run cache. */
+  useEffect(() => {
+    if (!tenantId || !selectedRunId) return;
+    setCyclePayslips(storageService.getPayslipsByRunId(tenantId, selectedRunId));
+  }, [tenantId, selectedRunId, appState.transactions]);
+
   // When an employee is selected, get all their payslips from storage (all runs) for the data table
   const payslipsForSelectedEmployee = useMemo(() => {
     if (!tenantId || !selectedCycleEmployeeId) return [];
@@ -226,7 +232,7 @@ const PayrollHub: React.FC = () => {
         const keyB = runB ? `${runB.year}-${String(runB.month).padStart(2, '0')}` : '';
         return keyB.localeCompare(keyA);
       });
-  }, [tenantId, selectedCycleEmployeeId, cyclePayslips, payslipsRefreshKey, payrollStorageRevision]);
+  }, [tenantId, selectedCycleEmployeeId, cyclePayslips, payslipsRefreshKey, payrollStorageRevision, appState.transactions]);
 
   const runsMap = useMemo(() => {
     if (!tenantId) return new Map<string, PayrollRun>();

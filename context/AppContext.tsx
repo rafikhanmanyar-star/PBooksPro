@@ -25,7 +25,7 @@ import { toLocalDateString } from '../utils/dateUtils';
 import {
     resolveOwnerForPropertyOnDate,
 } from '../services/propertyOwnershipService';
-import { getCurrentTenantId } from '../services/database/tenantUtils';
+import { syncPayslipsAfterTransactionAction, getTenantIdForPayroll, type TransactionPayslipSyncInput } from '../components/payroll/services/payrollRevert';
 import InitializationScreen from '../components/InitializationScreen';
 import { syncQueueStub as getSyncQueue } from '../services/sync/localOnlyStubs';
 // --- Module-level state store for selective subscriptions via useSyncExternalStore ---
@@ -1910,6 +1910,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Optimization: If state didn't change (e.g. duplicate add), do nothing (no sync, no persistence)
         if (newState === state) {
             return newState;
+        }
+
+        const a = action as { type?: string; payload?: unknown };
+        const txnTypes = new Set([
+            'DELETE_TRANSACTION',
+            'BATCH_DELETE_TRANSACTIONS',
+            'UPDATE_TRANSACTION',
+            'ADD_TRANSACTION',
+            'BATCH_ADD_TRANSACTIONS',
+            'RESTORE_TRANSACTION',
+        ]);
+        if (a.type && txnTypes.has(a.type)) {
+            syncPayslipsAfterTransactionAction(
+                getTenantIdForPayroll(),
+                a.type,
+                a.payload,
+                state.transactions as unknown as TransactionPayslipSyncInput[],
+                newState.transactions as unknown as TransactionPayslipSyncInput[]
+            );
         }
 
         // Sync Broadcast - Skip for navigation-only actions (performance optimization)

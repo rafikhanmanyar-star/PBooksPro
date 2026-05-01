@@ -10,18 +10,78 @@ import {
 } from '../financial/expenseCashValidation.js';
 import { syncOwnerSummariesForTransactionChange } from './ownerRentalSummaryService.js';
 
+/**
+ * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
+ * (mirrors client syncPayslipPaidFromTransactions). Then refreshes payroll run aggregates.
+ */
+async function recalculatePayslipPaymentFromLedger(
+  client: pg.PoolClient,
+  tenantId: string,
+  payslipId: string
+): Promise<void> {
+  const psR = await client.query<{ net_pay: string; payroll_run_id: string }>(
+    `SELECT net_pay::text, payroll_run_id FROM payslips WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+    [payslipId, tenantId]
+  );
+  const ps = psR.rows[0];
+  if (!ps) return;
+
+  const sumR = await client.query<{ sum: string | null; last_date: Date | null; cnt: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS sum, MAX(date) AS last_date, COUNT(*)::text AS cnt
+     FROM transactions
+     WHERE tenant_id = $1 AND payslip_id = $2 AND deleted_at IS NULL`,
+    [tenantId, payslipId]
+  );
+  const totalPaid = Number(sumR.rows[0]?.sum ?? 0);
+  const net = Number(ps.net_pay);
+  const isPaid = totalPaid >= net - 0.01;
+  const cnt = Number(sumR.rows[0]?.cnt ?? 0);
+  const lastDate = sumR.rows[0]?.last_date;
+
+  let singleTxId: string | null = null;
+  if (cnt === 1) {
+    const one = await client.query<{ id: string }>(
+      `SELECT id FROM transactions WHERE tenant_id = $1 AND payslip_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [tenantId, payslipId]
+    );
+    singleTxId = one.rows[0]?.id ?? null;
+  }
+
+  const paidAt =
+    totalPaid > 0 && lastDate
+      ? new Date(formatPgDateToYyyyMmDd(lastDate) + 'T12:00:00.000Z')
+      : null;
+
+  await client.query(
+    `UPDATE payslips SET
+       is_paid = $3,
+       paid_amount = $4,
+       paid_at = CASE WHEN $4::numeric > 0 THEN $6::timestamptz ELSE NULL END,
+       transaction_id = $5,
+       updated_at = NOW()
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+    [payslipId, tenantId, isPaid, totalPaid, singleTxId, paidAt]
+  );
+
+  const { recalculatePayrollRunAggregates } = await import('./payrollService.js');
+  await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
+}
+
 /** Keep invoice/bill paid_amount + status aligned with ledger (also when client saveInvoice fails, e.g. LOCK_HELD). */
 async function recalculateAggregatesForLinkedIds(
   client: pg.PoolClient,
   tenantId: string,
   invoiceIds: (string | null | undefined)[],
-  billIds: (string | null | undefined)[]
+  billIds: (string | null | undefined)[],
+  payslipIds: (string | null | undefined)[] = []
 ): Promise<void> {
   const inv = [...new Set(invoiceIds.filter((x): x is string => !!x && String(x).trim() !== ''))];
   const bills = [...new Set(billIds.filter((x): x is string => !!x && String(x).trim() !== ''))];
+  const slips = [...new Set(payslipIds.filter((x): x is string => !!x && String(x).trim() !== ''))];
   await Promise.all([
     ...inv.map((id) => recalculateInvoicePaymentAggregates(client, tenantId, id)),
     ...bills.map((id) => recalculateBillPaymentAggregates(client, tenantId, id)),
+    ...slips.map((id) => recalculatePayslipPaymentFromLedger(client, tenantId, id)),
   ]);
 }
 
@@ -437,7 +497,7 @@ export async function createTransaction(
   if (expenseCashBatchCtx && row.project_id && row.type === 'Expense') {
     expenseCashBatchCtx.recordInsertedTransaction(rowToProjectCashTxRow(row));
   }
-  await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id]);
+  await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id], [row.payslip_id]);
   await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
   return row;
 }
@@ -534,7 +594,10 @@ export async function updateTransaction(
       return { row: null, conflict: true, affectedInvoiceIds: [], affectedBillIds: [] };
     }
     const row = u.rows[0];
-    await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id]);
+    await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id], [
+      before?.payslip_id,
+      row.payslip_id,
+    ]);
     await syncOwnerSummariesForTransactionChange(client, tenantId, before, row);
     const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
     const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
@@ -558,7 +621,10 @@ export async function updateTransaction(
   if (!row) {
     return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
   }
-  await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id]);
+  await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id], [
+    before?.payslip_id,
+    row.payslip_id,
+  ]);
   await syncOwnerSummariesForTransactionChange(client, tenantId, before, row);
   const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
@@ -671,7 +737,10 @@ export async function upsertTransaction(
   );
   const row = u.rows[0];
   if (!row) throw new Error('Transaction upsert failed.');
-  await recalculateAggregatesForLinkedIds(client, tenantId, [existing.invoice_id, row.invoice_id], [existing.bill_id, row.bill_id]);
+  await recalculateAggregatesForLinkedIds(client, tenantId, [existing.invoice_id, row.invoice_id], [existing.bill_id, row.bill_id], [
+    existing.payslip_id,
+    row.payslip_id,
+  ]);
   if (existing.deleted_at) {
     await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
   } else {
@@ -698,6 +767,7 @@ export async function softDeleteTransaction(
 
   const invoiceId = row.invoice_id;
   const billId = row.bill_id;
+  const payslipId = row.payslip_id;
 
   await syncOwnerSummariesForTransactionChange(client, tenantId, row, null);
 
@@ -730,6 +800,9 @@ export async function softDeleteTransaction(
   if (billId) {
     await recalculateBillPaymentAggregates(client, tenantId, billId);
     recalculatedBillId = billId;
+  }
+  if (payslipId) {
+    await recalculatePayslipPaymentFromLedger(client, tenantId, payslipId);
   }
 
   return { ok: true, conflict: false, recalculatedInvoiceId, recalculatedBillId };

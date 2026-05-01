@@ -469,6 +469,26 @@ export async function upsertBill(
 
   const existingById = await getBillByIdIncludingDeleted(client, tenantId, id);
 
+  /**
+   * Legacy clients used `Date.now()` for new bill ids. That can match an unrelated existing row PK,
+   * so the handler would UPDATE that row with a new `bill_number` and hit UNIQUE(tenant_id, bill_number).
+   */
+  const looksLikeLegacyNumericBillId = /^\d{10,15}$/.test(id);
+  if (
+    existingById &&
+    looksLikeLegacyNumericBillId &&
+    p.version === undefined &&
+    existingById.bill_number.trim() !== p.bill_number.trim()
+  ) {
+    return upsertBillByTenantAndBillNumber(
+      client,
+      tenantId,
+      `bill_${randomUUID().replace(/-/g, '')}`,
+      p,
+      actorUserId
+    );
+  }
+
   /** No PK yet in DB → merge purely on UNIQUE (tenant_id, bill_number) so duplicate_key cannot occur. */
   if (!existingById) {
     try {

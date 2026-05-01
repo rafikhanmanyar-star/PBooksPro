@@ -30,6 +30,7 @@ import {
   todayLocalYyyyMmDd,
 } from '../../utils/dateUtils';
 import { sumExpenseLinkedToBill } from '../../utils/billLinkedPayments';
+import { newBillRowId } from '../../utils/newBillRowId';
 
 interface InvoiceBillFormProps {
   onClose: () => void;
@@ -1127,7 +1128,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     /* Recurring template creation disabled */
 
     const finalDocumentPath = documentPath;
-    const billId = itemToEdit?.id || Date.now().toString();
+    const billId = itemToEdit?.id || newBillRowId();
     let finalDocumentId = documentId || undefined;
     if (type === 'bill' && documentFile) {
       try {
@@ -1204,7 +1205,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         showToast("Bill updated successfully");
       }
     } else {
-      const newData = { ...formData, id: Date.now().toString(), paidAmount: 0, status: InvoiceStatus.UNPAID };
+      const newData = { ...formData, id: newBillRowId(), paidAmount: 0, status: InvoiceStatus.UNPAID };
       if (type === 'invoice') {
         // Update Settings Next Number if auto-generated
         let settingsToUpdate = null;

@@ -52,6 +52,8 @@ const DashboardPage: React.FC = () => {
     const [isTransferReportOpen, setIsTransferReportOpen] = useState(false);
     const [greeting, setGreeting] = useState('');
     const [activeReportTab, setActiveReportTab] = useState('Overview Reports');
+    /** When set, Overview and Bank Accounts reports hide projects/buildings (and bank columns) whose net balance totals zero. */
+    const [hideZeroNetBalance, setHideZeroNetBalance] = useState(false);
 
     const [detailModalData, setDetailModalData] = useState<{
         isOpen: boolean;
@@ -156,7 +158,17 @@ const DashboardPage: React.FC = () => {
                         </p>
                     )}
                 </div>
-                <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto">
+                <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto flex-wrap justify-end">
+                    <label className="flex items-center gap-2 text-xs md:text-sm text-app-muted cursor-pointer select-none">
+                        <input
+                            type="checkbox"
+                            checked={hideZeroNetBalance}
+                            onChange={(e) => setHideZeroNetBalance(e.target.checked)}
+                            className="rounded text-primary focus:ring-primary border-app-border w-3.5 h-3.5 shrink-0 cursor-pointer"
+                            aria-label="Hide projects and columns with zero net balance"
+                        />
+                        <span className="whitespace-nowrap">Hide zero net balance</span>
+                    </label>
                     <Button variant="secondary" onClick={() => setIsConfigModalOpen(true)} className="text-app-muted border-app-border hover:bg-app-toolbar text-xs md:text-sm flex-1 md:flex-none">
                         Customize
                     </Button>
@@ -175,9 +187,9 @@ const DashboardPage: React.FC = () => {
                 </div>
                 <div className="flex-grow bg-app-card rounded-b-2xl -mt-px p-4 border border-app-border border-t-0 shadow-ds-card">
                     {activeReportTab === 'Overview Reports' ? (
-                        <ProjectBuildingFundsReport />
+                        <ProjectBuildingFundsReport hideZeroNetBalance={hideZeroNetBalance} />
                     ) : activeReportTab === 'Bank Accounts' ? (
-                        <BankAccountsReport />
+                        <BankAccountsReport hideZeroNetBalance={hideZeroNetBalance} />
                     ) : (
                         <AccountConsistencyReport />
                     )}

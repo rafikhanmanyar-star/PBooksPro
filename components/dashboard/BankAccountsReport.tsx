@@ -13,7 +13,12 @@ import {
     BANK_REPORT_INITIAL_BALANCE_COLUMN_LABEL,
 } from './bankAccountReportBalances';
 
-const BankAccountsReport: React.FC = () => {
+interface BankAccountsReportProps {
+    /** Hide project (column) when the sum of that column across all bank/cash accounts is zero. */
+    hideZeroNetBalance?: boolean;
+}
+
+const BankAccountsReport: React.FC<BankAccountsReportProps> = ({ hideZeroNetBalance = false }) => {
     const { state } = useAppContext();
 
     const bankAccounts = useMemo(() => {
@@ -85,6 +90,11 @@ const BankAccountsReport: React.FC = () => {
         return totals;
     }, [accountProjectBalances, projectsWithTransactions]);
 
+    const visibleProjects = useMemo(() => {
+        if (!hideZeroNetBalance) return projectsWithTransactions;
+        return projectsWithTransactions.filter((p) => Math.abs(projectTotals[p.id] ?? 0) > 0.01);
+    }, [hideZeroNetBalance, projectsWithTransactions, projectTotals]);
+
     const netBalance = useMemo(() => {
         return accountProjectBalances.reduce((sum, account) => sum + account.totalBalance, 0);
     }, [accountProjectBalances]);
@@ -125,6 +135,10 @@ const BankAccountsReport: React.FC = () => {
                         ? 'No transactions found for bank accounts.'
                         : 'No projects with transactions found.'}
                 </div>
+            ) : visibleProjects.length === 0 ? (
+                <div className="py-8 text-center text-app-muted bg-app-toolbar rounded-lg border border-app-border">
+                    No columns with non-zero net balance. Turn off &quot;Hide zero net balance&quot; to see all projects.
+                </div>
             ) : (
             <div className="overflow-x-auto overflow-y-visible rounded-xl border border-app-border">
                 <table className="w-full table-fixed divide-y divide-app-border text-sm">
@@ -133,7 +147,7 @@ const BankAccountsReport: React.FC = () => {
                             <th className="px-2 sm:px-3 py-3 text-left font-semibold text-app-muted sticky left-0 bg-app-table-header z-10 border-r border-app-border w-[120px] min-w-0">
                                 Bank / Cash Account
                             </th>
-                            {projectsWithTransactions.map(project => (
+                            {visibleProjects.map(project => (
                                 <th key={project.id} className="px-2 sm:px-3 py-3 text-right font-semibold text-app-muted whitespace-nowrap min-w-0 w-[100px]">
                                     {project.name}
                                 </th>
@@ -149,7 +163,7 @@ const BankAccountsReport: React.FC = () => {
                                 <td className="px-2 sm:px-3 py-3 font-medium text-app-text sticky left-0 bg-app-card z-10 border-r border-app-border">
                                     {accountData.accountName}
                                 </td>
-                                {projectsWithTransactions.map(project => {
+                                {visibleProjects.map(project => {
                                     const balance = accountData.projectBalances[project.id] || 0;
                                     return (
                                         <td key={project.id} className={`px-2 sm:px-3 py-3 text-right tabular-nums text-xs sm:text-sm ${balance >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>
@@ -167,7 +181,7 @@ const BankAccountsReport: React.FC = () => {
                                 <td className="px-2 sm:px-3 py-3 font-bold text-app-text sticky left-0 bg-app-toolbar z-10 border-r border-app-border">
                                     Total
                                 </td>
-                                {projectsWithTransactions.map(project => {
+                                {visibleProjects.map(project => {
                                     const total = projectTotals[project.id] || 0;
                                     return (
                                         <td key={project.id} className={`px-2 sm:px-3 py-3 text-right font-bold tabular-nums text-xs sm:text-sm ${total >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>

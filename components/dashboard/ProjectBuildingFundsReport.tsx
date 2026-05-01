@@ -22,7 +22,12 @@ interface FundReportRow {
 
 type SortKey = 'name' | 'income' | 'expense' | 'investment' | 'equityOut' | 'loanNetBalance' | 'netBalance';
 
-const ProjectBuildingFundsReport: React.FC = () => {
+interface ProjectBuildingFundsReportProps {
+    /** Hide Project / Building / Loan rows whose net balance rounds to zero (Personal row is always kept when present). */
+    hideZeroNetBalance?: boolean;
+}
+
+const ProjectBuildingFundsReport: React.FC<ProjectBuildingFundsReportProps> = ({ hideZeroNetBalance = false }) => {
     const { state } = useAppContext();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'netBalance', direction: 'desc' });
 
@@ -293,9 +298,15 @@ const ProjectBuildingFundsReport: React.FC = () => {
             });
         }
 
+        if (hideZeroNetBalance) {
+            return sortedCore.filter(
+                (row) => row.type === 'Personal' || Math.abs(row.netBalance) > EPSILON
+            );
+        }
+
         return sortedCore;
 
-    }, [state.projects, state.buildings, state.transactions, state.categories, state.accounts, state.properties, state.bills, state.invoices, state.personalTransactions, sortConfig]);
+    }, [state.projects, state.buildings, state.transactions, state.categories, state.accounts, state.properties, state.bills, state.invoices, state.personalTransactions, sortConfig, hideZeroNetBalance]);
 
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className={`ml-1 text-[10px] ${sortConfig.key === column ? 'text-primary' : 'text-app-muted'}`}>
