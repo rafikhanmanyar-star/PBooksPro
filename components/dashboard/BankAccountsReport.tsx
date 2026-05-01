@@ -10,6 +10,7 @@ import {
     LOAN_COLUMN_ID,
     BUILDINGS_COLUMN_ID,
     TRANSFER_COLUMN_ID,
+    BANK_REPORT_INITIAL_BALANCE_COLUMN_LABEL,
 } from './bankAccountReportBalances';
 
 const BankAccountsReport: React.FC = () => {
@@ -44,7 +45,7 @@ const BankAccountsReport: React.FC = () => {
         let hasLoan = false;
         let hasBuildings = false;
         let hasTransfer = false;
-        let hasUnassigned = false;
+        let hasInitialBalanceColumn = false;
 
         accountProjectBalances.forEach(account => {
             Object.keys(account.projectBalances).forEach(pid => {
@@ -53,7 +54,7 @@ const BankAccountsReport: React.FC = () => {
                     if (pid === LOAN_COLUMN_ID) hasLoan = true;
                     else if (pid === BUILDINGS_COLUMN_ID) hasBuildings = true;
                     else if (pid === TRANSFER_COLUMN_ID) hasTransfer = true;
-                    else if (pid === UNASSIGNED_PROJECT_ID) hasUnassigned = true;
+                    else if (pid === UNASSIGNED_PROJECT_ID) hasInitialBalanceColumn = true;
                     else projectIds.add(pid);
                 }
             });
@@ -63,7 +64,7 @@ const BankAccountsReport: React.FC = () => {
         if (hasLoan) list.push({ id: LOAN_COLUMN_ID, name: 'Loan' });
         if (hasBuildings) list.push({ id: BUILDINGS_COLUMN_ID, name: 'Rental' });
         if (hasTransfer) list.push({ id: TRANSFER_COLUMN_ID, name: 'Transfer' });
-        if (hasUnassigned) list.push({ id: UNASSIGNED_PROJECT_ID, name: 'Unassigned' });
+        if (hasInitialBalanceColumn) list.push({ id: UNASSIGNED_PROJECT_ID, name: BANK_REPORT_INITIAL_BALANCE_COLUMN_LABEL });
         return list;
     }, [accountProjectBalances, state.projects]);
 

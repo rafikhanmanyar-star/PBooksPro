@@ -13,7 +13,10 @@ export const LOAN_COLUMN_ID = '__loan__';
 export const BUILDINGS_COLUMN_ID = '__buildings__';
 export const TRANSFER_COLUMN_ID = '__transfer__';
 
-/** Resolve report column key: Loan -> Transfer -> Rental (tx with buildingId) -> Project -> Unassigned */
+/** Table header label for {@link UNASSIGNED_PROJECT_ID} (opening/chart-of-accounts balance + postings with no project/rental). */
+export const BANK_REPORT_INITIAL_BALANCE_COLUMN_LABEL = 'Initial balance';
+
+/** Resolve report column key: Loan -> Transfer -> Rental (tx with buildingId) -> Project -> initial/unscoped bucket */
 export function resolveBankReportColumnKey(
     tx: { type: string; projectId?: string; buildingId?: string; billId?: string; invoiceId?: string },
     bills: { id: string; projectId?: string; buildingId?: string }[],

@@ -213,10 +213,16 @@ function isDuplicateBillNumberConstraint(e: unknown): boolean {
   const lower = msg.toLowerCase();
   const code =
     e && typeof e === 'object' && 'code' in e ? String((e as { code?: string }).code ?? '') : '';
+  const constraint =
+    e && typeof e === 'object' && 'constraint' in e
+      ? String((e as { constraint?: string }).constraint ?? '')
+      : '';
+  if (constraint === 'bills_tenant_id_bill_number_key') return true;
+  if (lower.includes('bills_tenant_id_bill_number')) return true;
   return (
-    code === '23505' ||
-    lower.includes('bills_tenant_id_bill_number') ||
-    (lower.includes('duplicate key') && lower.includes('bill_number'))
+    code === '23505' &&
+    (lower.includes('bill_number') || lower.includes('(tenant_id, bill_number)')) &&
+    (lower.includes('unique constraint') || lower.includes('duplicate key'))
   );
 }
 
@@ -344,6 +350,111 @@ export async function updateBill(
   return { row: u.rows[0] ?? null, conflict: false };
 }
 
+/**
+ * Single-statement reconcile on UNIQUE (tenant_id, bill_number). Avoids losing races vs SELECT-then-INSERT,
+ * so POST /bills never fails duplicate_key when the payload is logically an upsert of the same bill number.
+ */
+async function upsertBillByTenantAndBillNumber(
+  client: pg.PoolClient,
+  tenantId: string,
+  proposeId: string,
+  p: ReturnType<typeof pickBody>,
+  actorUserId: string | null
+): Promise<{ row: BillRow; conflict: boolean; wasInsert: boolean }> {
+  const userIdResolved =
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId ?? null;
+
+  const expectedVer =
+    typeof p.version === 'number' && Number.isFinite(p.version) ? Math.trunc(p.version) : null;
+
+  const hadRowBefore = await client.query(
+    `SELECT 1 FROM bills WHERE tenant_id = $1 AND bill_number = $2 LIMIT 1`,
+    [tenantId, p.bill_number]
+  );
+
+  const vals: unknown[] = [
+    proposeId,
+    tenantId,
+    p.bill_number,
+    p.contact_id,
+    p.vendor_id,
+    p.amount,
+    p.paid_amount,
+    p.status,
+    p.issue_date,
+    p.due_date,
+    p.description ?? null,
+    p.category_id && String(p.category_id).trim() ? String(p.category_id).trim() : null,
+    p.project_id && String(p.project_id).trim() ? String(p.project_id).trim() : null,
+    p.building_id && String(p.building_id).trim() ? String(p.building_id).trim() : null,
+    p.property_id && String(p.property_id).trim() ? String(p.property_id).trim() : null,
+    p.project_agreement_id && String(p.project_agreement_id).trim()
+      ? String(p.project_agreement_id).trim()
+      : null,
+    p.contract_id && String(p.contract_id).trim() ? String(p.contract_id).trim() : null,
+    p.staff_id && String(p.staff_id).trim() ? String(p.staff_id).trim() : null,
+    p.expense_bearer_type && String(p.expense_bearer_type).trim()
+      ? String(p.expense_bearer_type).trim()
+      : null,
+    p.expense_category_items,
+    p.document_path && String(p.document_path).trim() ? String(p.document_path).trim() : null,
+    p.document_id && String(p.document_id).trim() ? String(p.document_id).trim() : null,
+    userIdResolved,
+    expectedVer,
+  ];
+
+  const u = await client.query<BillRow>(
+    `INSERT INTO bills (
+       id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
+       description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
+       expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+       1, NULL, NOW(), NOW()
+     )
+     ON CONFLICT ON CONSTRAINT bills_tenant_id_bill_number_key
+     DO UPDATE SET
+       bill_number = EXCLUDED.bill_number,
+       contact_id = EXCLUDED.contact_id,
+       vendor_id = EXCLUDED.vendor_id,
+       amount = EXCLUDED.amount,
+       paid_amount = EXCLUDED.paid_amount,
+       status = EXCLUDED.status,
+       issue_date = EXCLUDED.issue_date,
+       due_date = EXCLUDED.due_date,
+       description = EXCLUDED.description,
+       category_id = EXCLUDED.category_id,
+       project_id = EXCLUDED.project_id,
+       building_id = EXCLUDED.building_id,
+       property_id = EXCLUDED.property_id,
+       project_agreement_id = EXCLUDED.project_agreement_id,
+       contract_id = EXCLUDED.contract_id,
+       staff_id = EXCLUDED.staff_id,
+       expense_bearer_type = EXCLUDED.expense_bearer_type,
+       expense_category_items = EXCLUDED.expense_category_items,
+       document_path = EXCLUDED.document_path,
+       document_id = EXCLUDED.document_id,
+       user_id = COALESCE(EXCLUDED.user_id, bills.user_id),
+       deleted_at = NULL,
+       version = bills.version + 1,
+       updated_at = NOW()
+     WHERE $24::integer IS NULL OR bills.version = $24::integer
+     RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
+               description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
+               expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
+    vals
+  );
+
+  const row = u.rows[0];
+  if (!row) {
+    const stale = await getBillByTenantAndBillNumberIncludingDeleted(client, tenantId, p.bill_number);
+    if (!stale) throw new Error('Bill upsert failed: conflict on version.');
+    return { row: stale, conflict: true, wasInsert: false };
+  }
+
+  return { row, conflict: false, wasInsert: hadRowBefore.rows.length === 0 };
+}
+
 export async function upsertBill(
   client: pg.PoolClient,
   tenantId: string,
@@ -356,31 +467,24 @@ export async function upsertBill(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `bill_${randomUUID().replace(/-/g, '')}`;
 
-  let existing = await getBillByIdIncludingDeleted(client, tenantId, id);
-  /** Row already in DB under same bill_number but different id (sync / stale client id after refresh). */
-  if (!existing) {
-    const byNumber = await getBillByTenantAndBillNumberIncludingDeleted(client, tenantId, p.bill_number);
-    if (byNumber) {
-      existing = byNumber;
-    }
-  }
+  const existingById = await getBillByIdIncludingDeleted(client, tenantId, id);
 
-  if (!existing) {
+  /** No PK yet in DB → merge purely on UNIQUE (tenant_id, bill_number) so duplicate_key cannot occur. */
+  if (!existingById) {
     try {
-      const row = await createBill(client, tenantId, { ...body, id }, actorUserId);
-      return { row, conflict: false, wasInsert: true };
+      return await upsertBillByTenantAndBillNumber(client, tenantId, id, p, actorUserId);
     } catch (e) {
+      /** Plain INSERT races or mismatched arbiter inference; reconcile by canonical (tenant_id, bill_number). */
       if (!isDuplicateBillNumberConstraint(e)) throw e;
-      const byNumber = await getBillByTenantAndBillNumberIncludingDeleted(client, tenantId, p.bill_number);
-      if (!byNumber) throw e;
-      existing = byNumber;
+      const sibling = await getBillByTenantAndBillNumberIncludingDeleted(client, tenantId, p.bill_number);
+      if (!sibling) throw e instanceof Error ? e : new Error(String(e));
+      return upsertBill(client, tenantId, { ...body, id: sibling.id }, actorUserId);
     }
   }
 
-  const effectiveId = existing!.id;
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing!.version !== expectedVersion) {
-    return { row: existing!, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined && existingById.version !== expectedVersion) {
+    return { row: existingById, conflict: true, wasInsert: false };
   }
 
   const vals = [
@@ -407,24 +511,31 @@ export async function upsertBill(
     p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : null,
   ];
 
-  const u = await client.query<BillRow>(
-    `UPDATE bills SET
-       bill_number = $3, contact_id = $4, vendor_id = $5, amount = $6, paid_amount = $7, status = $8,
-       issue_date = $9::date, due_date = $10::date, description = $11,
-       category_id = $12, project_id = $13, building_id = $14, property_id = $15, project_agreement_id = $16,
-       contract_id = $17, staff_id = $18, expense_bearer_type = $19, expense_category_items = $20,
-       document_path = $21, document_id = $22,
-       user_id = COALESCE($23, user_id),
-       deleted_at = NULL, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-               description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-               expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
-    [effectiveId, tenantId, ...vals]
-  );
-  const row = u.rows[0];
-  if (!row) throw new Error('Bill upsert failed.');
-  return { row, conflict: false, wasInsert: false };
+  try {
+    const u = await client.query<BillRow>(
+      `UPDATE bills SET
+         bill_number = $3, contact_id = $4, vendor_id = $5, amount = $6, paid_amount = $7, status = $8,
+         issue_date = $9::date, due_date = $10::date, description = $11,
+         category_id = $12, project_id = $13, building_id = $14, property_id = $15, project_agreement_id = $16,
+         contract_id = $17, staff_id = $18, expense_bearer_type = $19, expense_category_items = $20,
+         document_path = $21, document_id = $22,
+         user_id = COALESCE($23, user_id),
+         deleted_at = NULL, version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2
+       RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
+                 description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
+                 expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
+      [id, tenantId, ...vals]
+    );
+    const row = u.rows[0];
+    if (!row) throw new Error('Bill upsert failed.');
+    return { row, conflict: false, wasInsert: false };
+  } catch (e) {
+    if (!isDuplicateBillNumberConstraint(e)) throw e;
+    throw new Error(
+      'That bill number is already used by another bill for this organisation. Refresh the list, open the existing bill, or choose another number.'
+    );
+  }
 }
 
 export async function softDeleteBill(

@@ -7,7 +7,6 @@ import {
   listBills,
   rowToBillApi,
   softDeleteBill,
-  updateBill,
   upsertBill,
 } from '../services/billsService.js';
 import { emitEntityEvent } from '../core/realtime.js';
@@ -99,20 +98,23 @@ billsRouter.put('/bills/:id', async (req: AuthedRequest, res) => {
   const { id } = req.params;
   try {
     const body = { ...(req.body as Record<string, unknown>), id };
-    const result = await withTransaction((client) => updateBill(client, tenantId, id, body));
+    const result = await withTransaction((client) =>
+      upsertBill(client, tenantId, body, req.userId ?? null)
+    );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
-      return;
-    }
-    if (!result.row) {
-      sendFailure(res, 404, 'NOT_FOUND', 'Bill not found');
+      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
       return;
     }
     const apiRow = rowToBillApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'bill', { data: apiRow, sourceUserId: req.userId });
+    const action = result.wasInsert ? 'created' : 'updated';
+    emitEntityEvent(tenantId, action, 'bill', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
+      sendFailure(res, 409, 'DUPLICATE', msg);
+      return;
+    }
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
 });
