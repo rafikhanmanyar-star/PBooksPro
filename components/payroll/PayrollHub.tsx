@@ -992,13 +992,15 @@ const PayrollHub: React.FC = () => {
         children: emps
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
           .map((emp) => {
-            const unpaid = unpaidByEmployeeId.get(emp.id) ?? 0;
+            const stand = employeePayrollStandingById.get(emp.id);
+            const badge = stand?.badge ?? '—';
+            const valueColor = stand?.valueColor ?? 'text-app-muted font-medium';
             const initials = getInitials(emp.name);
             return {
               id: emp.id,
               label: emp.name,
-              value: unpaid,
-              valueColor: unpaid > 0 ? 'text-red-600' : 'text-app-muted',
+              value: badge,
+              valueColor,
               type: 'employee',
               icon: (
                 <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
