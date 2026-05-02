@@ -10,6 +10,7 @@ import { todayUtcYyyyMmDd } from '../utils/dateOnly.js';
 import { payPeriodCalendarBounds } from '../utils/payrollPeriod.js';
 import { ExpenseCashValidationBatchContext } from '../financial/expenseCashValidation.js';
 import { createTransaction, rowToTransactionApi } from './transactionsService.js';
+import { syncPayrollLedgerForEmployee } from './payrollLedgerService.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -957,15 +958,27 @@ export async function updatePayrollRun(
 }
 
 export async function deletePayrollRun(client: pg.PoolClient, tenantId: string, id: string): Promise<boolean> {
-  await client.query(
-    `UPDATE payslips SET deleted_at = NOW(), updated_at = NOW() WHERE payroll_run_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+  const affectedEmployees = await client.query<{ employee_id: string }>(
+    `SELECT DISTINCT employee_id FROM payslips WHERE payroll_run_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
+
   const u = await client.query(`UPDATE payroll_runs SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`, [
     id,
     tenantId,
   ]);
-  return (u.rowCount ?? 0) > 0;
+  const deleted = (u.rowCount ?? 0) > 0;
+  if (!deleted) return false;
+
+  await client.query(
+    `UPDATE payslips SET deleted_at = NOW(), updated_at = NOW() WHERE payroll_run_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+    [id, tenantId]
+  );
+
+  for (const row of affectedEmployees.rows) {
+    await syncPayrollLedgerForEmployee(client, tenantId, row.employee_id);
+  }
+  return true;
 }
 
 export async function listPayslipsByRun(
