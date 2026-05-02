@@ -14,6 +14,8 @@ export interface TransactionLike {
   amount: number;
   date?: string;
   id?: string;
+  /** Expense-linked salary payments; omit or empty to treat as expense (legacy rows). */
+  type?: string;
 }
 
 export function getTenantIdForPayroll(): string {
@@ -31,6 +33,7 @@ export type TransactionPayslipSyncInput = {
   payslipId?: string;
   amount: number;
   date?: string;
+  type?: string;
 };
 
 /**
@@ -95,6 +98,7 @@ export function syncPayslipsAfterTransactionAction(
     amount: t.amount,
     date: t.date,
     id: t.id,
+    type: t.type,
   });
   const nextLike = nextTxs.map(like);
   for (const pid of ids) {
@@ -118,14 +122,20 @@ export function syncPayslipPaidFromTransactions(
   if (!ps) return;
 
   const forThisPayslip = transactions.filter(
-    (t) => t.payslipId === payslipId && typeof t.amount === 'number'
+    (t) =>
+      t.payslipId === payslipId &&
+      typeof t.amount === 'number' &&
+      (t.type === undefined ||
+        String(t.type).trim() === '' ||
+        String(t.type).toLowerCase() === 'expense')
   );
-  const totalPaid = forThisPayslip.reduce(
+  const rawPaidSum = forThisPayslip.reduce(
     (sum, t) => sum + (typeof t.amount === 'number' ? t.amount : Number(t.amount) || 0),
     0
   );
   const netPay = typeof ps.net_pay === 'number' ? ps.net_pay : Number(ps.net_pay) || 0;
-  const isFullyPaid = totalPaid >= netPay - 0.01;
+  const paidTowardNet = Math.min(netPay, rawPaidSum);
+  const isFullyPaid = rawPaidSum >= netPay - 0.01;
   const withDate = forThisPayslip.filter((t) => t.date);
   const lastTx =
     withDate.length > 0
@@ -136,8 +146,8 @@ export function syncPayslipPaidFromTransactions(
   const updated = {
     ...ps,
     is_paid: isFullyPaid,
-    paid_amount: totalPaid,
-    paid_at: isFullyPaid && lastTx?.date ? lastTx.date : totalPaid > 0 && lastTx?.date ? lastTx.date : undefined,
+    paid_amount: paidTowardNet,
+    paid_at: isFullyPaid && lastTx?.date ? lastTx.date : rawPaidSum > 0 && lastTx?.date ? lastTx.date : undefined,
     transaction_id: firstTxId,
     updated_at: new Date().toISOString()
   };

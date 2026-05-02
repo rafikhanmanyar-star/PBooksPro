@@ -49,6 +49,15 @@ import { Contact, ContactType, Transaction } from '../../types';
 import { formatCurrency } from './utils/formatters';
 import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from './utils/payslipPaymentState';
 import { formatPayslipAssignmentDisplay } from './utils/payslipAssignment';
+import {
+  buildPayrollLedgerRowsFromSource,
+  filterBuiltLedgerRows,
+  summarizePayrollBalanceFromRows,
+  employeePayrollNetBalanceFromTotals,
+  type BuiltPayrollLedgerRow,
+  type LedgerRowFilter,
+} from './utils/payrollLedgerCore';
+import { payrollApi } from '../../services/api/payrollApi';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
@@ -82,8 +91,31 @@ function getInitials(name: string): string {
   return (p[0]![0] + p[p.length - 1]![0]).toUpperCase();
 }
 
+function ledgerTableRowKindLabel(row: BuiltPayrollLedgerRow): string {
+  if (row.transaction_type === 'PAYSLIP') return 'Payslip';
+  if (row.transaction_type === 'PAYMENT' && row.balance_after < -0.01) return 'Advance';
+  return 'Payment';
+}
+
+function ledgerBalanceClass(balance: number): string {
+  if (balance < -0.01) return 'text-amber-700 dark:text-amber-400 font-semibold';
+  if (balance > 0.01) return 'text-red-600 dark:text-red-400 font-semibold';
+  return 'text-app-text';
+}
+
 const CYCLE_TREE_WIDTH_KEY = 'pbooks-payroll-cycle-tree-pct';
 const CYCLE_PAGE_SIZE = 10;
+
+function ledgerDateMatchesYearMonth(rowDate: string, filterYear: number | '', filterMonth: number | ''): boolean {
+  const d = (rowDate || '').slice(0, 10);
+  if (filterYear === '' && filterMonth === '') return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return filterYear === '' && filterMonth === '';
+  const y = parseInt(d.slice(0, 4), 10);
+  const m = parseInt(d.slice(5, 7), 10);
+  if (filterYear !== '' && y !== filterYear) return false;
+  if (filterMonth !== '' && m !== filterMonth) return false;
+  return true;
+}
 
 type TableRecordFilter = 'payslips' | 'payments' | 'all';
 
@@ -270,6 +302,22 @@ const PayrollHub: React.FC = () => {
     setSelectedPayslipIds(allSelected ? [] : [...payableIdsInView]);
   };
 
+  const [ledgerRowFilter, setLedgerRowFilter] = useState<LedgerRowFilter>('all');
+  type RemoteLedgerPack = {
+    summary: {
+      totalDebit: number;
+      totalCredit: number;
+      balance: number;
+      payableAmount: number;
+      advanceAmount: number;
+    };
+    transactions: BuiltPayrollLedgerRow[];
+    pagination?: { limit: number; offset: number; total: number };
+  };
+  const [employeeLedgerRemote, setEmployeeLedgerRemote] = useState<RemoteLedgerPack | null>(null);
+  const [employeeLedgerLoading, setEmployeeLedgerLoading] = useState(false);
+  const [employeeLedgerErr, setEmployeeLedgerErr] = useState<string | null>(null);
+
   // Record type filter (Payslips | Payments | All) and month/year filter
   const [tableRecordFilter, setTableRecordFilter] = useState<TableRecordFilter>('payslips');
   const [filterYear, setFilterYear] = useState<number | ''>('');
@@ -351,9 +399,124 @@ const PayrollHub: React.FC = () => {
     });
   }, [selectedCycleEmployeeId, payslipsForSelectedEmployee, cyclePayslips, runsMap, filterYear, filterMonth]);
 
+  const localEmployeeLedgerAllTypes = useMemo((): BuiltPayrollLedgerRow[] => {
+    if (!tenantId || !selectedCycleEmployeeId) return [];
+    const slips = storageService.getPayslips(tenantId).filter((p) => p.employee_id === selectedCycleEmployeeId);
+    const slipsInput = slips.map((ps) => ({
+      id: ps.id,
+      payroll_run_id: ps.payroll_run_id,
+      net_pay: typeof ps.net_pay === 'number' ? ps.net_pay : Number(ps.net_pay) || 0,
+      created_at: ps.created_at ?? '',
+    }));
+    const slipIds = new Set(slips.map((s) => s.id));
+    const runsByLedger = new Map<string, { id: string; period_end: string | null }>();
+    slips.forEach((ps) => {
+      const run = runsMap.get(ps.payroll_run_id);
+      if (run) runsByLedger.set(run.id, { id: run.id, period_end: run.period_end ?? null });
+    });
+    const txs = (appState.transactions || []).filter(
+      (t: { payslipId?: string }) => t.payslipId && slipIds.has(t.payslipId as string)
+    );
+    const txInput = txs.map((t: any) => ({
+      id: t.id,
+      payslip_id: t.payslipId ?? null,
+      amount: Number(t.amount) || 0,
+      date: t.date,
+      description: t.description ?? null,
+      created_at: t.created_at ?? undefined,
+      type: String(t.type ?? ''),
+    }));
+    return buildPayrollLedgerRowsFromSource(slipsInput, runsByLedger, txInput);
+  }, [tenantId, selectedCycleEmployeeId, runsMap, appState.transactions]);
+
+  const localEmployeeLedgerPeriodRows = useMemo(() => {
+    return localEmployeeLedgerAllTypes.filter((r) =>
+      ledgerDateMatchesYearMonth(r.transaction_date, filterYear, filterMonth)
+    );
+  }, [localEmployeeLedgerAllTypes, filterYear, filterMonth]);
+
+  const localEmployeeLedgerDisplayRows = useMemo(
+    () => filterBuiltLedgerRows(localEmployeeLedgerPeriodRows, ledgerRowFilter),
+    [localEmployeeLedgerPeriodRows, ledgerRowFilter]
+  );
+
+  const localEmployeeLedgerSummary = useMemo(
+    () => summarizePayrollBalanceFromRows(localEmployeeLedgerPeriodRows),
+    [localEmployeeLedgerPeriodRows]
+  );
+
+  useEffect(() => {
+    if (!selectedCycleEmployeeId || isLocalOnlyMode()) {
+      setEmployeeLedgerRemote(null);
+      setEmployeeLedgerErr(null);
+      setEmployeeLedgerLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setEmployeeLedgerLoading(true);
+    setEmployeeLedgerErr(null);
+    payrollApi
+      .getEmployeeLedger(selectedCycleEmployeeId, { type: ledgerRowFilter, limit: 800, offset: 0 })
+      .then((res) => {
+        if (cancelled || !res) return;
+        const mapped: BuiltPayrollLedgerRow[] = (res.transactions || []).map((t: any) => ({
+          id: String(t.id),
+          payroll_run_id: t.payroll_run_id ?? null,
+          transaction_date: String(t.transaction_date || '').slice(0, 10),
+          transaction_type: t.transaction_type === 'PAYSLIP' ? 'PAYSLIP' : 'PAYMENT',
+          reference_id: String(t.reference_id ?? ''),
+          description: String(t.description ?? ''),
+          debit: Number(t.debit) || 0,
+          credit: Number(t.credit) || 0,
+          balance_after: Number(t.balance_after) || 0,
+          source_transaction_id: t.source_transaction_id ? String(t.source_transaction_id) : null,
+          ledger_sort_ts: 0,
+        }));
+        const periodRows = mapped.filter((r) =>
+          ledgerDateMatchesYearMonth(r.transaction_date, filterYear, filterMonth)
+        );
+        setEmployeeLedgerRemote({
+          summary: res.summary,
+          transactions: periodRows,
+          pagination: res.pagination,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setEmployeeLedgerErr('Could not load ledger');
+      })
+      .finally(() => {
+        if (!cancelled) setEmployeeLedgerLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedCycleEmployeeId,
+    ledgerRowFilter,
+    filterYear,
+    filterMonth,
+    payrollStorageRevision,
+    appState.transactions?.length,
+  ]);
+
+  useEffect(() => {
+    setLedgerRowFilter('all');
+  }, [selectedCycleEmployeeId]);
+
+  const employeeLedgerFinalRows = isLocalOnlyMode()
+    ? localEmployeeLedgerDisplayRows
+    : employeeLedgerRemote?.transactions ?? [];
+  const employeeLedgerFinalSummary = isLocalOnlyMode()
+    ? localEmployeeLedgerSummary
+    : employeeLedgerRemote?.summary ?? localEmployeeLedgerSummary;
+  const employeeLedgerPagedRows = useMemo(() => {
+    const start = (cycleTablePage - 1) * CYCLE_PAGE_SIZE;
+    return employeeLedgerFinalRows.slice(start, start + CYCLE_PAGE_SIZE);
+  }, [employeeLedgerFinalRows, cycleTablePage]);
+
   useEffect(() => {
     setCycleTablePage(1);
-  }, [tableRecordFilter, filterYear, filterMonth, selectedCycleEmployeeId, selectedRunId]);
+  }, [tableRecordFilter, ledgerRowFilter, filterYear, filterMonth, selectedCycleEmployeeId, selectedRunId]);
 
   const cycleDashboardMetrics = useMemo(() => {
     if (!tenantId) {
@@ -491,7 +654,8 @@ const PayrollHub: React.FC = () => {
       : tableRecordFilter === 'all'
         ? mergedAllViewRows.length
         : sortedPayslipTableRows.length;
-  const tableMaxPage = Math.max(1, Math.ceil(tableTotalCount / CYCLE_PAGE_SIZE));
+  const cycleTableTotalCount = selectedCycleEmployeeId ? employeeLedgerFinalRows.length : tableTotalCount;
+  const tableMaxPage = Math.max(1, Math.ceil(cycleTableTotalCount / CYCLE_PAGE_SIZE));
 
   useEffect(() => {
     if (cycleTablePage > tableMaxPage) setCycleTablePage(tableMaxPage);
@@ -518,6 +682,31 @@ const PayrollHub: React.FC = () => {
 
   const handleExportCycleTableCsv = useCallback(() => {
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    if (selectedCycleEmployeeId) {
+      const headers = ['Date', 'Type', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'];
+      const lines = [headers.join(',')];
+      for (const row of employeeLedgerFinalRows) {
+        lines.push(
+          [
+            esc(formatTableDate(row.transaction_date)),
+            esc(ledgerTableRowKindLabel(row)),
+            esc(row.reference_id ?? ''),
+            esc(row.description ?? ''),
+            esc(row.debit > 0 ? row.debit : ''),
+            esc(row.credit > 0 ? row.credit : ''),
+            esc(row.balance_after),
+          ].join(',')
+        );
+      }
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'payroll-ledger.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast('CSV exported', 'info');
+      return;
+    }
     if (tableRecordFilter === 'payments') {
       const headers = ['Employee', 'Period', 'Payslip date', 'Payslip net pay', 'Payment amount', 'Payment date', 'Account', 'Description'];
       const lines = [headers.join(',')];
@@ -604,7 +793,15 @@ const PayrollHub: React.FC = () => {
     a.click();
     URL.revokeObjectURL(a.href);
     showToast('CSV exported', 'info');
-  }, [tableRecordFilter, filteredPaymentRecords, mergedAllViewRows, sortedPayslipTableRows, showToast]);
+  }, [
+    selectedCycleEmployeeId,
+    employeeLedgerFinalRows,
+    tableRecordFilter,
+    filteredPaymentRecords,
+    mergedAllViewRows,
+    sortedPayslipTableRows,
+    showToast,
+  ]);
 
   const handlePrintCycleTable = useCallback(() => {
     triggerPrint('REPORT', { elementId: 'payroll-cycle-printable-area' });
@@ -737,19 +934,39 @@ const PayrollHub: React.FC = () => {
 
   const payrollSubNav = useCollapsibleSubNav('subnav_payroll');
 
-  // Unpaid (remaining) amount per employee (across all runs) for tree view
-  const unpaidByEmployeeId = useMemo((): Map<string, number> => {
-    if (activeSubTab !== 'cycles' || !tenantId) return new Map();
+  /** Payable / Advance / — per employee from Σ payslip nets − Σ expense payments on those payslips. */
+  const employeePayrollStandingById = useMemo((): Map<string, { badge: string; valueColor: string }> => {
+    if (!tenantId || activeSubTab !== 'cycles') return new Map();
     const payslips = storageService.getPayslips(tenantId);
-    const map = new Map<string, number>();
-    payslips.forEach((ps) => {
-      const remaining = payslipRemainingAmount(ps);
-      if (remaining > 0) {
-        map.set(ps.employee_id, (map.get(ps.employee_id) ?? 0) + remaining);
+    const slipsByEmp = new Map<string, Payslip[]>();
+    for (const ps of payslips) {
+      const empId = ps.employee_id;
+      if (!slipsByEmp.has(empId)) slipsByEmp.set(empId, []);
+      slipsByEmp.get(empId)!.push(ps);
+    }
+    const txs = appState.transactions || [];
+    const employees = storageService.getEmployees(tenantId);
+    const map = new Map<string, { badge: string; valueColor: string }>();
+    for (const emp of employees) {
+      const slips = slipsByEmp.get(emp.id) ?? [];
+      const nets = slips.map((p) => Number(p.net_pay) || 0);
+      const slipIdSet = new Set(slips.map((s) => s.id));
+      const paymentAmounts = txs
+        .filter((t: { payslipId?: string }) => t.payslipId != null && slipIdSet.has(String(t.payslipId)))
+        .filter((t: { type?: string }) => String(t.type ?? '').toLowerCase() === 'expense')
+        .map((t: { amount?: number }) => Number(t.amount) || 0)
+        .filter((a: number) => a > 0);
+      const { payableAmount, advanceAmount } = employeePayrollNetBalanceFromTotals(nets, paymentAmounts);
+      if (advanceAmount > 0.01) {
+        map.set(emp.id, { badge: 'Advance', valueColor: 'text-amber-700 dark:text-amber-400 font-semibold' });
+      } else if (payableAmount > 0.01) {
+        map.set(emp.id, { badge: 'Payable', valueColor: 'text-red-600 dark:text-red-400 font-semibold' });
+      } else {
+        map.set(emp.id, { badge: '—', valueColor: 'text-app-muted font-medium' });
       }
-    });
+    }
     return map;
-  }, [tenantId, activeSubTab, cyclePayslips, payrollStorageRevision]);
+  }, [tenantId, activeSubTab, payrollStorageRevision, appState.transactions]);
 
   // Employee tree for Payroll Cycle tab: group by department, show name + total unpaid
   const employeeTree = useMemo((): TreeNode[] => {
@@ -791,7 +1008,7 @@ const PayrollHub: React.FC = () => {
             };
           }),
       }));
-  }, [tenantId, activeSubTab, unpaidByEmployeeId, payrollStorageRevision, cycleEmployeeQuery]);
+  }, [tenantId, activeSubTab, employeePayrollStandingById, payrollStorageRevision, cycleEmployeeQuery]);
 
   // If no tenant, show loading or error
   if (!tenantId) {
@@ -996,7 +1213,7 @@ const PayrollHub: React.FC = () => {
                       scrollableContent
                       showExpandCollapseAll={false}
                       defaultExpanded
-                      valueColumnHeader="Unpaid"
+                      valueColumnHeader="Status"
                       labelColumnHeader="Name"
                       selectedId={selectedCycleEmployeeId}
                       onSelect={(id, type) => (type === 'employee' ? setSelectedCycleEmployeeId(id) : setSelectedCycleEmployeeId(null))}
@@ -1033,21 +1250,57 @@ const PayrollHub: React.FC = () => {
                 <div className="flex-shrink-0 px-4 py-3 border-b border-app-border bg-app-toolbar/30 space-y-3">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0">
-                      <h2 className="text-sm sm:text-base font-extrabold text-app-text uppercase tracking-widest font-serif">Payslips &amp; payments</h2>
+                      <h2 className="text-sm sm:text-base font-extrabold text-app-text uppercase tracking-widest font-serif">
+                        {selectedCycleEmployeeId ? 'Payroll ledger' : 'Payslips & payments'}
+                      </h2>
                       <p className="text-xs text-app-muted mt-1">
-                        {tableRecordFilter === 'payslips' && (selectedCycleEmployeeId
-                          ? `${payslipsForSelectedEmployee.length} payslip(s) for selected employee`
-                          : selectedRunId
-                            ? `${cyclePayslips.length} payslip(s) in this run`
-                            : 'Select an employee from the list or create a salary run.')}
-                        {tableRecordFilter === 'payments' && (selectedCycleEmployeeId
-                          ? `${filteredPaymentRecords.length} payment(s) for selected employee`
-                          : `${filteredPaymentRecords.length} payment record(s)`)}
-                        {tableRecordFilter === 'all' && `${filteredPayslipsForTable.length} payslip(s) + ${filteredPaymentRecords.length} payment(s)`}
+                        {selectedCycleEmployeeId ? (
+                          <>
+                            {!isLocalOnlyMode() && employeeLedgerErr ? (
+                              <span className="text-red-600 font-medium block">{employeeLedgerErr}</span>
+                            ) : null}
+                            {employeeLedgerLoading ? (
+                              <span className="inline-flex items-center gap-2 text-app-muted">
+                                <Loader2 size={14} className="animate-spin shrink-0" /> Loading ledger…
+                              </span>
+                            ) : (
+                              <>
+                                <span>
+                                  {employeeLedgerFinalRows.length} row{employeeLedgerFinalRows.length === 1 ? '' : 's'} · Running balance{' '}
+                                  <span className={ledgerBalanceClass(employeeLedgerFinalSummary.balance)}>
+                                    {formatCurrency(employeeLedgerFinalSummary.balance)}
+                                  </span>
+                                </span>
+                                {employeeLedgerFinalSummary.payableAmount > 0.01 ? (
+                                  <span className="block sm:inline sm:before:content-['_·_'] sm:before:mx-1">
+                                    Payable {formatCurrency(employeeLedgerFinalSummary.payableAmount)}
+                                  </span>
+                                ) : null}
+                                {employeeLedgerFinalSummary.advanceAmount > 0.01 ? (
+                                  <span className="block sm:inline sm:before:content-['_·_'] sm:before:mx-1">
+                                    Advance {formatCurrency(employeeLedgerFinalSummary.advanceAmount)}
+                                  </span>
+                                ) : null}
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {tableRecordFilter === 'payslips' && (
+                              selectedRunId
+                                ? `${cyclePayslips.length} payslip(s) in this run`
+                                : 'Select an employee from the list or create a salary run.'
+                            )}
+                            {tableRecordFilter === 'payments' &&
+                              `${filteredPaymentRecords.length} payment record(s)`}
+                            {tableRecordFilter === 'all' &&
+                              `${filteredPayslipsForTable.length} payslip(s) + ${filteredPaymentRecords.length} payment(s)`}
+                          </>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {tableRecordFilter === 'payslips' && selectedPayslipIds.length > 0 && (
+                      {!selectedCycleEmployeeId && tableRecordFilter === 'payslips' && selectedPayslipIds.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setBulkPayModalOpen(true)}
@@ -1060,19 +1313,36 @@ const PayrollHub: React.FC = () => {
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
                     <div className="flex flex-wrap items-end gap-3 sm:gap-4">
-                      <label className="flex flex-col gap-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">
-                        Show
-                        <select
-                          value={tableRecordFilter}
-                          onChange={(e) => setTableRecordFilter(e.target.value as TableRecordFilter)}
-                          className="ds-input-field border border-app-border rounded-lg px-2 py-2 text-sm bg-app-card min-w-[8rem] font-medium text-app-text"
-                          aria-label="Show records"
-                        >
-                          <option value="payslips">Payslips</option>
-                          <option value="payments">Payments</option>
-                          <option value="all">All (payslips + payments)</option>
-                        </select>
-                      </label>
+                      {selectedCycleEmployeeId ? (
+                        <label className="flex flex-col gap-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">
+                          Ledger
+                          <select
+                            value={ledgerRowFilter}
+                            onChange={(e) => setLedgerRowFilter(e.target.value as LedgerRowFilter)}
+                            className="ds-input-field border border-app-border rounded-lg px-2 py-2 text-sm bg-app-card min-w-[9rem] font-medium text-app-text"
+                            aria-label="Ledger row filter"
+                          >
+                            <option value="all">All rows</option>
+                            <option value="payslips">Payslips</option>
+                            <option value="payments">Payments</option>
+                            <option value="advances">Advances</option>
+                          </select>
+                        </label>
+                      ) : (
+                        <label className="flex flex-col gap-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">
+                          Show
+                          <select
+                            value={tableRecordFilter}
+                            onChange={(e) => setTableRecordFilter(e.target.value as TableRecordFilter)}
+                            className="ds-input-field border border-app-border rounded-lg px-2 py-2 text-sm bg-app-card min-w-[8rem] font-medium text-app-text"
+                            aria-label="Show records"
+                          >
+                            <option value="payslips">Payslips</option>
+                            <option value="payments">Payments</option>
+                            <option value="all">All (payslips + payments)</option>
+                          </select>
+                        </label>
+                      )}
                       <label className="flex flex-col gap-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">
                         Year
                         <select
@@ -1127,6 +1397,75 @@ const PayrollHub: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex-1 min-h-0 overflow-auto p-3 sm:p-4">
+                  {selectedCycleEmployeeId ? (
+                  <table className="w-full text-left text-sm min-w-[800px]">
+                    <thead>
+                      <tr className="border-b border-app-border text-app-muted font-semibold">
+                        <th className="py-3 pr-4 whitespace-nowrap">Date</th>
+                        <th className="py-3 pr-4">Type</th>
+                        <th className="py-3 pr-4 font-mono text-xs">Reference</th>
+                        <th className="py-3 pr-4">Description</th>
+                        <th className="py-3 pr-4 text-right tabular-nums">Debit</th>
+                        <th className="py-3 pr-4 text-right tabular-nums">Credit</th>
+                        <th className="py-3 pr-4 text-right tabular-nums">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {employeeLedgerLoading ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-app-muted text-sm">
+                            <span className="inline-flex items-center justify-center gap-2">
+                              <Loader2 size={18} className="animate-spin" /> Loading…
+                            </span>
+                          </td>
+                        </tr>
+                      ) : employeeLedgerPagedRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-app-muted text-sm">
+                            No ledger rows for the selected period and filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        employeeLedgerPagedRows.map((row, idx) => (
+                          <tr
+                            key={row.id}
+                            className={`border-b border-app-border hover:bg-app-toolbar/30 ${idx % 2 ? 'bg-app-toolbar/15' : ''}`}
+                          >
+                            <td className="py-3 pr-4 whitespace-nowrap text-app-muted">{formatTableDate(row.transaction_date)}</td>
+                            <td className="py-3 pr-4">
+                              <span
+                                className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
+                                  row.transaction_type === 'PAYSLIP'
+                                    ? 'bg-app-toolbar text-app-text'
+                                    : row.balance_after < -0.01
+                                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                                      : 'bg-ds-success/15 text-ds-success'
+                                }`}
+                              >
+                                {ledgerTableRowKindLabel(row)}
+                              </span>
+                            </td>
+                            <td className="py-3 pr-4 font-mono text-[11px] text-app-muted break-all max-w-[10rem]" title={row.reference_id}>
+                              {row.reference_id || '—'}
+                            </td>
+                            <td className="py-3 pr-4 text-app-text max-w-[240px]" title={row.description}>
+                              {row.description || '—'}
+                            </td>
+                            <td className="py-3 pr-4 text-right tabular-nums text-app-text">
+                              {row.debit > 0 ? row.debit.toLocaleString() : '—'}
+                            </td>
+                            <td className="py-3 pr-4 text-right tabular-nums text-app-text">
+                              {row.credit > 0 ? row.credit.toLocaleString() : '—'}
+                            </td>
+                            <td className={`py-3 pr-4 text-right tabular-nums ${ledgerBalanceClass(row.balance_after)}`}>
+                              {row.balance_after.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                  ) : (
                   <table className="w-full text-left text-sm min-w-[720px]">
                     {tableRecordFilter === 'payments' && (
                       <thead>
@@ -1439,12 +1778,13 @@ const PayrollHub: React.FC = () => {
                       })()}
                     </tbody>
                   </table>
+                  )}
                 </div>
-                {tableTotalCount > 0 && (
+                {cycleTableTotalCount > 0 && (
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 py-2 border-t border-app-border bg-app-toolbar/20 text-xs text-app-muted">
                     <p>
-                      Showing {Math.min((cycleTablePage - 1) * CYCLE_PAGE_SIZE + 1, tableTotalCount)}–
-                      {Math.min(cycleTablePage * CYCLE_PAGE_SIZE, tableTotalCount)} of {tableTotalCount} records
+                      Showing {Math.min((cycleTablePage - 1) * CYCLE_PAGE_SIZE + 1, cycleTableTotalCount)}–
+                      {Math.min(cycleTablePage * CYCLE_PAGE_SIZE, cycleTableTotalCount)} of {cycleTableTotalCount} records
                     </p>
                     <div className="flex items-center justify-end gap-2">
                       <span className="text-app-text font-medium tabular-nums">Page {cycleTablePage} of {tableMaxPage}</span>

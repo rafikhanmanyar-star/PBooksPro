@@ -82,11 +82,6 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
       setError('Please enter a valid amount.');
       return;
     }
-    const remaining = payslipRemainingAmount(payslip);
-    if (payAmount > remaining) {
-      setError(`Amount cannot exceed remaining balance (${remaining.toLocaleString()}).`);
-      return;
-    }
     if (!accountId) {
       setError('Please select a bank account.');
       return;
@@ -325,6 +320,9 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
                 className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 placeholder={String(remainingAmount)}
               />
+              <p className="text-[10px] text-slate-400 mt-1">
+                You can enter more than the remaining amount to record a salary advance (extra applies toward future payroll in the ledger).
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Bank account</label>

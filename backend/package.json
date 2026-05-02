@@ -9,7 +9,8 @@
     "dev": "node ../scripts/ensure-balance-sheet-engine.mjs && node ../scripts/ensure-profit-loss-engine.mjs && node ../scripts/ensure-cash-flow-engine.mjs && tsx watch src/index.ts",
     "migrate": "tsx src/migrate.ts",
     "reset-pm-cycle": "tsx src/scripts/runResetPmCycle.ts",
-    "test": "node --import tsx --test src/utils/dateOnly.test.ts"
+    "backfill-payroll-ledger": "tsx src/scripts/backfillPayrollLedger.ts",
+    "test": "node --import tsx --test src/utils/dateOnly.test.ts src/services/payrollLedgerCore.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

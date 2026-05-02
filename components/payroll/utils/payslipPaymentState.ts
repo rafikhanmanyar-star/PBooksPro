@@ -14,10 +14,10 @@ export function coercePayslipAmounts(
 ): { net_pay: number; paid_amount: number; is_paid: boolean } {
   const net = roundToTwo(typeof netPayIn === 'string' ? parseFloat(netPayIn) : Number(netPayIn ?? 0));
   let paid = roundToTwo(typeof paidAmountIn === 'string' ? parseFloat(String(paidAmountIn)) : Number(paidAmountIn ?? 0));
+  paid = roundToTwo(Math.min(Math.max(net, 0), paid));
   let isPaid = !!isPaidIn;
   if (!isPaid && net >= 0 && paid >= net - EPS) {
     isPaid = true;
-    paid = Math.max(paid, net);
   }
   if (isPaid && net > EPS && paid < net - EPS) {
     paid = net;

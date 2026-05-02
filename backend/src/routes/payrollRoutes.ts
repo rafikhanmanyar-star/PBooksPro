@@ -45,6 +45,11 @@ import {
   upsertGrade,
   upsertPayrollProject,
 } from '../services/payrollService.js';
+import {
+  fetchEmployeeLedgerPage,
+  getEmployeePayrollBalanceFromDb,
+  rowToLedgerApi,
+} from '../services/payrollLedgerService.js';
 
 export const payrollRouter = Router();
 
@@ -374,6 +379,53 @@ payrollRouter.delete('/payroll/employees/:id', async (req: AuthedRequest, res) =
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+payrollRouter.get('/payroll/employees/:employeeId/ledger', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const { employeeId } = req.params;
+  const typeFilterRaw = typeof req.query.type === 'string' ? req.query.type : '';
+  const typeFilter =
+    typeFilterRaw && typeFilterRaw.toLowerCase() !== 'all' ? typeFilterRaw : 'all';
+  const limit = Math.min(Number(req.query.limit ?? 50) || 50, 500);
+  const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
+  try {
+    const pool = getPool();
+    const c = await pool.connect();
+    try {
+      const emp = await getEmployee(c, tenantId, employeeId);
+      if (!emp) {
+        sendFailure(res, 404, 'NOT_FOUND', 'Not found');
+        return;
+      }
+      const summary = await getEmployeePayrollBalanceFromDb(c, tenantId, employeeId);
+      const { total, rows } = await fetchEmployeeLedgerPage(c, tenantId, employeeId, {
+        typeFilter,
+        limit,
+        offset,
+      });
+      sendSuccess(res, {
+        employee: rowToEmployeeApi(emp),
+        summary: {
+          totalDebit: summary.totalDebit,
+          totalCredit: summary.totalCredit,
+          balance: summary.balance,
+          payableAmount: summary.payableAmount,
+          advanceAmount: summary.advanceAmount,
+        },
+        transactions: rows.map((r) => rowToLedgerApi(r)),
+        pagination: { limit, offset, total },
+      });
+    } finally {
+      c.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
   }
 });
 

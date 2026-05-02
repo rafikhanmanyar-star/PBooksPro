@@ -14,13 +14,14 @@ import { syncOwnerSummariesForTransactionChange } from './ownerRentalSummaryServ
  * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
  * (mirrors client syncPayslipPaidFromTransactions). Then refreshes payroll run aggregates.
  */
-async function recalculatePayslipPaymentFromLedger(
+export async function recalculatePayslipPaymentFromLedger(
   client: pg.PoolClient,
   tenantId: string,
-  payslipId: string
+  payslipId: string,
+  options?: { skipPayrollRunAggregate?: boolean }
 ): Promise<void> {
-  const psR = await client.query<{ net_pay: string; payroll_run_id: string }>(
-    `SELECT net_pay::text, payroll_run_id FROM payslips WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+  const psR = await client.query<{ net_pay: string; payroll_run_id: string; employee_id: string }>(
+    `SELECT net_pay::text, payroll_run_id, employee_id FROM payslips WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [payslipId, tenantId]
   );
   const ps = psR.rows[0];
@@ -32,9 +33,10 @@ async function recalculatePayslipPaymentFromLedger(
      WHERE tenant_id = $1 AND payslip_id = $2 AND deleted_at IS NULL`,
     [tenantId, payslipId]
   );
-  const totalPaid = Number(sumR.rows[0]?.sum ?? 0);
+  const rawPaidSum = Number(sumR.rows[0]?.sum ?? 0);
   const net = Number(ps.net_pay);
-  const isPaid = totalPaid >= net - 0.01;
+  const totalPaidTowardNet = Math.min(net, rawPaidSum);
+  const isPaid = rawPaidSum >= net - 0.01;
   const cnt = Number(sumR.rows[0]?.cnt ?? 0);
   const lastDate = sumR.rows[0]?.last_date;
 
@@ -48,7 +50,7 @@ async function recalculatePayslipPaymentFromLedger(
   }
 
   const paidAt =
-    totalPaid > 0 && lastDate
+    rawPaidSum > 0 && lastDate
       ? new Date(formatPgDateToYyyyMmDd(lastDate) + 'T12:00:00.000Z')
       : null;
 
@@ -60,11 +62,16 @@ async function recalculatePayslipPaymentFromLedger(
        transaction_id = $5,
        updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [payslipId, tenantId, isPaid, totalPaid, singleTxId, paidAt]
+    [payslipId, tenantId, isPaid, totalPaidTowardNet, singleTxId, paidAt]
   );
 
   const { recalculatePayrollRunAggregates } = await import('./payrollService.js');
-  await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
+  if (!options?.skipPayrollRunAggregate) {
+    await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
+  }
+
+  const { syncPayrollLedgerForEmployee } = await import('./payrollLedgerService.js');
+  await syncPayrollLedgerForEmployee(client, tenantId, ps.employee_id);
 }
 
 /** Keep invoice/bill paid_amount + status aligned with ledger (also when client saveInvoice fails, e.g. LOCK_HELD). */

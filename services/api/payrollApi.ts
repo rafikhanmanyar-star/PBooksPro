@@ -663,6 +663,49 @@ export const payrollApi = {
     }
   },
 
+  /** Payroll ledger + balance summary (PostgreSQL/API mode only). */
+  async getEmployeeLedger(
+    employeeId: string,
+    opts?: { type?: string; limit?: number; offset?: number }
+  ): Promise<{
+    employee: any;
+    summary: {
+      totalDebit: number;
+      totalCredit: number;
+      balance: number;
+      payableAmount: number;
+      advanceAmount: number;
+    };
+    transactions: Array<{
+      id: string;
+      transaction_date: string;
+      transaction_type: string;
+      reference_id?: string;
+      payroll_run_id?: string;
+      description: string;
+      debit: number;
+      credit: number;
+      balance_after: number;
+      source_transaction_id?: string;
+    }>;
+    pagination: { limit: number; offset: number; total: number };
+  } | null> {
+    if (isLocalOnlyMode()) return null;
+    const q = new URLSearchParams();
+    if (opts?.type && opts.type !== 'all') q.set('type', opts.type);
+    q.set('limit', String(opts?.limit ?? 500));
+    q.set('offset', String(opts?.offset ?? 0));
+    const qs = q.toString();
+    try {
+      return await apiClient.get(
+        `/payroll/employees/${employeeId}/ledger${qs ? `?${qs}` : ''}`
+      );
+    } catch (e) {
+      console.error('getEmployeeLedger:', e);
+      return null;
+    }
+  },
+
   async getPayslip(id: string): Promise<any | null> {
     if (isLocalOnlyMode()) {
       const { storageService } = await import('../../components/payroll/services/storageService');

@@ -48,7 +48,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
   const [paymentDate, setPaymentDate] = useState(() => toLocalDateString(new Date()));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Per-payslip amount to pay (editable); key = payslip.id, value = amount (0 to remaining)
+  // Per-payslip amount (editable); overpayment creates advance in the ledger
   const [amountByPayslipId, setAmountByPayslipId] = useState<Record<string, string>>({});
 
   const bankAccounts = useMemo(() => {
@@ -83,7 +83,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
       if (rem <= 0) return;
       const raw = amountByPayslipId[payslip.id];
       const num = typeof raw === 'string' ? parseFloat(raw) : 0;
-      if (!Number.isNaN(num) && num > 0) sum += Math.min(num, rem);
+      if (!Number.isNaN(num) && num > 0) sum += num;
     });
     return Math.round(sum * 100) / 100;
   }, [items, amountByPayslipId]);
@@ -98,7 +98,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
       }
       const raw = amountByPayslipId[payslip.id];
       const num = typeof raw === 'string' ? parseFloat(raw) : 0;
-      out[payslip.id] = Number.isNaN(num) || num <= 0 ? 0 : Math.min(num, rem);
+      out[payslip.id] = Number.isNaN(num) || num <= 0 ? 0 : num;
     });
     return out;
   }, [items, amountByPayslipId]);
@@ -392,7 +392,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
                     const payAmount = payAmountByPayslipId[payslip.id] ?? 0;
                     const invalid = (() => {
                       const n = parseFloat(rawAmount);
-                      return rawAmount !== '' && (Number.isNaN(n) || n < 0 || n > remaining);
+                      return rawAmount !== '' && (Number.isNaN(n) || n < 0);
                     })();
                     return (
                       <tr key={payslip.id} className="border-b border-slate-100">
@@ -403,16 +403,15 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
                           <input
                             type="number"
                             min={0}
-                            max={remaining}
                             step={0.01}
                             value={rawAmount}
                             onChange={(e) => setAmountForPayslip(payslip.id, e.target.value)}
-                            className={`w-24 text-right border rounded-lg px-2 py-1.5 tabular-nums focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${invalid ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
-                            title={`0 to ${remaining.toLocaleString()}`}
-                            aria-label={`Amount to pay for ${name}, max ${remaining.toLocaleString()}`}
+                            className={`w-28 text-right border rounded-lg px-2 py-1.5 tabular-nums focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${invalid ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
+                            title="Amount to pay (can exceed remaining to record advance)"
+                            aria-label={`Amount to pay for ${name}`}
                           />
                           {invalid && (
-                            <span className="block text-xs text-red-600 mt-0.5">0 – {remaining.toLocaleString()}</span>
+                            <span className="block text-xs text-red-600 mt-0.5">Enter zero or positive amount</span>
                           )}
                         </td>
                       </tr>

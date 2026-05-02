@@ -1111,6 +1111,8 @@ export async function processPayrollRun(
   let newAmount = 0;
   const previousTotal = existing.reduce((s, p) => s + numStr(p.net_pay), 0);
 
+  const touchedEmployeeIds = new Set<string>();
+
   const toInsert: PayslipInsertRow[] = [];
 
   for (const emp of employees) {
@@ -1172,7 +1174,7 @@ export async function processPayrollRun(
       );
       newCount++;
       newAmount += computed.net_pay;
-      existingEmp.add(emp.id);
+      touchedEmployeeIds.add(emp.id);
       continue;
     }
 
@@ -1189,6 +1191,7 @@ export async function processPayrollRun(
     newCount++;
     newAmount += computed.net_pay;
     existingEmp.add(emp.id);
+    touchedEmployeeIds.add(emp.id);
   }
 
   for (let c = 0; c < toInsert.length; c += PAYSIP_BATCH_ROWS) {
@@ -1213,6 +1216,11 @@ export async function processPayrollRun(
   );
   const updated = u.rows[0];
   if (!updated) throw new Error('Failed to update payroll run.');
+
+  const { syncPayrollLedgerForEmployee } = await import('./payrollLedgerService.js');
+  for (const eid of touchedEmployeeIds) {
+    await syncPayrollLedgerForEmployee(client, tenantId, eid);
+  }
 
   return {
     run: updated,
@@ -1267,7 +1275,11 @@ export async function updatePayslipAmounts(
     ]
   );
   await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
-  return getPayslip(client, tenantId, payslipId);
+  const updated = await getPayslip(client, tenantId, payslipId);
+  const empId = ps.employee_id;
+  const { syncPayrollLedgerForEmployee } = await import('./payrollLedgerService.js');
+  await syncPayrollLedgerForEmployee(client, tenantId, empId);
+  return updated;
 }
 
 export async function softDeletePayslip(client: pg.PoolClient, tenantId: string, payslipId: string): Promise<boolean> {
@@ -1280,6 +1292,8 @@ export async function softDeletePayslip(client: pg.PoolClient, tenantId: string,
   );
   if ((u.rowCount ?? 0) === 0) return false;
   await recalculatePayrollRunAggregates(client, tenantId, runId);
+  const { syncPayrollLedgerForEmployee } = await import('./payrollLedgerService.js');
+  await syncPayrollLedgerForEmployee(client, tenantId, ps.employee_id);
   return true;
 }
 
@@ -1308,6 +1322,7 @@ export async function payPayslip(
   const ps = await getPayslip(client, tenantId, payslipId);
   if (!ps) throw new Error('Payslip not found.');
   const payAmt = Number(body.amount) || numStr(ps.net_pay);
+  if (!(payAmt > 0) || Number.isNaN(payAmt)) throw new Error('Payment amount must be greater than zero.');
   const accountId = String(body.accountId ?? body.account_id ?? '').trim();
   if (!accountId) throw new Error('accountId is required.');
   const categoryId = optStr(body.categoryId ?? body.category_id);
@@ -1315,15 +1330,10 @@ export async function payPayslip(
   const buildingId = optStr(body.buildingId ?? body.building_id);
   const description = String(body.description ?? `Payroll payment`).trim();
 
-  const newPaid = numStr(ps.paid_amount) + payAmt;
-  const net = numStr(ps.net_pay);
-  const isPaid = newPaid >= net - 0.01;
-
   const paymentDateStr =
     body.date != null && String(body.date).trim()
       ? String(body.date).slice(0, 10)
       : todayUtcYyyyMmDd();
-  const paymentAt = new Date(paymentDateStr + 'T12:00:00.000Z');
 
   const txBody: Record<string, unknown> = {
     type: 'Expense',
@@ -1345,21 +1355,8 @@ export async function payPayslip(
     options?.expenseCashBatchCtx ?? null
   );
 
-  const u = await client.query<PayslipRow>(
-    `UPDATE payslips SET
-       is_paid = $3,
-       paid_amount = $4,
-       paid_at = CASE WHEN $4::numeric > 0 THEN COALESCE(paid_at, $6::timestamptz) ELSE paid_at END,
-       transaction_id = $5,
-       updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, payroll_run_id, employee_id, basic_pay::text, total_allowances::text, total_deductions::text,
-               total_adjustments::text, gross_pay::text, net_pay::text, allowance_details, deduction_details, adjustment_details,
-               assignment_snapshot, is_paid, paid_amount::text, paid_at, transaction_id, deleted_at, created_at, updated_at`,
-    [payslipId, tenantId, isPaid, newPaid, tx.id, paymentAt]
-  );
-  const row = u.rows[0];
-  if (!row) throw new Error('Failed to update payslip.');
+  const row = await getPayslip(client, tenantId, payslipId);
+  if (!row) throw new Error('Failed to load payslip after payment.');
   if (!options?.skipRecalculate) {
     await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
   }
