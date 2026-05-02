@@ -155,12 +155,12 @@ export function getPaymentTransactionsForRentalBill(
   );
 }
 
-/** Sum EXPENSE transactions linked to this bill (billId). */
+/** Sum INCOME + EXPENSE transactions linked to this bill (matches applyTransactionEffect; includes security-deposit bill payments as Income). */
 export function sumLinkedExpensePaymentsForBill(transactions: Transaction[], billId: string): number {
   const id = String(billId);
   let s = 0;
   for (const t of transactions) {
-    if (t.type !== TransactionType.EXPENSE) continue;
+    if (t.type !== TransactionType.EXPENSE && t.type !== TransactionType.INCOME) continue;
     const bid = String(t.billId ?? (t as any).bill_id ?? '');
     if (bid !== id) continue;
     s += typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0;

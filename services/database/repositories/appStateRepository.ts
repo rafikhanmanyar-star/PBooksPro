@@ -492,8 +492,8 @@ export class AppStateRepository {
     }
 
     /**
-     * Recompute each bill's paidAmount from EXPENSE transactions linked to that bill (bill_id).
-     * Mirrors repairInvoicePaidAmountFromTransactions; fixes rental/project bills showing Unpaid after payment.
+     * Recompute each bill's paidAmount from INCOME + EXPENSE transactions linked to that bill (bill_id).
+     * Mirrors applyTransactionEffect; includes Income rows used for security-deposit bill adjustments.
      */
     private repairBillPaidAmountFromTransactions(bills: Bill[], transactions: Transaction[]): Bill[] {
         const expenseByBill = new Map<string, number>();
@@ -502,7 +502,11 @@ export class AppStateRepository {
                 tx.type === TransactionType.EXPENSE ||
                 (tx as any).type === 'Expense' ||
                 (tx as any).type === 'EXPENSE';
-            if (!isExpense) continue;
+            const isIncome =
+                tx.type === TransactionType.INCOME ||
+                (tx as any).type === 'Income' ||
+                (tx as any).type === 'INCOME';
+            if (!isExpense && !isIncome) continue;
             const bid = tx.billId ?? (tx as any).bill_id;
             if (!bid) continue;
             const amt = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
@@ -1208,10 +1212,10 @@ export class AppStateRepository {
                 ELSE 'Unpaid'
             END WHERE status IS NOT NULL AND (status = 'Unpaid' OR status = 'Partially Paid' OR status = 'Paid' OR status = 'Overdue')`,
 
-            // ── Bills: recalculate paid_amount from linked payment transactions (same fix as invoices) ──
+            // ── Bills: recalculate paid_amount from linked payment transactions (Income + Expense; matches applyTransactionEffect) ──
             `UPDATE bills SET paid_amount = (
                 SELECT COALESCE(SUM(t.amount), 0) FROM transactions t
-                WHERE t.bill_id = bills.id AND t.type = 'Expense'
+                WHERE t.bill_id = bills.id AND t.type IN ('Income', 'Expense')
             )`,
 
             // ── Bills: set status from paid_amount vs amount ──

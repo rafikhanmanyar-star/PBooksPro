@@ -77,6 +77,19 @@ function isUnsetPayrollLedgerDate(iso: string): boolean {
   return iso.startsWith('1970-');
 }
 
+/** Calendar date of payslip creation — matches PayrollHub `formatTableDate(ps.created_at)` (local components). */
+function payslipCreatedAtCalendarYyyyMmDd(created_at: Date | string | null | undefined): string {
+  if (created_at == null) return '';
+  if (created_at instanceof Date) {
+    if (Number.isNaN(created_at.getTime())) return '';
+    const y = created_at.getFullYear();
+    const mo = created_at.getMonth() + 1;
+    const day = created_at.getDate();
+    return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  return toLedgerYyyyMmDd(String(created_at));
+}
+
 function toMillis(d: Date | string | null | undefined): number {
   if (d == null) return 0;
   if (d instanceof Date) {
@@ -90,6 +103,9 @@ function toMillis(d: Date | string | null | undefined): number {
 /**
  * PAYSLIP increases payable (debit); PAYMENT reduces payable (credit).
  * Balance = Σ debit − Σ credit. Positive ⇒ company owes employee; negative ⇒ advance balance.
+ *
+ * PAYSLIP `transaction_date` is the payslip’s `created_at` calendar day first (same column as Payroll Cycle “Date”),
+ * then `payroll_runs.period_end`, then last day of run month/year when `created_at` is missing/sentinel (e.g. epoch).
  */
 export function buildPayrollLedgerRowsFromSource(
   payslips: LedgerBuildPayslip[],
@@ -108,22 +124,18 @@ export function buildPayrollLedgerRowsFromSource(
       run?.month !== undefined && run.year !== undefined
         ? payPeriodCalendarBounds(run.month, run.year)?.end ?? ''
         : '';
-    const createdStr = toLedgerYyyyMmDd(ps.created_at);
+    const createdStr = payslipCreatedAtCalendarYyyyMmDd(ps.created_at);
     const txnDate =
-      periodEndCandidate && !isUnsetPayrollLedgerDate(periodEndCandidate)
-        ? periodEndCandidate
-        : fromRunPeriod && !isUnsetPayrollLedgerDate(fromRunPeriod)
-          ? fromRunPeriod
-          : createdStr && !isUnsetPayrollLedgerDate(createdStr)
-            ? createdStr
+      createdStr && !isUnsetPayrollLedgerDate(createdStr)
+        ? createdStr
+        : periodEndCandidate && !isUnsetPayrollLedgerDate(periodEndCandidate)
+          ? periodEndCandidate
+          : fromRunPeriod && !isUnsetPayrollLedgerDate(fromRunPeriod)
+            ? fromRunPeriod
             : '';
     const payslipTs = toMillis(ps.created_at);
     const net = round2(Number(ps.net_pay) || 0);
-    const rawCreatedFb = formatPgDateToYyyyMmDd(new Date(ps.created_at));
-    const safeTxn =
-      txnDate ||
-      (rawCreatedFb && !isUnsetPayrollLedgerDate(rawCreatedFb) ? rawCreatedFb : '') ||
-      todayUtcYyyyMmDd();
+    const safeTxn = txnDate || todayUtcYyyyMmDd();
     events.push({
       kind: 'PAYSLIP',
       row: {

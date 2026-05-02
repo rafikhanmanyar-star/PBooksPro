@@ -53,6 +53,7 @@ describe('buildPayrollLedgerRowsFromSource', () => {
     const rows = buildPayrollLedgerRowsFromSource(payslips, runs, []);
     assert.equal(rows.length, 1);
     assert.equal(rows[0]!.transaction_type, 'PAYSLIP');
+    assert.equal(rows[0]!.transaction_date, '2026-01-15');
     assert.equal(rows[0]!.debit, 10_000);
     assert.equal(rows[0]!.balance_after, 10_000);
   });
@@ -93,19 +94,34 @@ describe('buildPayrollLedgerRowsFromSource', () => {
     assert.equal(payRow!.balance_after, -2_000);
   });
 
-  it('falls back to last day of payroll run month/year when period_end is null', () => {
+  it('prefers payslip created_at over payroll period (matches payroll table Date column)', () => {
     const payslips = [ps('ps1', 'run1', 3000, '2026-05-02')];
+    const runs = new Map<string, LedgerBuildRun>([['run1', run('run1', null, 'April', 2026)]]);
+    const rows = buildPayrollLedgerRowsFromSource(payslips, runs, []);
+    assert.equal(rows[0]?.transaction_date, '2026-05-02');
+    assert.equal(rows[0]?.debit, 3000);
+  });
+
+  it('prefers payslip created_at even when payroll run has explicit period_end', () => {
+    const payslips = [ps('ps1', 'run1', 3000, '2026-04-01')];
+    const runs = new Map<string, LedgerBuildRun>([['run1', run('run1', '2026-03-31', 'March', 2026)]]);
+    const rows = buildPayrollLedgerRowsFromSource(payslips, runs, []);
+    assert.equal(rows[0]?.transaction_date, '2026-04-01');
+  });
+
+  it('falls back to last day of payroll run month/year when created_at is unset (epoch)', () => {
+    const payslips = [ps('ps1', 'run1', 3000, '1970-01-01T00:00:00.000Z')];
     const runs = new Map<string, LedgerBuildRun>([['run1', run('run1', null, 'April', 2026)]]);
     const rows = buildPayrollLedgerRowsFromSource(payslips, runs, []);
     assert.equal(rows[0]?.transaction_date, '2026-04-30');
     assert.equal(rows[0]?.debit, 3000);
   });
 
-  it('ignores sentinel period_end year 1970 when run month/year is present', () => {
+  it('uses payslip created_at when period_end sentinel and run calendar would differ', () => {
     const payslips = [ps('ps1', 'run1', 2500, '2026-01-03')];
     const runs = new Map<string, LedgerBuildRun>([['run1', run('run1', '1970-01-01', 'May', 2026)]]);
     const rows = buildPayrollLedgerRowsFromSource(payslips, runs, []);
-    assert.equal(rows[0]?.transaction_date, '2026-05-31');
+    assert.equal(rows[0]?.transaction_date, '2026-01-03');
   });
 
   it('multiple payslips and payments accumulate in date order', () => {

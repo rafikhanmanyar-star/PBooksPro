@@ -1,5 +1,7 @@
 /**
  * Browser-safe payroll ledger (must match backend `payrollLedgerCore.ts` semantics).
+ *
+ * PAYSLIP `transaction_date`: payslip `created_at` calendar day first (Payroll Cycle table “Date”), then period fallbacks.
  */
 
 export type LedgerBuildPayslip = {
@@ -140,20 +142,16 @@ export function buildPayrollLedgerRowsFromSource(
         : '';
     const createdStr = ledgerToYyyyMmDd(ps.created_at);
     const txnCandidate =
-      periodEndCand && !isUnsetPayrollLedgerDate(periodEndCand)
-        ? periodEndCand
-        : fromRunPeriod && !isUnsetPayrollLedgerDate(fromRunPeriod)
-          ? fromRunPeriod
-          : createdStr && !isUnsetPayrollLedgerDate(createdStr)
-            ? createdStr
+      createdStr && !isUnsetPayrollLedgerDate(createdStr)
+        ? createdStr
+        : periodEndCand && !isUnsetPayrollLedgerDate(periodEndCand)
+          ? periodEndCand
+          : fromRunPeriod && !isUnsetPayrollLedgerDate(fromRunPeriod)
+            ? fromRunPeriod
             : '';
     const payslipTs = toMillis(ps.created_at);
     const net = round2(Number(ps.net_pay) || 0);
-    const rawCreated = ledgerToYyyyMmDd(ps.created_at);
-    const safeTxn =
-      txnCandidate ||
-      (rawCreated && !isUnsetPayrollLedgerDate(rawCreated) ? rawCreated : '') ||
-      todayUtcYyyyMmDd();
+    const safeTxn = txnCandidate || todayUtcYyyyMmDd();
     events.push({
       kind: 'PAYSLIP',
       row: {
