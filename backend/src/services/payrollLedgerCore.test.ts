@@ -8,9 +8,11 @@ import {
   type LedgerBuildTx,
 } from './payrollLedgerCore.js';
 
-const run = (id: string, periodEnd: string | null): LedgerBuildRun => ({
+const run = (id: string, periodEnd: string | null, month?: string, year?: number): LedgerBuildRun => ({
   id,
   period_end: periodEnd,
+  month,
+  year,
 });
 
 function ps(
@@ -89,6 +91,21 @@ describe('buildPayrollLedgerRowsFromSource', () => {
     assert.equal(payRow!.credit, 7_000);
     assert.ok(payRow!.balance_after < -0.01);
     assert.equal(payRow!.balance_after, -2_000);
+  });
+
+  it('falls back to last day of payroll run month/year when period_end is null', () => {
+    const payslips = [ps('ps1', 'run1', 3000, '2026-05-02')];
+    const runs = new Map<string, LedgerBuildRun>([['run1', run('run1', null, 'April', 2026)]]);
+    const rows = buildPayrollLedgerRowsFromSource(payslips, runs, []);
+    assert.equal(rows[0]?.transaction_date, '2026-04-30');
+    assert.equal(rows[0]?.debit, 3000);
+  });
+
+  it('ignores sentinel period_end year 1970 when run month/year is present', () => {
+    const payslips = [ps('ps1', 'run1', 2500, '2026-01-03')];
+    const runs = new Map<string, LedgerBuildRun>([['run1', run('run1', '1970-01-01', 'May', 2026)]]);
+    const rows = buildPayrollLedgerRowsFromSource(payslips, runs, []);
+    assert.equal(rows[0]?.transaction_date, '2026-05-31');
   });
 
   it('multiple payslips and payments accumulate in date order', () => {

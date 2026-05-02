@@ -20,7 +20,8 @@ const MONTHS = [
 interface BackDateSalaryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (runId: string, payslips: Payslip[]) => void;
+  /** `employeeId` is the worker row just processed (for optional “pay now” flow). */
+  onSuccess: (runId: string, payslips: Payslip[], employeeId: string) => void;
   tenantId: string;
   userId: string;
 }
@@ -66,7 +67,7 @@ const BackDateSalaryModal: React.FC<BackDateSalaryModalProps> = ({ isOpen, onClo
         selectedMonth,
         selectedEmployeeId
       );
-      onSuccess(runId, payslips);
+      onSuccess(runId, payslips, selectedEmployeeId);
       onClose();
     } catch (e: unknown) {
       setError(formatApiErrorMessage(e) || 'Failed to create salary.');

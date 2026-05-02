@@ -392,7 +392,7 @@ payrollRouter.get('/payroll/employees/:employeeId/ledger', async (req: AuthedReq
   const typeFilterRaw = typeof req.query.type === 'string' ? req.query.type : '';
   const typeFilter =
     typeFilterRaw && typeFilterRaw.toLowerCase() !== 'all' ? typeFilterRaw : 'all';
-  const limit = Math.min(Number(req.query.limit ?? 50) || 50, 500);
+  const limit = Math.min(Number(req.query.limit ?? 50) || 50, 5000);
   const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
   try {
     const pool = getPool();

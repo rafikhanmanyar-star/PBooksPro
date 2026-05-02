@@ -28,6 +28,7 @@ import {
   TrendingUp,
   ChevronLeft,
   ChevronRight,
+  Trash2,
 } from 'lucide-react';
 import EmployeeList from './EmployeeList';
 import EmployeeProfile from './EmployeeProfile';
@@ -54,6 +55,7 @@ import {
   filterBuiltLedgerRows,
   summarizePayrollBalanceFromRows,
   employeePayrollNetBalanceFromTotals,
+  sortLedgerRowsChronological,
   type BuiltPayrollLedgerRow,
   type LedgerRowFilter,
 } from './utils/payrollLedgerCore';
@@ -117,13 +119,13 @@ function ledgerDateMatchesYearMonth(rowDate: string, filterYear: number | '', fi
   return true;
 }
 
-type TableRecordFilter = 'payslips' | 'payments' | 'all';
+type TableRecordFilter = 'payslips' | 'payments' | 'all' | 'ledger';
 
 const PayrollHub: React.FC = () => {
   const { user, tenant } = useAuth();
   const { state: appState, dispatch } = useAppContext();
   const { openChat } = useWhatsApp();
-  const { showToast, showAlert } = useNotification();
+  const { showToast, showAlert, showConfirm } = useNotification();
   const { print: triggerPrint } = usePrintContext();
 
   // Use PayrollContext for preserving state across navigation
@@ -241,6 +243,7 @@ const PayrollHub: React.FC = () => {
     if (!tenantId) return;
     if (selectedRunId) setCyclePayslips(storageService.getPayslipsByRunId(tenantId, selectedRunId));
     setPayslipsRefreshKey((k) => k + 1);
+    setPayrollStorageRevision((r) => r + 1);
   }, [tenantId, selectedRunId]);
 
   /** Payslip paid_amount in storage is reconciled when transactions change (see payrollRevert); refresh run cache. */
@@ -409,10 +412,10 @@ const PayrollHub: React.FC = () => {
       created_at: ps.created_at ?? '',
     }));
     const slipIds = new Set(slips.map((s) => s.id));
-    const runsByLedger = new Map<string, { id: string; period_end: string | null }>();
+    const runsByLedger = new Map<string, { id: string; period_end: string | null; month?: string; year?: number }>();
     slips.forEach((ps) => {
       const run = runsMap.get(ps.payroll_run_id);
-      if (run) runsByLedger.set(run.id, { id: run.id, period_end: run.period_end ?? null });
+      if (run) runsByLedger.set(run.id, { id: run.id, period_end: run.period_end ?? null, month: run.month, year: run.year });
     });
     const txs = (appState.transactions || []).filter(
       (t: { payslipId?: string }) => t.payslipId && slipIds.has(t.payslipId as string)
@@ -453,10 +456,11 @@ const PayrollHub: React.FC = () => {
       return;
     }
     let cancelled = false;
+    setEmployeeLedgerRemote(null);
     setEmployeeLedgerLoading(true);
     setEmployeeLedgerErr(null);
     payrollApi
-      .getEmployeeLedger(selectedCycleEmployeeId, { type: ledgerRowFilter, limit: 800, offset: 0 })
+      .getEmployeeLedger(selectedCycleEmployeeId, { type: ledgerRowFilter, limit: 5000, offset: 0 })
       .then((res) => {
         if (cancelled || !res) return;
         const mapped: BuiltPayrollLedgerRow[] = (res.transactions || []).map((t: any) => ({
@@ -472,12 +476,9 @@ const PayrollHub: React.FC = () => {
           source_transaction_id: t.source_transaction_id ? String(t.source_transaction_id) : null,
           ledger_sort_ts: 0,
         }));
-        const periodRows = mapped.filter((r) =>
-          ledgerDateMatchesYearMonth(r.transaction_date, filterYear, filterMonth)
-        );
         setEmployeeLedgerRemote({
           summary: res.summary,
-          transactions: periodRows,
+          transactions: mapped,
           pagination: res.pagination,
         });
       })
@@ -490,29 +491,43 @@ const PayrollHub: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    selectedCycleEmployeeId,
-    ledgerRowFilter,
-    filterYear,
-    filterMonth,
-    payrollStorageRevision,
-    appState.transactions?.length,
-  ]);
+  }, [selectedCycleEmployeeId, ledgerRowFilter, payrollStorageRevision, appState.transactions?.length]);
 
   useEffect(() => {
     setLedgerRowFilter('all');
   }, [selectedCycleEmployeeId]);
 
-  const employeeLedgerFinalRows = isLocalOnlyMode()
-    ? localEmployeeLedgerDisplayRows
-    : employeeLedgerRemote?.transactions ?? [];
-  const employeeLedgerFinalSummary = isLocalOnlyMode()
-    ? localEmployeeLedgerSummary
-    : employeeLedgerRemote?.summary ?? localEmployeeLedgerSummary;
-  const employeeLedgerPagedRows = useMemo(() => {
-    const start = (cycleTablePage - 1) * CYCLE_PAGE_SIZE;
-    return employeeLedgerFinalRows.slice(start, start + CYCLE_PAGE_SIZE);
-  }, [employeeLedgerFinalRows, cycleTablePage]);
+  const employeeLedgerFinalRows = useMemo(() => {
+    if (isLocalOnlyMode()) return localEmployeeLedgerDisplayRows;
+    if (employeeLedgerRemote !== null) {
+      return employeeLedgerRemote.transactions.filter((r) =>
+        ledgerDateMatchesYearMonth(r.transaction_date, filterYear, filterMonth)
+      );
+    }
+    return localEmployeeLedgerDisplayRows;
+  }, [
+    localEmployeeLedgerDisplayRows,
+    employeeLedgerRemote,
+    filterYear,
+    filterMonth,
+  ]);
+
+  const employeeLedgerTruncatedRemote = useMemo(() => {
+    if (isLocalOnlyMode() || employeeLedgerRemote === null) return false;
+    const p = employeeLedgerRemote.pagination;
+    const n = employeeLedgerRemote.transactions.length;
+    return Boolean(p && p.total > n);
+  }, [employeeLedgerRemote]);
+
+  const employeeLedgerFinalSummary = useMemo(() => {
+    if (isLocalOnlyMode()) return localEmployeeLedgerSummary;
+    if (employeeLedgerRemote !== null && employeeLedgerRemote.summary) return employeeLedgerRemote.summary;
+    return localEmployeeLedgerSummary;
+  }, [localEmployeeLedgerSummary, employeeLedgerRemote]);
+  const employeeLedgerSortedRows = useMemo(
+    () => sortLedgerRowsChronological(employeeLedgerFinalRows),
+    [employeeLedgerFinalRows]
+  );
 
   useEffect(() => {
     setCycleTablePage(1);
@@ -572,7 +587,7 @@ const PayrollHub: React.FC = () => {
   };
 
   const sortedPayslipTableRows = useMemo((): PayslipTableRowModel[] => {
-    if (tableRecordFilter === 'payments') return [];
+    if (tableRecordFilter === 'payments' || tableRecordFilter === 'ledger') return [];
     const displayPayslips = filteredPayslipsForTable;
     const employees = storageService.getEmployees(tenantId);
     const statusOrder = (s: string) => (s === 'Unpaid' ? 0 : s === 'Partially paid' ? 1 : 2);
@@ -653,13 +668,20 @@ const PayrollHub: React.FC = () => {
       ? filteredPaymentRecords.length
       : tableRecordFilter === 'all'
         ? mergedAllViewRows.length
-        : sortedPayslipTableRows.length;
-  const cycleTableTotalCount = selectedCycleEmployeeId ? employeeLedgerFinalRows.length : tableTotalCount;
-  const tableMaxPage = Math.max(1, Math.ceil(cycleTableTotalCount / CYCLE_PAGE_SIZE));
+        : tableRecordFilter === 'ledger'
+          ? employeeLedgerFinalRows.length
+          : sortedPayslipTableRows.length;
+  const tableMaxPage = Math.max(1, Math.ceil(tableTotalCount / CYCLE_PAGE_SIZE));
 
   useEffect(() => {
     if (cycleTablePage > tableMaxPage) setCycleTablePage(tableMaxPage);
   }, [cycleTablePage, tableMaxPage]);
+
+  useEffect(() => {
+    if (!selectedCycleEmployeeId && tableRecordFilter === 'ledger') {
+      setTableRecordFilter('payslips');
+    }
+  }, [selectedCycleEmployeeId, tableRecordFilter]);
 
   const pagedPaymentRecords = useMemo(() => {
     if (tableRecordFilter !== 'payments') return [];
@@ -670,6 +692,7 @@ const PayrollHub: React.FC = () => {
   const pagedPayslipTableRows = useMemo(() => {
     if (tableRecordFilter === 'payments') return [];
     if (tableRecordFilter === 'all') return [];
+    if (tableRecordFilter === 'ledger') return [];
     const start = (cycleTablePage - 1) * CYCLE_PAGE_SIZE;
     return sortedPayslipTableRows.slice(start, start + CYCLE_PAGE_SIZE);
   }, [tableRecordFilter, sortedPayslipTableRows, cycleTablePage]);
@@ -682,10 +705,10 @@ const PayrollHub: React.FC = () => {
 
   const handleExportCycleTableCsv = useCallback(() => {
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-    if (selectedCycleEmployeeId) {
+    if (selectedCycleEmployeeId && tableRecordFilter === 'ledger') {
       const headers = ['Date', 'Type', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'];
       const lines = [headers.join(',')];
-      for (const row of employeeLedgerFinalRows) {
+      for (const row of employeeLedgerSortedRows) {
         lines.push(
           [
             esc(formatTableDate(row.transaction_date)),
@@ -795,7 +818,7 @@ const PayrollHub: React.FC = () => {
     showToast('CSV exported', 'info');
   }, [
     selectedCycleEmployeeId,
-    employeeLedgerFinalRows,
+    employeeLedgerSortedRows,
     tableRecordFilter,
     filteredPaymentRecords,
     mergedAllViewRows,
@@ -807,10 +830,14 @@ const PayrollHub: React.FC = () => {
     triggerPrint('REPORT', { elementId: 'payroll-cycle-printable-area' });
   }, [triggerPrint]);
 
-  const handleBackDateSuccess = useCallback((runId: string, payslips: Payslip[]) => {
+  const handleBackDateSuccess = useCallback((runId: string, payslips: Payslip[], employeeId: string) => {
+    storageService.init(tenantId);
+    const eid = employeeId?.trim() || null;
+    if (eid) setSelectedCycleEmployeeId(eid);
     setSelectedRunId(runId);
     setCyclePayslips(payslips);
-  }, []);
+    setTableRecordFilter('ledger');
+  }, [tenantId]);
 
   // Create salary for "current month" = last calendar month (first to last day of previous month)
   const handleCreateCurrentMonth = useCallback(async () => {
@@ -821,9 +848,22 @@ const PayrollHub: React.FC = () => {
       const lastMonth0 = now.getMonth() - 1; // 0-indexed previous month
       const lastMonthYear = lastMonth0 < 0 ? now.getFullYear() - 1 : now.getFullYear();
       const lastMonth1Based = lastMonth0 < 0 ? 12 : lastMonth0 + 1; // 1-12
+      storageService.init(tenantId);
       const { runId, payslips } = await runSalaryCreationForPeriodAsync(tenantId, userId, lastMonthYear, lastMonth1Based);
       setSelectedRunId(runId);
       setCyclePayslips(payslips);
+      const unpaid = payslips.filter((p) => !payslipIsFullyPaid(p) && payslipRemainingAmount(p) > 0);
+      if (unpaid.length === 1) {
+        setSelectedCycleEmployeeId(unpaid[0]!.employee_id);
+        setTableRecordFilter('ledger');
+      } else {
+        setSelectedCycleEmployeeId(null);
+        setTableRecordFilter('payslips');
+        if (unpaid.length > 1) {
+          setSelectedPayslipIds(unpaid.map((p) => p.id));
+          setBulkPayModalOpen(true);
+        }
+      }
     } catch (e) {
       console.error('Create current month failed:', e);
       const msg = e instanceof Error ? e.message : 'Could not create payroll for last month.';
@@ -861,6 +901,36 @@ const PayrollHub: React.FC = () => {
     }
     handlePaymentCloseWarning();
   };
+
+  const handleCyclePayslipDelete = useCallback(
+    async (ps: Payslip) => {
+      if (!tenantId || !userId) return;
+      const paid = payslipDisplayPaidAmount(ps) > 0.005 || ps.is_paid;
+      const ok = await showConfirm(
+        paid
+          ? 'Remove this payslip from the run? Use this if the salary payment was already deleted (e.g. from Payments). The run will be updated.'
+          : 'Delete this payslip? You can create it again from Payroll Cycle.',
+        { title: paid ? 'Remove payslip' : 'Delete payslip' }
+      );
+      if (!ok) return;
+      try {
+        let deleted: boolean;
+        if (isLocalOnlyMode()) {
+          deleted = storageService.deletePayslip(tenantId, ps.id, userId);
+        } else {
+          deleted = await payrollApi.deletePayslip(ps.id, tenantId, userId);
+          if (deleted) await syncPayrollFromServer(tenantId);
+        }
+        if (deleted) {
+          showToast(paid ? 'Payslip removed.' : 'Payslip deleted.', 'info');
+          refreshCyclePayslips();
+        }
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Could not delete payslip.', 'error');
+      }
+    },
+    [tenantId, userId, showConfirm, showToast, refreshCyclePayslips]
+  );
 
   useEffect(() => {
     if (activeSubTab === 'cycles' && tenantId && selectedRunId) {
@@ -934,8 +1004,12 @@ const PayrollHub: React.FC = () => {
 
   const payrollSubNav = useCollapsibleSubNav('subnav_payroll');
 
-  /** Payable / Advance / — per employee from Σ payslip nets − Σ expense payments on those payslips. */
-  const employeePayrollStandingById = useMemo((): Map<string, { badge: string; valueColor: string }> => {
+  /**
+   * Right column in cycle tree: unpaid salary (account payable) per employee =
+   * Σ payslip net − Σ expense payments on those payslips (same basis as ledger balance).
+   * Advance (overpaid) shows as "Adv …" in amber.
+   */
+  const employeePayrollStandingById = useMemo((): Map<string, { treeValue: string; valueColor: string }> => {
     if (!tenantId || activeSubTab !== 'cycles') return new Map();
     const payslips = storageService.getPayslips(tenantId);
     const slipsByEmp = new Map<string, Payslip[]>();
@@ -946,7 +1020,7 @@ const PayrollHub: React.FC = () => {
     }
     const txs = appState.transactions || [];
     const employees = storageService.getEmployees(tenantId);
-    const map = new Map<string, { badge: string; valueColor: string }>();
+    const map = new Map<string, { treeValue: string; valueColor: string }>();
     for (const emp of employees) {
       const slips = slipsByEmp.get(emp.id) ?? [];
       const nets = slips.map((p) => Number(p.net_pay) || 0);
@@ -958,11 +1032,17 @@ const PayrollHub: React.FC = () => {
         .filter((a: number) => a > 0);
       const { payableAmount, advanceAmount } = employeePayrollNetBalanceFromTotals(nets, paymentAmounts);
       if (advanceAmount > 0.01) {
-        map.set(emp.id, { badge: 'Advance', valueColor: 'text-amber-700 dark:text-amber-400 font-semibold' });
+        map.set(emp.id, {
+          treeValue: `Adv ${formatCurrency(advanceAmount)}`,
+          valueColor: 'text-amber-700 dark:text-amber-400 font-semibold',
+        });
       } else if (payableAmount > 0.01) {
-        map.set(emp.id, { badge: 'Payable', valueColor: 'text-red-600 dark:text-red-400 font-semibold' });
+        map.set(emp.id, {
+          treeValue: formatCurrency(payableAmount),
+          valueColor: 'text-red-600 dark:text-red-400 font-semibold',
+        });
       } else {
-        map.set(emp.id, { badge: '—', valueColor: 'text-app-muted font-medium' });
+        map.set(emp.id, { treeValue: '—', valueColor: 'text-app-muted font-medium' });
       }
     }
     return map;
@@ -993,13 +1073,13 @@ const PayrollHub: React.FC = () => {
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
           .map((emp) => {
             const stand = employeePayrollStandingById.get(emp.id);
-            const badge = stand?.badge ?? '—';
+            const treeValue = stand?.treeValue ?? '—';
             const valueColor = stand?.valueColor ?? 'text-app-muted font-medium';
             const initials = getInitials(emp.name);
             return {
               id: emp.id,
               label: emp.name,
-              value: badge,
+              value: treeValue,
               valueColor,
               type: 'employee',
               icon: (
@@ -1215,10 +1295,17 @@ const PayrollHub: React.FC = () => {
                       scrollableContent
                       showExpandCollapseAll={false}
                       defaultExpanded
-                      valueColumnHeader="Status"
+                      valueColumnHeader="Payable"
                       labelColumnHeader="Name"
                       selectedId={selectedCycleEmployeeId}
-                      onSelect={(id, type) => (type === 'employee' ? setSelectedCycleEmployeeId(id) : setSelectedCycleEmployeeId(null))}
+                      onSelect={(id, type) => {
+                        if (type === 'employee') {
+                          setSelectedCycleEmployeeId(id);
+                          setTableRecordFilter('ledger');
+                        } else {
+                          setSelectedCycleEmployeeId(null);
+                        }
+                      }}
                     />
                   )}
                 </div>
@@ -1253,39 +1340,60 @@ const PayrollHub: React.FC = () => {
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0">
                       <h2 className="text-sm sm:text-base font-extrabold text-app-text uppercase tracking-widest font-serif">
-                        {selectedCycleEmployeeId ? 'Payroll ledger' : 'Payslips & payments'}
+                        {selectedCycleEmployeeId && tableRecordFilter === 'ledger'
+                          ? 'Payroll ledger'
+                          : 'Payslips & payments'}
                       </h2>
                       <p className="text-xs text-app-muted mt-1">
                         {selectedCycleEmployeeId ? (
-                          <>
-                            {!isLocalOnlyMode() && employeeLedgerErr ? (
-                              <span className="text-red-600 font-medium block">{employeeLedgerErr}</span>
-                            ) : null}
-                            {employeeLedgerLoading ? (
-                              <span className="inline-flex items-center gap-2 text-app-muted">
-                                <Loader2 size={14} className="animate-spin shrink-0" /> Loading ledger…
-                              </span>
-                            ) : (
-                              <>
-                                <span>
-                                  {employeeLedgerFinalRows.length} row{employeeLedgerFinalRows.length === 1 ? '' : 's'} · Running balance{' '}
-                                  <span className={ledgerBalanceClass(employeeLedgerFinalSummary.balance)}>
-                                    {formatCurrency(employeeLedgerFinalSummary.balance)}
-                                  </span>
+                          tableRecordFilter === 'ledger' ? (
+                            <>
+                              {!isLocalOnlyMode() && employeeLedgerErr ? (
+                                <span className="text-red-600 font-medium block">{employeeLedgerErr}</span>
+                              ) : null}
+                              {employeeLedgerLoading && employeeLedgerFinalRows.length === 0 ? (
+                                <span className="inline-flex items-center gap-2 text-app-muted">
+                                  <Loader2 size={14} className="animate-spin shrink-0" /> Loading ledger…
                                 </span>
-                                {employeeLedgerFinalSummary.payableAmount > 0.01 ? (
-                                  <span className="block sm:inline sm:before:content-['_·_'] sm:before:mx-1">
-                                    Payable {formatCurrency(employeeLedgerFinalSummary.payableAmount)}
+                              ) : (
+                                <>
+                                  <span>
+                                    {employeeLedgerFinalRows.length} row{employeeLedgerFinalRows.length === 1 ? '' : 's'} (oldest first){' '}
+                                    · Running balance{' '}
+                                    <span className={ledgerBalanceClass(employeeLedgerFinalSummary.balance)}>
+                                      {formatCurrency(employeeLedgerFinalSummary.balance)}
+                                    </span>
                                   </span>
-                                ) : null}
-                                {employeeLedgerFinalSummary.advanceAmount > 0.01 ? (
-                                  <span className="block sm:inline sm:before:content-['_·_'] sm:before:mx-1">
-                                    Advance {formatCurrency(employeeLedgerFinalSummary.advanceAmount)}
-                                  </span>
-                                ) : null}
-                              </>
-                            )}
-                          </>
+                                  {employeeLedgerFinalSummary.payableAmount > 0.01 ? (
+                                    <span className="block sm:inline sm:before:content-['_·_'] sm:before:mx-1">
+                                      Payable {formatCurrency(employeeLedgerFinalSummary.payableAmount)}
+                                    </span>
+                                  ) : null}
+                                  {employeeLedgerFinalSummary.advanceAmount > 0.01 ? (
+                                    <span className="block sm:inline sm:before:content-['_·_'] sm:before:mx-1">
+                                      Advance {formatCurrency(employeeLedgerFinalSummary.advanceAmount)}
+                                    </span>
+                                  ) : null}
+                                  {employeeLedgerTruncatedRemote && employeeLedgerRemote?.pagination ? (
+                                    <span className="block text-amber-700 dark:text-amber-400 font-medium mt-1 sm:mt-0">
+                                      Showing {employeeLedgerRemote.transactions.length.toLocaleString()} of{' '}
+                                      {employeeLedgerRemote.pagination.total.toLocaleString()} ledger rows (
+                                      fetch cap exceeded).
+                                    </span>
+                                  ) : null}
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {tableRecordFilter === 'payslips' &&
+                                `${filteredPayslipsForTable.length} payslip(s) for selected employee`}
+                              {tableRecordFilter === 'payments' &&
+                                `${filteredPaymentRecords.length} payment(s) for selected employee`}
+                              {tableRecordFilter === 'all' &&
+                                `${filteredPayslipsForTable.length} payslip(s) + ${filteredPaymentRecords.length} payment(s)`}
+                            </>
+                          )
                         ) : (
                           <>
                             {tableRecordFilter === 'payslips' && (
@@ -1302,7 +1410,7 @@ const PayrollHub: React.FC = () => {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {!selectedCycleEmployeeId && tableRecordFilter === 'payslips' && selectedPayslipIds.length > 0 && (
+                      {tableRecordFilter === 'payslips' && selectedPayslipIds.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setBulkPayModalOpen(true)}
@@ -1315,9 +1423,23 @@ const PayrollHub: React.FC = () => {
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
                     <div className="flex flex-wrap items-end gap-3 sm:gap-4">
-                      {selectedCycleEmployeeId ? (
+                      <label className="flex flex-col gap-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">
+                        Show
+                        <select
+                          value={tableRecordFilter}
+                          onChange={(e) => setTableRecordFilter(e.target.value as TableRecordFilter)}
+                          className="ds-input-field border border-app-border rounded-lg px-2 py-2 text-sm bg-app-card min-w-[9rem] font-medium text-app-text"
+                          aria-label="Show records"
+                        >
+                          <option value="payslips">Payslips</option>
+                          <option value="payments">Payments</option>
+                          <option value="all">All (payslips + payments)</option>
+                          {selectedCycleEmployeeId ? <option value="ledger">Ledger</option> : null}
+                        </select>
+                      </label>
+                      {selectedCycleEmployeeId && tableRecordFilter === 'ledger' ? (
                         <label className="flex flex-col gap-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">
-                          Ledger
+                          Ledger rows
                           <select
                             value={ledgerRowFilter}
                             onChange={(e) => setLedgerRowFilter(e.target.value as LedgerRowFilter)}
@@ -1330,21 +1452,7 @@ const PayrollHub: React.FC = () => {
                             <option value="advances">Advances</option>
                           </select>
                         </label>
-                      ) : (
-                        <label className="flex flex-col gap-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">
-                          Show
-                          <select
-                            value={tableRecordFilter}
-                            onChange={(e) => setTableRecordFilter(e.target.value as TableRecordFilter)}
-                            className="ds-input-field border border-app-border rounded-lg px-2 py-2 text-sm bg-app-card min-w-[8rem] font-medium text-app-text"
-                            aria-label="Show records"
-                          >
-                            <option value="payslips">Payslips</option>
-                            <option value="payments">Payments</option>
-                            <option value="all">All (payslips + payments)</option>
-                          </select>
-                        </label>
-                      )}
+                      ) : null}
                       <label className="flex flex-col gap-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">
                         Year
                         <select
@@ -1399,7 +1507,7 @@ const PayrollHub: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex-1 min-h-0 overflow-auto p-3 sm:p-4">
-                  {selectedCycleEmployeeId ? (
+                  {selectedCycleEmployeeId && tableRecordFilter === 'ledger' ? (
                   <table className="w-full text-left text-sm min-w-[800px]">
                     <thead>
                       <tr className="border-b border-app-border text-app-muted font-semibold">
@@ -1413,7 +1521,7 @@ const PayrollHub: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {employeeLedgerLoading ? (
+                      {employeeLedgerLoading && employeeLedgerFinalRows.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="py-12 text-center text-app-muted text-sm">
                             <span className="inline-flex items-center justify-center gap-2">
@@ -1421,14 +1529,14 @@ const PayrollHub: React.FC = () => {
                             </span>
                           </td>
                         </tr>
-                      ) : employeeLedgerPagedRows.length === 0 ? (
+                      ) : employeeLedgerSortedRows.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="py-12 text-center text-app-muted text-sm">
                             No ledger rows for the selected period and filters.
                           </td>
                         </tr>
                       ) : (
-                        employeeLedgerPagedRows.map((row, idx) => (
+                        employeeLedgerSortedRows.map((row, idx) => (
                           <tr
                             key={row.id}
                             className={`border-b border-app-border hover:bg-app-toolbar/30 ${idx % 2 ? 'bg-app-toolbar/15' : ''}`}
@@ -1565,14 +1673,24 @@ const PayrollHub: React.FC = () => {
                             <td className="py-3 pr-4 text-app-muted">{pr.accountName}</td>
                             <td className="py-3 pr-4 text-app-muted max-w-[200px] truncate" title={pr.description}>{pr.description}</td>
                             <td className="py-3 pr-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => setPaymentTransactionToEdit(pr.transaction)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-primary hover:bg-primary/10 font-medium text-xs"
-                                title="Edit payment record"
-                              >
-                                <Pencil size={14} /> Edit
-                              </button>
+                              <div className="flex justify-end gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => setPaymentTransactionToEdit(pr.transaction)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-primary hover:bg-primary/10 font-medium text-xs"
+                                  title="Edit payment record"
+                                >
+                                  <Pencil size={14} /> Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePaymentShowDeleteWarning(pr.transaction)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-red-600 hover:bg-red-500/10 font-medium text-xs"
+                                  title="Delete payment (updates linked payslip)"
+                                >
+                                  <Trash2 size={14} /> Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ));
@@ -1652,13 +1770,6 @@ const PayrollHub: React.FC = () => {
                                 <div className="flex justify-end gap-2 flex-wrap">
                                   <button
                                     type="button"
-                                    onClick={() => openEditPayslip(ps)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-primary hover:bg-primary/10 font-medium text-xs"
-                                  >
-                                    <Pencil size={14} /> Edit
-                                  </button>
-                                  <button
-                                    type="button"
                                     disabled={isFullyPaid}
                                     title={isFullyPaid ? 'Already fully paid' : status === 'Partially paid' ? 'Pay remaining amount' : 'Pay salary'}
                                     onClick={() => {
@@ -1692,6 +1803,21 @@ const PayrollHub: React.FC = () => {
                                     }`}
                                   >
                                     <MessageCircle size={14} /> WhatsApp
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditPayslip(ps)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-primary hover:bg-primary/10 font-medium text-xs"
+                                  >
+                                    <Pencil size={14} /> Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCyclePayslipDelete(ps)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-red-600 hover:bg-red-500/10 font-medium text-xs"
+                                    title={isFullyPaid ? 'Remove payslip' : 'Delete payslip'}
+                                  >
+                                    <Trash2 size={14} /> {isFullyPaid ? 'Remove' : 'Delete'}
                                   </button>
                                 </div>
                               </td>
@@ -1771,7 +1897,26 @@ const PayrollHub: React.FC = () => {
                                   <td className="py-3 pr-4 text-app-muted max-w-[200px] truncate" title={pr.description}>
                                     {pr.description || '—'}
                                   </td>
-                                  <td className="py-3 pr-4 text-right">—</td>
+                                  <td className="py-3 pr-4 text-right">
+                                    <div className="flex justify-end gap-1.5 flex-wrap">
+                                      <button
+                                        type="button"
+                                        onClick={() => setPaymentTransactionToEdit(pr.transaction)}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-primary hover:bg-primary/10 font-medium text-xs"
+                                        title="Edit payment record"
+                                      >
+                                        <Pencil size={14} /> Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePaymentShowDeleteWarning(pr.transaction)}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-red-600 hover:bg-red-500/10 font-medium text-xs"
+                                        title="Delete payment (updates linked payslip)"
+                                      >
+                                        <Trash2 size={14} /> Delete
+                                      </button>
+                                    </div>
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -1782,11 +1927,11 @@ const PayrollHub: React.FC = () => {
                   </table>
                   )}
                 </div>
-                {cycleTableTotalCount > 0 && (
+                {tableTotalCount > 0 && tableRecordFilter !== 'ledger' && (
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 py-2 border-t border-app-border bg-app-toolbar/20 text-xs text-app-muted">
                     <p>
-                      Showing {Math.min((cycleTablePage - 1) * CYCLE_PAGE_SIZE + 1, cycleTableTotalCount)}–
-                      {Math.min(cycleTablePage * CYCLE_PAGE_SIZE, cycleTableTotalCount)} of {cycleTableTotalCount} records
+                      Showing {Math.min((cycleTablePage - 1) * CYCLE_PAGE_SIZE + 1, tableTotalCount)}–
+                      {Math.min(cycleTablePage * CYCLE_PAGE_SIZE, tableTotalCount)} of {tableTotalCount} records
                     </p>
                     <div className="flex items-center justify-end gap-2">
                       <span className="text-app-text font-medium tabular-nums">Page {cycleTablePage} of {tableMaxPage}</span>

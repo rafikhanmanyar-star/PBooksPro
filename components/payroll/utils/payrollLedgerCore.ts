@@ -12,6 +12,8 @@ export type LedgerBuildPayslip = {
 export type LedgerBuildRun = {
   id: string;
   period_end: Date | string | null;
+  month?: string;
+  year?: number;
 };
 
 export type LedgerBuildTx = {
@@ -42,8 +44,41 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+const MONTH_LABEL_TO_NUM_LC: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function resolveMonthNumber(monthRaw: string): number | null {
+  const t = String(monthRaw ?? '')
+    .trim()
+    .toLowerCase();
+  if (!t) return null;
+  const nm = /^(\d{1,2})$/.exec(t);
+  if (nm) {
+    const n = Number(nm[1]);
+    return n >= 1 && n <= 12 ? n : null;
+  }
+  return MONTH_LABEL_TO_NUM_LC[t] ?? null;
+}
+
+function payPeriodCalendarEndYyyyMmDd(monthRaw: string, yearRaw: number): string {
+  const mn = resolveMonthNumber(monthRaw);
+  const year = Number(yearRaw);
+  if (mn === null || !Number.isFinite(year) || year < 1901 || year > 3000) return '';
+  const d = new Date(Date.UTC(year, mn, 0));
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  return `${y}-${pad2(m)}-${pad2(day)}`;
+}
+
 export function ledgerToYyyyMmDd(d: Date | string | null | undefined): string {
-  if (d == null) return '1970-01-01';
+  if (d == null) return '';
   const s = String(d).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -52,14 +87,24 @@ export function ledgerToYyyyMmDd(d: Date | string | null | undefined): string {
     const y = d.getFullYear();
     const mo = d.getMonth() + 1;
     const da = d.getDate();
-    return `${y}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`;
+    return `${y}-${pad2(mo)}-${pad2(da)}`;
   }
   const t = new Date(s).getTime();
   if (!Number.isNaN(t)) {
     const x = new Date(t);
-    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
   }
-  return '1970-01-01';
+  return '';
+}
+
+function isUnsetPayrollLedgerDate(iso: string): boolean {
+  if (!iso || iso.length < 10) return true;
+  return iso.startsWith('1970-');
+}
+
+function todayUtcYyyyMmDd(): string {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
 function toMillis(d: Date | string | null | undefined): number {
@@ -84,24 +129,44 @@ export function buildPayrollLedgerRowsFromSource(
 
   for (const ps of payslips) {
     const run = runsById.get(ps.payroll_run_id);
-    const periodEndDate = run ? ledgerToYyyyMmDd(run.period_end) : null;
+    const periodEndCand = run ? ledgerToYyyyMmDd(run.period_end) : '';
+    const runYear = run?.year != null ? Number(run.year) : NaN;
+    const fromRunPeriod =
+      run?.month != null &&
+      String(run.month).trim() !== '' &&
+      Number.isFinite(runYear) &&
+      runYear >= 1901
+        ? payPeriodCalendarEndYyyyMmDd(String(run.month), runYear)
+        : '';
     const createdStr = ledgerToYyyyMmDd(ps.created_at);
-    const txnDate = periodEndDate && periodEndDate !== '' ? periodEndDate : createdStr;
+    const txnCandidate =
+      periodEndCand && !isUnsetPayrollLedgerDate(periodEndCand)
+        ? periodEndCand
+        : fromRunPeriod && !isUnsetPayrollLedgerDate(fromRunPeriod)
+          ? fromRunPeriod
+          : createdStr && !isUnsetPayrollLedgerDate(createdStr)
+            ? createdStr
+            : '';
     const payslipTs = toMillis(ps.created_at);
     const net = round2(Number(ps.net_pay) || 0);
+    const rawCreated = ledgerToYyyyMmDd(ps.created_at);
+    const safeTxn =
+      txnCandidate ||
+      (rawCreated && !isUnsetPayrollLedgerDate(rawCreated) ? rawCreated : '') ||
+      todayUtcYyyyMmDd();
     events.push({
       kind: 'PAYSLIP',
       row: {
         id: `pt_ps_${ps.id}`,
         payroll_run_id: ps.payroll_run_id,
-        transaction_date: txnDate,
+        transaction_date: safeTxn,
         transaction_type: 'PAYSLIP',
         reference_id: ps.id,
         description: `Payroll payslip (${ps.id.slice(-8)})`,
         debit: Math.max(0, net),
         credit: 0,
         source_transaction_id: null,
-        ledger_sort_ts: payslipTs || new Date(`${txnDate}T12:00:00Z`).getTime(),
+        ledger_sort_ts: payslipTs || new Date(`${safeTxn}T12:00:00Z`).getTime(),
       },
     });
   }
@@ -115,7 +180,11 @@ export function buildPayrollLedgerRowsFromSource(
     if (ttype !== 'expense') continue;
     const amt = round2(Number(tx.amount) || 0);
     if (amt <= 0) continue;
-    const txnDate = ledgerToYyyyMmDd(tx.date);
+    let txnDate = ledgerToYyyyMmDd(tx.date);
+    if (!txnDate || isUnsetPayrollLedgerDate(txnDate)) {
+      txnDate = tx.created_at != null ? ledgerToYyyyMmDd(tx.created_at) : '';
+    }
+    if (!txnDate || isUnsetPayrollLedgerDate(txnDate)) txnDate = todayUtcYyyyMmDd();
     const ct = tx.created_at != null ? toMillis(tx.created_at) : new Date(`${txnDate}T12:00:00Z`).getTime();
     events.push({
       kind: 'PAYMENT',
@@ -155,6 +224,20 @@ export function buildPayrollLedgerRowsFromSource(
     out.push({ ...r, balance_after: bal });
   }
   return out;
+}
+
+/** Oldest first: date → ledger_sort_ts → payslip before payment same day → id */
+export function sortLedgerRowsChronological(rows: BuiltPayrollLedgerRow[]): BuiltPayrollLedgerRow[] {
+  return [...rows].sort((a, b) => {
+    const dd = a.transaction_date.localeCompare(b.transaction_date);
+    if (dd !== 0) return dd;
+    const ts = (a.ledger_sort_ts || 0) - (b.ledger_sort_ts || 0);
+    if (ts !== 0) return ts;
+    const pri = (r: BuiltPayrollLedgerRow) => (r.transaction_type === 'PAYSLIP' ? 0 : 1);
+    const kp = pri(a) - pri(b);
+    if (kp !== 0) return kp;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 export function summarizePayrollBalanceFromRows(rows: BuiltPayrollLedgerRow[]): {

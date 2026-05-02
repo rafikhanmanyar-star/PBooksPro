@@ -693,7 +693,7 @@ export const payrollApi = {
     if (isLocalOnlyMode()) return null;
     const q = new URLSearchParams();
     if (opts?.type && opts.type !== 'all') q.set('type', opts.type);
-    q.set('limit', String(opts?.limit ?? 500));
+    q.set('limit', String(opts?.limit ?? 5000));
     q.set('offset', String(opts?.offset ?? 0));
     const qs = q.toString();
     try {

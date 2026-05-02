@@ -7,6 +7,7 @@ import {
   type PayrollEmployeeLike,
 } from '../payroll/salaryComputation.js';
 import { todayUtcYyyyMmDd } from '../utils/dateOnly.js';
+import { payPeriodCalendarBounds } from '../utils/payrollPeriod.js';
 import { ExpenseCashValidationBatchContext } from '../financial/expenseCashValidation.js';
 import { createTransaction, rowToTransactionApi } from './transactionsService.js';
 
@@ -829,20 +830,26 @@ export async function createPayrollRun(
   const year = Number(body.year ?? 0);
   if (!month || !year) throw new Error('month and year are required.');
 
+  const bounds = payPeriodCalendarBounds(month, year);
+  const period_start = bounds?.start ?? null;
+  const period_end = bounds?.end ?? null;
+
   // If this period was soft-deleted, ON CONFLICT must revive the row; otherwise getPayrollRun(process) sees "not found".
   const r = await client.query<PayrollRunRow>(
-    `INSERT INTO payroll_runs (id, tenant_id, month, year, status, total_amount, employee_count, created_by, updated_by, deleted_at, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,'DRAFT',0,0,$5,$6,NULL,NOW(),NOW())
+    `INSERT INTO payroll_runs (id, tenant_id, month, year, period_start, period_end, status, total_amount, employee_count, created_by, updated_by, deleted_at, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,'DRAFT',0,0,$7,$8,NULL,NOW(),NOW())
      ON CONFLICT (tenant_id, month, year) DO UPDATE SET
        deleted_at = CASE WHEN payroll_runs.deleted_at IS NOT NULL THEN NULL ELSE payroll_runs.deleted_at END,
        status = CASE WHEN payroll_runs.deleted_at IS NOT NULL THEN 'DRAFT' ELSE payroll_runs.status END,
        total_amount = CASE WHEN payroll_runs.deleted_at IS NOT NULL THEN 0 ELSE payroll_runs.total_amount END,
        employee_count = CASE WHEN payroll_runs.deleted_at IS NOT NULL THEN 0 ELSE payroll_runs.employee_count END,
        paid_at = CASE WHEN payroll_runs.deleted_at IS NOT NULL THEN NULL ELSE payroll_runs.paid_at END,
+       period_start = COALESCE(payroll_runs.period_start, EXCLUDED.period_start),
+       period_end = COALESCE(payroll_runs.period_end, EXCLUDED.period_end),
        updated_at = NOW()
      RETURNING id, tenant_id, month, year, period_start, period_end, status, total_amount::text, employee_count,
                created_by, updated_by, approved_by, approved_at, paid_at, deleted_at, created_at, updated_at`,
-    [id, tenantId, month, year, userId, userId]
+    [id, tenantId, month, year, period_start, period_end, userId, userId]
   );
   const row = r.rows[0];
   if (!row) throw new Error('Could not create payroll run.');

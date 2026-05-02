@@ -1,4 +1,5 @@
-import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
+import { formatPgDateToYyyyMmDd, todayUtcYyyyMmDd } from '../utils/dateOnly.js';
+import { payPeriodCalendarBounds } from '../utils/payrollPeriod.js';
 
 export const PAYROLL_LEDGER_TYPES = [
   'PAYSLIP',
@@ -20,6 +21,9 @@ export type LedgerBuildPayslip = {
 export type LedgerBuildRun = {
   id: string;
   period_end: Date | string | null;
+  /** From `payroll_runs`; used when `period_end` was never persisted. */
+  month?: string;
+  year?: number;
 };
 
 export type LedgerBuildTx = {
@@ -51,16 +55,26 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-function toYyyyMmDd(d: Date | string | null | undefined): string {
-  if (d == null) return '1970-01-01';
-  if (d instanceof Date && !Number.isNaN(d.getTime())) return formatPgDateToYyyyMmDd(d);
+/** Calendar-only `YYYY-MM-DD`, or '' when absent / unreadable — never coerce null to unix epoch for ledgers. */
+function toLedgerYyyyMmDd(d: Date | string | null | undefined): string {
+  if (d == null) return '';
+  if (d instanceof Date) {
+    const out = Number.isNaN(d.getTime()) ? '' : formatPgDateToYyyyMmDd(d);
+    return out;
+  }
   const s = String(d).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
   if (m) return m[1]!;
   const t = new Date(s).getTime();
   if (!Number.isNaN(t)) return formatPgDateToYyyyMmDd(new Date(t));
-  return '1970-01-01';
+  return '';
+}
+
+/** True for empty string or plausible “unset” sentinel from bad imports / unix epoch DATE. */
+function isUnsetPayrollLedgerDate(iso: string): boolean {
+  if (!iso || iso.length < 10) return true;
+  return iso.startsWith('1970-');
 }
 
 function toMillis(d: Date | string | null | undefined): number {
@@ -89,24 +103,40 @@ export function buildPayrollLedgerRowsFromSource(
 
   for (const ps of payslips) {
     const run = runsById.get(ps.payroll_run_id);
-    const periodEndDate = run ? toYyyyMmDd(run.period_end) : null;
-    const createdStr = toYyyyMmDd(ps.created_at);
-    const txnDate = periodEndDate && periodEndDate !== '' ? periodEndDate : createdStr;
+    const periodEndCandidate = run ? toLedgerYyyyMmDd(run.period_end) : '';
+    const fromRunPeriod =
+      run?.month !== undefined && run.year !== undefined
+        ? payPeriodCalendarBounds(run.month, run.year)?.end ?? ''
+        : '';
+    const createdStr = toLedgerYyyyMmDd(ps.created_at);
+    const txnDate =
+      periodEndCandidate && !isUnsetPayrollLedgerDate(periodEndCandidate)
+        ? periodEndCandidate
+        : fromRunPeriod && !isUnsetPayrollLedgerDate(fromRunPeriod)
+          ? fromRunPeriod
+          : createdStr && !isUnsetPayrollLedgerDate(createdStr)
+            ? createdStr
+            : '';
     const payslipTs = toMillis(ps.created_at);
     const net = round2(Number(ps.net_pay) || 0);
+    const rawCreatedFb = formatPgDateToYyyyMmDd(new Date(ps.created_at));
+    const safeTxn =
+      txnDate ||
+      (rawCreatedFb && !isUnsetPayrollLedgerDate(rawCreatedFb) ? rawCreatedFb : '') ||
+      todayUtcYyyyMmDd();
     events.push({
       kind: 'PAYSLIP',
       row: {
         id: `pt_ps_${ps.id}`,
         payroll_run_id: ps.payroll_run_id,
-        transaction_date: txnDate,
+        transaction_date: safeTxn,
         transaction_type: 'PAYSLIP',
         reference_id: ps.id,
         description: `Payroll payslip (${ps.id.slice(-8)})`,
         debit: Math.max(0, net),
         credit: 0,
         source_transaction_id: null,
-        ledger_sort_ts: payslipTs || new Date(`${txnDate}T12:00:00Z`).getTime(),
+        ledger_sort_ts: payslipTs || new Date(`${safeTxn}T12:00:00Z`).getTime(),
       },
     });
   }
@@ -119,7 +149,11 @@ export function buildPayrollLedgerRowsFromSource(
     if (ttype !== 'expense') continue;
     const amt = round2(Number(tx.amount) || 0);
     if (amt <= 0) continue;
-    const txnDate = toYyyyMmDd(tx.date);
+    let txnDate = toLedgerYyyyMmDd(tx.date);
+    if (!txnDate || isUnsetPayrollLedgerDate(txnDate)) {
+      txnDate = tx.created_at != null ? toLedgerYyyyMmDd(tx.created_at) : '';
+    }
+    if (!txnDate || isUnsetPayrollLedgerDate(txnDate)) txnDate = todayUtcYyyyMmDd();
     const ct = tx.created_at != null ? toMillis(tx.created_at) : new Date(`${txnDate}T12:00:00Z`).getTime();
     events.push({
       kind: 'PAYMENT',

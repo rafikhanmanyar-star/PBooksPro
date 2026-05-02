@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Contact, TransactionType, Transaction, AccountType, Category, Invoice, InvoiceStatus, InvoiceType, RentalAgreementStatus } from '../../types';
+import { Contact, TransactionType, Transaction, AccountType, Category, Invoice, InvoiceStatus, InvoiceType, RentalAgreementStatus, Bill } from '../../types';
+import { getExpenseBearerType } from '../../utils/rentalBillPayments';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
@@ -45,6 +46,18 @@ interface InvoiceAdjustmentRow {
     isSelected: boolean;
 }
 
+interface BillAdjustmentRow {
+    billId: string;
+    billNumber: string;
+    issueDate: string;
+    dueDate?: string;
+    description?: string;
+    totalAmount: number;
+    outstanding: number;
+    adjustAmount: number;
+    isSelected: boolean;
+}
+
 interface OwnerPayoutModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -82,8 +95,9 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const [lastPaidAmount, setLastPaidAmount] = useState(0);
     const [lastReference, setLastReference] = useState('');
     const [whatsAppPayee, setWhatsAppPayee] = useState<Contact | null>(null);
-    const [securityAllocations, setSecurityAllocations] = useState<{ owner: number; tenant: number; adjust: number }>({ owner: 0, tenant: 0, adjust: 0 });
+    const [securityAllocations, setSecurityAllocations] = useState<{ owner: number; tenant: number; adjust: number; billAdjust: number }>({ owner: 0, tenant: 0, adjust: 0, billAdjust: 0 });
     const [invoiceAdjustments, setInvoiceAdjustments] = useState<InvoiceAdjustmentRow[]>([]);
+    const [billAdjustments, setBillAdjustments] = useState<BillAdjustmentRow[]>([]);
 
     const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
     const buildingsForOwner = useMemo(() => {
@@ -166,6 +180,28 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     );
     const effectiveTenantUnpaidAmount = tenantUnpaidAmount > 0.01 ? tenantUnpaidAmount : computedUnpaidRentalTotal;
 
+    /** Unpaid rental bills for this property where cost center is tenant and the tenant matches. */
+    const unpaidTenantPropertyBills = useMemo(() => {
+        if (!isOpen || !singlePropertyId || !effectiveTenant) return [];
+        const pid = String(singlePropertyId);
+        const tid = String(effectiveTenant.id);
+        return state.bills
+            .filter((b: Bill) => {
+                if (String(b.propertyId) !== pid) return false;
+                if (b.status === InvoiceStatus.PAID || b.status === InvoiceStatus.DRAFT) return false;
+                const out = b.amount - (b.paidAmount || 0);
+                if (out <= 0.01) return false;
+                if (getExpenseBearerType(b, state) !== 'tenant') return false;
+                if (b.projectAgreementId) {
+                    const ra = state.rentalAgreements.find(r => r.id === b.projectAgreementId);
+                    return !!ra && String(ra.contactId) === tid && String(ra.propertyId) === pid;
+                }
+                if (b.expenseBearerType === 'tenant' && b.contactId && String(b.contactId) === tid) return true;
+                return false;
+            })
+            .sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
+    }, [isOpen, singlePropertyId, effectiveTenant, state.bills, state.rentalAgreements]);
+
     const prevIsOpenRef = useRef(false);
     useEffect(() => {
         if (isOpen && !prevIsOpenRef.current) {
@@ -203,7 +239,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 setReference('');
                 setNotes('');
                 if (isSecurityMode) {
-                    setSecurityAllocations({ owner: balanceDue, tenant: 0, adjust: 0 });
+                    setSecurityAllocations({ owner: balanceDue, tenant: 0, adjust: 0, billAdjust: 0 });
                     setInvoiceAdjustments(unpaidPropertyInvoices.map(inv => ({
                         invoiceId: inv.id,
                         invoiceNumber: inv.invoiceNumber,
@@ -211,6 +247,17 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                         rentalMonth: inv.rentalMonth,
                         totalAmount: inv.amount,
                         outstanding: inv.amount - (inv.paidAmount || 0),
+                        adjustAmount: 0,
+                        isSelected: false,
+                    })));
+                    setBillAdjustments(unpaidTenantPropertyBills.map(b => ({
+                        billId: b.id,
+                        billNumber: b.billNumber,
+                        issueDate: b.issueDate,
+                        dueDate: b.dueDate,
+                        description: b.description,
+                        totalAmount: b.amount,
+                        outstanding: b.amount - (b.paidAmount || 0),
                         adjustAmount: 0,
                         isSelected: false,
                     })));
@@ -252,21 +299,29 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 }
             }
             setError('');
-    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings, isSecurityMode, unpaidPropertyInvoices, payoutType, owner]);
+    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings, isSecurityMode, unpaidPropertyInvoices, unpaidTenantPropertyBills, payoutType, owner]);
 
     const totalToPay = items.filter(i => i.isSelected).reduce((sum, i) => sum + i.paymentAmount, 0);
     const invoiceAdjustTotal = invoiceAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
+    const billAdjustTotal = billAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
 
     useEffect(() => {
         if (isSecurityMode && !isEditMode) {
             setSecurityAllocations(prev => {
+                const next = { ...prev };
+                let changed = false;
                 if (Math.abs(prev.adjust - invoiceAdjustTotal) > 0.001) {
-                    return { ...prev, adjust: invoiceAdjustTotal };
+                    next.adjust = invoiceAdjustTotal;
+                    changed = true;
                 }
-                return prev;
+                if (Math.abs(prev.billAdjust - billAdjustTotal) > 0.001) {
+                    next.billAdjust = billAdjustTotal;
+                    changed = true;
+                }
+                return changed ? next : prev;
             });
         }
-    }, [invoiceAdjustTotal, isSecurityMode, isEditMode]);
+    }, [invoiceAdjustTotal, billAdjustTotal, isSecurityMode, isEditMode]);
 
     const handleToggle = (index: number) => {
         const newItems = [...items];
@@ -287,8 +342,9 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             const row = { ...updated[idx] };
             row.isSelected = !row.isSelected;
             if (row.isSelected && row.adjustAmount === 0) {
-                const currentTotal = updated.filter((r, i) => i !== idx && r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
-                const remainingSecurity = Math.max(0, balanceDue - securityAllocations.owner - securityAllocations.tenant - currentTotal);
+                const currentInvoiceOther = updated.filter((r, i) => i !== idx && r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
+                const billAlloc = billAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
+                const remainingSecurity = Math.max(0, balanceDue - securityAllocations.owner - securityAllocations.tenant - currentInvoiceOther - billAlloc);
                 row.adjustAmount = Math.min(row.outstanding, remainingSecurity);
             } else if (!row.isSelected) {
                 row.adjustAmount = 0;
@@ -312,7 +368,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     };
 
     const autoFillInvoiceAdjustments = () => {
-        let remaining = Math.min(balanceDue - securityAllocations.owner - securityAllocations.tenant, effectiveTenantUnpaidAmount);
+        const billAlloc = billAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
+        let remaining = Math.min(balanceDue - securityAllocations.owner - securityAllocations.tenant - billAlloc, effectiveTenantUnpaidAmount);
         if (remaining <= 0.01) return;
         setInvoiceAdjustments(prev => prev.map(row => {
             if (remaining <= 0.01) return { ...row, adjustAmount: 0, isSelected: false };
@@ -326,6 +383,54 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         setInvoiceAdjustments(prev => prev.map(row => ({ ...row, adjustAmount: 0, isSelected: false })));
     };
 
+    const handleBillToggle = (idx: number) => {
+        setBillAdjustments(prev => {
+            const updated = [...prev];
+            const row = { ...updated[idx] };
+            row.isSelected = !row.isSelected;
+            if (row.isSelected && row.adjustAmount === 0) {
+                const currentBillOther = updated.filter((r, i) => i !== idx && r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
+                const invAlloc = invoiceAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
+                const remainingSecurity = Math.max(0, balanceDue - securityAllocations.owner - securityAllocations.tenant - invAlloc - currentBillOther);
+                row.adjustAmount = Math.min(row.outstanding, remainingSecurity);
+            } else if (!row.isSelected) {
+                row.adjustAmount = 0;
+            }
+            updated[idx] = row;
+            return updated;
+        });
+    };
+
+    const handleBillAmountChange = (idx: number, val: string) => {
+        setBillAdjustments(prev => {
+            const updated = [...prev];
+            const row = { ...updated[idx] };
+            const num = parseFloat(val);
+            row.adjustAmount = isNaN(num) ? 0 : Math.max(0, Math.min(num, row.outstanding));
+            if (row.adjustAmount > 0 && !row.isSelected) row.isSelected = true;
+            if (row.adjustAmount === 0 && row.isSelected) row.isSelected = false;
+            updated[idx] = row;
+            return updated;
+        });
+    };
+
+    const autoFillBillAdjustments = () => {
+        const invAlloc = invoiceAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
+        const billOutstandingTotal = billAdjustments.reduce((s, r) => s + r.outstanding, 0);
+        let remaining = Math.min(balanceDue - securityAllocations.owner - securityAllocations.tenant - invAlloc, billOutstandingTotal);
+        if (remaining <= 0.01) return;
+        setBillAdjustments(prev => prev.map(row => {
+            if (remaining <= 0.01) return { ...row, adjustAmount: 0, isSelected: false };
+            const apply = Math.min(remaining, row.outstanding);
+            remaining -= apply;
+            return { ...row, adjustAmount: apply, isSelected: true };
+        }));
+    };
+
+    const clearBillAdjustments = () => {
+        setBillAdjustments(prev => prev.map(row => ({ ...row, adjustAmount: 0, isSelected: false })));
+    };
+
     const selectAllItems = () => {
         setItems(prev => prev.map(i => ({ ...i, isSelected: true })));
     };
@@ -336,7 +441,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
 
     useEffect(() => {
         if (isSecurityMode && !isEditMode) {
-            const total = securityAllocations.owner + securityAllocations.tenant + invoiceAdjustTotal;
+            const total = securityAllocations.owner + securityAllocations.tenant + invoiceAdjustTotal + billAdjustTotal;
             if (total <= 0) {
                 setError('Enter a positive amount for at least one option.');
             } else if (total > balanceDue + 0.01) {
@@ -347,10 +452,17 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 setError('No tenant found for invoice adjustment.');
             } else if (invoiceAdjustTotal > 0.01 && unpaidPropertyInvoices.length === 0) {
                 setError('No unpaid invoices to adjust against.');
+            } else if (billAdjustTotal > 0.01 && !effectiveTenant) {
+                setError('No tenant found for bill adjustment.');
+            } else if (billAdjustTotal > 0.01 && unpaidTenantPropertyBills.length === 0) {
+                setError('No unpaid tenant-allocation bills to adjust against.');
             } else {
-                const overAllocated = invoiceAdjustments.find(r => r.adjustAmount > r.outstanding + 0.01);
-                if (overAllocated) {
-                    setError(`Amount for invoice ${overAllocated.invoiceNumber} exceeds its outstanding balance.`);
+                const overInv = invoiceAdjustments.find(r => r.adjustAmount > r.outstanding + 0.01);
+                const overBill = billAdjustments.find(r => r.adjustAmount > r.outstanding + 0.01);
+                if (overInv) {
+                    setError(`Amount for invoice ${overInv.invoiceNumber} exceeds its outstanding balance.`);
+                } else if (overBill) {
+                    setError(`Amount for bill ${overBill.billNumber} exceeds its outstanding balance.`);
                 } else {
                     setError('');
                 }
@@ -369,7 +481,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             else if (numericAmount <= 0) setError('Amount must be positive.');
             else setError('');
         }
-    }, [showPropertyTable, items, totalToPay, amount, balanceDue, isEditMode, isSecurityMode, securityAllocations, effectiveTenant, tenantUnpaidAmount, invoiceAdjustTotal, invoiceAdjustments, unpaidPropertyInvoices]);
+    }, [showPropertyTable, items, totalToPay, amount, balanceDue, isEditMode, isSecurityMode, securityAllocations, effectiveTenant, tenantUnpaidAmount, invoiceAdjustTotal, billAdjustTotal, invoiceAdjustments, billAdjustments, unpaidPropertyInvoices, unpaidTenantPropertyBills]);
 
     const getPayoutCategory = (mode?: 'owner' | 'tenant' | 'adjust'): Category | null => {
         if (payoutType === 'Security') {
@@ -407,7 +519,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         return state.categories.find(c => c.name === 'Owner Payout') || null;
     };
 
-    const securityTotal = securityAllocations.owner + securityAllocations.tenant + invoiceAdjustTotal;
+    const securityTotal = securityAllocations.owner + securityAllocations.tenant + invoiceAdjustTotal + billAdjustTotal;
 
     const handleSubmit = async () => {
         if (error || !owner) return;
@@ -451,11 +563,12 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     id: `tx-${baseId}-ten`,
                 });
             }
+            const rentCat = state.categories.find(c => c.name === 'Rent' || c.name === 'Rental Income');
+            const secDepCat = state.categories.find(c => c.name === 'Security Deposit');
+            const rentCatId = rentCat?.id || secDepCat?.id || '';
+
             if (invoiceAdjustTotal > 0.01 && effectiveTenant) {
                 const selectedAdjustments = invoiceAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
-                const rentCat = state.categories.find(c => c.name === 'Rent' || c.name === 'Rental Income');
-                const secDepCat = state.categories.find(c => c.name === 'Security Deposit');
-                const rentCatId = rentCat?.id || secDepCat?.id || '';
 
                 for (const adj of selectedAdjustments) {
                     const inv = state.invoices.find(i => i.id === adj.invoiceId);
@@ -479,15 +592,52 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     }
                     dispatch({ type: 'UPDATE_INVOICE', payload: updatedInv });
                 }
+            }
 
+            if (billAdjustTotal > 0.01 && effectiveTenant) {
+                const selectedBillRows = billAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
+                for (const adj of selectedBillRows) {
+                    const bill = state.bills.find(b => b.id === adj.billId) as Bill | undefined;
+                    if (!bill) continue;
+                    const dateLabel = bill.dueDate ? formatDate(bill.dueDate) : formatDate(bill.issueDate);
+                    allTxs.push({
+                        type: TransactionType.INCOME,
+                        amount: adj.adjustAmount,
+                        date,
+                        description: `Bill payment (from security deposit) — ${adj.billNumber}${bill.description ? ` — ${bill.description}` : ''} (${dateLabel})${descSuffix}${propLabel}`,
+                        accountId: payoutAccount.id,
+                        contactId: effectiveTenant.id,
+                        categoryId: rentCatId,
+                        vendorId: bill.vendorId,
+                        buildingId: bill.buildingId || propBuildingId || undefined,
+                        propertyId: singleProp?.propertyId ?? bill.propertyId,
+                        billId: bill.id,
+                        agreementId: bill.projectAgreementId,
+                        id: `tx-${baseId}-badj-${bill.id.slice(-5)}`,
+                    });
+                }
+            }
+
+            const securityAppliedTotal = invoiceAdjustTotal + billAdjustTotal;
+            if (securityAppliedTotal > 0.01 && effectiveTenant) {
                 const refCat = getPayoutCategory('tenant');
                 if (refCat) {
+                    const invCount = invoiceAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01).length;
+                    const billCount = billAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01).length;
+                    const segs: string[] = [];
+                    if (invCount) segs.push(`${invCount} invoice${invCount === 1 ? '' : 's'}`);
+                    if (billCount) segs.push(`${billCount} bill${billCount === 1 ? '' : 's'}`);
                     allTxs.push({
-                        type: TransactionType.EXPENSE, amount: invoiceAdjustTotal, date,
-                        description: `Security deposit used for rent payment — ${selectedAdjustments.length} invoice(s) adjusted${descSuffix}${propLabel}`,
-                        accountId: payoutAccount.id, contactId: effectiveTenant.id, categoryId: refCat.id,
-                        buildingId: propBuildingId || undefined, propertyId: singleProp?.propertyId,
-                        id: `tx-${baseId}-adj-exp`,
+                        type: TransactionType.EXPENSE,
+                        amount: securityAppliedTotal,
+                        date,
+                        description: `Security deposit applied — ${segs.join(', ')}${descSuffix}${propLabel}`,
+                        accountId: payoutAccount.id,
+                        contactId: effectiveTenant.id,
+                        categoryId: refCat.id,
+                        buildingId: propBuildingId || undefined,
+                        propertyId: singleProp?.propertyId,
+                        id: `tx-${baseId}-adj-sd-release`,
                     });
                 }
             }
@@ -861,16 +1011,98 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                     </div>
                                 )}
                             </div>
+
+                            {/* Adjust in unpaid bills (tenant cost center) */}
+                            <div className={`border rounded-lg transition-colors ${billAdjustTotal > 0.01 ? 'border-violet-300 bg-violet-50/50' : 'border-slate-200'} ${!effectiveTenant || unpaidTenantPropertyBills.length === 0 ? 'opacity-50' : ''}`}>
+                                <div className="flex items-center justify-between gap-4 p-3">
+                                    <div className="flex-1">
+                                        <div className="text-sm font-semibold text-slate-800">Adjust in Unpaid Bills (Tenant)</div>
+                                        <div className="text-xs text-slate-500">
+                                            {effectiveTenant && unpaidTenantPropertyBills.length > 0
+                                                ? `Bills for this unit with tenant as cost center (${unpaidTenantPropertyBills.length} bill${unpaidTenantPropertyBills.length === 1 ? '' : 's'})`
+                                                : effectiveTenant ? 'No unpaid tenant-allocated bills for this property' : 'No tenant linked (add agreement or rental bills for this unit)'}
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className={`text-sm font-bold tabular-nums ${billAdjustTotal > 0.01 ? 'text-violet-700' : 'text-slate-400'}`}>
+                                            {CURRENCY} {billAdjustTotal.toLocaleString()}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {effectiveTenant && billAdjustments.length > 0 && (
+                                    <div className="border-t border-violet-200/60">
+                                        <div className="px-3 py-1.5 bg-violet-50/80 grid grid-cols-12 gap-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                            <div className="col-span-1 text-center"></div>
+                                            <div className="col-span-4">Bill</div>
+                                            <div className="col-span-3 text-right">Outstanding</div>
+                                            <div className="col-span-4 text-right">Adjust Amount</div>
+                                        </div>
+                                        <div className="max-h-48 overflow-y-auto">
+                                            {billAdjustments.map((row, idx) => {
+                                                const refDate = row.dueDate || row.issueDate;
+                                                const isOverdue = refDate && new Date(refDate) < new Date();
+                                                return (
+                                                    <div key={row.billId} className={`grid grid-cols-12 gap-2 px-3 py-2 border-t border-violet-100/80 text-sm items-center ${row.isSelected ? 'bg-violet-50/60' : ''}`}>
+                                                        <div className="col-span-1 text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={row.isSelected}
+                                                                onChange={() => handleBillToggle(idx)}
+                                                                className="w-3.5 h-3.5 text-violet-600 rounded focus:ring-violet-500"
+                                                                aria-label={`Adjust bill ${row.billNumber}`}
+                                                            />
+                                                        </div>
+                                                        <div className="col-span-4 min-w-0">
+                                                            <div className="text-xs font-medium text-slate-700 truncate flex items-center gap-1">
+                                                                {row.billNumber}
+                                                                {isOverdue && (
+                                                                    <span className="px-1 py-0.5 rounded text-[8px] font-bold uppercase bg-red-100 text-red-600">Overdue</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-400 truncate" title={row.description}>
+                                                                {row.description || `Issued ${formatDate(row.issueDate)}`}
+                                                            </div>
+                                                        </div>
+                                                        <div className="col-span-3 text-right text-xs text-slate-500 tabular-nums">
+                                                            {CURRENCY} {row.outstanding.toLocaleString()}
+                                                        </div>
+                                                        <div className="col-span-4">
+                                                            <input
+                                                                type="number"
+                                                                className="w-full border rounded px-2 py-1 text-right text-xs focus:ring-2 focus:ring-violet-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                value={row.adjustAmount || ''}
+                                                                onChange={e => handleBillAmountChange(idx, e.target.value)}
+                                                                onKeyDown={e => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
+                                                                disabled={!effectiveTenant}
+                                                                placeholder="0"
+                                                                aria-label={`Adjust amount for ${row.billNumber}`}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        {billAdjustments.length > 0 && (
+                                            <div className="flex gap-2 px-3 py-1.5 border-t border-violet-200/60">
+                                                <button type="button" onClick={autoFillBillAdjustments} className="text-[10px] text-violet-600 hover:underline">Auto-fill oldest first</button>
+                                                <span className="text-slate-300">|</span>
+                                                <button type="button" onClick={clearBillAdjustments} className="text-[10px] text-slate-500 hover:underline">Clear all</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Quick-fill buttons */}
                         <div className="flex flex-wrap gap-2">
-                            <button type="button" onClick={() => { setSecurityAllocations({ owner: balanceDue, tenant: 0, adjust: 0 }); clearInvoiceAdjustments(); }}
+                            <button type="button" onClick={() => { setSecurityAllocations({ owner: balanceDue, tenant: 0, adjust: 0, billAdjust: 0 }); clearInvoiceAdjustments(); clearBillAdjustments(); }}
                                 className="text-xs text-indigo-600 hover:underline">Full to Owner</button>
                             {effectiveTenant && (
                                 <>
                                     <span className="text-slate-300">|</span>
-                                    <button type="button" onClick={() => { setSecurityAllocations({ owner: 0, tenant: balanceDue, adjust: 0 }); clearInvoiceAdjustments(); }}
+                                    <button type="button" onClick={() => { setSecurityAllocations({ owner: 0, tenant: balanceDue, adjust: 0, billAdjust: 0 }); clearInvoiceAdjustments(); clearBillAdjustments(); }}
                                         className="text-xs text-emerald-600 hover:underline">Full Refund to Tenant</button>
                                 </>
                             )}
@@ -887,13 +1119,33 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                         });
                                         const adjustedTotal = filled.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
                                         setInvoiceAdjustments(filled);
-                                        setSecurityAllocations({ owner: Math.max(0, balanceDue - adjustedTotal), tenant: 0, adjust: adjustedTotal });
+                                        setSecurityAllocations({ owner: Math.max(0, balanceDue - adjustedTotal), tenant: 0, adjust: adjustedTotal, billAdjust: 0 });
+                                        clearBillAdjustments();
                                     }}
                                         className="text-xs text-amber-600 hover:underline">Adjust Invoices First</button>
                                 </>
                             )}
+                            {effectiveTenant && unpaidTenantPropertyBills.length > 0 && (
+                                <>
+                                    <span className="text-slate-300">|</span>
+                                    <button type="button" onClick={() => {
+                                        let remaining = balanceDue;
+                                        const filled = billAdjustments.map(row => {
+                                            if (remaining <= 0.01) return { ...row, adjustAmount: 0, isSelected: false };
+                                            const apply = Math.min(remaining, row.outstanding);
+                                            remaining -= apply;
+                                            return { ...row, adjustAmount: apply, isSelected: true };
+                                        });
+                                        const billTotal = filled.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
+                                        setBillAdjustments(filled);
+                                        clearInvoiceAdjustments();
+                                        setSecurityAllocations({ owner: Math.max(0, balanceDue - billTotal), tenant: 0, adjust: 0, billAdjust: billTotal });
+                                    }}
+                                        className="text-xs text-violet-600 hover:underline">Adjust Bills First</button>
+                                </>
+                            )}
                             <span className="text-slate-300">|</span>
-                            <button type="button" onClick={() => { setSecurityAllocations({ owner: 0, tenant: 0, adjust: 0 }); clearInvoiceAdjustments(); }}
+                            <button type="button" onClick={() => { setSecurityAllocations({ owner: 0, tenant: 0, adjust: 0, billAdjust: 0 }); clearInvoiceAdjustments(); clearBillAdjustments(); }}
                                 className="text-xs text-slate-500 hover:underline">Clear All</button>
                         </div>
 

@@ -69,7 +69,12 @@ export async function syncPayrollLedgerForEmployee(
       [tenantId, runIds]
     );
     for (const r of runQ.rows) {
-      runsById.set(r.id, { id: r.id, period_end: r.period_end });
+      runsById.set(r.id, {
+        id: r.id,
+        period_end: r.period_end,
+        month: r.month,
+        year: r.year,
+      });
       labelMap.set(r.id, `${r.month} ${r.year}`);
     }
   }
@@ -224,7 +229,7 @@ export async function fetchEmployeeLedgerPage(
   employeeId: string,
   opts: { typeFilter?: string | null; limit: number; offset: number }
 ): Promise<{ total: number; rows: PayrollLedgerRowDb[] }> {
-  const limit = Math.min(Math.max(Number(opts.limit) || 50, 1), 500);
+  const limit = Math.min(Math.max(Number(opts.limit) || 50, 1), 5000);
   const offset = Math.max(Number(opts.offset) || 0, 0);
 
   let filterSql = '';
