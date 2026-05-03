@@ -3228,12 +3228,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }, DEBOUNCE_MS);
         };
 
-        const handleEntity = (payload: { sourceUserId?: string; tenantId?: string }) => {
+        const handleEntity = (payload: {
+            sourceUserId?: string;
+            tenantId?: string;
+            type?: string;
+            action?: 'created' | 'updated' | 'deleted';
+            data?: unknown;
+        }) => {
             if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) {
                 return;
             }
             if (payload?.sourceUserId && auth.user?.id && payload.sourceUserId === auth.user.id) {
                 return;
+            }
+            /* Apply bill/invoice patches immediately so other sessions see paid status without waiting for debounced full refresh (multi-user). */
+            const d = payload?.data;
+            if (
+                payload.action !== 'deleted' &&
+                d &&
+                typeof d === 'object' &&
+                d !== null &&
+                'id' in d &&
+                typeof (d as { id: unknown }).id === 'string'
+            ) {
+                if (payload.type === 'bill') {
+                    baseDispatch({
+                        type: 'UPDATE_BILL',
+                        payload: d as Bill,
+                        _isRemote: true,
+                    } as AppAction);
+                } else if (payload.type === 'invoice') {
+                    baseDispatch({
+                        type: 'UPDATE_INVOICE',
+                        payload: d as Invoice,
+                        _isRemote: true,
+                    } as AppAction);
+                }
             }
             scheduleRefresh();
         };

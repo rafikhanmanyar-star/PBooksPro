@@ -618,27 +618,46 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 }
             }
 
+            /** Liability release: separate lines per bill so the security ledger matches each bill; rent invoices stay one summary line. */
             const securityAppliedTotal = invoiceAdjustTotal + billAdjustTotal;
             if (securityAppliedTotal > 0.01 && effectiveTenant) {
                 const refCat = getPayoutCategory('tenant');
                 if (refCat) {
-                    const invCount = invoiceAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01).length;
-                    const billCount = billAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01).length;
-                    const segs: string[] = [];
-                    if (invCount) segs.push(`${invCount} invoice${invCount === 1 ? '' : 's'}`);
-                    if (billCount) segs.push(`${billCount} bill${billCount === 1 ? '' : 's'}`);
-                    allTxs.push({
-                        type: TransactionType.EXPENSE,
-                        amount: securityAppliedTotal,
-                        date,
-                        description: `Security deposit applied — ${segs.join(', ')}${descSuffix}${propLabel}`,
-                        accountId: payoutAccount.id,
-                        contactId: effectiveTenant.id,
-                        categoryId: refCat.id,
-                        buildingId: propBuildingId || undefined,
-                        propertyId: singleProp?.propertyId,
-                        id: `tx-${baseId}-adj-sd-release`,
-                    });
+                    if (invoiceAdjustTotal > 0.01) {
+                        const invSel = invoiceAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
+                        const invCount = invSel.length;
+                        allTxs.push({
+                            type: TransactionType.EXPENSE,
+                            amount: invoiceAdjustTotal,
+                            date,
+                            description: `Security deposit applied — rent (${invCount} invoice${invCount === 1 ? '' : 's'})${descSuffix}${propLabel}`,
+                            accountId: payoutAccount.id,
+                            contactId: effectiveTenant.id,
+                            categoryId: refCat.id,
+                            buildingId: propBuildingId || undefined,
+                            propertyId: singleProp?.propertyId,
+                            id: `tx-${baseId}-adj-sd-inv`,
+                        });
+                    }
+                    if (billAdjustTotal > 0.01) {
+                        const selectedBillRowsSd = billAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
+                        for (const adj of selectedBillRowsSd) {
+                            const bill = state.bills.find(b => b.id === adj.billId);
+                            if (!bill) continue;
+                            allTxs.push({
+                                type: TransactionType.EXPENSE,
+                                amount: adj.adjustAmount,
+                                date,
+                                description: `Security deposit applied — Bill ${adj.billNumber}${descSuffix}${propLabel}`,
+                                accountId: payoutAccount.id,
+                                contactId: effectiveTenant.id,
+                                categoryId: refCat.id,
+                                buildingId: propBuildingId || undefined,
+                                propertyId: singleProp?.propertyId ?? bill.propertyId,
+                                id: `tx-${baseId}-sd-bill-${bill.id.replace(/[^a-zA-Z0-9]/g, '').slice(-10)}`,
+                            });
+                        }
+                    }
                 }
             }
 
