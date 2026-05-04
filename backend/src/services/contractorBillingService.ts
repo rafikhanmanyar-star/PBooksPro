@@ -4,6 +4,7 @@ import { insertJournalEntry } from './journalService.js';
 import { roundMoney } from '../financial/validation.js';
 import { allocateAdvancesFifo, type AdvanceRemains } from './contractorFifo.js';
 import { getContactById } from './contactsService.js';
+import { getVendorById } from './vendorsService.js';
 
 const MONEY_EPS = 0.005;
 
@@ -107,6 +108,95 @@ export async function assertContactInTenant(client: pg.PoolClient, tenantId: str
   }
 }
 
+/**
+ * contractor_* rows reference contacts(id). Vendor Directory uses vendors(id). Clients may send either id.
+ * If the party exists only as a vendor, create/reactivate a Vendor-type contact row using the same id (bridge row).
+ */
+export async function resolveContractorPartyToContactId(
+  client: pg.PoolClient,
+  tenantId: string,
+  partyIdRaw: string
+): Promise<string> {
+  const partyId = partyIdRaw.trim();
+  if (!partyId) throw new Error('Supplier party id is required.');
+
+  const activeContact = await getContactById(client, tenantId, partyId);
+  if (activeContact) return activeContact.id;
+
+  const vendor = await getVendorById(client, tenantId, partyId);
+  if (!vendor) {
+    throw new Error('Contact not found or inactive.');
+  }
+
+  await client.query(
+    `INSERT INTO contacts (id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at)
+     VALUES ($1, $2, $3, 'Vendor', $4, $5, $6, $7, $8, 1, NULL, NOW(), NOW())
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      partyId,
+      tenantId,
+      vendor.name,
+      vendor.description,
+      vendor.contact_no,
+      vendor.company_name,
+      vendor.address,
+      vendor.user_id,
+    ]
+  );
+
+  const bridged = await getContactById(client, tenantId, partyId);
+  if (bridged) return bridged.id;
+
+  const revived = await client.query<{ id: string }>(
+    `UPDATE contacts SET
+       deleted_at = NULL,
+       name = $3,
+       type = 'Vendor',
+       description = COALESCE($4, description),
+       contact_no = COALESCE($5, contact_no),
+       company_name = COALESCE($6, company_name),
+       address = COALESCE($7, address),
+       user_id = COALESCE($8, user_id),
+       version = version + 1,
+       updated_at = NOW()
+     WHERE id = $1 AND tenant_id = $2
+     RETURNING id`,
+    [
+      partyId,
+      tenantId,
+      vendor.name,
+      vendor.description,
+      vendor.contact_no,
+      vendor.company_name,
+      vendor.address,
+      vendor.user_id,
+    ]
+  );
+  if (revived.rows[0]?.id) return revived.rows[0].id;
+
+  throw new Error('Contact not found or inactive.');
+}
+
+export async function resolvePartyIdFromVendorBill(
+  client: pg.PoolClient,
+  tenantId: string,
+  bill: { contact_id: string | null; vendor_id: string | null }
+): Promise<string | null> {
+  const tried = new Set<string>();
+  for (const raw of [bill.contact_id, bill.vendor_id]) {
+    if (!raw?.trim()) continue;
+    const id = raw.trim();
+    if (tried.has(id)) continue;
+    tried.add(id);
+    try {
+      return await resolveContractorPartyToContactId(client, tenantId, id);
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 export type CreateContractorAdvanceInput = {
   contractorContactId: string;
   advanceDate: string;
@@ -126,7 +216,7 @@ export async function createContractorAdvance(
 ): Promise<ContractorAdvanceRow> {
   const amt = roundMoney(input.amount);
   if (amt <= 0) throw new Error('Advance amount must be positive.');
-  await assertContactInTenant(client, tenantId, input.contractorContactId);
+  const contractorContactId = await resolveContractorPartyToContactId(client, tenantId, input.contractorContactId);
 
   const id = newId();
   const projectId =
@@ -140,7 +230,7 @@ export async function createContractorAdvance(
     [
       id,
       tenantId,
-      input.contractorContactId,
+      contractorContactId,
       input.advanceDate,
       amt,
       amt,
@@ -212,7 +302,7 @@ export async function createContractorBill(
 ): Promise<ContractorBillRow> {
   const amt = roundMoney(input.amount);
   if (amt <= 0) throw new Error('Bill amount must be positive.');
-  await assertContactInTenant(client, tenantId, input.contractorContactId);
+  const contractorContactId = await resolveContractorPartyToContactId(client, tenantId, input.contractorContactId);
   const id = newId();
   const bn =
     input.billNumber != null && String(input.billNumber).trim() !== ''
@@ -230,7 +320,7 @@ export async function createContractorBill(
       [
         id,
         tenantId,
-        input.contractorContactId,
+        contractorContactId,
         bn,
         input.billDate,
         amt,
@@ -456,8 +546,8 @@ export async function getContractorLedger(
   tenantId: string,
   contractorContactId: string
 ): Promise<ContractorLedgerResult> {
-  await assertContactInTenant(client, tenantId, contractorContactId);
-  const advances = await listContractorAdvances(client, tenantId, contractorContactId);
+  const resolvedContactId = await resolveContractorPartyToContactId(client, tenantId, contractorContactId);
+  const advances = await listContractorAdvances(client, tenantId, resolvedContactId);
 
   type AdjQr = ContractorBillAdjustmentRow & {
     bill_number: string | null;
@@ -472,7 +562,7 @@ export async function getContractorLedger(
      INNER JOIN contractor_bills cb ON cb.id = cba.contractor_bill_id AND cb.tenant_id = cba.tenant_id
      WHERE cba.tenant_id = $1 AND cb.contractor_contact_id = $2 AND cb.deleted_at IS NULL
      ORDER BY cba.created_at ASC, cba.id ASC`,
-    [tenantId, contractorContactId]
+    [tenantId, resolvedContactId]
   );
 
   const adjustments: LedgerAdjustmentLine[] = aj.rows.map((row) => ({
@@ -510,7 +600,13 @@ export async function previewFifoAdjustmentsForBill(
   contractorContactId: string,
   billAmount: number
 ): Promise<{ advanceId: string; amount: number }[]> {
-  const rows = await listContractorAdvances(client, tenantId, contractorContactId);
+  let partyKey = contractorContactId.trim();
+  try {
+    partyKey = await resolveContractorPartyToContactId(client, tenantId, contractorContactId);
+  } catch {
+    // unknown party — list will be empty
+  }
+  const rows = await listContractorAdvances(client, tenantId, partyKey);
   const remains: AdvanceRemains[] = rows
     .filter((r) => parseMoney(r.remaining_amount) > MONEY_EPS)
     .map((r) => ({

@@ -3,11 +3,11 @@ import { randomUUID } from 'crypto';
 import { insertJournalEntry } from './journalService.js';
 import { getBillById, recalculateBillPaymentAggregates, type BillRow } from './billsService.js';
 import {
-  assertContactInTenant,
   type AdjustmentInput,
   type ContractorAdvanceRow,
+  resolveContractorPartyToContactId,
+  resolvePartyIdFromVendorBill,
 } from './contractorBillingService.js';
-import { getContactById } from './contactsService.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
 
 const MONEY_EPS = 0.005;
@@ -29,21 +29,16 @@ function newId(): string {
   return randomUUID();
 }
 
-/** Bill contact/vendor id that maps to contacts & contractor_advances rows. */
+/** Bill contact/vendor id that maps to contacts & contractor_advances rows (supports vendors.id bridge). */
 export async function resolveSupplierContactForBill(
   client: pg.PoolClient,
   tenantId: string,
   bill: BillRow
 ): Promise<string | null> {
-  if (bill.contact_id) {
-    const c = await getContactById(client, tenantId, bill.contact_id);
-    if (c && c.deleted_at == null) return bill.contact_id;
-  }
-  if (bill.vendor_id) {
-    const c = await getContactById(client, tenantId, bill.vendor_id);
-    if (c && c.deleted_at == null) return bill.vendor_id;
-  }
-  return null;
+  return resolvePartyIdFromVendorBill(client, tenantId, {
+    contact_id: bill.contact_id,
+    vendor_id: bill.vendor_id,
+  });
 }
 
 export async function settleVendorBillsBatchWithAdvances(
@@ -64,7 +59,7 @@ export async function settleVendorBillsBatchWithAdvances(
 }> {
   const supplier = String(input.supplierContactId ?? '').trim();
   if (!supplier) throw new Error('supplierContactId is required.');
-  await assertContactInTenant(client, tenantId, supplier);
+  const supplierResolved = await resolveContractorPartyToContactId(client, tenantId, supplier);
   const payAcct = String(input.paymentAccountId ?? '').trim();
   if (!payAcct) throw new Error('paymentAccountId is required.');
   if (!input.bills?.length) throw new Error('At least one bill line is required.');
@@ -100,9 +95,9 @@ export async function settleVendorBillsBatchWithAdvances(
     if (!bill) throw new Error(`Bill not found: ${bid}`);
 
     const resolved = await resolveSupplierContactForBill(client, tenantId, bill);
-    if (!resolved || resolved !== supplier) {
+    if (!resolved || resolved !== supplierResolved) {
       throw new Error(
-        `Bill ${bid} must be tied to supplier contact "${supplier}". ` +
+        `Bill ${bid} must be tied to supplier contact "${supplierResolved}". ` +
           'Link the bill to the same vendor/contact record used when recording advances (bill contact/vendor).'
       );
     }
@@ -153,7 +148,7 @@ export async function settleVendorBillsBatchWithAdvances(
       );
       const row = ar.rows[0];
       if (!row) throw new Error(`Advance not found: ${aid}`);
-      if (row.contractor_contact_id !== supplier) {
+      if (row.contractor_contact_id !== supplierResolved) {
         throw new Error(`Advance ${aid} does not belong to this supplier contact.`);
       }
       const need = roundMoney(globalAdvanceUse.get(aid)!);
