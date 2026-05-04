@@ -25,10 +25,23 @@ const EPS = 0.015;
 interface VendorBillPaymentModalProps {
     isOpen: boolean;
     onClose: () => void;
+    /** Called after a successful payment (before `onClose`); omit if you only need to toggle `isOpen` on dismiss. */
+    onPaymentSuccess?: () => void;
     vendor: Vendor;
+    /** Restrict listed unpaid bills (e.g. project bills sidebar); omit for all unpaid vendor bills. */
+    restrictToBillIds?: string[] | null;
+    /** Bills to pre-select when the modal opens (must be in restricted list when `restrictToBillIds` set). */
+    presetSelectedBillIds?: string[] | null;
 }
 
-const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen, onClose, vendor }) => {
+const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
+    isOpen,
+    onClose,
+    onPaymentSuccess,
+    vendor,
+    restrictToBillIds,
+    presetSelectedBillIds,
+}) => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();
@@ -43,14 +56,27 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
     const [expenseGlAccountId, setExpenseGlAccountId] = useState('');
     const [advancesLoaded, setAdvancesLoaded] = useState(false);
 
+    const restrictSet = useMemo(
+        () => (restrictToBillIds?.length ? new Set(restrictToBillIds) : null),
+        [restrictToBillIds]
+    );
+
     const pendingBills = useMemo(() => {
-        return state.bills
+        let bills = state.bills
             .filter((b) => b.vendorId === vendor.id && b.status !== InvoiceStatus.PAID)
             .sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
-    }, [state.bills, vendor.id]);
+        if (restrictSet) {
+            bills = bills.filter((b) => restrictSet.has(b.id));
+        }
+        return bills;
+    }, [state.bills, vendor.id, restrictSet]);
 
     const userSelectableAccounts = useMemo(
-        () => state.accounts.filter((a) => a.type === AccountType.BANK && a.name !== 'Internal Clearing'),
+        () =>
+            state.accounts.filter(
+                (a) =>
+                    (a.type === AccountType.BANK || a.type === AccountType.CASH) && a.name !== 'Internal Clearing'
+            ),
         [state.accounts]
     );
 
@@ -123,8 +149,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
         selectedSorted.length > 0 &&
         !supplierPartiesMixed &&
         advancesLoaded &&
-        supplierAdvances.some((a) => a.remainingAmount > EPS) &&
-        appliedFromAdvances >= EPS;
+        supplierAdvances.some((a) => a.remainingAmount > EPS);
 
     useEffect(() => {
         let cancel = false;
@@ -158,6 +183,24 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
             cancel = true;
         };
     }, [isOpen, supplierPartiesMixed, effectiveSupplierContactId, preloadPartyId]);
+
+    /** Project bills bulk pay passes preset selections; works with or without restrictToBillIds. */
+    useEffect(() => {
+        if (!isOpen || !presetSelectedBillIds?.length) return;
+        const usable = presetSelectedBillIds.filter((id) => {
+            if (restrictSet && !restrictSet.has(id)) return false;
+            return pendingBills.some((b) => b.id === id);
+        });
+        if (usable.length === 0) return;
+        setSelectedBillIds(new Set(usable));
+    }, [isOpen, presetSelectedBillIds, restrictSet, pendingBills]);
+
+    /** When restricted to a bill set and no preset: pre-select all restricted unpaid rows. */
+    useEffect(() => {
+        if (!isOpen || restrictSet === null || (presetSelectedBillIds?.length ?? 0) > 0) return;
+        const allRestricted = pendingBills.filter((b) => restrictSet.has(b.id)).map((b) => b.id);
+        if (allRestricted.length > 0) setSelectedBillIds(new Set(allRestricted));
+    }, [isOpen, restrictSet, presetSelectedBillIds, pendingBills]);
 
     useEffect(() => {
         const selected = pendingBills.filter((b) => selectedBillIds.has(b.id));
@@ -231,21 +274,19 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                 await showAlert('Pick the expense GL account used to recognise this bill (posted on journal).');
                 return;
             }
-            if (
-                numericTotal <= 0 &&
-                cashToPayFromBank > EPS
-            ) {
-                await showAlert('Cash payable from bank is positive but Total Payment Amount is zero. Please refresh allocations.');
-                return;
-            }
+            const cashEntered = Number.isFinite(numericTotal) ? numericTotal : 0;
             if (cashToPayFromBank > EPS && (isNaN(numericTotal) || numericTotal <= 0)) {
-                await showAlert('Enter cash to pay from the bank account (remainder after advances).');
+                await showAlert('Enter cash to pay from the bank/cash account (remainder after advances).');
                 return;
             }
-            if (Math.abs((isNaN(numericTotal) ? 0 : numericTotal) - cashToPayFromBank) > EPS) {
+            if (cashToPayFromBank > EPS && Math.abs(cashEntered - cashToPayFromBank) > EPS) {
                 await showAlert(
-                    `Cash payment must equal the planned bank portion (${CURRENCY} ${cashToPayFromBank.toLocaleString()}). Adjust selections or allocations.`
+                    `Cash payment must equal the planned remainder (${CURRENCY} ${cashToPayFromBank.toLocaleString()}). Adjust selections or allocations.`
                 );
+                return;
+            }
+            if (cashToPayFromBank <= EPS && cashEntered > EPS) {
+                await showAlert('No cash remainder is planned; clear the cash amount field or refresh.');
                 return;
             }
 
@@ -277,6 +318,13 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                 for (const b of res.bills || []) {
                     dispatch({ type: 'UPDATE_BILL', payload: b });
                 }
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(
+                        new CustomEvent<{ vendorId: string }>('pbooks:supplier-advance-recorded', {
+                            detail: { vendorId: vendor.id.trim() },
+                        })
+                    );
+                }
                 showToast(`Settled ${res.bills?.length ?? 0} bill(s) with prepaid advances where applicable.`, 'success');
                 await offerConstructionBillPaymentWhatsApp({
                     state,
@@ -285,6 +333,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                     showAlert,
                     openChat,
                 });
+                onPaymentSuccess?.();
                 onClose();
             } catch (e: unknown) {
                 console.error(e);
@@ -367,6 +416,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                     showAlert,
                     openChat,
                 });
+                onPaymentSuccess?.();
                 onClose();
                 return;
             }
@@ -432,6 +482,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                     showAlert,
                     openChat,
                 });
+                onPaymentSuccess?.();
                 onClose();
             } catch (error: any) {
                 console.error('Error processing vendor bill payment:', error);
@@ -496,7 +547,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                             <p className="font-semibold text-sm">Supplier prepaid advances detected</p>
                             <p>
                                 Outstanding prepaid balance for advances issued to{' '}
-                                <span className="font-mono">{effectiveSupplierContactId.slice(0, 8)}…</span>:
+                                <strong>{vendor.name}</strong>:
                                {' '}
                                 <strong>{CURRENCY} {supplierAdvances.reduce((s, a) => s + Math.max(0, a.remainingAmount), 0).toLocaleString()}</strong>
                                 . Advances are allocated <strong>FIFO</strong> (oldest advances / oldest unpaid bills).
@@ -589,7 +640,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                         <ComboBox
                             id="payment-account"
                             name="payment-account"
-                            label="Bank account (remainder after advances)"
+                            label="Bank / cash account (remainder after advances)"
                             items={userSelectableAccounts}
                             selectedId={accountId}
                             onSelect={(item) => setAccountId(item?.id || '')}

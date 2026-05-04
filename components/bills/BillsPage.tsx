@@ -19,11 +19,13 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { ImportType } from '../../services/importService';
 import BillBulkPaymentModal from './BillBulkPaymentModal';
+import VendorBillPaymentModal from '../vendors/VendorBillPaymentModal';
 import { openDocumentById } from '../../services/documentUploadService';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import RecordSupplierAdvanceModal from '../vendors/RecordSupplierAdvanceModal';
 import { isLocalOnlyMode } from '../../config/apiUrl';
+import { contractorApi, type ContractorLedgerAdvance } from '../../services/api/contractorApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type TypeFilter = 'All' | 'Bills' | 'Payments';
@@ -31,9 +33,10 @@ type SortKey = 'issueDate' | 'entityName' | 'dueDate' | 'amount' | 'status' | 'b
 
 interface TableRow {
     id: string;
-    type: 'bill' | 'payment';
+    type: 'bill' | 'payment' | 'advance';
     bill?: Bill;
     payment?: Transaction;
+    advance?: ContractorLedgerAdvance;
     date: string;
     billNumber?: string;
     vendorName?: string;
@@ -229,7 +232,9 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const [selectedNode, setSelectedNode] = useState<{ id: string; type: 'group' | 'vendor'; parentId?: string } | null>(null);
     const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
     const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
+    const [bulkPayPresetSnapshot, setBulkPayPresetSnapshot] = useState<string[]>([]);
     const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
+    const [vendorSidebarAdvances, setVendorSidebarAdvances] = useState<ContractorLedgerAdvance[]>([]);
 
     // --- State: Modals ---
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -258,6 +263,46 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const contractMap = useMemo(() => new Map(state.contracts.map(c => [c.id, c])), [state.contracts]);
     const billMap = useMemo(() => new Map(state.bills.map(b => [String(b.id), b])), [state.bills]);
     const accountMap = useMemo(() => new Map(state.accounts.map(a => [a.id, a])), [state.accounts]);
+
+    const closeBulkPayModal = useCallback(() => {
+        setIsBulkPayModalOpen(false);
+        setBulkPayPresetSnapshot([]);
+    }, []);
+
+    useEffect(() => {
+        let cancel = false;
+        if (!selectedNode || selectedNode.type !== 'vendor' || isLocalOnlyMode()) {
+            setVendorSidebarAdvances([]);
+            return () => {
+                cancel = true;
+            };
+        }
+        contractorApi
+            .getAdvances(selectedNode.id)
+            .then((rows) => {
+                if (!cancel) setVendorSidebarAdvances(rows ?? []);
+            })
+            .catch(() => {
+                if (!cancel) setVendorSidebarAdvances([]);
+            });
+        return () => {
+            cancel = true;
+        };
+    }, [selectedNode]);
+
+    useEffect(() => {
+        const onRecorded = (ev: Event) => {
+            const d = (ev as CustomEvent<{ vendorId?: string }>).detail;
+            if (!selectedNode || selectedNode.type !== 'vendor' || isLocalOnlyMode()) return;
+            if (d?.vendorId !== selectedNode.id) return;
+            contractorApi
+                .getAdvances(selectedNode.id)
+                .then(setVendorSidebarAdvances)
+                .catch(() => setVendorSidebarAdvances([]));
+        };
+        window.addEventListener('pbooks:supplier-advance-recorded', onRecorded as EventListener);
+        return () => window.removeEventListener('pbooks:supplier-advance-recorded', onRecorded as EventListener);
+    }, [selectedNode]);
 
     // --- Date Range Logic ---
     const handleRangeChange = (option: DateRangeOption) => {
@@ -495,6 +540,36 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             }
         }
 
+        // Supplier prepaid advances (PostgreSQL API): show in vendor drill-down; not stored as table rows.
+        if (
+            !isLocalOnlyMode() &&
+            selectedNode?.type === 'vendor' &&
+            vendorSidebarAdvances.length > 0 &&
+            (typeFilter === 'All' || typeFilter === 'Payments')
+        ) {
+            const parentGroupId = selectedNode.parentId ?? 'unassigned';
+            const vend = vendorMap.get(selectedNode.id);
+            const vendorLabel = vend?.name || 'Unknown';
+            for (const adv of vendorSidebarAdvances) {
+                if ((adv.remainingAmount ?? 0) <= 0.015) continue;
+                if (parentGroupId !== 'unassigned') {
+                    if (adv.projectId && adv.projectId !== parentGroupId) continue;
+                }
+                result.push({
+                    id: `advance-${adv.id}`,
+                    type: 'advance',
+                    advance: adv,
+                    date: adv.advanceDate,
+                    billNumber: `ADV-${adv.id.slice(0, 8)}`,
+                    vendorName: vendorLabel,
+                    projectName: adv.projectId ? projectMap.get(adv.projectId)?.name ?? '—' : 'General',
+                    amount: adv.originalAmount,
+                    status: 'Prepaid',
+                    balance: adv.remainingAmount,
+                });
+            }
+        }
+
         // 2. Date Range Filter (Project filter is now applied at baseBills level)
         if (startDate && endDate) {
             const start = new Date(startDate);
@@ -516,7 +591,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 row.vendorName?.toLowerCase().includes(q) ||
                 row.projectName?.toLowerCase().includes(q) ||
                 (row.bill?.description && row.bill.description.toLowerCase().includes(q)) ||
-                (row.payment?.description && row.payment.description.toLowerCase().includes(q))
+                (row.payment?.description && row.payment.description.toLowerCase().includes(q)) ||
+                ((row.advance?.description || '').toLowerCase().includes(q))
             );
         }
 
@@ -559,7 +635,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             return 0;
         });
 
-    }, [tableRows, selectedNode, startDate, endDate, searchQuery, sortConfig, billMap]);
+    }, [tableRows, selectedNode, startDate, endDate, searchQuery, sortConfig, billMap, vendorSidebarAdvances, typeFilter, projectMap, vendorMap]);
 
     // --- Sidebar Resize: container-relative width to prevent jumping ---
     const handleMouseMoveSidebar = useCallback((e: MouseEvent) => {
@@ -663,12 +739,55 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
     const handleBulkPaymentComplete = () => {
         setSelectedBillIds(new Set());
-        setIsBulkPayModalOpen(false);
+        closeBulkPayModal();
     };
 
     const selectedBillsList = useMemo(() =>
         state.bills.filter(b => selectedBillIds.has(b.id)),
         [state.bills, selectedBillIds]);
+
+    const bulkPayVendor = useMemo(() => {
+        if (selectedBillsList.length === 0) return undefined;
+        const vids = new Set(
+            selectedBillsList.map((b) => b.vendorId).filter(Boolean) as string[]
+        );
+        if (vids.size !== 1) return undefined;
+        return vendorMap.get([...vids][0]);
+    }, [selectedBillsList, vendorMap]);
+
+    const useVendorAdvancePayModal =
+        !isLocalOnlyMode() && !!bulkPayVendor && selectedBillsList.length > 0;
+
+    const restrictToBillIdsForVendorPay = useMemo((): string[] | null => {
+        if (!bulkPayVendor) return null;
+        const vid = bulkPayVendor.id;
+        let pool = baseBills.filter((b) => b.vendorId === vid && b.status !== InvoiceStatus.PAID);
+
+        if (selectedNode?.type === 'vendor' && selectedNode.id === vid) {
+            const parentId = selectedNode.parentId ?? 'unassigned';
+            pool = pool.filter((b) => {
+                if (parentId === 'unassigned') return !b.projectId;
+                return b.projectId === parentId;
+            });
+            return pool.map((b) => b.id);
+        }
+
+        if (selectedNode?.type === 'group') {
+            if (selectedNode.id === 'unassigned') {
+                pool = pool.filter((b) => !b.projectId);
+            } else {
+                pool = pool.filter((b) => b.projectId === selectedNode.id);
+            }
+            return pool.map((b) => b.id);
+        }
+
+        if (projectFilter !== 'all') {
+            pool = pool.filter((b) => b.projectId === projectFilter);
+            return pool.map((b) => b.id);
+        }
+
+        return null;
+    }, [bulkPayVendor, baseBills, selectedNode, projectFilter]);
 
     /** New bill prefill from project filter + tree (Project Construction): project, vendor, and today when both are known. */
     const newBillContextPrefill = useMemo((): Partial<Bill> | undefined => {
@@ -872,7 +991,10 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     />
                     {selectedBillIds.size > 0 && (
                         <Button
-                            onClick={() => setIsBulkPayModalOpen(true)}
+                            onClick={() => {
+                                setBulkPayPresetSnapshot(Array.from(selectedBillIds));
+                                setIsBulkPayModalOpen(true);
+                            }}
                             className="animate-fade-in !py-1 !px-3 !text-xs !bg-emerald-600 hover:!bg-emerald-700 !text-white !rounded-lg !shadow-sm whitespace-nowrap"
                         >
                             Record Payment ({selectedBillIds.size})
@@ -1097,6 +1219,44 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                 <td className="px-3 py-2.5"></td>
                                             </tr>
                                         );
+                                    } else if (row.type === 'advance' && row.advance) {
+                                        const adv = row.advance;
+                                        return (
+                                            <tr
+                                                key={row.id}
+                                                className={`transition-colors ${index % 2 === 0 ? 'bg-amber-50/40' : 'bg-amber-50/60'} hover:bg-amber-50/90`}
+                                            >
+                                                <td className="px-3 py-2.5 text-center"></td>
+                                                <td className="px-3 py-2.5">
+                                                    <span className="inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight bg-amber-100 text-amber-900 border border-amber-200">
+                                                        Advance
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{formatDate(row.date)}</td>
+                                                <td className="px-3 py-2.5">
+                                                    <div className="font-mono text-[10px] font-medium text-amber-800 bg-amber-100/80 px-1.5 py-0.5 rounded-md border border-amber-200 inline-block">
+                                                        {row.billNumber}
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-slate-700">{row.projectName}</td>
+                                                <td className="px-3 py-2.5 text-slate-700">{row.vendorName}</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-slate-700 tabular-nums">
+                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
+                                                </td>
+                                                <td className="px-3 py-2.5 text-center">
+                                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
+                                                        Prepaid
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-right font-bold tabular-nums text-amber-900">
+                                                    {CURRENCY} {(adv.remainingAmount ?? 0).toLocaleString()}
+                                                    <span className="block text-[9px] font-normal text-amber-700/90 normal-case tracking-normal">
+                                                        remaining
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2.5"></td>
+                                            </tr>
+                                        );
                                     }
                                     return null;
                                 }) : (
@@ -1142,6 +1302,19 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                     {CURRENCY} {filteredRows.filter(r => r.type === 'payment').reduce((sum, r) => sum + (r.amount || 0), 0).toLocaleString()}
                                 </span>
                             </div>
+                            {filteredRows.some((r) => r.type === 'advance') && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-slate-400">Prepaid:</span>
+                                    <span className="text-amber-800 text-xs tabular-nums">
+                                        {CURRENCY}{' '}
+                                        {filteredRows
+                                            .filter((r) => r.type === 'advance')
+                                            .reduce((sum, r) => sum + (r.balance || 0), 0)
+                                            .toLocaleString()}{' '}
+                                        <span className="font-normal text-slate-500 lowercase">remaining</span>
+                                    </span>
+                                </div>
+                            )}
                         </div>
                         <div className="flex items-center gap-2">
                             <span>Outstanding Balance:</span>
@@ -1210,11 +1383,22 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             />
 
             <BillBulkPaymentModal
-                isOpen={isBulkPayModalOpen}
-                onClose={() => { setIsBulkPayModalOpen(false); }}
+                isOpen={isBulkPayModalOpen && !useVendorAdvancePayModal}
+                onClose={closeBulkPayModal}
                 selectedBills={selectedBillsList}
                 onPaymentComplete={handleBulkPaymentComplete}
             />
+
+            {bulkPayVendor && (
+                <VendorBillPaymentModal
+                    isOpen={isBulkPayModalOpen && useVendorAdvancePayModal}
+                    onClose={closeBulkPayModal}
+                    onPaymentSuccess={() => setSelectedBillIds(new Set())}
+                    vendor={bulkPayVendor}
+                    restrictToBillIds={restrictToBillIdsForVendorPay ?? undefined}
+                    presetSelectedBillIds={bulkPayPresetSnapshot.length ? bulkPayPresetSnapshot : undefined}
+                />
+            )}
 
             {sidebarVendorForAdvance && (
                 <RecordSupplierAdvanceModal
