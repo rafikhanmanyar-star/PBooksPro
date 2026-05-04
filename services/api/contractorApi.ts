@@ -59,6 +59,34 @@ export type ContractorLedgerPayload = {
   };
 };
 
+export type CreateSupplierAdvancePayload = {
+  contractorContactId: string;
+  advanceDate: string;
+  amount: number;
+  cashAccountId: string;
+  advanceAssetAccountId: string;
+  projectId?: string | null;
+  description?: string | null;
+  reference?: string | null;
+};
+
+/** API row returned from POST /contractor/advance (see rowAdvanceToApi). */
+export type SupplierAdvanceCreated = {
+  id: string;
+  contractorContactId: string;
+  advanceDate: string;
+  originalAmount: number;
+  remainingAmount: number;
+  cashAccountId: string;
+  advanceAssetAccountId: string;
+  advanceJournalEntryId?: string;
+  projectId?: string;
+  description?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export const contractorApi = {
   async getContractorLedger(contactId: string): Promise<ContractorLedgerPayload | null> {
     if (isLocalOnlyMode()) return null;
@@ -85,10 +113,18 @@ export const contractorApi = {
   /**
    * Settle unpaid vendor/service bills via prepaid advances (journal) + remaining bank leg.
    */
-  async settleBillsWithAdvances(body: VendorBillSettleRequestPayload): Promise<VendorBillSettleResponsePayload> {
+  async settleBillsWithAdvances(body: VendorBillSetRequestPayload): Promise<VendorBillSettleResponsePayload> {
     if (isLocalOnlyMode()) {
       throw new Error('Advance settlement is only available when using the PostgreSQL API.');
     }
     return apiClient.post<VendorBillSettleResponsePayload>('/bills/settle-with-advances', body);
+  },
+
+  /** Record prepaid funds to a supplier (journal: Dr advance asset, Cr bank/cash). */
+  async createSupplierAdvance(body: CreateSupplierAdvancePayload): Promise<SupplierAdvanceCreated> {
+    if (isLocalOnlyMode()) {
+      throw new Error('Supplier advances require the PostgreSQL API.');
+    }
+    return apiClient.post<SupplierAdvanceCreated>('/contractor/advance', body);
   },
 };

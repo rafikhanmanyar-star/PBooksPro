@@ -752,6 +752,8 @@ export interface InvoiceSettings {
   padding: number;
   /** When true, newly created rental invoices are sent via WhatsApp automatically (default: false) */
   autoSendInvoiceWhatsApp?: boolean;
+  /** When true, after recording a project/construction bill payment, offer to notify vendor/contact on WhatsApp */
+  autoSendBillPaymentWhatsApp?: boolean;
 }
 
 /** Print template configuration from Settings - used by PrintLayout and form templates */

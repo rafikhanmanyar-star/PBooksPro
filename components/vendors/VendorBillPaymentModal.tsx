@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Vendor, Transaction, TransactionType, InvoiceStatus, AccountType } from '../../types';
+import { Vendor, Transaction, TransactionType, InvoiceStatus, AccountType, Bill } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -14,6 +14,11 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import { ContractorLedgerAdvance, contractorApi } from '../../services/api/contractorApi';
 import { allocateFifoAcrossVendorBills, type BillAllocationPlan } from '../../utils/vendorAdvanceAllocation';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { useWhatsApp } from '../../context/WhatsAppContext';
+import {
+    computeBillAfterPayment,
+    offerConstructionBillPaymentWhatsApp,
+} from '../../utils/constructionBillPaymentWhatsApp';
 
 const EPS = 0.015;
 
@@ -25,7 +30,8 @@ interface VendorBillPaymentModalProps {
 
 const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen, onClose, vendor }) => {
     const { state, dispatch } = useAppContext();
-    const { showToast, showAlert } = useNotification();
+    const { showToast, showAlert, showConfirm } = useNotification();
+    const { openChat } = useWhatsApp();
 
     const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
     const [totalAmount, setTotalAmount] = useState('');
@@ -98,7 +104,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
             issueDate: b.issueDate,
             dueAmount: Math.round((b.amount - b.paidAmount) * 100) / 100,
         }));
-        return allocateFifoAcrossVendorBills(adRows, dueRows);
+        return allocateFifoAcrossVendorBills(advRows, dueRows);
     }, [selectedSorted, supplierAdvances, supplierPartiesMixed]);
 
     let appliedFromAdvances = 0;
@@ -272,6 +278,13 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                     dispatch({ type: 'UPDATE_BILL', payload: b });
                 }
                 showToast(`Settled ${res.bills?.length ?? 0} bill(s) with prepaid advances where applicable.`, 'success');
+                await offerConstructionBillPaymentWhatsApp({
+                    state,
+                    updatedBills: (res.bills || []) as Bill[],
+                    showConfirm,
+                    showAlert,
+                    openChat,
+                });
                 onClose();
             } catch (e: unknown) {
                 console.error(e);
@@ -332,9 +345,28 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
         }
 
         if (transactions.length > 0) {
+            const billPayTotals = new Map<string, number>();
+            for (const tx of transactions) {
+                if (tx.billId) {
+                    billPayTotals.set(tx.billId, (billPayTotals.get(tx.billId) || 0) + tx.amount);
+                }
+            }
+            const updatedBillsForWhatsApp: Bill[] = [];
+            for (const [billId, amt] of billPayTotals) {
+                const b = state.bills.find((x) => x.id === billId);
+                if (b) updatedBillsForWhatsApp.push(computeBillAfterPayment(b, amt));
+            }
+
             if (isLocalOnlyMode()) {
                 dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
                 showToast(`Payment recorded for ${transactions.length} bills.`, 'success');
+                await offerConstructionBillPaymentWhatsApp({
+                    state,
+                    updatedBills: updatedBillsForWhatsApp,
+                    showConfirm,
+                    showAlert,
+                    openChat,
+                });
                 onClose();
                 return;
             }
@@ -391,6 +423,15 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                 } else {
                     showToast(`Payment recorded for ${savedTransactions.length} bills.`, 'success');
                 }
+                const okIds = new Set(savedTransactions.map((t) => t.billId).filter(Boolean) as string[]);
+                const updatedApi = updatedBillsForWhatsApp.filter((b) => okIds.has(b.id));
+                await offerConstructionBillPaymentWhatsApp({
+                    state,
+                    updatedBills: updatedApi,
+                    showConfirm,
+                    showAlert,
+                    openChat,
+                });
                 onClose();
             } catch (error: any) {
                 console.error('Error processing vendor bill payment:', error);

@@ -22,6 +22,8 @@ import BillBulkPaymentModal from './BillBulkPaymentModal';
 import { openDocumentById } from '../../services/documentUploadService';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
+import RecordSupplierAdvanceModal from '../vendors/RecordSupplierAdvanceModal';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type TypeFilter = 'All' | 'Bills' | 'Payments';
@@ -227,6 +229,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const [selectedNode, setSelectedNode] = useState<{ id: string; type: 'group' | 'vendor'; parentId?: string } | null>(null);
     const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
     const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
+    const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
 
     // --- State: Modals ---
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -693,6 +696,19 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         return prefill;
     }, [projectContext, billToEdit, duplicateBillData, selectedNode, projectFilter]);
 
+    const sidebarVendorForAdvance = useMemo(() => {
+        if (!projectContext || selectedNode?.type !== 'vendor') return undefined;
+        return vendorMap.get(selectedNode.id);
+    }, [projectContext, selectedNode, vendorMap]);
+
+    /** Project context for prepaid advance when a vendor folder is selected (parent project) or project filter applies. */
+    const advancePrefillProjectId = useMemo(() => {
+        if (!projectContext || selectedNode?.type !== 'vendor') return undefined;
+        if (selectedNode.parentId && selectedNode.parentId !== 'unassigned') return selectedNode.parentId;
+        if (projectFilter !== 'all') return projectFilter;
+        return undefined;
+    }, [projectContext, selectedNode, projectFilter]);
+
     const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
         e.stopPropagation();
         const vendorId = bill.vendorId;
@@ -750,6 +766,24 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     >
                         <div className="w-4 h-4 mr-2 opacity-70">{ICONS.download}</div> Bulk Import
                     </Button>
+                    {projectContext && (
+                        <Button
+                            variant="secondary"
+                            disabled={!sidebarVendorForAdvance || isLocalOnlyMode()}
+                            title={
+                                isLocalOnlyMode()
+                                    ? 'Supplier advances require the PostgreSQL API.'
+                                    : sidebarVendorForAdvance
+                                      ? `Record prepaid advance to ${sidebarVendorForAdvance.name}`
+                                      : 'Select a vendor under Directories to record an advance.'
+                            }
+                            onClick={() => setIsAdvanceModalOpen(true)}
+                            className="!px-4 !py-2 !rounded-xl !text-sm !border-amber-200 hover:!border-amber-300 !bg-amber-50 hover:!bg-amber-100 !text-amber-900 disabled:opacity-50"
+                        >
+                            <div className="w-4 h-4 mr-2">{ICONS.wallet}</div>
+                            Supplier advance
+                        </Button>
+                    )}
                     <Button
                         onClick={() => { setDuplicateBillData(null); setBillToEdit(null); setIsCreateModalOpen(true); }}
                         className="!px-4 !py-2 !rounded-xl !text-sm !bg-indigo-600 hover:!bg-indigo-700 !text-white transition-all shadow-md shadow-indigo-500/20"
@@ -1181,6 +1215,15 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 selectedBills={selectedBillsList}
                 onPaymentComplete={handleBulkPaymentComplete}
             />
+
+            {sidebarVendorForAdvance && (
+                <RecordSupplierAdvanceModal
+                    isOpen={isAdvanceModalOpen}
+                    onClose={() => setIsAdvanceModalOpen(false)}
+                    vendor={sidebarVendorForAdvance}
+                    defaultProjectId={advancePrefillProjectId}
+                />
+            )}
         </div>
     );
 };

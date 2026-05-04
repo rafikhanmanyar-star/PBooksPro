@@ -1,11 +1,13 @@
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType } from '../../types';
-import { ICONS } from '../../constants';
+import { ICONS, CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { exportJsonToExcel } from '../../services/exportService';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { contractorApi } from '../../services/api/contractorApi';
 
 interface VendorLedgerProps {
     vendorId: string | null;
@@ -14,10 +16,80 @@ interface VendorLedgerProps {
 
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
+type LedgerRowType = 'bill' | 'transaction' | 'batch_payment' | 'supplier_advance';
+
+interface LedgerChild {
+    id: string;
+    originalId: string;
+    type: 'transaction';
+    date: string;
+    particulars: string;
+    debit: number;
+    credit: number;
+    projectLabel?: string;
+}
+
+interface LedgerItem {
+    id: string;
+    originalId?: string;
+    type: LedgerRowType;
+    date: string;
+    particulars: string;
+    debit: number;
+    credit: number;
+    balance?: number;
+    projectLabel?: string;
+    children: LedgerChild[];
+}
+
+const ADVANCE_REFRESH = 'pbooks:supplier-advance-recorded';
+
 const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) => {
     const { state } = useAppContext();
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
+        key: 'date',
+        direction: 'desc',
+    });
+    const [supplierAdvances, setSupplierAdvances] = useState<Awaited<ReturnType<typeof contractorApi.getAdvances>>>(
+        []
+    );
+
+    useEffect(() => {
+        let cancel = false;
+        if (!vendorId || isLocalOnlyMode()) {
+            setSupplierAdvances([]);
+            return () => {
+                cancel = true;
+            };
+        }
+        contractorApi
+            .getAdvances(vendorId)
+            .then((rows) => {
+                if (!cancel) setSupplierAdvances(rows ?? []);
+            })
+            .catch(() => {
+                if (!cancel) setSupplierAdvances([]);
+            });
+        return () => {
+            cancel = true;
+        };
+    }, [vendorId]);
+
+    useEffect(() => {
+        const onRecorded = (ev: Event) => {
+            const d = (ev as CustomEvent<{ vendorId?: string }>).detail;
+            if (d?.vendorId !== vendorId || !vendorId || isLocalOnlyMode()) return;
+            contractorApi
+                .getAdvances(vendorId)
+                .then(setSupplierAdvances)
+                .catch(() => setSupplierAdvances([]));
+        };
+        window.addEventListener(ADVANCE_REFRESH, onRecorded as EventListener);
+        return () => window.removeEventListener(ADVANCE_REFRESH, onRecorded as EventListener);
+    }, [vendorId]);
+
+    const projectNameById = useMemo(() => new Map(state.projects.map((p) => [p.id, p.name || p.id])), [state.projects]);
 
     const toggleExpand = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -28,33 +100,37 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
     };
 
     const handleSort = (key: SortKey) => {
-        setSortConfig(current => ({
+        setSortConfig((current) => ({
             key,
-            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
         }));
     };
 
-    const ledgerItems = useMemo(() => {
+    const ledgerItems: LedgerItem[] = useMemo(() => {
         if (!vendorId) return [];
 
-        const bills = state.bills
-            .filter(b => b.vendorId === vendorId || (!b.vendorId && b.contactId === vendorId))
-            .map(b => ({
+        const bills: LedgerItem[] = state.bills
+            .filter((b) => b.vendorId === vendorId || (!b.vendorId && b.contactId === vendorId))
+            .map((b) => ({
                 id: `bill-${b.id}`,
                 originalId: b.id,
                 type: 'bill' as const,
                 date: b.issueDate,
                 particulars: `Bill #${b.billNumber}`,
                 debit: 0,
-                credit: b.amount, // Bill is a credit (liability increases)
-                children: [] as any[]
+                credit: b.amount,
+                projectLabel: b.projectId ? projectNameById.get(b.projectId) ?? '' : '',
+                children: [],
             }));
 
-        const allPayments = state.transactions.filter(t => (t.vendorId === vendorId || (!t.vendorId && t.contactId === vendorId)) && t.type === TransactionType.EXPENSE);
-        const paymentMap = new Map<string, any>();
-        const individualPayments: any[] = [];
+        const allPayments = state.transactions.filter(
+            (t) => (t.vendorId === vendorId || (!t.vendorId && t.contactId === vendorId)) && t.type === TransactionType.EXPENSE
+        );
+        const paymentMap = new Map<string, Omit<LedgerItem, 'balance'>>();
+        const individualPayments: LedgerItem[] = [];
 
-        allPayments.forEach(tx => {
+        allPayments.forEach((tx) => {
+            const pl = tx.projectId ? projectNameById.get(tx.projectId) ?? '' : '';
             if (tx.batchId) {
                 if (!paymentMap.has(tx.batchId)) {
                     paymentMap.set(tx.batchId, {
@@ -64,19 +140,21 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                         debit: 0,
                         credit: 0,
                         type: 'batch_payment',
-                        children: []
+                        projectLabel: '',
+                        children: [],
                     });
                 }
-                const batch = paymentMap.get(tx.batchId);
-                batch.debit += tx.amount; // Payment is a debit (liability decreases)
+                const batch = paymentMap.get(tx.batchId)!;
+                batch.debit += tx.amount;
                 batch.children.push({
                     id: `txn-${tx.id}`,
                     originalId: tx.id,
                     type: 'transaction',
                     date: tx.date,
-                    particulars: tx.description,
+                    particulars: tx.description || 'Payment',
                     debit: tx.amount,
-                    credit: 0
+                    credit: 0,
+                    projectLabel: pl,
                 });
             } else {
                 individualPayments.push({
@@ -87,27 +165,50 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                     particulars: tx.description || 'Payment',
                     debit: tx.amount,
                     credit: 0,
-                    children: []
+                    projectLabel: pl,
+                    children: [],
                 });
             }
         });
 
-        const batchedPayments = Array.from(paymentMap.values()).map(b => ({
-            ...b,
-            particulars: `Bulk Payment (${b.children.length} items)`
-        }));
+        const batchedPayments: LedgerItem[] = Array.from(paymentMap.values()).map((b) => {
+            const firstProj = b.children.find((c) => c.projectLabel)?.projectLabel ?? '';
+            return {
+                ...b,
+                particulars: `Bulk Payment (${b.children.length} items)`,
+                projectLabel: firstProj || '',
+            };
+        });
 
-        const combined = [...bills, ...individualPayments, ...batchedPayments].sort((a, b) => {
-            // Base Sort
-            let valA: any = a[sortConfig.key];
-            let valB: any = b[sortConfig.key];
+        const advanceRows: LedgerItem[] = (supplierAdvances ?? []).map((a) => {
+            let particulars = 'Supplier advance (prepaid)';
+            if (a.description?.trim()) particulars += ` — ${a.description.trim()}`;
+            if (Math.abs((a.remainingAmount ?? 0) - (a.originalAmount ?? 0)) > 0.005) {
+                particulars += ` · Open prepaid: ${CURRENCY} ${Number(a.remainingAmount).toLocaleString()}`;
+            }
+            return {
+                id: `advance-${a.id}`,
+                originalId: a.id,
+                type: 'supplier_advance' as const,
+                date: a.advanceDate,
+                particulars,
+                debit: a.originalAmount,
+                credit: 0,
+                projectLabel: a.projectId ? projectNameById.get(a.projectId) ?? '' : '',
+                children: [],
+            };
+        });
 
-            if (sortConfig.key === 'date') {
-                valA = new Date(valA).getTime();
-                valB = new Date(valB).getTime();
+        const combined = [...bills, ...individualPayments, ...batchedPayments, ...advanceRows].sort((a, b) => {
+            let valA: string | number = a[sortConfig.key === 'balance' ? 'date' : sortConfig.key] as never;
+            let valB: string | number = b[sortConfig.key === 'balance' ? 'date' : sortConfig.key] as never;
+
+            if (sortConfig.key === 'date' || sortConfig.key === 'balance') {
+                valA = new Date(a.date).getTime();
+                valB = new Date(b.date).getTime();
             } else if (typeof valA === 'string') {
                 valA = valA.toLowerCase();
-                valB = valB.toLowerCase();
+                valB = String(valB).toLowerCase();
             }
 
             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -116,16 +217,14 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         });
 
         let runningBalance = 0;
-        return combined.map(item => {
-            // In vendor ledger: Credit (Bill) increases balance (payable), Debit (Payment) decreases balance
+        return combined.map((item) => {
             runningBalance += item.credit - item.debit;
             return { ...item, balance: runningBalance };
         });
-
-    }, [vendorId, state.bills, state.transactions, sortConfig]);
+    }, [vendorId, state.bills, state.transactions, sortConfig, supplierAdvances, projectNameById]);
 
     const expandableBatchIds = useMemo(
-        () => ledgerItems.filter((item: { children?: unknown[] }) => (item.children?.length ?? 0) > 0).map((item: { id: string }) => item.id),
+        () => ledgerItems.filter((item) => (item.children?.length ?? 0) > 0).map((item) => item.id),
         [ledgerItems]
     );
 
@@ -139,13 +238,22 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
 
     const handleExport = () => {
         if (!vendorId) return;
-        const vendor = state.vendors?.find(v => v.id === vendorId);
-        const data = ledgerItems.map(item => ({
+        const vendor = state.vendors?.find((v) => v.id === vendorId);
+        const data = ledgerItems.map((item) => ({
             Date: formatDate(item.date),
             Particulars: item.particulars,
+            Project: item.projectLabel || '',
+            Type:
+                item.type === 'supplier_advance'
+                    ? 'Advance'
+                    : item.type === 'bill'
+                      ? 'Bill'
+                      : item.type === 'batch_payment'
+                        ? 'Bulk pay'
+                        : 'Payment',
             'Bill Amount (Credit)': item.credit,
-            'Payment (Debit)': item.debit,
-            Balance: item.balance
+            'Payment / advance (Debit)': item.debit,
+            Balance: item.balance,
         }));
         exportJsonToExcel(data, `vendor_ledger_${vendor?.name || 'export'}.xlsx`, 'Ledger');
     };
@@ -156,10 +264,29 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         </span>
     );
 
+    const handleRowClick = (e: React.MouseEvent, item: LedgerItem) => {
+        const hasChildren = item.children && item.children.length > 0;
+        if (hasChildren) {
+            toggleExpand(e, item.id);
+            return;
+        }
+        if (item.type === 'supplier_advance') return;
+        if ((item.type === 'bill' || item.type === 'transaction') && item.originalId) {
+            onItemClick(item.originalId, item.type);
+        }
+    };
+
     if (!vendorId) return null;
 
     return (
         <div className="flex flex-col h-full min-h-0">
+            {!isLocalOnlyMode() && supplierAdvances.length > 0 && (
+                <p className="text-[11px] text-amber-800 bg-amber-50/90 border border-amber-100 rounded-md px-2 py-1.5 mb-2 shrink-0">
+                    Prepaid advances from the API appear as debits below; project tagging matches how each advance was
+                    recorded. Bill settlement via advances updates open balances without always duplicating legacy payment
+                    lines here.
+                </p>
+            )}
             {ledgerItems.length === 0 ? (
                 <p className="text-gray-500 text-center mt-8">No transactions or bills for this vendor.</p>
             ) : (
@@ -169,11 +296,47 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                             <table className="min-w-full divide-y divide-gray-200">
                                 <thead className="bg-slate-50 sticky top-0 z-10">
                                     <tr>
-                                        <th onClick={() => handleSort('date')} scope="col" className="py-2 pl-2 pr-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
-                                        <th onClick={() => handleSort('particulars')} scope="col" className="px-2 py-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none">Particulars <SortIcon column="particulars" /></th>
-                                        <th onClick={() => handleSort('credit')} scope="col" className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bills (Cr) <SortIcon column="credit" /></th>
-                                        <th onClick={() => handleSort('debit')} scope="col" className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Payments (Dr) <SortIcon column="debit" /></th>
-                                        <th scope="col" className="py-2 pl-2 pr-1 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap" onClick={() => handleSort('balance')}>Balance <SortIcon column="balance" /></th>
+                                        <th
+                                            onClick={() => handleSort('date')}
+                                            scope="col"
+                                            className="py-2 pl-2 pr-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                        >
+                                            Date <SortIcon column="date" />
+                                        </th>
+                                        <th
+                                            onClick={() => handleSort('particulars')}
+                                            scope="col"
+                                            className="px-2 py-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none"
+                                        >
+                                            Particulars <SortIcon column="particulars" />
+                                        </th>
+                                        <th
+                                            scope="col"
+                                            className="px-2 py-2 text-left text-xs font-semibold text-slate-600 select-none max-w-[8rem]"
+                                        >
+                                            Project
+                                        </th>
+                                        <th
+                                            onClick={() => handleSort('credit')}
+                                            scope="col"
+                                            className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                        >
+                                            Bills (Cr) <SortIcon column="credit" />
+                                        </th>
+                                        <th
+                                            onClick={() => handleSort('debit')}
+                                            scope="col"
+                                            className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                        >
+                                            Pay / Adv (Dr) <SortIcon column="debit" />
+                                        </th>
+                                        <th
+                                            scope="col"
+                                            className="py-2 pl-2 pr-1 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                            onClick={() => handleSort('balance')}
+                                        >
+                                            Balance <SortIcon column="balance" />
+                                        </th>
                                         <th scope="col" className="py-2 pl-1 pr-2">
                                             <div className="flex items-center justify-end gap-1">
                                                 <TreeExpandCollapseControls
@@ -200,45 +363,101 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                     {ledgerItems.map((item) => {
                                         const hasChildren = item.children && item.children.length > 0;
                                         const isExpanded = expandedIds.has(item.id);
+                                        const cursorClass =
+                                            item.type === 'supplier_advance'
+                                                ? 'cursor-default'
+                                                : hasChildren || item.type === 'bill' || item.type === 'transaction'
+                                                  ? 'cursor-pointer'
+                                                  : 'cursor-pointer';
 
                                         return (
                                             <React.Fragment key={item.id}>
                                                 <tr
-                                                    className={`hover:bg-slate-50 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}
-                                                    onClick={() => hasChildren ? toggleExpand({ stopPropagation: () => { } } as any, item.id) : onItemClick(item.originalId, item.type)}
+                                                    className={`hover:bg-slate-50 transition-colors ${cursorClass} ${
+                                                        item.type === 'supplier_advance' ? 'bg-amber-50/50' : ''
+                                                    } ${isExpanded ? 'bg-slate-50' : ''}`}
+                                                    onClick={(e) => handleRowClick(e, item)}
                                                 >
                                                     <td className="whitespace-nowrap py-2 pl-2 pr-2 text-xs text-slate-700 flex items-center gap-1.5">
                                                         {hasChildren && (
-                                                            <button onClick={(e) => toggleExpand(e, item.id)} className="text-slate-400 hover:text-slate-600 focus:outline-none">
-                                                                <div className={`w-3.5 h-3.5 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => toggleExpand(e, item.id)}
+                                                                className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                                                            >
+                                                                <div
+                                                                    className={`w-3.5 h-3.5 transform transition-transform ${
+                                                                        isExpanded ? 'rotate-90' : ''
+                                                                    }`}
+                                                                >
                                                                     {ICONS.chevronRight}
                                                                 </div>
                                                             </button>
                                                         )}
-                                                        <span className={!hasChildren ? 'pl-5' : ''}>{formatDate(item.date)}</span>
+                                                        <span className={!hasChildren ? 'pl-5' : ''}>
+                                                            {formatDate(item.date)}
+                                                        </span>
                                                     </td>
-                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-slate-600 max-w-xs truncate" title={item.particulars}>
+                                                    <td
+                                                        className="whitespace-nowrap px-2 py-2 text-xs text-slate-600 max-w-xs truncate"
+                                                        title={item.particulars}
+                                                    >
                                                         {item.particulars}
                                                     </td>
-                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-right text-slate-600">{item.credit > 0 ? (item.credit || 0).toLocaleString() : '-'}</td>
-                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-right text-slate-600">{item.debit > 0 ? (item.debit || 0).toLocaleString() : '-'}</td>
-                                                    <td className={`whitespace-nowrap py-2 pl-2 pr-1 text-right text-xs font-semibold ${item.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{(item.balance || 0).toLocaleString()}</td>
+                                                    <td
+                                                        className="whitespace-nowrap px-2 py-2 text-xs text-slate-500 max-w-[8rem] truncate"
+                                                        title={item.projectLabel}
+                                                    >
+                                                        {item.projectLabel || '—'}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-right text-slate-600">
+                                                        {item.credit > 0 ? (item.credit || 0).toLocaleString() : '-'}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-right text-slate-600">
+                                                        {item.debit > 0 ? (item.debit || 0).toLocaleString() : '-'}
+                                                    </td>
+                                                    <td
+                                                        className={`whitespace-nowrap py-2 pl-2 pr-1 text-right text-xs font-semibold ${
+                                                            (item.balance ?? 0) > 0 ? 'text-red-600' : 'text-emerald-600'
+                                                        }`}
+                                                    >
+                                                        {(item.balance ?? 0).toLocaleString()}
+                                                    </td>
                                                     <td className="py-2 pl-1 pr-2 w-8"></td>
                                                 </tr>
-                                                {isExpanded && hasChildren && item.children.map((child: any) => (
-                                                    <tr
-                                                        key={child.id}
-                                                        className="bg-slate-50/70 text-xs hover:bg-slate-100 cursor-pointer"
-                                                        onClick={() => onItemClick(child.originalId, child.type)}
-                                                    >
-                                                        <td className="whitespace-nowrap py-1.5 pl-9 pr-2 text-slate-500">{formatDate(child.date)}</td>
-                                                        <td className="whitespace-nowrap px-2 py-1.5 text-slate-500 italic max-w-xs truncate" title={child.particulars}>{child.particulars}</td>
-                                                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-400">-</td>
-                                                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-500">{(child.debit || 0).toLocaleString()}</td>
-                                                        <td className="whitespace-nowrap py-1.5 pl-2 pr-1 text-right text-slate-400"></td>
-                                                        <td className="py-1.5 pl-1 pr-2 w-8"></td>
-                                                    </tr>
-                                                ))}
+                                                {isExpanded &&
+                                                    hasChildren &&
+                                                    item.children.map((child: LedgerChild) => (
+                                                        <tr
+                                                            key={child.id}
+                                                            className="bg-slate-50/70 text-xs hover:bg-slate-100 cursor-pointer"
+                                                            onClick={() => onItemClick(child.originalId, child.type)}
+                                                        >
+                                                            <td className="whitespace-nowrap py-1.5 pl-9 pr-2 text-slate-500">
+                                                                {formatDate(child.date)}
+                                                            </td>
+                                                            <td
+                                                                className="whitespace-nowrap px-2 py-1.5 text-slate-500 italic max-w-xs truncate"
+                                                                title={child.particulars}
+                                                            >
+                                                                {child.particulars}
+                                                            </td>
+                                                            <td
+                                                                className="whitespace-nowrap px-2 py-1.5 text-slate-500 max-w-[8rem] truncate"
+                                                                title={child.projectLabel}
+                                                            >
+                                                                {child.projectLabel || '—'}
+                                                            </td>
+                                                            <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-400">
+                                                                -
+                                                            </td>
+                                                            <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-500">
+                                                                {(child.debit || 0).toLocaleString()}
+                                                            </td>
+                                                            <td className="whitespace-nowrap py-1.5 pl-2 pr-1 text-right text-slate-400"></td>
+                                                            <td className="py-1.5 pl-1 pr-2 w-8"></td>
+                                                        </tr>
+                                                    ))}
                                             </React.Fragment>
                                         );
                                     })}

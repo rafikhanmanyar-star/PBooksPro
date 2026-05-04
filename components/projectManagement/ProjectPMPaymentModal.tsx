@@ -13,6 +13,8 @@ import { CURRENCY } from '../../constants';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useWhatsApp } from '../../context/WhatsAppContext';
+import { offerConstructionBillPaymentWhatsApp } from '../../utils/constructionBillPaymentWhatsApp';
 
 interface PMLedgerItem {
     id: string;
@@ -45,7 +47,8 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
     unpaidAllocations 
 }) => {
     const { state, dispatch } = useAppContext();
-    const { showToast, showAlert } = useNotification();
+    const { showToast, showAlert, showConfirm } = useNotification();
+    const { openChat } = useWhatsApp();
     
     // State
     const [selectedAllocations, setSelectedAllocations] = useState<Set<string>>(new Set());
@@ -163,6 +166,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
 
         const timestamp = Date.now();
         const selectedItems = unpaidAllocations.filter(item => selectedAllocations.has(item.id));
+        let billsForWhatsApp: Bill[] = [];
 
         if (paymentMode === 'CASH') {
             if (!sourceAccountId) { 
@@ -226,6 +230,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     }
                 });
                 showToast(`Payment recorded for ${transactions.length} allocation(s).`, "success");
+                billsForWhatsApp = [...billsToUpdate];
             } else {
                 try {
                     const apiService = getAppStateApiService();
@@ -288,6 +293,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     } else {
                         showToast(`Payment recorded for ${savedTransactions.length} allocation(s).`, "success");
                     }
+                    billsForWhatsApp = billsToUpdate.filter((bill) => successfulBillIds.has(bill.id));
                 } catch (error: any) {
                     console.error('Error processing PM payment:', error);
                     await showAlert(`Payment failed: ${error.message || 'An unexpected error occurred while processing payments.'}`);
@@ -381,6 +387,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
                 billsToUpdate.forEach(bill => dispatch({ type: 'UPDATE_BILL', payload: bill }));
                 showToast(`Transferred ${transactions.length / 2} allocation(s) to PM equity.`, "success");
+                billsForWhatsApp = [...billsToUpdate];
             } else {
                 try {
                     const apiService = getAppStateApiService();
@@ -432,12 +439,23 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     } else {
                         showToast(`Transferred ${savedTransactions.length / 2} allocation(s) to PM equity.`, "success");
                     }
+                    billsForWhatsApp = billsToUpdate.filter((bill) => successfulBillIds.has(bill.id));
                 } catch (error: any) {
                     console.error('Error processing PM equity transfer:', error);
                     await showAlert(`Transfer failed: ${error.message || 'An unexpected error occurred while processing transfers.'}`);
                     return;
                 }
             }
+        }
+
+        if (billsForWhatsApp.length > 0) {
+            await offerConstructionBillPaymentWhatsApp({
+                state,
+                updatedBills: billsForWhatsApp,
+                showConfirm,
+                showAlert,
+                openChat,
+            });
         }
 
         onClose();

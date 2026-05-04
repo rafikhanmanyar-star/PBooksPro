@@ -603,6 +603,86 @@ const SettingsPage: React.FC = () => {
         );
     };
 
+    const ProjectInvoiceSettingsBlock: React.FC = () => {
+        const settings = state.projectInvoiceSettings || {
+            prefix: 'P-INV-',
+            nextNumber: 1,
+            padding: 5,
+            autoSendBillPaymentWhatsApp: false,
+        };
+        const [localSettings, setLocalSettings] = useState(settings);
+        const handleChange = (field: string, val: string | number | boolean) =>
+            setLocalSettings((prev) => ({ ...prev, [field]: val }));
+        const handleSave = () => {
+            const payload = {
+                ...localSettings,
+                nextNumber: parseInt(String(localSettings.nextNumber)) || 1,
+                padding: parseInt(String(localSettings.padding)) || 4,
+            };
+            dispatch({ type: 'UPDATE_PROJECT_INVOICE_SETTINGS', payload });
+            showToast('Project Invoices updated!', 'success');
+        };
+        return (
+            <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-bold text-slate-700">Project Invoices</h4>
+                    <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-500">
+                        {localSettings.prefix}
+                        {String(localSettings.nextNumber).padStart(localSettings.padding, '0')}
+                    </span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                    <Input
+                        id="project-inv-prefix"
+                        name="project-inv-prefix"
+                        label="Prefix"
+                        value={localSettings.prefix}
+                        onChange={(e) => handleChange('prefix', e.target.value)}
+                        className="text-sm"
+                    />
+                    <Input
+                        id="project-inv-next-num"
+                        name="project-inv-next-num"
+                        label="Next #"
+                        type="number"
+                        value={localSettings.nextNumber.toString()}
+                        onChange={(e) => handleChange('nextNumber', e.target.value)}
+                        className="text-sm"
+                    />
+                    <Input
+                        id="project-inv-padding"
+                        name="project-inv-padding"
+                        label="Padding"
+                        type="number"
+                        value={localSettings.padding.toString()}
+                        onChange={(e) => handleChange('padding', e.target.value)}
+                        className="text-sm"
+                    />
+                </div>
+                <div className="mb-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={!!localSettings.autoSendBillPaymentWhatsApp}
+                            onChange={(e) => handleChange('autoSendBillPaymentWhatsApp', e.target.checked)}
+                            className="rounded text-accent focus:ring-accent h-4 w-4"
+                        />
+                        <span className="text-sm font-medium text-slate-700">
+                            Offer WhatsApp after project bill payment
+                        </span>
+                    </label>
+                    <p className="text-xs text-slate-500 mt-1 ml-6">
+                        When enabled, recording a payment against a project or contract bill (vendor or contact with a
+                        mobile number) prompts to send the bill payment message from Communication → Messaging Templates.
+                    </p>
+                </div>
+                <Button variant="secondary" onClick={handleSave} className="mt-1 w-full">
+                    Update Settings
+                </Button>
+            </div>
+        );
+    };
+
     const preferenceTabs = ['General', 'ID Sequences', 'Communication', 'Tools'];
 
     const renderToggle = (label: string, description: string, checked: boolean, onChange: (val: boolean) => void) => (
@@ -827,7 +907,7 @@ const SettingsPage: React.FC = () => {
             <IDSequenceSettingsBlock title="Rental Agreements" settings={state.agreementSettings} type="UPDATE_AGREEMENT_SETTINGS" />
             <RentalInvoiceSettingsBlock />
             <IDSequenceSettingsBlock title="Project Agreements" settings={state.projectAgreementSettings} type="UPDATE_PROJECT_AGREEMENT_SETTINGS" />
-            <IDSequenceSettingsBlock title="Project Invoices" settings={state.projectInvoiceSettings || { prefix: 'P-INV-', nextNumber: 1, padding: 5 }} type="UPDATE_PROJECT_INVOICE_SETTINGS" />
+            <ProjectInvoiceSettingsBlock />
         </div>
     );
 

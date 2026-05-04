@@ -12,6 +12,7 @@ import { ICONS, CURRENCY } from '../../constants';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
 import TransactionForm from '../transactions/TransactionForm';
 import VendorBillPaymentModal from './VendorBillPaymentModal';
+import RecordSupplierAdvanceModal from './RecordSupplierAdvanceModal';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -150,6 +151,7 @@ const VendorDirectoryPage: React.FC = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isCreateBillModalOpen, setIsCreateBillModalOpen] = useState(false);
     const [isCreatePaymentModalOpen, setIsCreatePaymentModalOpen] = useState(false);
+    const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
     const [isQuotationFormModalOpen, setIsQuotationFormModalOpen] = useState(false);
     const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
     const [editingItem, setEditingItem] = useState<{ id: string; type: 'bill' | 'transaction' } | null>(null);
@@ -655,6 +657,20 @@ const VendorDirectoryPage: React.FC = () => {
                                                 Bill
                                             </Button>
                                             <Button
+                                                variant="secondary"
+                                                onClick={() => setIsAdvanceModalOpen(true)}
+                                                disabled={isLocalOnlyMode()}
+                                                title={
+                                                    isLocalOnlyMode()
+                                                        ? 'Supplier advances need the PostgreSQL API (offline mode is not supported).'
+                                                        : 'Record prepaid money to this supplier'
+                                                }
+                                                className="!py-1.5 !px-3 !text-xs !border-amber-200 !bg-amber-50 hover:!bg-amber-100 !text-amber-900 disabled:opacity-50"
+                                            >
+                                                <span className="w-3.5 h-3.5 mr-1.5 opacity-80">{ICONS.wallet}</span>
+                                                Advance
+                                            </Button>
+                                            <Button
                                                 onClick={() => setIsCreatePaymentModalOpen(true)}
                                                 className="!py-1.5 !px-3 !text-xs !bg-emerald-600 hover:!bg-emerald-700 !shadow-emerald-200"
                                             >
@@ -709,6 +725,12 @@ const VendorDirectoryPage: React.FC = () => {
                             <VendorBillPaymentModal
                                 isOpen={isCreatePaymentModalOpen}
                                 onClose={() => setIsCreatePaymentModalOpen(false)}
+                                vendor={selectedVendor}
+                            />
+
+                            <RecordSupplierAdvanceModal
+                                isOpen={isAdvanceModalOpen}
+                                onClose={() => setIsAdvanceModalOpen(false)}
                                 vendor={selectedVendor}
                             />
 

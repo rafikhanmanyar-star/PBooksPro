@@ -9,10 +9,12 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
 import { toLocalDateString } from '../../utils/dateUtils';
+import { computeBillAfterPayment, offerConstructionBillPaymentWhatsApp } from '../../utils/constructionBillPaymentWhatsApp';
 
 interface BillBulkPaymentModalProps {
     isOpen: boolean;
@@ -23,7 +25,8 @@ interface BillBulkPaymentModalProps {
 
 const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onClose, selectedBills, onPaymentComplete }) => {
     const { state, dispatch } = useAppContext();
-    const { showToast, showAlert } = useNotification();
+    const { showToast, showAlert, showConfirm } = useNotification();
+    const { openChat } = useWhatsApp();
 
     // State for individual bill payment amounts
     const [payments, setPayments] = useState<Record<string, string>>({});
@@ -158,6 +161,20 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             // Local-only: persist via dispatch only (reducer + persistence write to local DB; bills updated by applyTransactionEffect)
             dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
             showToast(`Processed bulk payment for ${transactions.length} bills.`, 'success');
+            const updatedBills = selectedBills
+                .map((bill) => {
+                    const payAmount = parseFloat(payments[bill.id] || '0');
+                    if (payAmount <= 0) return null;
+                    return computeBillAfterPayment(bill, payAmount);
+                })
+                .filter(Boolean) as Bill[];
+            await offerConstructionBillPaymentWhatsApp({
+                state,
+                updatedBills,
+                showConfirm,
+                showAlert,
+                openChat,
+            });
             if (onPaymentComplete) onPaymentComplete();
             else onClose();
             return;
@@ -221,6 +238,21 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             } else {
                 showToast(`Processed bulk payment for ${savedTransactions.length} bills.`, 'success');
             }
+            const savedByBillId = new Map(savedTransactions.filter((t) => t.billId).map((t) => [t.billId!, t]));
+            const updatedBills = selectedBills
+                .map((bill) => {
+                    const tx = savedByBillId.get(bill.id);
+                    if (!tx) return null;
+                    return computeBillAfterPayment(bill, tx.amount);
+                })
+                .filter(Boolean) as Bill[];
+            await offerConstructionBillPaymentWhatsApp({
+                state,
+                updatedBills,
+                showConfirm,
+                showAlert,
+                openChat,
+            });
             if (onPaymentComplete) onPaymentComplete();
             else onClose();
         } catch (error: any) {

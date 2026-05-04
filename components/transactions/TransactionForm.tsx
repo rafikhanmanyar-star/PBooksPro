@@ -17,6 +17,7 @@ import { resolveExpenseCategoryForBillPayment } from '../../utils/rentalBillPaym
 import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../utils/ledgerInvoicePayments';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { validateExpenseCashForProject } from '../../services/accounting/accountingLedgerCore';
+import { computeBillAfterPayment, offerConstructionBillPaymentWhatsApp } from '../../utils/constructionBillPaymentWhatsApp';
 
 interface TransactionFormProps {
     onClose: () => void;
@@ -405,9 +406,23 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
             const txId = `txn-bill-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
             const payload = { ...baseTx, id: txId } as Transaction;
 
+            const paidBillSnap =
+                billBeingPaid && linkedBillId
+                    ? computeBillAfterPayment(billBeingPaid, numAmount)
+                    : null;
+
             if (isLocalOnlyMode()) {
                 // Local-only: persist via dispatch only (reducer + persistence layer write to local DB)
                 dispatch({ type: 'ADD_TRANSACTION', payload });
+                if (paidBillSnap) {
+                    await offerConstructionBillPaymentWhatsApp({
+                        state,
+                        updatedBills: [paidBillSnap],
+                        showConfirm,
+                        showAlert,
+                        openChat,
+                    });
+                }
                 onClose();
                 return;
             }
@@ -416,6 +431,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
             // authoritative row (server recalc bumps bill.version). Avoids redundant saveBill with stale
             // version (409) and duplicate saveTransaction from pre-saving here then syncing again in dispatch.
             dispatch({ type: 'ADD_TRANSACTION', payload });
+            if (paidBillSnap) {
+                await offerConstructionBillPaymentWhatsApp({
+                    state,
+                    updatedBills: [paidBillSnap],
+                    showConfirm,
+                    showAlert,
+                    openChat,
+                });
+            }
             onClose();
             return;
         }

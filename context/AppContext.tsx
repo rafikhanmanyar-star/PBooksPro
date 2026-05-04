@@ -273,7 +273,7 @@ const initialState: AppState = {
     agreementSettings: { prefix: 'AGR-', nextNumber: 1, padding: 4 },
     projectAgreementSettings: { prefix: 'P-AGR-', nextNumber: 1, padding: 4 },
     rentalInvoiceSettings: { prefix: 'INV-', nextNumber: 1, padding: 5, autoSendInvoiceWhatsApp: false },
-    projectInvoiceSettings: { prefix: 'P-INV-', nextNumber: 1, padding: 5 },
+    projectInvoiceSettings: { prefix: 'P-INV-', nextNumber: 1, padding: 5, autoSendBillPaymentWhatsApp: false },
     showSystemTransactions: false,
     enableColorCoding: true,
     enableBeepOnSave: false,
