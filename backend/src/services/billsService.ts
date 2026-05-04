@@ -621,7 +621,16 @@ export async function recalculateBillPaymentAggregates(
        AND LOWER(TRIM(type)) IN ('expense', 'income')`,
     [tenantId, billId]
   );
-  const paid = Math.max(0, Number(sumR.rows[0]?.sum ?? 0));
+  const txnPaid = Math.max(0, Number(sumR.rows[0]?.sum ?? 0));
+  /** Supplier advance applied to this payable bill (no cash txn for the advance slice). */
+  const clr = await client.query<{ sum: string | null }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS sum FROM vendor_bill_advance_clearings
+     WHERE tenant_id = $1 AND bill_id = $2`,
+    [tenantId, billId]
+  );
+  const clearingPaid = Math.max(0, Number(clr.rows[0]?.sum ?? 0));
+  const paidRaw = txnPaid + clearingPaid;
+  const paid = Math.round(paidRaw * 100) / 100;
   const amt = Number(b.amount);
   const threshold = 0.01;
   let newStatus: string;

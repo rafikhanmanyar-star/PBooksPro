@@ -1314,4 +1314,28 @@ CREATE INDEX IF NOT EXISTS idx_contractor_adj_tenant_bill
     ON contractor_bill_adjustments(tenant_id, contractor_bill_id);
 CREATE INDEX IF NOT EXISTS idx_contractor_adj_tenant_advance
     ON contractor_bill_adjustments(tenant_id, contractor_advance_id);
+
+-- Clearing vendor/supplier advances against payable bills (bills table); see 057_vendor_bill_advance_clearings.sql on PostgreSQL.
+CREATE TABLE IF NOT EXISTS vendor_bill_advance_clearings (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    bill_id TEXT NOT NULL,
+    contractor_advance_id TEXT,
+    settlement_kind TEXT NOT NULL DEFAULT 'advance',
+    amount REAL NOT NULL,
+    journal_entry_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE RESTRICT,
+    FOREIGN KEY (contractor_advance_id) REFERENCES contractor_advances(id) ON DELETE RESTRICT,
+    FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
+    CHECK (amount > 0),
+    CHECK (
+      (settlement_kind = 'advance' AND contractor_advance_id IS NOT NULL)
+      OR (settlement_kind = 'cash' AND contractor_advance_id IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_vbac_tenant_bill ON vendor_bill_advance_clearings(tenant_id, bill_id);
+
+CREATE INDEX IF NOT EXISTS idx_vbac_tenant_advance ON vendor_bill_advance_clearings(tenant_id, contractor_advance_id);
 `;

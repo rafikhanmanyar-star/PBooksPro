@@ -4,6 +4,29 @@
 
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { apiClient } from './client';
+import type { Bill } from '../../types';
+
+export type VendorBillSettleLinePayload = {
+  billId: string;
+  adjustments: { advanceId: string; amount: number }[];
+  cashAmount: number;
+  expenseAccountId: string;
+};
+
+export type VendorBillSettleRequestPayload = {
+  supplierContactId: string;
+  paymentAccountId: string;
+  entryDate: string;
+  bills: VendorBillSettleLinePayload[];
+  reference?: string;
+  description?: string;
+  batchId?: string;
+};
+
+export type VendorBillSettleResponsePayload = {
+  bills: Bill[];
+  journalEntries: { billId: string; journalEntryId: string }[];
+};
 
 export type ContractorLedgerAdvance = {
   id: string;
@@ -57,5 +80,15 @@ export const contractorApi = {
       console.warn('contractorApi.getAdvances', e);
       return [];
     }
+  },
+
+  /**
+   * Settle unpaid vendor/service bills via prepaid advances (journal) + remaining bank leg.
+   */
+  async settleBillsWithAdvances(body: VendorBillSettleRequestPayload): Promise<VendorBillSettleResponsePayload> {
+    if (isLocalOnlyMode()) {
+      throw new Error('Advance settlement is only available when using the PostgreSQL API.');
+    }
+    return apiClient.post<VendorBillSettleResponsePayload>('/bills/settle-with-advances', body);
   },
 };

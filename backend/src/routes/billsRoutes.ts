@@ -9,6 +9,7 @@ import {
   softDeleteBill,
   upsertBill,
 } from '../services/billsService.js';
+import { settleVendorBillsBatchWithAdvances } from '../services/vendorBillAdvanceSettleService.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
 export const billsRouter = Router();
@@ -86,6 +87,104 @@ billsRouter.post('/bills', async (req: AuthedRequest, res) => {
       return;
     }
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+/** POST settle vendor/supplier/service bills against prepaid advances (journal + clearance rows; remainder via bank on JE). */
+billsRouter.post('/bills/settle-with-advances', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  try {
+    const supplierContactId = String(body.supplierContactId ?? body.supplier_contact_id ?? '').trim();
+    const paymentAccountId = String(body.paymentAccountId ?? body.payment_account_id ?? '').trim();
+    const entryDate = String(body.entryDate ?? body.entry_date ?? '').trim();
+    const billsRaw = body.bills;
+    if (!Array.isArray(billsRaw) || billsRaw.length === 0) {
+      sendFailure(res, 400, 'BAD_REQUEST', 'body.bills must be a non-empty array.');
+      return;
+    }
+    const bills = billsRaw.map((row, idx) => {
+      if (!row || typeof row !== 'object') throw new Error(`bills[${idx}] must be an object.`);
+      const o = row as Record<string, unknown>;
+      const adjustmentsRaw = Array.isArray(o.adjustments) ? o.adjustments : [];
+      const adjustments = adjustmentsRaw.map((ar, j) => {
+        if (!ar || typeof ar !== 'object') throw new Error(`bills[${idx}].adjustments[${j}] invalid`);
+        const a = ar as Record<string, unknown>;
+        const advanceId = String(a.advanceId ?? a.contractorAdvanceId ?? a.advance_id ?? '').trim();
+        const amt =
+          typeof a.amount === 'number' ? a.amount : typeof a.amount === 'string' ? parseFloat(a.amount) : NaN;
+        if (!advanceId || !Number.isFinite(amt)) {
+          throw new Error(`bills[${idx}].adjustments[${j}] needs advanceId and amount`);
+        }
+        if (amt <= 0) {
+          throw new Error(`bills[${idx}].adjustments[${j}] amount must be positive`);
+        }
+        return { advanceId, amount: amt };
+      });
+      const cashAmount =
+        typeof o.cashAmount === 'number' ? o.cashAmount : typeof o.cash_amount === 'number'
+          ? o.cash_amount
+          : typeof o.cashAmount === 'string'
+            ? parseFloat(o.cashAmount)
+            : typeof o.cash_amount === 'string'
+              ? parseFloat(o.cash_amount)
+              : NaN;
+      const expenseAccountId = String(
+        o.expenseAccountId ?? o.expense_account_id ?? ''
+      ).trim();
+      const billId = String(o.billId ?? o.id ?? '').trim();
+      if (!billId) throw new Error(`bills[${idx}].billId required`);
+      if (!Number.isFinite(cashAmount)) throw new Error(`bills[${idx}].cashAmount invalid`);
+      if (!expenseAccountId) throw new Error(`bills[${idx}].expenseAccountId required`);
+      return {
+        billId,
+        adjustments,
+        cashAmount,
+        expenseAccountId,
+      };
+    });
+
+    const out = await withTransaction((client) =>
+      settleVendorBillsBatchWithAdvances(client, tenantId, req.userId ?? null, {
+        supplierContactId,
+        paymentAccountId,
+        entryDate,
+        bills,
+        reference: typeof body.reference === 'string' ? body.reference : null,
+        description: typeof body.description === 'string' ? body.description : null,
+        batchId:
+          typeof body.batchId === 'string'
+            ? body.batchId
+            : typeof body.batch_id === 'string'
+              ? body.batch_id
+              : null,
+      })
+    );
+
+    const pool = getPool();
+    const c = await pool.connect();
+    try {
+      const apiBills = [];
+      for (const row of bills) {
+        const br = await getBillById(c, tenantId, row.billId);
+        if (br) {
+          apiBills.push(rowToBillApi(br));
+          emitEntityEvent(tenantId, 'updated', 'bill', {
+            data: rowToBillApi(br),
+            sourceUserId: req.userId,
+          });
+        }
+      }
+      sendSuccess(res, { journalEntries: out.journalEntries, bills: apiBills });
+    } finally {
+      c.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
   }
 });
 
