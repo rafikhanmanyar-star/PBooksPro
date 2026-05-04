@@ -38,7 +38,9 @@ export type RealtimeEntityType =
   | 'personal_transaction'
   | 'pm_cycle_allocation'
   | 'plan_amenity'
-  | 'installment_plan';
+  | 'installment_plan'
+  | 'contractor_advance'
+  | 'contractor_bill';
 
 export type RealtimeAction = 'created' | 'updated' | 'deleted';
 

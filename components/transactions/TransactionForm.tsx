@@ -157,17 +157,35 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
         return 'general';
     });
 
+    const contractPaidTotals = useMemo(() => {
+        const m = new Map<string, number>();
+        for (const t of state.transactions || []) {
+            if (!t.contractId) continue;
+            const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0;
+            m.set(t.contractId, (m.get(t.contractId) || 0) + amt);
+        }
+        return m;
+    }, [state.transactions]);
+
     // Available Contracts Logic
     const availableContracts = useMemo(() => {
         if (type !== TransactionType.EXPENSE || costCenterType !== 'project' || !projectId || !contactId) return [];
 
-        // Filter contracts for this project and vendor (Active only, unless editing an existing transaction with that contract)
-        return (state.contracts || []).filter(c =>
-            c.projectId === projectId &&
-            c.vendorId === contactId &&
-            (c.status === ContractStatus.ACTIVE || c.id === contractId)
-        ).map(c => ({ id: c.id, name: `${c.contractNumber} - ${c.name}` }));
-    }, [state.contracts, type, costCenterType, projectId, contactId, contractId]);
+        // Filter contracts for this project and vendor (Active or Completed-but-underpaid vs total)
+        const list = (state.contracts || []).filter(c => {
+            if (c.projectId !== projectId || c.vendorId !== contactId) return false;
+            if (c.id === contractId) return true;
+            if (c.status === ContractStatus.TERMINATED) return false;
+            const totalPaid = contractPaidTotals.get(c.id) || 0;
+            const contractTotal =
+                typeof c.totalAmount === 'number' ? c.totalAmount : parseFloat(String(c.totalAmount)) || 0;
+            const fullyPaidAgainstTotal = totalPaid >= contractTotal - 1.0;
+            if (c.status === ContractStatus.ACTIVE) return true;
+            if (c.status === ContractStatus.COMPLETED && !fullyPaidAgainstTotal) return true;
+            return false;
+        });
+        return list.map(c => ({ id: c.id, name: `${c.contractNumber} - ${c.name}` }));
+    }, [state.contracts, type, costCenterType, projectId, contactId, contractId, contractPaidTotals]);
 
     // Initialize default account (including when paying a bill — new transaction)
     useEffect(() => {

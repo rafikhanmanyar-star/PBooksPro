@@ -1258,8 +1258,16 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
         case 'ADD_CONTRACT':
             return { ...state, contracts: [...(state.contracts || []), action.payload] };
-        case 'UPDATE_CONTRACT':
-            return { ...state, contracts: (state.contracts || []).map(c => c.id === action.payload.id ? action.payload : c) };
+        case 'UPDATE_CONTRACT': {
+            const next: AppState = {
+                ...state,
+                contracts: (state.contracts || []).map((c) =>
+                    c.id === action.payload.id ? action.payload : c
+                ),
+            };
+            // Form may still send status "Completed" after totalAmount was raised; re-sync from paid vs total.
+            return updateContractStatus(next, action.payload.id);
+        }
         case 'DELETE_CONTRACT':
             return { ...state, contracts: (state.contracts || []).filter(c => c.id !== action.payload) };
 
@@ -2700,14 +2708,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const c = a.payload as Contract;
                 if (!c?.id) return;
                 const version = c.version ?? prev.contracts?.find((x) => x.id === c.id)?.version;
+                const contractForApi =
+                    a.type === 'UPDATE_CONTRACT'
+                        ? (() => {
+                              const merged: AppState = {
+                                  ...prev,
+                                  contracts: (prev.contracts || []).map((x) => (x.id === c.id ? c : x)),
+                              };
+                              const reconciled = updateContractStatus(merged, c.id);
+                              return reconciled.contracts?.find((x) => x.id === c.id) ?? c;
+                          })()
+                        : c;
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     getAppStateApiService()
-                        .saveContract({ ...c, version })
+                        .saveContract({ ...contractForApi, version })
                         .then((saved) => {
                             if (saved && typeof saved.version === 'number') {
                                 dispatch({
                                     type: 'UPDATE_CONTRACT',
-                                    payload: { ...c, ...saved },
+                                    payload: { ...contractForApi, ...saved },
                                     _isRemote: true,
                                 } as AppAction);
                             }

@@ -169,13 +169,19 @@ export function sumLinkedExpensePaymentsForBill(transactions: Transaction[], bil
 }
 
 /**
- * Bill row paid/balance/status from linked payment transactions (source of truth when bill.paidAmount is stale).
+ * Bill paid/balance/status for UI.
+ * Uses the **maximum** of (a) sum of linked Income/Expense payments on this client and (b) `bill.paidAmount`
+ * from PostgreSQL (maintained by `recalculateBillPaymentAggregates`). That way every session matches the DB even when
+ * this client has not yet loaded every payment transaction (multi-user / incremental sync).
  */
 export function getEffectiveBillPaymentDisplay(
   bill: Bill,
   transactions: Transaction[]
 ): { paidAmount: number; balance: number; status: string } {
-  const paid = sumLinkedExpensePaymentsForBill(transactions, bill.id);
+  const txPaid = sumLinkedExpensePaymentsForBill(transactions, bill.id);
+  const storedPaid =
+    typeof bill.paidAmount === 'number' ? bill.paidAmount : parseFloat(String(bill.paidAmount ?? 0)) || 0;
+  const paid = Math.max(txPaid, storedPaid);
   const amount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount)) || 0;
   const threshold = 0.01;
   const balance = Math.max(0, amount - paid);

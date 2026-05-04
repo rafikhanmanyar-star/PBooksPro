@@ -1,11 +1,12 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import { useAppContext } from '../../context/AppContext';
 import TransactionItem from '../transactions/TransactionItem';
 import { TransactionType, LoanSubtype, AccountType } from '../../types';
 import Button from '../ui/Button';
 import { CURRENCY } from '../../constants';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 
 interface SettingsLedgerModalProps {
     isOpen: boolean;
@@ -17,6 +18,64 @@ interface SettingsLedgerModalProps {
 
 const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClose, entityId, entityType, entityName }) => {
     const { state, dispatch } = useAppContext();
+
+    const [contractorLedger, setContractorLedger] = useState<{
+        advances: Array<{ id: string; advanceDate: string; originalAmount: number; remainingAmount: number; description?: string }>;
+        adjustments: Array<{
+            id: string;
+            contractorBillId: string;
+            billNumber?: string;
+            billDate: string;
+            billAmount: number;
+            advanceId: string;
+            adjustmentAmount: number;
+        }>;
+        summary?: { totalOriginalAmount: number; totalRemainingAmount: number };
+        loadError?: string | null;
+    } | null>(null);
+
+    useEffect(() => {
+        if (!isOpen || entityType !== 'contact' || !entityId || isLocalOnlyMode()) {
+            setContractorLedger(null);
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const { contractorApi } = await import('../../services/api/contractorApi');
+                const data = await contractorApi.getContractorLedger(entityId);
+                if (!cancelled && data !== null) {
+                    setContractorLedger({
+                        advances: data.advances ?? [],
+                        adjustments: (data.adjustments ?? []).map((a) => ({
+                            id: a.id,
+                            contractorBillId: a.contractorBillId,
+                            billNumber: a.billNumber,
+                            billDate: a.billDate,
+                            billAmount: a.billAmount,
+                            advanceId: a.advanceId,
+                            adjustmentAmount: a.adjustmentAmount,
+                        })),
+                        summary: data.summary,
+                        loadError: null,
+                    });
+                } else if (!cancelled) {
+                    setContractorLedger(null);
+                }
+            } catch (e) {
+                if (!cancelled)
+                    setContractorLedger({
+                        advances: [],
+                        adjustments: [],
+                        summary: { totalOriginalAmount: 0, totalRemainingAmount: 0 },
+                        loadError: 'Could not load contractor ledger.',
+                    });
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, entityType, entityId]);
 
     const transactions = useMemo(() => {
         if (!entityId) return [];
@@ -81,6 +140,13 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
         }, 0);
     }, [transactions, entityType, entityId, state.accounts]);
 
+    const contractorLedgerSectionVisible =
+        contractorLedger &&
+        (contractorLedger.loadError ||
+            ((contractorLedger.summary?.totalOriginalAmount ?? 0) > 0 ||
+                (contractorLedger.adjustments?.length ?? 0) > 0 ||
+                (contractorLedger.advances?.length ?? 0) > 0));
+
     const handleEditTransaction = (tx: any) => {
         onClose();
         dispatch({ type: 'SET_EDITING_ENTITY', payload: null }); 
@@ -96,6 +162,60 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
                         {CURRENCY} {totalBalance.toLocaleString()}
                     </span>
                 </div>
+
+                {contractorLedgerSectionVisible ? (
+                    <div className="p-4 rounded-lg border border-amber-200 bg-amber-50/90 space-y-3">
+                        <div className="text-sm font-semibold text-slate-800">Contractor advances & adjustments</div>
+                        {contractorLedger.loadError ? (
+                            <p className="text-sm text-rose-600">{contractorLedger.loadError}</p>
+                        ) : (
+                            <>
+                                <div className="flex flex-wrap gap-4 text-sm text-slate-700">
+                                    <span>
+                                        <span className="text-slate-500">Outstanding advances:</span>{' '}
+                                        <strong>
+                                            {CURRENCY}{' '}
+                                            {(contractorLedger.summary?.totalRemainingAmount ?? 0).toLocaleString()}
+                                        </strong>
+                                    </span>
+                                    <span>
+                                        <span className="text-slate-500">Advances originally issued:</span>{' '}
+                                        {CURRENCY} {(contractorLedger.summary?.totalOriginalAmount ?? 0).toLocaleString()}
+                                    </span>
+                                </div>
+                                {(contractorLedger.advances?.length ?? 0) > 0 && (
+                                    <div className="text-xs text-slate-600">
+                                        <div className="font-medium text-slate-700 mb-1">Advances</div>
+                                        <ul className="list-disc pl-4 space-y-0.5">
+                                            {contractorLedger.advances.map((a) => (
+                                                <li key={a.id}>
+                                                    {a.advanceDate}: issued {CURRENCY}{' '}
+                                                    {a.originalAmount.toLocaleString()} — remaining{' '}
+                                                    <strong>{CURRENCY} {a.remainingAmount.toLocaleString()}</strong>
+                                                    {a.description ? ` — ${a.description}` : ''}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {(contractorLedger.adjustments?.length ?? 0) > 0 && (
+                                    <div className="text-xs text-slate-600">
+                                        <div className="font-medium text-slate-700 mb-1">Bill adjustments vs advances</div>
+                                        <ul className="list-disc pl-4 space-y-0.5">
+                                            {contractorLedger.adjustments.map((r) => (
+                                                <li key={r.id}>
+                                                    Bill {r.billNumber || `#${r.contractorBillId.slice(0, 8)}`} ({r.billDate}): −{CURRENCY}{' '}
+                                                    {r.adjustmentAmount.toLocaleString()} applied from advance {r.advanceId.slice(0, 8)}… · bill{' '}
+                                                    {CURRENCY} {r.billAmount.toLocaleString()}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                ) : null}
 
                 <div className="max-h-[60vh] overflow-y-auto border rounded-lg border-slate-100">
                     {transactions.length > 0 ? (

@@ -31,6 +31,7 @@ import {
 } from '../../utils/dateUtils';
 import { sumExpenseLinkedToBill } from '../../utils/billLinkedPayments';
 import { newBillRowId } from '../../utils/newBillRowId';
+import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
 
 interface InvoiceBillFormProps {
   onClose: () => void;
@@ -622,13 +623,24 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     }
   }, [number, type, itemToEdit, state.invoices, state.bills]);
 
+  /** Sum of payment tx amounts per construction contract (same rule as updateContractStatus in AppContext). */
+  const contractPaidTotals = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of state.transactions || []) {
+      if (!t.contractId) continue;
+      const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0;
+      m.set(t.contractId, (m.get(t.contractId) || 0) + amt);
+    }
+    return m;
+  }, [state.transactions]);
+
   // Available Contracts for Bills
   const availableContracts = useMemo(() => {
     if (type !== 'bill' || billAllocationType !== 'project' || !vendorId) return [];
 
     // Filter contracts for the same vendor AND same project
     // Rule: Bill and contract must have the same projectId (or both be null/undefined)
-    // Active only, unless editing an existing bill with that contract
+    // Active contracts, or Completed but still underpaid vs totalAmount (e.g. value was raised after full payment).
     const vendorContracts = (state.contracts || []).filter(c => {
       // Must match vendor
       if (c.vendorId !== vendorId) return false;
@@ -638,8 +650,17 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         if (projectId !== c.projectId) return false;
       }
 
-      // Active contracts only, unless it's the currently selected contract
-      return c.status === ContractStatus.ACTIVE || c.id === contractId;
+      if (c.id === contractId) return true;
+      if (c.status === ContractStatus.TERMINATED) return false;
+
+      const totalPaid = contractPaidTotals.get(c.id) || 0;
+      const contractTotal =
+        typeof c.totalAmount === 'number' ? c.totalAmount : parseFloat(String(c.totalAmount)) || 0;
+      const fullyPaidAgainstTotal = totalPaid >= contractTotal - 1.0;
+
+      if (c.status === ContractStatus.ACTIVE) return true;
+      if (c.status === ContractStatus.COMPLETED && !fullyPaidAgainstTotal) return true;
+      return false;
     });
 
     return vendorContracts.map(c => {
@@ -647,7 +668,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       const projectName = project ? ` (${project.name})` : '';
       return { id: c.id, name: `${c.contractNumber} - ${c.name}${projectName}` };
     });
-  }, [state.contracts, state.projects, type, billAllocationType, projectId, vendorId, contractId]);
+  }, [state.contracts, state.projects, type, billAllocationType, projectId, vendorId, contractId, contractPaidTotals]);
 
   // Auto-link contract when exactly one active contract matches vendor + project
   useEffect(() => {
@@ -1289,8 +1310,22 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     }
   };
 
+  const resolvedInvoicePropertyId = useMemo(() => {
+    if (propertyId) return propertyId;
+    if (agreementId) return state.rentalAgreements.find(ra => ra.id === agreementId)?.propertyId;
+    return undefined;
+  }, [propertyId, agreementId, state.rentalAgreements]);
+
+  const canDuplicateRentalInvoice = useMemo(() => {
+    if (type !== 'invoice') return true;
+    if (invoiceType !== InvoiceType.RENTAL && invoiceType !== InvoiceType.SECURITY_DEPOSIT) return true;
+    if (!resolvedInvoicePropertyId) return false;
+    return getDisplayActiveAgreementForProperty(state.rentalAgreements, resolvedInvoicePropertyId) != null;
+  }, [type, invoiceType, resolvedInvoicePropertyId, state.rentalAgreements]);
+
   const handleDuplicateClick = async () => {
     if (onDuplicate) {
+      if (!canDuplicateRentalInvoice) return;
       const label = type === 'invoice' ? 'invoice' : 'bill';
 
       if (isDirty && itemToEdit) {
@@ -1612,7 +1647,19 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   <button
                     type="button"
                     onClick={handleDuplicateClick}
-                    className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-indigo-600 transition-colors"
+                    disabled={!canDuplicateRentalInvoice || (type === 'invoice' && recordLock.viewOnly)}
+                    title={
+                      !canDuplicateRentalInvoice
+                        ? 'Duplication requires an active rental agreement for this property.'
+                        : type === 'invoice' && recordLock.viewOnly
+                          ? 'View-only mode'
+                          : undefined
+                    }
+                    className={`inline-flex items-center gap-1.5 text-sm transition-colors ${
+                      !canDuplicateRentalInvoice || (type === 'invoice' && recordLock.viewOnly)
+                        ? 'text-slate-400 cursor-not-allowed'
+                        : 'text-slate-600 hover:text-indigo-600'
+                    }`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                     Duplicate Invoice
@@ -2639,7 +2686,20 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 </Button>
               )}
               {itemToEdit && onDuplicate && (
-                <Button type="button" variant="secondary" onClick={handleDuplicateClick} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 w-full sm:w-auto text-sm py-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleDuplicateClick}
+                  disabled={!canDuplicateRentalInvoice || (type === 'invoice' && recordLock.viewOnly)}
+                  title={
+                    !canDuplicateRentalInvoice
+                      ? 'Duplication requires an active rental agreement for this property.'
+                      : type === 'invoice' && recordLock.viewOnly
+                        ? 'View-only mode'
+                        : undefined
+                  }
+                  className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 w-full sm:w-auto text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   {type === 'invoice' ? 'Duplicate Invoice' : 'Duplicate Bill'}
                 </Button>
               )}

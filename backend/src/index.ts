@@ -34,6 +34,7 @@ import { stateRouter } from './routes/stateRoutes.js';
 import { entityListStubsRouter } from './routes/entityListStubsRoutes.js';
 import { recurringInvoiceTemplatesRouter } from './routes/recurringInvoiceTemplatesRoutes.js';
 import { payrollRouter } from './routes/payrollRoutes.js';
+import { contractorRouter } from './routes/contractorRoutes.js';
 import { personalFinanceRouter } from './routes/personalFinanceRoutes.js';
 import { tasksRouter } from './routes/tasksRoutes.js';
 import { databaseBackupRouter } from './routes/databaseBackupRoutes.js';
@@ -197,6 +198,8 @@ app.use('/api', authMiddleware, installmentPlansRouter);
 app.use('/api', authMiddleware, locksRouter);
 
 app.use('/api', authMiddleware, payrollRouter);
+
+app.use('/api', authMiddleware, contractorRouter);
 
 app.use('/api', authMiddleware, personalFinanceRouter);
 

@@ -1,0 +1,522 @@
+import type pg from 'pg';
+import { randomUUID } from 'crypto';
+import { insertJournalEntry } from './journalService.js';
+import { roundMoney } from '../financial/validation.js';
+import { allocateAdvancesFifo, type AdvanceRemains } from './contractorFifo.js';
+import { getContactById } from './contactsService.js';
+
+const MONEY_EPS = 0.005;
+
+export type ContractorAdvanceRow = {
+  id: string;
+  tenant_id: string;
+  contractor_contact_id: string;
+  advance_date: string;
+  original_amount: string;
+  remaining_amount: string;
+  cash_account_id: string;
+  advance_asset_account_id: string;
+  advance_journal_entry_id: string | null;
+  project_id: string | null;
+  description: string | null;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+};
+
+export type ContractorBillRow = {
+  id: string;
+  tenant_id: string;
+  contractor_contact_id: string;
+  bill_number: string | null;
+  bill_date: string;
+  amount: string;
+  status: string;
+  description: string | null;
+  project_id: string | null;
+  construction_expense_account_id: string;
+  residual_account_id: string;
+  approval_journal_entry_id: string | null;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+};
+
+export type ContractorBillAdjustmentRow = {
+  id: string;
+  tenant_id: string;
+  contractor_bill_id: string;
+  contractor_advance_id: string;
+  amount: string;
+  created_at: Date;
+};
+
+function parseMoney(v: string | number): number {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  if (!Number.isFinite(n)) throw new Error('Invalid money value');
+  return n;
+}
+
+function newId(): string {
+  return randomUUID();
+}
+
+export function rowAdvanceToApi(row: ContractorAdvanceRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    contractorContactId: row.contractor_contact_id,
+    advanceDate: row.advance_date,
+    originalAmount: parseMoney(row.original_amount),
+    remainingAmount: parseMoney(row.remaining_amount),
+    cashAccountId: row.cash_account_id,
+    advanceAssetAccountId: row.advance_asset_account_id,
+    advanceJournalEntryId: row.advance_journal_entry_id ?? undefined,
+    projectId: row.project_id ?? undefined,
+    description: row.description ?? undefined,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+  };
+}
+
+export function rowBillToApi(row: ContractorBillRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    contractorContactId: row.contractor_contact_id,
+    billNumber: row.bill_number ?? undefined,
+    billDate: row.bill_date,
+    amount: parseMoney(row.amount),
+    status: row.status,
+    description: row.description ?? undefined,
+    projectId: row.project_id ?? undefined,
+    constructionExpenseAccountId: row.construction_expense_account_id,
+    residualAccountId: row.residual_account_id,
+    approvalJournalEntryId: row.approval_journal_entry_id ?? undefined,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+  };
+}
+
+export async function assertContactInTenant(client: pg.PoolClient, tenantId: string, contactId: string): Promise<void> {
+  const c = await getContactById(client, tenantId, contactId);
+  if (!c || c.deleted_at != null) {
+    throw new Error('Contact not found or inactive.');
+  }
+}
+
+export type CreateContractorAdvanceInput = {
+  contractorContactId: string;
+  advanceDate: string;
+  amount: number;
+  cashAccountId: string;
+  advanceAssetAccountId: string;
+  projectId?: string | null;
+  description?: string | null;
+  reference?: string | null;
+};
+
+export async function createContractorAdvance(
+  client: pg.PoolClient,
+  tenantId: string,
+  input: CreateContractorAdvanceInput,
+  createdBy: string | null
+): Promise<ContractorAdvanceRow> {
+  const amt = roundMoney(input.amount);
+  if (amt <= 0) throw new Error('Advance amount must be positive.');
+  await assertContactInTenant(client, tenantId, input.contractorContactId);
+
+  const id = newId();
+  const projectId =
+    input.projectId != null && String(input.projectId).trim() !== '' ? String(input.projectId).trim() : null;
+  await client.query(
+    `INSERT INTO contractor_advances (
+      id, tenant_id, contractor_contact_id, advance_date, original_amount, remaining_amount,
+      cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by
+    )
+    VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, NULL, $9, $10, $11)`,
+    [
+      id,
+      tenantId,
+      input.contractorContactId,
+      input.advanceDate,
+      amt,
+      amt,
+      input.cashAccountId,
+      input.advanceAssetAccountId,
+      projectId,
+      input.description ?? null,
+      createdBy,
+    ]
+  );
+
+  const { journalEntryId } = await insertJournalEntry(client, tenantId, {
+    entryDate: input.advanceDate,
+    reference: input.reference?.trim() || `ADV:${id}`,
+    description: input.description ?? 'Contractor advance payment',
+    sourceModule: 'contractor_advance',
+    sourceId: id,
+    createdBy,
+    projectId,
+    lines: [
+      {
+        accountId: input.advanceAssetAccountId,
+        debitAmount: amt,
+        creditAmount: 0,
+        projectId,
+      },
+      {
+        accountId: input.cashAccountId,
+        debitAmount: 0,
+        creditAmount: amt,
+        projectId,
+      },
+    ],
+  });
+
+  await client.query(
+    `UPDATE contractor_advances SET advance_journal_entry_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+    [journalEntryId, id, tenantId]
+  );
+
+  const r = await client.query<ContractorAdvanceRow>(
+    `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
+       cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
+       created_at, updated_at, deleted_at
+    FROM contractor_advances WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, id]
+  );
+  const row = r.rows[0];
+  if (!row) throw new Error('Advance not found after create.');
+  return row;
+}
+
+export type CreateContractorBillInput = {
+  contractorContactId: string;
+  billNumber?: string | null;
+  billDate: string;
+  amount: number;
+  description?: string | null;
+  projectId?: string | null;
+  constructionExpenseAccountId: string;
+  residualAccountId: string;
+};
+
+export async function createContractorBill(
+  client: pg.PoolClient,
+  tenantId: string,
+  input: CreateContractorBillInput,
+  createdBy: string | null
+): Promise<ContractorBillRow> {
+  const amt = roundMoney(input.amount);
+  if (amt <= 0) throw new Error('Bill amount must be positive.');
+  await assertContactInTenant(client, tenantId, input.contractorContactId);
+  const id = newId();
+  const bn =
+    input.billNumber != null && String(input.billNumber).trim() !== ''
+      ? String(input.billNumber).trim()
+      : null;
+  const projectId =
+    input.projectId != null && String(input.projectId).trim() !== '' ? String(input.projectId).trim() : null;
+  try {
+    await client.query(
+      `INSERT INTO contractor_bills (
+        id, tenant_id, contractor_contact_id, bill_number, bill_date, amount, status, description, project_id,
+        construction_expense_account_id, residual_account_id, created_by
+      )
+      VALUES ($1, $2, $3, $4, $5::date, $6, 'draft', $7, $8, $9, $10, $11)`,
+      [
+        id,
+        tenantId,
+        input.contractorContactId,
+        bn,
+        input.billDate,
+        amt,
+        input.description ?? null,
+        projectId,
+        input.constructionExpenseAccountId,
+        input.residualAccountId,
+        createdBy,
+      ]
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('duplicate key') || msg.includes('unique')) {
+      throw new Error('Duplicate bill number for this tenant.');
+    }
+    throw e;
+  }
+  const r = await client.query<ContractorBillRow>(
+    `SELECT id, tenant_id, contractor_contact_id, bill_number, bill_date, amount::text, status,
+       description, project_id, construction_expense_account_id, residual_account_id,
+       approval_journal_entry_id, created_by, created_at, updated_at, deleted_at
+     FROM contractor_bills WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, id]
+  );
+  const row = r.rows[0];
+  if (!row) throw new Error('Bill not found after create.');
+  return row;
+}
+
+export type AdjustmentInput = { advanceId: string; amount: number };
+
+export type ApproveContractorBillOpts = {
+  entryDate?: string;
+  reference?: string | null;
+  description?: string | null;
+  residualAccountId?: string | null;
+};
+
+export async function approveContractorBill(
+  client: pg.PoolClient,
+  tenantId: string,
+  billId: string,
+  adjustments: AdjustmentInput[],
+  createdBy: string | null,
+  opts?: ApproveContractorBillOpts
+): Promise<{ bill: ContractorBillRow; journalEntryId: string }> {
+  if (!adjustments?.length) {
+    throw new Error('At least one adjustment is required.');
+  }
+
+  const br = await client.query<ContractorBillRow>(
+    `SELECT id, tenant_id, contractor_contact_id, bill_number, bill_date, amount::text, status,
+       description, project_id, construction_expense_account_id, residual_account_id,
+       approval_journal_entry_id, created_by, created_at, updated_at, deleted_at
+     FROM contractor_bills WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`,
+    [tenantId, billId]
+  );
+  const bill = br.rows[0];
+  if (!bill) throw new Error('Bill not found.');
+  if (bill.status !== 'draft') {
+    throw new Error('Bill is not in draft status; cannot approve again.');
+  }
+
+  const billAmount = roundMoney(parseMoney(bill.amount));
+  const contractorId = bill.contractor_contact_id;
+
+  const uniqAdvanceIds = [...new Set(adjustments.map((a) => a.advanceId))];
+  uniqAdvanceIds.sort();
+
+  let adjustmentSumNonRounded = 0;
+  const byAdvance = new Map<string, number>();
+  for (const adj of adjustments) {
+    const a = roundMoney(adj.amount);
+    if (a <= 0) throw new Error('Each adjustment amount must be positive.');
+    adjustmentSumNonRounded += a;
+    byAdvance.set(adj.advanceId, (byAdvance.get(adj.advanceId) ?? 0) + a);
+  }
+  const adjustmentSum = roundMoney(adjustmentSumNonRounded);
+
+  if (adjustmentSum > billAmount + MONEY_EPS) {
+    throw new Error('Total adjustments exceed bill amount.');
+  }
+
+  const advanceRowsMap = new Map<string, ContractorAdvanceRow>();
+  for (const aid of uniqAdvanceIds) {
+    const ar = await client.query<ContractorAdvanceRow>(
+      `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
+          cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
+          created_at, updated_at, deleted_at
+       FROM contractor_advances
+       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [tenantId, aid]
+    );
+    const row = ar.rows[0];
+    if (!row) throw new Error(`Advance not found: ${aid}`);
+    if (row.contractor_contact_id !== contractorId) {
+      throw new Error(`Advance ${aid} belongs to another contractor than this bill.`);
+    }
+    advanceRowsMap.set(aid, row);
+  }
+
+  let advanceGlId: string | null = null;
+  for (const aid of uniqAdvanceIds) {
+    const row = advanceRowsMap.get(aid)!;
+    const need = roundMoney(byAdvance.get(aid)!);
+    const rem = roundMoney(parseMoney(row.remaining_amount));
+    if (need > rem + MONEY_EPS) {
+      throw new Error(`Adjustment exceeds remaining amount on advance ${aid}.`);
+    }
+    if (advanceGlId == null) advanceGlId = row.advance_asset_account_id;
+    else if (advanceGlId !== row.advance_asset_account_id) {
+      throw new Error(
+        'All advances applied to one bill must use the same Advance to Contractor GL account (advance_asset_account_id).'
+      );
+    }
+  }
+
+  const residualAcct =
+    opts?.residualAccountId != null && String(opts.residualAccountId).trim() !== ''
+      ? String(opts.residualAccountId).trim()
+      : bill.residual_account_id;
+  const residual = roundMoney(billAmount - adjustmentSum);
+  if (residual < -MONEY_EPS) throw new Error('Residual cannot be negative.');
+
+  for (const [advanceIdAgg, totalAdj] of byAdvance.entries()) {
+    const adjRowId = newId();
+    const rounded = roundMoney(totalAdj);
+    await client.query(
+      `INSERT INTO contractor_bill_adjustments (id, tenant_id, contractor_bill_id, contractor_advance_id, amount)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [adjRowId, tenantId, billId, advanceIdAgg, rounded]
+    );
+    await client.query(
+      `UPDATE contractor_advances SET remaining_amount = remaining_amount - $1::numeric, updated_at = NOW()
+       WHERE tenant_id = $2 AND id = $3`,
+      [rounded, tenantId, advanceIdAgg]
+    );
+  }
+
+  const entryDate = opts?.entryDate?.trim() ? opts.entryDate.trim() : bill.bill_date;
+  const projectId =
+    bill.project_id != null && String(bill.project_id).trim() !== '' ? String(bill.project_id).trim() : null;
+
+  const expenseLine = bill.construction_expense_account_id;
+  const advanceAcct = advanceGlId!;
+  const lines = [
+    { accountId: expenseLine, debitAmount: billAmount, creditAmount: 0, projectId },
+    { accountId: advanceAcct, debitAmount: 0, creditAmount: adjustmentSum, projectId },
+  ];
+  if (residual > MONEY_EPS) {
+    lines.push({ accountId: residualAcct, debitAmount: 0, creditAmount: residual, projectId });
+  }
+
+  const { journalEntryId } = await insertJournalEntry(client, tenantId, {
+    entryDate,
+    reference: opts?.reference?.trim() ? opts.reference.trim() : `CTR-BILL:${billId}`,
+    description: opts?.description ?? bill.description ?? 'Contractor bill approved',
+    sourceModule: 'contractor_bill',
+    sourceId: billId,
+    createdBy,
+    projectId,
+    lines,
+  });
+
+  await client.query(
+    `UPDATE contractor_bills
+     SET status = 'approved', approval_journal_entry_id = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3`,
+    [journalEntryId, tenantId, billId]
+  );
+
+  const refreshed = await client.query<ContractorBillRow>(
+    `SELECT id, tenant_id, contractor_contact_id, bill_number, bill_date, amount::text, status,
+       description, project_id, construction_expense_account_id, residual_account_id,
+       approval_journal_entry_id, created_by, created_at, updated_at, deleted_at
+     FROM contractor_bills WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, billId]
+  );
+  const updatedBill = refreshed.rows[0];
+  if (!updatedBill) throw new Error('Bill not found after approval.');
+  return { bill: updatedBill, journalEntryId };
+}
+
+export async function listContractorAdvances(
+  client: pg.PoolClient,
+  tenantId: string,
+  contractorContactId: string
+): Promise<ContractorAdvanceRow[]> {
+  const r = await client.query<ContractorAdvanceRow>(
+    `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
+       cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
+       created_at, updated_at, deleted_at
+     FROM contractor_advances
+     WHERE tenant_id = $1 AND contractor_contact_id = $2 AND deleted_at IS NULL
+     ORDER BY advance_date ASC, id ASC`,
+    [tenantId, contractorContactId]
+  );
+  return r.rows;
+}
+
+export type LedgerAdjustmentLine = {
+  id: string;
+  contractorBillId: string;
+  billNumber: string | undefined;
+  billDate: string;
+  billAmount: number;
+  advanceId: string;
+  adjustmentAmount: number;
+  adjustmentCreatedAt: string;
+};
+
+export type ContractorLedgerResult = {
+  advances: ContractorAdvanceRow[];
+  adjustments: LedgerAdjustmentLine[];
+  summary: {
+    totalOriginalAmount: number;
+    totalRemainingAmount: number;
+  };
+};
+
+export async function getContractorLedger(
+  client: pg.PoolClient,
+  tenantId: string,
+  contractorContactId: string
+): Promise<ContractorLedgerResult> {
+  await assertContactInTenant(client, tenantId, contractorContactId);
+  const advances = await listContractorAdvances(client, tenantId, contractorContactId);
+
+  type AdjQr = ContractorBillAdjustmentRow & {
+    bill_number: string | null;
+    bill_date: string;
+    bill_amount: string;
+  };
+  const aj = await client.query<AdjQr>(
+    `SELECT cba.id, cba.tenant_id, cba.contractor_bill_id, cba.contractor_advance_id,
+            cba.amount::text AS amount, cba.created_at,
+            cb.bill_number, cb.bill_date AS bill_date, cb.amount::text AS bill_amount
+     FROM contractor_bill_adjustments cba
+     INNER JOIN contractor_bills cb ON cb.id = cba.contractor_bill_id AND cb.tenant_id = cba.tenant_id
+     WHERE cba.tenant_id = $1 AND cb.contractor_contact_id = $2 AND cb.deleted_at IS NULL
+     ORDER BY cba.created_at ASC, cba.id ASC`,
+    [tenantId, contractorContactId]
+  );
+
+  const adjustments: LedgerAdjustmentLine[] = aj.rows.map((row) => ({
+    id: row.id,
+    contractorBillId: row.contractor_bill_id,
+    billNumber: row.bill_number ?? undefined,
+    billDate: typeof row.bill_date === 'string' ? row.bill_date : String(row.bill_date),
+    billAmount: parseMoney(row.bill_amount),
+    advanceId: row.contractor_advance_id,
+    adjustmentAmount: parseMoney(row.amount),
+    adjustmentCreatedAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }));
+
+  let totalOriginal = 0;
+  let totalRemaining = 0;
+  for (const a of advances) {
+    totalOriginal = roundMoney(totalOriginal + parseMoney(a.original_amount));
+    totalRemaining = roundMoney(totalRemaining + parseMoney(a.remaining_amount));
+  }
+
+  return {
+    advances,
+    adjustments,
+    summary: {
+      totalOriginalAmount: totalOriginal,
+      totalRemainingAmount: totalRemaining,
+    },
+  };
+}
+
+/** Load advancesWith remaining for FIFO; returns suggestion only. */
+export async function previewFifoAdjustmentsForBill(
+  client: pg.PoolClient,
+  tenantId: string,
+  contractorContactId: string,
+  billAmount: number
+): Promise<{ advanceId: string; amount: number }[]> {
+  const rows = await listContractorAdvances(client, tenantId, contractorContactId);
+  const remains: AdvanceRemains[] = rows
+    .filter((r) => parseMoney(r.remaining_amount) > MONEY_EPS)
+    .map((r) => ({
+      id: r.id,
+      advanceDate: r.advance_date,
+      remainingAmount: parseMoney(r.remaining_amount),
+    }));
+  return allocateAdvancesFifo(remains, billAmount);
+}

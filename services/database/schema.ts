@@ -1227,4 +1227,91 @@ BEGIN SELECT RAISE(ABORT, 'journal_lines are immutable'); END;
 
 CREATE TRIGGER IF NOT EXISTS journal_lines_immutable_del BEFORE DELETE ON journal_lines
 BEGIN SELECT RAISE(ABORT, 'journal_lines cannot be deleted'); END;
+
+-- =============================================================================
+-- CONTRACTOR ADVANCES & BILLS (parity with PostgreSQL 056_contractor_advances_bills.sql)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS contractor_advances (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    contractor_contact_id TEXT NOT NULL,
+    advance_date TEXT NOT NULL,
+    original_amount REAL NOT NULL,
+    remaining_amount REAL NOT NULL,
+    cash_account_id TEXT NOT NULL,
+    advance_asset_account_id TEXT NOT NULL,
+    advance_journal_entry_id TEXT,
+    project_id TEXT,
+    description TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT,
+    FOREIGN KEY (contractor_contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (cash_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (advance_asset_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (advance_journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
+    CHECK (remaining_amount >= 0 AND remaining_amount <= original_amount),
+    CHECK (original_amount > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contractor_advances_tenant_contact
+    ON contractor_advances(tenant_id, contractor_contact_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_contractor_advances_tenant_date
+    ON contractor_advances(tenant_id, advance_date) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_contractor_advances_tenant_remaining
+    ON contractor_advances(tenant_id, remaining_amount)
+    WHERE deleted_at IS NULL AND remaining_amount > 0;
+
+CREATE TABLE IF NOT EXISTS contractor_bills (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    contractor_contact_id TEXT NOT NULL,
+    bill_number TEXT,
+    bill_date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    description TEXT,
+    project_id TEXT,
+    construction_expense_account_id TEXT NOT NULL,
+    residual_account_id TEXT NOT NULL,
+    approval_journal_entry_id TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT,
+    FOREIGN KEY (contractor_contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (construction_expense_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (residual_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (approval_journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
+    CHECK (amount > 0)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contractor_bills_tenant_number_alive
+    ON contractor_bills(tenant_id, bill_number)
+    WHERE deleted_at IS NULL AND bill_number IS NOT NULL AND TRIM(bill_number) <> '';
+
+CREATE INDEX IF NOT EXISTS idx_contractor_bills_tenant_contact
+    ON contractor_bills(tenant_id, contractor_contact_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_contractor_bills_tenant_status
+    ON contractor_bills(tenant_id, status) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS contractor_bill_adjustments (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    contractor_bill_id TEXT NOT NULL,
+    contractor_advance_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (contractor_bill_id) REFERENCES contractor_bills(id) ON DELETE CASCADE,
+    FOREIGN KEY (contractor_advance_id) REFERENCES contractor_advances(id) ON DELETE RESTRICT,
+    CHECK (amount > 0),
+    UNIQUE (contractor_bill_id, contractor_advance_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contractor_adj_tenant_bill
+    ON contractor_bill_adjustments(tenant_id, contractor_bill_id);
+CREATE INDEX IF NOT EXISTS idx_contractor_adj_tenant_advance
+    ON contractor_bill_adjustments(tenant_id, contractor_advance_id);
 `;
