@@ -116,10 +116,15 @@ async function runPgRestore(dumpPath: string): Promise<void> {
     ['--clean', '--if-exists', '--no-owner', '--no-acl', '-d', dbUrl, dumpPath],
     'pg_restore'
   );
-  // pg_restore: 0 = ok, 1 = warnings, 2 = errors
-  if (code === 2 || code === null) {
-    throw new Error(stderr.trim() || `pg_restore exited with code ${code}`);
+  const failureMessage = getPgRestoreFailureMessage(code, stderr);
+  if (failureMessage) {
+    throw new Error(failureMessage);
   }
+}
+
+export function getPgRestoreFailureMessage(code: number | null, stderr: string): string | null {
+  if (code === 0) return null;
+  return stderr.trim() || `pg_restore exited with code ${code}`;
 }
 
 /** Any admin: whether backup API is allowed (for Settings UI). */
