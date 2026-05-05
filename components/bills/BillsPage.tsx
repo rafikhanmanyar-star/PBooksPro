@@ -52,6 +52,43 @@ interface BillsPageProps {
     projectContext?: boolean; // When true, indicates bills are being managed from project management section
 }
 
+type BillTreeSelection = { id: string; type: 'group' | 'vendor'; parentId?: string } | null;
+
+/** Unpaid vendor bill ids in current tree/project scope (VendorBillPaymentModal restrict list). */
+function restrictUnpaidBillIdsForVendorInView(
+    vendorId: string,
+    baseBills: Bill[],
+    selectedNode: BillTreeSelection,
+    projectFilter: string
+): string[] | null {
+    let pool = baseBills.filter((b) => b.vendorId === vendorId && b.status !== InvoiceStatus.PAID);
+
+    if (selectedNode?.type === 'vendor' && selectedNode.id === vendorId) {
+        const parentId = selectedNode.parentId ?? 'unassigned';
+        pool = pool.filter((b) => {
+            if (parentId === 'unassigned') return !b.projectId;
+            return b.projectId === parentId;
+        });
+        return pool.map((b) => b.id);
+    }
+
+    if (selectedNode?.type === 'group') {
+        if (selectedNode.id === 'unassigned') {
+            pool = pool.filter((b) => !b.projectId);
+        } else {
+            pool = pool.filter((b) => b.projectId === selectedNode.id);
+        }
+        return pool.map((b) => b.id);
+    }
+
+    if (projectFilter !== 'all') {
+        pool = pool.filter((b) => b.projectId === projectFilter);
+        return pool.map((b) => b.id);
+    }
+
+    return null;
+}
+
 /** Premium tree sidebar: same style as Project Agreements (Directories, avatars, orange active, chevron) */
 const BillTreeSidebar: React.FC<{
     nodes: BillTreeNode[];
@@ -240,6 +277,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [paymentBill, setPaymentBill] = useState<Bill | null>(null);
+    const [isAdvancePayBillModalOpen, setIsAdvancePayBillModalOpen] = useState(false);
+    const [billForAdvancePay, setBillForAdvancePay] = useState<Bill | null>(null);
     const [duplicateBillData, setDuplicateBillData] = useState<Partial<Bill> | null>(null);
     const [billToEdit, setBillToEdit] = useState<Bill | null>(null);
 
@@ -267,6 +306,11 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const closeBulkPayModal = useCallback(() => {
         setIsBulkPayModalOpen(false);
         setBulkPayPresetSnapshot([]);
+    }, []);
+
+    const closeAdvancePayBillModal = useCallback(() => {
+        setIsAdvancePayBillModalOpen(false);
+        setBillForAdvancePay(null);
     }, []);
 
     useEffect(() => {
@@ -712,6 +756,14 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     };
 
     const handleRecordPayment = (bill: Bill) => {
+        if (!isLocalOnlyMode() && bill.vendorId && bill.status !== InvoiceStatus.PAID) {
+            const vendorEntity = vendorMap.get(bill.vendorId);
+            if (vendorEntity) {
+                setBillForAdvancePay(bill);
+                setIsAdvancePayBillModalOpen(true);
+                return;
+            }
+        }
         setPaymentBill(bill);
         setIsPaymentModalOpen(true);
     };
@@ -760,34 +812,23 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
     const restrictToBillIdsForVendorPay = useMemo((): string[] | null => {
         if (!bulkPayVendor) return null;
-        const vid = bulkPayVendor.id;
-        let pool = baseBills.filter((b) => b.vendorId === vid && b.status !== InvoiceStatus.PAID);
-
-        if (selectedNode?.type === 'vendor' && selectedNode.id === vid) {
-            const parentId = selectedNode.parentId ?? 'unassigned';
-            pool = pool.filter((b) => {
-                if (parentId === 'unassigned') return !b.projectId;
-                return b.projectId === parentId;
-            });
-            return pool.map((b) => b.id);
-        }
-
-        if (selectedNode?.type === 'group') {
-            if (selectedNode.id === 'unassigned') {
-                pool = pool.filter((b) => !b.projectId);
-            } else {
-                pool = pool.filter((b) => b.projectId === selectedNode.id);
-            }
-            return pool.map((b) => b.id);
-        }
-
-        if (projectFilter !== 'all') {
-            pool = pool.filter((b) => b.projectId === projectFilter);
-            return pool.map((b) => b.id);
-        }
-
-        return null;
+        return restrictUnpaidBillIdsForVendorInView(bulkPayVendor.id, baseBills, selectedNode, projectFilter);
     }, [bulkPayVendor, baseBills, selectedNode, projectFilter]);
+
+    const restrictToBillIdsForSingleAdvancePay = useMemo((): string[] | null => {
+        if (!billForAdvancePay?.vendorId) return null;
+        return restrictUnpaidBillIdsForVendorInView(
+            billForAdvancePay.vendorId,
+            baseBills,
+            selectedNode,
+            projectFilter
+        );
+    }, [billForAdvancePay, baseBills, selectedNode, projectFilter]);
+
+    const singleAdvancePayPresetIds = useMemo(
+        () => (billForAdvancePay?.id ? [billForAdvancePay.id] : undefined),
+        [billForAdvancePay?.id]
+    );
 
     /** New bill prefill from project filter + tree (Project Construction): project, vendor, and today when both are known. */
     const newBillContextPrefill = useMemo((): Partial<Bill> | undefined => {
@@ -1397,6 +1438,16 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     vendor={bulkPayVendor}
                     restrictToBillIds={restrictToBillIdsForVendorPay ?? undefined}
                     presetSelectedBillIds={bulkPayPresetSnapshot.length ? bulkPayPresetSnapshot : undefined}
+                />
+            )}
+
+            {billForAdvancePay?.vendorId && vendorMap.get(billForAdvancePay.vendorId) && (
+                <VendorBillPaymentModal
+                    isOpen={isAdvancePayBillModalOpen}
+                    onClose={closeAdvancePayBillModal}
+                    vendor={vendorMap.get(billForAdvancePay.vendorId)!}
+                    restrictToBillIds={restrictToBillIdsForSingleAdvancePay ?? undefined}
+                    presetSelectedBillIds={singleAdvancePayPresetIds}
                 />
             )}
 

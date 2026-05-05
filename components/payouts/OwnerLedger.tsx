@@ -4,7 +4,7 @@ import { List, type RowComponentProps } from 'react-window';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toDateOnly } from '../../utils/dateUtils';
 import { getPropertyIdsForOwner, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
 import {
     isFirstPropertyForOwnerRentSlice,
@@ -39,6 +39,11 @@ type LedgerLine = {
 
 const LEDGER_ROW_HEIGHT = 52;
 const LEDGER_LIST_MAX_H = 520;
+
+function ledgerRunningBalanceDateKey(raw: string | undefined): string {
+    if (raw == null || String(raw).trim() === '') return '9999-12-31';
+    return toDateOnly(raw);
+}
 
 type OwnerLedgerRowExtra = {
     rows: Array<LedgerLine & { balance: number }>;
@@ -560,9 +565,19 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
         let chronologicalRunning = 0;
         [...items]
             .sort((a, b) => {
-                const ta = new Date(a.date).getTime();
-                const tb = new Date(b.date).getTime();
-                if (ta !== tb) return ta - tb;
+                const da = ledgerRunningBalanceDateKey(a.date);
+                const db = ledgerRunningBalanceDateKey(b.date);
+                if (da !== db) return da < db ? -1 : 1;
+                const aKind = Number(a.credit) > 0 ? 0 : Number(a.debit) > 0 ? 1 : 2;
+                const bKind = Number(b.credit) > 0 ? 0 : Number(b.debit) > 0 ? 1 : 2;
+                if (aKind !== bKind) return aKind - bKind;
+                if (aKind === 0) {
+                    const diff = Number(a.credit) - Number(b.credit);
+                    if (diff !== 0) return diff < 0 ? -1 : 1;
+                } else if (aKind === 1) {
+                    const diff = Number(a.debit) - Number(b.debit);
+                    if (diff !== 0) return diff < 0 ? -1 : 1;
+                }
                 return String(a.id).localeCompare(String(b.id));
             })
             .forEach((row) => {

@@ -17,7 +17,7 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import LedgerSummaryCards from './LedgerSummaryCards';
 import { formatCurrency } from '../../utils/numberUtils';
-import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { formatDate, toDateOnly, toLocalDateString } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -35,6 +35,42 @@ import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getLedgerOwnerIdsForProperty, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { resolveOwnerPayoutPayeeId, shouldAttributeUnallocatedOwnerPayoutToProperty } from '../payouts/ownerPayoutBreakdown';
+
+/** Calendar day for running balance — avoids `new Date(iso)` timezone drift vs plain YYYY-MM-DD. */
+function ledgerRunningBalanceDateKey(raw: string | undefined): string {
+    if (raw == null || String(raw).trim() === '') return '9999-12-31';
+    return toDateOnly(raw);
+}
+
+/**
+ * Same calendar day: (1) Rent In before Paid Out; (2) among several outflows, smaller amount first
+ * (partial payout before larger settlement — UUID order had no business meaning and inverted chains).
+ */
+function compareReportRowsForRunningBalance(
+    a: { date: string; id: string; rentIn: number; paidOut: number; ledgerOwnerId?: string },
+    b: { date: string; id: string; rentIn: number; paidOut: number; ledgerOwnerId?: string },
+    usePerOwnerRunningBalance: boolean
+): number {
+    if (usePerOwnerRunningBalance) {
+        const oa = a.ledgerOwnerId ?? '';
+        const ob = b.ledgerOwnerId ?? '';
+        if (oa !== ob) return oa.localeCompare(ob);
+    }
+    const da = ledgerRunningBalanceDateKey(a.date);
+    const db = ledgerRunningBalanceDateKey(b.date);
+    if (da !== db) return da < db ? -1 : 1;
+    const aKind = Number(a.rentIn) > 0 ? 0 : Number(a.paidOut) > 0 ? 1 : 2;
+    const bKind = Number(b.rentIn) > 0 ? 0 : Number(b.paidOut) > 0 ? 1 : 2;
+    if (aKind !== bKind) return aKind - bKind;
+    if (aKind === 0) {
+        const diff = Number(a.rentIn) - Number(b.rentIn);
+        if (diff !== 0) return diff < 0 ? -1 : 1;
+    } else if (aKind === 1) {
+        const diff = Number(a.paidOut) - Number(b.paidOut);
+        if (diff !== 0) return diff < 0 ? -1 : 1;
+    }
+    return String(a.id).localeCompare(String(b.id));
+}
 
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -748,15 +784,29 @@ const OwnerPayoutsReport: React.FC = () => {
             }
         });
 
+        const distinctLedgerOwners = new Set(items.map((i: { ledgerOwnerId?: string }) => i.ledgerOwnerId).filter(Boolean));
+        const usePerOwnerRunningBalance = selectedOwnerId === 'all' && distinctLedgerOwners.size > 1;
+
         // Display sort (user columns)
         items.sort((a, b) => {
-            let valA: any = a[sortConfig.key];
-            let valB: any = b[sortConfig.key];
-
             if (sortConfig.key === 'date') {
-                valA = new Date(valA).getTime();
-                valB = new Date(valB).getTime();
-            } else if (typeof valA === 'string') {
+                const da = ledgerRunningBalanceDateKey(a.date);
+                const db = ledgerRunningBalanceDateKey(b.date);
+                if (da !== db) {
+                    if (da < db) return sortConfig.direction === 'asc' ? -1 : 1;
+                    return sortConfig.direction === 'asc' ? 1 : -1;
+                }
+                const run = compareReportRowsForRunningBalance(
+                    a as { date: string; id: string; rentIn: number; paidOut: number; ledgerOwnerId?: string },
+                    b as { date: string; id: string; rentIn: number; paidOut: number; ledgerOwnerId?: string },
+                    usePerOwnerRunningBalance
+                );
+                return sortConfig.direction === 'asc' ? run : -run;
+            }
+            let valA: any = a[sortConfig.key as keyof typeof a];
+            let valB: any = b[sortConfig.key as keyof typeof b];
+
+            if (typeof valA === 'string') {
                 valA = valA.toLowerCase();
                 valB = valB.toLowerCase();
             }
@@ -766,21 +816,14 @@ const OwnerPayoutsReport: React.FC = () => {
             return 0;
         });
 
-        const distinctLedgerOwners = new Set(items.map((i: { ledgerOwnerId?: string }) => i.ledgerOwnerId).filter(Boolean));
-        const usePerOwnerRunningBalance = selectedOwnerId === 'all' && distinctLedgerOwners.size > 1;
-
         const balanceById: Record<string, number> = {};
-        const sortedForBalance = [...items].sort((a, b) => {
-            if (usePerOwnerRunningBalance) {
-                const oa = (a as { ledgerOwnerId?: string }).ledgerOwnerId ?? '';
-                const ob = (b as { ledgerOwnerId?: string }).ledgerOwnerId ?? '';
-                if (oa !== ob) return oa.localeCompare(ob);
-            }
-            const da = new Date(a.date).getTime();
-            const db = new Date(b.date).getTime();
-            if (da !== db) return da - db;
-            return String(a.id).localeCompare(String(b.id));
-        });
+        const sortedForBalance = [...items].sort((a, b) =>
+            compareReportRowsForRunningBalance(
+                a as { date: string; id: string; rentIn: number; paidOut: number; ledgerOwnerId?: string },
+                b as { date: string; id: string; rentIn: number; paidOut: number; ledgerOwnerId?: string },
+                usePerOwnerRunningBalance
+            )
+        );
 
         const perOwnerRun = new Map<string, number>();
         let globalRun = openingBalance;

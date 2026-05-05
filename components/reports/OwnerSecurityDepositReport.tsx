@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
 import { List, type RowComponentProps } from 'react-window';
 import { useAppContext } from '../../context/AppContext';
-import { TransactionType, ContactType, Transaction } from '../../types';
+import { TransactionType, ContactType, Transaction, Category, Contact } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -37,6 +37,8 @@ import {
     buildRentalPortfolioTreeNodes,
     resolvePortfolioTreeSelection,
 } from './rentalPortfolioReportTree';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface SecurityDepositRow {
     id: string;
@@ -69,6 +71,40 @@ const SD_ROW_HEIGHT = 40;
 const SD_VIRTUALIZE_THRESHOLD = 80;
 
 type SecurityDepositReportRow = SecurityDepositRow & { balance: number };
+
+type SecurityDepositWaContext = {
+    recipient: Contact;
+    roleLabel: string;
+    payoutTypeLabel: string;
+};
+
+/** Refund → message to payee (tenant on contact). Owner security payout → message to owner on contact. */
+function resolveSecurityDepositWhatsAppContext(
+    tx: Transaction,
+    categories: Category[],
+    contacts: Contact[]
+): SecurityDepositWaContext | null {
+    const cat = categories.find((c) => c.id === tx.categoryId);
+    if (!cat || !tx.contactId) return null;
+
+    let roleLabel: string;
+    let payoutTypeLabel: string;
+
+    if (cat.name === 'Security Deposit Refund') {
+        roleLabel = 'tenant';
+        payoutTypeLabel = 'Security deposit refund';
+    } else if (cat.name === 'Owner Security Payout') {
+        roleLabel = 'owner';
+        payoutTypeLabel = 'Security deposit payout';
+    } else {
+        return null;
+    }
+
+    const recipient = contacts.find((c) => c.id === tx.contactId);
+    if (!recipient) return null;
+
+    return { recipient, roleLabel, payoutTypeLabel };
+}
 
 function SortIconHeader({
     column,
@@ -142,7 +178,8 @@ const VirtualSdListRow = memo(function VirtualSdListRow(props: RowComponentProps
 
 const OwnerSecurityDepositReport: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const { showToast } = useNotification();
+    const { showToast, showAlert } = useNotification();
+    const { openChat } = useWhatsApp();
     const { print: triggerPrint } = usePrintContext();
 
     const [dateRange, setDateRange] = useState<DateRangeOption>('total');
@@ -583,6 +620,57 @@ const OwnerSecurityDepositReport: React.FC = () => {
         setTransactionToEdit(tx);
     }, []);
 
+    const securityDepositWaContext = useMemo(() => {
+        if (!transactionToEdit) return null;
+        return resolveSecurityDepositWhatsAppContext(
+            transactionToEdit,
+            state.categories,
+            state.contacts
+        );
+    }, [transactionToEdit, state.categories, state.contacts]);
+
+    const handleSecurityDepositWhatsApp = useCallback(async () => {
+        if (!transactionToEdit || !securityDepositWaContext) return;
+        const { recipient, payoutTypeLabel } = securityDepositWaContext;
+        const phone = recipient.contactNo;
+        if (!phone?.trim()) {
+            await showAlert(
+                'This contact has no phone number. Add a number in People to send WhatsApp.'
+            );
+            return;
+        }
+        if (!WhatsAppService.isValidPhoneNumber(phone)) {
+            await showAlert('Phone number is not valid for WhatsApp. Update it in People.');
+            return;
+        }
+        const tpl =
+            state.whatsAppTemplates.payoutConfirmation ||
+            'Dear {contactName},\n\nA {payoutType} payment of {amount} has been made to you.\nReference: {reference}\n\nThank you.';
+        const message = WhatsAppService.generatePayoutConfirmation(
+            tpl,
+            recipient,
+            Math.abs(Number(transactionToEdit.amount)),
+            payoutTypeLabel,
+            transactionToEdit.description || formatDate(transactionToEdit.date)
+        );
+        try {
+            sendOrOpenWhatsApp(
+                { contact: recipient, message, phoneNumber: phone },
+                () => state.whatsAppMode,
+                openChat
+            );
+        } catch (err) {
+            await showAlert(err instanceof Error ? err.message : 'Failed to open WhatsApp');
+        }
+    }, [
+        transactionToEdit,
+        securityDepositWaContext,
+        state.whatsAppTemplates.payoutConfirmation,
+        state.whatsAppMode,
+        openChat,
+        showAlert,
+    ]);
+
     const sdVirtualRowProps = useMemo(
         () =>
             ({
@@ -1013,11 +1101,55 @@ const OwnerSecurityDepositReport: React.FC = () => {
 
             <Modal isOpen={!!transactionToEdit} onClose={() => setTransactionToEdit(null)} title="Edit Transaction">
                 {transactionToEdit && (
-                    <TransactionForm
-                        transactionToEdit={transactionToEdit}
-                        onClose={() => setTransactionToEdit(null)}
-                        onShowDeleteWarning={handleShowDeleteWarning}
-                    />
+                    <>
+                        {securityDepositWaContext && (
+                            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-1 border-b border-app-border">
+                                <div className="text-sm text-app-muted min-w-0">
+                                    <span className="font-semibold text-app-text">Payment confirmation</span>
+                                    {' · '}Send to{' '}
+                                    <span className="text-app-text capitalize">{securityDepositWaContext.roleLabel}</span>
+                                    {' · '}
+                                    <span className="text-app-text truncate">
+                                        {securityDepositWaContext.recipient.name}
+                                    </span>
+                                    {(!securityDepositWaContext.recipient.contactNo ||
+                                        !WhatsAppService.isValidPhoneNumber(
+                                            securityDepositWaContext.recipient.contactNo
+                                        )) && (
+                                        <span className="block text-xs text-amber-600 dark:text-amber-500 mt-1">
+                                            Add or fix a mobile number on this contact (People) to use WhatsApp.
+                                        </span>
+                                    )}
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    className="shrink-0 border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                    onClick={() => void handleSecurityDepositWhatsApp()}
+                                    disabled={
+                                        !securityDepositWaContext.recipient.contactNo ||
+                                        !WhatsAppService.isValidPhoneNumber(
+                                            securityDepositWaContext.recipient.contactNo
+                                        )
+                                    }
+                                    title={
+                                        securityDepositWaContext.roleLabel === 'tenant'
+                                            ? 'Send WhatsApp confirmation of security refund to tenant'
+                                            : 'Send WhatsApp confirmation of security payout to owner'
+                                    }
+                                >
+                                    <div className="w-4 h-4 mr-1.5">{ICONS.whatsapp}</div>
+                                    WhatsApp
+                                </Button>
+                            </div>
+                        )}
+                        <TransactionForm
+                            transactionToEdit={transactionToEdit}
+                            onClose={() => setTransactionToEdit(null)}
+                            onShowDeleteWarning={handleShowDeleteWarning}
+                        />
+                    </>
                 )}
             </Modal>
 
