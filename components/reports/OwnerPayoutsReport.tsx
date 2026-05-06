@@ -35,6 +35,10 @@ import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getLedgerOwnerIdsForProperty, resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate, getOwnershipSharesForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { resolveOwnerPayoutPayeeId, shouldAttributeUnallocatedOwnerPayoutToProperty } from '../payouts/ownerPayoutBreakdown';
+import {
+    billAffectsOwnerRentalIncomeLedger,
+    isBillPaymentFromSecurityDepositIncome,
+} from '../../utils/rentalBillPayments';
 
 /** Calendar day for running balance — avoids `new Date(iso)` timezone drift vs plain YYYY-MM-DD. */
 function ledgerRunningBalanceDateKey(raw: string | undefined): string {
@@ -245,6 +249,8 @@ const OwnerPayoutsReport: React.FC = () => {
                 if (obClearingCat && tx.categoryId === obClearingCat.id) return;
 
                 if (tx.categoryId === rentalIncomeCategory.id) {
+                    if (isBillPaymentFromSecurityDepositIncome(tx)) return;
+
                     const txDate = (tx.date || '').slice(0, 10);
                     const hasExplicit = (tx.invoiceId && obShareLineInvoices.has(tx.invoiceId))
                         || (tx.batchId && obShareLineInvoices.has(tx.batchId));
@@ -381,6 +387,7 @@ const OwnerPayoutsReport: React.FC = () => {
 
         (state.bills || []).forEach(bill => {
             if (!bill.propertyId || bill.projectId) return;
+            if (!billAffectsOwnerRentalIncomeLedger(bill, state)) return;
             const billDate = new Date(bill.issueDate);
             if (billDate >= start) return;
             const property = state.properties.find(p => p.id === bill.propertyId);
@@ -503,6 +510,8 @@ const OwnerPayoutsReport: React.FC = () => {
             if (clearingAllocCat && tx.categoryId === clearingAllocCat.id) return;
 
             if (tx.categoryId === rentalIncomeCategory.id) {
+                if (isBillPaymentFromSecurityDepositIncome(tx)) return;
+
                 const txDate = (tx.date || '').slice(0, 10);
                 const hasExplicitShares = (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId))
                     || (tx.batchId && txIdsWithShareLines.has(tx.batchId));
@@ -722,9 +731,10 @@ const OwnerPayoutsReport: React.FC = () => {
             }
         });
 
-        // 4. Bill deductions (cost center = owner property) — show even if bill not paid yet
+        // 4. Bill deductions — owner / building allocation only (tenant bills use Security / tenant ledgers)
         (state.bills || []).forEach(bill => {
             if (!bill.propertyId || bill.projectId) return;
+            if (!billAffectsOwnerRentalIncomeLedger(bill, state)) return;
 
             const billDate = new Date(bill.issueDate);
             if (billDate < start || billDate > end) return;

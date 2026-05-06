@@ -45,7 +45,7 @@ type RentalView =
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
     | 'Owner Rental Income' | 'Owner Rental Income Summary'
     | 'Service Charges Deduction' | 'Tenant Ledger' | 'Vendor Ledger'
-    | 'Owner Security Deposit' | 'Broker Fees' | 'Rental Receivable';
+    | 'Security Deposit' | 'Broker Fees' | 'Rental Receivable';
 
 const ANALYSIS_REPORTS: RentalView[] = [
     'Agreement Expiry',
@@ -66,13 +66,13 @@ const LEDGER_REPORTS: RentalView[] = [
     'Service Charges Deduction',
     'Tenant Ledger',
     'Vendor Ledger',
-    'Owner Security Deposit',
+    'Security Deposit',
     'Broker Fees',
     'Rental Receivable',
 ];
 
 /** Ledger reports that keep their React state when switching to other rental views or app pages (Rental tab stays mounted). */
-type PersistedLedgerReportView = 'Owner Rental Income' | 'Broker Fees' | 'Owner Security Deposit';
+type PersistedLedgerReportView = 'Owner Rental Income' | 'Broker Fees' | 'Security Deposit';
 type PersistedOperationalView =
     | 'Agreements'
     | 'Invoices'
@@ -82,7 +82,7 @@ type PersistedOperationalView =
 const PERSISTED_LEDGER_REPORTS: PersistedLedgerReportView[] = [
     'Owner Rental Income',
     'Broker Fees',
-    'Owner Security Deposit',
+    'Security Deposit',
 ];
 const PERSISTED_OPERATIONAL_VIEWS: PersistedOperationalView[] = [
     'Agreements',
@@ -92,7 +92,7 @@ const PERSISTED_OPERATIONAL_VIEWS: PersistedOperationalView[] = [
 ];
 
 function isPersistedLedgerReportView(v: RentalView): v is PersistedLedgerReportView {
-    return v === 'Owner Rental Income' || v === 'Broker Fees' || v === 'Owner Security Deposit';
+    return v === 'Owner Rental Income' || v === 'Broker Fees' || v === 'Security Deposit';
 }
 
 function isPersistedOperationalView(v: RentalView): v is PersistedOperationalView {
@@ -115,13 +115,20 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         if ((activeView as string) === 'Ownership transfers') setActiveView('Agreements');
     }, [activeView, setActiveView]);
 
+    /** Legacy nav label “Owner Security Deposit” renamed to “Security Deposit”. */
+    useEffect(() => {
+        if ((activeView as string) === 'Owner Security Deposit') setActiveView('Security Deposit');
+    }, [activeView, setActiveView]);
+
     /** Legacy “Payouts” sub-page removed from nav; map to Owner Rental Income report. */
     const normalizedView: RentalView =
         activeView === 'Payouts'
             ? 'Owner Rental Income'
             : (activeView as string) === 'Ownership transfers'
               ? 'Agreements'
-              : activeView;
+              : (activeView as string) === 'Owner Security Deposit'
+                ? 'Security Deposit'
+                : activeView;
     useEffect(() => {
         if (activeView === 'Payouts') {
             setActiveView('Owner Rental Income');
@@ -178,7 +185,9 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             const [mainTab, subTab] = initialTabs;
             startTransition(() => {
                 if (mainTab === 'Reports' && subTab) {
-                    setActiveView(subTab as RentalView);
+                    const reportTab =
+                        (subTab as string) === 'Owner Security Deposit' ? 'Security Deposit' : subTab;
+                    setActiveView(reportTab as RentalView);
                 } else if (mainTab === 'Rental setup') {
                     setActiveView('Rental setup');
                 } else if (mainTab === 'Payouts') {
@@ -213,7 +222,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     >({
         'Owner Rental Income': false,
         'Broker Fees': false,
-        'Owner Security Deposit': false,
+        'Security Deposit': false,
     });
     const [persistedOperationalMounted, setPersistedOperationalMounted] = useState<Record<PersistedOperationalView, boolean>>({
         Agreements: false,
@@ -271,7 +280,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         switch (normalizedView) {
             case 'Owner Rental Income':
             case 'Broker Fees':
-            case 'Owner Security Deposit':
+            case 'Security Deposit':
                 return null;
             case 'Visual Layout':
                 return wrap(<PropertyLayoutReport />);
@@ -473,7 +482,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                             >
                                 {view === 'Owner Rental Income' && <OwnerPayoutsReport />}
                                 {view === 'Broker Fees' && <BrokerFeeReport />}
-                                {view === 'Owner Security Deposit' && <OwnerSecurityDepositReport />}
+                                {view === 'Security Deposit' && <OwnerSecurityDepositReport />}
                             </div>
                         );
                     })}

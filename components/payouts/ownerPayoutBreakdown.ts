@@ -11,6 +11,7 @@ import {
     getBrokerFeeAllocatedAmountForOwner,
     getBillCostAllocatedAmountForOwner,
 } from '../../services/propertyOwnershipService';
+import { billAffectsOwnerRentalIncomeLedger, isBillPaymentFromSecurityDepositIncome } from '../../utils/rentalBillPayments';
 import type { PropertyBalanceItem } from './OwnerPayoutModal';
 
 export type OwnerPropertyBreakdownMap = Record<
@@ -177,6 +178,7 @@ export function computeOwnerRentCollectedPaidBalanceForProperty(
             if (tx.type !== TransactionType.INCOME || String(tx.propertyId) !== propertyIdStr) return false;
             if (clearingRentCat && tx.categoryId === clearingRentCat.id) return false;
             if (tx.categoryId === rentalIncomeCategory.id) {
+                if (isBillPaymentFromSecurityDepositIncome(tx)) return false;
                 const d = (tx.date || '').slice(0, 10);
                 if (d && hasMultipleOwnersOnDate(state, propertyIdStr, d)) {
                     const hasExplicitShares =
@@ -275,7 +277,12 @@ export function computeOwnerRentCollectedPaidBalanceForProperty(
         });
 
     state.bills
-        .filter((b) => String(b.propertyId) === propertyIdStr && !b.projectId)
+        .filter(
+            (b) =>
+                String(b.propertyId) === propertyIdStr &&
+                !b.projectId &&
+                billAffectsOwnerRentalIncomeLedger(b, state)
+        )
         .forEach((b) => {
             paid += getBillCostAllocatedAmountForOwner(state, b, ownerId);
         });
@@ -408,7 +415,7 @@ export function buildOwnerPropertyBreakdown(state: AppState): OwnerPropertyBreak
 }
 
 /**
- * Security-deposit slices only (no rent collected/paid math). Used by Owner Security Deposit report
+ * Security-deposit slices only (no rent collected/paid math). Used by Security Deposit report
  * so opening that page does not run {@link computeOwnerRentCollectedPaidBalanceForProperty} for every owner×property.
  */
 export function buildOwnerSecurityPropertyBreakdownOnly(state: AppState): OwnerPropertyBreakdownMap {

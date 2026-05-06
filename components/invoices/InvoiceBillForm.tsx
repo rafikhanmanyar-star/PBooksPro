@@ -30,6 +30,7 @@ import {
   todayLocalYyyyMmDd,
 } from '../../utils/dateUtils';
 import { sumExpenseLinkedToBill } from '../../utils/billLinkedPayments';
+import { getBillLinkedLedgerTransactionIdsForCascadeDelete } from '../../utils/rentalBillPayments';
 import { newBillRowId } from '../../utils/newBillRowId';
 import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
 
@@ -974,12 +975,28 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       await showAlert('This invoice is open in view-only mode.', { title: 'Cannot delete' });
       return;
     }
-    if (itemToEdit.paidAmount > 0) {
-      const linkedPay =
-        type === 'bill' ? sumExpenseLinkedToBill(state.transactions, (itemToEdit as Bill).id) : 0;
-      if (type === 'bill' && linkedPay < 0.01) {
+    if (itemToEdit.paidAmount > 0 && type === 'bill') {
+      const bill = itemToEdit as Bill;
+      const linkedPay = sumExpenseLinkedToBill(state.transactions, bill.id);
+      const cascadeTxIds = getBillLinkedLedgerTransactionIdsForCascadeDelete(bill, state.transactions);
+
+      if (cascadeTxIds.length > 0) {
         const ok = await showConfirm(
-          `This bill is marked paid (${CURRENCY} ${(itemToEdit as Bill).paidAmount.toLocaleString()}) but there are no expense transactions linked to it in the ledger — the record is inconsistent.\n\nDelete this bill anyway? (PM cycle links will be removed if present.)`,
+          `This bill shows ${CURRENCY} ${bill.paidAmount.toLocaleString()} paid. Deleting it will permanently remove ${cascadeTxIds.length} ledger transaction${cascadeTxIds.length === 1 ? '' : 's'}, including payments and any linked security deposit adjustment lines.\n\nContinue?`,
+          { title: 'Delete bill and linked payments', confirmLabel: 'Delete all', cancelLabel: 'Cancel' }
+        );
+        if (!ok) return;
+        dispatch({ type: 'BATCH_DELETE_TRANSACTIONS', payload: { transactionIds: cascadeTxIds } });
+        const alloc = state.pmCycleAllocations?.find((a) => a.billId === bill.id);
+        if (alloc) dispatch({ type: 'DELETE_PM_CYCLE_ALLOCATION', payload: alloc.id });
+        dispatch({ type: 'DELETE_BILL', payload: bill.id });
+        onClose();
+        showToast('Bill and linked ledger entries removed.', 'info');
+        return;
+      }
+      if (linkedPay < 0.01) {
+        const ok = await showConfirm(
+          `This bill is marked paid (${CURRENCY} ${bill.paidAmount.toLocaleString()}) but there are no ledger transactions linked to it — the record is inconsistent.\n\nDelete this bill anyway? (PM cycle links will be removed if present.)`,
           { title: 'Delete bill without ledger payments', confirmLabel: 'Delete', cancelLabel: 'Cancel' }
         );
         if (!ok) return;
@@ -992,6 +1009,13 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         showToast('Bill deleted successfully.', 'info');
         return;
       }
+      await showAlert(
+        `Cannot delete this bill while it shows payments (${CURRENCY} ${bill.paidAmount.toLocaleString()}), but matching ledger transactions were not found. Delete or fix those entries manually, then try again.`,
+        { title: 'Deletion blocked' }
+      );
+      return;
+    }
+    if (itemToEdit.paidAmount > 0 && type !== 'bill') {
       await showAlert(`Cannot delete this ${type} because it has associated payments (${CURRENCY} ${itemToEdit.paidAmount.toLocaleString()}).\n\nPlease delete the payment transactions from the ledger first.`, { title: 'Deletion Blocked' });
       return;
     }

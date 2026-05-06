@@ -26,6 +26,7 @@ import {
     getBrokerFeeAllocatedAmountForOwner,
     getBillCostAllocatedAmountForOwner,
 } from '../../services/propertyOwnershipService';
+import { billAffectsOwnerRentalIncomeLedger, isBillPaymentFromSecurityDepositIncome } from '../../utils/rentalBillPayments';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -173,9 +174,10 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                 if (share > 0) unitData[ra.propertyId!].brokerFee += share;
             });
 
-            // Derive bill amounts (cost center = owner property) — even if bill not paid yet
+            // Derive bill amounts — owner/building allocations only (tenant bills are excluded from owner rent economics)
             (state.bills || []).forEach(bill => {
                 if (!bill.propertyId || bill.projectId || !unitData[bill.propertyId]) return;
+                if (!billAffectsOwnerRentalIncomeLedger(bill, state)) return;
                 const billDate = new Date(bill.issueDate);
                 if (billDate < start || billDate > end) return;
                 const share = getBillCostAllocatedAmountForOwner(state, bill, owner.id);
@@ -201,6 +203,7 @@ const OwnerIncomeSummaryReport: React.FC = () => {
 
                 // Case 1: Rental Income — gross (single-owner) or per-owner share (multi-owner)
                 if (tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id) {
+                    if (isBillPaymentFromSecurityDepositIncome(tx)) return;
                     if (tx.propertyId && unitData[tx.propertyId]) {
                         const d = (tx.date || '').slice(0, 10);
                         if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {

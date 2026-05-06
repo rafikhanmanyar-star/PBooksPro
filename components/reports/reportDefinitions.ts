@@ -19,7 +19,7 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'rental-service-charges', title: 'Service Charges Deduction', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Service Charges Deduction' },
     { id: 'rental-tenant-ledger', title: 'Tenant Ledger Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Tenant Ledger' },
     { id: 'rental-vendor-ledger', title: 'Vendor Ledger (Rental)', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Vendor Ledger' },
-    { id: 'rental-owner-security-deposit', title: 'Owner Security Deposit Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Security Deposit' },
+    { id: 'rental-owner-security-deposit', title: 'Security Deposit Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Security Deposit' },
     { id: 'rental-broker-fees', title: 'Broker Fee Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Broker Fees' },
     { id: 'rental-receivable', title: 'Rental Receivable', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Rental Receivable' },
 

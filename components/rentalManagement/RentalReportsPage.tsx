@@ -25,7 +25,7 @@ const ALL_REPORTS = [
     'Service Charges Deduction',
     'Tenant Ledger',
     'Vendor Ledger',
-    'Owner Security Deposit',
+    'Security Deposit',
     'Broker Fees',
     'Rental Receivable'
 ];
@@ -90,7 +90,7 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                 return <TenantLedgerReport />;
             case 'Vendor Ledger':
                 return <VendorLedgerReport context="Rental" />;
-            case 'Owner Security Deposit':
+            case 'Security Deposit':
                 return <OwnerSecurityDepositReport />;
             case 'Broker Fees':
                 return <BrokerFeeReport />;

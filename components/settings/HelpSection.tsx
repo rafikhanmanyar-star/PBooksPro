@@ -335,8 +335,8 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>Payout Calculation:</strong> System calculates: Collected Rent + Service Charges - Deductions (maintenance, broker fees, etc.) = Owner Income.</li>
                     <li><strong>Creating Payouts:</strong> Owner Payouts tab &gt; Select owner &gt; Review calculated income &gt; Create payout transaction.</li>
                     <li><strong>Deductions:</strong> Expenses linked to property are automatically deducted. Service charges are added back to owner income.</li>
-                    <li><strong>Payout Reports:</strong> View Owner Rental Income report to see detailed breakdown by property, period, and owner (rental income/expense only; security is in Owner Security Deposit report).</li>
-                    <li><strong>Security Deposit Tracking:</strong> Security deposits held for owners are tracked separately. Use Owner Security Deposit Report.</li>
+                    <li><strong>Payout Reports:</strong> View Owner Rental Income report to see detailed breakdown by property, period, and owner (rental income/expense only; security is in Security Deposit report).</li>
+                    <li><strong>Security Deposit Tracking:</strong> Security deposits held for owners are tracked separately. Use Security Deposit Report.</li>
                 </ul>
             </div>
         ),
@@ -600,7 +600,7 @@ const HELP_TOPICS: HelpTopic[] = [
             <div className="space-y-3 text-sm text-slate-600">
                 <p>Access comprehensive reports for all aspects of your business.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Rental Reports:</strong> Building Analysis, Property Status, Owner Rental Income, Owner Rental Income Summary, Tenant Ledger, Vendor Ledger, Broker Fees, Service Charges, Owner Security Deposit, Visual Layout.</li>
+                    <li><strong>Rental Reports:</strong> Building Analysis, Property Status, Owner Rental Income, Owner Rental Income Summary, Tenant Ledger, Vendor Ledger, Broker Fees, Service Charges, Security Deposit, Visual Layout.</li>
                     <li><strong>Project Reports:</strong> Project Summary, Marketing Activity, Revenue Analysis, PM Cost, Income/Expense by Category, Unit Report, Client Ledger, Broker Report, Vendor Ledger, Contract Report, Visual Layout.</li>
                     <li><strong>General Reports:</strong> Transfer Statistics, Category Analysis, Account Statements (from General Ledger filters).</li>
                     <li><strong>Report Access:</strong> Reports are in respective modules (Rental/Project Management &gt; Reports tab) or via KPI Panel &gt; Reports tab.</li>

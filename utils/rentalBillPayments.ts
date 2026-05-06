@@ -22,6 +22,17 @@ export function getExpenseBearerType(
 }
 
 /**
+ * Tenant-allocation bills are funded by the tenant/security path; they must not reduce owner rental income
+ * in Owner Rental Income summaries (see OwnerPayoutsReport, owner breakdown balances).
+ */
+export function billAffectsOwnerRentalIncomeLedger(
+  bill: Bill,
+  state: { rentalAgreements: { id: string }[] }
+): boolean {
+  return getExpenseBearerType(bill, state) !== 'tenant';
+}
+
+/**
  * Primary expense category on a bill: top-level categoryId, else first line in expenseCategoryItems
  * (bills with line-item categories often omit bill.categoryId).
  */
@@ -105,9 +116,63 @@ function orphanCategoryMatches(
   return false;
 }
 
+/** True when this INCOME row is the ledger payment for a bill paid from tenant security (see OwnerPayoutModal). */
+export function isBillPaymentFromSecurityDepositIncome(tx: Transaction): boolean {
+  if (tx.type !== TransactionType.INCOME) return false;
+  const d = tx.description || '';
+  return /bill payment \(from security deposit\)/i.test(d);
+}
+
 /**
- * Linked bill payments plus expenses that look like this bill's payment (same category family,
- * rental scope, no other bill link) — e.g. recorded from Transactions without "Link to Bill".
+ * Companion EXPENSE created with the income row when paying a bill from security (no bill_id on this line).
+ */
+export function findSecurityDepositAppliedExpenseForBillPayment(
+  incomeTx: Transaction,
+  bill: Bill,
+  transactions: Transaction[]
+): Transaction | undefined {
+  const bn = bill.billNumber?.trim();
+  if (!bn) return undefined;
+  const escaped = bn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const descRe = new RegExp(`Security deposit applied — Bill\\s*${escaped}\\b`, 'i');
+  const incAmt =
+    typeof incomeTx.amount === 'number' ? incomeTx.amount : parseFloat(String(incomeTx.amount)) || 0;
+  const incDay = (incomeTx.date || '').slice(0, 10);
+  return transactions.find((t) => {
+    if (t.type !== TransactionType.EXPENSE) return false;
+    if (!descRe.test(t.description || '')) return false;
+    const a = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0;
+    if (Math.abs(a - incAmt) > 0.02) return false;
+    if ((t.date || '').slice(0, 10) !== incDay) return false;
+    if (incomeTx.contactId && t.contactId && incomeTx.contactId !== t.contactId) return false;
+    return true;
+  });
+}
+
+/**
+ * Ledger transaction IDs to remove when deleting a rental bill so bill paid amount and security liability stay coherent.
+ * Includes INCOME/EXPENSE rows with bill_id, plus paired “Security deposit applied” expense for security-deposit settlements.
+ */
+export function getBillLinkedLedgerTransactionIdsForCascadeDelete(bill: Bill, transactions: Transaction[]): string[] {
+  const billIdStr = String(bill.id);
+  const ids = new Set<string>();
+  for (const t of transactions) {
+    const bid = String(t.billId ?? (t as { bill_id?: string }).bill_id ?? '');
+    if (bid !== billIdStr) continue;
+    if (t.type === TransactionType.EXPENSE || t.type === TransactionType.INCOME) ids.add(t.id);
+  }
+  for (const t of transactions) {
+    if (!ids.has(t.id)) continue;
+    if (t.type !== TransactionType.INCOME || !isBillPaymentFromSecurityDepositIncome(t)) continue;
+    const pair = findSecurityDepositAppliedExpenseForBillPayment(t, bill, transactions);
+    if (pair) ids.add(pair.id);
+  }
+  return [...ids];
+}
+
+/**
+ * Linked bill payments (EXPENSE cash payments **and** INCOME rows for security-deposit settlements with bill_id)
+ * plus orphan EXPENSEs that match this bill without bill_id.
  */
 export function getPaymentTransactionsForRentalBill(
   transactions: Transaction[],
@@ -116,11 +181,11 @@ export function getPaymentTransactionsForRentalBill(
   properties: Property[]
 ): Transaction[] {
   const billIdStr = String(bill.id);
-  const linked = transactions.filter(
-    t =>
-      t.type === TransactionType.EXPENSE &&
-      String(t.billId ?? (t as any).bill_id ?? '') === billIdStr
-  );
+  const linked = transactions.filter((t) => {
+    const bid = String(t.billId ?? (t as { bill_id?: string }).bill_id ?? '');
+    if (bid !== billIdStr) return false;
+    return t.type === TransactionType.EXPENSE || t.type === TransactionType.INCOME;
+  });
   const linkedIds = new Set(linked.map(t => t.id));
   const categoryIds = expandBillCategoryIds(bill, categories);
 

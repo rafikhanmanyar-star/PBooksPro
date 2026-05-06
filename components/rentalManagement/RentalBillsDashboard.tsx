@@ -20,6 +20,8 @@ import {
   getPaymentTransactionsForRentalBill,
   resolveExpenseCategoryForBillPayment,
   getEffectiveBillPaymentDisplay,
+  isBillPaymentFromSecurityDepositIncome,
+  findSecurityDepositAppliedExpenseForBillPayment,
 } from '../../utils/rentalBillPayments';
 import { ImportType } from '../../services/importService';
 
@@ -850,6 +852,12 @@ const RentalBillsDashboard: React.FC = () => {
     const payAccount = payment.accountId ? accountMap.get(payment.accountId) : undefined;
     const whatsAppOpts = getWhatsAppOptions(bill);
     const menuKey = `${menuKeyPrefix}-${payment.id}`;
+    const paymentTypeBadge =
+      payment.type === TransactionType.INCOME && isBillPaymentFromSecurityDepositIncome(payment) ? (
+        <span className="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-violet-100 text-violet-800">Security</span>
+      ) : (
+        <span className="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">Pay</span>
+      );
     return (
       <tr
         key={`pay-${payment.id}`}
@@ -857,9 +865,7 @@ const RentalBillsDashboard: React.FC = () => {
         className="group border-b border-app-border cursor-pointer hover:bg-ds-success/5 transition-all duration-150"
       >
         <td className="px-3 py-3" onClick={e => e.stopPropagation()} />
-        <td className="px-3 py-3">
-          <span className="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">Pay</span>
-        </td>
+        <td className="px-3 py-3">{paymentTypeBadge}</td>
         <td className="px-3 py-3 text-app-text text-sm tabular-nums">{formatDate(payment.date)}</td>
         <td className="px-3 py-3">
           <div className="flex items-center gap-2.5">
@@ -1290,7 +1296,13 @@ const RentalBillsDashboard: React.FC = () => {
                       onClick={() => setTransactionToEdit(payment)}
                       className="group border-b border-app-border cursor-pointer hover:bg-ds-success/5 transition-all duration-150"
                     >
-                      <td className="px-3 py-3"><span className="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">Pay</span></td>
+                      <td className="px-3 py-3">
+                        {payment.type === TransactionType.INCOME && isBillPaymentFromSecurityDepositIncome(payment) ? (
+                          <span className="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-violet-100 text-violet-800">Security</span>
+                        ) : (
+                          <span className="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">Pay</span>
+                        )}
+                      </td>
                       <td className="px-3 py-3 text-app-text text-sm tabular-nums">{formatDate(payment.date)}</td>
                       <td className="px-3 py-3 font-semibold text-primary text-sm">{bill.billNumber}</td>
                       <td className="px-3 py-3">
@@ -1390,11 +1402,39 @@ const RentalBillsDashboard: React.FC = () => {
         <TransactionForm onClose={() => setTransactionToEdit(null)} transactionToEdit={transactionToEdit} onShowDeleteWarning={(tx) => { setTransactionToEdit(null); setWarningModalState({ isOpen: true, transaction: tx }); }} />
       </Modal>
 
-      <LinkedTransactionWarningModal isOpen={warningModalState.isOpen} onClose={() => setWarningModalState({ isOpen: false, transaction: null })} onConfirm={() => {
-        if (warningModalState.transaction) dispatch({ type: 'DELETE_TRANSACTION', payload: warningModalState.transaction.id });
-        setWarningModalState({ isOpen: false, transaction: null });
-        showToast('Payment deleted successfully');
-      }} action="delete" linkedItemName="this bill" />
+      <LinkedTransactionWarningModal
+        isOpen={warningModalState.isOpen}
+        onClose={() => setWarningModalState({ isOpen: false, transaction: null })}
+        onConfirm={() => {
+          const tx = warningModalState.transaction;
+          if (tx) {
+            const ids = [tx.id];
+            if (tx.type === TransactionType.INCOME && tx.billId && isBillPaymentFromSecurityDepositIncome(tx)) {
+              const bill = state.bills.find(b => b.id === tx.billId);
+              if (bill) {
+                const companion = findSecurityDepositAppliedExpenseForBillPayment(tx, bill, state.transactions);
+                if (companion) ids.push(companion.id);
+              }
+            }
+            if (ids.length > 1) {
+              dispatch({ type: 'BATCH_DELETE_TRANSACTIONS', payload: { transactionIds: ids } });
+            } else {
+              dispatch({ type: 'DELETE_TRANSACTION', payload: tx.id });
+            }
+          }
+          setWarningModalState({ isOpen: false, transaction: null });
+          showToast('Payment deleted successfully');
+        }}
+        action="delete"
+        linkedItemName="this bill"
+        customConsequence={
+          warningModalState.transaction &&
+          warningModalState.transaction.type === TransactionType.INCOME &&
+          isBillPaymentFromSecurityDepositIncome(warningModalState.transaction)
+            ? 'Deleting this payment will restore the unpaid balance on the bill and remove the linked security-deposit ledger line.'
+            : undefined
+        }
+      />
 
       <BillBulkPaymentModal
         isOpen={isBulkPayModalOpen}

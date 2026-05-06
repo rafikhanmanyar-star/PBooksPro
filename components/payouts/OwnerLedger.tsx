@@ -14,6 +14,7 @@ import {
 import { formatCurrency } from '../../utils/numberUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { billAffectsOwnerRentalIncomeLedger, isBillPaymentFromSecurityDepositIncome } from '../../utils/rentalBillPayments';
 
 interface OwnerLedgerProps {
     ownerId: string | null;
@@ -157,6 +158,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 if (clearingAllocCat && tx.categoryId === clearingAllocCat.id) return false;
 
                 if (tx.categoryId === rentalIncomeCategory.id) {
+                    if (isBillPaymentFromSecurityDepositIncome(tx)) return false;
+
                     const d = (tx.date || '').slice(0, 10);
                     if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
                         const hasExplicitShares = (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId))
@@ -447,9 +450,10 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 });
             });
 
-            // B3. Bills with cost center = owner (propertyId) — attribute to owner at bill date
+            // B3. Bills with cost center on property — owner/building bearer only (tenant bills are Security / tenant ledger)
             (state.bills || []).forEach(bill => {
                 if (!bill.propertyId || bill.projectId || !ownerPropertyIds.has(String(bill.propertyId))) return;
+                if (!billAffectsOwnerRentalIncomeLedger(bill, state)) return;
                 const amount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
                 if (isNaN(amount) || amount <= 0) return;
                 const billDateStr = (bill.issueDate || '').slice(0, 10);

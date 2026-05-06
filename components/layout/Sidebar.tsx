@@ -405,7 +405,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                             setIsMobileMenuOpen(false); // Close menu after navigation
                                                         }}
                                                         className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-2.5 rounded-md text-sm font-medium transition-all duration-ds group touch-manipulation border-l-[3px] ${active
-                                                                ? 'border-primary bg-nav-active text-app-text'
+                                                                ? 'border-primary bg-nav-active text-white'
                                                                 : primary
                                                                     ? 'border-emerald-400/70 bg-emerald-500/12 text-slate-100 font-semibold shadow-[inset_0_0_0_1px_rgba(52,211,153,0.18)] hover:bg-emerald-500/18 hover:text-white active:bg-emerald-500/22'
                                                                     : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5 active:bg-white/10'
@@ -711,7 +711,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                         type="button"
                                                         onClick={() => setCurrentPage(item.page as Page)}
                                                         className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-1.5 rounded-md text-xs font-medium transition-all duration-ds group border-l-[3px] ${active
-                                                                ? 'border-primary bg-nav-active text-app-text'
+                                                                ? 'border-primary bg-nav-active text-white'
                                                                 : primary
                                                                     ? 'border-emerald-400/70 bg-emerald-500/12 text-slate-100 font-semibold shadow-[inset_0_0_0_1px_rgba(52,211,153,0.18)] hover:bg-emerald-500/18 hover:text-white'
                                                                     : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'

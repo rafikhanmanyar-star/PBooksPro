@@ -37,6 +37,10 @@ import { CURRENCY } from '../../constants';
 import { formatDate, currentMonthYyyyMm } from '../../utils/dateUtils';
 import { resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
 import { resolveOwnerPayoutPayeeId, shouldAttributeUnallocatedOwnerPayoutToProperty } from '../payouts/ownerPayoutBreakdown';
+import {
+    billAffectsOwnerRentalIncomeLedger,
+    isBillPaymentFromSecurityDepositIncome,
+} from '../../utils/rentalBillPayments';
 
 function contactInitials(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -196,7 +200,13 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
 
         if (rentalIncomeCategory) {
             transactions
-                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && String(tx.propertyId) === propIdStr)
+                .filter(
+                    tx =>
+                        tx.type === TransactionType.INCOME &&
+                        tx.categoryId === rentalIncomeCategory.id &&
+                        String(tx.propertyId) === propIdStr &&
+                        !isBillPaymentFromSecurityDepositIncome(tx)
+                )
                 .forEach(tx => {
                     const amt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                     if (!isNaN(amt)) {
@@ -258,7 +268,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
             });
 
         bills
-            .filter(b => String(b.propertyId) === propIdStr && !b.projectId)
+            .filter(b => String(b.propertyId) === propIdStr && !b.projectId && billAffectsOwnerRentalIncomeLedger(b, st))
             .forEach(b => {
                 const billDate = (b.issueDate || '').slice(0, 10);
                 const billOwnerId = billDate ? resolveOwnerForPropertyOnDate(st, propIdStr, billDate) : property?.ownerId;
