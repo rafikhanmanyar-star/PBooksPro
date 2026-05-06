@@ -55,6 +55,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     const [supplierAdvances, setSupplierAdvances] = useState<ContractorLedgerAdvance[]>([]);
     const [expenseGlAccountId, setExpenseGlAccountId] = useState('');
     const [advancesLoaded, setAdvancesLoaded] = useState(false);
+    /** User can turn off FIFO prepaid and pay only via bank/cash (legacy transaction flow). */
+    const [applyPrepaidFifo, setApplyPrepaidFifo] = useState(true);
 
     const restrictSet = useMemo(
         () => (restrictToBillIds?.length ? new Set(restrictToBillIds) : null),
@@ -110,6 +112,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
 
     const fifoPlans = useMemo((): Map<string, BillAllocationPlan> => {
         if (
+            !applyPrepaidFifo ||
             supplierPartiesMixed ||
             !selectedSorted.length ||
             !supplierAdvances.length ||
@@ -131,7 +134,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
             dueAmount: Math.round((b.amount - b.paidAmount) * 100) / 100,
         }));
         return allocateFifoAcrossVendorBills(advRows, dueRows);
-    }, [selectedSorted, supplierAdvances, supplierPartiesMixed]);
+    }, [applyPrepaidFifo, selectedSorted, supplierAdvances, supplierPartiesMixed]);
 
     let appliedFromAdvances = 0;
     let cashToPayFromBank = 0;
@@ -144,12 +147,21 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     appliedFromAdvances = Math.round(appliedFromAdvances * 100) / 100;
     cashToPayFromBank = Math.round(cashToPayFromBank * 100) / 100;
 
+    const hasPrepaidAvailable =
+        advancesLoaded &&
+        supplierAdvances.some((a) => a.remainingAmount > EPS) &&
+        !supplierPartiesMixed;
+
     const advanceSettlementPath =
         !isLocalOnlyMode() &&
+        applyPrepaidFifo &&
         selectedSorted.length > 0 &&
         !supplierPartiesMixed &&
-        advancesLoaded &&
-        supplierAdvances.some((a) => a.remainingAmount > EPS);
+        hasPrepaidAvailable;
+
+    useEffect(() => {
+        if (isOpen) setApplyPrepaidFifo(true);
+    }, [isOpen]);
 
     useEffect(() => {
         let cancel = false;
@@ -337,7 +349,12 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                 onClose();
             } catch (e: unknown) {
                 console.error(e);
-                const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: string }).message) : String(e);
+                let msg =
+                    e && typeof e === 'object' && 'message' in e ? String((e as { message?: string }).message) : String(e);
+                if (/vendor_bill_advance_clearings/i.test(msg) && /does not exist/i.test(msg)) {
+                    msg +=
+                        ' Your API database needs latest migrations. From the PBooks repo with DATABASE_URL in .env, run: npm run db:migrate:lan';
+                }
                 await showAlert(`Settlement failed: ${msg}`);
             }
             return;
@@ -543,7 +560,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                     </div>
 
                     {!isLocalOnlyMode() && advancesLoaded && supplierAdvances.some((a) => a.remainingAmount > EPS) && (
-                        <div className="mb-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50/90 text-xs text-emerald-900 leading-relaxed space-y-1">
+                        <div className="mb-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50/90 text-xs text-emerald-900 leading-relaxed space-y-2">
                             <p className="font-semibold text-sm">Supplier prepaid advances detected</p>
                             <p>
                                 Outstanding prepaid balance for advances issued to{' '}
@@ -553,6 +570,22 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                 . Advances are allocated <strong>FIFO</strong> (oldest advances / oldest unpaid bills).
                                 Remaining prepaid stays on the supplier for future bills when an advance exceeds a bill&apos;s balance.
                             </p>
+                            {!supplierPartiesMixed && (
+                                <label className="flex items-start gap-2.5 cursor-pointer rounded-md bg-white/60 border border-emerald-100 px-3 py-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={applyPrepaidFifo}
+                                        onChange={(e) => setApplyPrepaidFifo(e.target.checked)}
+                                        className="mt-0.5 rounded text-emerald-700 border-emerald-300 focus:ring-emerald-500"
+                                        aria-label="Apply supplier prepaid advances toward this payment"
+                                    />
+                                    <span>
+                                        <span className="font-semibold">Apply prepaid to this payment (FIFO).</span>{' '}
+                                        Turn off to pay selected bills normally from your bank/cash account only (no prepaid
+                                        allocation).
+                                    </span>
+                                </label>
+                            )}
                             {supplierPartiesMixed && (
                                 <p className="text-rose-700 font-semibold">
                                     Mixed contact/vendor linkage on selection — unsettle-able until you select bills for one party only.
@@ -640,7 +673,11 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                         <ComboBox
                             id="payment-account"
                             name="payment-account"
-                            label="Bank / cash account (remainder after advances)"
+                            label={
+                                advanceSettlementPath
+                                    ? 'Bank / cash account (remainder after advances)'
+                                    : 'Bank / cash account'
+                            }
                             items={userSelectableAccounts}
                             selectedId={accountId}
                             onSelect={(item) => setAccountId(item?.id || '')}

@@ -9,6 +9,10 @@ import {
   softDeleteBill,
   upsertBill,
 } from '../services/billsService.js';
+import {
+  getContractorAdvanceById,
+  rowAdvanceToApi,
+} from '../services/contractorBillingService.js';
 import { settleVendorBillsBatchWithAdvances } from '../services/vendorBillAdvanceSettleService.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
@@ -175,6 +179,18 @@ billsRouter.post('/bills/settle-with-advances', async (req: AuthedRequest, res) 
           apiBills.push(rowToBillApi(br));
           emitEntityEvent(tenantId, 'updated', 'bill', {
             data: rowToBillApi(br),
+            sourceUserId: req.userId,
+          });
+        }
+      }
+      const emittedAdv = new Set<string>();
+      for (const aid of out.touchedAdvanceIds) {
+        if (emittedAdv.has(aid)) continue;
+        emittedAdv.add(aid);
+        const advRow = await getContractorAdvanceById(c, tenantId, aid);
+        if (advRow) {
+          emitEntityEvent(tenantId, 'updated', 'contractor_advance', {
+            data: rowAdvanceToApi(advRow),
             sourceUserId: req.userId,
           });
         }

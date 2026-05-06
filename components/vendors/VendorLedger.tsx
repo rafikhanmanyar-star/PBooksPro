@@ -181,10 +181,16 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         });
 
         const advanceRows: LedgerItem[] = (supplierAdvances ?? []).map((a) => {
-            let particulars = 'Supplier advance (prepaid)';
-            if (a.description?.trim()) particulars += ` — ${a.description.trim()}`;
-            if (Math.abs((a.remainingAmount ?? 0) - (a.originalAmount ?? 0)) > 0.005) {
-                particulars += ` · Open prepaid: ${CURRENCY} ${Number(a.remainingAmount).toLocaleString()}`;
+            const rem = Number(a.remainingAmount ?? 0);
+            const fully = rem <= 0.015;
+            let particulars = fully
+                ? 'Supplier advance · Fully applied (remaining prepaid 0)'
+                : 'Supplier advance (prepaid)';
+            if (a.description?.trim()) {
+                particulars += ` — ${a.description.trim()}`;
+            }
+            if (!fully) {
+                particulars += ` · Open prepaid: ${CURRENCY} ${rem.toLocaleString()}`;
             }
             return {
                 id: `advance-${a.id}`,

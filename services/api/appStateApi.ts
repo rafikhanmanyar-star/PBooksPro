@@ -45,7 +45,8 @@ function normalizeAccountTypeFromApi(raw: unknown): AccountType {
   return map[upper] ?? AccountType.ASSET;
 }
 
-function normalizeAccountFromApi(a: any): Account {
+/** Normalizes a chart row from GET /accounts or bulk state into the client `Account` shape (incl. account type casing). */
+export function normalizeAccountFromApi(a: any): Account {
   const rawOb = a.opening_balance ?? a.openingBalance;
   let openingBalance: number | undefined;
   if (rawOb === null || rawOb === undefined || rawOb === '') {

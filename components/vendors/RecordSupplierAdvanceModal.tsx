@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Vendor, AccountType } from '../../types';
+import { Vendor, Account, AccountType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -10,8 +10,41 @@ import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { contractorApi } from '../../services/api/contractorApi';
-import { formatApiErrorMessage } from '../../services/api/client';
+import { apiClient, formatApiErrorMessage } from '../../services/api/client';
+import { normalizeAccountFromApi } from '../../services/api/appStateApi';
 import { toLocalDateString } from '../../utils/dateUtils';
+
+/** Raw chart row (Settings / GET /accounts); keep DB `type` for filtering — normalizeAccountFromApi maps unknown types → Asset. */
+type AccountJsonRow = Record<string, unknown>;
+
+function accountRowDbType(row: AccountJsonRow): string {
+    const t = row.type ?? row.Type;
+    return String(t ?? '').trim();
+}
+
+/**
+ * Bank / cash / petty cash from Chart of Accounts. Uses raw DB type when present so rows are not dropped
+ * after normalization; also honors balance-sheet group keys used for bank lines.
+ */
+function isPayFromLiquidityRow(row: AccountJsonRow, normalized: Account): boolean {
+    if (normalized.name === 'Internal Clearing') return false;
+    if (normalized.isActive === false) return false;
+    const rawType = accountRowDbType(row);
+    const ru = rawType.toUpperCase();
+    if (ru === 'BANK' || ru === 'CASH') return true;
+    const rl = rawType.toLowerCase();
+    if (rl === 'bank' || rl === 'cash') return true;
+    if (normalized.type === AccountType.BANK || normalized.type === AccountType.CASH) return true;
+    const gk = String(normalized.bsGroupKey ?? row.bsGroupKey ?? row.bs_group_key ?? '')
+        .toLowerCase()
+        .trim();
+    if (gk === 'bank_accounts' || gk === 'cash_equivalents') return true;
+    return false;
+}
+
+function accountIsInactiveForPosting(acc: Account): boolean {
+    return acc.isActive === false;
+}
 
 interface RecordSupplierAdvanceModalProps {
     isOpen: boolean;
@@ -42,19 +75,75 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     const [reference, setReference] = useState('');
     const [description, setDescription] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    /** Raw rows from GET /accounts (do not pre-normalize — we need DB type string for pay-from detection). */
+    const [fetchedAccountRows, setFetchedAccountRows] = useState<AccountJsonRow[]>([]);
+    const [accountsLoadError, setAccountsLoadError] = useState<string | null>(null);
 
-    const cashOutAccounts = useMemo(
+    /** Merged chart: AppContext + fresh API list (by id) so nothing is dropped when one source is partial. */
+    const chartAccountRows = useMemo((): AccountJsonRow[] => {
+        if (isLocalOnlyMode()) {
+            return state.accounts.map((a) => ({ ...(a as unknown as AccountJsonRow) }));
+        }
+        const byId = new Map<string, AccountJsonRow>();
+        for (const a of state.accounts) {
+            const id = String(a.id ?? '').trim();
+            if (id) byId.set(id, { ...(a as unknown as AccountJsonRow) });
+        }
+        for (const r of fetchedAccountRows) {
+            const id = String(r.id ?? '').trim();
+            if (id) byId.set(id, { ...r });
+        }
+        return Array.from(byId.values());
+    }, [state.accounts, fetchedAccountRows]);
+
+    const cashOutAccounts = useMemo(() => {
+        const rows = chartAccountRows
+            .map((raw) => ({ raw, n: normalizeAccountFromApi(raw) }))
+            .filter(({ raw, n }) => isPayFromLiquidityRow(raw, n))
+            .map(({ n }) => n)
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+        const seen = new Set<string>();
+        return rows.filter((a) => {
+            const id = String(a.id || '').trim();
+            if (!id || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+    }, [chartAccountRows]);
+
+    const payFromComboItems = useMemo(
         () =>
-            state.accounts.filter(
-                (a) =>
-                    (a.type === AccountType.BANK || a.type === AccountType.CASH) && a.name !== 'Internal Clearing'
-            ),
-        [state.accounts]
+            cashOutAccounts.map((a) => {
+                const code = (a.accountCode || '').trim();
+                return {
+                    id: a.id,
+                    name: code ? `${code} — ${a.name}` : a.name,
+                };
+            }),
+        [cashOutAccounts]
     );
 
-    const assetAccounts = useMemo(
-        () => state.accounts.filter((a) => a.type === AccountType.ASSET && a.name !== 'Internal Clearing'),
-        [state.accounts]
+    const assetAccounts = useMemo(() => {
+        return chartAccountRows
+            .map((raw) => ({ raw, n: normalizeAccountFromApi(raw) }))
+            .filter(
+                ({ raw, n }) =>
+                    n.name !== 'Internal Clearing' &&
+                    !accountIsInactiveForPosting(n) &&
+                    n.type === AccountType.ASSET &&
+                    !isPayFromLiquidityRow(raw, n)
+            )
+            .map(({ n }) => n)
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+    }, [chartAccountRows]);
+
+    const assetComboItems = useMemo(
+        () =>
+            assetAccounts.map((a) => {
+                const code = (a.accountCode || '').trim();
+                return { id: a.id, name: code ? `${code} — ${a.name}` : a.name };
+            }),
+        [assetAccounts]
     );
 
     const projectItems = useMemo(
@@ -73,14 +162,42 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
         setDescription('');
         setProjectId((defaultProjectId ?? '').trim());
         setSubmitting(false);
+        setAccountsLoadError(null);
 
-        const firstCash = cashOutAccounts[0];
+        if (!isLocalOnlyMode()) {
+            let cancelled = false;
+            void apiClient
+                .get<unknown[]>('/accounts')
+                .then((rows) => {
+                    if (cancelled) return;
+                    if (!Array.isArray(rows)) {
+                        setFetchedAccountRows([]);
+                        setAccountsLoadError('Could not load chart of accounts.');
+                        return;
+                    }
+                    setFetchedAccountRows(rows as AccountJsonRow[]);
+                })
+                .catch(() => {
+                    if (cancelled) return;
+                    setFetchedAccountRows([]);
+                    setAccountsLoadError('Failed to load chart of accounts. Check your connection and try again.');
+                });
+            return () => {
+                cancelled = true;
+            };
+        }
+        setFetchedAccountRows([]);
+    }, [isOpen, vendor.id, defaultProjectId]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const firstCash = cashOutAccounts.find((a) => (a.name || '').toLowerCase() === 'cash') ?? cashOutAccounts[0];
         setCashAccountId(firstCash?.id ?? '');
         const preferredAsset =
             assetAccounts.find((a) => /prepaid|advance|supplier|contractor|deposit/i.test(a.name || '')) ||
             assetAccounts[0];
         setAdvanceAssetAccountId(preferredAsset?.id ?? '');
-    }, [isOpen, vendor.id, defaultProjectId, cashOutAccounts, assetAccounts]);
+    }, [isOpen, cashOutAccounts, assetAccounts]);
 
     const handleSubmit = async () => {
         if (isLocalOnlyMode()) {
@@ -172,11 +289,11 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                     <ComboBox
                         id="supplier-advance-pay-from"
                         name="supplier-advance-pay-from"
-                        label="Pay from (bank / cash)"
-                        items={cashOutAccounts}
+                        label="Pay from (Chart of Accounts — bank / cash)"
+                        items={payFromComboItems}
                         selectedId={cashAccountId}
                         onSelect={(item) => setCashAccountId(item?.id || '')}
-                        placeholder="Where funds are paid out"
+                        placeholder="Select bank or cash account from Settings → Chart of Accounts"
                         required
                         disabled={localBlocked || submitting || cashOutAccounts.length === 0}
                         entityType="account"
@@ -186,7 +303,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                         id="supplier-advance-asset"
                         name="supplier-advance-asset"
                         label="Prepaid supplier advance (balance sheet)"
-                        items={assetAccounts}
+                        items={assetComboItems}
                         selectedId={advanceAssetAccountId}
                         onSelect={(item) => setAdvanceAssetAccountId(item?.id || '')}
                         placeholder="e.g. Prepaid advances / supplier deposit"
@@ -232,13 +349,16 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                     </div>
                 </div>
 
+                {accountsLoadError && !localBlocked && (
+                    <p className="text-sm text-rose-700">{accountsLoadError}</p>
+                )}
                 {(cashOutAccounts.length === 0 || assetAccounts.length === 0) && !localBlocked && (
                     <p className="text-sm text-rose-700">
                         {cashOutAccounts.length === 0
-                            ? 'Add a Bank or Cash account in Chart of accounts.'
+                            ? 'Add an active Bank or Cash account in Settings → Financial → Chart of Accounts (or ensure data has loaded).'
                             : null}
                         {assetAccounts.length === 0
-                            ? ' Add at least one Asset account for prepaid supplier advances.'
+                            ? ' Add at least one active Asset account for prepaid supplier advances.'
                             : null}
                     </p>
                 )}

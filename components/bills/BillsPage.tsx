@@ -595,10 +595,11 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             const vend = vendorMap.get(selectedNode.id);
             const vendorLabel = vend?.name || 'Unknown';
             for (const adv of vendorSidebarAdvances) {
-                if ((adv.remainingAmount ?? 0) <= 0.015) continue;
                 if (parentGroupId !== 'unassigned') {
                     if (adv.projectId && adv.projectId !== parentGroupId) continue;
                 }
+                const rem = adv.remainingAmount ?? 0;
+                const fullyApplied = rem <= 0.015;
                 result.push({
                     id: `advance-${adv.id}`,
                     type: 'advance',
@@ -608,8 +609,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     vendorName: vendorLabel,
                     projectName: adv.projectId ? projectMap.get(adv.projectId)?.name ?? '—' : 'General',
                     amount: adv.originalAmount,
-                    status: 'Prepaid',
-                    balance: adv.remainingAmount,
+                    status: fullyApplied ? 'Fully applied' : 'Prepaid',
+                    balance: rem,
                 });
             }
         }
@@ -1262,20 +1263,42 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                         );
                                     } else if (row.type === 'advance' && row.advance) {
                                         const adv = row.advance;
+                                        const rem = adv.remainingAmount ?? 0;
+                                        const fullyApplied = rem <= 0.015 || row.status === 'Fully applied';
                                         return (
                                             <tr
                                                 key={row.id}
-                                                className={`transition-colors ${index % 2 === 0 ? 'bg-amber-50/40' : 'bg-amber-50/60'} hover:bg-amber-50/90`}
+                                                className={`transition-colors ${
+                                                    fullyApplied
+                                                        ? index % 2 === 0
+                                                            ? 'bg-slate-50/80'
+                                                            : 'bg-slate-100/50'
+                                                        : index % 2 === 0
+                                                          ? 'bg-amber-50/40'
+                                                          : 'bg-amber-50/60'
+                                                } hover:opacity-95`}
                                             >
                                                 <td className="px-3 py-2.5 text-center"></td>
                                                 <td className="px-3 py-2.5">
-                                                    <span className="inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight bg-amber-100 text-amber-900 border border-amber-200">
+                                                    <span
+                                                        className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${
+                                                            fullyApplied
+                                                                ? 'bg-slate-200 text-slate-800 border-slate-300'
+                                                                : 'bg-amber-100 text-amber-900 border-amber-200'
+                                                        }`}
+                                                    >
                                                         Advance
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{formatDate(row.date)}</td>
                                                 <td className="px-3 py-2.5">
-                                                    <div className="font-mono text-[10px] font-medium text-amber-800 bg-amber-100/80 px-1.5 py-0.5 rounded-md border border-amber-200 inline-block">
+                                                    <div
+                                                        className={`font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md border inline-block ${
+                                                            fullyApplied
+                                                                ? 'text-slate-700 bg-slate-100 border-slate-200'
+                                                                : 'text-amber-800 bg-amber-100/80 border border-amber-200'
+                                                        }`}
+                                                    >
                                                         {row.billNumber}
                                                     </div>
                                                 </td>
@@ -1285,15 +1308,33 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                     {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
-                                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
-                                                        Prepaid
+                                                    <span
+                                                        className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                                                            fullyApplied
+                                                                ? 'bg-slate-200 text-slate-800 border-slate-300'
+                                                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                                        }`}
+                                                    >
+                                                        {fullyApplied ? 'Fully applied' : 'Prepaid'}
                                                     </span>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-right font-bold tabular-nums text-amber-900">
-                                                    {CURRENCY} {(adv.remainingAmount ?? 0).toLocaleString()}
-                                                    <span className="block text-[9px] font-normal text-amber-700/90 normal-case tracking-normal">
-                                                        remaining
-                                                    </span>
+                                                <td className="px-3 py-2.5 text-right">
+                                                    <div
+                                                        className={`font-bold tabular-nums ${fullyApplied ? 'text-slate-600' : 'text-amber-900'}`}
+                                                    >
+                                                        {CURRENCY} {rem.toLocaleString()}
+                                                        <span className="block text-[9px] font-normal text-slate-600 normal-case tracking-normal">
+                                                            {fullyApplied ? 'remaining prepaid' : 'remaining'}
+                                                        </span>
+                                                    </div>
+                                                    {(adv.description || '').trim() ? (
+                                                        <p
+                                                            className="mt-1 text-[10px] text-slate-500 text-left leading-snug max-w-[220px] ml-auto whitespace-normal break-words"
+                                                            title={(adv.description || '').trim()}
+                                                        >
+                                                            {(adv.description || '').trim()}
+                                                        </p>
+                                                    ) : null}
                                                 </td>
                                                 <td className="px-3 py-2.5"></td>
                                             </tr>
@@ -1350,9 +1391,9 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                         {CURRENCY}{' '}
                                         {filteredRows
                                             .filter((r) => r.type === 'advance')
-                                            .reduce((sum, r) => sum + (r.balance || 0), 0)
+                                            .reduce((sum, r) => sum + Math.max(0, r.balance || 0), 0)
                                             .toLocaleString()}{' '}
-                                        <span className="font-normal text-slate-500 lowercase">remaining</span>
+                                        <span className="font-normal text-slate-500 lowercase">remaining (open advances)</span>
                                     </span>
                                 </div>
                             )}

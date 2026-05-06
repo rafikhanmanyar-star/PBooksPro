@@ -504,6 +504,23 @@ export async function approveContractorBill(
   return { bill: updatedBill, journalEntryId };
 }
 
+/** Single advance row for vendor prepaid (API settlement updates description / remaining_amount). */
+export async function getContractorAdvanceById(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string
+): Promise<ContractorAdvanceRow | null> {
+  const r = await client.query<ContractorAdvanceRow>(
+    `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
+       cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
+       created_at, updated_at, deleted_at
+     FROM contractor_advances
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+    [tenantId, id]
+  );
+  return r.rows[0] ?? null;
+}
+
 export async function listContractorAdvances(
   client: pg.PoolClient,
   tenantId: string,

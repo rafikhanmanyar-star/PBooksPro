@@ -29,6 +29,51 @@ function newId(): string {
   return randomUUID();
 }
 
+type Prepared = {
+  line: VendorBillAdvanceSettleLineInput;
+  bill: BillRow;
+  unpaid: number;
+  adjSum: number;
+  cash: number;
+  settleTotal: number;
+  byAdvance: Map<string, number>;
+};
+
+function moneyLabel(n: number): string {
+  return roundMoney(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function billLabelForNarrative(bill: BillRow): string {
+  const n = bill.bill_number && String(bill.bill_number).trim();
+  return n ? `Bill #${n}` : `Bill ${bill.id}`;
+}
+
+/** User-facing line stored on the bill row after settlement (ledger / drill-down). */
+function buildBillPaymentRecordNote(p: Prepared): string {
+  const bl = billLabelForNarrative(p.bill);
+  if (p.adjSum > MONEY_EPS && p.cash > MONEY_EPS) {
+    return `[Payment record] ${bl}: Paid from supplier prepaid advance (${moneyLabel(p.adjSum)}) and bank/cash (${moneyLabel(p.cash)}).`;
+  }
+  if (p.adjSum > MONEY_EPS) {
+    return `[Payment record] ${bl}: Paid from supplier prepaid advance (${moneyLabel(p.adjSum)}).`;
+  }
+  return `[Payment record] ${bl}: Paid from bank/cash (${moneyLabel(p.cash)}).`;
+}
+
+function buildJournalDescriptionForBill(userNote: string | null | undefined, p: Prepared): string {
+  const bl = billLabelForNarrative(p.bill);
+  let auto: string;
+  if (p.adjSum > MONEY_EPS && p.cash > MONEY_EPS) {
+    auto = `${bl}: ${moneyLabel(p.adjSum)} cleared from supplier prepaid; ${moneyLabel(p.cash)} from bank/cash.`;
+  } else if (p.adjSum > MONEY_EPS) {
+    auto = `${bl}: Paid in full (${moneyLabel(p.adjSum)}) from supplier prepaid advance.`;
+  } else {
+    auto = `${bl}: Paid ${moneyLabel(p.cash)} from bank/cash.`;
+  }
+  const u = typeof userNote === 'string' && userNote.trim() ? userNote.trim() : '';
+  return u ? `${u} — ${auto}` : auto;
+}
+
 /** Bill contact/vendor id that maps to contacts & contractor_advances rows (supports vendors.id bridge). */
 export async function resolveSupplierContactForBill(
   client: pg.PoolClient,
@@ -56,6 +101,7 @@ export async function settleVendorBillsBatchWithAdvances(
   }
 ): Promise<{
   journalEntries: { billId: string; journalEntryId: string }[];
+  touchedAdvanceIds: string[];
 }> {
   const supplier = String(input.supplierContactId ?? '').trim();
   if (!supplier) throw new Error('supplierContactId is required.');
@@ -75,16 +121,6 @@ export async function settleVendorBillsBatchWithAdvances(
       [tenantId, bid]
     );
   }
-
-  type Prepared = {
-    line: VendorBillAdvanceSettleLineInput;
-    bill: BillRow;
-    unpaid: number;
-    adjSum: number;
-    cash: number;
-    settleTotal: number;
-    byAdvance: Map<string, number>;
-  };
 
   const prepared: Prepared[] = [];
   const globalAdvanceUse = new Map<string, number>();
@@ -132,11 +168,21 @@ export async function settleVendorBillsBatchWithAdvances(
     prepared.push({ line, bill, unpaid, adjSum, cash, settleTotal, byAdvance });
   }
 
+  const advanceClearedAgainstBills = new Map<string, Array<{ billNumber: string; amount: number }>>();
+  for (const p of prepared) {
+    const billNumber = (p.bill.bill_number && String(p.bill.bill_number).trim()) || p.bill.id;
+    for (const [advanceIdAgg, amt] of p.byAdvance.entries()) {
+      const list = advanceClearedAgainstBills.get(advanceIdAgg) ?? [];
+      list.push({ billNumber, amount: roundMoney(amt) });
+      advanceClearedAgainstBills.set(advanceIdAgg, list);
+    }
+  }
+
   let advanceGlAggregate: string | null = null;
 
-  const uniqAdvIds = [...globalAdvanceUse.keys()].sort((a, b) => a.localeCompare(b));
-  if (uniqAdvIds.length > 0) {
-    for (const aid of uniqAdvIds) {
+  const touchedAdvanceIds = [...globalAdvanceUse.keys()].sort((a, b) => a.localeCompare(b));
+  if (touchedAdvanceIds.length > 0) {
+    for (const aid of touchedAdvanceIds) {
       const ar = await client.query<ContractorAdvanceRow>(
         `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
            cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
@@ -168,6 +214,8 @@ export async function settleVendorBillsBatchWithAdvances(
   const journalEntries: { billId: string; journalEntryId: string }[] = [];
   const refBase =
     typeof input.reference === 'string' && input.reference.trim() ? input.reference.trim() : undefined;
+  const userNoteForJournal =
+    typeof input.description === 'string' && input.description.trim() ? input.description.trim() : null;
 
   for (const p of prepared) {
     const { bill } = p;
@@ -194,15 +242,17 @@ export async function settleVendorBillsBatchWithAdvances(
       linesJe.push({ accountId: payAcct, debitAmount: 0, creditAmount: p.cash, projectId });
     }
 
+    const journalDescription =
+      typeof input.description === 'string' && input.description.trim()
+        ? buildJournalDescriptionForBill(userNoteForJournal, p)
+        : bill.description?.trim()
+          ? `${bill.description.trim()} — ${buildJournalDescriptionForBill(null, p)}`
+          : buildJournalDescriptionForBill(null, p);
+
     const { journalEntryId } = await insertJournalEntry(client, tenantId, {
       entryDate: input.entryDate.trim(),
       reference: refBase ?? `VB-${bill.bill_number || billId}`,
-      description:
-        (typeof input.description === 'string' && input.description.trim()
-          ? input.description.trim()
-          : null) ??
-        bill.description ??
-        `Vendor bill settled with advances — ${bill.bill_number || billId}`,
+      description: journalDescription,
       sourceModule: 'vendor_bill_advance_clearing',
       sourceId: billId,
       createdBy: actorUserId,
@@ -232,6 +282,19 @@ export async function settleVendorBillsBatchWithAdvances(
     }
 
     await recalculateBillPaymentAggregates(client, tenantId, billId);
+
+    const paymentNote = buildBillPaymentRecordNote(p);
+    await client.query(
+      `UPDATE bills SET
+         description =
+           CASE
+             WHEN trim(COALESCE(description, '')) = '' THEN $3::text
+             ELSE trim(description) || E'\n' || $3::text
+           END,
+         version = version + 1, updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, billId, paymentNote]
+    );
   }
 
   for (const [aid, totalDec] of globalAdvanceUse.entries()) {
@@ -242,9 +305,50 @@ export async function settleVendorBillsBatchWithAdvances(
     );
   }
 
+  for (const aid of touchedAdvanceIds) {
+    const usages = advanceClearedAgainstBills.get(aid);
+    if (!usages?.length) continue;
+    const clearedLine = `Cleared against bills: ${usages.map((u) => `${u.billNumber} (${moneyLabel(u.amount)})`).join(', ')}.`;
+    await client.query(
+      `UPDATE contractor_advances SET
+         description =
+           CASE
+             WHEN trim(COALESCE(description, '')) = '' THEN $3::text
+             ELSE trim(description) || ' ' || $3::text
+           END,
+         updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, aid, clearedLine]
+    );
+  }
+
+  for (const aid of touchedAdvanceIds) {
+    const remR = await client.query<{ remaining_amount: string }>(
+      `SELECT remaining_amount::text AS remaining_amount
+       FROM contractor_advances WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, aid]
+    );
+    const rem = roundMoney(Number(remR.rows[0]?.remaining_amount ?? NaN));
+    if (!Number.isFinite(rem)) continue;
+    if (rem > MONEY_EPS) continue;
+
+    await client.query(
+      `UPDATE contractor_advances SET
+         description =
+           CASE
+             WHEN trim(COALESCE(description, '')) ILIKE '%Fully applied (remaining prepaid: 0)%' THEN description
+             WHEN trim(COALESCE(description, '')) = '' THEN 'Fully applied (remaining prepaid: 0).'
+             ELSE trim(description) || ' Fully applied (remaining prepaid: 0).'
+           END,
+         updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, aid]
+    );
+  }
+
   for (const p of prepared) {
     await recalculateBillPaymentAggregates(client, tenantId, p.bill.id);
   }
 
-  return { journalEntries };
+  return { journalEntries, touchedAdvanceIds };
 }
