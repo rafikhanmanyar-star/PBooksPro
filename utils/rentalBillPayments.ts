@@ -1,12 +1,39 @@
 import {
   Bill,
   Category,
+  type ContractExpenseCategoryItem,
   ExpenseBearerType,
   Property,
   RentalAgreement,
   Transaction,
   TransactionType,
 } from '../types';
+
+/**
+ * `expenseCategoryItems` should be an array, but PostgreSQL JSON / API layers may return a single object or other shape.
+ * Always normalize before `.forEach` / spread to avoid runtime "forEach is not a function".
+ */
+export function getBillExpenseCategoryItemsArray(
+  bill: Pick<Bill, 'expenseCategoryItems'>
+): ContractExpenseCategoryItem[] {
+  const raw = bill.expenseCategoryItems as unknown;
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw as ContractExpenseCategoryItem[];
+  if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    if (
+      'categoryId' in o ||
+      'netValue' in o ||
+      'pricePerUnit' in o ||
+      'quantity' in o ||
+      'unit' in o ||
+      'amount' in o
+    ) {
+      return [raw as ContractExpenseCategoryItem];
+    }
+  }
+  return [];
+}
 
 /** Who bears the rental bill cost: persisted flag or inferred from property / agreement / building. */
 export function getExpenseBearerType(
@@ -38,8 +65,8 @@ export function billAffectsOwnerRentalIncomeLedger(
  */
 export function getPrimaryBillExpenseCategoryId(bill: Bill): string | undefined {
   if (bill.categoryId) return bill.categoryId;
-  const first = bill.expenseCategoryItems?.[0];
-  return first?.categoryId;
+  const lineItems = getBillExpenseCategoryItemsArray(bill);
+  return lineItems[0]?.categoryId;
 }
 
 /**
@@ -73,9 +100,9 @@ function expandBillCategoryIds(bill: Bill, categories: Category[]): Set<string> 
   const ids = new Set<string>();
   const primary = getPrimaryBillExpenseCategoryId(bill);
   if (primary) ids.add(primary);
-  bill.expenseCategoryItems?.forEach(item => {
+  for (const item of getBillExpenseCategoryItemsArray(bill)) {
     if (item.categoryId) ids.add(item.categoryId);
-  });
+  }
   if (ids.size === 0) return ids;
 
   const snapshot = [...ids];
