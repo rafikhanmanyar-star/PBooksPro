@@ -15,6 +15,11 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import {
+    prepaidAppliedToBillNotInTransactions,
+    prepaidClearingDisplayDateForBill,
+    VENDOR_LEDGER_MONEY_EPS,
+} from '../../utils/vendorLedgerPrepaid';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import PrintButton from '../ui/PrintButton';
@@ -33,6 +38,8 @@ interface VendorLedgerRow {
     billId?: string; // Bill ID if this row represents a bill
     transactionId?: string; // Transaction ID if this row represents a payment
     vendorId?: string; // Vendor ID for grouping
+    /** Same-day ordering: bill (0), prepaid clearing (1), bank payment (2). */
+    sortTie?: number;
 }
 
 interface VendorLedgerReportProps {
@@ -106,7 +113,17 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        const items: { date: string, vendorId: string, particulars: string, bill: number, paid: number, buildingName: string, billId?: string, transactionId?: string }[] = [];
+        const items: {
+            date: string;
+            vendorId: string;
+            particulars: string;
+            bill: number;
+            paid: number;
+            buildingName: string;
+            billId?: string;
+            transactionId?: string;
+            sortTie: number;
+        }[] = [];
 
         // Helper to resolve building
         const getBuildingName = (buildingId?: string, propertyId?: string) => {
@@ -168,8 +185,38 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                     paid: 0,
                     buildingName: getBuildingName(bill.buildingId, bill.propertyId),
                     billId: bill.id // Store bill ID for reference
+                    ,
+                    sortTie: 0,
                 });
             }
+        });
+
+        billsMap.forEach((bill) => {
+            const vendorId = bill.vendorId;
+            if (!vendorId) return;
+            if (selectedVendorId !== 'all' && vendorId !== selectedVendorId) return;
+            if (context === 'Project' && !bill.projectId) return;
+            if (context === 'Rental' && (bill.projectId || (!bill.buildingId && !bill.propertyId))) return;
+            const bId = getBuildingId(bill.buildingId, bill.propertyId);
+            if (selectedBuildingId !== 'all' && bId !== selectedBuildingId) return;
+
+            const prepaid = prepaidAppliedToBillNotInTransactions(bill, state.transactions);
+            if (prepaid <= VENDOR_LEDGER_MONEY_EPS) return;
+
+            const rowDate = prepaidClearingDisplayDateForBill(bill, state.transactions);
+            const d = new Date(rowDate);
+            if (d < start || d > end) return;
+
+            items.push({
+                date: rowDate,
+                vendorId,
+                particulars: `Supplier prepaid applied — Bill #${bill.billNumber}`,
+                bill: 0,
+                paid: prepaid,
+                buildingName: getBuildingName(bill.buildingId, bill.propertyId),
+                billId: bill.id,
+                sortTie: 1,
+            });
         });
 
         // 2. Payments (Debit - Liability Decreases)
@@ -211,6 +258,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                             paid: tx.amount,
                             buildingName: getBuildingName(tx.buildingId, tx.propertyId),
                             transactionId: tx.id // Store transaction ID for reference
+                            ,
+                            sortTie: 2,
                         });
                     }
                 }
@@ -235,7 +284,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                 buildingName: item.buildingName,
                 billId: item.billId,
                 transactionId: item.transactionId,
-                vendorId: item.vendorId // Store for grouping
+                vendorId: item.vendorId, // Store for grouping
+                sortTie: item.sortTie,
             });
         });
 
@@ -262,8 +312,22 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             let valB: any = b[sortConfig.key];
 
             if (sortConfig.key === 'date') {
-                valA = new Date(valA).getTime();
-                valB = new Date(valB).getTime();
+                const tA = new Date(valA).getTime();
+                const tB = new Date(valB).getTime();
+                if (tA !== tB) {
+                    valA = tA;
+                    valB = tB;
+                } else {
+                    const ta = a.sortTie ?? 0;
+                    const tb = b.sortTie ?? 0;
+                    if (ta !== tb) {
+                        return sortConfig.direction === 'asc' ? ta - tb : tb - ta;
+                    }
+                    const p = String(a.particulars).localeCompare(String(b.particulars));
+                    if (p !== 0) return p;
+                    valA = tA;
+                    valB = tB;
+                }
             } else if (typeof valA === 'string') {
                 valA = valA.toLowerCase();
                 valB = valB.toLowerCase();

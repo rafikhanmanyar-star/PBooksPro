@@ -13,6 +13,18 @@ export type VendorBillSettleLinePayload = {
   expenseAccountId: string;
 };
 
+export type VendorBillSettlementRow = {
+  billId: string;
+  journalEntryId: string;
+  entryDate: string;
+  totalAmount: number;
+  cashAmount: number;
+  supplierContactId: string;
+  paymentAccountId: string;
+  expenseAccountId: string;
+  adjustments: { advanceId: string; amount: number }[];
+};
+
 export type VendorBillSettleRequestPayload = {
   supplierContactId: string;
   paymentAccountId: string;
@@ -26,6 +38,8 @@ export type VendorBillSettleRequestPayload = {
 export type VendorBillSettleResponsePayload = {
   bills: Bill[];
   journalEntries: { billId: string; journalEntryId: string }[];
+  /** Mirrored cash/bank expense rows for hybrid settlements; omitted on older servers. */
+  transactions?: Record<string, unknown>[];
 };
 
 export type ContractorLedgerAdvance = {
@@ -113,11 +127,54 @@ export const contractorApi = {
   /**
    * Settle unpaid vendor/service bills via prepaid advances (journal) + remaining bank leg.
    */
-  async settleBillsWithAdvances(body: VendorBillSetRequestPayload): Promise<VendorBillSettleResponsePayload> {
+  async settleBillsWithAdvances(body: VendorBillSettleRequestPayload): Promise<VendorBillSettleResponsePayload> {
     if (isLocalOnlyMode()) {
       throw new Error('Advance settlement is only available when using the PostgreSQL API.');
     }
     return apiClient.post<VendorBillSettleResponsePayload>('/bills/settle-with-advances', body);
+  },
+
+  async listVendorBillSettlements(billIds: string[]): Promise<VendorBillSettlementRow[]> {
+    if (isLocalOnlyMode()) return [];
+    const ids = billIds.filter(Boolean);
+    if (ids.length === 0) return [];
+    return apiClient.get<VendorBillSettlementRow[]>(
+      `/bills/vendor-settlements?billIds=${encodeURIComponent(ids.join(','))}`
+    );
+  },
+
+  async replaceVendorBillSettlement(body: {
+    journalEntryId: string;
+    supplierContactId: string;
+    paymentAccountId: string;
+    entryDate: string;
+    bill: VendorBillSettleLinePayload;
+    reference?: string;
+    description?: string;
+    batchId?: string;
+  }): Promise<{
+    bills: Bill[];
+    reversalJournalEntryId: string;
+    deletedTransactionIds: string[];
+    journalEntries: { billId: string; journalEntryId: string }[];
+    transactions?: Record<string, unknown>[];
+  }> {
+    if (isLocalOnlyMode()) {
+      throw new Error('Settlement replace requires the PostgreSQL API.');
+    }
+    return apiClient.post('/bills/vendor-settlement/replace', body);
+  },
+
+  async reverseVendorBillSettlement(body: { journalEntryId: string; reason: string }): Promise<{
+    reversalJournalEntryId: string;
+    billIds: string[];
+    touchedAdvanceIds: string[];
+    deletedTransactionIds: string[];
+  }> {
+    if (isLocalOnlyMode()) {
+      throw new Error('Settlement reversal requires the PostgreSQL API.');
+    }
+    return apiClient.post('/bills/vendor-settlement/reverse', body);
   },
 
   /** Record prepaid funds to a supplier (journal: Dr advance asset, Cr bank/cash). */

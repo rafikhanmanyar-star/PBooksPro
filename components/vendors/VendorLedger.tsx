@@ -8,6 +8,11 @@ import { exportJsonToExcel } from '../../services/exportService';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { contractorApi } from '../../services/api/contractorApi';
+import {
+    prepaidAppliedToBillNotInTransactions,
+    prepaidClearingDisplayDateForBill,
+    VENDOR_LEDGER_MONEY_EPS,
+} from '../../utils/vendorLedgerPrepaid';
 
 interface VendorLedgerProps {
     vendorId: string | null;
@@ -16,7 +21,7 @@ interface VendorLedgerProps {
 
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
-type LedgerRowType = 'bill' | 'transaction' | 'batch_payment' | 'supplier_advance';
+type LedgerRowType = 'bill' | 'transaction' | 'batch_payment' | 'supplier_advance' | 'prepaid_apply';
 
 interface LedgerChild {
     id: string;
@@ -40,6 +45,8 @@ interface LedgerItem {
     balance?: number;
     projectLabel?: string;
     children: LedgerChild[];
+    /** Stable ordering when dates match (bill 0, prepaid apply 1, payment 2, advance issuance 10). */
+    sortAux?: number;
 }
 
 const ADVANCE_REFRESH = 'pbooks:supplier-advance-recorded';
@@ -121,7 +128,27 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                 credit: b.amount,
                 projectLabel: b.projectId ? projectNameById.get(b.projectId) ?? '' : '',
                 children: [],
+                sortAux: 0,
             }));
+
+        const prepaidApplyRows: LedgerItem[] = [];
+        for (const b of state.bills) {
+            if (b.vendorId !== vendorId && !(b.vendorId == null && b.contactId === vendorId)) continue;
+            const prepaid = prepaidAppliedToBillNotInTransactions(b, state.transactions);
+            if (prepaid <= VENDOR_LEDGER_MONEY_EPS) continue;
+            prepaidApplyRows.push({
+                id: `bill-prepaid-${b.id}`,
+                originalId: b.id,
+                type: 'prepaid_apply',
+                date: prepaidClearingDisplayDateForBill(b, state.transactions),
+                particulars: `Supplier prepaid applied — Bill #${b.billNumber}`,
+                debit: prepaid,
+                credit: 0,
+                projectLabel: b.projectId ? projectNameById.get(b.projectId) ?? '' : '',
+                children: [],
+                sortAux: 1,
+            });
+        }
 
         const allPayments = state.transactions.filter(
             (t) => (t.vendorId === vendorId || (!t.vendorId && t.contactId === vendorId)) && t.type === TransactionType.EXPENSE
@@ -167,6 +194,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                     credit: 0,
                     projectLabel: pl,
                     children: [],
+                    sortAux: 2,
                 });
             }
         });
@@ -177,6 +205,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                 ...b,
                 particulars: `Bulk Payment (${b.children.length} items)`,
                 projectLabel: firstProj || '',
+                sortAux: 2,
             };
         });
 
@@ -202,19 +231,43 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                 credit: 0,
                 projectLabel: a.projectId ? projectNameById.get(a.projectId) ?? '' : '',
                 children: [],
+                sortAux: 10,
             };
         });
 
-        const combined = [...bills, ...individualPayments, ...batchedPayments, ...advanceRows].sort((a, b) => {
-            let valA: string | number = a[sortConfig.key === 'balance' ? 'date' : sortConfig.key] as never;
-            let valB: string | number = b[sortConfig.key === 'balance' ? 'date' : sortConfig.key] as never;
+        const combined = [
+            ...bills,
+            ...prepaidApplyRows,
+            ...individualPayments,
+            ...batchedPayments,
+            ...advanceRows,
+        ].sort((a, b) => {
+            const key = sortConfig.key === 'balance' ? 'date' : sortConfig.key;
+            let valA = a[key];
+            let valB = b[key];
 
             if (sortConfig.key === 'date' || sortConfig.key === 'balance') {
-                valA = new Date(a.date).getTime();
-                valB = new Date(b.date).getTime();
-            } else if (typeof valA === 'string') {
-                valA = valA.toLowerCase();
-                valB = String(valB).toLowerCase();
+                const tA = new Date(a.date).getTime();
+                const tB = new Date(b.date).getTime();
+                if (tA !== tB) {
+                    valA = tA;
+                    valB = tB;
+                } else {
+                    const sa = a.sortAux ?? 0;
+                    const sb = b.sortAux ?? 0;
+                    if (sa !== sb) {
+                        return sortConfig.direction === 'asc' ? sa - sb : sb - sa;
+                    }
+                    const p = String(a.particulars).localeCompare(String(b.particulars));
+                    if (p !== 0) return p;
+                    valA = tA;
+                    valB = tB;
+                }
+            } else {
+                valA =
+                    typeof valA === 'string' ? valA.toLowerCase() : valA ?? '';
+                valB =
+                    typeof valB === 'string' ? String(valB).toLowerCase() : valB ?? '';
             }
 
             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -254,9 +307,11 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                     ? 'Advance'
                     : item.type === 'bill'
                       ? 'Bill'
-                      : item.type === 'batch_payment'
-                        ? 'Bulk pay'
-                        : 'Payment',
+                      : item.type === 'prepaid_apply'
+                        ? 'Prepaid to bill'
+                        : item.type === 'batch_payment'
+                          ? 'Bulk pay'
+                          : 'Payment',
             'Bill Amount (Credit)': item.credit,
             'Payment / advance (Debit)': item.debit,
             Balance: item.balance,
@@ -277,8 +332,8 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
             return;
         }
         if (item.type === 'supplier_advance') return;
-        if ((item.type === 'bill' || item.type === 'transaction') && item.originalId) {
-            onItemClick(item.originalId, item.type);
+        if ((item.type === 'bill' || item.type === 'transaction' || item.type === 'prepaid_apply') && item.originalId) {
+            onItemClick(item.originalId, item.type === 'transaction' ? 'transaction' : 'bill');
         }
     };
 
@@ -288,9 +343,8 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         <div className="flex flex-col h-full min-h-0">
             {!isLocalOnlyMode() && supplierAdvances.length > 0 && (
                 <p className="text-[11px] text-amber-800 bg-amber-50/90 border border-amber-100 rounded-md px-2 py-1.5 mb-2 shrink-0">
-                    Prepaid advances from the API appear as debits below; project tagging matches how each advance was
-                    recorded. Bill settlement via advances updates open balances without always duplicating legacy payment
-                    lines here.
+                    Prepaid advances and hybrid bill settlements show both cash payments and Supplier prepaid applied
+                    lines where part of the bill was cleared from prepaid (no duplicate bank transaction).
                 </p>
             )}
             {ledgerItems.length === 0 ? (
@@ -372,7 +426,10 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                         const cursorClass =
                                             item.type === 'supplier_advance'
                                                 ? 'cursor-default'
-                                                : hasChildren || item.type === 'bill' || item.type === 'transaction'
+                                                : hasChildren ||
+                                                    item.type === 'bill' ||
+                                                    item.type === 'transaction' ||
+                                                    item.type === 'prepaid_apply'
                                                   ? 'cursor-pointer'
                                                   : 'cursor-pointer';
 
@@ -380,7 +437,11 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                             <React.Fragment key={item.id}>
                                                 <tr
                                                     className={`hover:bg-slate-50 transition-colors ${cursorClass} ${
-                                                        item.type === 'supplier_advance' ? 'bg-amber-50/50' : ''
+                                                        item.type === 'supplier_advance'
+                                                            ? 'bg-amber-50/50'
+                                                            : item.type === 'prepaid_apply'
+                                                              ? 'bg-teal-50/60'
+                                                              : ''
                                                     } ${isExpanded ? 'bg-slate-50' : ''}`}
                                                     onClick={(e) => handleRowClick(e, item)}
                                                 >

@@ -11,10 +11,11 @@ import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { isLocalOnlyMode } from '../../config/apiUrl';
-import { ContractorLedgerAdvance, contractorApi } from '../../services/api/contractorApi';
+import { ContractorLedgerAdvance, contractorApi, type VendorBillSettlementRow } from '../../services/api/contractorApi';
 import { allocateFifoAcrossVendorBills, type BillAllocationPlan } from '../../utils/vendorAdvanceAllocation';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import {
     computeBillAfterPayment,
     offerConstructionBillPaymentWhatsApp,
@@ -32,6 +33,8 @@ interface VendorBillPaymentModalProps {
     restrictToBillIds?: string[] | null;
     /** Bills to pre-select when the modal opens (must be in restricted list when `restrictToBillIds` set). */
     presetSelectedBillIds?: string[] | null;
+    /** API mode: edit an existing hybrid settlement (same modal, replace on save). */
+    editSettlement?: VendorBillSettlementRow | null;
 }
 
 const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
@@ -41,6 +44,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     vendor,
     restrictToBillIds,
     presetSelectedBillIds,
+    editSettlement,
 }) => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert, showConfirm } = useNotification();
@@ -57,6 +61,9 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     const [advancesLoaded, setAdvancesLoaded] = useState(false);
     /** User can turn off FIFO prepaid and pay only via bank/cash (legacy transaction flow). */
     const [applyPrepaidFifo, setApplyPrepaidFifo] = useState(true);
+    /** One bill only: type any split of prepaid vs bank; total can be less than full due (partial payment). */
+    const [manualSettlementSplit, setManualSettlementSplit] = useState(false);
+    const [manualAdvanceAmounts, setManualAdvanceAmounts] = useState<Record<string, string>>({});
 
     const restrictSet = useMemo(
         () => (restrictToBillIds?.length ? new Set(restrictToBillIds) : null),
@@ -64,14 +71,16 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     );
 
     const pendingBills = useMemo(() => {
-        let bills = state.bills
-            .filter((b) => b.vendorId === vendor.id && b.status !== InvoiceStatus.PAID)
-            .sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
+        let bills = state.bills.filter((b) => {
+            if (b.vendorId !== vendor.id) return false;
+            if (editSettlement && b.id === editSettlement.billId) return true;
+            return b.status !== InvoiceStatus.PAID;
+        }).sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
         if (restrictSet) {
             bills = bills.filter((b) => restrictSet.has(b.id));
         }
         return bills;
-    }, [state.bills, vendor.id, restrictSet]);
+    }, [state.bills, vendor.id, restrictSet, editSettlement?.billId]);
 
     const userSelectableAccounts = useMemo(
         () =>
@@ -107,10 +116,16 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         return [...new Set(keys)];
     }, [selectedSorted, vendor.id]);
 
-    const supplierPartiesMixed = supplierParties.length > 1;
-    const effectiveSupplierContactId = selectedSorted.length > 0 ? supplierParties[0] : preloadPartyId;
+    const supplierPartiesMixed = !editSettlement && supplierParties.length > 1;
 
-    const fifoPlans = useMemo((): Map<string, BillAllocationPlan> => {
+    const effectiveSupplierContactId = editSettlement?.supplierContactId?.trim()?.length
+        ? editSettlement.supplierContactId.trim()
+        : selectedSorted.length > 0
+          ? supplierParties[0]
+          : preloadPartyId;
+
+    /** FIFO suggestion only (no typed manual overrides) — used for auto cash field and "copy FIFO" into manual mode. */
+    const fifoSuggestedPlans = useMemo((): Map<string, BillAllocationPlan> => {
         if (
             !applyPrepaidFifo ||
             supplierPartiesMixed ||
@@ -134,7 +149,58 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
             dueAmount: Math.round((b.amount - b.paidAmount) * 100) / 100,
         }));
         return allocateFifoAcrossVendorBills(advRows, dueRows);
-    }, [applyPrepaidFifo, selectedSorted, supplierAdvances, supplierPartiesMixed]);
+    }, [applyPrepaidFifo, supplierPartiesMixed, selectedSorted, supplierAdvances]);
+
+    const fifoPlans = useMemo((): Map<string, BillAllocationPlan> => {
+        if (editSettlement) {
+            const adjustments = editSettlement.adjustments
+                .map((a) => ({
+                    advanceId: a.advanceId,
+                    amount: Math.round(parseFloat(manualAdvanceAmounts[a.advanceId] ?? 'NaN') * 100) / 100,
+                }))
+                .filter((row) => Number.isFinite(row.amount) && row.amount > EPS);
+            const cash = Math.round(parseFloat(totalAmount || '0') * 100) / 100;
+            const map = new Map<string, BillAllocationPlan>();
+            map.set(editSettlement.billId, {
+                adjustments,
+                cash: Number.isFinite(cash) ? cash : 0,
+            });
+            return map;
+        }
+        if (
+            manualSettlementSplit &&
+            selectedSorted.length === 1 &&
+            applyPrepaidFifo &&
+            !supplierPartiesMixed &&
+            !isLocalOnlyMode()
+        ) {
+            const bill = selectedSorted[0];
+            const adjustments = supplierAdvances
+                .map((a) => ({
+                    advanceId: a.id,
+                    amount: Math.round(parseFloat(manualAdvanceAmounts[a.id] ?? 'NaN') * 100) / 100,
+                }))
+                .filter((row) => Number.isFinite(row.amount) && row.amount > EPS);
+            const cash = Math.round(parseFloat(totalAmount || '0') * 100) / 100;
+            const map = new Map<string, BillAllocationPlan>();
+            map.set(bill.id, {
+                adjustments,
+                cash: Number.isFinite(cash) ? cash : 0,
+            });
+            return map;
+        }
+        return fifoSuggestedPlans;
+    }, [
+        editSettlement,
+        manualSettlementSplit,
+        manualAdvanceAmounts,
+        totalAmount,
+        applyPrepaidFifo,
+        selectedSorted,
+        supplierAdvances,
+        supplierPartiesMixed,
+        fifoSuggestedPlans,
+    ]);
 
     let appliedFromAdvances = 0;
     let cashToPayFromBank = 0;
@@ -147,21 +213,17 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     appliedFromAdvances = Math.round(appliedFromAdvances * 100) / 100;
     cashToPayFromBank = Math.round(cashToPayFromBank * 100) / 100;
 
-    const hasPrepaidAvailable =
-        advancesLoaded &&
-        supplierAdvances.some((a) => a.remainingAmount > EPS) &&
-        !supplierPartiesMixed;
+    const hasPrepaidFifoRows =
+        advancesLoaded && supplierAdvances.some((a) => a.remainingAmount > EPS);
 
     const advanceSettlementPath =
         !isLocalOnlyMode() &&
-        applyPrepaidFifo &&
         selectedSorted.length > 0 &&
-        !supplierPartiesMixed &&
-        hasPrepaidAvailable;
+        (!!editSettlement || (applyPrepaidFifo && !supplierPartiesMixed && hasPrepaidFifoRows));
 
     useEffect(() => {
-        if (isOpen) setApplyPrepaidFifo(true);
-    }, [isOpen]);
+        if (isOpen && !editSettlement) setApplyPrepaidFifo(true);
+    }, [isOpen, editSettlement?.journalEntryId]);
 
     useEffect(() => {
         let cancel = false;
@@ -169,6 +231,32 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
             setSupplierAdvances([]);
             setAdvancesLoaded(false);
             return;
+        }
+        if (editSettlement) {
+            const partyId = editSettlement.supplierContactId.trim();
+            if (!partyId) {
+                setSupplierAdvances([]);
+                setAdvancesLoaded(true);
+                return;
+            }
+            setAdvancesLoaded(false);
+            (async () => {
+                try {
+                    const rows = await contractorApi.getAdvances(partyId);
+                    if (!cancel) {
+                        setSupplierAdvances(rows);
+                        setAdvancesLoaded(true);
+                    }
+                } catch {
+                    if (!cancel) {
+                        setSupplierAdvances([]);
+                        setAdvancesLoaded(true);
+                    }
+                }
+            })();
+            return () => {
+                cancel = true;
+            };
         }
         if (supplierPartiesMixed) {
             setSupplierAdvances([]);
@@ -194,25 +282,65 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         return () => {
             cancel = true;
         };
-    }, [isOpen, supplierPartiesMixed, effectiveSupplierContactId, preloadPartyId]);
+    }, [
+        isOpen,
+        editSettlement?.journalEntryId,
+        supplierPartiesMixed,
+        effectiveSupplierContactId,
+        preloadPartyId,
+    ]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!editSettlement) {
+            setManualSettlementSplit(false);
+            setManualAdvanceAmounts({});
+        }
+    }, [isOpen, editSettlement?.journalEntryId]);
+
+    useEffect(() => {
+        if (!isOpen || !editSettlement) return;
+        const m: Record<string, string> = {};
+        editSettlement.adjustments.forEach((a) => {
+            m[a.advanceId] = String(a.amount);
+        });
+        setManualAdvanceAmounts(m);
+        setTotalAmount(String(editSettlement.cashAmount));
+        setPaymentDate(editSettlement.entryDate);
+        setExpenseGlAccountId(editSettlement.expenseAccountId || '');
+        setAccountId(editSettlement.paymentAccountId || '');
+        setSelectedBillIds(new Set([editSettlement.billId]));
+    }, [isOpen, editSettlement?.journalEntryId]);
+
+    useEffect(() => {
+        if (!applyPrepaidFifo && !editSettlement) setManualSettlementSplit(false);
+    }, [applyPrepaidFifo, editSettlement?.journalEntryId]);
+
+    useEffect(() => {
+        if (!isOpen || editSettlement) return;
+        if (manualSettlementSplit && selectedSorted.length !== 1) {
+            setManualSettlementSplit(false);
+            setManualAdvanceAmounts({});
+        }
+    }, [isOpen, editSettlement, manualSettlementSplit, selectedSorted.length]);
 
     /** Project bills bulk pay passes preset selections; works with or without restrictToBillIds. */
     useEffect(() => {
-        if (!isOpen || !presetSelectedBillIds?.length) return;
+        if (!isOpen || editSettlement || !presetSelectedBillIds?.length) return;
         const usable = presetSelectedBillIds.filter((id) => {
             if (restrictSet && !restrictSet.has(id)) return false;
             return pendingBills.some((b) => b.id === id);
         });
         if (usable.length === 0) return;
         setSelectedBillIds(new Set(usable));
-    }, [isOpen, presetSelectedBillIds, restrictSet, pendingBills]);
+    }, [isOpen, editSettlement, presetSelectedBillIds, restrictSet, pendingBills]);
 
     /** When restricted to a bill set and no preset: pre-select all restricted unpaid rows. */
     useEffect(() => {
-        if (!isOpen || restrictSet === null || (presetSelectedBillIds?.length ?? 0) > 0) return;
+        if (!isOpen || editSettlement || restrictSet === null || (presetSelectedBillIds?.length ?? 0) > 0) return;
         const allRestricted = pendingBills.filter((b) => restrictSet.has(b.id)).map((b) => b.id);
         if (allRestricted.length > 0) setSelectedBillIds(new Set(allRestricted));
-    }, [isOpen, restrictSet, presetSelectedBillIds, pendingBills]);
+    }, [isOpen, editSettlement, restrictSet, presetSelectedBillIds, pendingBills]);
 
     useEffect(() => {
         const selected = pendingBills.filter((b) => selectedBillIds.has(b.id));
@@ -220,11 +348,13 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         if (
             !isLocalOnlyMode() &&
             advanceSettlementPath &&
+            !editSettlement &&
+            !manualSettlementSplit &&
             selected.length > 0 &&
             fifoPlans.size > 0
         ) {
             setTotalAmount((cashToPayFromBank > EPS ? cashToPayFromBank : '').toString());
-        } else {
+        } else if (!(advanceSettlementPath && (editSettlement || manualSettlementSplit))) {
             setTotalAmount(sumDue > 0 ? String(sumDue) : '');
         }
     }, [
@@ -233,6 +363,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         advanceSettlementPath,
         cashToPayFromBank,
         fifoPlans,
+        editSettlement?.journalEntryId,
+        manualSettlementSplit,
     ]);
 
     useEffect(() => {
@@ -245,6 +377,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     }, [isOpen, advanceSettlementPath, expenseGlAccountId, glExpenseCandidates]);
 
     const handleToggleBill = (billId: string) => {
+        if (editSettlement && billId !== editSettlement.billId) return;
         const newSet = new Set(selectedBillIds);
         if (newSet.has(billId)) newSet.delete(billId);
         else newSet.add(billId);
@@ -252,6 +385,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     };
 
     const handleSelectAll = () => {
+        if (editSettlement) return;
         if (selectedBillIds.size === pendingBills.length) {
             setSelectedBillIds(new Set());
         } else {
@@ -276,6 +410,67 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
 
         /* --- Advance + journal settlement (API mode) ------------------------------------ */
         if (advanceSettlementPath) {
+            if (editSettlement) {
+                if (!expenseGlAccountId.trim()) {
+                    await showAlert('Pick the expense GL account used to recognise this bill (posted on journal).');
+                    return;
+                }
+                if (!selectedBillIds.has(editSettlement.billId)) {
+                    await showAlert('The bill for this settlement must remain selected.');
+                    return;
+                }
+                const plan = fifoPlans.get(editSettlement.billId);
+                if (!plan) {
+                    await showAlert('Could not compute advance and cash split for this bill.');
+                    return;
+                }
+                const advApplied = Math.round(plan.adjustments.reduce((s, a) => s + a.amount, 0) * 100) / 100;
+                const cashPart = Math.round(plan.cash * 100) / 100;
+                const combined = Math.round((advApplied + cashPart) * 100) / 100;
+                if (combined <= EPS) {
+                    await showAlert(
+                        `Enter prepaid and/or bank amounts so the settlement total is greater than zero (${CURRENCY} 0).`
+                    );
+                    return;
+                }
+                const batchId = `replace-settle-${Date.now()}`;
+                try {
+                    const res = await contractorApi.replaceVendorBillSettlement({
+                        journalEntryId: editSettlement.journalEntryId,
+                        supplierContactId: effectiveSupplierContactId.trim(),
+                        paymentAccountId: accountId,
+                        entryDate: paymentDate,
+                        bill: {
+                            billId: editSettlement.billId,
+                            adjustments: plan.adjustments,
+                            cashAmount: cashPart,
+                            expenseAccountId: expenseGlAccountId.trim(),
+                        },
+                        reference: reference.trim() || undefined,
+                        description: description.trim() || undefined,
+                        batchId,
+                    });
+                    for (const b of res.bills || []) {
+                        dispatch({ type: 'UPDATE_BILL', payload: b });
+                    }
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new Event('pbooks:request-api-refresh'));
+                        window.dispatchEvent(
+                            new CustomEvent<{ vendorId: string }>('pbooks:supplier-advance-recorded', {
+                                detail: { vendorId: vendor.id.trim() },
+                            })
+                        );
+                    }
+                    showToast('Settlement updated (bill and prepaid balances refreshed).', 'success');
+                    onPaymentSuccess?.();
+                    onClose();
+                } catch (e: unknown) {
+                    console.error(e);
+                    await showAlert(`Could not update settlement: ${formatApiErrorMessage(e)}`);
+                }
+                return;
+            }
+
             if (supplierPartiesMixed) {
                 await showAlert(
                     'Selected bills are linked to different supplier contacts for advances. Select bills for one supplier/contact at a time.'
@@ -286,29 +481,61 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                 await showAlert('Pick the expense GL account used to recognise this bill (posted on journal).');
                 return;
             }
-            const cashEntered = Number.isFinite(numericTotal) ? numericTotal : 0;
-            if (cashToPayFromBank > EPS && (isNaN(numericTotal) || numericTotal <= 0)) {
-                await showAlert('Enter cash to pay from the bank/cash account (remainder after advances).');
-                return;
+
+            const usingManualPartial = manualSettlementSplit && selectedSorted.length === 1;
+
+            if (!usingManualPartial) {
+                const cashEntered = Number.isFinite(numericTotal) ? numericTotal : 0;
+                if (cashToPayFromBank > EPS && (isNaN(numericTotal) || numericTotal <= 0)) {
+                    await showAlert('Enter cash to pay from the bank/cash account (remainder after advances).');
+                    return;
+                }
+                if (cashToPayFromBank > EPS && Math.abs(cashEntered - cashToPayFromBank) > EPS) {
+                    await showAlert(
+                        `Cash payment must equal the planned remainder (${CURRENCY} ${cashToPayFromBank.toLocaleString()}). Adjust selections or allocations.`
+                    );
+                    return;
+                }
+                if (cashToPayFromBank <= EPS && cashEntered > EPS) {
+                    await showAlert('No cash remainder is planned; clear the cash amount field or refresh.');
+                    return;
+                }
             }
-            if (cashToPayFromBank > EPS && Math.abs(cashEntered - cashToPayFromBank) > EPS) {
-                await showAlert(
-                    `Cash payment must equal the planned remainder (${CURRENCY} ${cashToPayFromBank.toLocaleString()}). Adjust selections or allocations.`
-                );
-                return;
-            }
-            if (cashToPayFromBank <= EPS && cashEntered > EPS) {
-                await showAlert('No cash remainder is planned; clear the cash amount field or refresh.');
-                return;
+
+            for (const bill of selectedBillsSorted) {
+                const plan = fifoPlans.get(bill.id);
+                if (!plan) {
+                    await showAlert(`No prepaid/bank allocation for bill #${bill.billNumber}.`);
+                    return;
+                }
+                const due = Math.round((bill.amount - bill.paidAmount) * 100) / 100;
+                const payTotal =
+                    Math.round((plan.cash + plan.adjustments.reduce((s, a) => s + a.amount, 0)) * 100) / 100;
+                if (payTotal <= EPS) {
+                    await showAlert(
+                        `For bill #${bill.billNumber}, enter prepaid and/or bank so the payment total is greater than zero.`
+                    );
+                    return;
+                }
+                const allowPartial = usingManualPartial && bill.id === selectedSorted[0]?.id;
+                if (allowPartial) {
+                    if (payTotal > due + EPS) {
+                        await showAlert(
+                            `For bill #${bill.billNumber}, payment total (${CURRENCY} ${payTotal.toLocaleString()}) cannot exceed unpaid due (${CURRENCY} ${due.toLocaleString()}).`
+                        );
+                        return;
+                    }
+                } else if (Math.abs(payTotal - due) > EPS) {
+                    await showAlert(
+                        `For bill #${bill.billNumber}, the prepaid + bank breakdown must match unpaid due (${CURRENCY} ${due.toLocaleString()}) exactly. For a smaller payment or a custom prepaid/bank split, select one bill only and enable “Set prepaid and bank manually”.`
+                    );
+                    return;
+                }
             }
 
             const batchId = `batch-pay-${Date.now()}`;
             const billLines = selectedBillsSorted.map((bill) => {
-                const plan = fifoPlans.get(bill.id);
-                const due = Math.round((bill.amount - bill.paidAmount) * 100) / 100;
-                if (!plan || Math.abs(plan.cash + plan.adjustments.reduce((s, a) => s + a.amount, 0) - due) > EPS) {
-                    throw new Error(`Allocation mismatch for bill ${bill.billNumber}`);
-                }
+                const plan = fifoPlans.get(bill.id)!;
                 return {
                     billId: bill.id,
                     adjustments: plan.adjustments,
@@ -331,6 +558,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                     dispatch({ type: 'UPDATE_BILL', payload: b });
                 }
                 if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new Event('pbooks:request-api-refresh'));
                     window.dispatchEvent(
                         new CustomEvent<{ vendorId: string }>('pbooks:supplier-advance-recorded', {
                             detail: { vendorId: vendor.id.trim() },
@@ -519,14 +747,60 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         }
     }, [isOpen, userSelectableAccounts, accountId]);
 
+    const advancesForSettlementEdit = useMemo(() => {
+        if (!editSettlement) return [];
+        const adjIds = new Set(editSettlement.adjustments.map((a) => a.advanceId));
+        return supplierAdvances.filter((a) => {
+            if (adjIds.has(a.id)) return true;
+            if (a.remainingAmount > EPS) return true;
+            const typed = parseFloat(manualAdvanceAmounts[a.id] || '');
+            return Number.isFinite(typed) && typed > EPS;
+        });
+    }, [editSettlement, supplierAdvances, manualAdvanceAmounts]);
+
+    const advancesForManualNewPay = useMemo(() => {
+        if (!manualSettlementSplit || editSettlement || selectedSorted.length !== 1) return [];
+        const want = new Set<string>();
+        for (const a of supplierAdvances) {
+            if (a.remainingAmount > EPS) want.add(a.id);
+        }
+        for (const id of Object.keys(manualAdvanceAmounts)) {
+            const v = parseFloat(manualAdvanceAmounts[id] || '');
+            if (Number.isFinite(v) && v > EPS) want.add(id);
+        }
+        return supplierAdvances.filter((a) => want.has(a.id));
+    }, [manualSettlementSplit, editSettlement, selectedSorted.length, supplierAdvances, manualAdvanceAmounts]);
+
     if (!isOpen) return null;
 
+    const showAdvanceBreakdownPanel =
+        advanceSettlementPath &&
+        advancesLoaded &&
+        (editSettlement || (manualSettlementSplit && selectedSorted.length === 1));
+
+    const advanceInputRowsForUi = editSettlement ? advancesForSettlementEdit : advancesForManualNewPay;
+    const allocationTotalUi = appliedFromAdvances + cashToPayFromBank;
+    const singleSelectedBillDueUi =
+        selectedSorted.length === 1
+            ? Math.round((selectedSorted[0].amount - selectedSorted[0].paidAmount) * 100) / 100
+            : 0;
+    const cashFieldEditable =
+        !advanceSettlementPath || !!editSettlement || (manualSettlementSplit && selectedSorted.length === 1);
     const totalDueSelectedUi = pendingBills
         .filter((b) => selectedBillIds.has(b.id))
         .reduce((acc, b) => acc + (b.amount - b.paidAmount), 0);
 
+    const modalTitle = editSettlement
+        ? `Edit bill settlement — ${vendor.name}`
+        : `Pay Vendor: ${vendor.name}`;
+    const primaryActionLabel = editSettlement
+        ? 'Save settlement'
+        : advanceSettlementPath
+          ? 'Settle bills (advances + bank)'
+          : 'Confirm payment';
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Pay Vendor: ${vendor.name}`} size="xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} size="xl">
             <div className="flex flex-col h-full max-h-[80vh]">
                 <div className="p-4 bg-slate-50 border-b border-slate-200">
                     <div className="flex justify-between items-center mb-2">
@@ -559,9 +833,13 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                         </div>
                     </div>
 
-                    {!isLocalOnlyMode() && advancesLoaded && supplierAdvances.some((a) => a.remainingAmount > EPS) && (
+                    {!isLocalOnlyMode() &&
+                        advancesLoaded &&
+                        (supplierAdvances.some((a) => a.remainingAmount > EPS) || !!editSettlement) && (
                         <div className="mb-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50/90 text-xs text-emerald-900 leading-relaxed space-y-2">
-                            <p className="font-semibold text-sm">Supplier prepaid advances detected</p>
+                            <p className="font-semibold text-sm">
+                                {editSettlement ? 'Editing hybrid settlement (prepaid + bank)' : 'Supplier prepaid advances detected'}
+                            </p>
                             <p>
                                 Outstanding prepaid balance for advances issued to{' '}
                                 <strong>{vendor.name}</strong>:
@@ -570,21 +848,83 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                 . Advances are allocated <strong>FIFO</strong> (oldest advances / oldest unpaid bills).
                                 Remaining prepaid stays on the supplier for future bills when an advance exceeds a bill&apos;s balance.
                             </p>
-                            {!supplierPartiesMixed && (
-                                <label className="flex items-start gap-2.5 cursor-pointer rounded-md bg-white/60 border border-emerald-100 px-3 py-2">
-                                    <input
-                                        type="checkbox"
-                                        checked={applyPrepaidFifo}
-                                        onChange={(e) => setApplyPrepaidFifo(e.target.checked)}
-                                        className="mt-0.5 rounded text-emerald-700 border-emerald-300 focus:ring-emerald-500"
-                                        aria-label="Apply supplier prepaid advances toward this payment"
-                                    />
-                                    <span>
-                                        <span className="font-semibold">Apply prepaid to this payment (FIFO).</span>{' '}
-                                        Turn off to pay selected bills normally from your bank/cash account only (no prepaid
-                                        allocation).
-                                    </span>
-                                </label>
+                            {!supplierPartiesMixed && !editSettlement && (
+                                <>
+                                    <label className="flex items-start gap-2.5 cursor-pointer rounded-md bg-white/60 border border-emerald-100 px-3 py-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={applyPrepaidFifo}
+                                            onChange={(e) => {
+                                                setApplyPrepaidFifo(e.target.checked);
+                                                if (!e.target.checked) {
+                                                    setManualSettlementSplit(false);
+                                                    setManualAdvanceAmounts({});
+                                                }
+                                            }}
+                                            className="mt-0.5 rounded text-emerald-700 border-emerald-300 focus:ring-emerald-500"
+                                            aria-label="Apply supplier prepaid advances toward this payment"
+                                        />
+                                        <span>
+                                            <span className="font-semibold">Apply prepaid to this payment (FIFO).</span>{' '}
+                                            Turn off to pay selected bills normally from your bank/cash account only (no prepaid
+                                            allocation).
+                                        </span>
+                                    </label>
+                                    {applyPrepaidFifo && (
+                                        <label
+                                            className={`flex flex-col gap-1 rounded-md border px-3 py-2 ${
+                                                selectedSorted.length !== 1
+                                                    ? 'border-slate-200 bg-slate-50/90 text-slate-500 cursor-not-allowed'
+                                                    : 'cursor-pointer bg-white/60 border-emerald-100'
+                                            }`}
+                                            title={
+                                                selectedSorted.length !== 1
+                                                    ? 'Select exactly one bill to type your own prepaid and bank amounts.'
+                                                    : undefined
+                                            }
+                                        >
+                                            <span className="flex items-start gap-2.5">
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-0.5 rounded text-emerald-700 border-emerald-300 focus:ring-emerald-500 disabled:opacity-50"
+                                                    aria-label="Set prepaid and bank amounts manually"
+                                                    checked={manualSettlementSplit}
+                                                    disabled={selectedSorted.length !== 1}
+                                                    onChange={(e) => {
+                                                        const next = e.target.checked;
+                                                        setManualSettlementSplit(next);
+                                                        if (!next) {
+                                                            setManualAdvanceAmounts({});
+                                                            return;
+                                                        }
+                                                        const bill = selectedSorted[0];
+                                                        if (!bill) return;
+                                                        const plan = fifoSuggestedPlans.get(bill.id);
+                                                        if (plan) {
+                                                            const m: Record<string, string> = {};
+                                                            plan.adjustments.forEach((adj) => {
+                                                                m[adj.advanceId] = String(adj.amount);
+                                                            });
+                                                            setManualAdvanceAmounts(m);
+                                                            setTotalAmount(plan.cash > EPS ? String(plan.cash) : '');
+                                                        } else {
+                                                            setManualAdvanceAmounts({});
+                                                            setTotalAmount('');
+                                                        }
+                                                    }}
+                                                />
+                                                <span>
+                                                    <span className="font-semibold">
+                                                        Set prepaid and bank manually (partial payment).
+                                                    </span>{' '}
+                                                    Use prepaid only, bank only, both, or any partial split — total must stay within
+                                                    the selected bill&apos;s unpaid balance. With several bills selected, FIFO above
+                                                    still clears each bill in full.
+                                                </span>
+                                            </span>
+                                        </label>
+                                    )}
+                                </>
                             )}
                             {supplierPartiesMixed && (
                                 <p className="text-rose-700 font-semibold">
@@ -601,9 +941,11 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                     <th className="px-4 py-2 text-center w-10">
                                         <input
                                             type="checkbox"
+                                            aria-label="Select all bills"
                                             checked={selectedBillIds.size > 0 && selectedBillIds.size === pendingBills.length}
                                             onChange={handleSelectAll}
-                                            className="rounded text-accent focus:ring-accent"
+                                            disabled={!!editSettlement}
+                                            className="rounded text-accent focus:ring-accent disabled:opacity-50"
                                         />
                                     </th>
                                     <th className="px-4 py-2 text-left font-medium text-slate-600">Date</th>
@@ -633,9 +975,11 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                                 <td className="px-4 py-2 text-center">
                                                     <input
                                                         type="checkbox"
+                                                        aria-label={`Select bill ${bill.billNumber}`}
                                                         checked={selectedBillIds.has(bill.id)}
                                                         onChange={() => handleToggleBill(bill.id)}
-                                                        className="rounded text-accent focus:ring-accent"
+                                                        disabled={!!editSettlement && bill.id !== editSettlement.billId}
+                                                        className="rounded text-accent focus:ring-accent disabled:opacity-50"
                                                     />
                                                 </td>
                                                 <td className="px-4 py-2 text-slate-700">{formatDate(bill.issueDate)}</td>
@@ -666,6 +1010,108 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                             </tbody>
                         </table>
                     </div>
+
+                    {showAdvanceBreakdownPanel && (
+                        <div className="mt-3 p-3 rounded-lg border border-slate-200 bg-white shadow-sm space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-semibold text-slate-700">
+                                    {editSettlement
+                                        ? 'Prepaid applied from each advance'
+                                        : 'Prepaid — edit amounts (0 = none from this advance)'}
+                                </p>
+                                {!editSettlement && manualSettlementSplit && (
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        className="!text-[10px] !py-1 !px-2"
+                                        onClick={() => {
+                                            const bill = selectedSorted[0];
+                                            if (!bill) return;
+                                            const plan = fifoSuggestedPlans.get(bill.id);
+                                            if (plan) {
+                                                const m: Record<string, string> = {};
+                                                plan.adjustments.forEach((adj) => {
+                                                    m[adj.advanceId] = String(adj.amount);
+                                                });
+                                                setManualAdvanceAmounts(m);
+                                                setTotalAmount(plan.cash > EPS ? String(plan.cash) : '');
+                                            }
+                                        }}
+                                    >
+                                        Fill from FIFO suggestion
+                                    </Button>
+                                )}
+                            </div>
+                            {editSettlement ? (
+                                <p className="text-[11px] text-slate-500">
+                                    You may increase or decrease this settlement after reversal limits (server validates). Prepaid plus
+                                    bank/cash total must stay positive.
+                                </p>
+                            ) : (
+                                manualSettlementSplit && (
+                                    <p className="text-[11px] text-slate-500">
+                                        Unpaid on selected bill{' '}
+                                        <span className="font-mono font-semibold text-slate-800">
+                                            {CURRENCY} {singleSelectedBillDueUi.toLocaleString()}
+                                        </span>
+                                        . Paid this time{' '}
+                                        <span className="font-mono font-semibold text-slate-800">
+                                            {CURRENCY} {allocationTotalUi.toLocaleString()}
+                                        </span>
+                                        {allocationTotalUi > singleSelectedBillDueUi + EPS ? (
+                                            <span className="text-rose-700"> — exceeds due; reduce amounts.</span>
+                                        ) : null}
+                                        {allocationTotalUi > EPS &&
+                                        allocationTotalUi < singleSelectedBillDueUi - EPS ? (
+                                            <span className="text-amber-800"> — partial bill payment.</span>
+                                        ) : null}
+                                    </p>
+                                )
+                            )}
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                                {advanceInputRowsForUi.length > 0 ? (
+                                    advanceInputRowsForUi.map((a) => (
+                                        <div key={a.id} className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+                                            <span className="flex-1 text-slate-600 text-xs">
+                                                {a.advanceDate ? formatDate(a.advanceDate) : '—'} — prepaid remaining{' '}
+                                                <span className="font-mono">{CURRENCY} {a.remainingAmount.toLocaleString()}</span>
+                                            </span>
+                                            <Input
+                                                id={`advance-amt-${a.id}`}
+                                                name={`advance-amt-${a.id}`}
+                                                aria-label={`Amount from prepaid advance dated ${a.advanceDate ? formatDate(a.advanceDate) : 'unknown'}`}
+                                                type="number"
+                                                compact
+                                                className="!max-w-[140px]"
+                                                value={manualAdvanceAmounts[a.id] ?? ''}
+                                                onChange={(e) =>
+                                                    setManualAdvanceAmounts((prev) => ({
+                                                        ...prev,
+                                                        [a.id]: e.target.value,
+                                                    }))
+                                                }
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                    ))
+                                ) : (
+                                    manualSettlementSplit &&
+                                    !editSettlement && (
+                                        <p className="text-[11px] text-slate-500">
+                                            No separate prepaid advances — pay from bank/cash below (or{' '}
+                                            <span className="font-semibold">0</span> there for prepaid-only if you allocate above when
+                                            advances appear).
+                                        </p>
+                                    )
+                                )}
+                            </div>
+                            <p className={`text-[11px] font-medium ${allocationTotalUi > EPS ? 'text-emerald-800' : 'text-rose-700'}`}>
+                                Allocated — prepaid: {CURRENCY} {appliedFromAdvances.toLocaleString()} | bank/cash:{' '}
+                                {CURRENCY} {cashToPayFromBank.toLocaleString()} | total: {CURRENCY}{' '}
+                                {allocationTotalUi.toLocaleString()}
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -689,15 +1135,17 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                             name="payment-amount"
                             label={
                                 advanceSettlementPath
-                                    ? `Cash payable from bank (remainder — ${CURRENCY} ${cashToPayFromBank.toLocaleString()} planned)`
+                                    ? editSettlement || (manualSettlementSplit && selectedSorted.length === 1)
+                                        ? `Bank / cash portion (0 = prepaid-only; editable — current bank leg ${CURRENCY} ${cashToPayFromBank.toLocaleString()})`
+                                        : `Cash payable from bank (FIFO remainder — ${CURRENCY} ${cashToPayFromBank.toLocaleString()} planned)`
                                     : 'Total payment amount'
                             }
                             type="number"
                             value={totalAmount}
                             onChange={(e) => setTotalAmount(e.target.value)}
-                            disabled={advanceSettlementPath}
+                            disabled={!cashFieldEditable}
                             required={!advanceSettlementPath}
-                            readOnly={advanceSettlementPath}
+                            readOnly={!cashFieldEditable}
                         />
                         {advanceSettlementPath && (
                             <ComboBox
@@ -745,7 +1193,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                 <div className="p-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-lg">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button onClick={() => void handleSubmit()} disabled={pendingBills.length === 0}>
-                        {advanceSettlementPath ? 'Settle bills (advances + bank)' : 'Confirm payment'}
+                        {primaryActionLabel}
                     </Button>
                 </div>
             </div>

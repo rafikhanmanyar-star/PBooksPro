@@ -3199,6 +3199,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshFromApiRef.current = refreshFromApi;
     }, [refreshFromApi]);
 
+    useEffect(() => {
+        const onRequestApiRefresh = () => {
+            void refreshFromApi();
+        };
+        if (typeof window === 'undefined') return;
+        window.addEventListener('pbooks:request-api-refresh', onRequestApiRefresh);
+        return () => window.removeEventListener('pbooks:request-api-refresh', onRequestApiRefresh);
+    }, [refreshFromApi]);
+
     /** After auth hydrates, if init ran before isAuthenticated was true, SQLite had no API-backed projects — merge once. */
     const didPostAuthApiMergeRef = useRef(false);
     useEffect(() => {

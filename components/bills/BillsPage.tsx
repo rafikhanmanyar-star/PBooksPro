@@ -26,7 +26,13 @@ import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import RecordSupplierAdvanceModal from '../vendors/RecordSupplierAdvanceModal';
 import BillLinkedPaymentsSidePanel from './BillLinkedPaymentsSidePanel';
 import { isLocalOnlyMode } from '../../config/apiUrl';
-import { contractorApi, type ContractorLedgerAdvance } from '../../services/api/contractorApi';
+import { isVendorSettlementCashMirrorReference } from '../../config/vendorSettlementRefs';
+import {
+    contractorApi,
+    type ContractorLedgerAdvance,
+    type VendorBillSettlementRow,
+} from '../../services/api/contractorApi';
+import type { Vendor } from '../../types';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type TypeFilter = 'All' | 'Bills' | 'Payments';
@@ -34,10 +40,11 @@ type SortKey = 'issueDate' | 'entityName' | 'dueDate' | 'amount' | 'status' | 'b
 
 interface TableRow {
     id: string;
-    type: 'bill' | 'payment' | 'advance';
+    type: 'bill' | 'payment' | 'advance' | 'vendor_settlement';
     bill?: Bill;
     payment?: Transaction;
     advance?: ContractorLedgerAdvance;
+    vendorSettlement?: VendorBillSettlementRow;
     date: string;
     billNumber?: string;
     vendorName?: string;
@@ -273,6 +280,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const [bulkPayPresetSnapshot, setBulkPayPresetSnapshot] = useState<string[]>([]);
     const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
     const [vendorSidebarAdvances, setVendorSidebarAdvances] = useState<ContractorLedgerAdvance[]>([]);
+    const [vendorSettlementsRows, setVendorSettlementsRows] = useState<VendorBillSettlementRow[]>([]);
+    const [settlementListGen, setSettlementListGen] = useState(0);
 
     // --- State: Modals ---
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -286,6 +295,10 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     // Transaction Editing State
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
     const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | null }>({ isOpen: false, transaction: null, action: null });
+    const [vendorSettlementEdit, setVendorSettlementEdit] = useState<{
+        settlement: VendorBillSettlementRow;
+        vendor: Vendor;
+    } | null>(null);
 
     // Sidebar: search filter for tree
     const [treeSearchQuery, setTreeSearchQuery] = useState('');
@@ -410,6 +423,36 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         return bills;
     }, [state.bills, projectFilter]);
 
+    useEffect(() => {
+        const bump = () => setSettlementListGen((n) => n + 1);
+        window.addEventListener('pbooks:request-api-refresh', bump);
+        return () => window.removeEventListener('pbooks:request-api-refresh', bump);
+    }, []);
+
+    useEffect(() => {
+        if (isLocalOnlyMode()) {
+            setVendorSettlementsRows([]);
+            return;
+        }
+        const ids = baseBills.map((b) => b.id).filter(Boolean);
+        if (ids.length === 0) {
+            setVendorSettlementsRows([]);
+            return;
+        }
+        let cancel = false;
+        contractorApi
+            .listVendorBillSettlements(ids)
+            .then((rows) => {
+                if (!cancel) setVendorSettlementsRows(rows);
+            })
+            .catch(() => {
+                if (!cancel) setVendorSettlementsRows([]);
+            });
+        return () => {
+            cancel = true;
+        };
+    }, [baseBills, settlementListGen]);
+
     // --- Tree Data Generation ---
     const treeData = useMemo<BillTreeNode[]>(() => {
         const groupMap = new Map<string, BillTreeNode>();
@@ -527,7 +570,12 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         // Add payment rows
         if (typeFilter === 'All' || typeFilter === 'Payments') {
             state.transactions
-                .filter(tx => tx.type === TransactionType.EXPENSE && (tx.billId ?? (tx as any).bill_id))
+                .filter(
+                    (tx) =>
+                        tx.type === TransactionType.EXPENSE &&
+                        (tx.billId ?? (tx as any).bill_id) &&
+                        !isVendorSettlementCashMirrorReference(tx.reference)
+                )
                 .forEach(payment => {
                     const pid = String(payment.billId ?? (payment as any).bill_id ?? '');
                     const bill = billMap.get(pid);
@@ -554,10 +602,34 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                         balance: -payment.amount // Payments are negative for balance
                     });
                 });
+
+            vendorSettlementsRows.forEach((vs) => {
+                const bill = billMap.get(vs.billId);
+                if (!bill || !baseBills.includes(bill)) return;
+                const vendorId = bill.vendorId;
+                const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
+                const project = bill.projectId ? projectMap.get(bill.projectId) : undefined;
+
+                rows.push({
+                    id: `vset-${vs.journalEntryId}-${vs.billId}`,
+                    type: 'vendor_settlement',
+                    bill,
+                    vendorSettlement: vs,
+                    date: vs.entryDate,
+                    billNumber: bill.billNumber,
+                    vendorName: vendor?.name || 'Unknown',
+                    projectName: project?.name || 'General',
+                    contractNumber: bill.contractId ? contractMap.get(bill.contractId)?.contractNumber : undefined,
+                    dueDate: bill.dueDate,
+                    amount: vs.totalAmount,
+                    status: 'Prepaid + bank',
+                    balance: -vs.totalAmount,
+                });
+            });
         }
 
         return rows;
-    }, [baseBills, state.transactions, billMap, projectMap, vendorMap, contractMap, typeFilter]);
+    }, [baseBills, state.transactions, billMap, projectMap, vendorMap, contractMap, typeFilter, vendorSettlementsRows]);
 
     // --- Filtered Table Rows ---
     const filteredRows = useMemo(() => {
@@ -1134,6 +1206,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                 <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                                                     <input
                                                         type="checkbox"
+                                                        aria-label={`Select bill ${bill.billNumber}`}
                                                         className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 cursor-pointer transition-all"
                                                         checked={selectedBillIds.has(bill.id)}
                                                         onChange={(e) => {
@@ -1257,6 +1330,57 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter">{account?.name || 'Cash/Bank'}</span>
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right italic text-slate-400 tabular-nums">
+                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
+                                                </td>
+                                                <td className="px-3 py-2.5"></td>
+                                            </tr>
+                                        );
+                                    } else if (row.type === 'vendor_settlement' && row.vendorSettlement && bill) {
+                                        const vs = row.vendorSettlement;
+                                        const advPart =
+                                            vs.adjustments?.reduce((s, x) => s + x.amount, 0) ??
+                                            Math.max(0, vs.totalAmount - vs.cashAmount);
+                                        return (
+                                            <tr
+                                                key={row.id}
+                                                className={`cursor-pointer transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-teal-50/80`}
+                                                onClick={() => {
+                                                    const v = bill.vendorId ? vendorMap.get(bill.vendorId) : undefined;
+                                                    if (!v || !bill.vendorId) {
+                                                        showAlert('Could not find vendor for this settlement.');
+                                                        return;
+                                                    }
+                                                    setVendorSettlementEdit({ settlement: vs, vendor: v });
+                                                }}
+                                                title="Open to view or edit prepaid and bank amounts"
+                                            >
+                                                <td className="px-3 py-2.5"></td>
+                                                <td className="px-3 py-2.5">
+                                                    <span className="inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight bg-teal-50 text-teal-800 border border-teal-100">
+                                                        Settlement
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{formatDate(row.date)}</td>
+                                                <td className="px-3 py-2.5">
+                                                    <div className="text-[10px] text-slate-600 font-medium px-1.5 py-0.5 inline-block">
+                                                        Bill #{row.billNumber}
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-slate-700">{row.projectName}</td>
+                                                <td className="px-3 py-2.5 text-slate-700">{row.vendorName}</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-teal-800 tabular-nums">
+                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
+                                                    <span className="block text-[9px] font-normal text-slate-500 normal-case tracking-normal">
+                                                        prepaid {CURRENCY} {advPart.toLocaleString()} · bank {CURRENCY}{' '}
+                                                        {vs.cashAmount.toLocaleString()}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-center">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-100">
+                                                        {row.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-right italic text-slate-500 tabular-nums">
                                                     {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5"></td>
@@ -1475,6 +1599,13 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 isOpen={warningModalState.isOpen}
                 onClose={() => setWarningModalState({ isOpen: false, transaction: null, action: null })}
                 onConfirm={() => {
+                    if (warningModalState.transaction && isVendorSettlementCashMirrorReference(warningModalState.transaction.reference)) {
+                        setWarningModalState({ isOpen: false, transaction: null, action: null });
+                        showAlert(
+                            'This ledger line mirrors a prepaid + bank settlement. Open the teal “Settlement” row for that bill in this list (full amount), then edit the split there.'
+                        );
+                        return;
+                    }
                     if (warningModalState.transaction) dispatch({ type: 'DELETE_TRANSACTION', payload: warningModalState.transaction.id });
                     setWarningModalState({ isOpen: false, transaction: null, action: null });
                     showToast("Payment deleted successfully");
@@ -1508,6 +1639,17 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     vendor={vendorMap.get(billForAdvancePay.vendorId)!}
                     restrictToBillIds={restrictToBillIdsForSingleAdvancePay ?? undefined}
                     presetSelectedBillIds={singleAdvancePayPresetIds}
+                />
+            )}
+
+            {vendorSettlementEdit && (
+                <VendorBillPaymentModal
+                    isOpen
+                    onClose={() => setVendorSettlementEdit(null)}
+                    onPaymentSuccess={() => setVendorSettlementEdit(null)}
+                    vendor={vendorSettlementEdit.vendor}
+                    editSettlement={vendorSettlementEdit.settlement}
+                    restrictToBillIds={[vendorSettlementEdit.settlement.billId]}
                 />
             )}
 

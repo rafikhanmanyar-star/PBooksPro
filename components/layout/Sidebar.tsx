@@ -25,6 +25,17 @@ interface SidebarProps {
     setCurrentPage: (page: Page) => void;
 }
 
+/** Sidebar entries that get a persistent accent so frequent modules stand out */
+const PRIMARY_SIDEBAR_MODULE_PAGES: ReadonlySet<Page> = new Set([
+    'projectSelling',
+    'projectManagement',
+    'rentalManagement',
+]);
+
+function isPrimarySidebarModule(page: Page): boolean {
+    return PRIMARY_SIDEBAR_MODULE_PAGES.has(page);
+}
+
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { mainNavCollapsed, toggleMainNav } = useViewport();
 
@@ -385,6 +396,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
                                             {group.items.map((item) => {
                                                 const active = isCurrent(item.page as Page);
+                                                const primary = isPrimarySidebarModule(item.page as Page);
                                                 return (
                                                     <button
                                                         key={item.page}
@@ -394,10 +406,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                         }}
                                                         className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-2.5 rounded-md text-sm font-medium transition-all duration-ds group touch-manipulation border-l-[3px] ${active
                                                                 ? 'border-primary bg-nav-active text-app-text'
-                                                                : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5 active:bg-white/10'
+                                                                : primary
+                                                                    ? 'border-emerald-400/70 bg-emerald-500/12 text-slate-100 font-semibold shadow-[inset_0_0_0_1px_rgba(52,211,153,0.18)] hover:bg-emerald-500/18 hover:text-white active:bg-emerald-500/22'
+                                                                    : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5 active:bg-white/10'
                                                             }`}
                                                     >
-                                                        <div className={`transition-colors duration-ds shrink-0 ${active ? 'text-primary' : 'text-app-muted group-hover:text-app-text'}`}>
+                                                        <div className={`transition-colors duration-ds shrink-0 ${active ? 'text-primary' : primary ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-app-muted group-hover:text-app-text'}`}>
                                                             {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
                                                         </div>
                                                         <span className="truncate">{item.label}</span>
@@ -555,6 +569,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                     {gIdx > 0 && <div className="border-t border-slate-700/60 my-2 mx-0.5" aria-hidden />}
                                     {group.items.map((item) => {
                                         const active = isCurrent(item.page as Page);
+                                        const primary = isPrimarySidebarModule(item.page as Page);
                                         return (
                                             <button
                                                 key={item.page}
@@ -564,11 +579,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                 aria-label={item.label}
                                                 aria-current={active ? 'page' : undefined}
                                                 className={`w-full flex items-center justify-center p-2.5 rounded-md transition-all duration-ds border-l-[3px] ${active
-                                                    ? 'border-primary bg-nav-active text-primary shadow-none'
-                                                    : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'
+                                                    ? 'border-primary bg-nav-active text-primary shadow-none ring-0'
+                                                    : primary
+                                                        ? 'border-emerald-400/70 bg-emerald-500/12 text-emerald-200 hover:bg-emerald-500/18 ring-1 ring-inset ring-emerald-400/25'
+                                                        : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'
                                                     }`}
                                             >
-                                                <span className={active ? 'text-primary' : 'text-app-muted'}>
+                                                <span className={active ? 'text-primary' : primary ? 'text-emerald-300' : 'text-app-muted'}>
                                                     {React.cloneElement(item.icon as any, { width: 20, height: 20 })}
                                                 </span>
                                             </button>
@@ -687,6 +704,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
                                             {group.items.map((item) => {
                                                 const active = isCurrent(item.page as Page);
+                                                const primary = isPrimarySidebarModule(item.page as Page);
                                                 return (
                                                     <button
                                                         key={item.page}
@@ -694,10 +712,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                         onClick={() => setCurrentPage(item.page as Page)}
                                                         className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-1.5 rounded-md text-xs font-medium transition-all duration-ds group border-l-[3px] ${active
                                                                 ? 'border-primary bg-nav-active text-app-text'
-                                                                : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'
+                                                                : primary
+                                                                    ? 'border-emerald-400/70 bg-emerald-500/12 text-slate-100 font-semibold shadow-[inset_0_0_0_1px_rgba(52,211,153,0.18)] hover:bg-emerald-500/18 hover:text-white'
+                                                                    : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'
                                                             }`}
                                                     >
-                                                        <div className={`transition-colors duration-ds shrink-0 ${active ? 'text-primary' : 'text-app-muted group-hover:text-app-text'}`}>
+                                                        <div className={`transition-colors duration-ds shrink-0 ${active ? 'text-primary' : primary ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-app-muted group-hover:text-app-text'}`}>
                                                             {React.cloneElement(item.icon as any, { width: 16, height: 16 })}
                                                         </div>
                                                         <span className="truncate">{item.label}</span>

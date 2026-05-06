@@ -2,6 +2,8 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { insertJournalEntry } from './journalService.js';
 import { getBillById, recalculateBillPaymentAggregates, type BillRow } from './billsService.js';
+import { createTransaction, type TransactionRow } from './transactionsService.js';
+import { VENDOR_SETTLEMENT_CASH_TX_REF_PREFIX } from '../constants/vendorSettlement.js';
 import {
   type AdjustmentInput,
   type ContractorAdvanceRow,
@@ -66,12 +68,18 @@ function buildJournalDescriptionForBill(userNote: string | null | undefined, p: 
   if (p.adjSum > MONEY_EPS && p.cash > MONEY_EPS) {
     auto = `${bl}: ${moneyLabel(p.adjSum)} cleared from supplier prepaid; ${moneyLabel(p.cash)} from bank/cash.`;
   } else if (p.adjSum > MONEY_EPS) {
-    auto = `${bl}: Paid in full (${moneyLabel(p.adjSum)}) from supplier prepaid advance.`;
+    auto = `${bl}: ${moneyLabel(p.adjSum)} from supplier prepaid advance.`;
   } else {
     auto = `${bl}: Paid ${moneyLabel(p.cash)} from bank/cash.`;
   }
   const u = typeof userNote === 'string' && userNote.trim() ? userNote.trim() : '';
   return u ? `${u} — ${auto}` : auto;
+}
+
+/** User-facing line on the Expense row for the bank/cash slice (advance slice has no transaction). */
+function buildVendorSettlementCashExpenseDescription(p: Prepared): string {
+  const bl = billLabelForNarrative(p.bill);
+  return `Cash/bank leg from prepaid settlement — ${bl} (${moneyLabel(p.cash)}).`;
 }
 
 /** Bill contact/vendor id that maps to contacts & contractor_advances rows (supports vendors.id bridge). */
@@ -102,6 +110,7 @@ export async function settleVendorBillsBatchWithAdvances(
 ): Promise<{
   journalEntries: { billId: string; journalEntryId: string }[];
   touchedAdvanceIds: string[];
+  cashExpenseTransactions: TransactionRow[];
 }> {
   const supplier = String(input.supplierContactId ?? '').trim();
   if (!supplier) throw new Error('supplierContactId is required.');
@@ -156,13 +165,13 @@ export async function settleVendorBillsBatchWithAdvances(
     const adjSum = roundMoney(adjustmentNr);
     const cash = roundMoney(line.cashAmount);
     const settleTotal = roundMoney(adjSum + cash);
-    if (Math.abs(settleTotal - unpaid) > MONEY_EPS) {
+    if (settleTotal > unpaid + MONEY_EPS) {
       throw new Error(
-        `Bill ${bid}: advance allocation (${adjSum}) + cash (${cash}) must equal unpaid balance (${unpaid}).`
+        `Bill ${bid}: payment total (${moneyLabel(settleTotal)}) cannot exceed unpaid balance (${moneyLabel(unpaid)}).`
       );
     }
-    if (adjSum <= MONEY_EPS && cash <= MONEY_EPS) {
-      throw new Error(`Bill ${bid}: allocate advances and/or cash to match the unpaid balance.`);
+    if (settleTotal <= MONEY_EPS) {
+      throw new Error(`Bill ${bid}: enter a positive amount from prepaid and/or bank/cash (partial payment is allowed).`);
     }
 
     prepared.push({ line, bill, unpaid, adjSum, cash, settleTotal, byAdvance });
@@ -212,6 +221,7 @@ export async function settleVendorBillsBatchWithAdvances(
   }
 
   const journalEntries: { billId: string; journalEntryId: string }[] = [];
+  const cashExpenseTransactions: TransactionRow[] = [];
   const refBase =
     typeof input.reference === 'string' && input.reference.trim() ? input.reference.trim() : undefined;
   const userNoteForJournal =
@@ -279,6 +289,28 @@ export async function settleVendorBillsBatchWithAdvances(
          VALUES ($1, $2, $3, NULL, 'cash', $4, $5)`,
         [cashClr, tenantId, billId, p.cash, journalEntryId]
       );
+
+      const txRow = await createTransaction(
+        client,
+        tenantId,
+        {
+          type: 'Expense',
+          subtype: 'vendor_settlement_cash',
+          amount: p.cash,
+          date: input.entryDate.trim(),
+          description: buildVendorSettlementCashExpenseDescription(p),
+          reference: `${VENDOR_SETTLEMENT_CASH_TX_REF_PREFIX}${journalEntryId}`,
+          accountId: payAcct,
+          billId,
+          contactId: bill.contact_id ?? undefined,
+          vendorId: bill.vendor_id ?? undefined,
+          projectId: projectId ?? undefined,
+          categoryId: bill.category_id ?? undefined,
+          batchId: input.batchId ?? undefined,
+        },
+        actorUserId
+      );
+      cashExpenseTransactions.push(txRow);
     }
 
     await recalculateBillPaymentAggregates(client, tenantId, billId);
@@ -346,9 +378,5 @@ export async function settleVendorBillsBatchWithAdvances(
     );
   }
 
-  for (const p of prepared) {
-    await recalculateBillPaymentAggregates(client, tenantId, p.bill.id);
-  }
-
-  return { journalEntries, touchedAdvanceIds };
+  return { journalEntries, touchedAdvanceIds, cashExpenseTransactions };
 }

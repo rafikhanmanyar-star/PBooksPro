@@ -9,6 +9,9 @@ import {
   type ProjectCashTxRow,
 } from '../financial/expenseCashValidation.js';
 import { syncOwnerSummariesForTransactionChange } from './ownerRentalSummaryService.js';
+import {
+  isVendorSettlementCashMirrorReference,
+} from '../constants/vendorSettlement.js';
 
 /**
  * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
@@ -526,6 +529,32 @@ export async function updateTransaction(
   if (!p.account_id) throw new Error('accountId is required.');
   const expectedVersion = p.version;
 
+  if (before && isVendorSettlementCashMirrorReference(before.reference)) {
+    const amtBefore = Number(before.amount);
+    const amtAfter = Number.isFinite(p.amount) ? p.amount : 0;
+    if (Math.abs(amtBefore - amtAfter) > 0.005) {
+      throw new Error(
+        'This payment mirrors a supplier prepaid settlement journal. To change the amount, use Reverse settlement on the bill payment, then record the payment again.'
+      );
+    }
+    if (String(before.account_id) !== String(p.account_id)) {
+      throw new Error(
+        'This payment mirrors a supplier prepaid settlement journal. To change the bank/cash account, use Reverse settlement, then pay again.'
+      );
+    }
+    const d0 = formatPgDateToYyyyMmDd(before.date as Date | string);
+    if (d0 !== p.date) {
+      throw new Error(
+        'This payment mirrors a supplier prepaid settlement journal. To change the date, use Reverse settlement, then pay again.'
+      );
+    }
+    const prevRef = String(before.reference ?? '').trim();
+    const nextRef = String(p.reference ?? '').trim();
+    if (prevRef !== nextRef) {
+      throw new Error('Cannot change settlement link reference.');
+    }
+  }
+
   const categoryResolved = await resolveExpenseCategoryFromBill(
     client,
     tenantId,
@@ -771,6 +800,12 @@ export async function softDeleteTransaction(
 }> {
   const row = await getTransactionById(client, tenantId, id);
   if (!row) return { ok: false, conflict: false };
+
+  if (isVendorSettlementCashMirrorReference(row.reference)) {
+    throw new Error(
+      'This expense mirrors the bank/cash leg of a supplier prepaid settlement. Remove it with Reverse settlement from the Bills payment row so prepaid balance and journal stay aligned.'
+    );
+  }
 
   const invoiceId = row.invoice_id;
   const billId = row.bill_id;

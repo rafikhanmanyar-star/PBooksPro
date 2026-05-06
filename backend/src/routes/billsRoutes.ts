@@ -14,6 +14,10 @@ import {
   rowAdvanceToApi,
 } from '../services/contractorBillingService.js';
 import { settleVendorBillsBatchWithAdvances } from '../services/vendorBillAdvanceSettleService.js';
+import { reverseVendorBillAdvanceSettlement } from '../services/vendorBillAdvanceSettlementReverseService.js';
+import { replaceVendorBillAdvanceSettlement } from '../services/vendorBillAdvanceReplaceService.js';
+import { listVendorBillSettlementsForBills } from '../services/vendorBillSettlementReadService.js';
+import { rowToTransactionApi } from '../services/transactionsService.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
 export const billsRouter = Router();
@@ -33,6 +37,35 @@ billsRouter.get('/bills', async (req: AuthedRequest, res) => {
     try {
       const rows = await listBills(client, tenantId, { status, projectId, propertyId });
       sendSuccess(res, rows.map((r) => rowToBillApi(r)));
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+billsRouter.get('/bills/vendor-settlements', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const raw = typeof req.query.billIds === 'string' ? req.query.billIds : '';
+  const billIds = raw
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (billIds.length === 0) {
+    sendFailure(res, 400, 'BAD_REQUEST', 'Query billIds is required (comma-separated bill ids).');
+    return;
+  }
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const rows = await listVendorBillSettlementsForBills(client, tenantId, billIds);
+      sendSuccess(res, rows);
     } finally {
       client.release();
     }
@@ -195,7 +228,202 @@ billsRouter.post('/bills/settle-with-advances', async (req: AuthedRequest, res) 
           });
         }
       }
-      sendSuccess(res, { journalEntries: out.journalEntries, bills: apiBills });
+      for (const tx of out.cashExpenseTransactions) {
+        emitEntityEvent(tenantId, 'created', 'transaction', {
+          data: rowToTransactionApi(tx),
+          sourceUserId: req.userId,
+        });
+      }
+      sendSuccess(res, {
+        journalEntries: out.journalEntries,
+        bills: apiBills,
+        transactions: out.cashExpenseTransactions.map((tx) => rowToTransactionApi(tx)),
+      });
+    } finally {
+      c.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+/** POST reverse vendor bill prepaid settlement: restore advances, unlink clearings, remove mirrored cash expense, reversing JE. */
+billsRouter.post('/bills/vendor-settlement/reverse', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const journalEntryId = String(body.journalEntryId ?? body.journal_entry_id ?? '').trim();
+  const reason = String(body.reason ?? '').trim();
+  try {
+    const result = await withTransaction((client) =>
+      reverseVendorBillAdvanceSettlement(client, tenantId, journalEntryId, reason, req.userId ?? null)
+    );
+
+    const pool = getPool();
+    const c = await pool.connect();
+    try {
+      const emittedAdv = new Set<string>();
+      for (const tid of result.deletedTransactionIds) {
+        emitEntityEvent(tenantId, 'deleted', 'transaction', { id: tid, sourceUserId: req.userId });
+      }
+      for (const bid of result.billIds) {
+        const br = await getBillById(c, tenantId, bid);
+        if (br) {
+          emitEntityEvent(tenantId, 'updated', 'bill', {
+            data: rowToBillApi(br),
+            sourceUserId: req.userId,
+          });
+        }
+      }
+      for (const aid of result.touchedAdvanceIds) {
+        if (emittedAdv.has(aid)) continue;
+        emittedAdv.add(aid);
+        const advRow = await getContractorAdvanceById(c, tenantId, aid);
+        if (advRow) {
+          emitEntityEvent(tenantId, 'updated', 'contractor_advance', {
+            data: rowAdvanceToApi(advRow),
+            sourceUserId: req.userId,
+          });
+        }
+      }
+
+      sendSuccess(res, {
+        reversalJournalEntryId: result.reversalJournalEntryId,
+        billIds: result.billIds,
+        touchedAdvanceIds: result.touchedAdvanceIds,
+        deletedTransactionIds: result.deletedTransactionIds,
+      });
+    } finally {
+      c.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+/** POST replace prepaid settlement for one bill (reverse prior JE + settle with new split). */
+billsRouter.post('/bills/vendor-settlement/replace', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  try {
+    const journalEntryId = String(body.journalEntryId ?? body.journal_entry_id ?? '').trim();
+    const supplierContactId = String(body.supplierContactId ?? body.supplier_contact_id ?? '').trim();
+    const paymentAccountId = String(body.paymentAccountId ?? body.payment_account_id ?? '').trim();
+    const entryDate = String(body.entryDate ?? body.entry_date ?? '').trim();
+    const billRaw = body.bill ?? body.payload;
+    if (!billRaw || typeof billRaw !== 'object') {
+      sendFailure(res, 400, 'BAD_REQUEST', 'body.bill object is required.');
+      return;
+    }
+
+    const o = billRaw as Record<string, unknown>;
+    const adjustmentsRaw = Array.isArray(o.adjustments) ? o.adjustments : [];
+    const adjustments = adjustmentsRaw.map((ar, j) => {
+      if (!ar || typeof ar !== 'object') throw new Error(`bill.adjustments[${j}] invalid`);
+      const a = ar as Record<string, unknown>;
+      const advanceId = String(a.advanceId ?? a.contractorAdvanceId ?? a.advance_id ?? '').trim();
+      const amt =
+        typeof a.amount === 'number' ? a.amount : typeof a.amount === 'string' ? parseFloat(a.amount) : NaN;
+      if (!advanceId || !Number.isFinite(amt)) throw new Error(`bill.adjustments[${j}] needs advanceId and amount`);
+      if (amt <= 0) throw new Error(`bill.adjustments[${j}] amount must be positive`);
+      return { advanceId, amount: amt };
+    });
+    const cashAmount =
+      typeof o.cashAmount === 'number'
+        ? o.cashAmount
+        : typeof o.cash_amount === 'number'
+          ? o.cash_amount
+          : typeof o.cashAmount === 'string'
+            ? parseFloat(o.cashAmount)
+            : typeof o.cash_amount === 'string'
+              ? parseFloat(o.cash_amount)
+              : NaN;
+    const expenseAccountId = String(o.expenseAccountId ?? o.expense_account_id ?? '').trim();
+    const billId = String(o.billId ?? o.id ?? '').trim();
+    if (!billId) throw new Error('bill.billId required');
+    if (!Number.isFinite(cashAmount)) throw new Error('bill.cashAmount invalid');
+    if (!expenseAccountId) throw new Error('bill.expenseAccountId required');
+
+    const bill = { billId, adjustments, cashAmount, expenseAccountId };
+
+    const result = await withTransaction((client) =>
+      replaceVendorBillAdvanceSettlement(client, tenantId, req.userId ?? null, {
+        journalEntryId,
+        supplierContactId,
+        paymentAccountId,
+        entryDate,
+        bill,
+        reference: typeof body.reference === 'string' ? body.reference : null,
+        description: typeof body.description === 'string' ? body.description : null,
+        batchId:
+          typeof body.batchId === 'string'
+            ? body.batchId
+            : typeof body.batch_id === 'string'
+              ? body.batch_id
+              : null,
+      })
+    );
+
+    const pool = getPool();
+    const c = await pool.connect();
+    try {
+      for (const tid of result.reverse.deletedTransactionIds) {
+        emitEntityEvent(tenantId, 'deleted', 'transaction', { id: tid, sourceUserId: req.userId });
+      }
+
+      const emittedAdv = new Set<string>();
+      for (const aid of result.reverse.touchedAdvanceIds) {
+        if (emittedAdv.has(aid)) continue;
+        emittedAdv.add(aid);
+        const advRow = await getContractorAdvanceById(c, tenantId, aid);
+        if (advRow) {
+          emitEntityEvent(tenantId, 'updated', 'contractor_advance', {
+            data: rowAdvanceToApi(advRow),
+            sourceUserId: req.userId,
+          });
+        }
+      }
+
+      for (const br of result.bills) {
+        emitEntityEvent(tenantId, 'updated', 'bill', {
+          data: rowToBillApi(br),
+          sourceUserId: req.userId,
+        });
+      }
+
+      for (const aid of result.settle.touchedAdvanceIds) {
+        if (emittedAdv.has(aid)) continue;
+        emittedAdv.add(aid);
+        const advRow = await getContractorAdvanceById(c, tenantId, aid);
+        if (advRow) {
+          emitEntityEvent(tenantId, 'updated', 'contractor_advance', {
+            data: rowAdvanceToApi(advRow),
+            sourceUserId: req.userId,
+          });
+        }
+      }
+
+      for (const tx of result.settle.cashExpenseTransactions) {
+        emitEntityEvent(tenantId, 'created', 'transaction', {
+          data: rowToTransactionApi(tx),
+          sourceUserId: req.userId,
+        });
+      }
+
+      sendSuccess(res, {
+        bills: result.bills.map((b) => rowToBillApi(b)),
+        reversalJournalEntryId: result.reverse.reversalJournalEntryId,
+        deletedTransactionIds: result.reverse.deletedTransactionIds,
+        journalEntries: result.settle.journalEntries,
+        transactions: result.settle.cashExpenseTransactions.map((t) => rowToTransactionApi(t)),
+      });
     } finally {
       c.release();
     }
