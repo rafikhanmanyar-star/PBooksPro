@@ -26,6 +26,7 @@ import { ImportType } from '../../services/importService';
 import ResizeHandle from '../ui/ResizeHandle';
 import AllQuotationsTable from './AllQuotationsTable';
 import AllBillsTable from './AllBillsTable';
+import BillLinkedPaymentsSidePanel from '../bills/BillLinkedPaymentsSidePanel';
 import VendorComparisonReport from '../reports/VendorComparisonReport';
 import VendorLedgerReport from '../reports/VendorLedgerReport';
 import { reportDefinitions } from '../reports/reportDefinitions';
@@ -871,14 +872,28 @@ const VendorDirectoryPage: React.FC = () => {
             </div>
 
             {billToEdit && (
-                <Modal isOpen={true} onClose={() => setEditingItem(null)} title="Edit Bill">
-                    <InvoiceBillForm
-                        key={billToEdit.id}
-                        onClose={() => setEditingItem(null)}
-                        type="bill"
-                        itemToEdit={billToEdit}
-                        onDuplicate={handleDuplicateBill}
-                    />
+                <Modal
+                    isOpen={true}
+                    onClose={() => setEditingItem(null)}
+                    title="Edit Bill"
+                    size="xl"
+                    className="sm:!max-w-7xl"
+                >
+                    <div className="flex flex-col lg:flex-row lg:items-stretch -m-3 sm:-m-4 md:-m-6 lg:-m-8 lg:min-h-[min(720px,calc(100vh-10rem))]">
+                        <div className="flex-1 min-w-0 min-h-0">
+                            <InvoiceBillForm
+                                key={billToEdit.id}
+                                onClose={() => setEditingItem(null)}
+                                type="bill"
+                                itemToEdit={billToEdit}
+                                onDuplicate={handleDuplicateBill}
+                            />
+                        </div>
+                        <BillLinkedPaymentsSidePanel
+                            billId={billToEdit.id}
+                            className="lg:w-[min(100%,380px)] lg:flex-shrink-0 lg:max-w-full lg:sticky lg:top-0 lg:self-start lg:max-h-[min(85vh,calc(100vh-8rem))] lg:overflow-y-auto"
+                        />
+                    </div>
                 </Modal>
             )}
 
