@@ -48,6 +48,7 @@ import { profitLossRouter } from './routes/profitLossRoutes.js';
 import { cashFlowRouter } from './routes/cashFlowRoutes.js';
 import { trialBalanceRouter } from './routes/trialBalanceRoutes.js';
 import { rentalOwnerSummariesRouter } from './routes/rentalOwnerSummariesRoutes.js';
+import { customReportsRouter } from './routes/customReportsRoutes.js';
 import { authMiddleware } from './middleware/authMiddleware.js';
 import { seedDevIfEnabled } from './seed.js';
 import { sendFailure, sendSuccess } from './utils/apiResponse.js';
@@ -207,6 +208,8 @@ app.use('/api', authMiddleware, tasksRouter);
 
 /** Empty list stubs for entities not yet ported to this API (avoids HTML 404 on loadState). */
 app.use('/api', authMiddleware, entityListStubsRouter);
+
+app.use('/api', authMiddleware, customReportsRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

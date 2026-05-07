@@ -2,11 +2,8 @@
 import React, { useMemo, useState, Suspense, lazy, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { _getAppState } from '../../context/AppContext';
-import { useAuth } from '../../context/AuthContext';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { queryKeys } from '../../hooks/queries/queryKeys';
 import { selectRentalInvoicesForCache } from '../../hooks/queries/rentalInvoicesCache';
-import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
 import {
     useBills,
     useBuildings,
@@ -33,7 +30,6 @@ import { buildActiveAgreementByPropertyId } from '../../utils/rentalActiveAgreem
 import RentalPropertySummaryCard from './RentalPropertySummaryCard';
 import {
     buildOwnerPropertyBreakdown,
-    buildOwnerPropertyBreakdownFromApiBalances,
     getOwnerPayoutModalPropertyBreakdownForProperty,
     getOwnerRentalPayoutDueForProperty,
     getOwnerRentalPayoutDueForOwnerOnProperty,
@@ -179,14 +175,6 @@ const PropertyLayoutReport: React.FC = () => {
     const projectAgreements = useStateSelector((s) => s.projectAgreements);
     const queryClient = useQueryClient();
     const { print: triggerPrint } = usePrintContext();
-    const { isAuthenticated } = useAuth();
-    const useApiRollup = !isLocalOnlyMode() && isAuthenticated;
-    const {
-        data: apiOwnerBalanceRows,
-        isSuccess: apiRollupSuccess,
-        isPending: apiRollupPending,
-        isError: apiRollupError,
-    } = useAllOwnerBalancesRollupQuery(useApiRollup);
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [invoicePick, setInvoicePick] = useState<{
         propertyId: string;
@@ -235,65 +223,17 @@ const PropertyLayoutReport: React.FC = () => {
 
     const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...buildings], [buildings]);
 
-    const needFullOwnerPropertyBreakdownModal =
-        !!ownerPayoutState && ownerPayoutState.payoutType === 'Security';
-
-    /** Full ledger rules (matches OwnerLedger / Owner Payouts client path). */
+    /** Full ledger rules — same source as Visual Layout cards and Owner Ledger (not PostgreSQL owner_balances). */
     const clientOwnerPropertyBreakdown = useMemo((): OwnerPropertyBreakdownMap => {
         if (properties.length === 0) return {};
         return buildOwnerPropertyBreakdown(_getAppState());
     }, [transactions, properties, categories, rentalAgreements, bills]);
 
-    const layoutOwnerRentalPayoutBreakdown = useMemo((): OwnerPropertyBreakdownMap => {
-        if (properties.length === 0) return {};
-        const st = _getAppState();
-        if (useApiRollup && !apiRollupError) {
-            if (apiRollupPending && apiOwnerBalanceRows === undefined) {
-                return {};
-            }
-            if (apiRollupSuccess) {
-                return (apiOwnerBalanceRows?.length ?? 0) > 0
-                    ? buildOwnerPropertyBreakdownFromApiBalances(
-                          st,
-                          apiOwnerBalanceRows!.map((r) => ({
-                              ownerId: r.ownerId,
-                              propertyId: r.propertyId,
-                              balance: Number(r.balance),
-                          }))
-                      )
-                    : {};
-            }
-        }
-        return clientOwnerPropertyBreakdown;
-    }, [
-        useApiRollup,
-        apiRollupError,
-        apiRollupPending,
-        apiRollupSuccess,
-        apiOwnerBalanceRows,
-        clientOwnerPropertyBreakdown,
-    ]);
-
+    /** Owner payout modal must use client breakdown so "Due" matches the card summary and ledger. */
     const ownerPropertyBreakdownLayout = useMemo((): OwnerPropertyBreakdownMap | null => {
         if (!ownerPayoutState) return null;
-        if (!needFullOwnerPropertyBreakdownModal && useApiRollup && !apiRollupError) {
-            return layoutOwnerRentalPayoutBreakdown;
-        }
         return clientOwnerPropertyBreakdown;
-    }, [
-        ownerPayoutState,
-        needFullOwnerPropertyBreakdownModal,
-        useApiRollup,
-        apiRollupError,
-        layoutOwnerRentalPayoutBreakdown,
-        clientOwnerPropertyBreakdown,
-        transactions,
-        properties,
-        categories,
-        rentalAgreements,
-        bills,
-        invoices,
-    ]);
+    }, [ownerPayoutState, clientOwnerPropertyBreakdown]);
 
     const layoutOwnerPayoutModalRows = useMemo(() => {
         if (!ownerPayoutState?.owner || !ownerPropertyBreakdownLayout) return [];

@@ -36,6 +36,7 @@ const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMateria
 const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
 const TrialBalanceReport = React.lazy(() => import('../reports/TrialBalanceReport'));
 const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
+const CustomReportBuilderPage = React.lazy(() => import('../reports/customReportBuilder/CustomReportBuilderPage'));
 const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
 
 interface ProjectManagementPageProps {
@@ -51,7 +52,7 @@ type ProjectView =
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
     | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Trial Balance' | 'Investor Distribution' | 'Contract Report'
-    | 'Budget vs Actual' | 'Cash Flows' | 'Marketing Activity';
+    | 'Budget vs Actual' | 'Cash Flows' | 'Marketing Activity' | 'Custom Report Builder';
 
 /** Project selling — operational tabs (persistent mount) */
 const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Assets', 'Sales Returns'];
@@ -66,6 +67,7 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
     'Owner Ledger',
     'Income by Category',
     'Expense by Category',
+    'Custom Report Builder',
 ];
 
 /** Project construction */
@@ -118,6 +120,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Visual Layout', 'Tabular View',
         'Project Summary', 'Marketing Activity', 'Revenue Analysis',
         'Owner Ledger', 'Broker Report', 'Income by Category', 'Expense by Category',
+        'Custom Report Builder',
         'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'
     ];
 
@@ -179,6 +182,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Contract Report': return <ProjectContractReport />;
             case 'Budget vs Actual': return <ProjectBudgetReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
+            case 'Custom Report Builder': return <CustomReportBuilderPage />;
             case 'Profit & Loss': return isAdmin ? <ProjectProfitLossReport /> : null;
             case 'Balance Sheet': return isAdmin ? <ProjectBalanceSheetReport /> : null;
             case 'Trial Balance': return isAdmin ? <TrialBalanceReport /> : null;
@@ -458,7 +462,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         { value: 'Visual Layout', label: 'Visual', group: 'Project views' },
         { value: 'Tabular View', label: 'Units', group: 'Project views' },
         ...(isAdmin ? SELLING_FINANCIAL_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Financial' })) : []),
-        ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Operational' })),
+        ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v === 'Custom Report Builder' ? 'Custom builder' : v, group: 'Reports — Operational' })),
     ];
 
     const allConstructionMobileOptions: { value: ProjectView; label: string; group: string }[] = [
