@@ -52,7 +52,7 @@ const MessagingTemplatesForm: React.FC = () => {
           label="Invoice Payment Receipt"
           value={templates.invoiceReceipt}
           onChange={(val) => handleTemplateChange('invoiceReceipt', val)}
-          placeholders={['{contactName}', '{invoiceNumber}', '{subject}', '{paidAmount}', '{balance}', '{unitName}']}
+          placeholders={['{contactName}', '{invoiceNumber}', '{subject}', '{paidAmount}', '{balance}', '{totalUnpaid}', '{unitName}']}
         />
         <TemplateField
           label="Bill Payment Notification"

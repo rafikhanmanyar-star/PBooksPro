@@ -4,6 +4,7 @@ import { useAppContext } from '../../context/AppContext';
 import { Contact, TransactionType, Transaction, AccountType, Category, Invoice, InvoiceStatus, InvoiceType, RentalAgreementStatus, Bill } from '../../types';
 import { getExpenseBearerType } from '../../utils/rentalBillPayments';
 import { SECURITY_SETTLEMENT_BATCH_PREFIX } from '../../utils/rentalSecurityDepositSettlement';
+import { getOutstandingSecurityDepositInvoicesForProperty } from '../../utils/rentalInvoiceClassification';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
@@ -174,6 +175,15 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             )
             .sort((a, b) => new Date(a.dueDate || a.issueDate).getTime() - new Date(b.dueDate || b.issueDate).getTime());
     }, [isOpen, singlePropertyId, state.invoices]);
+
+    /** Security-deposit invoices (not rent combos) whose paid amount still does not match total. */
+    const outstandingSecurityDepositInvoices = useMemo(
+        () =>
+            isSecurityMode && isOpen && singlePropertyId
+                ? getOutstandingSecurityDepositInvoicesForProperty(state.invoices, singlePropertyId)
+                : [],
+        [isSecurityMode, isOpen, singlePropertyId, state.invoices]
+    );
 
     const computedUnpaidRentalTotal = useMemo(
         () => unpaidPropertyInvoices.reduce((s, inv) => s + (inv.amount - (inv.paidAmount || 0)), 0),
@@ -442,30 +452,37 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
 
     useEffect(() => {
         if (isSecurityMode && !isEditMode) {
-            const total = securityAllocations.owner + securityAllocations.tenant + invoiceAdjustTotal + billAdjustTotal;
-            if (total <= 0) {
-                setError('Enter a positive amount for at least one option.');
-            } else if (total > balanceDue + 0.01) {
-                setError(`Total allocations (${CURRENCY} ${total.toLocaleString()}) exceed the security balance of ${CURRENCY} ${balanceDue.toLocaleString()}.`);
-            } else if (securityAllocations.tenant > 0.01 && !effectiveTenant) {
-                setError('No tenant found for this property to refund.');
-            } else if (invoiceAdjustTotal > 0.01 && !effectiveTenant) {
-                setError('No tenant found for invoice adjustment.');
-            } else if (invoiceAdjustTotal > 0.01 && unpaidPropertyInvoices.length === 0) {
-                setError('No unpaid invoices to adjust against.');
-            } else if (billAdjustTotal > 0.01 && !effectiveTenant) {
-                setError('No tenant found for bill adjustment.');
-            } else if (billAdjustTotal > 0.01 && unpaidTenantPropertyBills.length === 0) {
-                setError('No unpaid tenant-allocation bills to adjust against.');
+            if (outstandingSecurityDepositInvoices.length > 0 && singlePropertyId) {
+                const list = outstandingSecurityDepositInvoices.map((i) => `#${i.invoiceNumber}`).join(', ');
+                setError(
+                    `Outstanding security invoice(s) for this unit: ${list}. Record payments equal to each total (or edit/delete the invoice), then you can refund or adjust held security.`
+                );
             } else {
-                const overInv = invoiceAdjustments.find(r => r.adjustAmount > r.outstanding + 0.01);
-                const overBill = billAdjustments.find(r => r.adjustAmount > r.outstanding + 0.01);
-                if (overInv) {
-                    setError(`Amount for invoice ${overInv.invoiceNumber} exceeds its outstanding balance.`);
-                } else if (overBill) {
-                    setError(`Amount for bill ${overBill.billNumber} exceeds its outstanding balance.`);
+                const total = securityAllocations.owner + securityAllocations.tenant + invoiceAdjustTotal + billAdjustTotal;
+                if (total <= 0) {
+                    setError('Enter a positive amount for at least one option.');
+                } else if (total > balanceDue + 0.01) {
+                    setError(`Total allocations (${CURRENCY} ${total.toLocaleString()}) exceed the security balance of ${CURRENCY} ${balanceDue.toLocaleString()}.`);
+                } else if (securityAllocations.tenant > 0.01 && !effectiveTenant) {
+                    setError('No tenant found for this property to refund.');
+                } else if (invoiceAdjustTotal > 0.01 && !effectiveTenant) {
+                    setError('No tenant found for invoice adjustment.');
+                } else if (invoiceAdjustTotal > 0.01 && unpaidPropertyInvoices.length === 0) {
+                    setError('No unpaid invoices to adjust against.');
+                } else if (billAdjustTotal > 0.01 && !effectiveTenant) {
+                    setError('No tenant found for bill adjustment.');
+                } else if (billAdjustTotal > 0.01 && unpaidTenantPropertyBills.length === 0) {
+                    setError('No unpaid tenant-allocation bills to adjust against.');
                 } else {
-                    setError('');
+                    const overInv = invoiceAdjustments.find(r => r.adjustAmount > r.outstanding + 0.01);
+                    const overBill = billAdjustments.find(r => r.adjustAmount > r.outstanding + 0.01);
+                    if (overInv) {
+                        setError(`Amount for invoice ${overInv.invoiceNumber} exceeds its outstanding balance.`);
+                    } else if (overBill) {
+                        setError(`Amount for bill ${overBill.billNumber} exceeds its outstanding balance.`);
+                    } else {
+                        setError('');
+                    }
                 }
             }
         } else if (showPropertyTable) {
@@ -482,7 +499,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             else if (numericAmount <= 0) setError('Amount must be positive.');
             else setError('');
         }
-    }, [showPropertyTable, items, totalToPay, amount, balanceDue, isEditMode, isSecurityMode, securityAllocations, effectiveTenant, tenantUnpaidAmount, invoiceAdjustTotal, billAdjustTotal, invoiceAdjustments, billAdjustments, unpaidPropertyInvoices, unpaidTenantPropertyBills]);
+    }, [showPropertyTable, items, totalToPay, amount, balanceDue, isEditMode, isSecurityMode, securityAllocations, effectiveTenant, tenantUnpaidAmount, invoiceAdjustTotal, billAdjustTotal, invoiceAdjustments, billAdjustments, unpaidPropertyInvoices, unpaidTenantPropertyBills, outstandingSecurityDepositInvoices, singlePropertyId]);
 
     const getPayoutCategory = (mode?: 'owner' | 'tenant' | 'adjust'): Category | null => {
         if (payoutType === 'Security') {
@@ -533,6 +550,17 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
 
         // --- Security mode: create separate transactions per allocation ---
         if (isSecurityMode && !isEditMode) {
+            const blockingSecurityInvoices = singlePropertyId
+                ? getOutstandingSecurityDepositInvoicesForProperty(state.invoices, singlePropertyId)
+                : [];
+            if (blockingSecurityInvoices.length > 0) {
+                const list = blockingSecurityInvoices.map((i) => `#${i.invoiceNumber}`).join(', ');
+                await showAlert(
+                    `This unit still has unpaid security invoice(s): ${list}.\n\nRecord payments until each invoice is fully paid or adjust/delete the invoices so totals match amounts collected, then you can refund the tenant or apply held security to rent or bills.`
+                );
+                return;
+            }
+
             const allTxs: Transaction[] = [];
             const baseId = Date.now();
             const settlementBatchId = `${SECURITY_SETTLEMENT_BATCH_PREFIX}${baseId}`;

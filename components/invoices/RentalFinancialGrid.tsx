@@ -11,6 +11,7 @@ import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappServ
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { sumOutstandingInvoiceBalancesForContact } from '../../utils/sumOutstandingInvoiceBalancesForContact';
 
 /** Extended transaction with optional invoice number for bulk payment child rows */
 type TransactionWithInvoiceRef = Transaction & { invoiceNumber?: string };
@@ -216,6 +217,10 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
             const unitName = unit?.name || '';
             const hasMadePayment = invoice.paidAmount > 0;
             const balance = invoice.amount - invoice.paidAmount;
+            const totalUnpaid = sumOutstandingInvoiceBalancesForContact(invoices, contact.id, {
+                invoiceId: invoice.id,
+                invoiceBalanceOverride: balance,
+            });
 
             const templates = whatsAppTemplates || { invoiceReceipt: '', invoiceReminder: '' };
             let message = '';
@@ -227,7 +232,8 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                     invoice.paidAmount,
                     balance,
                     subject,
-                    unitName
+                    unitName,
+                    totalUnpaid
                 );
             } else {
                 message = WhatsAppService.generateInvoiceReminder(
@@ -249,7 +255,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
-    }, [whatsAppTemplates, whatsAppMode, properties, projects, units, showAlert, openChat]);
+    }, [whatsAppTemplates, whatsAppMode, properties, projects, units, invoices, showAlert, openChat]);
 
     const handleSendWhatsAppForPayment = useCallback((tx: Transaction, contact: Contact) => {
         if (!contact?.contactNo) {

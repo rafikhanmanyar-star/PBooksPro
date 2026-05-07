@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { ContactType, InvoiceType, TransactionType, Transaction, Invoice } from '../../types';
+import { ContactType, InvoiceType, InvoiceStatus, TransactionType, Transaction, Invoice } from '../../types';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
@@ -49,8 +49,11 @@ const TenantLedgerReport: React.FC = () => {
 
     const [selectedTenantId, setSelectedTenantId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
+    const [treeSearchQuery, setTreeSearchQuery] = useState('');
     const [groupBy, setGroupBy] = useState('');
+    /** Default: date ascending (chronological ledger). Other columns re-sort display only. */
     const [sortConfig, setSortConfig] = useState<{ key: keyof LedgerItem; direction: 'asc' | 'desc' } | null>(null);
+    const [tenantsFolderExpanded, setTenantsFolderExpanded] = useState(true);
 
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
     const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
@@ -83,7 +86,40 @@ const TenantLedgerReport: React.FC = () => {
     };
 
     const tenants = useMemo(() => state.contacts.filter(c => c.type === ContactType.TENANT), [state.contacts]);
-    const tenantItems = useMemo(() => [{ id: 'all', name: 'All Tenants' }, ...tenants], [tenants]);
+
+    const tenantsSortedForTree = useMemo(() => {
+        const q = treeSearchQuery.trim().toLowerCase();
+        let list = [...tenants];
+        if (q) list = list.filter(t => t.name.toLowerCase().includes(q));
+        list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        return list;
+    }, [tenants, treeSearchQuery]);
+
+    const tenantsByLetter = useMemo(() => {
+        const m = new Map<string, typeof tenants>();
+        for (const t of tenantsSortedForTree) {
+            const ch = (t.name.trim()[0] || '#').toUpperCase();
+            const key = /^[A-Z]$/.test(ch) ? ch : '#';
+            if (!m.has(key)) m.set(key, []);
+            m.get(key)!.push(t);
+        }
+        return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
+    }, [tenantsSortedForTree]);
+
+    const [letterExpanded, setLetterExpanded] = useState<Record<string, boolean>>({});
+
+    const isLetterOpen = (letter: string) => letterExpanded[letter] !== false;
+
+    const toggleLetter = (letter: string) => {
+        setLetterExpanded(prev => ({ ...prev, [letter]: !(prev[letter] !== false) }));
+    };
+
+    const expandAllLetters = () => setLetterExpanded({});
+    const collapseAllLetters = () => {
+        const next: Record<string, boolean> = {};
+        tenantsByLetter.forEach(([L]) => { next[L] = false; });
+        setLetterExpanded(next);
+    };
 
     const reportData = useMemo<LedgerItem[]>(() => {
         const start = new Date(startDate);
@@ -198,21 +234,18 @@ const TenantLedgerReport: React.FC = () => {
             );
         }
 
-        if (sortConfig) {
-            finalItems.sort((a, b) => {
-                if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
-                return 0;
-            });
+        // Date descending only: reverse chronological rows; per-row balance stays correct for that line.
+        if (sortConfig?.key === 'date' && sortConfig.direction === 'desc') {
+            finalItems = [...finalItems].reverse();
         }
 
         return finalItems;
     }, [state, startDate, endDate, selectedTenantId, searchQuery, tenants, groupBy, sortConfig]);
 
     const requestSort = (key: keyof LedgerItem) => {
-        let direction: 'asc' | 'desc' = 'asc';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
-        setSortConfig({ key, direction });
+        if (key !== 'date') return;
+        if (sortConfig?.key === 'date' && sortConfig.direction === 'desc') setSortConfig(null);
+        else setSortConfig({ key: 'date', direction: 'desc' });
     };
 
     const totals = useMemo(() => {
@@ -223,47 +256,27 @@ const TenantLedgerReport: React.FC = () => {
         }, { debit: 0, credit: 0 });
     }, [reportData]);
 
-    const summaryStats = useMemo(() => {
-        const allRentalInvoices = state.invoices.filter(inv =>
-            inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE
-        );
-        const tenantIds = new Set(tenants.map(t => t.id));
-
-        const allRentalPayments = state.transactions.filter(tx =>
-            tx.type === TransactionType.INCOME && tx.contactId && tenantIds.has(tx.contactId)
-        );
-        const totalCollections = allRentalPayments.reduce((sum, tx) => sum + tx.amount, 0);
-
-        const balanceByTenant = new Map<string, number>();
-        allRentalInvoices.forEach(inv => {
-            if (!inv.contactId) return;
-            balanceByTenant.set(inv.contactId, (balanceByTenant.get(inv.contactId) || 0) + inv.amount);
-        });
-        allRentalPayments.forEach(tx => {
-            if (!tx.contactId) return;
-            balanceByTenant.set(tx.contactId, (balanceByTenant.get(tx.contactId) || 0) - tx.amount);
-        });
-
-        let outstandingArrears = 0;
-        let overdueTenantsCount = 0;
-        balanceByTenant.forEach((balance) => {
-            if (balance > 0) {
-                outstandingArrears += balance;
-                overdueTenantsCount++;
-            }
-        });
-
-        const netRevenue = totalCollections - outstandingArrears;
-
-        return { totalCollections, outstandingArrears, overdueTenantsCount, netRevenue };
-    }, [state.invoices, state.transactions, tenants]);
+    const selectionSummary = useMemo(() => {
+        const tenantName =
+            selectedTenantId === 'all'
+                ? 'All tenants'
+                : state.contacts.find(c => c.id === selectedTenantId)?.name ?? 'Selected tenant';
+        const closing = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
+        return {
+            tenantName,
+            lineCount: reportData.length,
+            totalDebit: totals.debit,
+            totalCredit: totals.credit,
+            closing,
+        };
+    }, [reportData, selectedTenantId, state.contacts, totals.debit, totals.credit]);
 
     const alertsCount = useMemo(() => {
         const overdueInvoices = state.invoices.filter(inv => {
             if (inv.invoiceType !== InvoiceType.RENTAL && inv.invoiceType !== InvoiceType.SERVICE_CHARGE) return false;
             if (!inv.dueDate) return false;
             const due = new Date(inv.dueDate);
-            return due < new Date() && inv.status !== 'paid';
+            return due < new Date() && inv.status !== InvoiceStatus.PAID;
         });
         return overdueInvoices.length;
     }, [state.invoices]);
@@ -339,23 +352,30 @@ const TenantLedgerReport: React.FC = () => {
         }
     };
 
-    const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
+    const finalBalance = selectionSummary.closing;
 
-    const SortHeader: React.FC<{ label: string, sortKey: keyof LedgerItem, align?: 'left' | 'right' }> = ({ label, sortKey, align = 'left' }) => (
-        <th
-            className={`px-4 py-3 ${align === 'right' ? 'text-right' : 'text-left'} text-[11px] font-semibold uppercase tracking-wider text-app-muted cursor-pointer hover:text-app-text select-none transition-colors`}
-            onClick={() => requestSort(sortKey)}
-        >
-            <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
-                {label}
-                {sortConfig?.key === sortKey ? (
-                    <span className="text-[9px] text-primary">{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
-                ) : (
-                    <span className="text-[9px] text-app-muted/40">↕</span>
-                )}
-            </div>
-        </th>
-    );
+    const SortHeader: React.FC<{ label: string; sortKey: keyof LedgerItem; align?: 'left' | 'right' }> = ({ label, sortKey, align = 'left' }) => {
+        const isDate = sortKey === 'date';
+        return (
+            <th
+                className={`px-4 py-3 ${align === 'right' ? 'text-right' : 'text-left'} text-[11px] font-semibold uppercase tracking-wider text-app-muted transition-colors ${
+                    isDate ? 'cursor-pointer hover:text-app-text select-none' : ''
+                }`}
+                onClick={isDate ? () => requestSort(sortKey) : undefined}
+            >
+                <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
+                    {label}
+                    {isDate ? (
+                        sortConfig?.key === 'date' && sortConfig.direction === 'desc' ? (
+                            <span className="text-[9px] text-primary" title="Newest first">▼</span>
+                        ) : (
+                            <span className="text-[9px] text-primary" title="Oldest first (default)">▲</span>
+                        )
+                    ) : null}
+                </div>
+            </th>
+        );
+    };
 
     return (
         <>
@@ -403,21 +423,6 @@ const TenantLedgerReport: React.FC = () => {
                 {/* Filters Row */}
                 <div className="flex-shrink-0 mx-6 mb-4 no-print">
                     <div className="bg-app-card rounded-xl border border-app-border px-5 py-3.5 flex flex-wrap items-center gap-x-6 gap-y-3">
-                        {/* Tenant Filter */}
-                        <div className="flex flex-col gap-1">
-                            <label htmlFor="tenant-filter" className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">Tenant</label>
-                            <select
-                                id="tenant-filter"
-                                value={selectedTenantId}
-                                onChange={(e) => setSelectedTenantId(e.target.value)}
-                                className="ds-input-field px-3 py-1.5 text-sm min-w-[160px] rounded-md"
-                            >
-                                {tenantItems.map(t => (
-                                    <option key={t.id} value={t.id}>{t.name}</option>
-                                ))}
-                            </select>
-                        </div>
-
                         {/* Grouping Filter */}
                         <div className="flex flex-col gap-1">
                             <label htmlFor="grouping-filter" className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">Grouping</label>
@@ -473,7 +478,7 @@ const TenantLedgerReport: React.FC = () => {
                                 </div>
                                 <input
                                     type="text"
-                                    placeholder="Search..."
+                                    placeholder="Search ledger…"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="ds-input-field pl-8 pr-7 py-1.5 text-sm w-40 rounded-md"
@@ -498,154 +503,265 @@ const TenantLedgerReport: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Main Content - Scrollable */}
-                <div className="flex-grow overflow-y-auto min-h-0 px-6 pb-6">
-                    <div id="printable-area" className="printable-area">
-                        {/* Print-only header */}
-                        <div className="hidden print:block">
-                            <ReportHeader />
-                            <div className="text-center mb-4">
-                                <h3 className="text-2xl font-bold text-app-text">Tenant Ledger</h3>
-                                <p className="text-sm text-app-muted">{formatLongDate(startDate)} – {formatLongDate(endDate)}</p>
-                                {selectedTenantId !== 'all' && (
-                                    <p className="text-sm text-app-muted font-semibold">
-                                        Tenant: {state.contacts.find(c => c.id === selectedTenantId)?.name}
-                                    </p>
-                                )}
+                {/* Tree + ledger */}
+                <div className="flex-1 flex min-h-0 mx-6 mb-6 gap-4">
+                    <aside className="no-print w-72 shrink-0 flex flex-col rounded-xl border border-app-border bg-app-card shadow-ds-card overflow-hidden min-h-0">
+                        <div className="p-3 border-b border-app-border flex-shrink-0">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">Tenant list</span>
+                            <div className="relative mt-2">
+                                <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted">
+                                    <span className="w-3.5 h-3.5">{ICONS.search}</span>
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Find tenant…"
+                                    value={treeSearchQuery}
+                                    onChange={(e) => setTreeSearchQuery(e.target.value)}
+                                    className="ds-input-field pl-8 pr-7 py-1.5 text-sm w-full rounded-md"
+                                />
+                                {treeSearchQuery ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setTreeSearchQuery('')}
+                                        className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
+                                        aria-label="Clear tenant search"
+                                    >
+                                        <span className="w-3.5 h-3.5">{ICONS.x}</span>
+                                    </button>
+                                ) : null}
                             </div>
                         </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto py-2 text-sm">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedTenantId('all')}
+                                className={`mx-2 w-[calc(100%-1rem)] text-left px-3 py-2 rounded-lg transition-colors ${
+                                    selectedTenantId === 'all'
+                                        ? 'bg-primary/15 text-primary font-semibold ring-1 ring-primary/25'
+                                        : 'text-app-text hover:bg-app-toolbar/60'
+                                }`}
+                            >
+                                All tenants
+                                <span className="block text-[11px] font-normal text-app-muted mt-0.5">{tenants.length} on file</span>
+                            </button>
 
-                        {/* Data Table */}
-                        {reportData.length > 0 ? (
-                            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full text-sm">
-                                        <thead>
-                                            <tr className="border-b border-app-border bg-app-toolbar/30">
-                                                <SortHeader label="Date" sortKey="date" align="left" />
-                                                <SortHeader label="Tenant" sortKey="tenantName" align="left" />
-                                                <SortHeader label="Particulars" sortKey="particulars" align="left" />
-                                                <SortHeader label="Debit (Due)" sortKey="debit" align="right" />
-                                                <SortHeader label="Credit (Paid)" sortKey="credit" align="right" />
-                                                <SortHeader label="Balance" sortKey="balance" align="right" />
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {reportData.map((item, idx) => {
-                                                const transaction = item.entityType === 'transaction' ? state.transactions.find(t => t.id === item.entityId) : null;
-                                                const invoice = item.entityType === 'invoice' ? state.invoices.find(i => i.id === item.entityId) : null;
-                                                return (
-                                                    <tr
-                                                        key={item.id}
-                                                        className={`border-b border-app-border/50 cursor-pointer hover:bg-primary/5 transition-colors ${idx % 2 === 0 ? 'bg-app-card' : 'bg-app-toolbar/10'}`}
-                                                        onClick={() => {
-                                                            if (transaction) setTransactionToEdit(transaction);
-                                                            if (invoice) setInvoiceToEdit(invoice);
-                                                        }}
-                                                        title="Click to edit"
-                                                    >
-                                                        <td className="px-4 py-3 whitespace-nowrap text-app-muted">{formatDate(item.date)}</td>
-                                                        <td className="px-4 py-3 whitespace-nowrap font-medium text-app-text">{item.tenantName}</td>
-                                                        <td className="px-4 py-3 text-app-muted max-w-xs truncate">{item.particulars}</td>
-                                                        <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium text-rose-600 dark:text-rose-400">
-                                                            {item.debit > 0 ? `${CURRENCY}${item.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-app-muted/40">–</span>}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium text-app-muted">
-                                                            {item.credit > 0 ? `${CURRENCY}${item.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-app-muted/40">–</span>}
-                                                        </td>
-                                                        <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold ${
-                                                            item.balance > 0 ? 'text-rose-600 dark:text-rose-400' : item.balance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
-                                                        }`}>
-                                                            {CURRENCY}{item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                        <tfoot>
-                                            <tr className="bg-app-toolbar/40 border-t-2 border-app-border">
-                                                <td colSpan={3} className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-app-muted">Totals (Period)</td>
-                                                <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold text-rose-600 dark:text-rose-400">
-                                                    {CURRENCY}{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                </td>
-                                                <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold text-app-text">
-                                                    {CURRENCY}{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                </td>
-                                                <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold ${
-                                                    finalBalance > 0 ? 'text-rose-600 dark:text-rose-400' : finalBalance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
-                                                }`}>
-                                                    {selectedTenantId !== 'all' ? `${CURRENCY}${finalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '–'}
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
+                            <div className="mt-2 px-2">
+                                <div className="flex items-center gap-1 px-1 py-1 rounded-md hover:bg-app-toolbar/30">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTenantsFolderExpanded(v => !v)}
+                                        className="p-1 rounded text-app-muted hover:text-app-text hover:bg-app-toolbar/50"
+                                        title={tenantsFolderExpanded ? 'Collapse group' : 'Expand group'}
+                                    >
+                                        <span className="text-[10px] w-4 inline-block text-center">{tenantsFolderExpanded ? '▼' : '▶'}</span>
+                                    </button>
+                                    <span className="text-xs font-semibold text-app-text truncate flex-1">
+                                        Tenants ({tenantsSortedForTree.length})
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={expandAllLetters}
+                                            className="text-[10px] px-1.5 py-0.5 rounded text-primary hover:bg-primary/10"
+                                        >
+                                            Expand all
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={collapseAllLetters}
+                                            className="text-[10px] px-1.5 py-0.5 rounded text-app-muted hover:bg-app-toolbar/50"
+                                        >
+                                            Collapse all
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-16 text-center">
-                                <div className="w-12 h-12 mx-auto mb-4 text-app-muted/30">{ICONS.search}</div>
-                                <p className="text-app-muted font-medium">No ledger transactions found for the selected criteria.</p>
-                                <p className="text-app-muted/60 text-sm mt-1">Try adjusting the date range or tenant filter.</p>
-                            </div>
-                        )}
 
-                        <div className="hidden print:block"><ReportFooter /></div>
-                    </div>
-
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 no-print">
-                        {/* Total Collections */}
-                        <div className="bg-app-card rounded-xl border border-app-border p-5 shadow-ds-card">
-                            <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Total Collections</span>
-                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                    <svg className="w-4.5 h-4.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                    </svg>
-                                </div>
+                                {tenantsFolderExpanded ? (
+                                    tenantsByLetter.length === 0 ? (
+                                        <p className="px-3 py-4 text-xs text-app-muted text-center">No tenants match your search.</p>
+                                    ) : (
+                                        tenantsByLetter.map(([letter, list]) => (
+                                            <div key={letter} className="mt-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleLetter(letter)}
+                                                    className="flex w-full items-center gap-1 px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-app-muted hover:text-app-text hover:bg-app-toolbar/40 rounded-md"
+                                                >
+                                                    <span className="w-4 text-center text-[10px]">{isLetterOpen(letter) ? '▼' : '▶'}</span>
+                                                    <span>
+                                                        {letter === '#' ? 'Other' : letter}
+                                                        <span className="ml-1 font-normal opacity-70">({list.length})</span>
+                                                    </span>
+                                                </button>
+                                                {isLetterOpen(letter) ? (
+                                                    <ul className="mt-0.5 space-y-0.5 pl-3 border-l border-app-border/60 ml-3">
+                                                        {list.map(t => (
+                                                            <li key={t.id}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSelectedTenantId(t.id)}
+                                                                    className={`w-full text-left px-2 py-1.5 rounded-md truncate transition-colors ${
+                                                                        selectedTenantId === t.id
+                                                                            ? 'bg-primary/15 text-primary font-medium ring-1 ring-primary/20'
+                                                                            : 'text-app-text hover:bg-app-toolbar/50'
+                                                                    }`}
+                                                                >
+                                                                    {t.name}
+                                                                </button>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                ) : null}
+                                            </div>
+                                        ))
+                                    )
+                                ) : null}
                             </div>
-                            <div className="text-2xl font-bold text-app-text tabular-nums">
-                                {CURRENCY}{summaryStats.totalCollections.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                            </div>
-                            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>
-                                vs last period
-                            </p>
                         </div>
+                    </aside>
 
-                        {/* Outstanding Arrears */}
-                        <div className="bg-app-card rounded-xl border border-app-border p-5 shadow-ds-card">
-                            <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Outstanding Arrears</span>
-                                <div className="w-8 h-8 rounded-lg bg-ds-warning/10 flex items-center justify-center">
-                                    <div className="w-4.5 h-4.5 text-ds-warning">{ICONS.alertTriangle}</div>
+                    <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-4 overflow-y-auto">
+                        {/* Summary — selected scope & period (matches table) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 no-print">
+                            <div className="bg-app-card rounded-xl border border-app-border p-4 shadow-ds-card">
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Total charged</span>
+                                    <span className="text-[10px] font-medium text-app-muted truncate max-w-[55%]" title={selectionSummary.tenantName}>
+                                        {selectionSummary.tenantName}
+                                    </span>
                                 </div>
+                                <div className="text-xl font-bold text-app-text tabular-nums text-rose-600 dark:text-rose-400">
+                                    {CURRENCY}
+                                    {selectionSummary.totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </div>
+                                <p className="text-xs text-app-muted mt-1">Debit (due) in selected period</p>
                             </div>
-                            <div className="text-2xl font-bold text-app-text tabular-nums">
-                                {CURRENCY}{summaryStats.outstandingArrears.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            <div className="bg-app-card rounded-xl border border-app-border p-4 shadow-ds-card">
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Total paid</span>
+                                    <span className="text-[10px] text-app-muted">{selectionSummary.lineCount} line{selectionSummary.lineCount !== 1 ? 's' : ''}</span>
+                                </div>
+                                <div className="text-xl font-bold text-app-text tabular-nums">
+                                    {CURRENCY}
+                                    {selectionSummary.totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </div>
+                                <p className="text-xs text-app-muted mt-1">Credit (paid) in selected period</p>
                             </div>
-                            {summaryStats.overdueTenantsCount > 0 && (
-                                <p className="text-xs text-ds-warning mt-1 flex items-center gap-1">
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>
-                                    {summaryStats.overdueTenantsCount} tenant{summaryStats.overdueTenantsCount !== 1 ? 's' : ''} overdue
+                            <div className="bg-app-card rounded-xl border border-app-border border-l-[3px] border-l-primary p-4 shadow-ds-card">
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Closing balance</span>
+                                </div>
+                                <div
+                                    className={`text-xl font-bold tabular-nums ${
+                                        selectionSummary.closing > 0
+                                            ? 'text-rose-600 dark:text-rose-400'
+                                            : selectionSummary.closing < 0
+                                              ? 'text-emerald-600 dark:text-emerald-400'
+                                              : 'text-primary'
+                                    }`}
+                                >
+                                    {selectedTenantId !== 'all'
+                                        ? `${CURRENCY}${selectionSummary.closing.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                                        : '–'}
+                                </div>
+                                <p className="text-xs text-app-muted mt-1">
+                                    {selectedTenantId !== 'all' ? 'After last row in table (period)' : 'Select a tenant for a running balance'}
                                 </p>
-                            )}
+                            </div>
                         </div>
 
-                        {/* Net Revenue */}
-                        <div className="bg-app-card rounded-xl border border-app-border border-l-[3px] border-l-primary p-5 shadow-ds-card">
-                            <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-semibold uppercase tracking-wider text-app-muted">Net Revenue</span>
-                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                    <svg className="w-4.5 h-4.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3H21m-3.75 3H21" />
-                                    </svg>
+                        <div id="printable-area" className="printable-area">
+                            {/* Print-only header */}
+                            <div className="hidden print:block">
+                                <ReportHeader />
+                                <div className="text-center mb-4">
+                                    <h3 className="text-2xl font-bold text-app-text">Tenant Ledger</h3>
+                                    <p className="text-sm text-app-muted">{formatLongDate(startDate)} – {formatLongDate(endDate)}</p>
+                                    {selectedTenantId !== 'all' && (
+                                        <p className="text-sm text-app-muted font-semibold">
+                                            Tenant: {state.contacts.find(c => c.id === selectedTenantId)?.name}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
-                            <div className="text-2xl font-bold text-app-text tabular-nums">
-                                {CURRENCY}{summaryStats.netRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+
+                            {/* Data Table */}
+                            {reportData.length > 0 ? (
+                                <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-sm">
+                                            <thead>
+                                                <tr className="border-b border-app-border bg-app-toolbar/30">
+                                                    <SortHeader label="Date" sortKey="date" align="left" />
+                                                    <SortHeader label="Tenant" sortKey="tenantName" align="left" />
+                                                    <SortHeader label="Particulars" sortKey="particulars" align="left" />
+                                                    <SortHeader label="Debit (Due)" sortKey="debit" align="right" />
+                                                    <SortHeader label="Credit (Paid)" sortKey="credit" align="right" />
+                                                    <SortHeader label="Balance" sortKey="balance" align="right" />
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {reportData.map((item, idx) => {
+                                                    const transaction = item.entityType === 'transaction' ? state.transactions.find(t => t.id === item.entityId) : null;
+                                                    const invoice = item.entityType === 'invoice' ? state.invoices.find(i => i.id === item.entityId) : null;
+                                                    return (
+                                                        <tr
+                                                            key={item.id}
+                                                            className={`border-b border-app-border/50 cursor-pointer hover:bg-primary/5 transition-colors ${idx % 2 === 0 ? 'bg-app-card' : 'bg-app-toolbar/10'}`}
+                                                            onClick={() => {
+                                                                if (transaction) setTransactionToEdit(transaction);
+                                                                if (invoice) setInvoiceToEdit(invoice);
+                                                            }}
+                                                            title="Click to edit"
+                                                        >
+                                                            <td className="px-4 py-3 whitespace-nowrap text-app-muted">{formatDate(item.date)}</td>
+                                                            <td className="px-4 py-3 whitespace-nowrap font-medium text-app-text">{item.tenantName}</td>
+                                                            <td className="px-4 py-3 text-app-muted max-w-xs truncate">{item.particulars}</td>
+                                                            <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium text-rose-600 dark:text-rose-400">
+                                                                {item.debit > 0 ? `${CURRENCY}${item.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-app-muted/40">–</span>}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium text-app-muted">
+                                                                {item.credit > 0 ? `${CURRENCY}${item.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-app-muted/40">–</span>}
+                                                            </td>
+                                                            <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold ${
+                                                                item.balance > 0 ? 'text-rose-600 dark:text-rose-400' : item.balance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
+                                                            }`}>
+                                                                {CURRENCY}{item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr className="bg-app-toolbar/40 border-t-2 border-app-border">
+                                                    <td colSpan={3} className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-app-muted">Totals (Period)</td>
+                                                    <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold text-rose-600 dark:text-rose-400">
+                                                        {CURRENCY}{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold text-app-text">
+                                                        {CURRENCY}{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold ${
+                                                        finalBalance > 0 ? 'text-rose-600 dark:text-rose-400' : finalBalance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
+                                                    }`}>
+                                                        {selectedTenantId !== 'all' ? `${CURRENCY}${finalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '–'}
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-16 text-center">
+                                    <div className="w-12 h-12 mx-auto mb-4 text-app-muted/30">{ICONS.search}</div>
+                                    <p className="text-app-muted font-medium">No ledger transactions found for the selected criteria.</p>
+                                    <p className="text-app-muted/60 text-sm mt-1">Try another tenant, date range, or search.</p>
+                                </div>
+                            )}
+
+                            <div className="hidden print:block">
+                                <ReportFooter />
                             </div>
-                            <p className="text-xs text-app-muted mt-1">Updated just now</p>
                         </div>
                     </div>
                 </div>

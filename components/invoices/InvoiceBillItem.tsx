@@ -13,6 +13,7 @@ import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { formatCurrency } from '../../utils/numberUtils';
+import { sumOutstandingInvoiceBalancesForContact } from '../../utils/sumOutstandingInvoiceBalancesForContact';
 
 interface InvoiceBillItemProps {
   item: Invoice | Bill;
@@ -35,6 +36,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   const whatsAppMode = useStateSelector(s => s.whatsAppMode);
   const enableColorCoding = useStateSelector(s => s.enableColorCoding);
   const whatsAppTemplates = useStateSelector(s => s.whatsAppTemplates);
+  const invoices = useStateSelector(s => s.invoices);
   const dispatch = useDispatchOnly();
   const lookups = useLookupMaps();
   const { showConfirm, showToast, showAlert } = useNotification();
@@ -139,6 +141,14 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
         const unitName = unit?.name || '';
 
         if (hasMadePayment) {
+          const inv = item as Invoice;
+          const totalUnpaid =
+            contactId
+              ? sumOutstandingInvoiceBalancesForContact(invoices, contactId, {
+                  invoiceId: inv.id,
+                  invoiceBalanceOverride: balance,
+                })
+              : balance;
           message = WhatsAppService.generateInvoiceReceipt(
             whatsAppTemplates.invoiceReceipt,
             contact,
@@ -146,7 +156,8 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
             paidAmount,
             balance,
             subject,
-            unitName
+            unitName,
+            totalUnpaid
           );
         } else {
           message = WhatsAppService.generateInvoiceReminder(

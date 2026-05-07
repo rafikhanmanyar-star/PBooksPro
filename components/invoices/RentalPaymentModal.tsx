@@ -14,6 +14,7 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { accountIdMatchesLogical } from '../../services/systemEntityIds';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
+import { sumOutstandingInvoiceBalancesForContact } from '../../utils/sumOutstandingInvoiceBalancesForContact';
 
 interface RentalPaymentModalProps {
     isOpen: boolean;
@@ -306,6 +307,10 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                 if (building) subject += ` (${building.name})`;
 
                 const newBalance = Math.max(0, totalRemaining - totalPaidNow);
+                const totalUnpaid = sumOutstandingInvoiceBalancesForContact(state.invoices, contact.id, {
+                    invoiceId: effectiveInvoice.id,
+                    invoiceBalanceOverride: newBalance,
+                });
 
                 try {
                     const { whatsAppTemplates } = state;
@@ -316,7 +321,8 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                         totalPaidNow,
                         newBalance,
                         subject,
-                        property?.name || ''
+                        property?.name || '',
+                        totalUnpaid
                     );
 
                     sendOrOpenWhatsApp(

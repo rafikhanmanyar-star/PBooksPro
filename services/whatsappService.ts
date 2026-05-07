@@ -163,7 +163,9 @@ export class WhatsAppService {
     paidAmount: number,
     balance: number,
     subject?: string,
-    unitName?: string
+    unitName?: string,
+    /** Sum of remaining balances on all open invoices for this contact (including `balance` on this invoice). */
+    totalUnpaid?: number
   ): string {
     return this.replaceTemplateVariables(template, {
       contactName: contact.name,
@@ -171,7 +173,9 @@ export class WhatsAppService {
       paidAmount: `${CURRENCY} ${paidAmount.toLocaleString()}`,
       balance: `${CURRENCY} ${balance.toLocaleString()}`,
       subject: subject || 'your invoice',
-      unitName: unitName || ''
+      unitName: unitName || '',
+      totalUnpaid:
+        totalUnpaid !== undefined ? `${CURRENCY} ${totalUnpaid.toLocaleString()}` : ''
     });
   }
 

@@ -13,6 +13,7 @@ import { formatCurrency } from '../../utils/numberUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import type { InvoicePrintData } from '../print/InvoicePrintTemplate';
 import { accountIdMatchesLogical } from '../../services/systemEntityIds';
+import { sumOutstandingInvoiceBalancesForContact } from '../../utils/sumOutstandingInvoiceBalancesForContact';
 
 const SECTION_SPACING = 'mb-5 sm:mb-6';
 const CARD_PADDING = 'p-4 sm:p-5';
@@ -146,6 +147,7 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
       const hasMadePayment = paidAmount > 0;
       const { whatsAppTemplates } = state;
       if (hasMadePayment) {
+        const totalUnpaid = sumOutstandingInvoiceBalancesForContact(state.invoices, contactId);
         message = WhatsAppService.generateInvoiceReceipt(
           whatsAppTemplates.invoiceReceipt,
           contact,
@@ -153,7 +155,8 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
           paidAmount,
           balance,
           subject,
-          unitName
+          unitName,
+          totalUnpaid
         );
       } else {
         message = WhatsAppService.generateInvoiceReminder(

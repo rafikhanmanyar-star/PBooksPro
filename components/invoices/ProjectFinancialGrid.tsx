@@ -10,6 +10,7 @@ import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappServ
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import { sumOutstandingInvoiceBalancesForContact } from '../../utils/sumOutstandingInvoiceBalancesForContact';
 
 /** Extended transaction with optional invoice number for bulk payment child rows */
 type TransactionWithInvoiceRef = Transaction & { invoiceNumber?: string };
@@ -74,6 +75,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
     const { showToast, showAlert } = useNotification();
 
     const projectAgreements = useStateSelector(s => s.projectAgreements);
+    const invoices = useStateSelector(s => s.invoices);
 
     const contactsById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
     const propertiesById = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
@@ -151,6 +153,10 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
             const unitName = unit?.name || '';
             const hasMadePayment = invoice.paidAmount > 0;
             const balance = invoice.amount - invoice.paidAmount;
+            const totalUnpaid = sumOutstandingInvoiceBalancesForContact(invoices, contact.id, {
+                invoiceId: invoice.id,
+                invoiceBalanceOverride: balance,
+            });
 
             const templates = whatsAppTemplates || { invoiceReceipt: '', invoiceReminder: '' };
             let message = '';
@@ -162,7 +168,8 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
                     invoice.paidAmount,
                     balance,
                     subject,
-                    unitName
+                    unitName,
+                    totalUnpaid
                 );
             } else {
                 message = WhatsAppService.generateInvoiceReminder(
@@ -184,7 +191,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
-    }, [whatsAppTemplates, whatsAppMode, properties, projects, units, showAlert, openChat]);
+    }, [whatsAppTemplates, whatsAppMode, properties, projects, units, invoices, showAlert, openChat]);
 
     const handleSendWhatsAppForPayment = useCallback((tx: Transaction, contact: Contact) => {
         if (!contact?.contactNo) {

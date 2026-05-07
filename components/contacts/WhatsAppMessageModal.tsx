@@ -8,6 +8,7 @@ import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappServ
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { ICONS } from '../../constants';
+import { sumOutstandingInvoiceBalancesForContact } from '../../utils/sumOutstandingInvoiceBalancesForContact';
 
 interface WhatsAppMessageModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
 }) => {
   const { state } = useAppContext();
   const { showAlert } = useNotification();
+  const { openChat } = useWhatsApp();
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -60,14 +62,31 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
           break;
         case 'invoiceReceipt':
           if (templateVariables) {
+            const balanceNum = Number(templateVariables.balance || 0);
+            const invoiceIdVar = templateVariables.invoiceId != null ? String(templateVariables.invoiceId) : '';
+            const totalUnpaidExplicit =
+              templateVariables.totalUnpaid != null && String(templateVariables.totalUnpaid).trim() !== ''
+                ? Number(templateVariables.totalUnpaid)
+                : undefined;
+            const totalUnpaid =
+              totalUnpaidExplicit !== undefined && !Number.isNaN(totalUnpaidExplicit)
+                ? totalUnpaidExplicit
+                : invoiceIdVar
+                  ? sumOutstandingInvoiceBalancesForContact(state.invoices, contact.id, {
+                      invoiceId: invoiceIdVar,
+                      invoiceBalanceOverride: balanceNum,
+                    })
+                  : sumOutstandingInvoiceBalancesForContact(state.invoices, contact.id);
+
             generatedMessage = WhatsAppService.generateInvoiceReceipt(
               template,
               contact,
               String(templateVariables.invoiceNumber || ''),
               Number(templateVariables.paidAmount || 0),
-              Number(templateVariables.balance || 0),
+              balanceNum,
               String(templateVariables.subject || ''),
-              String(templateVariables.unitName || '')
+              String(templateVariables.unitName || ''),
+              totalUnpaid
             );
           }
           break;
@@ -91,7 +110,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
     }
 
     setMessage(generatedMessage);
-  }, [isOpen, contact, templateType, templateVariables, initialMessage, state.whatsAppTemplates]);
+  }, [isOpen, contact, templateType, templateVariables, initialMessage, state.whatsAppTemplates, state.invoices]);
 
   const handleSend = async () => {
     if (!contact) return;

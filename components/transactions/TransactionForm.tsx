@@ -18,6 +18,7 @@ import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../u
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { validateExpenseCashForProject } from '../../services/accounting/accountingLedgerCore';
 import { computeBillAfterPayment, offerConstructionBillPaymentWhatsApp } from '../../utils/constructionBillPaymentWhatsApp';
+import { sumOutstandingInvoiceBalancesForContact } from '../../utils/sumOutstandingInvoiceBalancesForContact';
 
 interface TransactionFormProps {
     onClose: () => void;
@@ -478,6 +479,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     );
                     const totalPaid = paidBefore + numAmount;
                     const remainingBalance = Math.max(0, invoice.amount - totalPaid);
+                    const totalUnpaid = sumOutstandingInvoiceBalancesForContact(state.invoices, contact.id, {
+                        invoiceId: invoice.id,
+                        invoiceBalanceOverride: remainingBalance,
+                    });
 
                     try {
                         const { whatsAppTemplates } = state;
@@ -488,7 +493,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                             numAmount,
                             remainingBalance,
                             subject,
-                            unitName
+                            unitName,
+                            totalUnpaid
                         );
                         sendOrOpenWhatsApp(
                             { contact, message, phoneNumber: contact.contactNo },
