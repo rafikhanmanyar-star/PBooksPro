@@ -5,7 +5,7 @@ import { CURRENCY } from '../constants';
  * WhatsApp Service Module
  * 
  * This module provides a centralized service for WhatsApp integration.
- * Currently implements wa.me URL scheme, with architecture ready for WhatsApp Business API.
+ * Manual send: whatsapp:// deep link (installed app) with wa.me fallback; API path reserved for Business API.
  * 
  * @module whatsappService
  */
@@ -90,7 +90,7 @@ export class WhatsAppService {
   }
 
   /**
-   * Builds WhatsApp URL with message (wa.me scheme)
+   * Builds WhatsApp URL with message (wa.me — loads browser / web landing page)
    */
   static buildWhatsAppURL(phoneNumber: string, message: string): string {
     const formattedPhone = this.formatPhoneNumber(phoneNumber);
@@ -103,8 +103,49 @@ export class WhatsAppService {
   }
 
   /**
-   * Opens WhatsApp with a message using wa.me URL scheme
-   * This is the current implementation. Future: can be extended to use Business API
+   * Deep link for the installed WhatsApp app (skips api.whatsapp.com landing page).
+   */
+  static buildWhatsAppProtocolURL(phoneNumber: string, message: string): string {
+    const formattedPhone = this.formatPhoneNumber(phoneNumber);
+    if (!formattedPhone) {
+      throw new Error('Invalid phone number');
+    }
+    const encodedMessage = encodeURIComponent(message);
+    return `whatsapp://send?phone=${formattedPhone}&text=${encodedMessage}`;
+  }
+
+  private static openProtocolOrFallback(formattedPhone: string, message: string): void {
+    const protocolUrl = this.buildWhatsAppProtocolURL(formattedPhone, message);
+    const fallbackUrl = this.buildWhatsAppURL(formattedPhone, message);
+
+    const api = (typeof window !== 'undefined'
+      ? (window as unknown as {
+          electronAPI?: { openWhatsAppSendUrl?: (url: string) => Promise<unknown> };
+        }).electronAPI
+      : undefined) as { openWhatsAppSendUrl?: (url: string) => Promise<unknown> } | undefined;
+
+    if (api?.openWhatsAppSendUrl) {
+      void api.openWhatsAppSendUrl(protocolUrl).catch(() => {
+        window.open(fallbackUrl, '_blank');
+      });
+      return;
+    }
+
+    try {
+      const a = document.createElement('a');
+      a.href = protocolUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      window.open(fallbackUrl, '_blank');
+    }
+  }
+
+  /**
+   * Opens WhatsApp with a pre-filled message (installed app via whatsapp:// when possible).
    */
   static sendMessage(options: WhatsAppMessageOptions): void {
     const { contact, message, phoneNumber } = options;
@@ -119,16 +160,11 @@ export class WhatsAppService {
       throw new Error(`Invalid phone number format for "${contact.name}"`);
     }
 
-    // Current implementation: wa.me URL scheme
     if (this.config.useBusinessAPI) {
-      // Future: Implement WhatsApp Business API call
-      // this.sendViaBusinessAPI(formattedPhone, message);
       throw new Error('WhatsApp Business API not yet implemented');
-    } else {
-      // Current: wa.me URL scheme
-      const url = this.buildWhatsAppURL(formattedPhone, message);
-      window.open(url, '_blank');
     }
+
+    this.openProtocolOrFallback(formattedPhone, message);
   }
 
   /**
@@ -300,7 +336,7 @@ export interface SendOrOpenWhatsAppOptions {
 
 /**
  * Routes WhatsApp action based on Settings > General whatsAppMode.
- * - manual: opens wa.me with pre-filled message (user sends in WhatsApp).
+ * - manual: opens installed WhatsApp via whatsapp:// (wa.me fallback) so the user can send.
  * - api: opens in-app chat panel with pre-filled message.
  */
 export function sendOrOpenWhatsApp(

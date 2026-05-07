@@ -1022,6 +1022,16 @@ const OwnerPayoutsReport: React.FC = () => {
         return null;
     }, [selectedUnitId, state.properties]);
 
+    const handlePrintReport = useCallback(() => {
+        const fileName = `Owner-Rental-Income-${formatDate(startDate)}-${formatDate(endDate)}.pdf`.replace(/[<>:"/\\|?*]+/g, '-');
+        const ownerContact = selectedOwnerId !== 'all' ? state.contacts.find(c => c.id === selectedOwnerId) ?? null : null;
+
+        triggerPrint('REPORT', {
+            elementId: 'owner-rental-income-print-root',
+            pdfWhatsApp: { fileName, contact: ownerContact },
+        });
+    }, [startDate, endDate, selectedOwnerId, state.contacts, triggerPrint]);
+
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
         if (tx.invoiceId) {
@@ -1106,7 +1116,7 @@ const OwnerPayoutsReport: React.FC = () => {
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-app-muted">
+        <span className="no-print ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -1161,7 +1171,7 @@ const OwnerPayoutsReport: React.FC = () => {
 
                 {/* Right: Report area — table scrolls internally; header/summary stay fixed */}
                 <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
-                    <div className="flex flex-col flex-1 min-h-0 overflow-hidden printable-area" id="printable-area">
+                    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
                         <Card className="flex flex-col flex-1 min-h-0 min-w-0 border-0 rounded-none shadow-none">
                             <div className="flex-shrink-0">
                                 <ReportHeader />
@@ -1202,7 +1212,7 @@ const OwnerPayoutsReport: React.FC = () => {
                                         <PrintButton
                                             variant="secondary"
                                             size="sm"
-                                            onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
+                                            onPrint={handlePrintReport}
                                             className="h-8"
                                             showLabel={true}
                                         />
@@ -1246,21 +1256,6 @@ const OwnerPayoutsReport: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Print-only header */}
-                            <div className="hidden print:block text-center mb-4 px-6 flex-shrink-0">
-                                <h3 className="text-2xl font-bold text-app-text">Owner Rental Income</h3>
-                                <p className="text-sm text-app-muted mt-1">
-                                    {formatDate(startDate)} - {formatDate(endDate)}
-                                </p>
-                                {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all' || selectedUnitId !== 'all') && (
-                                    <p className="text-xs text-app-muted mt-1">
-                                        {selectedBuildingId !== 'all' && `Building: ${state.buildings.find(b => b.id === selectedBuildingId)?.name}  `}
-                                        {selectedOwnerId !== 'all' && `Owner: ${state.contacts.find(c => c.id === selectedOwnerId)?.name}  `}
-                                        {selectedUnitId !== 'all' && `Unit: ${state.properties.find(p => p.id === selectedUnitId)?.name}`}
-                                    </p>
-                                )}
-                            </div>
-
                             {/* Active filter pills */}
                             {activeFilters.length > 0 && (
                                 <div className="px-6 pb-3 no-print flex-shrink-0">
@@ -1295,16 +1290,16 @@ const OwnerPayoutsReport: React.FC = () => {
 
                             <LedgerSummaryCards show={showLedgerSummary} cards={ledgerSummaryCards} />
 
-                            {/* Data table (scroll container) */}
-                            <div className="flex-1 min-h-0 flex flex-col px-6 pb-2">
-                                <div className="flex-1 min-h-0 overflow-auto rounded-md border border-app-border">
+                            {/* Data table (scroll container) — this block alone is cloned for print / PDF */}
+                            <div className="flex-1 min-h-0 flex flex-col px-6 pb-2" id="owner-rental-income-print-root">
+                                <div className="flex-1 min-h-0 overflow-auto rounded-md border border-app-border" data-print-scroll-container>
                                     <table className="min-w-full text-sm">
                                     <thead className="sticky top-0 z-20 bg-app-card border-b-2 border-app-border">
                                         <tr>
                                             <th onClick={() => handleSort('date')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
-                                            <th onClick={() => handleSort('ownerName')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Owner <SortIcon column="ownerName" /></th>
-                                            <th onClick={() => handleSort('propertyName')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Property <SortIcon column="propertyName" /></th>
-                                            <th onClick={() => handleSort('particulars')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Particulars <SortIcon column="particulars" /></th>
+                                            <th onClick={() => handleSort('ownerName')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Owner <SortIcon column="ownerName" /></th>
+                                            <th onClick={() => handleSort('propertyName')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Property <SortIcon column="propertyName" /></th>
+                                            <th onClick={() => handleSort('particulars')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Particulars <SortIcon column="particulars" /></th>
                                             <th onClick={() => handleSort('rentIn')} className="px-3 py-2.5 text-right text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Rent In <SortIcon column="rentIn" /></th>
                                             <th onClick={() => handleSort('paidOut')} className="px-3 py-2.5 text-right text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Paid Out <SortIcon column="paidOut" /></th>
                                             <th onClick={() => handleSort('balance')} className="px-3 py-2.5 text-right text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Balance <SortIcon column="balance" /></th>
@@ -1315,9 +1310,9 @@ const OwnerPayoutsReport: React.FC = () => {
                                         {openingBalance !== 0 && !perOwnerLedgerMode && (
                                             <tr className="bg-app-toolbar/20">
                                                 <td className="px-3 py-2.5 whitespace-nowrap text-app-text">{formatDate(startDate)}</td>
-                                                <td className="px-3 py-2.5 text-app-muted">{activeOwnerName || '-'}</td>
-                                                <td className="px-3 py-2.5 text-app-muted">{activePropertyName || '-'}</td>
-                                                <td className="px-3 py-2.5 text-app-muted font-medium">Opening Balance</td>
+                                                <td className="px-3 py-2.5 text-app-muted whitespace-nowrap">{activeOwnerName || '-'}</td>
+                                                <td className="px-3 py-2.5 text-app-muted whitespace-nowrap">{activePropertyName || '-'}</td>
+                                                <td className="px-3 py-2.5 text-app-muted font-medium whitespace-nowrap">Opening Balance</td>
                                                 <td className="px-3 py-2.5 text-right text-app-muted">-</td>
                                                 <td className="px-3 py-2.5 text-right text-app-muted">-</td>
                                                 <td className="px-3 py-2.5 text-right font-bold text-app-text whitespace-nowrap">{formatCurrency(openingBalance)}</td>
@@ -1341,9 +1336,9 @@ const OwnerPayoutsReport: React.FC = () => {
                                                     title={serviceChargeCredit ? 'Click to edit service charge' : 'Click to edit'}
                                                 >
                                                     <td className="px-3 py-2.5 whitespace-nowrap text-app-text">{formatDate(item.date)}</td>
-                                                    <td className="px-3 py-2.5 whitespace-normal break-words text-app-text max-w-[150px]">{item.ownerName}</td>
-                                                    <td className="px-3 py-2.5 whitespace-normal break-words text-primary max-w-[150px]">{item.propertyName}</td>
-                                                    <td className="px-3 py-2.5 whitespace-normal break-words text-app-muted max-w-xs" title={item.particulars}>{item.particulars}</td>
+                                                    <td className="px-3 py-2.5 whitespace-nowrap text-app-text">{item.ownerName}</td>
+                                                    <td className="px-3 py-2.5 whitespace-nowrap text-primary">{item.propertyName}</td>
+                                                    <td className="px-3 py-2.5 whitespace-nowrap text-app-muted" title={item.particulars}>{item.particulars}</td>
                                                     <td className="px-3 py-2.5 text-right text-success whitespace-nowrap">{item.rentIn > 0 ? formatCurrency(item.rentIn) : '-'}</td>
                                                     <td className="px-3 py-2.5 text-right text-danger whitespace-nowrap">{item.paidOut > 0 ? formatCurrency(item.paidOut) : '-'}</td>
                                                     <td className={`px-3 py-2.5 text-right font-bold whitespace-nowrap ${item.balance >= 0 ? 'text-app-text' : 'text-danger'}`}>{formatCurrency(item.balance)}</td>

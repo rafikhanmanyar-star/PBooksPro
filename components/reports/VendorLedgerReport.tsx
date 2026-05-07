@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Bill, Transaction, TransactionType, Vendor } from '../../types';
 import Button from '../ui/Button';
@@ -22,6 +22,7 @@ import {
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import PrintButton from '../ui/PrintButton';
+import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -46,6 +47,10 @@ interface VendorLedgerReportProps {
 }
 
 type LedgerSort = { key: 'date'; direction: 'desc' } | null;
+
+const LEDGER_TREE_FOLDER_ID = 'ledger-tree-folder';
+
+const ledgerLetterNodeId = (letter: string) => `ledger-letter-${letter}`;
 
 const formatLongDate = (dateStr: string): string => {
     const d = new Date(dateStr + 'T00:00:00');
@@ -105,15 +110,34 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         setLetterExpanded(prev => ({ ...prev, [letter]: !(prev[letter] !== false) }));
     };
 
-    const expandAllLetters = () => setLetterExpanded({});
+    const ledgerTreeExpandableIds = useMemo(
+        () => [LEDGER_TREE_FOLDER_ID, ...vendorsByLetter.map(([L]) => ledgerLetterNodeId(L))],
+        [vendorsByLetter]
+    );
 
-    const collapseAllLetters = () => {
+    const ledgerTreeExpandedIds = useMemo(() => {
+        const s = new Set<string>();
+        if (!vendorsFolderExpanded) return s;
+        s.add(LEDGER_TREE_FOLDER_ID);
+        for (const [letter] of vendorsByLetter) {
+            if (isLetterOpen(letter)) s.add(ledgerLetterNodeId(letter));
+        }
+        return s;
+    }, [vendorsFolderExpanded, vendorsByLetter, letterExpanded]);
+
+    const handleLedgerTreeExpandAll = useCallback(() => {
+        setVendorsFolderExpanded(true);
+        setLetterExpanded({});
+    }, []);
+
+    const handleLedgerTreeCollapseAll = useCallback(() => {
+        setVendorsFolderExpanded(false);
         const next: Record<string, boolean> = {};
         vendorsByLetter.forEach(([L]) => {
             next[L] = false;
         });
         setLetterExpanded(next);
-    };
+    }, [vendorsByLetter]);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -509,27 +533,37 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                     <aside className="no-print w-72 shrink-0 flex flex-col rounded-xl border border-app-border bg-app-card shadow-ds-card overflow-hidden min-h-0">
                         <div className="p-3 border-b border-app-border flex-shrink-0">
                             <span className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">Vendor list</span>
-                            <div className="relative mt-2">
-                                <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted">
-                                    <span className="w-3.5 h-3.5">{ICONS.search}</span>
+                            <div className="flex items-center gap-1.5 mt-2 min-w-0">
+                                <div className="relative flex-1 min-w-0">
+                                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted">
+                                        <span className="w-3.5 h-3.5">{ICONS.search}</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Search..."
+                                        value={treeSearchQuery}
+                                        onChange={e => setTreeSearchQuery(e.target.value)}
+                                        className="ds-input-field pl-8 pr-7 py-1.5 text-sm w-full rounded-md"
+                                    />
+                                    {treeSearchQuery ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => setTreeSearchQuery('')}
+                                            className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
+                                            aria-label="Clear vendor search"
+                                        >
+                                            <span className="w-3.5 h-3.5">{ICONS.x}</span>
+                                        </button>
+                                    ) : null}
                                 </div>
-                                <input
-                                    type="text"
-                                    placeholder="Find vendor…"
-                                    value={treeSearchQuery}
-                                    onChange={e => setTreeSearchQuery(e.target.value)}
-                                    className="ds-input-field pl-8 pr-7 py-1.5 text-sm w-full rounded-md"
+                                <TreeExpandCollapseControls
+                                    variant="app"
+                                    allExpandableIds={ledgerTreeExpandableIds}
+                                    expandedIds={ledgerTreeExpandedIds}
+                                    onExpandAll={handleLedgerTreeExpandAll}
+                                    onCollapseAll={handleLedgerTreeCollapseAll}
+                                    visible={ledgerTreeExpandableIds.length > 0}
                                 />
-                                {treeSearchQuery ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => setTreeSearchQuery('')}
-                                        className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text"
-                                        aria-label="Clear vendor search"
-                                    >
-                                        <span className="w-3.5 h-3.5">{ICONS.x}</span>
-                                    </button>
-                                ) : null}
                             </div>
                         </div>
                         <div className="flex-1 min-h-0 overflow-y-auto py-2 text-sm">
@@ -557,22 +591,6 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                         <span className="text-[10px] w-4 inline-block text-center">{vendorsFolderExpanded ? '▼' : '▶'}</span>
                                     </button>
                                     <span className="text-xs font-semibold text-app-text truncate flex-1">Vendors ({vendorsSortedForTree.length})</span>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                        <button
-                                            type="button"
-                                            onClick={expandAllLetters}
-                                            className="text-[10px] px-1.5 py-0.5 rounded text-primary hover:bg-primary/10"
-                                        >
-                                            Expand all
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={collapseAllLetters}
-                                            className="text-[10px] px-1.5 py-0.5 rounded text-app-muted hover:bg-app-toolbar/50"
-                                        >
-                                            Collapse all
-                                        </button>
-                                    </div>
                                 </div>
 
                                 {vendorsFolderExpanded ? (

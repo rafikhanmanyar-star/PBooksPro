@@ -4,7 +4,7 @@
  * Multi-company architecture: uses companyManager for DB management.
  */
 
-const { app, BrowserWindow, shell, ipcMain, dialog, Menu, MenuItem } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog, Menu, MenuItem, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const sqliteBridge = require('./sqliteBridge.cjs');
@@ -70,6 +70,64 @@ ipcMain.handle('spell:set-settings', (_event, partial) => {
     spellChecker.applySpellSettingsToSession(mainWindow.webContents.session, merged);
   }
   return merged;
+});
+
+/** Only whatsapp://send… links — avoids a generic openExternal IPC. */
+function isAllowedWhatsAppSendProtocolUrl(url) {
+  return typeof url === 'string' && /^whatsapp:\/\/send(\?|$)/i.test(url);
+}
+
+ipcMain.handle('shell:open-whatsapp-send', async (_event, url) => {
+  if (!isAllowedWhatsAppSendProtocolUrl(url)) {
+    throw new Error('Invalid WhatsApp URL');
+  }
+  await shell.openExternal(url);
+  return { ok: true };
+});
+
+/**
+ * Save PDF to temp, copy file path to clipboard (attach via Ctrl+V in WhatsApp where supported),
+ * then open WhatsApp to the given number (or compose without number).
+ * Payload: { base64: string, fileName: string, phoneDigits: string | null }
+ */
+ipcMain.handle('whatsapp:share-pdf-open-chat', async (_event, payload) => {
+  const base64 = payload && typeof payload.base64 === 'string' ? payload.base64 : '';
+  const fileName = payload && payload.fileName ? String(payload.fileName) : 'report.pdf';
+  const phoneDigits = payload && payload.phoneDigits != null ? String(payload.phoneDigits).replace(/\D/g, '') : '';
+
+  if (!base64) {
+    throw new Error('Missing PDF data');
+  }
+
+  const dir = path.join(app.getPath('temp'), 'pbooks-whatsapp-pdf');
+  fs.mkdirSync(dir, { recursive: true });
+  const safe = fileName.replace(/[<>:"/\\|?*]+/g, '-');
+  const fullPath = path.join(dir, `${Date.now()}-${safe}`);
+  fs.writeFileSync(fullPath, Buffer.from(base64, 'base64'));
+
+  let clipboardOk = false;
+  try {
+    clipboard.write({ files: [fullPath] });
+    clipboardOk = true;
+  } catch (err) {
+    console.warn('[whatsapp:share-pdf] clipboard.write files failed:', err && err.message ? err.message : err);
+  }
+
+  if (!clipboardOk) {
+    try {
+      shell.showItemInFolder(fullPath);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  const url =
+    phoneDigits.length >= 10 ? `whatsapp://send?phone=${phoneDigits}` : 'whatsapp://send';
+  if (!isAllowedWhatsAppSendProtocolUrl(url)) {
+    throw new Error('Invalid WhatsApp URL');
+  }
+  await shell.openExternal(url);
+  return { ok: true, clipboardOk, path: fullPath };
 });
 
 // Migrate existing single-DB users to multi-company on first launch
@@ -246,6 +304,10 @@ function createWindow() {
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    if (isAllowedWhatsAppSendProtocolUrl(url)) {
       shell.openExternal(url);
       return { action: 'deny' };
     }

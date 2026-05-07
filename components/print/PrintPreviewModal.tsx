@@ -12,6 +12,10 @@ export interface PrintPreviewModalProps {
   open: boolean;
   onClose: () => void;
   onPrint: () => void;
+  /** Optional: second action (e.g. PDF + WhatsApp for rental reports) */
+  showWhatsAppPdf?: boolean;
+  onWhatsAppPdf?: () => void | Promise<void>;
+  whatsAppPdfBusy?: boolean;
   children: ReactNode;
 }
 
@@ -19,6 +23,9 @@ export function PrintPreviewModal({
   open,
   onClose,
   onPrint,
+  showWhatsAppPdf = false,
+  onWhatsAppPdf,
+  whatsAppPdfBusy = false,
   children
 }: PrintPreviewModalProps): React.ReactElement | null {
   useEffect(() => {
@@ -56,7 +63,21 @@ export function PrintPreviewModal({
           <h2 id="print-preview-title" className="text-lg font-bold text-slate-800">
             Print preview
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {showWhatsAppPdf && onWhatsAppPdf && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={whatsAppPdfBusy}
+                onClick={() => void onWhatsAppPdf()}
+                className="flex items-center gap-2 text-ds-success bg-ds-success/10 hover:bg-ds-success/15 border-ds-success/30"
+                title="Send the ledger as a PDF through WhatsApp"
+              >
+                <span className="w-4 h-4">{ICONS.whatsapp}</span>
+                {whatsAppPdfBusy ? 'Preparing…' : 'WhatsApp PDF'}
+              </Button>
+            )}
             <Button
               type="button"
               variant="primary"

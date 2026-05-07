@@ -43,6 +43,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notifyReadyToClose: () => ipcRenderer.send('app:ready-to-close'),
   /** Restore keyboard focus to the renderer (fixes stuck typing on Windows without minimize/restore). */
   focusWebContents: () => ipcRenderer.invoke('electron:focus-web-contents'),
+  /** Open installed WhatsApp (whatsapp://send?…) without loading the web landing page. */
+  openWhatsAppSendUrl: (url) => ipcRenderer.invoke('shell:open-whatsapp-send', url),
+  /**
+   * Save PDF bytes to temp, copy file to clipboard for paste into WhatsApp, open WhatsApp chat.
+   * phoneDigits: digits only (e.g. 923001234567), or empty string for generic compose.
+   */
+  sharePdfOpenWhatsApp: (payload) => ipcRenderer.invoke('whatsapp:share-pdf-open-chat', payload),
   /** Spell checker: local JSON + Chromium dictionary (offline). */
   spellGetSettings: () => ipcRenderer.invoke('spell:get-settings'),
   spellSetSettings: (partial) => ipcRenderer.invoke('spell:set-settings', partial),

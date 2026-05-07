@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.281",
+  "version": "1.2.282",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -76,6 +76,7 @@
     "better-sqlite3": "^12.6.2",
     "dayjs": "^1.11.20",
     "electron-updater": "^6.8.3",
+    "jspdf": "^4.2.1",
     "react-window": "^2.2.3",
     "socket.io-client": "^4.8.3"
   },

@@ -5,6 +5,21 @@
  * so we must NOT hide #root — otherwise print preview would be blank.
  */
 
+/* Hide no-print fragments inside cloned report HTML (preview is screen media, not @media print) */
+.report-print-content .no-print {
+  display: none !important;
+}
+
+.report-print-content table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.report-print-content table th,
+.report-print-content table td {
+  white-space: nowrap;
+}
+
 /* Screen: hide portal content from view (only visible when printing) */
 .print-portal-root {
   position: fixed;

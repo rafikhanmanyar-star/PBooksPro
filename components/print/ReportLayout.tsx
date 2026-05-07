@@ -5,10 +5,18 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import type { Contact, Vendor } from '../../types';
+
+/** PDF share from print preview: opens WhatsApp with optional recipient; no message text. */
+export interface ReportPrintPdfWhatsApp {
+  fileName: string;
+  contact: Contact | Vendor | null;
+}
 
 export interface ReportPrintData {
   /** ID of the element to print (e.g. 'printable-area') */
   elementId: string;
+  pdfWhatsApp?: ReportPrintPdfWhatsApp;
 }
 
 export interface ReportLayoutProps {
@@ -24,7 +32,7 @@ export const ReportLayout: React.FC<ReportLayoutProps> = ({ data }) => {
     if (el) {
       setHtml(el.innerHTML);
     }
-  }, [data.elementId]);
+  }, [data]);
 
   if (!html) return null;
 

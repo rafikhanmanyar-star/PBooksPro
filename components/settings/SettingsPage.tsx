@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useOffline } from '../../context/OfflineContext';
@@ -12,7 +12,7 @@ import SettingsDetailPage from './SettingsDetailPage';
 import { useKpis } from '../../context/KPIContext';
 import ErrorLogViewer from './ErrorLogViewer';
 import TransactionLogViewer from './TransactionLogViewer';
-import MessagingTemplatesForm from './MessagingTemplatesForm';
+import MessagingTemplatesForm, { type MessagingTemplatesFormHandle } from './MessagingTemplatesForm';
 import PrintTemplateForm from './PrintTemplateForm';
 import WhatsAppConfigForm from './WhatsAppConfigForm';
 import WhatsAppMenuForm from './WhatsAppMenuForm';
@@ -120,6 +120,8 @@ const SettingsPage: React.FC = () => {
     const [isErrorLogOpen, setIsErrorLogOpen] = useState(false);
     const [isTransactionLogOpen, setIsTransactionLogOpen] = useState(false);
     const [activePreferenceModal, setActivePreferenceModal] = useState<'messaging' | 'print' | 'whatsapp' | 'whatsapp-menu' | null>(null);
+    const messagingTemplatesFormRef = useRef<MessagingTemplatesFormHandle>(null);
+    const closeMessagingTemplatesModal = useCallback(() => setActivePreferenceModal(null), []);
     const [activePreferenceTab, setActivePreferenceTab] = useState<string>('General');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'asc' });
     const [ledgerModalState, setLedgerModalState] = useState<{ isOpen: boolean; entityId: string; entityType: 'account' | 'category' | 'contact' | 'project' | 'building' | 'property' | 'unit'; entityName: string } | null>(null);
@@ -1229,8 +1231,17 @@ const SettingsPage: React.FC = () => {
             )}
 
 
-            <Modal isOpen={activePreferenceModal === 'messaging'} onClose={() => setActivePreferenceModal(null)} title="Messaging Templates" size="xl">
-                <MessagingTemplatesForm />
+            <Modal
+                isOpen={activePreferenceModal === 'messaging'}
+                onClose={() => {
+                    const api = messagingTemplatesFormRef.current;
+                    if (api) api.requestCloseWithDiscardConfirm(closeMessagingTemplatesModal);
+                    else closeMessagingTemplatesModal();
+                }}
+                title="Messaging Templates"
+                size="xl"
+            >
+                <MessagingTemplatesForm ref={messagingTemplatesFormRef} onClose={closeMessagingTemplatesModal} />
             </Modal>
 
             <Modal isOpen={activePreferenceModal === 'whatsapp'} onClose={() => setActivePreferenceModal(null)} title="WhatsApp Integration" size="xl">

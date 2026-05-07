@@ -158,7 +158,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
           <div className="flex-1">
             <p className="text-sm font-medium text-green-900">WhatsApp Integration</p>
             <p className="text-xs text-green-700 mt-1">
-              This will open WhatsApp Web/Desktop with a pre-filled message. Make sure WhatsApp is installed or accessible in your browser.
+              This opens the installed WhatsApp app with a pre-filled message when possible. If WhatsApp is not installed, your browser may offer WhatsApp Web or another fallback.
             </p>
           </div>
         </div>
