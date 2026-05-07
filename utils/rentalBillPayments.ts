@@ -165,6 +165,24 @@ export function findSecurityDepositAppliedExpenseForBillPayment(
   const incAmt =
     typeof incomeTx.amount === 'number' ? incomeTx.amount : parseFloat(String(incomeTx.amount)) || 0;
   const incDay = (incomeTx.date || '').slice(0, 10);
+  const billIdStr = bill.id ? String(bill.id) : '';
+  const incomeBillIdStr = incomeTx.billId ? String(incomeTx.billId) : '';
+
+  const byBillId =
+    billIdStr &&
+    incomeBillIdStr === billIdStr &&
+    transactions.find((t) => {
+      if (t.type !== TransactionType.EXPENSE) return false;
+      const tbid = String(t.billId ?? '');
+      if (tbid !== billIdStr) return false;
+      const a = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0;
+      if (Math.abs(a - incAmt) > 0.02) return false;
+      if ((t.date || '').slice(0, 10) !== incDay) return false;
+      if (incomeTx.contactId && t.contactId && incomeTx.contactId !== t.contactId) return false;
+      return true;
+    });
+  if (byBillId) return byBillId;
+
   return transactions.find((t) => {
     if (t.type !== TransactionType.EXPENSE) return false;
     if (!descRe.test(t.description || '')) return false;

@@ -20,6 +20,14 @@ import { notifyDatabaseError } from '../services/dbErrorNotification';
 import { formatApiErrorMessage } from '../utils/formatApiErrorMessage';
 import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconcile';
 import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
+import {
+    adjustOrRemoveRentAggregateExpenseAfterIncomeRemoved,
+    findSecuritySettlementCascadeDeletePartners,
+    syncBillPaymentIncomeFromPairedExpense,
+    syncPairedBillExpenseFromSecurityIncome,
+    syncPairedExpenseToRentFromSecurityIncome,
+    syncRentFromSecurityIncomeToPairedExpense,
+} from '../utils/rentalSecurityDepositSettlement';
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
 import { toLocalDateString } from '../utils/dateUtils';
 import {
@@ -415,6 +423,21 @@ function applyTxToBillCopy(b: Bill, tx: Transaction, isAdd: boolean): Bill {
     return { ...b, paidAmount: newPaid, status: newStatus };
 }
 
+/** Identity of transaction fields that must stay aligned between client and API after reducer pairing logic. */
+function txnFinancialSignature(t: Transaction): string {
+    return JSON.stringify({
+        amount: t.amount,
+        date: (t.date || '').slice(0, 10),
+        description: t.description || '',
+        categoryId: t.categoryId || '',
+        invoiceId: t.invoiceId || '',
+        billId: t.billId || '',
+        accountId: t.accountId || '',
+        contactId: t.contactId || '',
+        ownerId: t.ownerId || '',
+    });
+}
+
 // Helper for log creation
 const createLogEntry = (action: TransactionLogEntry['action'], entityType: TransactionLogEntry['entityType'], entityId: string, description: string, user: User | null, data?: any): TransactionLogEntry => ({
     id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
@@ -687,29 +710,72 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             if (originalTx.contractId) tempState = updateContractStatus(tempState, originalTx.contractId);
             if (updatedTx.contractId && updatedTx.contractId !== originalTx.contractId) tempState = updateContractStatus(tempState, updatedTx.contractId);
             else if (updatedTx.contractId) tempState = updateContractStatus(tempState, updatedTx.contractId);
+
+            let synced = tempState;
+            const cats = synced.categories;
+            synced = syncPairedExpenseToRentFromSecurityIncome(synced, originalTx, updatedTx, cats) ?? synced;
+            synced = syncRentFromSecurityIncomeToPairedExpense(synced, updatedTx, cats) ?? synced;
+            synced = syncPairedBillExpenseFromSecurityIncome(synced, updatedTx, cats) ?? synced;
+            synced = syncBillPaymentIncomeFromPairedExpense(synced, updatedTx, cats) ?? synced;
+
             const logEntry = createLogEntry('UPDATE', 'Transaction', updatedTx.id, `Updated ${updatedTx.type}: ${updatedTx.description}`, state.currentUser, { original: originalTx, new: updatedTx });
-            tempState.transactionLog = [logEntry, ...(state.transactionLog || [])];
-            return tempState;
+            synced.transactionLog = [logEntry, ...(state.transactionLog || [])];
+            return synced;
         }
 
         case 'DELETE_TRANSACTION': {
-            const txId = action.payload;
-            const tx = state.transactions.find(t => t.id === txId);
-            if (!tx) return state;
-            const newStateWithoutTx = { ...state, transactions: state.transactions.filter(t => t.id !== txId) };
-            let finalState = applyTransactionEffect(newStateWithoutTx, tx, false);
-            if (tx.contractId) Object.assign(finalState, updateContractStatus(finalState, tx.contractId));
-            // In-kind / bulk asset payments link transactions to project_received_assets; removing the last tx must drop the asset row.
-            const aid = tx.projectAssetId;
-            if (aid && !finalState.transactions.some(t => t.projectAssetId === aid)) {
-                finalState = {
-                    ...finalState,
-                    projectReceivedAssets: (finalState.projectReceivedAssets || []).filter(a => a.id !== aid),
-                };
+            const seedId = typeof action.payload === 'string' ? action.payload : '';
+            const queue = seedId ? [seedId] : [];
+            const done = new Set<string>();
+            let nextState = state;
+            let deletedSomething = false;
+
+            while (queue.length > 0 && done.size < 200) {
+                const txId = queue.pop()!;
+                if (done.has(txId)) continue;
+
+                const tx = nextState.transactions.find(t => t.id === txId);
+                if (!tx) continue;
+
+                const partners = findSecuritySettlementCascadeDeletePartners(
+                    { transactions: nextState.transactions, categories: nextState.categories, bills: nextState.bills },
+                    tx
+                );
+                for (const p of partners) {
+                    if (!done.has(p)) queue.push(p);
+                }
+
+                const newStateWithoutTx = { ...nextState, transactions: nextState.transactions.filter(t => t.id !== txId) };
+                let finalState = applyTransactionEffect(newStateWithoutTx, tx, false);
+                if (tx.contractId) Object.assign(finalState, updateContractStatus(finalState, tx.contractId));
+
+                const patched = adjustOrRemoveRentAggregateExpenseAfterIncomeRemoved(finalState, tx, nextState.categories);
+                finalState = patched ?? finalState;
+
+                const aid = tx.projectAssetId;
+                if (aid && !finalState.transactions.some(t => t.projectAssetId === aid)) {
+                    finalState = {
+                        ...finalState,
+                        projectReceivedAssets: (finalState.projectReceivedAssets || []).filter(a => a.id !== aid),
+                    };
+                }
+
+                nextState = finalState;
+                const logEntry = createLogEntry(
+                    'DELETE',
+                    'Transaction',
+                    tx.id,
+                    `Deleted ${tx.type}: ${tx.description}`,
+                    state.currentUser,
+                    tx
+                );
+                nextState.transactionLog = [logEntry, ...(nextState.transactionLog || [])];
+                done.add(txId);
+                deletedSomething = true;
             }
-            const logEntry = createLogEntry('DELETE', 'Transaction', tx.id, `Deleted ${tx.type}: ${tx.description}`, state.currentUser, tx);
-            finalState.transactionLog = [logEntry, ...(state.transactionLog || [])];
-            return finalState;
+
+            if (!deletedSomething) return state;
+            return nextState;
         }
 
         case 'BATCH_DELETE_TRANSACTIONS': {
@@ -717,18 +783,53 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const uniqueIds = [...new Set(transactionIds)].filter(Boolean);
             if (uniqueIds.length === 0 && !projectAssetIdToDelete) return state;
 
+            const queue = [...uniqueIds];
+            const done = new Set<string>();
             let nextState = state;
             let deletedCount = 0;
-            for (const txId of uniqueIds) {
+
+            while (queue.length > 0 && done.size < 500) {
+                const txId = queue.pop()!;
+                if (done.has(txId)) continue;
+
                 const tx = nextState.transactions.find(t => t.id === txId);
                 if (!tx) continue;
-                deletedCount++;
+
+                const partners = findSecuritySettlementCascadeDeletePartners(
+                    { transactions: nextState.transactions, categories: nextState.categories, bills: nextState.bills },
+                    tx
+                );
+                for (const p of partners) {
+                    if (!done.has(p)) queue.push(p);
+                }
+
                 const newStateWithoutTx = { ...nextState, transactions: nextState.transactions.filter(t => t.id !== txId) };
                 let finalState = applyTransactionEffect(newStateWithoutTx, tx, false);
                 if (tx.contractId) Object.assign(finalState, updateContractStatus(finalState, tx.contractId));
-                const logEntry = createLogEntry('DELETE', 'Transaction', tx.id, `Deleted ${tx.type}: ${tx.description}`, state.currentUser, tx);
-                finalState.transactionLog = [logEntry, ...(finalState.transactionLog || [])];
+
+                const patched = adjustOrRemoveRentAggregateExpenseAfterIncomeRemoved(finalState, tx, nextState.categories);
+                finalState = patched ?? finalState;
+
+                const aid = tx.projectAssetId;
+                if (aid && !finalState.transactions.some(t => t.projectAssetId === aid)) {
+                    finalState = {
+                        ...finalState,
+                        projectReceivedAssets: (finalState.projectReceivedAssets || []).filter(a => a.id !== aid),
+                    };
+                }
+
                 nextState = finalState;
+                const logEntry = createLogEntry(
+                    'DELETE',
+                    'Transaction',
+                    tx.id,
+                    `Deleted ${tx.type}: ${tx.description}`,
+                    state.currentUser,
+                    tx
+                );
+                nextState.transactionLog = [logEntry, ...(nextState.transactionLog || [])];
+                done.add(txId);
+                deletedCount++;
             }
 
             if (projectAssetIdToDelete) {
@@ -2179,23 +2280,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (a.type === 'BATCH_DELETE_TRANSACTIONS') {
                 const payload = a.payload as { transactionIds: string[]; projectAssetIdToDelete?: string };
-                const uniqueIds = [...new Set(payload.transactionIds)].filter(Boolean);
-                const txsToDelete = uniqueIds
-                    .map(id => prev.transactions.find(t => t.id === id))
-                    .filter((t): t is Transaction => !!t);
                 const projectAssetIdToDelete = payload.projectAssetIdToDelete;
                 const projectAssetVersionForApi = projectAssetIdToDelete
                     ? prev.projectReceivedAssets?.find((x) => x.id === projectAssetIdToDelete)?.version
                     : undefined;
                 baseDispatch(action);
-                if (uniqueIds.length === 0) return;
+
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     const api = getAppStateApiService();
                     void (async () => {
                         try {
-                            await Promise.all(uniqueIds.map(id => api.deleteTransaction(id)));
-                            const invoiceIds = [...new Set(txsToDelete.map(t => t.invoiceId).filter(Boolean) as string[])];
-                            const billIds = [...new Set(txsToDelete.map(t => t.billId).filter(Boolean) as string[])];
+                            const afterSnap = latestStateRef.current;
+                            const afterTxIds = new Set(afterSnap.transactions.map(t => t.id));
+                            const removedTxs = prev.transactions.filter(t => !afterTxIds.has(t.id));
+                            await Promise.all(removedTxs.map(r => api.deleteTransaction(r.id)));
+
+                            const invoiceIds = new Set<string>();
+                            const billIds = new Set<string>();
+                            removedTxs.forEach((t) => {
+                                if (t.invoiceId) invoiceIds.add(t.invoiceId);
+                                if (t.billId) billIds.add(t.billId);
+                            });
+
+                            const assetDeleted = new Set<string>();
+                            for (const rtx of removedTxs) {
+                                const aid = rtx.projectAssetId;
+                                if (!aid || assetDeleted.has(aid)) continue;
+                                if (!afterSnap.transactions.some((t) => t.projectAssetId === aid)) {
+                                    const ver = prev.projectReceivedAssets?.find(x => x.id === aid)?.version;
+                                    await api.deleteProjectReceivedAsset(aid, ver).catch(() => {});
+                                    assetDeleted.add(aid);
+                                }
+                            }
+
                             for (const iid of invoiceIds) {
                                 const savedInv = await api.fetchInvoice(iid);
                                 if (savedInv?.id) {
@@ -2216,8 +2333,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     } as AppAction);
                                 }
                             }
+
                             if (projectAssetIdToDelete) {
-                                await api.deleteProjectReceivedAsset(projectAssetIdToDelete, projectAssetVersionForApi);
+                                await api
+                                    .deleteProjectReceivedAsset(projectAssetIdToDelete, projectAssetVersionForApi)
+                                    .catch(() => {});
                             }
                         } catch (err) {
                             logger.warnCategory('sync', '⚠️ Failed to persist batch transaction deletes to API:', err);
@@ -2245,20 +2365,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     const api = getAppStateApiService();
                     void enqueueTransactionApiSave(updatedTx.id, async () => {
-                        const latest = latestStateRef.current.transactions.find(t => t.id === updatedTx.id);
-                        if (!latest) return;
                         try {
-                            const saved = await api.saveTransaction(latest);
-                            const mergedVersion =
-                                typeof saved.version === 'number' ? saved.version : latest.version;
-                            dispatch({
-                                type: 'UPDATE_TRANSACTION',
-                                payload: { ...latest, version: mergedVersion },
-                                _isRemote: true,
-                            } as AppAction);
+                            const beforeById = new Map(prev.transactions.map((t) => [t.id, t]));
+                            const afterList = latestStateRef.current.transactions;
+                            const touchedIds = new Set<string>();
+                            for (const nt of afterList) {
+                                const ot = beforeById.get(nt.id);
+                                if (ot && txnFinancialSignature(nt) !== txnFinancialSignature(ot)) {
+                                    touchedIds.add(nt.id);
+                                }
+                            }
+                            if (
+                                touchedIds.size === 0 &&
+                                afterList.some((t) => t.id === updatedTx.id)
+                            ) {
+                                touchedIds.add(updatedTx.id);
+                            }
 
-                            if (latest.invoiceId) {
-                                const savedInv = await api.fetchInvoice(latest.invoiceId);
+                            const invoiceIdsToRefetch = new Set<string>();
+                            const billIdsToRefetch = new Set<string>();
+
+                            for (const tid of touchedIds) {
+                                const row = latestStateRef.current.transactions.find((t) => t.id === tid);
+                                if (!row) continue;
+
+                                const saved = await api.saveTransaction(row);
+                                const mergedVersion =
+                                    typeof saved.version === 'number' ? saved.version : row.version;
+
+                                dispatch({
+                                    type: 'UPDATE_TRANSACTION',
+                                    payload: { ...row, version: mergedVersion },
+                                    _isRemote: true,
+                                } as AppAction);
+
+                                const synced = latestStateRef.current.transactions.find((x) => x.id === tid) ?? {
+                                    ...row,
+                                    version: mergedVersion,
+                                };
+                                if (synced.invoiceId) invoiceIdsToRefetch.add(synced.invoiceId);
+                                if (synced.billId) billIdsToRefetch.add(synced.billId);
+                            }
+
+                            for (const iid of invoiceIdsToRefetch) {
+                                const savedInv = await api.fetchInvoice(iid);
                                 if (savedInv?.id) {
                                     dispatch({
                                         type: 'UPDATE_INVOICE',
@@ -2267,8 +2417,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     } as AppAction);
                                 }
                             }
-                            if (latest.billId) {
-                                const savedBill = await api.fetchBill(latest.billId);
+                            for (const bid of billIdsToRefetch) {
+                                const savedBill = await api.fetchBill(bid);
                                 if (savedBill?.id) {
                                     dispatch({
                                         type: 'UPDATE_BILL',
@@ -2277,20 +2427,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     } as AppAction);
                                 }
                             }
-                            // Keep linked construction contract status in sync on server (reducer updates local state)
+
                             const st = latestStateRef.current;
-                            const cTx = st.transactions.find(t => t.id === latest.id) ?? latest;
-                            if (cTx.contractId) {
+                            const cTx = st.transactions.find((t) => t.id === updatedTx.id);
+                            if (cTx?.contractId) {
                                 const cid = cTx.contractId;
                                 const totalPaid = st.transactions
-                                    .filter(t => t.contractId === cid)
+                                    .filter((t) => t.contractId === cid)
                                     .reduce((sum, t) => {
-                                        const amt =
-                                            t.id === cTx.id ? cTx.amount : t.amount;
+                                        const amt = t.id === cTx.id ? cTx.amount : t.amount;
                                         const n = typeof amt === 'number' ? amt : parseFloat(String(amt)) || 0;
                                         return sum + n;
                                     }, 0);
-                                const c = st.contracts.find(x => x.id === cid);
+                                const c = st.contracts.find((x) => x.id === cid);
                                 if (c && c.status !== ContractStatus.TERMINATED) {
                                     const isFullyPaid = totalPaid >= c.totalAmount - 1.0;
                                     let newStatus = c.status;
@@ -2318,23 +2467,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (a.type === 'DELETE_TRANSACTION' && typeof a.payload === 'string') {
                 const id = a.payload;
-                const tx = prev.transactions.find(t => t.id === id);
-                const assetIdToRemoveOnApi =
-                    tx?.projectAssetId &&
-                    prev.transactions.filter(t => t.projectAssetId === tx.projectAssetId).length === 1
-                        ? tx.projectAssetId
-                        : undefined;
-                const assetVersionForApi = assetIdToRemoveOnApi
-                    ? prev.projectReceivedAssets?.find((x) => x.id === assetIdToRemoveOnApi)?.version
-                    : undefined;
                 baseDispatch(action);
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     const api = getAppStateApiService();
                     void (async () => {
                         try {
-                            await api.deleteTransaction(id);
-                            if (tx?.invoiceId) {
-                                const savedInv = await api.fetchInvoice(tx.invoiceId);
+                            const afterSnap = latestStateRef.current;
+                            const afterTxIds = new Set(afterSnap.transactions.map(t => t.id));
+                            const removedTxs = prev.transactions.filter(t => !afterTxIds.has(t.id));
+
+                            await Promise.all(removedTxs.map(r => api.deleteTransaction(r.id)));
+
+                            const invoiceIds = new Set<string>();
+                            const billIds = new Set<string>();
+                            removedTxs.forEach((t) => {
+                                if (t.invoiceId) invoiceIds.add(t.invoiceId);
+                                if (t.billId) billIds.add(t.billId);
+                            });
+
+                            const assetHandled = new Set<string>();
+                            for (const rtx of removedTxs) {
+                                const aid = rtx.projectAssetId;
+                                if (!aid || assetHandled.has(aid)) continue;
+                                if (!afterSnap.transactions.some((t) => t.projectAssetId === aid)) {
+                                    const ver = prev.projectReceivedAssets?.find(x => x.id === aid)?.version;
+                                    await api.deleteProjectReceivedAsset(aid, ver).catch(() => {});
+                                    assetHandled.add(aid);
+                                }
+                            }
+
+                            for (const iid of invoiceIds) {
+                                const savedInv = await api.fetchInvoice(iid);
                                 if (savedInv?.id) {
                                     dispatch({
                                         type: 'UPDATE_INVOICE',
@@ -2343,8 +2506,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     } as AppAction);
                                 }
                             }
-                            if (tx?.billId) {
-                                const savedBill = await api.fetchBill(tx.billId);
+                            for (const bid of billIds) {
+                                const savedBill = await api.fetchBill(bid);
                                 if (savedBill?.id) {
                                     dispatch({
                                         type: 'UPDATE_BILL',
@@ -2352,9 +2515,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         _isRemote: true,
                                     } as AppAction);
                                 }
-                            }
-                            if (assetIdToRemoveOnApi) {
-                                await api.deleteProjectReceivedAsset(assetIdToRemoveOnApi, assetVersionForApi);
                             }
                         } catch (err) {
                             logger.warnCategory('sync', '⚠️ Failed to delete transaction on API:', err);

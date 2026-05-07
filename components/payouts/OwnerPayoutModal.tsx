@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Contact, TransactionType, Transaction, AccountType, Category, Invoice, InvoiceStatus, InvoiceType, RentalAgreementStatus, Bill } from '../../types';
 import { getExpenseBearerType } from '../../utils/rentalBillPayments';
+import { SECURITY_SETTLEMENT_BATCH_PREFIX } from '../../utils/rentalSecurityDepositSettlement';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
@@ -534,6 +535,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         if (isSecurityMode && !isEditMode) {
             const allTxs: Transaction[] = [];
             const baseId = Date.now();
+            const settlementBatchId = `${SECURITY_SETTLEMENT_BATCH_PREFIX}${baseId}`;
             const descSuffix = (notes ? ` - ${notes}` : '') + (reference ? ` (Ref: ${reference})` : '');
             const singleProp = propertyBreakdown.length === 1 ? propertyBreakdown[0] : null;
             const prop = singleProp ? state.properties.find(p => p.id === singleProp.propertyId) : null;
@@ -549,6 +551,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     accountId: payoutAccount.id, contactId: owner.id, categoryId: cat.id,
                     buildingId: propBuildingId || undefined, propertyId: singleProp?.propertyId,
                     ownerId: owner.id,
+                    batchId: settlementBatchId,
                     id: `tx-${baseId}-own`,
                 });
             }
@@ -560,6 +563,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     description: `Security Deposit Refund to ${effectiveTenant.name}${descSuffix}${propLabel}`,
                     accountId: payoutAccount.id, contactId: effectiveTenant.id, categoryId: cat.id,
                     buildingId: propBuildingId || undefined, propertyId: singleProp?.propertyId,
+                    batchId: settlementBatchId,
                     id: `tx-${baseId}-ten`,
                 });
             }
@@ -569,6 +573,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
 
             if (invoiceAdjustTotal > 0.01 && effectiveTenant) {
                 const selectedAdjustments = invoiceAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
+                const refCatAdj = getPayoutCategory('tenant');
+                if (!refCatAdj) { await showAlert("'Security Deposit Refund' category not found."); return; }
 
                 for (const adj of selectedAdjustments) {
                     const inv = state.invoices.find(i => i.id === adj.invoiceId);
@@ -581,7 +587,22 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                         accountId: payoutAccount.id, contactId: effectiveTenant.id, categoryId: rentCatId,
                         buildingId: propBuildingId || undefined, propertyId: singleProp?.propertyId,
                         invoiceId: inv.id,
+                        batchId: settlementBatchId,
                         id: `tx-${baseId}-adj-${inv.id.slice(-5)}`,
+                    });
+                    allTxs.push({
+                        type: TransactionType.EXPENSE,
+                        amount: adj.adjustAmount,
+                        date,
+                        description: `Security deposit applied — rent — Invoice ${adj.invoiceNumber}${descSuffix}${propLabel}`,
+                        accountId: payoutAccount.id,
+                        contactId: effectiveTenant.id,
+                        categoryId: refCatAdj.id,
+                        invoiceId: inv.id,
+                        buildingId: propBuildingId || undefined,
+                        propertyId: singleProp?.propertyId,
+                        batchId: settlementBatchId,
+                        id: `tx-${baseId}-sd-rent-${inv.id.replace(/[^a-zA-Z0-9]/g, '').slice(-10)}`,
                     });
 
                     const updatedInv = { ...inv, paidAmount: (inv.paidAmount || 0) + adj.adjustAmount };
@@ -613,33 +634,16 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                         propertyId: singleProp?.propertyId ?? bill.propertyId,
                         billId: bill.id,
                         agreementId: bill.projectAgreementId,
+                        batchId: settlementBatchId,
                         id: `tx-${baseId}-badj-${bill.id.slice(-5)}`,
                     });
                 }
             }
 
-            /** Liability release: separate lines per bill so the security ledger matches each bill; rent invoices stay one summary line. */
-            const securityAppliedTotal = invoiceAdjustTotal + billAdjustTotal;
-            if (securityAppliedTotal > 0.01 && effectiveTenant) {
+            /** Liability release: bill lines (rent invoice lines emitted above include their own paired expense rows). */
+            if (billAdjustTotal > 0.01 && effectiveTenant) {
                 const refCat = getPayoutCategory('tenant');
                 if (refCat) {
-                    if (invoiceAdjustTotal > 0.01) {
-                        const invSel = invoiceAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
-                        const invCount = invSel.length;
-                        allTxs.push({
-                            type: TransactionType.EXPENSE,
-                            amount: invoiceAdjustTotal,
-                            date,
-                            description: `Security deposit applied — rent (${invCount} invoice${invCount === 1 ? '' : 's'})${descSuffix}${propLabel}`,
-                            accountId: payoutAccount.id,
-                            contactId: effectiveTenant.id,
-                            categoryId: refCat.id,
-                            buildingId: propBuildingId || undefined,
-                            propertyId: singleProp?.propertyId,
-                            id: `tx-${baseId}-adj-sd-inv`,
-                        });
-                    }
-                    if (billAdjustTotal > 0.01) {
                         const selectedBillRowsSd = billAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
                         for (const adj of selectedBillRowsSd) {
                             const bill = state.bills.find(b => b.id === adj.billId);
@@ -654,10 +658,11 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                 categoryId: refCat.id,
                                 buildingId: propBuildingId || undefined,
                                 propertyId: singleProp?.propertyId ?? bill.propertyId,
+                                billId: bill.id,
+                                batchId: settlementBatchId,
                                 id: `tx-${baseId}-sd-bill-${bill.id.replace(/[^a-zA-Z0-9]/g, '').slice(-10)}`,
                             });
                         }
-                    }
                 }
             }
 
