@@ -20,6 +20,7 @@ import {
     computeBillAfterPayment,
     offerConstructionBillPaymentWhatsApp,
 } from '../../utils/constructionBillPaymentWhatsApp';
+import { resolveBillLinkedExpenseCategoryId } from '../../utils/billExpenseCategory';
 
 const EPS = 0.015;
 
@@ -629,7 +630,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                     buildingId: bill.buildingId,
                     propertyId: bill.propertyId,
                     agreementId: bill.projectAgreementId,
-                    categoryId: bill.categoryId,
+                    categoryId: resolveBillLinkedExpenseCategoryId(bill, state.categories),
                     billId: bill.id,
                     contractId: bill.contractId,
                     batchId,

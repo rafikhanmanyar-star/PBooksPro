@@ -15,6 +15,7 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { computeBillAfterPayment, offerConstructionBillPaymentWhatsApp } from '../../utils/constructionBillPaymentWhatsApp';
+import { resolveBillLinkedExpenseCategoryId } from '../../utils/billExpenseCategory';
 
 interface BillBulkPaymentModalProps {
     isOpen: boolean;
@@ -117,16 +118,18 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                     }
                 }
 
+                const baseBillCategoryId = resolveBillLinkedExpenseCategoryId(bill, state.categories);
+
                 // If this is a tenant-allocated bill, update category to include "(Tenant)" suffix
-                if (tenantId && bill.categoryId) {
-                    const originalCategory = state.categories.find(c => c.id === bill.categoryId);
+                if (tenantId && baseBillCategoryId) {
+                    const originalCategory = state.categories.find(c => c.id === baseBillCategoryId);
                     if (originalCategory) {
                         // Find or use category with "(Tenant)" suffix
                         const tenantCategoryName = `${originalCategory.name} (Tenant)`;
                         const tenantCategory = state.categories.find(c =>
                             c.name === tenantCategoryName && c.type === TransactionType.EXPENSE
                         );
-                        tenantCategoryId = tenantCategory?.id || bill.categoryId;
+                        tenantCategoryId = tenantCategory?.id || baseBillCategoryId;
                     }
                 }
 
@@ -143,8 +146,8 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                     projectId: bill.projectId,
                     buildingId: bill.buildingId,
                     propertyId: bill.propertyId,
-                    // Use tenant category if available, otherwise use original category
-                    categoryId: tenantCategoryId || bill.categoryId,
+                    // Use tenant category if available, otherwise bill header or dominant line-item category
+                    categoryId: tenantCategoryId || baseBillCategoryId,
                     contractId: bill.contractId,
                     billId: bill.id,
                     batchId: batchId

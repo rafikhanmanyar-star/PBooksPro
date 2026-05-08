@@ -54,6 +54,28 @@ function normalizePgRow(raw: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/** Copies values under lowercase aliases so `{field}` formulas and accessors align with PG identifier casing. */
+function augmentCaseInsensitiveAliases(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...row };
+  for (const [k, v] of Object.entries(row)) {
+    const lk = k.toLowerCase();
+    if (!(lk in out)) {
+      out[lk] = v;
+    }
+  }
+  return out;
+}
+
+function rawGet(full: Record<string, unknown>, k: string): unknown {
+  if (full[k] !== undefined && full[k] !== null) return full[k];
+  const lk = k.toLowerCase();
+  if (full[lk] !== undefined && full[lk] !== null) return full[lk];
+  for (const [key, val] of Object.entries(full)) {
+    if (key.toLowerCase() === lk) return val;
+  }
+  return full[k];
+}
+
 export function deriveColumnLabels(
   registryRows: RegisteredField[],
   projectedKeys: string[],
@@ -105,7 +127,7 @@ function applyComputedExpressions(
         out[k] = null;
       }
     } else {
-      out[k] = full[k];
+      out[k] = rawGet(full, k);
     }
   }
   for (const f of payload.formulas ?? []) {
@@ -136,7 +158,7 @@ export async function runCustomReport(
   const cacheSalt = stableSerialize({
     ...payload,
     mode,
-    v: 1,
+    v: 2,
   });
   const cacheHash = createHash('sha256').update(cacheSalt).digest('hex');
   const cacheKey =
@@ -157,7 +179,9 @@ export async function runCustomReport(
   const page = payload.page ?? 1;
   const pageSize = Math.min(payload.pageSize ?? 50, mode === 'export' ? 5000 : 500);
 
-  const rowsIn = listRes.rows.map((r) => normalizePgRow(r as Record<string, unknown>));
+  const rowsIn = listRes.rows.map((r) =>
+    augmentCaseInsensitiveAliases(normalizePgRow(r as Record<string, unknown>))
+  );
   const rows = rowsIn.map((full) =>
     applyComputedExpressions(rmap, compiled.projectedKeys, payload, full)
   );

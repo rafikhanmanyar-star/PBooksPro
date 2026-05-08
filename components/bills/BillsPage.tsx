@@ -62,6 +62,30 @@ interface BillsPageProps {
 
 type BillTreeSelection = { id: string; type: 'group' | 'vendor'; parentId?: string } | null;
 
+/**
+ * Tree / filter grouping for a bill. When the Bills page is scoped to one project, bills with no
+ * header project but payments tagged to that project (see baseBills) still group under that project.
+ */
+function billPrimaryGroupId(bill: Bill, projectFilter: string): string {
+    if (bill.projectId) return bill.projectId;
+    if (projectFilter !== 'all') return projectFilter;
+    return 'unassigned';
+}
+
+function billHasExpensePaymentForProject(
+    bill: Bill,
+    projectId: string,
+    transactions: Transaction[]
+): boolean {
+    return transactions.some(
+        (tx) =>
+            tx.billId === bill.id &&
+            tx.type === TransactionType.EXPENSE &&
+            tx.projectId === projectId &&
+            !isVendorSettlementCashMirrorReference(tx.reference)
+    );
+}
+
 /** Unpaid vendor bill ids in current tree/project scope (VendorBillPaymentModal restrict list). */
 function restrictUnpaidBillIdsForVendorInView(
     vendorId: string,
@@ -74,23 +98,24 @@ function restrictUnpaidBillIdsForVendorInView(
     if (selectedNode?.type === 'vendor' && selectedNode.id === vendorId) {
         const parentId = selectedNode.parentId ?? 'unassigned';
         pool = pool.filter((b) => {
-            if (parentId === 'unassigned') return !b.projectId;
-            return b.projectId === parentId;
+            const grp = billPrimaryGroupId(b, projectFilter);
+            if (parentId === 'unassigned') return grp === 'unassigned';
+            return grp === parentId;
         });
         return pool.map((b) => b.id);
     }
 
     if (selectedNode?.type === 'group') {
         if (selectedNode.id === 'unassigned') {
-            pool = pool.filter((b) => !b.projectId);
+            pool = pool.filter((b) => billPrimaryGroupId(b, projectFilter) === 'unassigned');
         } else {
-            pool = pool.filter((b) => b.projectId === selectedNode.id);
+            pool = pool.filter((b) => billPrimaryGroupId(b, projectFilter) === selectedNode.id);
         }
         return pool.map((b) => b.id);
     }
 
     if (projectFilter !== 'all') {
-        pool = pool.filter((b) => b.projectId === projectFilter);
+        pool = pool.filter((b) => billPrimaryGroupId(b, projectFilter) === projectFilter);
         return pool.map((b) => b.id);
     }
 
@@ -417,11 +442,17 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
         // Filter by selected project if not 'all'
         if (projectFilter !== 'all') {
-            bills = bills.filter(b => b.projectId === projectFilter);
+            bills = bills.filter(
+                (b) =>
+                    b.projectId === projectFilter ||
+                    // Align with Expense-by-Category (and PM payouts): expense payments can carry projectId while the bill header does not.
+                    (!b.projectId &&
+                        billHasExpensePaymentForProject(b, projectFilter, state.transactions))
+            );
         }
 
         return bills;
-    }, [state.bills, projectFilter]);
+    }, [state.bills, state.transactions, projectFilter]);
 
     useEffect(() => {
         const bump = () => setSettlementListGen((n) => n + 1);
@@ -498,7 +529,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         }
 
         baseBills.forEach(bill => {
-            const groupId = bill.projectId || 'unassigned';
+            const groupId = billPrimaryGroupId(bill, projectFilter);
             const group = groupMap.get(groupId);
             const balance = bill.amount - bill.paidAmount;
 
@@ -544,7 +575,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         // Add bill rows
         if (typeFilter === 'All' || typeFilter === 'Bills') {
             baseBills.forEach(bill => {
-                const project = bill.projectId ? projectMap.get(bill.projectId) : undefined;
+                const grp = billPrimaryGroupId(bill, projectFilter);
+                const project = grp !== 'unassigned' ? projectMap.get(grp) : undefined;
                 const vendorId = bill.vendorId;
                 const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
                 const contract = bill.contractId ? contractMap.get(bill.contractId) : undefined;
@@ -581,7 +613,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     const bill = billMap.get(pid);
                     if (!bill || !baseBills.includes(bill)) return;
 
-                    const project = bill.projectId ? projectMap.get(bill.projectId) : undefined;
+                    const payGrp = billPrimaryGroupId(bill, projectFilter);
+                    const project = payGrp !== 'unassigned' ? projectMap.get(payGrp) : undefined;
                     const vendorId = payment.vendorId || bill.vendorId;
                     const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
                     const contractId = payment.contractId || bill.contractId;
@@ -608,7 +641,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 if (!bill || !baseBills.includes(bill)) return;
                 const vendorId = bill.vendorId;
                 const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
-                const project = bill.projectId ? projectMap.get(bill.projectId) : undefined;
+                const vsGrp = billPrimaryGroupId(bill, projectFilter);
+                const project = vsGrp !== 'unassigned' ? projectMap.get(vsGrp) : undefined;
 
                 rows.push({
                     id: `vset-${vs.journalEntryId}-${vs.billId}`,
@@ -629,7 +663,17 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         }
 
         return rows;
-    }, [baseBills, state.transactions, billMap, projectMap, vendorMap, contractMap, typeFilter, vendorSettlementsRows]);
+    }, [
+        baseBills,
+        state.transactions,
+        billMap,
+        projectMap,
+        vendorMap,
+        contractMap,
+        typeFilter,
+        vendorSettlementsRows,
+        projectFilter,
+    ]);
 
     // --- Filtered Table Rows ---
     const filteredRows = useMemo(() => {
@@ -639,8 +683,13 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         if (selectedNode) {
             if (selectedNode.type === 'group') {
                 result = result.filter(row => {
-                    const projectId = row.bill?.projectId ?? row.payment?.projectId;
-                    return projectId === selectedNode.id || (selectedNode.id === 'unassigned' && !projectId);
+                    const projectKey = row.bill
+                        ? billPrimaryGroupId(row.bill, projectFilter)
+                        : row.payment?.projectId;
+                    return (
+                        projectKey === selectedNode.id ||
+                        (selectedNode.id === 'unassigned' && (!projectKey || projectKey === 'unassigned'))
+                    );
                 });
             } else if (selectedNode.type === 'vendor') {
                 const parentGroupId = selectedNode.parentId || 'unassigned';
@@ -648,10 +697,11 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     const bill = row.bill || (row.payment ? billMap.get(String(row.payment?.billId ?? (row.payment as any)?.bill_id ?? '')) : null);
                     if (!bill) return false;
                     const vendorId = bill.vendorId;
+                    const grp = billPrimaryGroupId(bill, projectFilter);
                     if (parentGroupId === 'unassigned') {
-                        return !bill.projectId && vendorId === selectedNode.id;
+                        return grp === 'unassigned' && vendorId === selectedNode.id;
                     } else {
-                        return bill.projectId === parentGroupId && vendorId === selectedNode.id;
+                        return grp === parentGroupId && vendorId === selectedNode.id;
                     }
                 });
             }
@@ -753,7 +803,20 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             return 0;
         });
 
-    }, [tableRows, selectedNode, startDate, endDate, searchQuery, sortConfig, billMap, vendorSidebarAdvances, typeFilter, projectMap, vendorMap]);
+    }, [
+        tableRows,
+        selectedNode,
+        startDate,
+        endDate,
+        searchQuery,
+        sortConfig,
+        billMap,
+        vendorSidebarAdvances,
+        typeFilter,
+        projectMap,
+        vendorMap,
+        projectFilter,
+    ]);
 
     // --- Sidebar Resize: container-relative width to prevent jumping ---
     const handleMouseMoveSidebar = useCallback((e: MouseEvent) => {

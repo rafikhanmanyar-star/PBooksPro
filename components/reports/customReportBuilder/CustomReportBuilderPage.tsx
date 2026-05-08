@@ -178,17 +178,27 @@ export const CustomReportBuilderPage: React.FC = () => {
   });
 
   const tableColumns = useMemo(() => {
-    const keys = preview?.columns.map((c) => c.key) ?? [];
-    return keys.map((key) =>
-      columnHelper.accessor(key, {
-        id: key,
-        header:
-          preview?.columns.find((c) => c.key === key)?.label ?? key,
-        cell: (info) =>
-          info.getValue() === null || info.getValue() === undefined
-            ? ''
-            : String(info.getValue()),
-      })
+    const cols = preview?.columns ?? [];
+    return cols.map((col) =>
+      columnHelper.accessor(
+        (row) => {
+          const v = row[col.key];
+          if (v !== undefined && v !== null) return v;
+          const lk = col.key.toLowerCase();
+          for (const [k, val] of Object.entries(row)) {
+            if (k.toLowerCase() === lk) return val;
+          }
+          return undefined;
+        },
+        {
+          id: col.key,
+          header: col.label ?? col.key,
+          cell: (info) => {
+            const val = info.getValue();
+            return val === null || val === undefined ? '' : String(val);
+          },
+        }
+      )
     );
   }, [preview]);
 
@@ -196,9 +206,12 @@ export const CustomReportBuilderPage: React.FC = () => {
     data: preview?.rows ?? [],
     columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
-    manualPagination: true,
-    pageCount: preview ? Math.ceil(preview.totalCount / pageSize) : 0,
   });
+
+  /** Stable key so dynamic column sets remount after each successful preview (avoids stale column-visibility / cell maps). */
+  const previewTableMountKey = preview
+    ? `${preview.columns.map((c) => c.key).join('|')}::${preview.rows.length}::p${page}`
+    : 'empty';
 
   const toggleField = (key: string) => {
     setSelectedKeys((prev) =>
@@ -795,7 +808,7 @@ export const CustomReportBuilderPage: React.FC = () => {
             <p className="p-4 text-sm text-slate-500 print:hidden">Running query…</p>
           )}
           {!runMutation.isPending && preview && (
-            <table className="min-w-full text-[11px] border-collapse">
+            <table key={previewTableMountKey} className="min-w-full text-[11px] border-collapse">
               <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-sm">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
@@ -816,8 +829,8 @@ export const CustomReportBuilderPage: React.FC = () => {
                     key={row.id}
                     className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
                   >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-2 py-1 whitespace-nowrap">
+                    {row.getAllCells().map((cell) => (
+                      <td key={cell.id} className="px-2 py-1 whitespace-nowrap align-top">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}

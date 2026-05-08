@@ -3,8 +3,13 @@
  * Used by Profit Distribution so "Available to Distribute" matches Project Selling → Profit & Loss.
  */
 
-import type { AppState, Transaction } from '../../types';
+import type { AppState, Bill, Transaction } from '../../types';
 import { TransactionType } from '../../types';
+import { resolveBillLinkedExpenseCategoryId } from '../../utils/billExpenseCategory';
+import {
+    transactionIsDuplicatePrepaidAdvanceVersusAccruedBill,
+    resolveBillLinkedExpenseCategoryIdFromTransactionMemo,
+} from '../../utils/supplierPrepaidPl';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { getProfitLossExcludedCategoryIds } from '../../services/accounting/plExclusions';
 import { resolveProjectIdForTransaction, isTransactionFromVoidedOrCancelledInvoice } from './reportUtils';
@@ -92,6 +97,26 @@ export function computePlProcessedBills(
     return runPlBillAccrual(state, selectedProjectId, startDate, endDate, categoryAmounts, { value: 0 }, { value: 0 });
 }
 
+/** Lines from vendor bills accrued into P&L (payment txs are suppressed for processed bills — modal needs these). */
+export interface PlBillDrilldownEntry {
+    kind: 'bill_accrual';
+    billId: string;
+    lineKey: string;
+    billNumber: string;
+    issueDate: string;
+    amount: number;
+    description: string;
+    vendorDisplayName: string;
+}
+
+function resolveBillVendorDisplayName(state: AppState, bill: Bill): string {
+    const v = bill.vendorId && state.vendors.find((x) => x.id === bill.vendorId);
+    if (v?.name) return v.name;
+    const c = bill.contactId && state.contacts.find((x) => x.id === bill.contactId);
+    if (c?.name) return c.name;
+    return 'Vendor bill';
+}
+
 /**
  * Category id used for P&L after invoice/bill fallbacks (before the uncategorized_* synthetic key).
  * If undefined, P&L buckets the line under uncategorized_income / uncategorized_expense.
@@ -141,8 +166,9 @@ export function resolvePlCategoryIdForTransaction(
     }
     if (tx.billId && !processedBills.has(tx.billId)) {
         const bill = billMap.get(tx.billId);
-        if (bill && !bill.expenseCategoryItems && !categoryId) {
-            categoryId = bill.categoryId;
+        if (bill && !categoryId) {
+            const fromBill = resolveBillLinkedExpenseCategoryId(bill, state.categories);
+            if (fromBill) categoryId = fromBill;
         }
     }
     if (!categoryId && tx.type === TransactionType.INCOME && tx.invoiceId) {
@@ -152,6 +178,11 @@ export function resolvePlCategoryIdForTransaction(
     if (!categoryId && tx.type === TransactionType.INCOME && resolveProjectIdForTransaction(tx, state)) {
         const fallbackCat = categoryByName.get(`Unit Selling Income||${TransactionType.INCOME}`);
         if (fallbackCat) categoryId = fallbackCat.id;
+    }
+
+    if (!categoryId && tx.type === TransactionType.EXPENSE) {
+        const memoCat = resolveBillLinkedExpenseCategoryIdFromTransactionMemo(tx, state);
+        if (memoCat) categoryId = memoCat;
     }
 
     return categoryId || undefined;
@@ -183,6 +214,117 @@ export function isResolvedPlCategoryInDrilldownRow(
     return false;
 }
 
+/**
+ * Bill-accrual detail for Project P&amp;L drill-down. Only bills in {@link computePlProcessedBills}
+ * (same period/project as P&amp;L) are included — others appear via normal transactions only.
+ */
+export function computePlBillDrilldownEntries(
+    state: AppState,
+    selectedProjectId: string,
+    startDate: string,
+    endDate: string,
+    processedBills: Set<string>,
+    params: {
+        drillCategoryId?: string;
+        drillType: TransactionType.INCOME | TransactionType.EXPENSE;
+    }
+): PlBillDrilldownEntry[] {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const cid = params.drillCategoryId;
+    if (!cid || cid === 'gain-loss-fixed-asset' || cid === 'uncategorized') {
+        return [];
+    }
+    if (cid === 'uncategorized_income' || cid === 'uncategorized_expense') {
+        return [];
+    }
+
+    const excludedCats = getProfitLossExcludedCategoryIds(state);
+    const bsOnlyPl = findProjectAssetCategory(state.categories, 'ASSET_BALANCE_SHEET_ONLY');
+    if (bsOnlyPl) excludedCats.add(bsOnlyPl.id);
+    const rentalCats = new Set(state.categories.filter((c) => c.isRental).map((c) => c.id));
+
+    const categoryMap = new Map(state.categories.map((c) => [c.id, c]));
+    const out: PlBillDrilldownEntry[] = [];
+
+    const categoryMatchesDrillRow = (lineCategoryId: string | undefined) =>
+        !!lineCategoryId &&
+        isResolvedPlCategoryInDrilldownRow(lineCategoryId, cid!, state.categories);
+
+    state.bills.forEach((bill) => {
+        if (!bill.projectId) return;
+        if (selectedProjectId !== 'all' && bill.projectId !== selectedProjectId) return;
+
+        const billDate = new Date(bill.issueDate);
+        if (billDate < start || billDate > end) return;
+
+        if (!processedBills.has(bill.id)) return;
+
+        const vendorDisplayName = resolveBillVendorDisplayName(state, bill);
+
+        if (!bill.expenseCategoryItems || bill.expenseCategoryItems.length === 0) {
+            const categoryId = bill.categoryId;
+            if (!categoryId || excludedCats.has(categoryId) || rentalCats.has(categoryId)) return;
+            const category = categoryMap.get(categoryId);
+            if (!category || category.type !== TransactionType.EXPENSE) return;
+            if (params.drillType !== TransactionType.EXPENSE) return;
+            if (!categoryMatchesDrillRow(categoryId)) return;
+            const descParts = [`Bill ${bill.billNumber}`];
+            if (bill.description?.trim()) descParts.push(bill.description.trim());
+            out.push({
+                kind: 'bill_accrual',
+                billId: bill.id,
+                lineKey: `${bill.id}-single`,
+                billNumber: bill.billNumber,
+                issueDate: bill.issueDate,
+                amount: bill.amount,
+                description: descParts.join(' · '),
+                vendorDisplayName,
+            });
+            return;
+        }
+
+        const totalBillAmount = bill.expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
+        if (totalBillAmount <= 0) return;
+
+        bill.expenseCategoryItems.forEach((item) => {
+            const itemCategoryId = item.categoryId;
+            if (!itemCategoryId || excludedCats.has(itemCategoryId) || rentalCats.has(itemCategoryId)) return;
+            const category = categoryMap.get(itemCategoryId);
+            const allocatedAmount = item.netValue || 0;
+
+            const isIncomeLine = !!(category && category.type === TransactionType.INCOME);
+            if (isIncomeLine) {
+                if (params.drillType !== TransactionType.INCOME || !categoryMatchesDrillRow(itemCategoryId))
+                    return;
+            } else {
+                if (params.drillType !== TransactionType.EXPENSE || !categoryMatchesDrillRow(itemCategoryId))
+                    return;
+            }
+
+            const baseLabel = `${bill.billNumber} · Line`;
+            const descParts = [`Bill ${bill.billNumber}`];
+            const catLabel = category?.name;
+            if (catLabel) descParts.push(catLabel);
+            out.push({
+                kind: 'bill_accrual',
+                billId: bill.id,
+                lineKey: `${bill.id}-${item.id}`,
+                billNumber: bill.billNumber,
+                issueDate: bill.issueDate,
+                amount: Math.abs(allocatedAmount),
+                description: descParts.join(' · ') || baseLabel,
+                vendorDisplayName,
+            });
+        });
+    });
+
+    return out;
+}
+
 /** Same inclusion rules as computeProjectProfitLossTotals for the transaction loop (before amount bucketing). */
 export function transactionIncludedInPlLoop(
     tx: Transaction,
@@ -211,6 +353,10 @@ export function transactionIncludedInPlLoop(
     const projectId = resolveProjectIdForTransaction(tx, state);
     if (!projectId) return false;
     if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return false;
+
+    if (transactionIsDuplicatePrepaidAdvanceVersusAccruedBill(tx, state, processedBills, selectedProjectId)) {
+        return false;
+    }
 
     const categoryId = resolvePlCategoryIdForTransaction(tx, state, processedBills);
     if (categoryId && (excludedCats.has(categoryId) || rentalCats.has(categoryId))) return false;
@@ -309,6 +455,10 @@ export function computeProjectProfitLossTotals(
         if (!projectId) return;
 
         if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return;
+
+        if (transactionIsDuplicatePrepaidAdvanceVersusAccruedBill(tx, state, processedBills, selectedProjectId)) {
+            return;
+        }
 
         const categoryId = resolvePlCategoryIdForTransaction(tx, state, processedBills);
 

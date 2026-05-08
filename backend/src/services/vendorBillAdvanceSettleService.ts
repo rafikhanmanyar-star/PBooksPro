@@ -1,7 +1,12 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { insertJournalEntry } from './journalService.js';
-import { getBillById, recalculateBillPaymentAggregates, type BillRow } from './billsService.js';
+import {
+  getBillById,
+  recalculateBillPaymentAggregates,
+  resolveBillRowCategoryIdForExpenseMirror,
+  type BillRow,
+} from './billsService.js';
 import { createTransaction, type TransactionRow } from './transactionsService.js';
 import { VENDOR_SETTLEMENT_CASH_TX_REF_PREFIX } from '../constants/vendorSettlement.js';
 import {
@@ -305,7 +310,7 @@ export async function settleVendorBillsBatchWithAdvances(
           contactId: bill.contact_id ?? undefined,
           vendorId: bill.vendor_id ?? undefined,
           projectId: projectId ?? undefined,
-          categoryId: bill.category_id ?? undefined,
+          categoryId: resolveBillRowCategoryIdForExpenseMirror(bill),
           batchId: input.batchId ?? undefined,
         },
         actorUserId

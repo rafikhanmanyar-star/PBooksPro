@@ -1,17 +1,19 @@
 import React, { useMemo } from 'react';
 import Modal from '../ui/Modal';
-import { TransactionType } from '../../types';
+import { TransactionType, type Transaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import TransactionItem from '../transactions/TransactionItem';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import { formatRoundedNumber } from '../../utils/numberUtils';
 import {
+  computePlBillDrilldownEntries,
   computePlProcessedBills,
   transactionIsPlUncategorized,
   resolvePlCategoryIdForTransaction,
   transactionIncludedInPlLoop,
   isResolvedPlCategoryInDrilldownRow,
+  type PlBillDrilldownEntry,
 } from '../reports/projectProfitLossComputation';
 import { transactionMatchesProjectCategoryDrilldown } from '../reports/projectCategoryReportDrilldown';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
@@ -33,6 +35,33 @@ interface ProjectTransactionModalProps {
     endDate: string;
   } | null;
 }
+
+type PlTransactionDrillRow =
+  | { sortKey: number; kind: 'tx'; tx: Transaction }
+  | { sortKey: number; kind: 'bill'; entry: PlBillDrilldownEntry };
+
+const PlBillDrilldownRow: React.FC<{ entry: PlBillDrilldownEntry; drillType: 'Income' | 'Expense' }> = ({
+  entry,
+  drillType,
+}) => (
+  <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 border-l-4 border-amber-400/80 bg-amber-50/50">
+    <div className="min-w-0 flex-1">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800/90">Vendor bill (accrual)</p>
+      <p className="text-sm text-slate-800 font-medium">{entry.vendorDisplayName}</p>
+      <p className="text-sm text-slate-600 break-words">{entry.description}</p>
+      <p className="text-xs text-slate-500 mt-1">
+        {new Date(entry.issueDate).toLocaleDateString()} · {entry.billNumber}
+      </p>
+    </div>
+    <div
+      className={`text-right font-semibold tabular-nums shrink-0 ${
+        drillType === 'Income' ? 'text-success' : 'text-danger'
+      }`}
+    >
+      {CURRENCY} {formatRoundedNumber(entry.amount)}
+    </div>
+  </div>
+);
 
 const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
   isOpen,
@@ -120,9 +149,41 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [data, listMode, state, state.transactions, processedBillsForPl]);
 
+  const billAccrualRows = useMemo(() => {
+    if (!data || listMode === 'categoryReport') return [] as PlBillDrilldownEntry[];
+    const plType = data.type === 'Income' ? TransactionType.INCOME : TransactionType.EXPENSE;
+    return computePlBillDrilldownEntries(
+      state,
+      data.projectId,
+      data.startDate,
+      data.endDate,
+      processedBillsForPl,
+      { drillCategoryId: data.categoryId, drillType: plType }
+    );
+  }, [data, listMode, state.bills, state.categories, processedBillsForPl, state.contacts, state.vendors]);
+
+  const combinedRows = useMemo((): PlTransactionDrillRow[] => {
+    const out: PlTransactionDrillRow[] = [
+      ...filteredTransactions.map((tx) => ({
+        sortKey: new Date(tx.date).getTime(),
+        kind: 'tx' as const,
+        tx,
+      })),
+      ...billAccrualRows.map((entry) => ({
+        sortKey: new Date(entry.issueDate).getTime(),
+        kind: 'bill' as const,
+        entry,
+      })),
+    ];
+    out.sort((a, b) => a.sortKey - b.sortKey);
+    return out;
+  }, [filteredTransactions, billAccrualRows]);
+
   const totalAmount = useMemo(() => {
-    return filteredTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-  }, [filteredTransactions]);
+    const txSum = filteredTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+    const billSum = billAccrualRows.reduce((sum, b) => sum + b.amount, 0);
+    return txSum + billSum;
+  }, [filteredTransactions, billAccrualRows]);
 
   if (!data) return null;
 
@@ -146,18 +207,23 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
           </div>
         </div>
 
-        {filteredTransactions.length > 0 ? (
+        {combinedRows.length > 0 ? (
           <div className="max-h-[60vh] overflow-y-auto -mx-4">
             <div className="divide-y divide-slate-100">
-              {filteredTransactions.map((tx) => (
-                <TransactionItem key={tx.id} transaction={tx} onEdit={() => {}} />
-              ))}
+              {combinedRows.map((row) =>
+                row.kind === 'tx' ? (
+                  <TransactionItem key={row.tx.id} transaction={row.tx} onEdit={() => {}} />
+                ) : (
+                  <PlBillDrilldownRow key={row.entry.lineKey} entry={row.entry} drillType={data.type} />
+                )
+              )}
             </div>
           </div>
         ) : (
           <div className="text-center py-10">
             <div className="mx-auto h-12 w-12 text-slate-400">{ICONS.fileText}</div>
-            <h3 className="mt-2 text-md font-semibold text-slate-800">No Transactions Found</h3>
+            <h3 className="mt-2 text-md font-semibold text-slate-800">No records found</h3>
+            <p className="text-xs text-slate-500 mt-1">Nothing matched this project, category, and period.</p>
           </div>
         )}
         <div className="flex-grow flex justify-end mt-4">

@@ -56,6 +56,38 @@ function expenseItemsToDb(body: Record<string, unknown>): string | null {
   }
 }
 
+/** For mirrored expense transactions when header category_id is null but line items exist (PostgreSQL bills). */
+export function resolveBillRowCategoryIdForExpenseMirror(bill: BillRow): string | undefined {
+  const h = bill.category_id?.trim();
+  if (h) return h;
+  const raw = bill.expense_category_items;
+  if (!raw?.trim()) return undefined;
+  try {
+    const items = JSON.parse(raw) as Array<{
+      categoryId?: string;
+      category_id?: string;
+      netValue?: number;
+      net_value?: number;
+    }>;
+    if (!Array.isArray(items)) return undefined;
+    let bestId = '';
+    let bestNv = -1;
+    for (const it of items) {
+      const id = String(it.categoryId ?? it.category_id ?? '').trim();
+      if (!id) continue;
+      const nv = Number(it.netValue ?? it.net_value ?? 0);
+      if (!Number.isFinite(nv)) continue;
+      if (nv > bestNv) {
+        bestNv = nv;
+        bestId = id;
+      }
+    }
+    return bestId || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function rowToBillApi(row: BillRow): Record<string, unknown> {
   const base: Record<string, unknown> = {
     id: row.id,
