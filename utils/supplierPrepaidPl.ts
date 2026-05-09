@@ -32,12 +32,10 @@ function partiesOverlap(tx: Transaction, bill: Bill): boolean {
     return false;
 }
 
-function transactionLooksLikeSupplierPrepaidAdvance(tx: Transaction): boolean {
+function transactionLooksLikePrepaidAdvance(tx: Transaction): boolean {
     const hay = `${tx.description ?? ''}\n${tx.reference ?? ''}`.toLowerCase();
     if (!hay.trim()) return false;
-    const hasAdvanceLanguage = /\b(prepaid|advance)\b/i.test(hay);
-    const hasSupplierLanguage = /\b(supplier|vendor|contractor)\b/i.test(hay);
-    return hasAdvanceLanguage && hasSupplierLanguage;
+    return /\b(prepaid|advance)\b/i.test(hay);
 }
 
 export function parsePrepaidAdvanceAmountsFromBillDescription(description: string | undefined): number[] {
@@ -67,7 +65,7 @@ export function transactionIsDuplicatePrepaidAdvanceVersusAccruedBill(
     selectedProjectId: string
 ): boolean {
     if (tx.type !== TransactionType.EXPENSE) return false;
-    if (!transactionLooksLikeSupplierPrepaidAdvance(tx)) return false;
+    if (!transactionLooksLikePrepaidAdvance(tx)) return false;
 
     const projectId = resolveProjectIdForTransaction(tx, state);
     if (!projectId) return false;

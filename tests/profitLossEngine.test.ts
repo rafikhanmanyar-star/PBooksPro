@@ -346,4 +346,42 @@ function assertClose(a: number, b: number, label: string) {
   assertClose(pl.netProfit, -10_000, 'unrelated same-amount vendor expense remains in P&L');
 }
 
+// 7) A same-party generic advance transaction is still suppressed when the accrued bill carries the prepaid note.
+{
+  const vendorId = 'vendor-1';
+  const s = baseState({
+    bills: [
+      {
+        id: 'bill-prepaid-cleared',
+        billNumber: 'B-1002',
+        amount: 5000,
+        paidAmount: 5000,
+        status: 'Paid',
+        issueDate: '2025-06-01',
+        dueDate: '2025-06-30',
+        description: '[Payment record] Bill #B-1002: Paid from supplier prepaid advance (5,000.00).',
+        categoryId: 'cat-cogs',
+        projectId: 'proj-1',
+        vendorId,
+      },
+    ] as AppState['bills'],
+    transactions: [
+      tx({
+        id: 'same-party-generic-advance',
+        amount: 5000,
+        date: '2025-05-15',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: 'cat-opex',
+        projectId: 'proj-1',
+        vendorId,
+        description: 'Advance payment',
+      }),
+    ],
+  });
+  const pl = computeProjectProfitLossTotals(s, 'proj-1', '2025-01-01', '2025-12-31');
+  assertClose(pl.totalExpense, 5000, 'prepaid-note bill excludes matching advance transaction');
+  assertClose(pl.netProfit, -5000, 'matching same-party advance is not double-counted');
+}
+
 console.log('profitLossEngine.test.ts: OK');
