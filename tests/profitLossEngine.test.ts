@@ -112,6 +112,10 @@ function tx(p: Partial<Transaction> & Pick<Transaction, 'id' | 'amount' | 'date'
     categoryId: p.categoryId,
     projectId: p.projectId,
     description: p.description,
+    reference: p.reference,
+    vendorId: p.vendorId,
+    contactId: p.contactId,
+    billId: p.billId,
   } as Transaction;
 }
 
@@ -302,6 +306,44 @@ function assertClose(a: number, b: number, label: string) {
   });
   const pl = computeProjectProfitLossTotals(s, 'proj-1', '2025-01-01', '2025-12-31');
   assertClose(pl.netProfit, 1_000_000, 'distribution expense excluded from P&L');
+}
+
+// 6) A prepaid settlement note on an accrued bill must not suppress unrelated same-amount vendor expenses.
+{
+  const vendorId = 'vendor-1';
+  const s = baseState({
+    bills: [
+      {
+        id: 'bill-prepaid-note',
+        billNumber: 'B-1001',
+        amount: 5000,
+        paidAmount: 5000,
+        status: 'Paid',
+        issueDate: '2025-06-01',
+        dueDate: '2025-06-30',
+        description: '[Payment record] Bill #B-1001: Paid from supplier prepaid advance (5,000.00).',
+        categoryId: 'cat-cogs',
+        projectId: 'proj-1',
+        vendorId,
+      },
+    ] as AppState['bills'],
+    transactions: [
+      tx({
+        id: 'unrelated-same-amount-expense',
+        amount: 5000,
+        date: '2025-06-10',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: 'cat-opex',
+        projectId: 'proj-1',
+        vendorId,
+        description: 'Materials purchase - cement',
+      }),
+    ],
+  });
+  const pl = computeProjectProfitLossTotals(s, 'proj-1', '2025-01-01', '2025-12-31');
+  assertClose(pl.totalExpense, 10_000, 'prepaid-note bill plus unrelated same-amount expense');
+  assertClose(pl.netProfit, -10_000, 'unrelated same-amount vendor expense remains in P&L');
 }
 
 console.log('profitLossEngine.test.ts: OK');
