@@ -8,6 +8,8 @@ const MONEY_EPS = 0.02;
 /** Matches settlement notes from vendorBillAdvanceSettleService (English UI). */
 const PREPAID_IN_BILL_DESCRIPTION_RE =
     /supplier prepaid advance\s*\(([^)]+)\)/gi;
+const ADVANCE_TERM_RE = /\badvance\b/i;
+const SUPPLIER_PREPAID_CONTEXT_RE = /\b(prepaid|supplier|vendor|contractor)\b/i;
 
 function billPartyIds(bill: Bill): Set<string> {
     const s = new Set<string>();
@@ -30,6 +32,12 @@ function partiesOverlap(tx: Transaction, bill: Bill): boolean {
         if (b.has(id)) return true;
     }
     return false;
+}
+
+function transactionLooksLikeSupplierPrepaidAdvance(tx: Transaction): boolean {
+    const memo = `${tx.description ?? ''}\n${tx.reference ?? ''}`.trim();
+    if (!memo) return false;
+    return ADVANCE_TERM_RE.test(memo) && SUPPLIER_PREPAID_CONTEXT_RE.test(memo);
 }
 
 export function parsePrepaidAdvanceAmountsFromBillDescription(description: string | undefined): number[] {
@@ -59,6 +67,7 @@ export function transactionIsDuplicatePrepaidAdvanceVersusAccruedBill(
     selectedProjectId: string
 ): boolean {
     if (tx.type !== TransactionType.EXPENSE) return false;
+    if (!transactionLooksLikeSupplierPrepaidAdvance(tx)) return false;
 
     const projectId = resolveProjectIdForTransaction(tx, state);
     if (!projectId) return false;

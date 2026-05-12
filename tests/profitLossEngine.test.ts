@@ -2,8 +2,8 @@
  * Profit & loss engine: structure, formulas, and ledger alignment on small synthetic states.
  * Run: npx tsx tests/profitLossEngine.test.ts
  */
-import type { AppState, Category, Transaction, Account, Project } from '../types';
-import { TransactionType, AccountType } from '../types';
+import type { AppState, Category, Transaction, Account, Project, Bill } from '../types';
+import { TransactionType, AccountType, InvoiceStatus } from '../types';
 import { computeProfitLossReport } from '../components/reports/profitLossEngine';
 import { computeProjectProfitLossTotals } from '../components/reports/projectProfitLossComputation';
 import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../services/database/resolveProfitDistributionExpenseCategory';
@@ -104,14 +104,7 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
 
 function tx(p: Partial<Transaction> & Pick<Transaction, 'id' | 'amount' | 'date' | 'type' | 'accountId'>): Transaction {
   return {
-    id: p.id,
-    amount: p.amount,
-    date: p.date,
-    type: p.type,
-    accountId: p.accountId,
-    categoryId: p.categoryId,
-    projectId: p.projectId,
-    description: p.description,
+    ...p,
   } as Transaction;
 }
 
@@ -302,6 +295,62 @@ function assertClose(a: number, b: number, label: string) {
   });
   const pl = computeProjectProfitLossTotals(s, 'proj-1', '2025-01-01', '2025-12-31');
   assertClose(pl.netProfit, 1_000_000, 'distribution expense excluded from P&L');
+}
+
+// 6) Supplier-prepaid duplicate suppression must not drop unrelated same-amount vendor expenses
+{
+  const accruedBill: Bill = {
+    id: 'bill-1',
+    billNumber: 'B-100',
+    vendorId: 'vendor-1',
+    amount: 1000,
+    paidAmount: 500,
+    status: InvoiceStatus.PARTIALLY_PAID,
+    issueDate: '2025-09-01',
+    description: '[Payment record] Bill #B-100: Paid from supplier prepaid advance (500.00).',
+    projectId: 'proj-1',
+    expenseCategoryItems: [
+      {
+        id: 'line-1',
+        categoryId: 'cat-cogs',
+        unit: 'quantity',
+        quantity: 1,
+        pricePerUnit: 1000,
+        netValue: 1000,
+      },
+    ],
+  };
+  const s = baseState({
+    bills: [accruedBill],
+    transactions: [
+      tx({
+        id: 'actual-prepaid',
+        amount: 500,
+        date: '2025-08-30',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: 'cat-cogs',
+        projectId: 'proj-1',
+        vendorId: 'vendor-1',
+        description: 'Supplier prepaid advance to vendor for B-100',
+      }),
+      tx({
+        id: 'unrelated-materials',
+        amount: 500,
+        date: '2025-09-03',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: 'cat-cogs',
+        projectId: 'proj-1',
+        vendorId: 'vendor-1',
+        description: 'Materials purchased for site',
+      }),
+    ],
+  });
+
+  const pl = computeProjectProfitLossTotals(s, 'proj-1', '2025-01-01', '2025-12-31');
+  assertClose(pl.totalExpense, 1500, 'same-amount unrelated vendor expense remains in P&L');
+  assertClose(pl.netProfit, -1500, 'net profit includes bill accrual plus unrelated expense only');
 }
 
 console.log('profitLossEngine.test.ts: OK');
