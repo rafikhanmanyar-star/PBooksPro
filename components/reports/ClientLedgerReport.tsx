@@ -295,6 +295,12 @@ const ClientLedgerReport: React.FC = () => {
 
         // Rental Category Set for exclusion
         const rentalCategoryIds = new Set(state.categories.filter(c => c.isRental).map(c => c.id));
+        // Broker commission / project rebate payouts are project expenses (Broker Report), not owner balance items
+        const brokerCommissionExpenseCategoryIds = new Set(
+            ['Broker Fee', 'Rebate Amount']
+                .map(n => state.categories.find(c => c.name === n)?.id)
+                .filter((id): id is string => Boolean(id))
+        );
 
         // 1. Invoices (Debit - They owe us) - Only Project Installments
         let ownerInvoices = state.invoices.filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT);
@@ -327,6 +333,9 @@ const ClientLedgerReport: React.FC = () => {
         
         // STRICTER FILTER: Exclude Rental Categories and ensure it's likely project related
         ownerRefunds = ownerRefunds.filter(tx => !tx.categoryId || !rentalCategoryIds.has(tx.categoryId));
+        ownerRefunds = ownerRefunds.filter(
+            tx => !tx.categoryId || !brokerCommissionExpenseCategoryIds.has(tx.categoryId)
+        );
 
         if (ledgerSelection.kind === 'all') {
             const ownerIds = new Set(owners.map(c => c.id));

@@ -40,7 +40,7 @@ import { PayrollEmployee, PayrollRun, Payslip } from './types';
 import { storageService } from './services/storageService';
 import { hydratePayrollFromDb } from './services/payrollDb';
 import { syncPayrollFromServer } from './services/payrollSync';
-import { isLocalOnlyMode } from '../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
 import { useAppContext } from '../../context/AppContext';
@@ -449,7 +449,7 @@ const PayrollHub: React.FC = () => {
   );
 
   useEffect(() => {
-    if (!selectedCycleEmployeeId || isLocalOnlyMode()) {
+    if (!selectedCycleEmployeeId || !isAccountingBackedByRemoteApi()) {
       setEmployeeLedgerRemote(null);
       setEmployeeLedgerErr(null);
       setEmployeeLedgerLoading(false);
@@ -498,7 +498,7 @@ const PayrollHub: React.FC = () => {
   }, [selectedCycleEmployeeId]);
 
   const employeeLedgerFinalRows = useMemo(() => {
-    if (isLocalOnlyMode()) return localEmployeeLedgerDisplayRows;
+    if (!isAccountingBackedByRemoteApi()) return localEmployeeLedgerDisplayRows;
     if (employeeLedgerRemote !== null) {
       return employeeLedgerRemote.transactions.filter((r) =>
         ledgerDateMatchesYearMonth(r.transaction_date, filterYear, filterMonth)
@@ -513,14 +513,14 @@ const PayrollHub: React.FC = () => {
   ]);
 
   const employeeLedgerTruncatedRemote = useMemo(() => {
-    if (isLocalOnlyMode() || employeeLedgerRemote === null) return false;
+    if (!isAccountingBackedByRemoteApi() || employeeLedgerRemote === null) return false;
     const p = employeeLedgerRemote.pagination;
     const n = employeeLedgerRemote.transactions.length;
     return Boolean(p && p.total > n);
   }, [employeeLedgerRemote]);
 
   const employeeLedgerFinalSummary = useMemo(() => {
-    if (isLocalOnlyMode()) return localEmployeeLedgerSummary;
+    if (!isAccountingBackedByRemoteApi()) return localEmployeeLedgerSummary;
     if (employeeLedgerRemote !== null && employeeLedgerRemote.summary) return employeeLedgerRemote.summary;
     return localEmployeeLedgerSummary;
   }, [localEmployeeLedgerSummary, employeeLedgerRemote]);
@@ -915,7 +915,7 @@ const PayrollHub: React.FC = () => {
       if (!ok) return;
       try {
         let deleted: boolean;
-        if (isLocalOnlyMode()) {
+        if (!isAccountingBackedByRemoteApi()) {
           deleted = storageService.deletePayslip(tenantId, ps.id, userId);
         } else {
           deleted = await payrollApi.deletePayslip(ps.id, tenantId, userId);
@@ -942,7 +942,7 @@ const PayrollHub: React.FC = () => {
   useEffect(() => {
     if (!tenantId) return;
     let cancelled = false;
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       hydratePayrollFromDb(tenantId).then(async (result) => {
         if (cancelled) return;
         let { runs, payslips, employees, departments, grades } = result;
@@ -1348,7 +1348,7 @@ const PayrollHub: React.FC = () => {
                         {selectedCycleEmployeeId ? (
                           tableRecordFilter === 'ledger' ? (
                             <>
-                              {!isLocalOnlyMode() && employeeLedgerErr ? (
+                              {isAccountingBackedByRemoteApi() && employeeLedgerErr ? (
                                 <span className="text-red-600 font-medium block">{employeeLedgerErr}</span>
                               ) : null}
                               {employeeLedgerLoading && employeeLedgerFinalRows.length === 0 ? (

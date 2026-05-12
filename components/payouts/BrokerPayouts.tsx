@@ -2,9 +2,11 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ContactType, TransactionType } from '../../types';
+import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
 import { CURRENCY, ICONS } from '../../constants';
 import BrokerPayoutModal from './BrokerPayoutModal';
 import BrokerLedger from './BrokerLedger';
+import BrokerProjectFeeDimensionReport from './BrokerProjectFeeDimensionReport';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -30,9 +32,17 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
     const brokerBalances = useMemo<BrokerBalance[]>(() => {
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
         const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
-        
+        const brokerFeeCategoryId = brokerFeeCategory?.id;
+        const rebateCategoryId = rebateCategory?.id;
+
         // We look for payments in either "Broker Fee" or "Rebate Amount" categories
-        const relevantCategoryIds = [brokerFeeCategory?.id, rebateCategory?.id].filter(Boolean) as string[];
+        const relevantCategoryIds = [brokerFeeCategoryId, rebateCategoryId].filter(Boolean) as string[];
+        const attributionOpts = {
+            brokerFeeCategoryId,
+            rebateCategoryId,
+            projectAgreements: state.projectAgreements,
+            rentalAgreements: state.rentalAgreements,
+        };
 
         const brokerData: { [id: string]: { earned: number; paid: number } } = {};
 
@@ -64,31 +74,30 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
             });
         }
 
-        // 3. Calculate Paid Fees (from Expenses)
-        const brokerPayments = state.transactions.filter(tx => 
-            tx.type === TransactionType.EXPENSE && 
-            tx.contactId && 
-            tx.categoryId && relevantCategoryIds.includes(tx.categoryId)
+        // 3. Calculate Paid Fees (from Expenses). Attribution uses current agreement broker when agreementId is set.
+        const brokerPayments = state.transactions.filter(
+            (tx) => tx.type === TransactionType.EXPENSE && tx.categoryId && relevantCategoryIds.includes(tx.categoryId)
         );
         
         brokerPayments.forEach(tx => {
-            if (tx.contactId && brokerData[tx.contactId]) {
-                const category = state.categories.find(c => c.id === tx.categoryId);
-                const isRebate = category?.name === 'Rebate Amount';
-                let shouldInclude = true;
+            const category = state.categories.find(c => c.id === tx.categoryId);
+            const isRebate = category?.name === 'Rebate Amount';
+            let shouldInclude = true;
 
-                if (context === 'Project') {
-                    // Must be linked to a project OR be a Rebate category
-                    if (!tx.projectId && !isRebate) shouldInclude = false;
-                } else if (context === 'Rental') {
-                    // Must NOT be linked to a project AND not be a Rebate category
-                    if (tx.projectId || isRebate) shouldInclude = false;
-                }
-
-                if (shouldInclude) {
-                    brokerData[tx.contactId].paid += tx.amount;
-                }
+            if (context === 'Project') {
+                // Must be linked to a project OR be a Rebate category
+                if (!tx.projectId && !isRebate) shouldInclude = false;
+            } else if (context === 'Rental') {
+                // Must NOT be linked to a project AND not be a Rebate category
+                if (tx.projectId || isRebate) shouldInclude = false;
             }
+
+            if (!shouldInclude) return;
+
+            const effectiveBrokerId = getEffectiveCommissionBrokerContactId(tx, attributionOpts);
+            if (!effectiveBrokerId) return;
+            if (!brokerData[effectiveBrokerId]) brokerData[effectiveBrokerId] = { earned: 0, paid: 0 };
+            brokerData[effectiveBrokerId].paid += tx.amount;
         });
 
         return Object.entries(brokerData).map(([brokerId, data]) => {
@@ -141,7 +150,8 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
     const selectedBrokerContact = state.contacts.find(c => c.id === selectedBrokerId);
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6 bg-background min-h-0">
+        <div className="flex flex-col gap-6 bg-background min-h-0">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
             <Card className="md:col-span-1 h-fit flex flex-col max-h-[calc(100vh-12rem)] p-4">
                 <div className="mb-4">
                     <h3 className="text-lg font-semibold mb-2 text-app-text">Broker Balances {context ? `(${context})` : ''}</h3>
@@ -228,9 +238,10 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
                     </Card>
                 )}
             </div>
-            
+            </div>
+
             {selectedBrokerData && selectedBrokerContact && (
-                 <BrokerPayoutModal
+                <BrokerPayoutModal
                     isOpen={isModalOpen}
                     onClose={() => setIsModalOpen(false)}
                     broker={selectedBrokerContact}
@@ -238,6 +249,8 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
                     context={context}
                 />
             )}
+
+            {context === 'Project' && <BrokerProjectFeeDimensionReport />}
         </div>
     );
 };

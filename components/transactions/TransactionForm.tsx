@@ -12,7 +12,7 @@ import { CURRENCY } from '../../constants';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
-import { isLocalOnlyMode } from '../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { resolveExpenseCategoryForBillPayment } from '../../utils/rentalBillPayments';
 import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../utils/ledgerInvoicePayments';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
@@ -412,8 +412,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     ? computeBillAfterPayment(billBeingPaid, numAmount)
                     : null;
 
-            if (isLocalOnlyMode()) {
-                // Local-only: persist via dispatch only (reducer + persistence layer write to local DB)
+            if (!isAccountingBackedByRemoteApi()) {
+                // Offline / local tenant: persist via dispatch + local persistence only
                 dispatch({ type: 'ADD_TRANSACTION', payload });
                 if (paidBillSnap) {
                     await offerConstructionBillPaymentWhatsApp({

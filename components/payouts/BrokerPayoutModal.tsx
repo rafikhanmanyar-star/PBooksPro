@@ -130,12 +130,14 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
                             const owner = state.contacts.find(c => c.id === property?.ownerId);
                             
                             const paidAlready = state.transactions
-                                .filter(tx => 
-                                    tx.type === TransactionType.EXPENSE &&
-                                    tx.contactId === broker.id &&
-                                    (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
-                                    (tx.agreementId === ra.id || (tx.propertyId === ra.propertyId))
-                                )
+                                .filter(tx => {
+                                    if (tx.type !== TransactionType.EXPENSE) return false;
+                                    if (!(tx.categoryId === feeCatId || tx.categoryId === rebateCatId)) return false;
+                                    if (tx.agreementId === ra.id) return true;
+                                    if (!tx.agreementId && tx.propertyId === ra.propertyId && tx.contactId === broker.id)
+                                        return true;
+                                    return false;
+                                })
                                 .reduce((sum, tx) => sum + tx.amount, 0);
 
                             const remaining = Math.max(0, (ra.brokerFee || 0) - paidAlready);
@@ -167,11 +169,10 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
                         const client = state.contacts.find(c => c.id === pa.clientId);
 
                         const paidAlready = state.transactions
-                            .filter(tx => 
+                            .filter(tx =>
                                 tx.type === TransactionType.EXPENSE &&
-                                tx.contactId === broker.id &&
                                 (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
-                                (tx.agreementId === pa.id)
+                                tx.agreementId === pa.id
                             )
                             .reduce((sum, tx) => sum + tx.amount, 0);
 

@@ -9,7 +9,7 @@ import { PayrollEmployee, Payslip, PayrollRun, PayrollStatus } from '../types';
 import { storageService } from '../services/storageService';
 import { useAppContext } from '../../../context/AppContext';
 import { Account, Transaction, TransactionType, AccountType } from '../../../types';
-import { isLocalOnlyMode } from '../../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { syncPayrollFromServer } from '../services/payrollSync';
 import { resolveSystemCategoryId } from '../../../services/systemEntityIds';
@@ -251,7 +251,7 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
     };
 
     try {
-      if (isLocalOnlyMode()) {
+      if (!isAccountingBackedByRemoteApi()) {
         const periodLabel = run ? `${run.month} ${run.year}` : 'Payroll';
         const descriptionBase = note?.trim()
           ? `Salary - ${employee.name} - ${periodLabel}. ${note}`

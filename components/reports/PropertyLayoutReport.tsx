@@ -35,6 +35,7 @@ import {
     getOwnerRentalPayoutDueForOwnerOnProperty,
     type OwnerPropertyBreakdownMap,
 } from '../payouts/ownerPayoutBreakdown';
+import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
 
 const PropertyInvoicePickModal = lazy(() => import('./PropertyInvoicePickModal'));
 const RentalPaymentModal = lazy(() => import('../invoices/RentalPaymentModal'));
@@ -421,6 +422,12 @@ const PropertyLayoutReport: React.FC = () => {
             const rebateCategory = categories.find((c) => c.name === 'Rebate Amount');
             const feeCatId = brokerFeeCategory?.id;
             const rebateCatId = rebateCategory?.id;
+            const brokerAttributionOpts = {
+                brokerFeeCategoryId: feeCatId,
+                rebateCategoryId: rebateCatId,
+                projectAgreements,
+                rentalAgreements,
+            };
 
             propertiesToProcess.forEach(prop => {
                 const parsed = parseProperty(prop.name, prop.id);
@@ -506,11 +513,13 @@ const PropertyLayoutReport: React.FC = () => {
                         activeAgreement &&
                         brokerContact &&
                         tx.type === TransactionType.EXPENSE &&
-                        tx.contactId === brokerContact.id &&
                         (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
                         (tx.agreementId === activeAgreement.id || String(tx.propertyId) === propIdStr)
                     ) {
-                        brokerPaidAlready += Number(tx.amount) || 0;
+                        const eff = getEffectiveCommissionBrokerContactId(tx, brokerAttributionOpts);
+                        if (eff === activeAgreement.brokerId) {
+                            brokerPaidAlready += Number(tx.amount) || 0;
+                        }
                     }
                 }
                 const canDeductServiceCharges = !serviceChargeDeductedThisMonth && monthlyServiceCharge > 0;

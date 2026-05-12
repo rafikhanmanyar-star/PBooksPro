@@ -111,12 +111,10 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
         const rebateCatId = rebateCategory?.id;
         let brokerRebateFullDue = 0;
         if (activeAgreement?.rebateBrokerId && (activeAgreement.rebateAmount || 0) > 0) {
-            const bId = activeAgreement.rebateBrokerId;
             const paidAlready = state.transactions
                 .filter(
                     tx =>
                         tx.type === TransactionType.EXPENSE &&
-                        tx.contactId === bId &&
                         (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
                         tx.agreementId === activeAgreement.id
                 )

@@ -457,6 +457,7 @@ export async function createTransaction(
       account_id: p.account_id,
       project_id: p.project_id,
       bill_id: p.bill_id,
+      payslip_id: p.payslip_id,
     },
     expenseCashBatchCtx ?? undefined
   );
@@ -579,6 +580,7 @@ export async function updateTransaction(
     account_id: p.account_id,
     project_id: p.project_id,
     bill_id: p.bill_id,
+    payslip_id: p.payslip_id,
     exclude_transaction_id: id,
   });
 
@@ -726,6 +728,7 @@ export async function upsertTransaction(
     account_id: p.account_id,
     project_id: p.project_id,
     bill_id: p.bill_id,
+    payslip_id: p.payslip_id,
     exclude_transaction_id: id,
   });
 

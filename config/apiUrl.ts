@@ -166,3 +166,20 @@ export function isLocalOnlyMode(): boolean {
   }
   return true;
 }
+
+/**
+ * True when transactions, payroll payments, and related operational data must persist via REST to PostgreSQL
+ * (valid JWT + non-offline tenant + session is treated as API-backed — same cases where {@link isLocalOnlyMode} is false).
+ * Offline SQLite / local-tenant workflows return false here so mutations stay on the desktop storage layer only.
+ */
+export function isAccountingBackedByRemoteApi(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (!localStorage.getItem('auth_token')) return false;
+    const tid = localStorage.getItem('tenant_id');
+    if (!tid || tid === 'local') return false;
+  } catch {
+    return false;
+  }
+  return !isLocalOnlyMode();
+}

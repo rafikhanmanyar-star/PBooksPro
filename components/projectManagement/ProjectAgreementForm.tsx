@@ -23,6 +23,107 @@ import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { isActiveInvoice } from '../../utils/invoiceActive';
 
+/** Active invoices tied to a project agreement (by agreement_id or legacy unit+project installment link). */
+function getLinkedInvoicesForProjectAgreement(agreement: ProjectAgreement, invoices: Invoice[] | undefined): Invoice[] {
+    const list = invoices ?? [];
+    return list.filter((inv) => {
+        if (!isActiveInvoice(inv)) return false;
+        if (inv.agreementId === agreement.id) return true;
+        if (
+            inv.invoiceType === InvoiceType.INSTALLMENT &&
+            inv.projectId === agreement.projectId &&
+            inv.unitId &&
+            agreement.unitIds?.includes(inv.unitId)
+        ) {
+            return true;
+        }
+        return false;
+    });
+}
+
+function numCloseEnough(a: number, b: number, eps = 0.005): boolean {
+    return Math.abs(a - b) < eps;
+}
+
+function normId(id: string | undefined | null): string | undefined {
+    const t = (id ?? '').trim();
+    return t || undefined;
+}
+
+function sameUnitIds(a: string[] | undefined, b: string[]): boolean {
+    const sa = [...(a ?? [])].map((x) => String(x)).sort();
+    const sb = [...b].map((x) => String(x)).sort();
+    if (sa.length !== sb.length) return false;
+    return sa.every((v, i) => v === sb[i]);
+}
+
+function installmentPlanEqual(
+    a: ProjectAgreement['installmentPlan'],
+    b: ProjectAgreement['installmentPlan']
+): boolean {
+    return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/**
+ * True when the save payload differs from the stored agreement on any field other than
+ * broker/rebate broker and rebate amount (those may be updated while installment invoices exist).
+ */
+function hasNonBrokerProjectAgreementChanges(
+    prev: ProjectAgreement,
+    data: {
+        agreementNumber: string;
+        clientId: string;
+        projectId: string;
+        unitIds: string[];
+        issueDate: string;
+        listPrice: number;
+        customerDiscount: number;
+        floorDiscount: number;
+        lumpSumDiscount: number;
+        miscDiscount: number;
+        sellingPrice: number;
+        description: string;
+        listPriceCategoryId: string;
+        customerDiscountCategoryId: string;
+        floorDiscountCategoryId: string;
+        lumpSumDiscountCategoryId: string;
+        miscDiscountCategoryId: string;
+        sellingPriceCategoryId: string;
+        rebateCategoryId: string;
+        status: ProjectAgreementStatus;
+        installmentPlan?: ProjectAgreement['installmentPlan'];
+    }
+): boolean {
+    if (prev.agreementNumber.trim() !== data.agreementNumber.trim()) return true;
+    if (normId(prev.clientId) !== normId(data.clientId)) return true;
+    if (normId(prev.projectId) !== normId(data.projectId)) return true;
+    if (!sameUnitIds(prev.unitIds, data.unitIds)) return true;
+    const prevIssue = parseStoredDateToYyyyMmDdInput(prev.issueDate);
+    if (prevIssue !== data.issueDate) return true;
+
+    if (!numCloseEnough(prev.listPrice ?? 0, data.listPrice)) return true;
+    if (!numCloseEnough(prev.customerDiscount ?? 0, data.customerDiscount)) return true;
+    if (!numCloseEnough(prev.floorDiscount ?? 0, data.floorDiscount)) return true;
+    if (!numCloseEnough(prev.lumpSumDiscount ?? 0, data.lumpSumDiscount)) return true;
+    if (!numCloseEnough(prev.miscDiscount ?? 0, data.miscDiscount)) return true;
+    if (!numCloseEnough(prev.sellingPrice ?? 0, data.sellingPrice)) return true;
+
+    if ((prev.description ?? '').trim() !== data.description.trim()) return true;
+
+    if (normId(prev.listPriceCategoryId) !== normId(data.listPriceCategoryId)) return true;
+    if (normId(prev.customerDiscountCategoryId) !== normId(data.customerDiscountCategoryId)) return true;
+    if (normId(prev.floorDiscountCategoryId) !== normId(data.floorDiscountCategoryId)) return true;
+    if (normId(prev.lumpSumDiscountCategoryId) !== normId(data.lumpSumDiscountCategoryId)) return true;
+    if (normId(prev.miscDiscountCategoryId) !== normId(data.miscDiscountCategoryId)) return true;
+    if (normId(prev.sellingPriceCategoryId) !== normId(data.sellingPriceCategoryId)) return true;
+    if (normId(prev.rebateCategoryId) !== normId(data.rebateCategoryId)) return true;
+
+    if (prev.status !== data.status) return true;
+    if (!installmentPlanEqual(prev.installmentPlan, data.installmentPlan)) return true;
+
+    return false;
+}
+
 interface ProjectAgreementFormProps {
     onClose: () => void;
     agreementToEdit?: ProjectAgreement | null;
@@ -139,6 +240,16 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     const clients = state.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
     // Unified Brokers list (Broker + legacy Dealer)
     const brokers = state.contacts.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER);
+
+    const linkedInvoicesForEdit = useMemo(() => {
+        if (!agreementToEdit) return [];
+        return getLinkedInvoicesForProjectAgreement(agreementToEdit, state.invoices);
+    }, [agreementToEdit, state.invoices]);
+
+    /** Installment invoices exist: lock agreement financials / plan; broker (rebate) fields stay editable. */
+    const invoiceLockedLayout = Boolean(agreementToEdit) && linkedInvoicesForEdit.length > 0;
+    const agreementFieldsDisabled = recordLock.viewOnly || invoiceLockedLayout;
+    const brokerFieldsDisabled = recordLock.viewOnly;
 
     // Filter units for the dropdown (Available and not yet selected)
     const unitsForSelection = useMemo(() => {
@@ -263,12 +374,14 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
 
     const handleAddUnit = (item: { id: string, name: string } | null) => {
+        if (invoiceLockedLayout) return;
         if (item) {
             setUnitIds(prev => [...prev, item.id]);
         }
     };
 
     const handleRemoveUnit = (idToRemove: string) => {
+        if (invoiceLockedLayout) return;
         setUnitIds(prev => prev.filter(id => id !== idToRemove));
     };
     
@@ -556,6 +669,13 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
     const handleConfigSave = (config: { durationYears: number; downPaymentPercentage: number; frequency: InstallmentFrequency; optionalInstallment?: boolean; optionalInstallmentName?: string }) => {
         try {
+            if (invoiceLockedLayout) {
+                void showAlert(
+                    'Installment plan cannot be changed while installment invoices exist for this agreement.',
+                    { title: 'Plan locked' }
+                );
+                return;
+            }
             if (!projectId || !clientId) {
                 showAlert('Please select both Owner and Project before configuring installment plan.', { title: 'Missing Information' });
                 return;
@@ -627,41 +747,16 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         };
 
         if (agreementToEdit) {
-            // Find all invoices linked to this agreement
-            // Include invoices that:
-            // 1. Have agreementId matching this agreement
-            // 2. OR have unitId matching any unit in this agreement AND projectId matching (for invoices that might not have agreementId set)
-            const linkedInvoices = state.invoices.filter(inv => {
-                if (!isActiveInvoice(inv)) return false;
-                // Direct link via agreementId
-                if (inv.agreementId === agreementToEdit.id) return true;
-
-                // Indirect link via unitId and projectId (for invoices that might not have agreementId)
-                if (
-                    inv.invoiceType === InvoiceType.INSTALLMENT &&
-                    inv.projectId === agreementToEdit.projectId &&
-                    inv.unitId &&
-                    agreementToEdit.unitIds?.includes(inv.unitId)
-                ) {
-                    return true;
+            if (linkedInvoicesForEdit.length > 0) {
+                if (hasNonBrokerProjectAgreementChanges(agreementToEdit, agreementData)) {
+                    await showAlert(
+                        'This agreement already has installment invoices. Only broker name and rebate amount (broker fee) can be updated. Remove invoices first if you need to change price, units, dates, or installment plan.',
+                        { title: 'Limited editing' }
+                    );
+                    return;
                 }
-
-                return false;
-            });
-            
-            // Block editing if there are associated invoices
-            if (linkedInvoices.length > 0) {
-                await showAlert(
-                    `This sales agreement has ${linkedInvoices.length} associated invoice${linkedInvoices.length !== 1 ? 's' : ''} created. ` +
-                    `To edit this agreement, please delete the associated invoices first.\n\n` +
-                    `You can delete invoices from the Invoices & Payments section.`,
-                    { 
-                        title: 'Cannot Edit Agreement',
-                    }
-                );
-                return; // Prevent editing
             }
-            
+
             const updatedAgreement = { ...agreementToEdit, ...agreementData };
 
             if (isLocalOnlyMode()) {
@@ -821,16 +916,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             await showAlert('This agreement is open in view-only mode.', { title: 'Cannot delete' });
             return;
         }
-        const linkedInvoices = state.invoices.filter(inv => {
-            if (!isActiveInvoice(inv)) return false;
-            return (
-                inv.agreementId === agreementToEdit.id ||
-                (inv.invoiceType === InvoiceType.INSTALLMENT &&
-                    inv.projectId === agreementToEdit.projectId &&
-                    inv.unitId &&
-                    agreementToEdit.unitIds?.includes(inv.unitId))
-            );
-        });
+        const linkedInvoices = getLinkedInvoicesForProjectAgreement(agreementToEdit, state.invoices);
         if (linkedInvoices.length > 0) {
             await showAlert(
                 `This agreement has ${linkedInvoices.length} associated invoice${linkedInvoices.length !== 1 ? 's' : ''}. ` +
@@ -917,6 +1003,11 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                     {recordLock.bannerMode === 'other' && (
                         <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
                     )}
+                    {invoiceLockedLayout && !recordLock.viewOnly && (
+                        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            This agreement has installment invoices. Owner, project, pricing, dates, and installment plan are locked. You can still update the broker and the rebate amount (broker fee), then save.
+                        </p>
+                    )}
                 </div>
 
                 {/* Main content: two-column desktop, single-column mobile */}
@@ -936,6 +1027,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                     onChange={e => setAgreementNumber(e.target.value)}
                                     required
                                     autoFocus
+                                    disabled={agreementFieldsDisabled}
                                     className="text-sm rounded-lg border-slate-300 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                                 />
                                 {agreementNumberError && (
@@ -947,6 +1039,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                 value={issueDate}
                                 onChange={handleIssueDateChange}
                                 required
+                                disabled={agreementFieldsDisabled}
                                 className="text-sm"
                             />
                             <ComboBox
@@ -956,6 +1049,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                 onSelect={item => setClientId(item?.id || '')}
                                 placeholder="Select owner"
                                 required
+                                disabled={agreementFieldsDisabled}
                                 allowAddNew={false}
                             />
                             <ComboBox
@@ -965,6 +1059,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                 onSelect={item => { setProjectId(item?.id || ''); setUnitIds([]); }}
                                 placeholder="Select project"
                                 required
+                                disabled={agreementFieldsDisabled}
                                 allowAddNew={false}
                             />
                             {/* Units — multi-select tag style */}
@@ -986,7 +1081,8 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                                     <button
                                                         type="button"
                                                         onClick={() => handleRemoveUnit(id)}
-                                                        className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400/50"
+                                                        disabled={agreementFieldsDisabled}
+                                                        className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400/50 disabled:opacity-40 disabled:pointer-events-none"
                                                         aria-label="Remove unit"
                                                     >
                                                         <div className="w-3.5 h-3.5">{ICONS.x}</div>
@@ -1003,7 +1099,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         selectedId=""
                                         onSelect={handleAddUnit}
                                         placeholder={projectId ? 'Add unit...' : 'Select project first'}
-                                        disabled={!projectId}
+                                        disabled={!projectId || agreementFieldsDisabled}
                                         allowAddNew={false}
                                     />
                                 </div>
@@ -1014,7 +1110,8 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                     <select
                                         value={status}
                                         onChange={(e) => setStatus(e.target.value as ProjectAgreementStatus)}
-                                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 bg-white"
+                                        disabled={agreementFieldsDisabled}
+                                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
                                         aria-label="Agreement status"
                                     >
                                         <option value={ProjectAgreementStatus.ACTIVE}>Active</option>
@@ -1044,12 +1141,13 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         userEditedListPriceRef.current = true;
                                         handleAmountChange(setListPrice)(e);
                                     }}
+                                    disabled={agreementFieldsDisabled}
                                     className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50"
                                 />
-                                <Input label="Customer Discount" type="text" inputMode="decimal" value={customerDiscount} onChange={handleAmountChange(setCustomerDiscount)} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
-                                <Input label="Floor Discount" type="text" inputMode="decimal" value={floorDiscount} onChange={handleAmountChange(setFloorDiscount)} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
-                                <Input label="Lump Sum" type="text" inputMode="decimal" value={lumpSumDiscount} onChange={handleAmountChange(setLumpSumDiscount)} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
-                                <Input label="Misc" type="text" inputMode="decimal" value={miscDiscount} onChange={handleAmountChange(setMiscDiscount)} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
+                                <Input label="Customer Discount" type="text" inputMode="decimal" value={customerDiscount} onChange={handleAmountChange(setCustomerDiscount)} disabled={agreementFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
+                                <Input label="Floor Discount" type="text" inputMode="decimal" value={floorDiscount} onChange={handleAmountChange(setFloorDiscount)} disabled={agreementFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
+                                <Input label="Lump Sum" type="text" inputMode="decimal" value={lumpSumDiscount} onChange={handleAmountChange(setLumpSumDiscount)} disabled={agreementFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
+                                <Input label="Misc" type="text" inputMode="decimal" value={miscDiscount} onChange={handleAmountChange(setMiscDiscount)} disabled={agreementFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium text-slate-700 mb-1">
                                         Final price (Selling price) <span className="text-red-500">*</span>
@@ -1066,8 +1164,8 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                         <div className={`${cardClass} flex-shrink-0`}>
                             <h3 className={sectionTitleClass}>Broker</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <ComboBox label="Broker Name" items={brokers} selectedId={rebateBrokerId} onSelect={item => setRebateBrokerId(item?.id || '')} placeholder="Select broker" allowAddNew={false} />
-                                <Input label="Rebate Amount" type="text" inputMode="decimal" value={rebateAmount} onChange={handleAmountChange(setRebateAmount)} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
+                                <ComboBox label="Broker Name" items={brokers} selectedId={rebateBrokerId} onSelect={item => setRebateBrokerId(item?.id || '')} placeholder="Select broker" disabled={brokerFieldsDisabled} allowAddNew={false} />
+                                <Input label="Rebate Amount" type="text" inputMode="decimal" value={rebateAmount} onChange={handleAmountChange(setRebateAmount)} disabled={brokerFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
                             </div>
                         </div>
 
@@ -1082,6 +1180,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         type="button"
                                         variant="secondary"
                                         onClick={() => setShowInstallmentConfig(!showInstallmentConfig)}
+                                        disabled={recordLock.viewOnly || invoiceLockedLayout}
                                         className="!text-sm !px-3 !py-1.5 rounded-lg border-slate-300"
                                     >
                                         {showInstallmentConfig ? 'Hide' : installmentPlan ? 'Edit Plan' : 'Configure'}
@@ -1147,7 +1246,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                 type="button"
                                 variant="secondary"
                                 onClick={handleManualGenerate}
-                                disabled={recordLock.viewOnly}
+                                disabled={recordLock.viewOnly || invoiceLockedLayout}
                                 className="!text-sm !py-2 !px-4 rounded-lg"
                             >
                                 Create Installments

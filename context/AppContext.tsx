@@ -15,7 +15,7 @@ import { MANDATORY_SYSTEM_CATEGORIES } from '../services/database/mandatorySyste
 import { findSalesReturnCategory } from '../constants/salesReturnSystemCategories';
 import { resolveSystemCategoryId } from '../services/systemEntityIds';
 import packageJson from '../package.json';
-import { isLocalOnlyMode } from '../config/apiUrl';
+import { isLocalOnlyMode, isAccountingBackedByRemoteApi } from '../config/apiUrl';
 import { notifyDatabaseError } from '../services/dbErrorNotification';
 import { formatApiErrorMessage } from '../utils/formatApiErrorMessage';
 import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconcile';
@@ -2063,7 +2063,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     latestStateRef.current = state;
 
     /**
-     * LAN/API mode: SQLite is not used; persist mutations to PostgreSQL via REST.
+     * LAN/API session: SQLite is not source of truth for saving; persist mutations to PostgreSQL via REST.
+     * Uses isAccountingBackedByRemoteApi (JWT + non-local tenant + API session) rather than build flags alone.
      * Transactions must be POSTed here — RentalPaymentModal and most flows only dispatch ADD_TRANSACTION.
      * Also sync invoice/bill paid amounts after payment transactions (applyTransactionEffect is local-only).
      * Skip when action came from server merge ( _isRemote ) to avoid feedback loops.
@@ -2073,7 +2074,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // LAN/API: allow REST sync when AuthContext says logged in OR a JWT is present (header uses token; context can lag).
             const hasAuthToken =
                 typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
-            if (isLocalOnlyMode() || (!isAuthenticated && !hasAuthToken)) {
+            if (!isAccountingBackedByRemoteApi()) {
                 baseDispatch(action);
                 return;
             }

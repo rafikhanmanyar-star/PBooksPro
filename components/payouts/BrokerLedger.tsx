@@ -6,6 +6,7 @@ import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
 
 interface BrokerLedgerProps {
     brokerId: string | null;
@@ -45,6 +46,12 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
         const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
         const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
         const relevantCategoryIds = [brokerFeeCategory?.id, rebateCategory?.id].filter(Boolean) as string[];
+        const attributionOpts = {
+            brokerFeeCategoryId: brokerFeeCategory?.id,
+            rebateCategoryId: rebateCategory?.id,
+            projectAgreements: state.projectAgreements,
+            rentalAgreements: state.rentalAgreements,
+        };
 
         const items: any[] = [];
 
@@ -90,11 +97,13 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
             
         // 3. Payments to Broker (Debit). When Rental filter is applied, only include payments for in-scope properties (tx.propertyId).
         state.transactions
-            .filter(tx => tx.type === TransactionType.EXPENSE && tx.contactId === brokerId && tx.categoryId && relevantCategoryIds.includes(tx.categoryId))
             .filter(tx => {
+                if (tx.type !== TransactionType.EXPENSE || !tx.categoryId || !relevantCategoryIds.includes(tx.categoryId)) return false;
+                const effectiveId = getEffectiveCommissionBrokerContactId(tx, attributionOpts);
+                if (effectiveId !== brokerId) return false;
                 const category = state.categories.find(c => c.id === tx.categoryId);
                 const isRebate = category?.name === 'Rebate Amount';
-                
+
                 if (context === 'Project') {
                     return !!tx.projectId || isRebate;
                 } else if (context === 'Rental') {

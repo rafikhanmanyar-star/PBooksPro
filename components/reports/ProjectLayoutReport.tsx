@@ -163,12 +163,10 @@ const ProjectLayoutReport: React.FC = () => {
             const rebateCatId = rebateCategory?.id;
             let brokerRebateDue = 0;
             if (activeAgreement?.rebateBrokerId && (activeAgreement.rebateAmount || 0) > 0) {
-                const brokerId = activeAgreement.rebateBrokerId;
                 const paidAlready = state.transactions
                     .filter(
                         tx =>
                             tx.type === TransactionType.EXPENSE &&
-                            tx.contactId === brokerId &&
                             (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
                             tx.agreementId === activeAgreement.id
                     )

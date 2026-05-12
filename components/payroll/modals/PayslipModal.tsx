@@ -10,7 +10,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useAppContext } from '../../../context/AppContext';
 import { Account, Category, Project, Transaction, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
-import { isLocalOnlyMode } from '../../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { formatDate, formatCurrency, calculateAmount, roundToTwo } from '../utils/formatters';
 import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from '../utils/payslipPaymentState';
 import { resolvePayslipAssignment, formatPayslipAssignmentDisplay } from '../utils/payslipAssignment';
@@ -523,7 +523,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                 <button
                   onClick={() => {
                     // Local-only: accounts from AppContext. Non–local: already loaded or from useEffect.
-                    if (!isLocalOnlyMode() && (state.accounts.length === 0 || fetchedAccounts.length === 0)) {
+                    if (isAccountingBackedByRemoteApi() && (state.accounts.length === 0 || fetchedAccounts.length === 0)) {
                       setIsLoadingAccounts(true);
                       apiClient.get<Account[]>('/accounts')
                         .then((fresh: Account[] | undefined) => {

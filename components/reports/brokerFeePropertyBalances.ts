@@ -2,6 +2,7 @@ import type { AppState } from '../../types';
 import { ContactType, TransactionType } from '../../types';
 import { CURRENCY } from '../../constants';
 import type { TreeNode } from '../ui/TreeView';
+import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
 
 /** One property’s rental broker commission position for a broker (matches ledger: fees minus payments on that property). */
 export interface BrokerPropertyBalanceRow {
@@ -32,13 +33,20 @@ export function totalBrokerPaymentsOnProperty(
 ): number {
     const { fee, rebate } = brokerFeeCategoryIds(state);
     const catOk = new Set([fee, rebate].filter(Boolean) as string[]);
+    const attributionOpts = {
+        brokerFeeCategoryId: fee,
+        rebateCategoryId: rebate,
+        projectAgreements: state.projectAgreements,
+        rentalAgreements: state.rentalAgreements,
+    };
     let sum = 0;
     for (const tx of state.transactions) {
         if (tx.type !== TransactionType.EXPENSE) continue;
-        if (!tx.contactId || tx.contactId !== brokerId) continue;
         if (tx.projectId) continue;
         if (!tx.categoryId || !catOk.has(tx.categoryId)) continue;
         if (!tx.propertyId || String(tx.propertyId) !== String(propertyId)) continue;
+        const eff = getEffectiveCommissionBrokerContactId(tx, attributionOpts);
+        if (eff !== brokerId) continue;
         const a = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
         if (!isNaN(a)) sum += a;
     }

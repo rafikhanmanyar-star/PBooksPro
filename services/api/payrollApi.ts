@@ -1,11 +1,11 @@
 /**
  * Payroll API Service
- * 
- * Provides API methods for payroll module operations.
- * In local-only mode, uses storageService (localStorage) instead of API.
+ *
+ * When isAccountingBackedByRemoteApi() is true (JWT + PostgreSQL tenant session), all calls go to REST.
+ * Offline / local `tenant_id=local` flows use storageService instead.
  */
 
-import { isLocalOnlyMode } from '../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { getCurrentTenantId } from '../database/tenantUtils';
 import { getCurrentUserId } from '../database/userUtils';
 import { apiClient } from './client';
@@ -44,7 +44,7 @@ function getTenantAndUser(): { tenantId: string; userId: string } {
 export const payrollApi = {
   // Get all employees for current tenant
   async getEmployees(): Promise<PayrollEmployee[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -61,7 +61,7 @@ export const payrollApi = {
 
   // Get single employee by ID
   async getEmployee(id: string): Promise<PayrollEmployee | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -78,7 +78,7 @@ export const payrollApi = {
 
   // Create new employee
   async createEmployee(data: PayrollEmployeeCreateRequest): Promise<PayrollEmployee | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId, userId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -98,7 +98,7 @@ export const payrollApi = {
 
   // Update employee
   async updateEmployee(id: string, data: PayrollEmployeeUpdateRequest): Promise<PayrollEmployee | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId, userId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -145,7 +145,7 @@ export const payrollApi = {
 
   // Delete employee
   async deleteEmployee(id: string): Promise<boolean> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.deleteEmployee(tenantId, id);
@@ -164,7 +164,7 @@ export const payrollApi = {
 
   // Get all payroll runs
   async getPayrollRuns(): Promise<PayrollRun[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -181,7 +181,7 @@ export const payrollApi = {
 
   // Get single payroll run
   async getPayrollRun(id: string): Promise<PayrollRun | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -198,7 +198,7 @@ export const payrollApi = {
 
   // Create new payroll run (server generates payslips and auto-approves in one step)
   async createPayrollRun(data: PayrollRunCreateRequest): Promise<PayrollRunWithSummary | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId, userId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -233,7 +233,7 @@ export const payrollApi = {
 
   // Update payroll run (status changes)
   async updatePayrollRun(id: string, data: PayrollRunUpdateRequest): Promise<PayrollRun | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId, userId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -280,7 +280,7 @@ export const payrollApi = {
 
   // Delete payroll run and its unpaid payslips
   async deletePayrollRun(id: string): Promise<{ success: boolean; message?: string; error?: string }> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -302,7 +302,7 @@ export const payrollApi = {
   // ==================== GRADE LEVELS ====================
 
   async getGradeLevels(): Promise<GradeLevel[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -318,7 +318,7 @@ export const payrollApi = {
   },
 
   async createGradeLevel(data: Omit<GradeLevel, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<GradeLevel | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId, userId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -343,7 +343,7 @@ export const payrollApi = {
   },
 
   async updateGradeLevel(id: string, data: Partial<GradeLevel>): Promise<GradeLevel | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId, userId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -364,7 +364,7 @@ export const payrollApi = {
   // ==================== DEPARTMENTS ====================
 
   async getDepartments(): Promise<Department[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -394,7 +394,7 @@ export const payrollApi = {
   },
 
   async createDepartment(data: Omit<Department, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<Department | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId, userId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -417,7 +417,7 @@ export const payrollApi = {
   },
 
   async updateDepartment(id: string, data: Partial<Department>): Promise<Department | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId, userId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -437,7 +437,7 @@ export const payrollApi = {
   },
 
   async deleteDepartment(id: string): Promise<boolean> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.deleteDepartment(tenantId, id);
@@ -489,7 +489,7 @@ export const payrollApi = {
    * In local-only mode, uses payroll storageService projects.
    */
   async getMainAppProjects(): Promise<PayrollProject[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -566,7 +566,7 @@ export const payrollApi = {
   // ==================== SALARY COMPONENT TYPES ====================
 
   async getEarningTypes(): Promise<EarningType[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -582,7 +582,7 @@ export const payrollApi = {
   },
 
   async getDeductionTypes(): Promise<DeductionType[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -598,7 +598,7 @@ export const payrollApi = {
   },
 
   async saveEarningTypes(types: EarningType[]): Promise<boolean> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.setEarningTypes(tenantId, types);
@@ -614,7 +614,7 @@ export const payrollApi = {
   },
 
   async saveDeductionTypes(types: DeductionType[]): Promise<boolean> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.setDeductionTypes(tenantId, types);
@@ -632,7 +632,7 @@ export const payrollApi = {
   // ==================== PAYSLIPS ====================
 
   async getPayslipsByRun(runId: string): Promise<any[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -648,7 +648,7 @@ export const payrollApi = {
   },
 
   async getEmployeePayslips(employeeId: string): Promise<any[]> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -690,7 +690,7 @@ export const payrollApi = {
     }>;
     pagination: { limit: number; offset: number; total: number };
   } | null> {
-    if (isLocalOnlyMode()) return null;
+    if (!isAccountingBackedByRemoteApi()) return null;
     const q = new URLSearchParams();
     if (opts?.type && opts.type !== 'all') q.set('type', opts.type);
     q.set('limit', String(opts?.limit ?? 5000));
@@ -707,7 +707,7 @@ export const payrollApi = {
   },
 
   async getPayslip(id: string): Promise<any | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       storageService.init(tenantId);
@@ -725,7 +725,7 @@ export const payrollApi = {
     payslipId: string,
     data: Record<string, unknown>
   ): Promise<any | null> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       const { tenantId } = getTenantAndUser();
       const { normalizePayslip } = await import('../../components/payroll/types');
@@ -745,7 +745,7 @@ export const payrollApi = {
   },
 
   async deletePayslip(payslipId: string, tenantId: string, userId: string): Promise<boolean> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       storageService.init(tenantId);
       return storageService.deletePayslip(tenantId, payslipId, userId);
@@ -776,7 +776,7 @@ export const payrollApi = {
     results?: Array<{ payslip: any; transaction: any }>;
     error?: string;
   }> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       return { success: false, error: 'Bulk pay uses API mode.' };
     }
     if (!payments.length) {
@@ -809,7 +809,7 @@ export const payrollApi = {
       date?: string;
     }
   ): Promise<{ success: boolean; payslip?: any; transaction?: any; error?: string }> {
-    if (isLocalOnlyMode()) {
+    if (!isAccountingBackedByRemoteApi()) {
       return { success: false, error: 'Use local payroll payment flow.' };
     }
     try {

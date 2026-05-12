@@ -10,7 +10,7 @@ import { PayrollEmployee, Payslip, PayrollRun, PayrollStatus } from '../types';
 import { storageService } from '../services/storageService';
 import { useAppContext } from '../../../context/AppContext';
 import { Transaction, TransactionType } from '../../../types';
-import { isLocalOnlyMode } from '../../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { syncPayrollFromServer } from '../services/payrollSync';
 import { resolveSystemCategoryId } from '../../../services/systemEntityIds';
@@ -140,7 +140,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      if (isLocalOnlyMode()) {
+      if (!isAccountingBackedByRemoteApi()) {
         const allTransactions: any[] = [];
         const timestamp = Date.now();
 

@@ -24,6 +24,7 @@ import {
     useProperties,
     useRentalAgreements,
     useTransactions,
+    useStateSelector,
 } from '../../hooks/useSelectiveState';
 import {
     Contact,
@@ -35,6 +36,7 @@ import {
 import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
 import { CURRENCY } from '../../constants';
 import { formatDate, currentMonthYyyyMm } from '../../utils/dateUtils';
+import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
 import { resolveOwnerForPropertyOnDate, resolveOwnerForTransaction } from '../../services/propertyOwnershipService';
 import { resolveOwnerPayoutPayeeId, shouldAttributeUnallocatedOwnerPayoutToProperty } from '../payouts/ownerPayoutBreakdown';
 import {
@@ -81,6 +83,7 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
     const contacts = useContacts();
     const rentalAgreements = useRentalAgreements();
     const bills = useBills();
+    const projectAgreements = useStateSelector((s) => s.projectAgreements);
 
     const categoryById = useMemo(() => {
         const m = new Map<string, (typeof categories)[number]>();
@@ -122,17 +125,25 @@ const PropertyQuickManagementPanel: React.FC<PropertyQuickManagementPanelProps> 
         const feeCatId = brokerFeeCategory?.id;
         const rebateCatId = rebateCategory?.id;
 
+        const attributionOpts = {
+            brokerFeeCategoryId: feeCatId,
+            rebateCategoryId: rebateCatId,
+            projectAgreements,
+            rentalAgreements,
+        };
+
         const paidAlready = transactions
-            .filter(tx =>
-                tx.type === TransactionType.EXPENSE &&
-                tx.contactId === broker.id &&
-                (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
-                (tx.agreementId === activeAgreement.id || tx.propertyId === propertyId)
-            )
+            .filter(tx => {
+                if (tx.type !== TransactionType.EXPENSE) return false;
+                if (!(tx.categoryId === feeCatId || tx.categoryId === rebateCatId)) return false;
+                if (!(tx.agreementId === activeAgreement.id || tx.propertyId === propertyId)) return false;
+                const eff = getEffectiveCommissionBrokerContactId(tx, attributionOpts);
+                return eff === activeAgreement.brokerId;
+            })
             .reduce((sum, tx) => sum + tx.amount, 0);
 
         return Math.max(0, (activeAgreement.brokerFee || 0) - paidAlready);
-    }, [broker, activeAgreement, propertyId, transactions, categories]);
+    }, [broker, activeAgreement, propertyId, transactions, categories, projectAgreements, rentalAgreements]);
 
     const financials = useMemo(() => {
         const st = _getAppState();

@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Trash2 } from 'lucide-react';
 import { Payslip, PayrollEmployee, normalizePayslip } from '../types';
 import { storageService } from '../services/storageService';
-import { isLocalOnlyMode } from '../../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { syncPayrollFromServer } from '../services/payrollSync';
 
@@ -99,7 +99,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
     setIsDeleting(true);
     try {
       let deleted: boolean;
-      if (isLocalOnlyMode()) {
+      if (!isAccountingBackedByRemoteApi()) {
         deleted = storageService.deletePayslip(tenantId, payslip.id, userId);
       } else {
         deleted = await payrollApi.deletePayslip(payslip.id, tenantId, userId);

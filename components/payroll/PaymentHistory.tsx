@@ -18,7 +18,7 @@ import {
 import { storageService } from './services/storageService';
 import { PayrollRun, PayrollStatus } from './types';
 import { useAuth } from '../../context/AuthContext';
-import { isLocalOnlyMode } from '../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { payrollApi } from '../../services/api/payrollApi';
 import { syncPayrollFromServer } from './services/payrollSync';
 import { usePayrollContext } from '../../context/PayrollContext';
@@ -64,13 +64,13 @@ const PaymentHistory: React.FC = () => {
     setIsLoading(true);
     const load = async () => {
       try {
-        if (!isLocalOnlyMode()) {
+        if (isAccountingBackedByRemoteApi()) {
           await syncPayrollFromServer(tenantId);
         }
         storageService.init(tenantId);
         const allPaid = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
         const emptyRunIds = allPaid.filter(r => r.employee_count === 0 || (r.total_amount ?? 0) === 0).map(r => r.id);
-        if (isLocalOnlyMode()) {
+        if (!isAccountingBackedByRemoteApi()) {
           emptyRunIds.forEach(id => storageService.deletePayrollRun(tenantId, id));
         } else {
           for (const runId of emptyRunIds) {

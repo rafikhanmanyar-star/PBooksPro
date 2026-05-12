@@ -1,6 +1,7 @@
 /**
  * Server-side check: project-scoped bank/cash must cover new expense (matches client accountingLedgerCore rules).
- * Bill payments are excluded: the paying account may be debited below project-scoped available cash (negative balance allowed).
+ * Bill payments and payslip (salary) payments are excluded: the paying account may be debited below
+ * project-scoped available cash (negative project cash balance allowed), same as bill pay.
  */
 import type pg from 'pg';
 
@@ -141,6 +142,7 @@ export class ExpenseCashValidationBatchContext {
     account_id: string;
     project_id: string | null | undefined;
     bill_id?: string | null;
+    payslip_id?: string | null;
     exclude_transaction_id?: string | null;
   }): Promise<void> {
     await runExpenseProjectCashAssertion(this.client, this.tenantId, input, {
@@ -173,11 +175,13 @@ async function runExpenseProjectCashAssertion(
     account_id: string;
     project_id: string | null | undefined;
     bill_id?: string | null;
+    payslip_id?: string | null;
     exclude_transaction_id?: string | null;
   },
   deps: AssertionDeps
 ): Promise<void> {
   if (input.bill_id && String(input.bill_id).trim()) return;
+  if (input.payslip_id && String(input.payslip_id).trim()) return;
   if (input.type !== 'Expense' || !Number.isFinite(input.amount) || input.amount <= EPS) return;
 
   let projectId = input.project_id && String(input.project_id).trim() ? String(input.project_id).trim() : null;
@@ -223,6 +227,7 @@ export async function assertExpenseProjectCashAvailable(
     account_id: string;
     project_id: string | null | undefined;
     bill_id?: string | null;
+    payslip_id?: string | null;
     exclude_transaction_id?: string | null;
   },
   batchCtx?: ExpenseCashValidationBatchContext | null
