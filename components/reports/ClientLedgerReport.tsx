@@ -522,10 +522,40 @@ const ClientLedgerReport: React.FC = () => {
 
         try {
             const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
-            
+
             let message = `*Statement for ${selectedOwner.name}*\n`;
-            message += `Period: ${formatDate(startDate)} to ${formatDate(endDate)}\n\n`;
-            message += `Final Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
+
+            if (dateRangeType !== 'total') {
+                message += `\nPeriod: ${formatDate(startDate)} to ${formatDate(endDate)}\n`;
+            }
+
+            if (agreementSummaries.length > 0) {
+                const unitLines = agreementSummaries
+                    .map(s => `Unit: ${s.unitNames}\nProject: ${s.projectName}`)
+                    .join('\n\n');
+                message += `\n${unitLines}\n`;
+                const totalSelling = agreementSummaries.reduce((sum, s) => sum + s.sellingPrice, 0);
+                const totalPaid = agreementSummaries.reduce((sum, s) => sum + s.totalReceived, 0);
+                message += `\nTotal selling price: *${CURRENCY} ${totalSelling.toLocaleString()}*\n`;
+                message += `Total paid amount: *${CURRENCY} ${totalPaid.toLocaleString()}*\n`;
+            } else if (ledgerSelection.kind === 'unit') {
+                const u = state.units.find(x => x.id === ledgerSelection.unitId);
+                const treeOwner = ledgerTreeOwners.find(o => o.id === waOwnerId);
+                const treeUnit = treeOwner?.units.find(x => x.id === ledgerSelection.unitId);
+                const unitName = u?.name || '—';
+                const projectName = treeUnit?.projectName || '—';
+                message += `\nUnit: ${unitName}\nProject: ${projectName}\n`;
+            } else if (ledgerSelection.kind === 'owner') {
+                const treeOwner = ledgerTreeOwners.find(o => o.id === ledgerSelection.ownerId);
+                if (treeOwner && treeOwner.units.length > 0) {
+                    const unitLines = treeOwner.units
+                        .map(unit => `Unit: ${unit.name}\nProject: ${unit.projectName}`)
+                        .join('\n\n');
+                    message += `\n${unitLines}\n`;
+                }
+            }
+
+            message += `\nFinal Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
             message += `This is an automated summary from PBooksPro.`;
 
             sendOrOpenWhatsApp(
