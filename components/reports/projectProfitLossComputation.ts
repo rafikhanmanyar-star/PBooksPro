@@ -86,6 +86,23 @@ function runPlBillAccrual(
     return processedBills;
 }
 
+/**
+ * Construction-side expense from vendor bills only (same accrual rules as Project P&amp;L bill section).
+ * Excludes non-bill transactions; use for Inv. Mgmt “Undistributed funds” construction total.
+ */
+export function computeProjectBillAccruedExpenseTotal(
+    state: AppState,
+    selectedProjectId: string,
+    startDate: string,
+    endDate: string
+): number {
+    const categoryAmounts: Record<string, number> = {};
+    const incomeRef = { value: 0 };
+    const expenseRef = { value: 0 };
+    runPlBillAccrual(state, selectedProjectId, startDate, endDate, categoryAmounts, incomeRef, expenseRef);
+    return expenseRef.value;
+}
+
 /** Bills whose expense is fully reflected in P&L via accrual lines (skip double-counting payment txs). */
 export function computePlProcessedBills(
     state: AppState,

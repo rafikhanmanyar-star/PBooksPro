@@ -1,7 +1,8 @@
 import React, { memo, useEffect, useMemo } from 'react';
 import ProjectEquityManagement, {
     EQUITY_LEDGER_TABS,
-    type EquityLedgerTab,
+    INV_MGMT_REPORT_TABS,
+    type InvManagementContentTab,
 } from '../projectManagement/ProjectEquityManagement';
 import InvestmentDashboard from './InvestmentDashboard';
 import { useAppContext } from '../../context/AppContext';
@@ -11,9 +12,9 @@ import useLocalStorage from '../../hooks/useLocalStorage';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 
-export type InvTab = 'Overview' | EquityLedgerTab;
+export type InvTab = 'Overview' | InvManagementContentTab;
 
-const ALL_INV_TABS: InvTab[] = ['Overview', ...EQUITY_LEDGER_TABS];
+const ALL_INV_TABS: InvTab[] = ['Overview', ...EQUITY_LEDGER_TABS, ...INV_MGMT_REPORT_TABS];
 
 function invNavLabelShort(label: string): string {
     const w = label.trim().split(/\s+/);
@@ -79,6 +80,7 @@ const InvestmentManagementPage: React.FC = () => {
         () => [
             { value: 'Overview' as const, label: 'Overview', group: 'General' },
             ...EQUITY_LEDGER_TABS.map((t) => ({ value: t, label: t, group: 'Equity & ledger' })),
+            ...INV_MGMT_REPORT_TABS.map((t) => ({ value: t, label: t, group: 'Reports' })),
         ],
         []
     );
@@ -101,6 +103,16 @@ const InvestmentManagementPage: React.FC = () => {
                     )}
                     <div className="space-y-0.5">
                         {EQUITY_LEDGER_TABS.map((t) => (
+                            <NavItem key={t} tab={t} label={t} />
+                        ))}
+                    </div>
+                </div>
+                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700">
+                    {!subNav.effectiveCollapsed && (
+                        <p className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">Reports</p>
+                    )}
+                    <div className="space-y-0.5">
+                        {INV_MGMT_REPORT_TABS.map((t) => (
                             <NavItem key={t} tab={t} label={t} />
                         ))}
                     </div>
@@ -142,7 +154,7 @@ const InvestmentManagementPage: React.FC = () => {
                     className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
                     aria-label="Investment management section"
                 >
-                    {['General', 'Equity & ledger'].map((group) => {
+                    {['General', 'Equity & ledger', 'Reports'].map((group) => {
                         const opts = mobileOptions.filter((o) => o.group === group);
                         if (opts.length === 0) return null;
                         return (

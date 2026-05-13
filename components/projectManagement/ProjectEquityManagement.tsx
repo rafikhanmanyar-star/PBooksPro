@@ -16,6 +16,8 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
 import ProjectInvestorReport from '../reports/ProjectInvestorReport';
+import UndistributedFundsReport from '../investmentManagement/UndistributedFundsReport';
+import InvMgmtProfitReport from '../investmentManagement/InvMgmtProfitReport';
 import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -135,12 +137,19 @@ const getEntityColorStyle = (projectId: string | undefined, buildingId: string |
     return {};
 };
 
-export const EQUITY_LEDGER_TABS = ['Ledger', 'Profit Distribution', 'Equity Transfer', 'Investor Distribution'] as const;
+/** Inv. Mgmt sidebar: core equity tools (ledger, distribute, transfer). */
+export const EQUITY_LEDGER_TABS = ['Ledger', 'Profit Distribution', 'Equity Transfer'] as const;
 export type EquityLedgerTab = (typeof EQUITY_LEDGER_TABS)[number];
 
+/** Inv. Mgmt sidebar: Reports section. */
+export const INV_MGMT_REPORT_TABS = ['Investor Distribution', 'Undistributed funds', 'Profit'] as const;
+export type InvMgmtReportTab = (typeof INV_MGMT_REPORT_TABS)[number];
+
+export type InvManagementContentTab = EquityLedgerTab | InvMgmtReportTab;
+
 export interface ProjectEquityManagementProps {
-    equityTab: EquityLedgerTab;
-    onEquityTabChange: (tab: EquityLedgerTab) => void;
+    equityTab: InvManagementContentTab;
+    onEquityTabChange: (tab: InvManagementContentTab) => void;
 }
 
 const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equityTab, onEquityTabChange }) => {
@@ -1866,6 +1875,16 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             {equityTab === 'Investor Distribution' && (
                 <div className="flex-grow overflow-hidden">
                     <ProjectInvestorReport />
+                </div>
+            )}
+            {equityTab === 'Undistributed funds' && (
+                <div className="flex-grow overflow-hidden">
+                    <UndistributedFundsReport />
+                </div>
+            )}
+            {equityTab === 'Profit' && (
+                <div className="flex-grow overflow-hidden">
+                    <InvMgmtProfitReport />
                 </div>
             )}
             </div>
