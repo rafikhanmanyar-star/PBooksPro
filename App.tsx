@@ -423,7 +423,7 @@ const App: React.FC = () => {
 
     let pageToSet: Page = page;
     let openRentalSetupFromLast = false;
-    let openOwnerRentalIncomeFromLast = false;
+    let openPayoutsFromLast = false;
     if (isEnteringProjectSelling) {
       try {
         const last = sessionStorage.getItem('lastProjectSellingPage');
@@ -440,7 +440,7 @@ const App: React.FC = () => {
           openRentalSetupFromLast = true;
         } else if (last === 'ownerPayouts') {
           pageToSet = 'rentalManagement';
-          openOwnerRentalIncomeFromLast = true;
+          openPayoutsFromLast = true;
         } else if (last && rentalPages.includes(last)) pageToSet = last as Page;
         else pageToSet = 'rentalManagement';
       } catch (_) {
@@ -452,8 +452,8 @@ const App: React.FC = () => {
       if (openRentalSetupFromLast) {
         dispatch({ type: 'SET_INITIAL_TABS', payload: ['Rental setup'] });
       }
-      if (openOwnerRentalIncomeFromLast) {
-        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Reports', 'Owner Rental Income'] });
+      if (openPayoutsFromLast) {
+        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Payouts'] });
       }
       dispatch({ type: 'SET_PAGE', payload: pageToSet });
     });
@@ -477,7 +477,7 @@ const App: React.FC = () => {
       const isValidPage = Object.values(PAGE_GROUPS).flat().includes(page);
       if (isValidPage) {
         if (page === 'ownerPayouts') {
-          dispatch({ type: 'SET_INITIAL_TABS', payload: ['Reports', 'Owner Rental Income'] });
+          dispatch({ type: 'SET_INITIAL_TABS', payload: ['Payouts'] });
           dispatch({ type: 'SET_PAGE', payload: 'rentalManagement' });
         } else {
           dispatch({ type: 'SET_PAGE', payload: page as Page });

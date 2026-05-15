@@ -26,7 +26,7 @@ function rowHasActivity(r: InvMgmtProfitReportRow): boolean {
  * Total bills for the project: full bill amounts (paid + payable / AP), excluding drafts.
  * Scoped by bill issue date through `endDateStr` (inclusive).
  */
-function sumProjectBillAmounts(state: AppState, projectId: string, endDateStr: string): number {
+export function sumProjectBillAmounts(state: AppState, projectId: string, endDateStr: string): number {
     const end = new Date(endDateStr);
     end.setHours(23, 59, 59, 999);
     let sum = 0;

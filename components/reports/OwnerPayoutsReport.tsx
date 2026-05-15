@@ -23,6 +23,7 @@ import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import TreeView, { TreeNode } from '../ui/TreeView';
 import OwnerRentalIncomePayModal from './OwnerRentalIncomePayModal';
+import OwnerRentalIncomeReceiveModal from './OwnerRentalIncomeReceiveModal';
 import {
     TREE_SELECT_AUTO,
     pruneTreeNodesBySearchQuery,
@@ -164,6 +165,7 @@ const OwnerPayoutsReport: React.FC = () => {
         action: null
     });
     const [payModalOpen, setPayModalOpen] = useState(false);
+    const [receiveModalOpen, setReceiveModalOpen] = useState(false);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -205,6 +207,9 @@ const OwnerPayoutsReport: React.FC = () => {
         const securityRefundCat = state.categories.find(c => c.name === 'Security Deposit Refund');
         const obClearingCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
         const obShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+        const ownerSvcPayCat = state.categories.find(
+            (c) => c.id === 'sys-cat-own-svc-pay' || c.name === 'Owner Service Charge Payment'
+        );
 
         if (!rentalIncomeCategory) return 0;
 
@@ -279,6 +284,15 @@ const OwnerPayoutsReport: React.FC = () => {
                     if (isNaN(rawAmt)) return;
                     const property = state.properties.find(p => p.id === tx.propertyId);
                     addIncomeToBalance(rawAmt, tx.contactId || tx.ownerId, tx.buildingId || property?.buildingId, tx.propertyId);
+                    return;
+                }
+
+                if (ownerSvcPayCat && tx.categoryId === ownerSvcPayCat.id) {
+                    const rawAmt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(rawAmt) || rawAmt <= 0) return;
+                    const property = state.properties.find(p => p.id === tx.propertyId);
+                    const buildingId = tx.buildingId || property?.buildingId;
+                    addIncomeToBalance(rawAmt, tx.contactId || tx.ownerId, buildingId, tx.propertyId);
                     return;
                 }
 
@@ -453,6 +467,9 @@ const OwnerPayoutsReport: React.FC = () => {
 
         const clearingAllocCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
         const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+        const ownerSvcPayCat = state.categories.find(
+            (c) => c.id === 'sys-cat-own-svc-pay' || c.name === 'Owner Service Charge Payment'
+        );
 
         const txIdsWithShareLines = new Set<string>();
         if (ownerShareCat) {
@@ -539,6 +556,13 @@ const OwnerPayoutsReport: React.FC = () => {
             if (ownerShareCat && tx.categoryId === ownerShareCat.id) {
                 const rawAmt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(rawAmt)) return;
+                pushIncomeItem(tx, rawAmt, tx.contactId || tx.ownerId);
+                return;
+            }
+
+            if (ownerSvcPayCat && tx.categoryId === ownerSvcPayCat.id) {
+                const rawAmt = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                if (isNaN(rawAmt) || rawAmt <= 0) return;
                 pushIncomeItem(tx, rawAmt, tx.contactId || tx.ownerId);
                 return;
             }
@@ -880,9 +904,22 @@ const OwnerPayoutsReport: React.FC = () => {
         return fullLedgerClosingBalance > 0.01;
     }, [resolvedTreeIdForFilters, perOwnerLedgerMode, fullLedgerClosingBalance]);
 
+    /** Receive when the owner owes the business (negative closing balance), same tree scope as Pay. */
+    const receiveFromReportEligible = useMemo(() => {
+        const id = resolvedTreeIdForFilters;
+        if (id === 'all' || id.startsWith('building:')) return false;
+        if (!id.startsWith('owner:') && !id.startsWith('unit:')) return false;
+        if (perOwnerLedgerMode) return false;
+        return fullLedgerClosingBalance < -0.01;
+    }, [resolvedTreeIdForFilters, perOwnerLedgerMode, fullLedgerClosingBalance]);
+
     useEffect(() => {
         if (!payFromReportEligible && payModalOpen) setPayModalOpen(false);
     }, [payFromReportEligible, payModalOpen]);
+
+    useEffect(() => {
+        if (!receiveFromReportEligible && receiveModalOpen) setReceiveModalOpen(false);
+    }, [receiveFromReportEligible, receiveModalOpen]);
 
     const payModalOwner = useMemo(
         () => (selectedOwnerId !== 'all' ? state.contacts.find((c) => c.id === selectedOwnerId) ?? null : null),
@@ -1186,6 +1223,20 @@ const OwnerPayoutsReport: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-2 flex-shrink-0">
                                         <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => setReceiveModalOpen(true)}
+                                            disabled={!receiveFromReportEligible}
+                                            className="h-8 min-w-[100px] px-4 border-app-border disabled:opacity-50 disabled:cursor-not-allowed"
+                                            title={
+                                                receiveFromReportEligible
+                                                    ? 'Record cash received from the owner against unpaid bills or service charges'
+                                                    : 'Select an owner or unit with a negative closing balance to receive reimbursement'
+                                            }
+                                        >
+                                            Receive amount
+                                        </Button>
+                                        <Button
                                             variant="primary"
                                             size="sm"
                                             onClick={() => setPayModalOpen(true)}
@@ -1408,6 +1459,19 @@ const OwnerPayoutsReport: React.FC = () => {
                     property={payModalProperty}
                     reportPayableBalance={fullLedgerClosingBalance}
                     preSelectedBuildingId={payModalProperty?.buildingId}
+                />
+            )}
+
+            {payModalOwner && (
+                <OwnerRentalIncomeReceiveModal
+                    isOpen={receiveModalOpen}
+                    onClose={() => setReceiveModalOpen(false)}
+                    owner={payModalOwner}
+                    property={payModalProperty}
+                    selectedBuildingId={selectedBuildingId}
+                    selectedOwnerId={selectedOwnerId}
+                    selectedUnitId={selectedUnitId}
+                    reportClosingBalance={fullLedgerClosingBalance}
                 />
             )}
         </div>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
-import { Transaction, TransactionType } from '../../types';
+import { InvoiceStatus, Transaction, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
@@ -10,23 +10,32 @@ import Button from '../ui/Button';
 import Select from '../ui/Select';
 import { CURRENCY } from '../../constants';
 import { resolveSystemCategoryId } from '../../services/systemEntityIds';
-import { toLocalDateString } from '../../utils/dateUtils';
+import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { getExpenseBearerType } from '../../utils/rentalBillPayments';
 
-interface ReceiveFromOwnerModalProps {
+function fmtMoney(n: number): string {
+    return `${CURRENCY} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+interface OwnerBearerBillRow {
+    id: string;
+    billNumber: string;
+    propertyName: string;
+    /** Owner-bearer (property) vs building-bearer (shared building cost). */
+    allocation: 'Owner' | 'Building';
+    issueDate: string;
+    amount: number;
+    paid: number;
+    balance: number;
+}
+
+const ReceiveFromOwnerModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
     ownerId: string;
     ownerName: string;
     suggestedAmount: number;
-}
-
-const ReceiveFromOwnerModal: React.FC<ReceiveFromOwnerModalProps> = ({
-    isOpen,
-    onClose,
-    ownerId,
-    ownerName,
-    suggestedAmount,
-}) => {
+}> = ({ isOpen, onClose, ownerId, ownerName, suggestedAmount }) => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert } = useNotification();
 
@@ -35,27 +44,111 @@ const ReceiveFromOwnerModal: React.FC<ReceiveFromOwnerModalProps> = ({
     const [accountId, setAccountId] = useState('');
     const [reference, setReference] = useState('');
 
-    // Available bank/cash accounts
+    const propertyById = useMemo(
+        () => new Map(state.properties.map((p) => [p.id, p])),
+        [state.properties]
+    );
+
+    const buildingById = useMemo(
+        () => new Map(state.buildings.map((b) => [b.id, b])),
+        [state.buildings]
+    );
+
+    const ownerBearerBillRows = useMemo((): OwnerBearerBillRow[] => {
+        const ownerProps = state.properties.filter((p) => p.ownerId === ownerId);
+        const propIds = new Set(ownerProps.map((p) => p.id));
+        const ownerBuildingIds = new Set(
+            ownerProps.map((p) => p.buildingId).filter((id): id is string => !!id && id.trim() !== '')
+        );
+        if (propIds.size === 0 && ownerBuildingIds.size === 0) return [];
+
+        const raState = { rentalAgreements: state.rentalAgreements };
+        const rows: OwnerBearerBillRow[] = [];
+
+        for (const b of state.bills) {
+            if (b.status === InvoiceStatus.DRAFT) continue;
+
+            const bearer = getExpenseBearerType(b, raState);
+            if (bearer === 'tenant') continue;
+
+            const amt = Number(b.amount) || 0;
+            const paid = Number(b.paidAmount) || 0;
+            const balance = Math.max(0, amt - paid);
+
+            if (bearer === 'owner') {
+                if (!b.propertyId || !propIds.has(b.propertyId)) continue;
+                const prop = propertyById.get(b.propertyId);
+                rows.push({
+                    id: b.id,
+                    billNumber: b.billNumber || b.id,
+                    propertyName: prop?.name ?? '—',
+                    allocation: 'Owner',
+                    issueDate: b.issueDate || '',
+                    amount: amt,
+                    paid,
+                    balance,
+                });
+                continue;
+            }
+
+            if (bearer === 'building') {
+                if (!b.buildingId || !ownerBuildingIds.has(b.buildingId)) continue;
+                if (b.propertyId && !propIds.has(b.propertyId)) continue;
+
+                const building = buildingById.get(b.buildingId);
+                let propertyName: string;
+                if (b.propertyId && propIds.has(b.propertyId)) {
+                    propertyName = propertyById.get(b.propertyId)?.name ?? building?.name ?? '—';
+                } else {
+                    propertyName = building ? `Building: ${building.name}` : 'Building';
+                }
+
+                rows.push({
+                    id: b.id,
+                    billNumber: b.billNumber || b.id,
+                    propertyName,
+                    allocation: 'Building',
+                    issueDate: b.issueDate || '',
+                    amount: amt,
+                    paid,
+                    balance,
+                });
+            }
+        }
+
+        rows.sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''));
+        return rows;
+    }, [state.bills, state.properties, state.buildings, state.rentalAgreements, ownerId, propertyById, buildingById]);
+
+    const billTotals = useMemo(() => {
+        return ownerBearerBillRows.reduce(
+            (acc, r) => ({
+                amount: acc.amount + r.amount,
+                paid: acc.paid + r.paid,
+                balance: acc.balance + r.balance,
+            }),
+            { amount: 0, paid: 0, balance: 0 }
+        );
+    }, [ownerBearerBillRows]);
+
     const accountOptions = useMemo(() => {
-        return state.accounts.filter(a => a.type === 'Bank' || a.type === 'Cash' || a.name === 'Cash');
+        return state.accounts.filter((a) => a.type === 'Bank' || a.type === 'Cash' || a.name === 'Cash');
     }, [state.accounts]);
 
-    // Reset form on open
     useEffect(() => {
         if (isOpen) {
-            setAmount(suggestedAmount.toFixed(2));
+            setAmount(Number.isFinite(suggestedAmount) ? suggestedAmount.toFixed(2) : '0');
             setDate(toLocalDateString(new Date()));
-            const cashAccount = state.accounts.find(a => a.name === 'Cash');
+            const cashAccount = state.accounts.find((a) => a.name === 'Cash');
             setAccountId(cashAccount?.id || accountOptions[0]?.id || '');
             setReference('');
         }
     }, [isOpen, suggestedAmount, state.accounts, accountOptions]);
 
-    // Vacant properties for this owner
     const vacantProperties = useMemo(() => {
         return state.properties
-            .filter(p => p.ownerId === ownerId && (p.monthlyServiceCharge || 0) > 0)
-            .map(p => p.name);
+            .filter((p) => p.ownerId === ownerId && (p.monthlyServiceCharge || 0) > 0)
+            .map((p) => p.name);
     }, [state.properties, ownerId]);
 
     const handleSubmit = async () => {
@@ -77,11 +170,10 @@ const ReceiveFromOwnerModal: React.FC<ReceiveFromOwnerModalProps> = ({
 
         const ownSvcResolved = resolveSystemCategoryId(state.categories, 'sys-cat-own-svc-pay');
         let ownerSvcPayCategory =
-            (ownSvcResolved ? state.categories.find(c => c.id === ownSvcResolved) : undefined) ??
-            state.categories.find(c => c.name === 'Owner Service Charge Payment');
+            (ownSvcResolved ? state.categories.find((c) => c.id === ownSvcResolved) : undefined) ??
+            state.categories.find((c) => c.name === 'Owner Service Charge Payment');
 
         if (!ownerSvcPayCategory) {
-            // Auto-create if missing (shouldn't happen with proper initialization)
             ownerSvcPayCategory = {
                 id: ownSvcResolved ?? 'sys-cat-own-svc-pay',
                 name: 'Owner Service Charge Payment',
@@ -92,22 +184,14 @@ const ReceiveFromOwnerModal: React.FC<ReceiveFromOwnerModalProps> = ({
             dispatch({ type: 'ADD_CATEGORY', payload: ownerSvcPayCategory });
         }
 
-        // Find the Rental Income category for the credit side
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        if (!rentalIncomeCategory) {
-            await showAlert("Critical Error: 'Rental Income' category not found.");
-            return;
-        }
-
         const baseTimestamp = Date.now();
 
-        // Create the income transaction (money received from owner)
         const receiveTx: Transaction = {
             id: `own-svc-pay-${baseTimestamp}`,
             type: TransactionType.INCOME,
             amount: numAmount,
             date: date,
-            description: reference || `Service Charge Payment received from ${ownerName}`,
+            description: reference || `Owner payment received from ${ownerName}`,
             accountId: accountId,
             categoryId: ownerSvcPayCategory.id,
             contactId: ownerId,
@@ -120,70 +204,148 @@ const ReceiveFromOwnerModal: React.FC<ReceiveFromOwnerModalProps> = ({
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Receive Payment from Owner">
-            <div className="space-y-4">
-                {/* Info Banner */}
+        <Modal isOpen={isOpen} onClose={onClose} title="Receive payment from owner">
+            <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm text-blue-800">
-                    <p className="font-medium">Collecting service charges from owner</p>
-                    <p className="mt-1 text-blue-600">
-                        This records a payment received from the owner to cover building service charges
-                        {vacantProperties.length > 0 ? ` for vacant properties: ${vacantProperties.join(', ')}` : ''}.
+                    <p className="font-medium">Service charges, owner &amp; building bills</p>
+                    <p className="mt-1 text-blue-700">
+                        Use this to record cash received from the owner. That typically covers{' '}
+                        <strong>monthly service charge</strong> deductions and <strong>vendor bills</strong> allocated to
+                        the owner or <strong>building</strong> (shared costs for buildings where this owner has units) on
+                        the rental owner income ledger.
+                        {vacantProperties.length > 0 ? (
+                            <>
+                                {' '}
+                                Vacant units with a configured charge: {vacantProperties.join(', ')}.
+                            </>
+                        ) : null}
                     </p>
                 </div>
 
-                {/* Owner Info */}
                 <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center gap-3">
                         <div>
                             <p className="text-sm text-slate-500">Owner</p>
                             <p className="font-semibold text-slate-800">{ownerName}</p>
                         </div>
-                        <div className="text-right">
-                            <p className="text-sm text-slate-500">Amount Owed</p>
-                            <p className="font-bold text-red-600">{CURRENCY} {suggestedAmount.toLocaleString()}</p>
+                        <div className="text-right shrink-0">
+                            <p className="text-sm text-slate-500">Suggested amount</p>
+                            <p className="font-bold text-red-600">{fmtMoney(suggestedAmount)}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5 max-w-[14rem] leading-tight">
+                                From ledger / balance; adjust if needed. May include charges not itemized below.
+                            </p>
                         </div>
                     </div>
                 </div>
 
-                {/* Amount */}
+                <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <div className="px-3 py-2 bg-slate-100 border-b border-slate-200">
+                        <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">
+                            Owner &amp; building-bearer bills
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                            <strong>Owner</strong>: bill allocation Owner on this owner&apos;s properties.{' '}
+                            <strong>Building</strong>: allocation Building on a building that contains one of this
+                            owner&apos;s properties (includes paid and outstanding).
+                        </p>
+                    </div>
+                    {ownerBearerBillRows.length === 0 ? (
+                        <p className="px-3 py-4 text-sm text-slate-500 italic">
+                            No owner- or building-bearer bills found for this owner&apos;s properties or buildings.
+                        </p>
+                    ) : (
+                        <div className="max-h-52 overflow-y-auto">
+                            <table className="min-w-full text-xs">
+                                <thead className="bg-slate-50/80 sticky top-0">
+                                    <tr className="text-left text-slate-600">
+                                        <th className="px-2 py-1.5 font-semibold">Bill</th>
+                                        <th className="px-2 py-1.5 font-semibold">Property / building</th>
+                                        <th className="px-2 py-1.5 font-semibold">Allocation</th>
+                                        <th className="px-2 py-1.5 font-semibold">Issue</th>
+                                        <th className="px-2 py-1.5 font-semibold text-right">Amount</th>
+                                        <th className="px-2 py-1.5 font-semibold text-right">Paid</th>
+                                        <th className="px-2 py-1.5 font-semibold text-right">Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {ownerBearerBillRows.map((r) => (
+                                        <tr key={r.id} className="hover:bg-slate-50/80">
+                                            <td className="px-2 py-1.5 font-mono text-slate-800">{r.billNumber}</td>
+                                            <td className="px-2 py-1.5 text-slate-700">{r.propertyName}</td>
+                                            <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
+                                                <span
+                                                    className={
+                                                        r.allocation === 'Building'
+                                                            ? 'text-amber-800 font-medium'
+                                                            : 'text-slate-700'
+                                                    }
+                                                >
+                                                    {r.allocation}
+                                                </span>
+                                            </td>
+                                            <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap">
+                                                {r.issueDate ? formatDate(r.issueDate) : '—'}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(r.amount)}</td>
+                                            <td className="px-2 py-1.5 text-right tabular-nums text-emerald-700">
+                                                {fmtMoney(r.paid)}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-right tabular-nums font-medium text-slate-900">
+                                                {fmtMoney(r.balance)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot className="bg-slate-100/90 border-t border-slate-200 font-semibold text-slate-800">
+                                    <tr>
+                                        <td colSpan={4} className="px-2 py-1.5 text-right">
+                                            Totals
+                                        </td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(billTotals.amount)}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(billTotals.paid)}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(billTotals.balance)}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
                 <Input
-                    label="Amount to Receive"
+                    label="Amount to receive"
                     type="text"
                     inputMode="decimal"
                     value={amount}
-                    onChange={e => setAmount(e.target.value)}
+                    onChange={(e) => setAmount(e.target.value)}
                     required
                 />
 
-                {/* Date */}
-                <DatePicker label="Payment Date" value={date} onChange={d => setDate(toLocalDateString(d))} required />
+                <DatePicker label="Payment date" value={date} onChange={(d) => setDate(toLocalDateString(d))} required />
 
-                {/* Account */}
                 <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Receive Into Account</label>
-                    <Select
-                        value={accountId}
-                        onChange={e => setAccountId(e.target.value)}
-                    >
-                        {accountOptions.map(acc => (
-                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Receive into account</label>
+                    <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                        {accountOptions.map((acc) => (
+                            <option key={acc.id} value={acc.id}>
+                                {acc.name}
+                            </option>
                         ))}
                     </Select>
                 </div>
 
-                {/* Reference */}
                 <Input
-                    label="Reference / Description (optional)"
+                    label="Reference / description (optional)"
                     type="text"
                     value={reference}
-                    onChange={e => setReference(e.target.value)}
-                    placeholder={`Service Charge Payment from ${ownerName}`}
+                    onChange={(e) => setReference(e.target.value)}
+                    placeholder={`Payment from ${ownerName}`}
                 />
 
-                {/* Actions */}
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSubmit}>Receive Payment</Button>
+                    <Button variant="secondary" onClick={onClose}>
+                        Cancel
+                    </Button>
+                    <Button onClick={() => void handleSubmit()}>Receive payment</Button>
                 </div>
             </div>
         </Modal>

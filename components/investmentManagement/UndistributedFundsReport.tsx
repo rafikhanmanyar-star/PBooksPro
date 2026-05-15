@@ -10,6 +10,11 @@ import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { buildUndistributedFundsRows } from './undistributedFundsReportModel';
 
+/** Whole numbers for display (no decimal places). */
+function fmtWhole(n: number): string {
+    return `${CURRENCY} ${Math.round(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
 const UndistributedFundsReport: React.FC = () => {
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
@@ -35,36 +40,40 @@ const UndistributedFundsReport: React.FC = () => {
     const totals = useMemo(() => {
         return rows.reduce(
             (acc, r) => ({
+                initialInvestment: acc.initialInvestment + r.initialInvestment,
                 totalExpense: acc.totalExpense + r.totalExpense,
                 totalRevenue: acc.totalRevenue + r.totalRevenue,
-                totalLiquidity: acc.totalLiquidity + r.totalLiquidity,
-                initialInvestment: acc.initialInvestment + r.initialInvestment,
-                totalProfitDistributed: acc.totalProfitDistributed + r.totalProfitDistributed,
-                currentEquity: acc.currentEquity + r.currentEquity,
+                currentProfit: acc.currentProfit + r.currentProfit,
+                totalEquity: acc.totalEquity + r.totalEquity,
+                profitDistributed: acc.profitDistributed + r.profitDistributed,
+                totalWithdrawal: acc.totalWithdrawal + r.totalWithdrawal,
                 undistributedFund: acc.undistributedFund + r.undistributedFund,
             }),
             {
+                initialInvestment: 0,
                 totalExpense: 0,
                 totalRevenue: 0,
-                totalLiquidity: 0,
-                initialInvestment: 0,
-                totalProfitDistributed: 0,
-                currentEquity: 0,
+                currentProfit: 0,
+                totalEquity: 0,
+                profitDistributed: 0,
+                totalWithdrawal: 0,
                 undistributedFund: 0,
             }
         );
     }, [rows]);
 
     const handleExport = () => {
-        const data = rows.map((r) => ({
-            'Project Name': r.projectName,
-            'Total expense (construction bills)': r.totalExpense,
-            'Total revenue (installment payments received)': r.totalRevenue,
-            'Total liquidity': r.totalLiquidity,
-            'Initial investment': r.initialInvestment,
-            'Total profit distributed': r.totalProfitDistributed,
-            'Current equity': r.currentEquity,
-            'Undistributed fund': r.undistributedFund,
+        const data = rows.map((r, i) => ({
+            'S. No': i + 1,
+            'Project name': r.projectName,
+            'Initial investment': Math.round(r.initialInvestment),
+            'Total expense': Math.round(r.totalExpense),
+            'Total revenue': Math.round(r.totalRevenue),
+            'Current profit': Math.round(r.currentProfit),
+            'Total equity': Math.round(r.totalEquity),
+            'Profit distributed': Math.round(r.profitDistributed),
+            'Total withdrawal': Math.round(r.totalWithdrawal),
+            'Undistributed fund (current equity)': Math.round(r.undistributedFund),
         }));
         exportJsonToExcel(data, 'undistributed-funds.xlsx', 'Undistributed funds');
     };
@@ -76,11 +85,12 @@ const UndistributedFundsReport: React.FC = () => {
                 <div>
                     <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Undistributed funds</h3>
                     <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 max-w-3xl">
-                        Per project: construction expense from accrued bills; selling revenue from installment payment
-                        income through the as-of date; initial investment and profit distributed from the equity ledger
-                        (same basis as Investor Distribution). Undistributed fund = total revenue + initial investment −
-                        current equity (where current equity = initial investment + total profit distributed). Use this
-                        as a guide for how much can be distributed in a cycle without exceeding available funds.
+                        Columns follow construction bills (paid + payable), realized installment receipts, and Inv.
+                        Mgmt equity: current profit is revenue minus expense; total equity is initial investment plus
+                        current profit; profit distributed and total withdrawal match Investor Distribution (profit
+                        realized and withdrawals). Column 10 — Undistributed fund (current equity): total equity − total
+                        withdrawal. Amounts are shown as whole numbers. As-of applies to equity and receipt
+                        transactions; bill totals use issue dates through the same date.
                     </p>
                 </div>
                 <ReportToolbar
@@ -113,76 +123,81 @@ const UndistributedFundsReport: React.FC = () => {
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 dark:bg-slate-800/80 sticky top-0 z-10">
                                 <tr className="text-left text-slate-600 dark:text-slate-300">
+                                    <th className="px-2 py-2 font-semibold text-right whitespace-nowrap w-12">S. No</th>
                                     <th className="px-3 py-2 font-semibold whitespace-nowrap">Project name</th>
+                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Initial investment</th>
                                     <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Total expense</th>
                                     <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Total revenue</th>
-                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Total liquidity</th>
-                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Initial investment</th>
-                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Total profit distributed</th>
-                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Current equity</th>
-                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Undistributed fund</th>
+                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Current profit</th>
+                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Total equity</th>
+                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Profit distributed</th>
+                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Total withdrawal</th>
+                                    <th className="px-3 py-2 font-semibold text-right whitespace-nowrap min-w-[11rem]">
+                                        <span className="block">Undistributed fund (current equity)</span>
+                                        <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400 tracking-normal">
+                                            Total equity − Total withdrawal
+                                        </span>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                 {rows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} className="px-3 py-10 text-center text-slate-500">
-                                            No projects with bill expense, selling receipts, or equity activity in scope.
+                                        <td colSpan={10} className="px-3 py-10 text-center text-slate-500">
+                                            No projects with bills, receipts, or equity activity in scope.
                                         </td>
                                     </tr>
                                 ) : (
-                                    rows.map((r) => (
+                                    rows.map((r, idx) => (
                                         <tr key={r.projectId} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                                            <td className="px-2 py-2 text-right tabular-nums text-slate-600 dark:text-slate-400">
+                                                {idx + 1}
+                                            </td>
                                             <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">
                                                 {r.projectName}
                                             </td>
-                                            <td className="px-3 py-2 text-right tabular-nums">
-                                                {CURRENCY} {r.totalExpense.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(r.initialInvestment)}</td>
+                                            <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(r.totalExpense)}</td>
                                             <td className="px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">
-                                                {CURRENCY} {r.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                {fmtWhole(r.totalRevenue)}
                                             </td>
-                                            <td className="px-3 py-2 text-right tabular-nums">
-                                                {CURRENCY} {r.totalLiquidity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </td>
-                                            <td className="px-3 py-2 text-right tabular-nums">
-                                                {CURRENCY} {r.initialInvestment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </td>
-                                            <td className="px-3 py-2 text-right tabular-nums">
-                                                {CURRENCY} {r.totalProfitDistributed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            <td
+                                                className={`px-3 py-2 text-right tabular-nums ${
+                                                    r.currentProfit >= 0
+                                                        ? 'text-slate-900 dark:text-slate-100'
+                                                        : 'text-rose-700 dark:text-rose-400'
+                                                }`}
+                                            >
+                                                {fmtWhole(r.currentProfit)}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums font-medium">
-                                                {CURRENCY} {r.currentEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                {fmtWhole(r.totalEquity)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">
+                                                {fmtWhole(r.profitDistributed)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums text-rose-700 dark:text-rose-400">
+                                                {fmtWhole(r.totalWithdrawal)}
                                             </td>
                                             <td className="px-3 py-2 text-right tabular-nums font-semibold text-indigo-700 dark:text-indigo-300">
-                                                {CURRENCY} {r.undistributedFund.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                {fmtWhole(r.undistributedFund)}
                                             </td>
                                         </tr>
                                     ))
                                 )}
                                 {rows.length > 0 && (
                                     <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-semibold border-t-2 border-slate-200 dark:border-slate-600">
+                                        <td className="px-2 py-2 text-right text-slate-500">—</td>
                                         <td className="px-3 py-2">Totals</td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {CURRENCY} {totals.totalExpense.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {CURRENCY} {totals.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {CURRENCY} {totals.totalLiquidity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {CURRENCY} {totals.initialInvestment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {CURRENCY} {totals.totalProfitDistributed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {CURRENCY} {totals.currentEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(totals.initialInvestment)}</td>
+                                        <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(totals.totalExpense)}</td>
+                                        <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(totals.totalRevenue)}</td>
+                                        <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(totals.currentProfit)}</td>
+                                        <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(totals.totalEquity)}</td>
+                                        <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(totals.profitDistributed)}</td>
+                                        <td className="px-3 py-2 text-right tabular-nums">{fmtWhole(totals.totalWithdrawal)}</td>
                                         <td className="px-3 py-2 text-right tabular-nums text-indigo-800 dark:text-indigo-200">
-                                            {CURRENCY} {totals.undistributedFund.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            {fmtWhole(totals.undistributedFund)}
                                         </td>
                                     </tr>
                                 )}
@@ -197,8 +212,7 @@ const UndistributedFundsReport: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-500 dark:text-slate-400 shrink-0">
-                {CURRENCY} · Construction expense uses bill accrual through invoice dates up to the as-of date. Revenue sums
-                installment-linked income transactions through the as-of date.
+                Amounts rounded to whole {CURRENCY} for display and export.
             </p>
         </div>
     );
