@@ -31,6 +31,8 @@ export interface ProjectProfitabilityRow {
 export type ProfitabilityRowStatus = 'Profitable' | 'Loss' | 'Ongoing' | 'Completed';
 
 export interface ProjectProfitabilityFilters {
+    /** `all` or a configured project id */
+    projectId: string;
     search: string;
     dateTo: string;
     projectStatus: string;

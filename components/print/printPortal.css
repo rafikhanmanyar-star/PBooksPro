@@ -10,13 +10,13 @@
   display: none !important;
 }
 
-.report-print-content table {
+.report-print-content:not(.owner-rental-income-report-print) table {
   width: max-content;
   min-width: 100%;
 }
 
-.report-print-content table th,
-.report-print-content table td {
+.report-print-content:not(.owner-rental-income-report-print) table th,
+.report-print-content:not(.owner-rental-income-report-print) table td {
   white-space: nowrap;
 }
 

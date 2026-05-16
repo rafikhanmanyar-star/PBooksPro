@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import ComboBox from '../../../components/ui/ComboBox';
@@ -14,6 +15,7 @@ export interface ProfitabilityFilterBarProps {
     onEndDateChange: (d: string) => void;
     allRows: ProjectProfitabilityRow[];
     canManageFilters: boolean;
+    onProjectSelect?: (projectId: string) => void;
 }
 
 export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
@@ -22,12 +24,12 @@ export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
     onEndDateChange,
     allRows,
     canManageFilters,
+    onProjectSelect,
 }) => {
     const { filters, setFilter, resetFilters, savePreset, loadPreset, deletePreset, savedPresets } = useProfitabilityFiltersStore();
     const [presetName, setPresetName] = useState('');
 
     const equityAccounts = useMemo(() => state.accounts.filter((a) => a.type === AccountType.EQUITY), [state.accounts]);
-
     const projectTypes = useMemo(() => ['all', ...uniqueProjectTypes(allRows)], [allRows]);
     const cities = useMemo(() => ['all', ...uniqueCities(allRows)], [allRows]);
 
@@ -48,32 +50,57 @@ export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
         [equityAccounts]
     );
 
+    const projectItems = useMemo(() => {
+        const sorted = [...state.projects].sort((a, b) =>
+            (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+        );
+        return [{ id: 'all', name: 'All projects' }, ...sorted.map((p) => ({ id: p.id, name: p.name }))];
+    }, [state.projects]);
+
+    const handleProjectChange = (projectId: string) => {
+        setFilter('projectId', projectId);
+        if (projectId !== 'all') {
+            setFilter('search', '');
+            onProjectSelect?.(projectId);
+        }
+    };
+
     return (
         <div className="sticky top-0 z-30 -mx-1 px-1 py-3 mb-2 bg-slate-50/95 dark:bg-slate-950/90 backdrop-blur border-b border-slate-200/80 dark:border-slate-800">
+            <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-3 flex flex-wrap items-end gap-3 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 bg-gradient-to-r from-indigo-50/90 to-white/90 dark:from-indigo-950/40 dark:to-slate-900/60 px-3 py-3 shadow-sm"
+            >
+                <div className="w-full sm:min-w-[280px] sm:flex-1 max-w-xl">
+                    <ComboBox
+                        label="Project"
+                        items={projectItems}
+                        selectedId={filters.projectId || 'all'}
+                        onSelect={(i) => handleProjectChange(i?.id || 'all')}
+                        allowAddNew={false}
+                        entityType="project"
+                        placeholder="Select a project…"
+                    />
+                </div>
+                <div className="w-full sm:w-44">
+                    <Input label="As of date" type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} />
+                </div>
+                {filters.projectId !== 'all' && (
+                    <Button variant="secondary" type="button" onClick={() => handleProjectChange('all')} className="shrink-0">
+                        Show all projects
+                    </Button>
+                )}
+            </motion.div>
             <div className="flex flex-wrap items-end gap-2">
                 <div className="min-w-[160px] flex-1">
                     <Input label="Search" value={filters.search} onChange={(e) => setFilter('search', e.target.value)} placeholder="Project name…" disabled={!canManageFilters} />
                 </div>
-                <div className="w-40">
-                    <Input label="As of date" type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} />
-                </div>
                 <div className="w-44">
-                    <ComboBox
-                        label="Status"
-                        items={statusItems}
-                        selectedId={filters.projectStatus}
-                        onSelect={(i) => setFilter('projectStatus', (i?.id as string) || 'all')}
-                        allowAddNew={false}
-                    />
+                    <ComboBox label="Status" items={statusItems} selectedId={filters.projectStatus} onSelect={(i) => setFilter('projectStatus', (i?.id as string) || 'all')} allowAddNew={false} />
                 </div>
                 <div className="w-48">
-                    <ComboBox
-                        label="Investor"
-                        items={investorItems}
-                        selectedId={filters.investorId}
-                        onSelect={(i) => setFilter('investorId', i?.id || 'all')}
-                        allowAddNew={false}
-                    />
+                    <ComboBox label="Investor" items={investorItems} selectedId={filters.investorId} onSelect={(i) => setFilter('investorId', i?.id || 'all')} allowAddNew={false} />
                 </div>
                 <div className="w-44">
                     <ComboBox
@@ -94,22 +121,10 @@ export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
                     />
                 </div>
                 <div className="w-36">
-                    <Input
-                        label="Completion % min"
-                        value={filters.completionMin}
-                        onChange={(e) => setFilter('completionMin', e.target.value)}
-                        placeholder="0"
-                        disabled={!canManageFilters}
-                    />
+                    <Input label="Completion % min" value={filters.completionMin} onChange={(e) => setFilter('completionMin', e.target.value)} placeholder="0" disabled={!canManageFilters} />
                 </div>
                 <div className="w-36">
-                    <Input
-                        label="Completion % max"
-                        value={filters.completionMax}
-                        onChange={(e) => setFilter('completionMax', e.target.value)}
-                        placeholder="100"
-                        disabled={!canManageFilters}
-                    />
+                    <Input label="Completion % max" value={filters.completionMax} onChange={(e) => setFilter('completionMax', e.target.value)} placeholder="100" disabled={!canManageFilters} />
                 </div>
                 <div className="w-44">
                     <ComboBox
@@ -126,13 +141,7 @@ export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
                     />
                 </div>
                 <div className="w-48">
-                    <ComboBox
-                        label="Broker"
-                        items={brokerItems}
-                        selectedId={filters.brokerId}
-                        onSelect={(i) => setFilter('brokerId', i?.id || 'all')}
-                        allowAddNew={false}
-                    />
+                    <ComboBox label="Broker" items={brokerItems} selectedId={filters.brokerId} onSelect={(i) => setFilter('brokerId', i?.id || 'all')} allowAddNew={false} />
                 </div>
                 <div className="min-w-[120px] flex-1">
                     <Input label="Tags / notes" value={filters.tag} onChange={(e) => setFilter('tag', e.target.value)} placeholder="Filter description…" disabled={!canManageFilters} />

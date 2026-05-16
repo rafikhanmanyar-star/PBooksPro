@@ -426,8 +426,8 @@ export function buildProjectProfitabilityRow(state: AppState, project: Project, 
     };
 }
 
-export function getProjectProfitabilitySummary(state: AppState, endYmd: string): PortfolioProfitabilitySummary {
-    const rows = state.projects.map((p) => buildProjectProfitabilityRow(state, p, endYmd));
+/** Aggregate KPIs for a set of profitability rows (portfolio or filtered subset). */
+export function derivePortfolioSummaryFromRows(rows: ProjectProfitabilityRow[], endYmd: string): PortfolioProfitabilitySummary {
     const active = rows.filter((r) => r.rowStatus !== 'Completed').length;
     const profitable = rows.filter((r) => r.netProfit > 0.01).length;
     const loss = rows.filter((r) => r.netProfit < -0.01).length;
@@ -452,6 +452,11 @@ export function getProjectProfitabilitySummary(state: AppState, endYmd: string):
         totalInvestorCapital,
         rows,
     };
+}
+
+export function getProjectProfitabilitySummary(state: AppState, endYmd: string): PortfolioProfitabilitySummary {
+    const rows = state.projects.map((p) => buildProjectProfitabilityRow(state, p, endYmd));
+    return derivePortfolioSummaryFromRows(rows, endYmd);
 }
 
 export function getProjectProfitabilityDetails(state: AppState, projectId: string, endYmd: string): ProjectProfitabilityDetails | null {
@@ -490,6 +495,7 @@ export function filterProfitabilityRows(
     state: AppState,
     endYmd: string,
     f: {
+        projectId: string;
         search: string;
         projectStatus: string;
         investorId: string;
@@ -504,6 +510,7 @@ export function filterProfitabilityRows(
 ): ProjectProfitabilityRow[] {
     const q = f.search.trim().toLowerCase();
     return rows.filter((r) => {
+        if (f.projectId !== 'all' && r.projectId !== f.projectId) return false;
         if (q && !r.projectName.toLowerCase().includes(q)) return false;
         if (f.projectStatus !== 'all' && (r.projectStatus || 'Active') !== f.projectStatus) return false;
         if (f.investorId !== 'all' && !projectHasInvestor(state, r.projectId, f.investorId, endYmd)) return false;

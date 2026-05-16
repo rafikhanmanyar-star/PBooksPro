@@ -21,6 +21,7 @@ import { formatDate, toDateOnly, toLocalDateString } from '../../utils/dateUtils
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { OWNER_RENTAL_INCOME_PRINT_CSS } from './ownerRentalIncomePrint.css';
 import TreeView, { TreeNode } from '../ui/TreeView';
 import OwnerRentalIncomePayModal from './OwnerRentalIncomePayModal';
 import OwnerRentalIncomeReceiveModal from './OwnerRentalIncomeReceiveModal';
@@ -1167,6 +1168,7 @@ const OwnerPayoutsReport: React.FC = () => {
     return (
         <div className="flex flex-col h-full">
             <style>{STANDARD_PRINT_STYLES}</style>
+            <style>{OWNER_RENTAL_INCOME_PRINT_CSS}</style>
 
             <div className="flex flex-1 min-h-0 gap-0">
                 {/* Left: Portfolio View sidebar (hidden when printing) */}
@@ -1342,31 +1344,53 @@ const OwnerPayoutsReport: React.FC = () => {
                             <LedgerSummaryCards show={showLedgerSummary} cards={ledgerSummaryCards} />
 
                             {/* Data table (scroll container) — this block alone is cloned for print / PDF */}
-                            <div className="flex-1 min-h-0 flex flex-col px-6 pb-2" id="owner-rental-income-print-root">
+                            <div
+                                className="owner-rental-income-print-root flex-1 min-h-0 flex flex-col px-6 pb-2"
+                                id="owner-rental-income-print-root"
+                                data-print-orientation="landscape"
+                                data-print-page-size="a4"
+                            >
+                                <div className="owner-rental-income-print-header">
+                                    <h2>Owner Rental Income</h2>
+                                    <p>
+                                        Period: {formatDate(startDate)} – {formatDate(endDate)}
+                                        {activeOwnerName ? ` · Owner: ${activeOwnerName}` : ''}
+                                        {activePropertyName ? ` · Property: ${activePropertyName}` : ''}
+                                    </p>
+                                </div>
                                 <div className="flex-1 min-h-0 overflow-auto rounded-md border border-app-border" data-print-scroll-container>
-                                    <table className="min-w-full text-sm">
+                                    <table className="owner-rental-income-print-table min-w-full text-[15px] leading-snug">
+                                    <colgroup>
+                                        <col className="col-date" />
+                                        <col className="col-owner" />
+                                        <col className="col-property" />
+                                        <col className="col-particulars" />
+                                        <col className="col-rent-in" />
+                                        <col className="col-paid-out" />
+                                        <col className="col-balance" />
+                                    </colgroup>
                                     <thead className="sticky top-0 z-20 bg-app-card border-b-2 border-app-border">
                                         <tr>
-                                            <th onClick={() => handleSort('date')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
-                                            <th onClick={() => handleSort('ownerName')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Owner <SortIcon column="ownerName" /></th>
-                                            <th onClick={() => handleSort('propertyName')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Property <SortIcon column="propertyName" /></th>
-                                            <th onClick={() => handleSort('particulars')} className="px-3 py-2.5 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Particulars <SortIcon column="particulars" /></th>
-                                            <th onClick={() => handleSort('rentIn')} className="px-3 py-2.5 text-right text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Rent In <SortIcon column="rentIn" /></th>
-                                            <th onClick={() => handleSort('paidOut')} className="px-3 py-2.5 text-right text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Paid Out <SortIcon column="paidOut" /></th>
-                                            <th onClick={() => handleSort('balance')} className="px-3 py-2.5 text-right text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Balance <SortIcon column="balance" /></th>
+                                            <th onClick={() => handleSort('date')} className="col-date px-3 py-3 text-left text-sm font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
+                                            <th onClick={() => handleSort('ownerName')} className="col-owner px-3 py-3 text-left text-sm font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Owner <SortIcon column="ownerName" /></th>
+                                            <th onClick={() => handleSort('propertyName')} className="col-property px-3 py-3 text-left text-sm font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Property <SortIcon column="propertyName" /></th>
+                                            <th onClick={() => handleSort('particulars')} className="col-particulars px-3 py-3 text-left text-sm font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none whitespace-nowrap">Particulars <SortIcon column="particulars" /></th>
+                                            <th onClick={() => handleSort('rentIn')} className="col-rent-in px-3 py-3 text-right text-sm font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Rent In <SortIcon column="rentIn" /></th>
+                                            <th onClick={() => handleSort('paidOut')} className="col-paid-out px-3 py-3 text-right text-sm font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Paid Out <SortIcon column="paidOut" /></th>
+                                            <th onClick={() => handleSort('balance')} className="col-balance px-3 py-3 text-right text-sm font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:text-app-text select-none">Balance <SortIcon column="balance" /></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-app-border/50">
                                         {/* Opening Balance row */}
                                         {openingBalance !== 0 && !perOwnerLedgerMode && (
                                             <tr className="bg-app-toolbar/20">
-                                                <td className="px-3 py-2.5 whitespace-nowrap text-app-text">{formatDate(startDate)}</td>
-                                                <td className="px-3 py-2.5 text-app-muted whitespace-nowrap">{activeOwnerName || '-'}</td>
-                                                <td className="px-3 py-2.5 text-app-muted whitespace-nowrap">{activePropertyName || '-'}</td>
-                                                <td className="px-3 py-2.5 text-app-muted font-medium whitespace-nowrap">Opening Balance</td>
-                                                <td className="px-3 py-2.5 text-right text-app-muted">-</td>
-                                                <td className="px-3 py-2.5 text-right text-app-muted">-</td>
-                                                <td className="px-3 py-2.5 text-right font-bold text-app-text whitespace-nowrap">{formatCurrency(openingBalance)}</td>
+                                                <td className="px-3 py-3 whitespace-nowrap text-app-text">{formatDate(startDate)}</td>
+                                                <td className="px-3 py-3 text-app-muted whitespace-nowrap">{activeOwnerName || '-'}</td>
+                                                <td className="px-3 py-3 text-app-muted whitespace-nowrap">{activePropertyName || '-'}</td>
+                                                <td className="px-3 py-3 text-app-muted font-medium whitespace-nowrap">Opening Balance</td>
+                                                <td className="px-3 py-3 text-right text-app-muted">-</td>
+                                                <td className="px-3 py-3 text-right text-app-muted">-</td>
+                                                <td className="px-3 py-3 text-right font-bold text-app-text whitespace-nowrap">{formatCurrency(openingBalance)}</td>
                                             </tr>
                                         )}
 
@@ -1386,13 +1410,13 @@ const OwnerPayoutsReport: React.FC = () => {
                                                     }}
                                                     title={serviceChargeCredit ? 'Click to edit service charge' : 'Click to edit'}
                                                 >
-                                                    <td className="px-3 py-2.5 whitespace-nowrap text-app-text">{formatDate(item.date)}</td>
-                                                    <td className="px-3 py-2.5 whitespace-nowrap text-app-text">{item.ownerName}</td>
-                                                    <td className="px-3 py-2.5 whitespace-nowrap text-primary">{item.propertyName}</td>
-                                                    <td className="px-3 py-2.5 whitespace-nowrap text-app-muted" title={item.particulars}>{item.particulars}</td>
-                                                    <td className="px-3 py-2.5 text-right text-success whitespace-nowrap">{item.rentIn > 0 ? formatCurrency(item.rentIn) : '-'}</td>
-                                                    <td className="px-3 py-2.5 text-right text-danger whitespace-nowrap">{item.paidOut > 0 ? formatCurrency(item.paidOut) : '-'}</td>
-                                                    <td className={`px-3 py-2.5 text-right font-bold whitespace-nowrap ${item.balance >= 0 ? 'text-app-text' : 'text-danger'}`}>{formatCurrency(item.balance)}</td>
+                                                    <td className="px-3 py-3 whitespace-nowrap text-app-text">{formatDate(item.date)}</td>
+                                                    <td className="px-3 py-3 whitespace-nowrap text-app-text">{item.ownerName}</td>
+                                                    <td className="px-3 py-3 whitespace-nowrap text-primary">{item.propertyName}</td>
+                                                    <td className="px-3 py-3 whitespace-nowrap text-app-muted" title={item.particulars}>{item.particulars}</td>
+                                                    <td className="px-3 py-3 text-right text-success whitespace-nowrap">{item.rentIn > 0 ? formatCurrency(item.rentIn) : '-'}</td>
+                                                    <td className="px-3 py-3 text-right text-danger whitespace-nowrap">{item.paidOut > 0 ? formatCurrency(item.paidOut) : '-'}</td>
+                                                    <td className={`px-3 py-3 text-right font-bold whitespace-nowrap ${item.balance >= 0 ? 'text-app-text' : 'text-danger'}`}>{formatCurrency(item.balance)}</td>
                                                 </tr>
                                             );
                                         })}
@@ -1404,10 +1428,10 @@ const OwnerPayoutsReport: React.FC = () => {
                                     </tbody>
                                     <tfoot>
                                         <tr className="border-t-2 border-app-border bg-app-card">
-                                            <td colSpan={4} className="px-3 py-2.5 text-right text-sm font-bold text-app-text uppercase tracking-wide">Totals (Period)</td>
-                                            <td className="px-3 py-2.5 text-right text-sm font-bold text-success whitespace-nowrap">{formatCurrency(totals.totalIn)}</td>
-                                            <td className="px-3 py-2.5 text-right text-sm font-bold text-danger whitespace-nowrap">{formatCurrency(totals.totalOut)}</td>
-                                            <td className={`px-3 py-2.5 text-right text-sm font-bold whitespace-nowrap ${totals.netBalance >= 0 ? 'text-app-text' : 'text-danger'}`}>
+                                            <td colSpan={4} className="px-3 py-3 text-right font-bold text-app-text uppercase tracking-wide">Totals (Period)</td>
+                                            <td className="col-rent-in px-3 py-3 text-right font-bold text-success whitespace-nowrap">{formatCurrency(totals.totalIn)}</td>
+                                            <td className="col-paid-out px-3 py-3 text-right font-bold text-danger whitespace-nowrap">{formatCurrency(totals.totalOut)}</td>
+                                            <td className={`col-balance px-3 py-3 text-right font-bold whitespace-nowrap ${totals.netBalance >= 0 ? 'text-app-text' : 'text-danger'}`}>
                                                 {formatCurrency(totals.netBalance)}
                                             </td>
                                         </tr>

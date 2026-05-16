@@ -108,8 +108,10 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
             {
                 id: 'sno',
                 header: 'S.No',
-                cell: ({ row }) =>
-                    row.index + 1 + row.table.getState().pagination.pageIndex * row.table.getState().pagination.pageSize,
+                cell: ({ row, table }) => {
+                    const { pageIndex, pageSize } = table.getState().pagination;
+                    return row.index + 1 + pageIndex * pageSize;
+                },
                 size: 52,
                 enableSorting: false,
             },

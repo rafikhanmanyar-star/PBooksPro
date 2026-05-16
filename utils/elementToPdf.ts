@@ -1,23 +1,50 @@
 import html2canvas from 'html2canvas';
 
+type PrintOrientation = 'portrait' | 'landscape';
+
+function resolvePrintOrientation(root: HTMLElement): PrintOrientation {
+  return root.dataset.printOrientation === 'landscape' ? 'landscape' : 'portrait';
+}
+
+/** Printable width inside A4 margins (96 CSS px per inch). */
+function a4ContentWidthPx(orientation: PrintOrientation, marginMm = 8): number {
+  const pageWidthMm = orientation === 'landscape' ? 297 : 210;
+  return ((pageWidthMm - 2 * marginMm) * 96) / 25.4;
+}
+
 /**
- * Rasterizes a DOM subtree to a multi-page A4 PDF (portrait).
+ * Rasterizes a DOM subtree to a multi-page A4 PDF.
  * Expands overflow-hidden scroll containers marked with `[data-print-scroll-container]` when present.
+ * Honors `data-print-orientation="landscape"` on the root element.
  */
 export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
   const inner = root.querySelector<HTMLElement>('[data-print-scroll-container]');
   const captureEl = inner ?? root;
+  const orientation = resolvePrintOrientation(root);
+  const marginMm = 8;
+  const contentWidthPx = a4ContentWidthPx(orientation, marginMm);
+
+  const hadCaptureClass = root.classList.contains('pdf-capture-active');
+  root.classList.add('pdf-capture-active');
 
   const prev = {
-    overflow: captureEl.style.overflow,
-    maxHeight: captureEl.style.maxHeight,
-    height: captureEl.style.height,
-    backgroundColor: captureEl.style.backgroundColor,
+    rootWidth: root.style.width,
+    rootMaxWidth: root.style.maxWidth,
+    captureOverflow: captureEl.style.overflow,
+    captureMaxHeight: captureEl.style.maxHeight,
+    captureHeight: captureEl.style.height,
+    captureWidth: captureEl.style.width,
+    captureMaxWidth: captureEl.style.maxWidth,
+    captureBackgroundColor: captureEl.style.backgroundColor,
   };
 
+  root.style.width = `${contentWidthPx}px`;
+  root.style.maxWidth = `${contentWidthPx}px`;
   captureEl.style.overflow = 'visible';
   captureEl.style.maxHeight = 'none';
   captureEl.style.height = 'auto';
+  captureEl.style.width = `${contentWidthPx}px`;
+  captureEl.style.maxWidth = `${contentWidthPx}px`;
   if (!captureEl.style.backgroundColor) {
     captureEl.style.backgroundColor = '#ffffff';
   }
@@ -28,13 +55,15 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
+      width: contentWidthPx,
+      windowWidth: contentWidthPx,
     });
 
     const { jsPDF } = await import('jspdf');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 10;
+    const margin = marginMm;
     const innerW = pageW - 2 * margin;
     const innerH = pageH - 2 * margin;
 
@@ -52,9 +81,16 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
 
     return pdf.output('blob');
   } finally {
-    captureEl.style.overflow = prev.overflow;
-    captureEl.style.maxHeight = prev.maxHeight;
-    captureEl.style.height = prev.height;
-    captureEl.style.backgroundColor = prev.backgroundColor;
+    if (!hadCaptureClass) {
+      root.classList.remove('pdf-capture-active');
+    }
+    root.style.width = prev.rootWidth;
+    root.style.maxWidth = prev.rootMaxWidth;
+    captureEl.style.overflow = prev.captureOverflow;
+    captureEl.style.maxHeight = prev.captureMaxHeight;
+    captureEl.style.height = prev.captureHeight;
+    captureEl.style.width = prev.captureWidth;
+    captureEl.style.maxWidth = prev.captureMaxWidth;
+    captureEl.style.backgroundColor = prev.captureBackgroundColor;
   }
 }

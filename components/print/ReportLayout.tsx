@@ -36,9 +36,11 @@ export const ReportLayout: React.FC<ReportLayoutProps> = ({ data }) => {
 
   if (!html) return null;
 
+  const isOwnerRentalIncome = data.elementId === 'owner-rental-income-print-root';
+
   return (
     <div
-      className="report-print-content"
+      className={`report-print-content${isOwnerRentalIncome ? ' owner-rental-income-report-print' : ''}`}
       dangerouslySetInnerHTML={{ __html: html }}
       style={{ width: '100%', minHeight: '100vh', background: '#fff' }}
     />

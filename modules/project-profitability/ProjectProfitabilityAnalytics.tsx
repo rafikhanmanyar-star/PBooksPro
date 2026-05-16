@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { VisibilityState } from '@tanstack/react-table';
 import { Download, FileSpreadsheet, Printer, RefreshCw, Settings2 } from 'lucide-react';
@@ -27,8 +27,10 @@ import {
     useFilteredProfitabilityRows,
     usePortfolioMonthlyTrendQuery,
     useProfitabilityPermissions,
+    useProjectProfitabilityDetailsQuery,
     useProjectProfitabilitySummaryQuery,
 } from './hooks/useProjectProfitabilityAnalytics';
+import { derivePortfolioSummaryFromRows } from './services/projectProfitability.service';
 import { useProfitabilityFiltersStore } from './store/profitabilityFiltersStore';
 
 const COLUMN_PRESETS: { id: string; label: string }[] = [
@@ -62,6 +64,8 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
     const { print: triggerPrint } = usePrintContext();
     const queryClient = useQueryClient();
     const filters = useProfitabilityFiltersStore((s) => s.filters);
+    const setFilter = useProfitabilityFiltersStore((s) => s.setFilter);
+    const defaultProjectBootstrapped = useRef(false);
 
     const [endDate, setEndDate] = useState(() => toLocalDateString(new Date()));
     const [drawerProjectId, setDrawerProjectId] = useState<string | null>(null);
@@ -70,9 +74,27 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
 
     const summaryQuery = useProjectProfitabilitySummaryQuery(state, endDate);
     const monthlyQuery = usePortfolioMonthlyTrendQuery(state, endDate);
+    const focusedProjectId = filters.projectId && filters.projectId !== 'all' ? filters.projectId : null;
+    const projectDetailsQuery = useProjectProfitabilityDetailsQuery(state, focusedProjectId, endDate, !!focusedProjectId);
+
+    useEffect(() => {
+        if (defaultProjectBootstrapped.current) return;
+        defaultProjectBootstrapped.current = true;
+        if (state.defaultProjectId && (!filters.projectId || filters.projectId === 'all')) {
+            setFilter('projectId', state.defaultProjectId);
+            setDrawerProjectId(state.defaultProjectId);
+        }
+    }, [state.defaultProjectId, filters.projectId, setFilter]);
+
+    useEffect(() => {
+        if (!filters.projectId || filters.projectId === 'all') {
+            setDrawerProjectId(null);
+        }
+    }, [filters.projectId]);
 
     const filterPayload = useMemo(
         () => ({
+            projectId: filters.projectId || 'all',
             search: filters.search,
             projectStatus: filters.projectStatus,
             investorId: filters.investorId,
@@ -101,7 +123,20 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
         void queryClient.invalidateQueries({ queryKey: ['project-profitability-details'] });
     }, [queryClient]);
 
-    const summary = summaryQuery.data;
+    const displaySummary = useMemo(() => {
+        if (!summaryQuery.data) return undefined;
+        return derivePortfolioSummaryFromRows(filteredRows, endDate);
+    }, [summaryQuery.data, filteredRows, endDate]);
+
+    const monthlyChartPoints = useMemo(() => {
+        if (focusedProjectId && projectDetailsQuery.data?.monthlyTrend?.length) {
+            return projectDetailsQuery.data.monthlyTrend;
+        }
+        return monthlyQuery.data ?? [];
+    }, [focusedProjectId, projectDetailsQuery.data, monthlyQuery.data]);
+
+    const selectedProjectName =
+        focusedProjectId != null ? state.projects.find((p) => p.id === focusedProjectId)?.name : null;
 
     return (
         <div className="flex flex-col h-full min-h-0 space-y-4">
@@ -112,8 +147,17 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                     <div>
                         <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Project Profitability Analytics</h3>
                         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 max-w-3xl leading-relaxed">
-                            Track project revenue, expenses, profitability, investor returns, and inventory valuation. Revenue and expense follow the same accrual rules as
-                            Project P/L; adjusted profit adds unsold unit market value so pipeline inventory does not distort performance.
+                            {selectedProjectName ? (
+                                <>
+                                    Viewing <span className="font-semibold text-indigo-600 dark:text-indigo-400">{selectedProjectName}</span> as of{' '}
+                                    {formatDate(endDate)}. KPIs and charts reflect this project; open the drilldown panel for revenue, expense, and investor detail.
+                                </>
+                            ) : (
+                                <>
+                                    Track project revenue, expenses, profitability, investor returns, and inventory valuation. Select a project above or use the table
+                                    for portfolio-wide analysis.
+                                </>
+                            )}
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2 print:hidden">
@@ -154,12 +198,19 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                     </div>
                 </div>
 
-                <ProfitabilityFilterBar state={state} endDate={endDate} onEndDateChange={setEndDate} allRows={summary?.rows ?? []} canManageFilters={perm.canManageFilters} />
+                <ProfitabilityFilterBar
+                    state={state}
+                    endDate={endDate}
+                    onEndDateChange={setEndDate}
+                    allRows={summaryQuery.data?.rows ?? []}
+                    canManageFilters={perm.canManageFilters}
+                    onProjectSelect={(id) => setDrawerProjectId(id)}
+                />
             </div>
 
-            {summary && (
+            {displaySummary && (
                 <div className="print:hidden">
-                    <ProfitabilityKpiStrip summary={summary} isFetching={summaryQuery.isFetching} />
+                    <ProfitabilityKpiStrip summary={displaySummary} isFetching={summaryQuery.isFetching} />
                 </div>
             )}
 
@@ -171,25 +222,35 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                     </p>
                 </div>
 
-                {summary && (
+                {displaySummary && (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 print:hidden shrink-0">
                         <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Revenue vs expense (top projects)</p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                                {focusedProjectId ? 'Revenue vs expense' : 'Revenue vs expense (top projects)'}
+                            </p>
                             <RevenueVsExpenseChart rows={filteredRows} />
                         </div>
                         <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Monthly profit trend (portfolio)</p>
-                            <MonthlyProfitTrendChart points={monthlyQuery.data ?? []} />
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                                {focusedProjectId ? 'Monthly profit trend (project)' : 'Monthly profit trend (portfolio)'}
+                            </p>
+                            <MonthlyProfitTrendChart points={monthlyChartPoints} />
                         </div>
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Top net profit</p>
-                            <TopProfitableProjectsChart rows={filteredRows} />
-                        </div>
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Status distribution</p>
-                            <ProjectStatusDonutChart rows={filteredRows} />
-                        </div>
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm xl:col-span-2">
+                        {!focusedProjectId && (
+                            <>
+                                <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Top net profit</p>
+                                    <TopProfitableProjectsChart rows={filteredRows} />
+                                </div>
+                                <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Status distribution</p>
+                                    <ProjectStatusDonutChart rows={filteredRows} />
+                                </div>
+                            </>
+                        )}
+                        <div
+                            className={`rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm ${focusedProjectId ? '' : 'xl:col-span-2'}`}
+                        >
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">ROI comparison (projects with investor capital)</p>
                             <RoiComparisonChart rows={filteredRows} />
                         </div>
@@ -200,7 +261,10 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                     <ProfitabilityDataTable
                         rows={filteredRows}
                         isLoading={summaryQuery.isLoading}
-                        onRowOpen={(id) => setDrawerProjectId(id)}
+                        onRowOpen={(id) => {
+                            setFilter('projectId', id);
+                            setDrawerProjectId(id);
+                        }}
                         selectedIds={selectedIds}
                         onSelectionChange={setSelectedIds}
                         columnVisibility={columnVisibility}

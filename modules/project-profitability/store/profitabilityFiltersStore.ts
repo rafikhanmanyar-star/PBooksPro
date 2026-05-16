@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { ProjectProfitabilityFilters } from '../types/profitability.types';
 
 const defaultFilters = (): ProjectProfitabilityFilters => ({
+    projectId: 'all',
     search: '',
     dateTo: '',
     projectStatus: 'all',
