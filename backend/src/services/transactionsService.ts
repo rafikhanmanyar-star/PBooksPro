@@ -304,6 +304,39 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+type PickedTransactionBody = ReturnType<typeof pickBody>;
+
+function assertVendorSettlementCashMirrorMutationAllowed(
+  before: TransactionRow | null,
+  next: PickedTransactionBody
+): void {
+  if (!before || !isVendorSettlementCashMirrorReference(before.reference)) return;
+
+  const amtBefore = Number(before.amount);
+  const amtAfter = Number.isFinite(next.amount) ? next.amount : 0;
+  if (Math.abs(amtBefore - amtAfter) > 0.005) {
+    throw new Error(
+      'This payment mirrors a supplier prepaid settlement journal. To change the amount, use Reverse settlement on the bill payment, then record the payment again.'
+    );
+  }
+  if (String(before.account_id) !== String(next.account_id)) {
+    throw new Error(
+      'This payment mirrors a supplier prepaid settlement journal. To change the bank/cash account, use Reverse settlement, then pay again.'
+    );
+  }
+  const d0 = formatPgDateToYyyyMmDd(before.date as Date | string);
+  if (d0 !== next.date) {
+    throw new Error(
+      'This payment mirrors a supplier prepaid settlement journal. To change the date, use Reverse settlement, then pay again.'
+    );
+  }
+  const prevRef = String(before.reference ?? '').trim();
+  const nextRef = String(next.reference ?? '').trim();
+  if (prevRef !== nextRef) {
+    throw new Error('Cannot change settlement link reference.');
+  }
+}
+
 const SELECT_ROW = `SELECT t.id, t.tenant_id, t.user_id, t.type, t.subtype, t.amount, t.date, t.description, t.reference,
     t.account_id, t.from_account_id, t.to_account_id, t.category_id, t.contact_id, t.vendor_id, t.project_id,
     t.building_id, t.property_id, t.unit_id, t.invoice_id, t.bill_id, t.payslip_id, t.contract_id, t.agreement_id,
@@ -530,31 +563,7 @@ export async function updateTransaction(
   if (!p.account_id) throw new Error('accountId is required.');
   const expectedVersion = p.version;
 
-  if (before && isVendorSettlementCashMirrorReference(before.reference)) {
-    const amtBefore = Number(before.amount);
-    const amtAfter = Number.isFinite(p.amount) ? p.amount : 0;
-    if (Math.abs(amtBefore - amtAfter) > 0.005) {
-      throw new Error(
-        'This payment mirrors a supplier prepaid settlement journal. To change the amount, use Reverse settlement on the bill payment, then record the payment again.'
-      );
-    }
-    if (String(before.account_id) !== String(p.account_id)) {
-      throw new Error(
-        'This payment mirrors a supplier prepaid settlement journal. To change the bank/cash account, use Reverse settlement, then pay again.'
-      );
-    }
-    const d0 = formatPgDateToYyyyMmDd(before.date as Date | string);
-    if (d0 !== p.date) {
-      throw new Error(
-        'This payment mirrors a supplier prepaid settlement journal. To change the date, use Reverse settlement, then pay again.'
-      );
-    }
-    const prevRef = String(before.reference ?? '').trim();
-    const nextRef = String(p.reference ?? '').trim();
-    if (prevRef !== nextRef) {
-      throw new Error('Cannot change settlement link reference.');
-    }
-  }
+  assertVendorSettlementCashMirrorMutationAllowed(before, p);
 
   const categoryResolved = await resolveExpenseCategoryFromBill(
     client,
@@ -710,6 +719,8 @@ export async function upsertTransaction(
       affectedBillIds: [],
     };
   }
+
+  assertVendorSettlementCashMirrorMutationAllowed(existing, p);
 
   const categoryResolvedUpsert = await resolveExpenseCategoryFromBill(
     client,
