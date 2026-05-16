@@ -39,6 +39,10 @@ const InvestmentManagementPage: React.FC = () => {
             setActiveTab('Ledger');
             return;
         }
+        if (v === 'Profit') {
+            setActiveTab('Profitability');
+            return;
+        }
         if (!ALL_INV_TABS.includes(activeTab)) {
             setActiveTab('Overview');
         }

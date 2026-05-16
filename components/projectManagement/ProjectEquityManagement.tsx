@@ -17,7 +17,10 @@ import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
 import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 import UndistributedFundsReport from '../investmentManagement/UndistributedFundsReport';
-import InvMgmtProfitReport from '../investmentManagement/InvMgmtProfitReport';
+import InvMgmtProjectProfitabilityAnalytics from '../../modules/project-profitability/ProjectProfitabilityAnalytics';
+import FundAvailabilityPage from '../../modules/investor-fund-availability/components/FundAvailabilityPage';
+import { validateWithdrawal } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
+import { useFundAvailabilityFiltersStore } from '../../modules/investor-fund-availability/store/fundAvailabilityFiltersStore';
 import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -142,7 +145,7 @@ export const EQUITY_LEDGER_TABS = ['Ledger', 'Profit Distribution', 'Equity Tran
 export type EquityLedgerTab = (typeof EQUITY_LEDGER_TABS)[number];
 
 /** Inv. Mgmt sidebar: Reports section. */
-export const INV_MGMT_REPORT_TABS = ['Investor Distribution', 'Undistributed funds', 'Profit'] as const;
+export const INV_MGMT_REPORT_TABS = ['Investor Distribution', 'Undistributed funds', 'Profitability', 'Investor Fund Availability'] as const;
 export type InvMgmtReportTab = (typeof INV_MGMT_REPORT_TABS)[number];
 
 export type InvManagementContentTab = EquityLedgerTab | InvMgmtReportTab;
@@ -783,7 +786,21 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 fromId = bankAccountId;
                 toId = investorId;
             }
-            
+
+            const isWithdrawalEdit =
+                bankAccounts.some((a) => a.id === fromId) && equityAccounts.some((a) => a.id === toId);
+            if (isWithdrawalEdit && projectId) {
+                const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
+                const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy);
+                if (!v.ok) {
+                    await showAlert(
+                        `Withdrawal exceeds distributable funds for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        { title: 'Liquidity guard' }
+                    );
+                    return;
+                }
+            }
+
             const updatedTx: Transaction = {
                 ...mainTx,
                 amount: numAmount,
@@ -1882,9 +1899,14 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                     <UndistributedFundsReport />
                 </div>
             )}
-            {equityTab === 'Profit' && (
+            {equityTab === 'Profitability' && (
                 <div className="flex-grow overflow-hidden">
-                    <InvMgmtProfitReport />
+                    <InvMgmtProjectProfitabilityAnalytics />
+                </div>
+            )}
+            {equityTab === 'Investor Fund Availability' && (
+                <div className="flex-grow min-h-0 overflow-hidden flex flex-col">
+                    <FundAvailabilityPage />
                 </div>
             )}
             </div>
