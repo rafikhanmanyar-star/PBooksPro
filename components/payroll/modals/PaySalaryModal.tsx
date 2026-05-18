@@ -368,7 +368,8 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
             dispatch({
               type: 'ADD_TRANSACTION',
               payload: mapApiTx(res.transaction as Record<string, unknown>, accountIdSlice),
-            });
+              _isRemote: true,
+            } as any);
             return;
           }
           let consumed = 0;
@@ -399,7 +400,8 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
             dispatch({
               type: 'ADD_TRANSACTION',
               payload: mapApiTx(res.transaction as Record<string, unknown>, accountIdSlice),
-            });
+              _isRemote: true,
+            } as any);
           }
         };
 

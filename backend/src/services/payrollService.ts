@@ -1359,7 +1359,8 @@ export async function payPayslip(
     tenantId,
     txBody,
     userId,
-    options?.expenseCashBatchCtx ?? null
+    options?.expenseCashBatchCtx ?? null,
+    { allowPayslipPaymentExemption: true }
   );
 
   const row = await getPayslip(client, tenantId, payslipId);
