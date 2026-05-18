@@ -340,7 +340,8 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
           dispatch({
             type: 'ADD_TRANSACTION',
             payload: mapApiTx(r.transaction as Record<string, unknown>, line.description),
-          });
+            _isRemote: true,
+          } as any);
         }
 
         const runIds = [...new Set(itemsWithPositivePay.map(({ payslip }) => payslip.payroll_run_id))];

@@ -1,7 +1,7 @@
 /**
  * Server-side check: project-scoped bank/cash must cover new expense (matches client accountingLedgerCore rules).
- * Bill payments and payslip (salary) payments are excluded: the paying account may be debited below
- * project-scoped available cash (negative project cash balance allowed), same as bill pay.
+ * Bill payments are excluded: the paying account may be debited below project-scoped available cash.
+ * Payslip salary payments are only excluded when the payroll service explicitly opts into that path.
  */
 import type pg from 'pg';
 
@@ -144,7 +144,7 @@ export class ExpenseCashValidationBatchContext {
     bill_id?: string | null;
     payslip_id?: string | null;
     exclude_transaction_id?: string | null;
-  }): Promise<void> {
+  }, options: ExpenseCashValidationOptions = {}): Promise<void> {
     await runExpenseProjectCashAssertion(this.client, this.tenantId, input, {
       accountsAndClearing: () => this.ensureAccounts(),
       getRows: async (projectId, dateStr) => {
@@ -156,13 +156,17 @@ export class ExpenseCashValidationBatchContext {
         });
         return [...hist, ...extra];
       },
-    });
+    }, options);
   }
 }
 
 type AssertionDeps = {
   accountsAndClearing: () => Promise<{ accountsById: Map<string, AccRow>; clearingId: string | undefined }>;
   getRows: (projectId: string, dateStr: string) => Promise<ProjectCashTxRow[]>;
+};
+
+export type ExpenseCashValidationOptions = {
+  allowPayslipPaymentExemption?: boolean;
 };
 
 async function runExpenseProjectCashAssertion(
@@ -178,10 +182,11 @@ async function runExpenseProjectCashAssertion(
     payslip_id?: string | null;
     exclude_transaction_id?: string | null;
   },
-  deps: AssertionDeps
+  deps: AssertionDeps,
+  options: ExpenseCashValidationOptions = {}
 ): Promise<void> {
   if (input.bill_id && String(input.bill_id).trim()) return;
-  if (input.payslip_id && String(input.payslip_id).trim()) return;
+  if (options.allowPayslipPaymentExemption && input.payslip_id && String(input.payslip_id).trim()) return;
   if (input.type !== 'Expense' || !Number.isFinite(input.amount) || input.amount <= EPS) return;
 
   let projectId = input.project_id && String(input.project_id).trim() ? String(input.project_id).trim() : null;
@@ -230,10 +235,11 @@ export async function assertExpenseProjectCashAvailable(
     payslip_id?: string | null;
     exclude_transaction_id?: string | null;
   },
-  batchCtx?: ExpenseCashValidationBatchContext | null
+  batchCtx?: ExpenseCashValidationBatchContext | null,
+  options: ExpenseCashValidationOptions = {}
 ): Promise<void> {
   if (batchCtx) {
-    await batchCtx.assertExpense(input);
+    await batchCtx.assertExpense(input, options);
     return;
   }
 
@@ -259,5 +265,5 @@ export async function assertExpenseProjectCashAvailable(
       );
       return txRes.rows;
     },
-  });
+  }, options);
 }

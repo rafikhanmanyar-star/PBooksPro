@@ -6,6 +6,7 @@ import { recalculateInvoicePaymentAggregates } from './invoicesService.js';
 import {
   assertExpenseProjectCashAvailable,
   type ExpenseCashValidationBatchContext,
+  type ExpenseCashValidationOptions,
   type ProjectCashTxRow,
 } from '../financial/expenseCashValidation.js';
 import { syncOwnerSummariesForTransactionChange } from './ownerRentalSummaryService.js';
@@ -429,7 +430,8 @@ export async function createTransaction(
   tenantId: string,
   body: Record<string, unknown>,
   actorUserId: string | null,
-  expenseCashBatchCtx?: ExpenseCashValidationBatchContext | null
+  expenseCashBatchCtx?: ExpenseCashValidationBatchContext | null,
+  expenseCashValidationOptions: ExpenseCashValidationOptions = {}
 ): Promise<TransactionRow> {
   const p = pickBody(body);
   if (!p.type) throw new Error('type is required.');
@@ -459,7 +461,8 @@ export async function createTransaction(
       bill_id: p.bill_id,
       payslip_id: p.payslip_id,
     },
-    expenseCashBatchCtx ?? undefined
+    expenseCashBatchCtx ?? undefined,
+    expenseCashValidationOptions
   );
 
   const r = await client.query<TransactionRow>(
