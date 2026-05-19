@@ -791,7 +791,9 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 bankAccounts.some((a) => a.id === fromId) && equityAccounts.some((a) => a.id === toId);
             if (isWithdrawalEdit && projectId) {
                 const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
-                const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy);
+                const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy, {
+                    excludeTransactionId: mainTx.id,
+                });
                 if (!v.ok) {
                     await showAlert(
                         `Withdrawal exceeds distributable funds for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -822,6 +824,36 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             const investTx = allInBatch.find(t => t.id.includes('invest'));
 
             if (divestTx && investTx) {
+                const sourceProjectForMove = projectId || divestTx.projectId;
+                const sourceBankForMove = divestTx.fromAccountId || divestTx.accountId;
+                if (!sourceProjectForMove || !sourceBankForMove) {
+                    await showAlert('Could not resolve the source project or cash account for this equity move.');
+                    return;
+                }
+                const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
+                const v = validateWithdrawal(state, sourceProjectForMove, numAmount, resolvedDate, reservePolicy, {
+                    excludeTransactionId: divestTx.id,
+                });
+                if (!v.ok) {
+                    await showAlert(
+                        `Equity move exceeds distributable funds for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        { title: 'Liquidity guard' }
+                    );
+                    return;
+                }
+                const availableOnSource = computeProjectScopedBankCashBalance(
+                    state,
+                    sourceBankForMove,
+                    sourceProjectForMove,
+                    resolvedDate,
+                    { excludeTransactionId: divestTx.id }
+                );
+                if (numAmount > availableOnSource + 0.005) {
+                    await showAlert(
+                        `Insufficient cash on the source account for this project. Available: ${CURRENCY} ${availableOnSource.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`
+                    );
+                    return;
+                }
                 // Update Divest (Source Project)
                 txsToUpdate.push({
                     ...divestTx,
@@ -1233,6 +1265,16 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
         const txDate = transferDate || toLocalDateString(new Date());
 
+        const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
+        const liquidity = validateWithdrawal(state, sourceProjectId, totalAmount, txDate, reservePolicy);
+        if (!liquidity.ok) {
+            await showAlert(
+                `Transfer exceeds distributable funds for this project.\n\n${liquidity.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${liquidity.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Required: ${totalFormatted}.`,
+                { title: 'Liquidity guard' }
+            );
+            return;
+        }
+
         if (transferType === 'PROJECT') {
             if (!transferSourceBankId || !transferDestBankId) {
                 await showAlert('Select source and destination bank/cash accounts for this transfer.');
@@ -1247,6 +1289,23 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             if (totalAmount > availableOnSource + 0.005) {
                 await showAlert(
                     `Insufficient cash on the source account for this project. Available: ${CURRENCY} ${availableOnSource.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Required: ${totalFormatted}. Fund the project or reduce the transfer.`
+                );
+                return;
+            }
+        } else {
+            if (!payoutAccountId) {
+                await showAlert('Select a payout account for this transfer.');
+                return;
+            }
+            const availableOnPayoutAccount = computeProjectScopedBankCashBalance(
+                state,
+                payoutAccountId,
+                sourceProjectId,
+                txDate
+            );
+            if (totalAmount > availableOnPayoutAccount + 0.005) {
+                await showAlert(
+                    `Insufficient cash on the payout account for this project. Available: ${CURRENCY} ${availableOnPayoutAccount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Required: ${totalFormatted}. Fund the project or reduce the payout.`
                 );
                 return;
             }

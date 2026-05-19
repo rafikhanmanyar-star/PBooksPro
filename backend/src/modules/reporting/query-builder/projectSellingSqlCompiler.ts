@@ -231,6 +231,7 @@ export function compileProjectSellingReport(
   const groupExprs: string[] = [];
 
   if (hasGroup) {
+    const projectedKeys: string[] = [];
     for (const k of keys) {
       const d = rmap.get(k);
       if (d && isCalculatedField(d)) {
@@ -239,9 +240,10 @@ export function compileProjectSellingReport(
     }
     for (const g of payload.groupBy ?? []) {
       const gx = registryPack.groupDimensions[g];
-      const label = `g_${g.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+      const label = g.replace(/[^a-zA-Z0-9_]/g, '_');
       selectParts.push(`${gx} AS "${label}"`);
       groupExprs.push(gx);
+      projectedKeys.push(label);
     }
     const aggs =
       payload.aggregates?.length ? payload.aggregates : [{ field: keys[0]!, operation: 'COUNT' as const }];
@@ -249,20 +251,25 @@ export function compileProjectSellingReport(
       const agg = aggs[i]!;
       const fd = rmap.get(agg.field);
       if (!fd || isCalculatedField(fd)) throw new Error(`AGG_FIELD_INVALID:${agg.field}`);
+      const aggKey =
+        agg.operation === 'COUNT'
+          ? `agg_${i}_count`
+          : `agg_${i}_${agg.field.replace(/\W/g, '_')}_${agg.operation}`;
       if (agg.operation === 'COUNT') {
-        selectParts.push(`COUNT(*)::bigint AS "agg_${i}_count"`);
+        selectParts.push(`COUNT(*)::bigint AS "${aggKey}"`);
       } else {
         if (!fd.aggregatable) throw new Error(`FIELD_NOT_AGGREGATABLE:${agg.field}`);
         selectParts.push(
-          `${agg.operation}(${fd.sqlExpr}) AS "agg_${i}_${agg.field.replace(/\W/g, '_')}_${agg.operation}"`
+          `${agg.operation}(${fd.sqlExpr}) AS "${aggKey}"`
         );
       }
+      projectedKeys.push(aggKey);
     }
     const groupSql = groupExprs.length ? ` GROUP BY ${groupExprs.join(', ')}` : '';
     const orderParts: string[] = [];
     for (const s of payload.sortBy ?? []) {
       if (registryPack.groupDimensions[s.field]) {
-        orderParts.push(`"${`g_${s.field.replace(/[^a-zA-Z0-9_]/g, '_')}`}" ${s.direction}`);
+        orderParts.push(`"${s.field.replace(/[^a-zA-Z0-9_]/g, '_')}" ${s.direction}`);
       }
     }
     const orderSql = orderParts.length ? ` ORDER BY ${orderParts.join(', ')}` : '';
@@ -277,7 +284,7 @@ export function compileProjectSellingReport(
       params: [...params],
       countSql,
       countParams: [...params],
-      projectedKeys: keys,
+      projectedKeys,
     };
   }
 

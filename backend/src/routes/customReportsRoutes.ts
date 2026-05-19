@@ -23,7 +23,7 @@ import {
   saveTemplateSchema,
   updateTemplateBodySchema,
 } from '../modules/reporting/validators/reportConfigurationSchema.js';
-import { runCustomReport, deriveColumnLabels } from '../modules/reporting/services/customReportRunService.js';
+import { runCustomReport } from '../modules/reporting/services/customReportRunService.js';
 import { buildCsvBuffer, buildPdfGridBuffer, buildXlsxBuffer } from '../modules/reporting/exports/renderFormats.js';
 
 export const customReportsRouter = Router();
@@ -159,11 +159,20 @@ customReportsRouter.post('/reports/custom/export', reportLimiter, async (req: Au
   try {
     const exportPayload = { ...parsed.data, page: 1, pageSize: 5000 };
     const data = await runCustomReport(client, tenantId, exportPayload, 'export');
-    const registry = getRegistryForModule(parsed.data.module);
-    const projKeys =
-      parsed.data.columns?.map((c) => c.key) ?? parsed.data.fields ?? [];
-    const { labels } = deriveColumnLabels(registry.fields, projKeys, exportPayload, exportPayload.formulas);
+    if (data.rows.length < data.totalCount) {
+      sendFailure(
+        res,
+        413,
+        'REPORT_EXPORT_ROW_LIMIT_EXCEEDED',
+        `This report has ${data.totalCount.toLocaleString()} rows, exceeding the export limit of ${data.rows.length.toLocaleString()}. Narrow the filters and export again.`
+      );
+      return;
+    }
     const colOrder = data.columns.map((c) => c.key);
+    const labels = data.columns.reduce<Record<string, string>>((acc, c) => {
+      acc[c.key] = c.label;
+      return acc;
+    }, {});
     const title = parsed.data.reportName?.trim() || 'Custom report';
     let buf: Buffer;
     let contentType: string;

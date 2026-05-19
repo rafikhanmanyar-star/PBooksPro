@@ -12,6 +12,7 @@ const companyManager = require('./companyManager.cjs');
 const stability = require('./stability.cjs');
 const spellChecker = require('./spellChecker.cjs');
 const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils.cjs');
+const { buildSafeWhatsAppPdfPath } = require('./whatsappPdfPath.cjs');
 
 let mainWindow = null;
 let autoUpdater = null;
@@ -101,8 +102,7 @@ ipcMain.handle('whatsapp:share-pdf-open-chat', async (_event, payload) => {
 
   const dir = path.join(app.getPath('temp'), 'pbooks-whatsapp-pdf');
   fs.mkdirSync(dir, { recursive: true });
-  const safe = fileName.replace(/[<>:"/\\|?*]+/g, '-');
-  const fullPath = path.join(dir, `${Date.now()}-${safe}`);
+  const fullPath = buildSafeWhatsAppPdfPath(dir, fileName);
   fs.writeFileSync(fullPath, Buffer.from(base64, 'base64'));
 
   let clipboardOk = false;

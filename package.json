@@ -130,6 +130,7 @@
       "electron/sqliteBridge.cjs",
       "electron/stability.cjs",
       "electron/schemaValidator.cjs",
+      "electron/whatsappPdfPath.cjs",
       "electron/schemaVersion.json",
       "electron/migrations/**/*.cjs",
       "electron/companyManager.cjs",

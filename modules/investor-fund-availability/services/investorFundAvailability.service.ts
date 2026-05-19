@@ -92,7 +92,8 @@ export function getDistributableFundsBreakdown(
     state: AppState,
     projectId: string,
     endYmd: string,
-    reservePolicy: ReservePolicy
+    reservePolicy: ReservePolicy,
+    options?: { excludeTransactionId?: string }
 ): {
     availableCash: number;
     reservedFunds: number;
@@ -100,7 +101,7 @@ export function getDistributableFundsBreakdown(
     distributableFunds: number;
     reservePolicy: ReservePolicy;
 } {
-    const availableCash = getAvailableCashRaw(state, projectId, endYmd);
+    const availableCash = getAvailableCashRaw(state, projectId, endYmd, options);
     const pendingPayables = getPendingPayables(state, projectId, endYmd);
     const reservedFunds = reserveAmount(availableCash, reservePolicy);
     const distributableFunds = Math.max(0, Math.round((availableCash - reservedFunds - pendingPayables) * 100) / 100);
@@ -252,10 +253,17 @@ export function getAvailableCash(state: AppState, projectId: string, endYmd: str
 }
 
 /** Raw available cash without reserve policy (same as sum of bank balances). */
-function getAvailableCashRaw(state: AppState, projectId: string, endYmd: string): number {
+function getAvailableCashRaw(
+    state: AppState,
+    projectId: string,
+    endYmd: string,
+    options?: { excludeTransactionId?: string }
+): number {
     let sum = 0;
     for (const bid of bankCashAccountIds(state)) {
-        sum += computeProjectScopedBankCashBalance(state, bid, projectId, endYmd);
+        sum += computeProjectScopedBankCashBalance(state, bid, projectId, endYmd, {
+            excludeTransactionId: options?.excludeTransactionId,
+        });
     }
     return Math.round(sum * 100) / 100;
 }

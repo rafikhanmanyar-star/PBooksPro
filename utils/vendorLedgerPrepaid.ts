@@ -1,15 +1,15 @@
 import type { Bill, Transaction } from '../types';
-import { TransactionType } from '../types';
+import { isBillPaymentLedgerTransaction } from './rentalBillPayments';
 
 const MONEY_EPS = 0.015;
 
-/** Expense/income rows linked to a bill (matches server recalculateBillPaymentAggregates). */
+/** Ledger rows that reduce vendor bill payable balance (matches server recalculateBillPaymentAggregates). */
 export function ledgerAmountPaidViaTransactionsForBill(transactions: Transaction[], billId: string): number {
     const raw = transactions
         .filter(
             (tx) =>
                 tx.billId === billId &&
-                (tx.type === TransactionType.EXPENSE || tx.type === TransactionType.INCOME)
+                isBillPaymentLedgerTransaction(tx)
         )
         .reduce((s, tx) => s + tx.amount, 0);
     return Math.round(raw * 100) / 100;
@@ -31,7 +31,7 @@ export function prepaidClearingDisplayDateForBill(bill: Bill, transactions: Tran
         .filter(
             (tx) =>
                 tx.billId === bill.id &&
-                (tx.type === TransactionType.EXPENSE || tx.type === TransactionType.INCOME)
+                isBillPaymentLedgerTransaction(tx)
         )
         .map((tx) => tx.date)
         .filter(Boolean)
