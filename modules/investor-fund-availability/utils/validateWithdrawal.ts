@@ -14,10 +14,12 @@ export function validateWithdrawal(
     amount: number,
     asOfYmd: string,
     reservePolicy: ReservePolicy,
-    options?: { ignorePendingPayables?: boolean }
+    options?: { ignorePendingPayables?: boolean; excludeTransactionId?: string }
 ): WithdrawalValidationResult {
     const requestedAmount = Math.round(amount * 100) / 100;
-    const b = getDistributableFundsBreakdown(state, projectId, asOfYmd, reservePolicy);
+    const b = getDistributableFundsBreakdown(state, projectId, asOfYmd, reservePolicy, {
+        excludeTransactionId: options?.excludeTransactionId,
+    });
     const distributableFunds = options?.ignorePendingPayables
         ? Math.max(0, b.availableCash - b.reservedFunds)
         : b.distributableFunds;

@@ -38,11 +38,9 @@ export async function buildPdfGridBuffer(params: {
   columns: string[];
   labels: Record<string, string>;
   rows: Row[];
-  maxCols?: number;
 }): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default;
-  const maxCols = params.maxCols ?? 8;
-  const cols = params.columns.slice(0, maxCols);
+  const grid = preparePdfGridForExport(params);
   const doc = new PDFDocument({ margin: 36, size: 'A4', layout: 'landscape' });
   const chunks: Buffer[] = [];
   doc.on('data', (c) => chunks.push(c as Buffer));
@@ -50,22 +48,27 @@ export async function buildPdfGridBuffer(params: {
   doc.fontSize(14).text(params.title, { underline: true });
   doc.moveDown(0.5);
   doc.fontSize(9);
-  const titles = cols.map((c) => String(params.labels[c] ?? c));
-  const rows = params.rows.slice(0, 200); // readable cap for PDF preview
   // Simple row layout
-  for (let r = -1; r < rows.length; r++) {
-    const parts =
-      r < 0
-        ? titles
-        : cols.map((col) =>
-            rows[r]![col] === null || rows[r]![col] === undefined
-              ? ''
-              : String(rows[r]![col])
-          );
+  for (let r = -1; r < grid.rows.length; r++) {
+    const parts = r < 0 ? grid.titles : grid.rows[r]!;
     doc.text(parts.join('  |  '), { continued: false, width: 780 });
     if (doc.y > 540) doc.addPage();
   }
   doc.end();
   await done;
   return Buffer.concat(chunks);
+}
+
+export function preparePdfGridForExport(params: {
+  columns: string[];
+  labels: Record<string, string>;
+  rows: Row[];
+}): { titles: string[]; rows: string[][] } {
+  const titles = params.columns.map((c) => String(params.labels[c] ?? c));
+  const rows = params.rows.map((row) =>
+    params.columns.map((col) =>
+      row[col] === null || row[col] === undefined ? '' : String(row[col])
+    )
+  );
+  return { titles, rows };
 }
