@@ -171,36 +171,40 @@ export async function runCustomReport(
     if (hit) return hit;
   }
 
-  await client.query(`SET LOCAL statement_timeout TO '35000'`);
+  await client.query(`SET statement_timeout TO '35000'`);
 
-  const listRes = await client.query(compiled.listSql, compiled.params);
-  const countRes = await client.query<{ c: string }>(compiled.countSql, compiled.countParams);
-  const totalCount = Number(countRes.rows[0]?.c ?? 0);
-  const page = payload.page ?? 1;
-  const pageSize = Math.min(payload.pageSize ?? 50, mode === 'export' ? 5000 : 500);
+  try {
+    const listRes = await client.query(compiled.listSql, compiled.params);
+    const countRes = await client.query<{ c: string }>(compiled.countSql, compiled.countParams);
+    const totalCount = Number(countRes.rows[0]?.c ?? 0);
+    const page = payload.page ?? 1;
+    const pageSize = Math.min(payload.pageSize ?? 50, mode === 'export' ? 5000 : 500);
 
-  const rowsIn = listRes.rows.map((r) =>
-    augmentCaseInsensitiveAliases(normalizePgRow(r as Record<string, unknown>))
-  );
-  const rows = rowsIn.map((full) =>
-    applyComputedExpressions(rmap, compiled.projectedKeys, payload, full)
-  );
+    const rowsIn = listRes.rows.map((r) =>
+      augmentCaseInsensitiveAliases(normalizePgRow(r as Record<string, unknown>))
+    );
+    const rows = rowsIn.map((full) =>
+      applyComputedExpressions(rmap, compiled.projectedKeys, payload, full)
+    );
 
-  const { metas } = deriveColumnLabels(
-    registryPack.fields,
-    compiled.projectedKeys,
-    payload,
-    payload.formulas
-  );
+    const { metas } = deriveColumnLabels(
+      registryPack.fields,
+      compiled.projectedKeys,
+      payload,
+      payload.formulas
+    );
 
-  const result: GeneratedReportResult = {
-    columns: metas,
-    rows,
-    totalCount,
-    page,
-    pageSize,
-  };
+    const result: GeneratedReportResult = {
+      columns: metas,
+      rows,
+      totalCount,
+      page,
+      pageSize,
+    };
 
-  if (cacheKey) memoryCacheSet(cacheKey, result, 15_000);
-  return result;
+    if (cacheKey) memoryCacheSet(cacheKey, result, 15_000);
+    return result;
+  } finally {
+    await client.query('RESET statement_timeout');
+  }
 }

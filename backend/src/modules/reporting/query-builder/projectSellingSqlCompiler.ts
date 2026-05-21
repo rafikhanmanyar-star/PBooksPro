@@ -86,6 +86,20 @@ function escapeIlikePattern(raw: string): string {
   return `%${esc}%`;
 }
 
+function toProjectionAlias(raw: string): string {
+  return raw.replace(/[^a-zA-Z0-9_]/g, '_');
+}
+
+function reserveProjectionAlias(base: string, used: Set<string>): string {
+  let alias = base || 'column';
+  let i = 2;
+  while (used.has(alias)) {
+    alias = `${base}_${i++}`;
+  }
+  used.add(alias);
+  return alias;
+}
+
 function buildFilterSql(
   registry: Map<string, RegisteredField>,
   filters: NonNullable<CustomReportGeneratePayload['filters']>,
@@ -231,38 +245,51 @@ export function compileProjectSellingReport(
   const groupExprs: string[] = [];
 
   if (hasGroup) {
-    for (const k of keys) {
-      const d = rmap.get(k);
-      if (d && isCalculatedField(d)) {
-        throw new Error('CALCULATED_FIELDS_UNSUPPORTED_WITH_GROUP_BY');
-      }
-    }
+    const projectedKeys: string[] = [];
+    const usedAliases = new Set<string>();
+    const groupAliasByDimension = new Map<string, string>();
+    const firstAggregateField =
+      keys.find((k) => {
+        const d = rmap.get(k);
+        return d && !isCalculatedField(d);
+      }) ?? 'agreement_id';
     for (const g of payload.groupBy ?? []) {
       const gx = registryPack.groupDimensions[g];
-      const label = `g_${g.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+      const label = reserveProjectionAlias(toProjectionAlias(g), usedAliases);
       selectParts.push(`${gx} AS "${label}"`);
       groupExprs.push(gx);
+      groupAliasByDimension.set(g, label);
+      projectedKeys.push(label);
     }
     const aggs =
-      payload.aggregates?.length ? payload.aggregates : [{ field: keys[0]!, operation: 'COUNT' as const }];
+      payload.aggregates?.length
+        ? payload.aggregates
+        : [{ field: firstAggregateField, operation: 'COUNT' as const }];
     for (let i = 0; i < aggs.length; i++) {
       const agg = aggs[i]!;
       const fd = rmap.get(agg.field);
       if (!fd || isCalculatedField(fd)) throw new Error(`AGG_FIELD_INVALID:${agg.field}`);
+      const aliasBase =
+        agg.operation === 'COUNT'
+          ? `count_${toProjectionAlias(agg.field)}`
+          : `${agg.operation.toLowerCase()}_${toProjectionAlias(agg.field)}`;
+      const alias = reserveProjectionAlias(aliasBase, usedAliases);
       if (agg.operation === 'COUNT') {
-        selectParts.push(`COUNT(*)::bigint AS "agg_${i}_count"`);
+        selectParts.push(`COUNT(*)::bigint AS "${alias}"`);
       } else {
         if (!fd.aggregatable) throw new Error(`FIELD_NOT_AGGREGATABLE:${agg.field}`);
         selectParts.push(
-          `${agg.operation}(${fd.sqlExpr}) AS "agg_${i}_${agg.field.replace(/\W/g, '_')}_${agg.operation}"`
+          `${agg.operation}(${fd.sqlExpr}) AS "${alias}"`
         );
       }
+      projectedKeys.push(alias);
     }
     const groupSql = groupExprs.length ? ` GROUP BY ${groupExprs.join(', ')}` : '';
     const orderParts: string[] = [];
     for (const s of payload.sortBy ?? []) {
-      if (registryPack.groupDimensions[s.field]) {
-        orderParts.push(`"${`g_${s.field.replace(/[^a-zA-Z0-9_]/g, '_')}`}" ${s.direction}`);
+      const groupAlias = groupAliasByDimension.get(s.field);
+      if (groupAlias) {
+        orderParts.push(`"${groupAlias}" ${s.direction}`);
       }
     }
     const orderSql = orderParts.length ? ` ORDER BY ${orderParts.join(', ')}` : '';
@@ -277,7 +304,7 @@ export function compileProjectSellingReport(
       params: [...params],
       countSql,
       countParams: [...params],
-      projectedKeys: keys,
+      projectedKeys,
     };
   }
 
