@@ -10,7 +10,7 @@
     "migrate": "tsx src/migrate.ts",
     "reset-pm-cycle": "tsx src/scripts/runResetPmCycle.ts",
     "backfill-payroll-ledger": "tsx src/scripts/backfillPayrollLedger.ts",
-    "test": "node --import tsx --test src/utils/dateOnly.test.ts src/services/payrollLedgerCore.test.ts src/services/contractorFifo.test.ts"
+    "test": "node --import tsx --test src/utils/dateOnly.test.ts src/services/payrollLedgerCore.test.ts src/services/contractorFifo.test.ts src/modules/reporting/services/customReportRunService.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
