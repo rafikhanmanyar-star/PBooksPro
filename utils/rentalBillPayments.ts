@@ -150,9 +150,15 @@ export function isBillPaymentFromSecurityDepositIncome(tx: Transaction): boolean
   return /bill payment \(from security deposit\)/i.test(d);
 }
 
+function isSecurityDepositBillLiabilityReleaseExpense(tx: Transaction): boolean {
+  if (tx.type !== TransactionType.EXPENSE) return false;
+  const d = tx.description || '';
+  return /security deposit applied\s*[-—]\s*Bill\b/i.test(d);
+}
+
 /** Ledger rows that settle the vendor bill balance, not owner reimbursement income linked for rental reporting. */
 export function isBillSettlementLedgerTransaction(tx: Transaction): boolean {
-  if (tx.type === TransactionType.EXPENSE) return true;
+  if (tx.type === TransactionType.EXPENSE) return !isSecurityDepositBillLiabilityReleaseExpense(tx);
   return isBillPaymentFromSecurityDepositIncome(tx);
 }
 

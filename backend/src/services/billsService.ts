@@ -651,7 +651,10 @@ export async function recalculateBillPaymentAggregates(
     `SELECT COALESCE(SUM(amount), 0)::text AS sum FROM transactions
      WHERE tenant_id = $1 AND bill_id = $2 AND deleted_at IS NULL
        AND (
-         LOWER(TRIM(type)) = 'expense'
+         (
+           LOWER(TRIM(type)) = 'expense'
+           AND COALESCE(description, '') NOT ILIKE 'Security deposit applied%Bill%'
+         )
          OR (
            LOWER(TRIM(type)) = 'income'
            AND COALESCE(description, '') ILIKE '%bill payment (from security deposit)%'

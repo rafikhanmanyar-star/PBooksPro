@@ -111,4 +111,42 @@ function tx(p: Partial<Transaction> & Pick<Transaction, 'id' | 'type' | 'amount'
   assertEqual(paymentRows.length, 2, 'valid bill settlement rows should appear as bill payments');
 }
 
+{
+  const securityDepositBillPayment = tx({
+    id: 'security-payment-2',
+    type: TransactionType.INCOME,
+    amount: 200,
+    date: '2026-05-12',
+    categoryId: 'cat-security-deposit',
+    contactId: 'tenant-1',
+    billId: bill.id,
+    description: 'Bill payment (from security deposit) - B-001',
+  });
+  const liabilityReleaseExpense = tx({
+    id: 'security-liability-release-1',
+    type: TransactionType.EXPENSE,
+    amount: 200,
+    date: '2026-05-12',
+    categoryId: 'cat-security-deposit',
+    contactId: 'tenant-1',
+    billId: bill.id,
+    description: 'Security deposit applied - Bill B-001',
+  });
+
+  assertEqual(
+    sumLinkedExpensePaymentsForBill([securityDepositBillPayment, liabilityReleaseExpense], bill.id),
+    200,
+    'security-deposit bill settlement should count once, not once per paired ledger row'
+  );
+
+  const paymentRows = getPaymentTransactionsForRentalBill(
+    [securityDepositBillPayment, liabilityReleaseExpense],
+    bill,
+    categories,
+    properties
+  );
+  assertEqual(paymentRows.length, 1, 'security-deposit liability release should not appear as bill payment');
+  assertEqual(paymentRows[0]?.id, securityDepositBillPayment.id, 'security-deposit income is the bill payment row');
+}
+
 console.log('rentalBillPayments tests passed');
