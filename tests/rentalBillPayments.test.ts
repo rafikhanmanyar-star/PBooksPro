@@ -149,4 +149,29 @@ function tx(p: Partial<Transaction> & Pick<Transaction, 'id' | 'type' | 'amount'
   assertEqual(paymentRows[0]?.id, securityDepositBillPayment.id, 'security-deposit income is the bill payment row');
 }
 
+{
+  const orphanLiabilityReleaseExpense = tx({
+    id: 'orphan-security-liability-release-1',
+    type: TransactionType.EXPENSE,
+    amount: 200,
+    date: '2026-05-12',
+    categoryId: 'cat-repair',
+    contactId: 'tenant-1',
+    propertyId: bill.propertyId,
+    description: 'Security deposit applied - Bill B-001',
+  });
+
+  const paymentRows = getPaymentTransactionsForRentalBill(
+    [orphanLiabilityReleaseExpense],
+    bill,
+    categories,
+    properties
+  );
+  assertEqual(
+    paymentRows.length,
+    0,
+    'orphan security-deposit liability release should not be matched as a bill payment'
+  );
+}
+
 console.log('rentalBillPayments tests passed');

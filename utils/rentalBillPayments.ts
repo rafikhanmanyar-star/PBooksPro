@@ -247,7 +247,7 @@ export function getPaymentTransactionsForRentalBill(
   const categoryIds = expandBillCategoryIds(bill, categories);
 
   const orphans = transactions.filter(t => {
-    if (t.type !== TransactionType.EXPENSE) return false;
+    if (!isBillSettlementLedgerTransaction(t)) return false;
     if (linkedIds.has(t.id)) return false;
     const bid = String(t.billId ?? (t as any).bill_id ?? '');
     if (bid) return false;
