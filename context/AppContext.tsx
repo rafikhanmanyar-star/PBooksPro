@@ -19,7 +19,7 @@ import { isLocalOnlyMode, isAccountingBackedByRemoteApi } from '../config/apiUrl
 import { notifyDatabaseError } from '../services/dbErrorNotification';
 import { formatApiErrorMessage } from '../utils/formatApiErrorMessage';
 import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconcile';
-import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
+import { isBillSettlementLedgerTransaction, resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
 import {
     adjustOrRemoveRentAggregateExpenseAfterIncomeRemoved,
     findSecuritySettlementCascadeDeletePartners,
@@ -372,7 +372,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
     }
 
     // 3. Bill Status
-    if (tx.billId) {
+    if (tx.billId && isBillSettlementLedgerTransaction(tx)) {
         newState.bills = newState.bills.map(b => {
             if (b.id === tx.billId) {
                 const newPaid = Math.max(0, (b.paidAmount || 0) + (amount * factor));
@@ -412,6 +412,7 @@ function applyTxToInvoiceCopy(inv: Invoice, tx: Transaction, isAdd: boolean): In
 
 /** Same bill math as applyTransactionEffect. */
 function applyTxToBillCopy(b: Bill, tx: Transaction, isAdd: boolean): Bill {
+    if (!isBillSettlementLedgerTransaction(tx)) return b;
     const factor = isAdd ? 1 : -1;
     const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
     const newPaid = Math.max(0, (b.paidAmount || 0) + (amount * factor));

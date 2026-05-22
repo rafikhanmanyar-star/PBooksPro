@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useStateSelector } from '../../hooks/useSelectiveState';
 import { CURRENCY } from '../../constants';
-import { TransactionType, type Bill, type Transaction } from '../../types';
+import { type Bill, type Transaction } from '../../types';
 import { formatDate } from '../../utils/dateUtils';
 import {
     getEffectiveBillPaymentDisplay,
     getPaymentTransactionsForRentalBill,
+    isBillSettlementLedgerTransaction,
 } from '../../utils/rentalBillPayments';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { contractorApi, type VendorBillSettlementRow } from '../../services/api/contractorApi';
@@ -32,8 +33,6 @@ export interface BillLinkedPaymentsSidePanelProps {
     /** Rental bills: also show expense payments matched by category / reference when `bill_id` was missing. */
     includeRentalOrphanPayments?: boolean;
 }
-
-import type { Bill } from '../../types';
 
 function prepaidLinesFromDescription(bill: Bill): PrepaidAppliedLine[] {
     const amounts = parsePrepaidAdvanceAmountsFromBillDescription(bill.description);
@@ -83,7 +82,7 @@ const BillLinkedPaymentsSidePanel: React.FC<BillLinkedPaymentsSidePanelProps> = 
     const linkedPayments = useMemo(() => {
         const id = String(billId);
         const explicit = transactions.filter((t) => {
-            if (t.type !== TransactionType.EXPENSE && t.type !== TransactionType.INCOME) return false;
+            if (!isBillSettlementLedgerTransaction(t)) return false;
             return txBillId(t) === id;
         });
         if (includeRentalOrphanPayments && bill) {

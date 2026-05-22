@@ -150,6 +150,18 @@ export function isBillPaymentFromSecurityDepositIncome(tx: Transaction): boolean
   return /bill payment \(from security deposit\)/i.test(d);
 }
 
+function isSecurityDepositBillLiabilityReleaseExpense(tx: Transaction): boolean {
+  if (tx.type !== TransactionType.EXPENSE) return false;
+  const d = tx.description || '';
+  return /security deposit applied\s*[-—]\s*Bill\b/i.test(d);
+}
+
+/** Ledger rows that settle the vendor bill balance, not owner reimbursement income linked for rental reporting. */
+export function isBillSettlementLedgerTransaction(tx: Transaction): boolean {
+  if (tx.type === TransactionType.EXPENSE) return !isSecurityDepositBillLiabilityReleaseExpense(tx);
+  return isBillPaymentFromSecurityDepositIncome(tx);
+}
+
 /**
  * Companion EXPENSE created with the income row when paying a bill from security (no bill_id on this line).
  */
@@ -229,13 +241,13 @@ export function getPaymentTransactionsForRentalBill(
   const linked = transactions.filter((t) => {
     const bid = String(t.billId ?? (t as { bill_id?: string }).bill_id ?? '');
     if (bid !== billIdStr) return false;
-    return t.type === TransactionType.EXPENSE || t.type === TransactionType.INCOME;
+    return isBillSettlementLedgerTransaction(t);
   });
   const linkedIds = new Set(linked.map(t => t.id));
   const categoryIds = expandBillCategoryIds(bill, categories);
 
   const orphans = transactions.filter(t => {
-    if (t.type !== TransactionType.EXPENSE) return false;
+    if (!isBillSettlementLedgerTransaction(t)) return false;
     if (linkedIds.has(t.id)) return false;
     const bid = String(t.billId ?? (t as any).bill_id ?? '');
     if (bid) return false;
@@ -265,12 +277,12 @@ export function getPaymentTransactionsForRentalBill(
   );
 }
 
-/** Sum INCOME + EXPENSE transactions linked to this bill (matches applyTransactionEffect; includes security-deposit bill payments as Income). */
+/** Sum bill-settlement ledger rows linked to this bill (includes security-deposit bill payments as Income). */
 export function sumLinkedExpensePaymentsForBill(transactions: Transaction[], billId: string): number {
   const id = String(billId);
   let s = 0;
   for (const t of transactions) {
-    if (t.type !== TransactionType.EXPENSE && t.type !== TransactionType.INCOME) continue;
+    if (!isBillSettlementLedgerTransaction(t)) continue;
     const bid = String(t.billId ?? (t as any).bill_id ?? '');
     if (bid !== id) continue;
     s += typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0;
