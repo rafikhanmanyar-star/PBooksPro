@@ -3,6 +3,7 @@ import { InvoiceStatus, LoanSubtype, TransactionType } from '../types';
 import {
   findSecurityDepositAppliedExpenseForBillPayment,
   isBillPaymentFromSecurityDepositIncome,
+  isBillSettlementLedgerTransaction,
 } from './rentalBillPayments';
 
 /** All rental security settlement txs from OwnerPayoutModal share this batch id prefix. */
@@ -93,7 +94,7 @@ export function applyTransactionEffectOnly(
     });
   }
 
-  if (tx.billId) {
+  if (tx.billId && isBillSettlementLedgerTransaction(tx)) {
     newState.bills = newState.bills.map((b) => {
       if (b.id !== tx.billId) return b;
       const newPaid = Math.max(0, (b.paidAmount || 0) + amount * factor);
