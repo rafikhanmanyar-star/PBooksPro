@@ -4,6 +4,13 @@ import { getDistributableFundsBreakdown } from '../services/investorFundAvailabi
 
 const EPS = 0.005;
 
+type WithdrawalValidationOptions = { ignorePendingPayables?: boolean };
+type WithdrawalEditValidationOptions = WithdrawalValidationOptions & { currentBalanceIncludesOriginal?: boolean };
+
+function roundCurrency(amount: number): number {
+    return Math.round(amount * 100) / 100;
+}
+
 /**
  * Validates an investor cash withdrawal against **distributable funds** for a project
  * (available cash − reserves − payables). Use from ledger saves and payout flows.
@@ -14,9 +21,9 @@ export function validateWithdrawal(
     amount: number,
     asOfYmd: string,
     reservePolicy: ReservePolicy,
-    options?: { ignorePendingPayables?: boolean }
+    options?: WithdrawalValidationOptions
 ): WithdrawalValidationResult {
-    const requestedAmount = Math.round(amount * 100) / 100;
+    const requestedAmount = roundCurrency(amount);
     const b = getDistributableFundsBreakdown(state, projectId, asOfYmd, reservePolicy);
     const distributableFunds = options?.ignorePendingPayables
         ? Math.max(0, b.availableCash - b.reservedFunds)
@@ -56,4 +63,22 @@ export function validateWithdrawal(
         messages,
         reservePolicy,
     };
+}
+
+export function validateWithdrawalEdit(
+    state: AppState,
+    projectId: string,
+    originalAmount: number,
+    nextAmount: number,
+    asOfYmd: string,
+    reservePolicy: ReservePolicy,
+    options?: WithdrawalEditValidationOptions
+): WithdrawalValidationResult {
+    const originalAmountIncluded = options?.currentBalanceIncludesOriginal ?? true;
+    const originalOffset = originalAmountIncluded ? roundCurrency(originalAmount) : 0;
+    const incrementalOutflow = roundCurrency(roundCurrency(nextAmount) - originalOffset);
+    if (incrementalOutflow <= EPS) {
+        return validateWithdrawal(state, projectId, 0, asOfYmd, reservePolicy, options);
+    }
+    return validateWithdrawal(state, projectId, incrementalOutflow, asOfYmd, reservePolicy, options);
 }
