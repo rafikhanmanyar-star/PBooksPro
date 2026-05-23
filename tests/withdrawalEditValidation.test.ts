@@ -19,7 +19,10 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     contacts: [],
     vendors: [],
     categories: [],
-    projects: [{ id: 'project', name: 'Project A', description: '', color: '#000', status: 'Active' }],
+    projects: [
+      { id: 'project', name: 'Project A', description: '', color: '#000', status: 'Active' },
+      { id: 'other-project', name: 'Project B', description: '', color: '#000', status: 'Active' },
+    ],
     buildings: [],
     properties: [],
     units: [],
@@ -106,6 +109,16 @@ const noReserve = { mode: 'percent', percent: 0 } as const;
 
   const unaffordableIncrease = validateWithdrawalEdit(state, 'project', 8000, 11000, '2024-01-31', noReserve);
   assert.equal(unaffordableIncrease.ok, false, 'incremental increases still cannot exceed available cash');
+
+  const movedToUnfundedProject = validateWithdrawalEdit(state, 'other-project', 8000, 6000, '2024-01-31', noReserve, {
+    currentBalanceIncludesOriginal: false,
+  });
+  assert.equal(movedToUnfundedProject.ok, false, 'moving a withdrawal to another project must validate the full amount');
+
+  const movedBeforeProjectFunding = validateWithdrawalEdit(state, 'project', 8000, 6000, '2023-12-31', noReserve, {
+    currentBalanceIncludesOriginal: false,
+  });
+  assert.equal(movedBeforeProjectFunding.ok, false, 'moving a withdrawal before the original cash impact must validate the full amount');
 }
 
 console.log('withdrawalEditValidation: ok');

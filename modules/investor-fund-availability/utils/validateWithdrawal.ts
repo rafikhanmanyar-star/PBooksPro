@@ -4,6 +4,9 @@ import { getDistributableFundsBreakdown } from '../services/investorFundAvailabi
 
 const EPS = 0.005;
 
+type WithdrawalValidationOptions = { ignorePendingPayables?: boolean };
+type WithdrawalEditValidationOptions = WithdrawalValidationOptions & { currentBalanceIncludesOriginal?: boolean };
+
 function roundCurrency(amount: number): number {
     return Math.round(amount * 100) / 100;
 }
@@ -18,7 +21,7 @@ export function validateWithdrawal(
     amount: number,
     asOfYmd: string,
     reservePolicy: ReservePolicy,
-    options?: { ignorePendingPayables?: boolean }
+    options?: WithdrawalValidationOptions
 ): WithdrawalValidationResult {
     const requestedAmount = roundCurrency(amount);
     const b = getDistributableFundsBreakdown(state, projectId, asOfYmd, reservePolicy);
@@ -69,9 +72,11 @@ export function validateWithdrawalEdit(
     nextAmount: number,
     asOfYmd: string,
     reservePolicy: ReservePolicy,
-    options?: { ignorePendingPayables?: boolean }
+    options?: WithdrawalEditValidationOptions
 ): WithdrawalValidationResult {
-    const incrementalOutflow = roundCurrency(roundCurrency(nextAmount) - roundCurrency(originalAmount));
+    const originalAmountIncluded = options?.currentBalanceIncludesOriginal ?? true;
+    const originalOffset = originalAmountIncluded ? roundCurrency(originalAmount) : 0;
+    const incrementalOutflow = roundCurrency(roundCurrency(nextAmount) - originalOffset);
     if (incrementalOutflow <= EPS) {
         return validateWithdrawal(state, projectId, 0, asOfYmd, reservePolicy, options);
     }
