@@ -646,11 +646,17 @@ export async function recalculateBillPaymentAggregates(
   const b = bR.rows[0];
   if (!b) return;
 
-  /** Income + Expense rows with bill_id (matches client applyTransactionEffect; Income = security-deposit bill payment). */
+  /** Vendor/AP bill settlements: expense rows, plus the security-deposit income row used for tenant-funded bill settlement. */
   const sumR = await client.query<{ sum: string | null }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS sum FROM transactions
      WHERE tenant_id = $1 AND bill_id = $2 AND deleted_at IS NULL
-       AND LOWER(TRIM(type)) IN ('expense', 'income')`,
+       AND (
+         LOWER(TRIM(type)) = 'expense'
+         OR (
+           LOWER(TRIM(type)) = 'income'
+           AND COALESCE(description, '') ~* 'bill payment[[:space:]]*\\(from security deposit\\)'
+         )
+       )`,
     [tenantId, billId]
   );
   const txnPaid = Math.max(0, Number(sumR.rows[0]?.sum ?? 0));
