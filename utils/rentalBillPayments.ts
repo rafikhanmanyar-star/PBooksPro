@@ -150,6 +150,12 @@ export function isBillPaymentFromSecurityDepositIncome(tx: Transaction): boolean
   return /bill payment \(from security deposit\)/i.test(d);
 }
 
+/** Real AP settlement rows that reduce vendor bill balance. Owner reimbursements may reference billId for owner-ledger tracking but are not vendor payments. */
+export function isBillSettlementTransaction(tx: Transaction): boolean {
+  if (tx.type === TransactionType.EXPENSE) return true;
+  return isBillPaymentFromSecurityDepositIncome(tx);
+}
+
 /**
  * Companion EXPENSE created with the income row when paying a bill from security (no bill_id on this line).
  */
@@ -204,7 +210,7 @@ export function getBillLinkedLedgerTransactionIdsForCascadeDelete(bill: Bill, tr
   for (const t of transactions) {
     const bid = String(t.billId ?? (t as { bill_id?: string }).bill_id ?? '');
     if (bid !== billIdStr) continue;
-    if (t.type === TransactionType.EXPENSE || t.type === TransactionType.INCOME) ids.add(t.id);
+    if (isBillSettlementTransaction(t)) ids.add(t.id);
   }
   for (const t of transactions) {
     if (!ids.has(t.id)) continue;
@@ -229,7 +235,7 @@ export function getPaymentTransactionsForRentalBill(
   const linked = transactions.filter((t) => {
     const bid = String(t.billId ?? (t as { bill_id?: string }).bill_id ?? '');
     if (bid !== billIdStr) return false;
-    return t.type === TransactionType.EXPENSE || t.type === TransactionType.INCOME;
+    return isBillSettlementTransaction(t);
   });
   const linkedIds = new Set(linked.map(t => t.id));
   const categoryIds = expandBillCategoryIds(bill, categories);
@@ -265,12 +271,12 @@ export function getPaymentTransactionsForRentalBill(
   );
 }
 
-/** Sum INCOME + EXPENSE transactions linked to this bill (matches applyTransactionEffect; includes security-deposit bill payments as Income). */
+/** Sum AP settlement transactions linked to this bill (expense cash payments plus security-deposit bill settlements). */
 export function sumLinkedExpensePaymentsForBill(transactions: Transaction[], billId: string): number {
   const id = String(billId);
   let s = 0;
   for (const t of transactions) {
-    if (t.type !== TransactionType.EXPENSE && t.type !== TransactionType.INCOME) continue;
+    if (!isBillSettlementTransaction(t)) continue;
     const bid = String(t.billId ?? (t as any).bill_id ?? '');
     if (bid !== id) continue;
     s += typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0;
