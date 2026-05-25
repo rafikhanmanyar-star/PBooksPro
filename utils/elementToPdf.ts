@@ -17,9 +17,15 @@ function a4ContentWidthPx(orientation: PrintOrientation, marginMm = 8): number {
  * Expands overflow-hidden scroll containers marked with `[data-print-scroll-container]` when present.
  * Honors `data-print-orientation="landscape"` on the root element.
  */
+export function resolvePdfCaptureElement(root: HTMLElement): HTMLElement {
+  if (root.hasAttribute('data-pdf-capture-root')) {
+    return root;
+  }
+  return root.querySelector<HTMLElement>('[data-print-scroll-container]') ?? root;
+}
+
 export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
-  const inner = root.querySelector<HTMLElement>('[data-print-scroll-container]');
-  const captureEl = inner ?? root;
+  const captureEl = resolvePdfCaptureElement(root);
   const orientation = resolvePrintOrientation(root);
   const marginMm = 8;
   const contentWidthPx = a4ContentWidthPx(orientation, marginMm);
