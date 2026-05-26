@@ -19,7 +19,7 @@ import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 import UndistributedFundsReport from '../investmentManagement/UndistributedFundsReport';
 import InvMgmtProjectProfitabilityAnalytics from '../../modules/project-profitability/ProjectProfitabilityAnalytics';
 import FundAvailabilityPage from '../../modules/investor-fund-availability/components/FundAvailabilityPage';
-import { validateWithdrawal } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
+import { validateWithdrawal, validateWithdrawalFromAccount } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
 import { useFundAvailabilityFiltersStore } from '../../modules/investor-fund-availability/store/fundAvailabilityFiltersStore';
 import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
@@ -791,7 +791,9 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 bankAccounts.some((a) => a.id === fromId) && equityAccounts.some((a) => a.id === toId);
             if (isWithdrawalEdit && projectId) {
                 const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
-                const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy);
+                const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy, {
+                    excludeTransactionId: mainTx.id,
+                });
                 if (!v.ok) {
                     await showAlert(
                         `Withdrawal exceeds distributable funds for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -1247,6 +1249,37 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             if (totalAmount > availableOnSource + 0.005) {
                 await showAlert(
                     `Insufficient cash on the source account for this project. Available: ${CURRENCY} ${availableOnSource.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Required: ${totalFormatted}. Fund the project or reduce the transfer.`
+                );
+                return;
+            }
+        }
+
+        if (transferType === 'PAYOUT') {
+            if (!payoutAccountId) {
+                await showAlert('Select a bank/cash account for this payout.');
+                return;
+            }
+            if (!sourceProjectId) {
+                await showAlert('Select a source project for this payout.');
+                return;
+            }
+            const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
+            const v = validateWithdrawalFromAccount(
+                state,
+                sourceProjectId,
+                payoutAccountId,
+                totalAmount,
+                txDate,
+                reservePolicy
+            );
+            if (!v.ok) {
+                const accountAvailable =
+                    typeof v.sourceAccountAvailable === 'number'
+                        ? `\nSelected account cash: ${CURRENCY} ${v.sourceAccountAvailable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '';
+                await showAlert(
+                    `Payout exceeds distributable funds or selected account cash for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${accountAvailable}`,
+                    { title: 'Liquidity guard' }
                 );
                 return;
             }
