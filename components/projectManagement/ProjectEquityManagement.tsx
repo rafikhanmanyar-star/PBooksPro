@@ -19,7 +19,7 @@ import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 import UndistributedFundsReport from '../investmentManagement/UndistributedFundsReport';
 import InvMgmtProjectProfitabilityAnalytics from '../../modules/project-profitability/ProjectProfitabilityAnalytics';
 import FundAvailabilityPage from '../../modules/investor-fund-availability/components/FundAvailabilityPage';
-import { validateWithdrawal } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
+import { validateWithdrawalFromAccount } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
 import { useFundAvailabilityFiltersStore } from '../../modules/investor-fund-availability/store/fundAvailabilityFiltersStore';
 import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
@@ -231,6 +231,10 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         () => state.accounts.filter((a) => (a.type === AccountType.BANK || a.type === AccountType.CASH) && a.name !== 'Internal Clearing'),
         [state.accounts]
     );
+    const bankAndCashAccountIds = useMemo(
+        () => new Set(bankAndCashAccounts.map((a) => a.id)),
+        [bankAndCashAccounts]
+    );
 
     useEffect(() => {
         if (!transferSourceBankId && bankAndCashAccounts.length > 0) {
@@ -241,7 +245,11 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             const cash = bankAndCashAccounts.find((a) => a.name === 'Cash');
             setTransferDestBankId(cash?.id ?? bankAndCashAccounts[0].id);
         }
-    }, [bankAndCashAccounts, transferSourceBankId, transferDestBankId]);
+        if (!payoutAccountId && bankAndCashAccounts.length > 0) {
+            const cash = bankAndCashAccounts.find((a) => a.name === 'Cash');
+            setPayoutAccountId(cash?.id ?? bankAndCashAccounts[0].id);
+        }
+    }, [bankAndCashAccounts, transferSourceBankId, transferDestBankId, payoutAccountId]);
 
     // Resizing Logic
     const isResizing = useRef(false);
@@ -771,12 +779,13 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         if (mode === 'SIMPLE') {
             // Simple Transfer update
             // Determine if this is an investment or withdrawal based on original transaction
-            const originalIsInvestment = equityAccounts.some(a => a.id === mainTx.fromAccountId) && 
-                                        bankAccounts.some(a => a.id === mainTx.toAccountId);
-            const originalIsWithdrawal = bankAccounts.some(a => a.id === mainTx.fromAccountId) && 
+            const originalIsInvestment = equityAccounts.some(a => a.id === mainTx.fromAccountId) &&
+                                        bankAndCashAccountIds.has(mainTx.toAccountId || '');
+            const originalIsWithdrawal = bankAndCashAccountIds.has(mainTx.fromAccountId || '') &&
                                          equityAccounts.some(a => a.id === mainTx.toAccountId);
             
-            let fromId, toId;
+            let fromId = '';
+            let toId = '';
             if (originalIsInvestment || (!originalIsWithdrawal && equityAccounts.some(a => a.id === investorId))) {
                 // Investment: from=investor, to=bank
                 fromId = investorId;
@@ -788,13 +797,25 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             }
 
             const isWithdrawalEdit =
-                bankAccounts.some((a) => a.id === fromId) && equityAccounts.some((a) => a.id === toId);
+                bankAndCashAccountIds.has(fromId) && equityAccounts.some((a) => a.id === toId);
             if (isWithdrawalEdit && projectId) {
                 const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
-                const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy);
+                const v = validateWithdrawalFromAccount(
+                    state,
+                    projectId,
+                    fromId,
+                    numAmount,
+                    resolvedDate,
+                    reservePolicy,
+                    { excludeTransactionId: mainTx.id }
+                );
                 if (!v.ok) {
+                    const accountAvailable =
+                        typeof v.sourceAccountAvailable === 'number'
+                            ? `\nSelected account cash: ${CURRENCY} ${v.sourceAccountAvailable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : '';
                     await showAlert(
-                        `Withdrawal exceeds distributable funds for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        `Withdrawal exceeds distributable funds or selected account cash for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${accountAvailable}`,
                         { title: 'Liquidity guard' }
                     );
                     return;
@@ -811,7 +832,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 toAccountId: toId,
                 accountId: fromId,
                 subtype:
-                    fromId === investorId && bankAccounts.some((b) => b.id === toId)
+                    fromId === investorId && bankAndCashAccountIds.has(toId)
                         ? EquityLedgerSubtype.INVESTMENT
                         : EquityLedgerSubtype.WITHDRAWAL,
             };
@@ -904,8 +925,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             setFormInvestorId('');
         }
         
-        const cash = bankAccounts.find(a => a.name === 'Cash');
-        setFormBankAccountId(cash?.id || bankAccounts[0]?.id || '');
+        const cash = bankAndCashAccounts.find(a => a.name === 'Cash');
+        setFormBankAccountId(cash?.id || bankAndCashAccounts[0]?.id || '');
 
         setIsActionModalOpen(true);
     };
@@ -1247,6 +1268,37 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             if (totalAmount > availableOnSource + 0.005) {
                 await showAlert(
                     `Insufficient cash on the source account for this project. Available: ${CURRENCY} ${availableOnSource.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Required: ${totalFormatted}. Fund the project or reduce the transfer.`
+                );
+                return;
+            }
+        }
+
+        if (transferType === 'PAYOUT') {
+            if (!payoutAccountId) {
+                await showAlert('Select a bank/cash account for this payout.');
+                return;
+            }
+            if (!sourceProjectId) {
+                await showAlert('Select a source project for this payout.');
+                return;
+            }
+            const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
+            const v = validateWithdrawalFromAccount(
+                state,
+                sourceProjectId,
+                payoutAccountId,
+                totalAmount,
+                txDate,
+                reservePolicy
+            );
+            if (!v.ok) {
+                const accountAvailable =
+                    typeof v.sourceAccountAvailable === 'number'
+                        ? `\nSelected account cash: ${CURRENCY} ${v.sourceAccountAvailable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '';
+                await showAlert(
+                    `Payout exceeds distributable funds or selected account cash for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${accountAvailable}`,
+                    { title: 'Liquidity guard' }
                 );
                 return;
             }
@@ -1732,7 +1784,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                         </p>
                                     </>
                                 ) : (
-                                    <ComboBox label="Pay From Account" items={bankAccounts} selectedId={payoutAccountId} onSelect={(item) => setPayoutAccountId(item?.id || '')} placeholder="Select Bank/Cash Account" allowAddNew={false} />
+                                    <ComboBox label="Pay From Account" items={bankAndCashAccounts} selectedId={payoutAccountId} onSelect={(item) => setPayoutAccountId(item?.id || '')} placeholder="Select Bank/Cash Account" allowAddNew={false} />
                                 )}
                                 <div className="mt-4 max-w-xs">
                                     <DatePicker
@@ -1915,7 +1967,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 <div className="space-y-4">
                     <ComboBox label="Investor" items={equityAccounts} selectedId={formInvestorId} onSelect={(i) => setFormInvestorId(i?.id || '')} required />
                     <ComboBox label="Project" items={state.projects} selectedId={formProjectId} onSelect={(i) => setFormProjectId(i?.id || '')} required allowAddNew={false} />
-                    <ComboBox label="Bank/Cash Account" items={bankAccounts} selectedId={formBankAccountId} onSelect={(i) => setFormBankAccountId(i?.id || '')} required allowAddNew={false} />
+                    <ComboBox label="Bank/Cash Account" items={bankAndCashAccounts} selectedId={formBankAccountId} onSelect={(i) => setFormBankAccountId(i?.id || '')} required allowAddNew={false} />
                     <Input label="Amount" type="number" value={formAmount} onChange={e => setFormAmount(e.target.value)} required />
                     <DatePicker label="Date" value={formDate} onChange={d => setFormDate(toLocalDateString(d))} required />
                     <Input label="Description" value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Optional note" />
@@ -1954,7 +2006,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                             <>
                                 <ComboBox label="Project" items={state.projects} selectedId={editingBatch.projectId} onSelect={(i) => setEditingBatch({...editingBatch, projectId: i?.id || ''})} required allowAddNew={false} />
                                 <ComboBox label="Investor" items={equityAccounts} selectedId={editingBatch.investorId} onSelect={(i) => setEditingBatch({...editingBatch, investorId: i?.id || ''})} required />
-                                <ComboBox label="Bank Account" items={bankAccounts} selectedId={editingBatch.bankAccountId} onSelect={(i) => setEditingBatch({...editingBatch, bankAccountId: i?.id || ''})} required allowAddNew={false} />
+                                <ComboBox label="Bank/Cash Account" items={bankAndCashAccounts} selectedId={editingBatch.bankAccountId} onSelect={(i) => setEditingBatch({...editingBatch, bankAccountId: i?.id || ''})} required allowAddNew={false} />
                             </>
                         )}
 
