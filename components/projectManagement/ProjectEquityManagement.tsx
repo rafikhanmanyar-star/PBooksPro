@@ -241,7 +241,11 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             const cash = bankAndCashAccounts.find((a) => a.name === 'Cash');
             setTransferDestBankId(cash?.id ?? bankAndCashAccounts[0].id);
         }
-    }, [bankAndCashAccounts, transferSourceBankId, transferDestBankId]);
+        if (!payoutAccountId && bankAndCashAccounts.length > 0) {
+            const cash = bankAndCashAccounts.find((a) => a.name === 'Cash');
+            setPayoutAccountId(cash?.id ?? bankAndCashAccounts[0].id);
+        }
+    }, [bankAndCashAccounts, transferSourceBankId, transferDestBankId, payoutAccountId]);
 
     // Resizing Logic
     const isResizing = useRef(false);
@@ -1765,7 +1769,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                         </p>
                                     </>
                                 ) : (
-                                    <ComboBox label="Pay From Account" items={bankAccounts} selectedId={payoutAccountId} onSelect={(item) => setPayoutAccountId(item?.id || '')} placeholder="Select Bank/Cash Account" allowAddNew={false} />
+                                    <ComboBox label="Pay From Account" items={bankAndCashAccounts} selectedId={payoutAccountId} onSelect={(item) => setPayoutAccountId(item?.id || '')} placeholder="Select Bank/Cash Account" allowAddNew={false} />
                                 )}
                                 <div className="mt-4 max-w-xs">
                                     <DatePicker
