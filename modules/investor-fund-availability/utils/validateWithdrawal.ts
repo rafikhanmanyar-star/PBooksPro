@@ -4,6 +4,32 @@ import { getDistributableFundsBreakdown } from '../services/investorFundAvailabi
 
 const EPS = 0.005;
 
+interface ProjectWithdrawalOutflowInput {
+    state: AppState;
+    projectId: string;
+    amount: number;
+    asOfYmd: string;
+    reservePolicy: ReservePolicy;
+    options?: { ignorePendingPayables?: boolean };
+}
+
+interface EditedWithdrawalOutflowInput {
+    existingAmount: number;
+    existingProjectId?: string;
+    existingDate?: string;
+    newAmount: number;
+    newProjectId: string;
+    asOfYmd: string;
+}
+
+function isOnOrBeforeAsOf(date: string | undefined, asOfYmd: string): boolean {
+    if (!date) return false;
+    const existing = new Date(date);
+    const asOf = new Date(asOfYmd);
+    asOf.setHours(23, 59, 59, 999);
+    return existing <= asOf;
+}
+
 /**
  * Validates an investor cash withdrawal against **distributable funds** for a project
  * (available cash − reserves − payables). Use from ledger saves and payout flows.
@@ -56,4 +82,29 @@ export function validateWithdrawal(
         messages,
         reservePolicy,
     };
+}
+
+export function validateProjectWithdrawalOutflow({
+    state,
+    projectId,
+    amount,
+    asOfYmd,
+    reservePolicy,
+    options,
+}: ProjectWithdrawalOutflowInput): WithdrawalValidationResult {
+    return validateWithdrawal(state, projectId, amount, asOfYmd, reservePolicy, options);
+}
+
+export function getAdditionalWithdrawalAmountToValidate({
+    existingAmount,
+    existingProjectId,
+    existingDate,
+    newAmount,
+    newProjectId,
+    asOfYmd,
+}: EditedWithdrawalOutflowInput): number {
+    const existingAlreadyInScope =
+        existingProjectId === newProjectId && isOnOrBeforeAsOf(existingDate, asOfYmd);
+    const coveredByExistingOutflow = existingAlreadyInScope ? existingAmount : 0;
+    return Math.max(0, Math.round((newAmount - coveredByExistingOutflow) * 100) / 100);
 }

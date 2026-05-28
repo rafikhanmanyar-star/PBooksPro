@@ -60,6 +60,7 @@
     "smoke:design-system:full": "node scripts/smoke-test-design-system.mjs --build",
     "verify:financial-engine": "node scripts/verify-financial-engine.mjs",
     "verify:equity-ledger": "node scripts/verify-equity-ledger.mjs",
+    "test:withdrawal-guard": "tsx tests/validateWithdrawal.test.ts",
     "test:date-only": "tsx tests/dateOnlySerialization.test.ts",
     "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",
     "test:cash-flow": "tsx tests/cashFlowEngine.test.ts",
