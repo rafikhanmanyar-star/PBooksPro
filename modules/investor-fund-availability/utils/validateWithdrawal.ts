@@ -4,6 +4,15 @@ import { getDistributableFundsBreakdown } from '../services/investorFundAvailabi
 
 const EPS = 0.005;
 
+interface ProjectWithdrawalOutflowInput {
+    state: AppState;
+    projectId: string;
+    amount: number;
+    asOfYmd: string;
+    reservePolicy: ReservePolicy;
+    options?: { ignorePendingPayables?: boolean };
+}
+
 /**
  * Validates an investor cash withdrawal against **distributable funds** for a project
  * (available cash − reserves − payables). Use from ledger saves and payout flows.
@@ -56,4 +65,15 @@ export function validateWithdrawal(
         messages,
         reservePolicy,
     };
+}
+
+export function validateProjectWithdrawalOutflow({
+    state,
+    projectId,
+    amount,
+    asOfYmd,
+    reservePolicy,
+    options,
+}: ProjectWithdrawalOutflowInput): WithdrawalValidationResult {
+    return validateWithdrawal(state, projectId, amount, asOfYmd, reservePolicy, options);
 }

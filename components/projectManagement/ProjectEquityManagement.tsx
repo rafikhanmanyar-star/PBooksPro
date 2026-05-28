@@ -19,7 +19,10 @@ import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 import UndistributedFundsReport from '../investmentManagement/UndistributedFundsReport';
 import InvMgmtProjectProfitabilityAnalytics from '../../modules/project-profitability/ProjectProfitabilityAnalytics';
 import FundAvailabilityPage from '../../modules/investor-fund-availability/components/FundAvailabilityPage';
-import { validateWithdrawal } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
+import {
+    validateProjectWithdrawalOutflow,
+    validateWithdrawal,
+} from '../../modules/investor-fund-availability/utils/validateWithdrawal';
 import { useFundAvailabilityFiltersStore } from '../../modules/investor-fund-availability/store/fundAvailabilityFiltersStore';
 import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
@@ -78,6 +81,10 @@ type EquityLedgerRow = Transaction & {
     projectName: string;
     rowInvestorName?: string;
 };
+
+function formatLiquidityGuardMessage(v: ReturnType<typeof validateWithdrawal>): string {
+    return `Withdrawal exceeds distributable funds for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 function signedEquityLedgerAmount(row: Pick<EquityLedgerRow, 'amount' | 'isDeposit'>): number {
     return row.isDeposit ? row.amount : -row.amount;
@@ -794,7 +801,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy);
                 if (!v.ok) {
                     await showAlert(
-                        `Withdrawal exceeds distributable funds for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        formatLiquidityGuardMessage(v),
                         { title: 'Liquidity guard' }
                     );
                     return;
@@ -1222,15 +1229,6 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         
         const totalAmount = selectedTransfers.reduce((sum, r) => sum + (parseFloat(r.transferAmount) || 0), 0);
         const totalFormatted = `${CURRENCY} ${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        const confirm = await showConfirm(`Transfer equity for ${selectedTransfers.length} investor(s). Total amount: ${totalFormatted}. Continue?`);
-        if (!confirm) return;
-
-        const note = transferDescription.trim();
-        const noteSuffix = note ? ` — ${note}` : '';
-
-        const timestamp = Date.now();
-        const transactions: Transaction[] = [];
-
         const txDate = transferDate || toLocalDateString(new Date());
 
         if (transferType === 'PROJECT') {
@@ -1238,6 +1236,25 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 await showAlert('Select source and destination bank/cash accounts for this transfer.');
                 return;
             }
+        } else if (!payoutAccountId) {
+            await showAlert('Select a bank/cash account for this capital payout.');
+            return;
+        }
+
+        const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
+        const sourceOutflowValidation = validateProjectWithdrawalOutflow({
+            state,
+            projectId: sourceProjectId,
+            amount: totalAmount,
+            asOfYmd: txDate,
+            reservePolicy,
+        });
+        if (!sourceOutflowValidation.ok) {
+            await showAlert(formatLiquidityGuardMessage(sourceOutflowValidation), { title: 'Liquidity guard' });
+            return;
+        }
+
+        if (transferType === 'PROJECT') {
             const availableOnSource = computeProjectScopedBankCashBalance(
                 state,
                 transferSourceBankId,
@@ -1250,7 +1267,29 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 );
                 return;
             }
+        } else {
+            const availableOnPayoutAccount = computeProjectScopedBankCashBalance(
+                state,
+                payoutAccountId,
+                sourceProjectId,
+                txDate
+            );
+            if (totalAmount > availableOnPayoutAccount + 0.005) {
+                await showAlert(
+                    `Insufficient cash on the payout account for this project. Available: ${CURRENCY} ${availableOnPayoutAccount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Required: ${totalFormatted}. Fund the account or reduce the payout.`
+                );
+                return;
+            }
         }
+
+        const confirm = await showConfirm(`Transfer equity for ${selectedTransfers.length} investor(s). Total amount: ${totalFormatted}. Continue?`);
+        if (!confirm) return;
+
+        const note = transferDescription.trim();
+        const noteSuffix = note ? ` — ${note}` : '';
+
+        const timestamp = Date.now();
+        const transactions: Transaction[] = [];
 
         selectedTransfers.forEach((row) => {
             const amount = parseFloat(row.transferAmount);
