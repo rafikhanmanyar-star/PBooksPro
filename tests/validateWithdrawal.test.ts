@@ -4,7 +4,10 @@
  */
 import type { Account, AppState, Bill, Project, Transaction } from '../types';
 import { AccountType, EquityLedgerSubtype, InvoiceStatus, TransactionType } from '../types';
-import { validateProjectWithdrawalOutflow } from '../modules/investor-fund-availability/utils/validateWithdrawal';
+import {
+  getAdditionalWithdrawalAmountToValidate,
+  validateProjectWithdrawalOutflow,
+} from '../modules/investor-fund-availability/utils/validateWithdrawal';
 
 function baseState(overrides: Partial<AppState> = {}): AppState {
   const bank: Account = { id: 'bank-1', name: 'Bank', type: AccountType.BANK, balance: 0 };
@@ -134,6 +137,30 @@ function assert(condition: unknown, message: string): asserts condition {
   });
 
   assert(result.ok, 'capital payout within distributable funds should be allowed');
+}
+
+{
+  const extra = getAdditionalWithdrawalAmountToValidate({
+    existingAmount: 300,
+    existingProjectId: 'project-1',
+    existingDate: '2026-05-01',
+    newAmount: 500,
+    newProjectId: 'project-1',
+    asOfYmd: '2026-05-28',
+  });
+  assert(extra === 200, `expected same-project edit to validate only incremental 200, got ${extra}`);
+}
+
+{
+  const extra = getAdditionalWithdrawalAmountToValidate({
+    existingAmount: 300,
+    existingProjectId: 'project-1',
+    existingDate: '2026-06-01',
+    newAmount: 500,
+    newProjectId: 'project-1',
+    asOfYmd: '2026-05-28',
+  });
+  assert(extra === 500, `expected date move before original withdrawal to validate full 500, got ${extra}`);
 }
 
 console.log('validateWithdrawal tests passed');

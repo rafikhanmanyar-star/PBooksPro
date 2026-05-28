@@ -20,6 +20,7 @@ import UndistributedFundsReport from '../investmentManagement/UndistributedFunds
 import InvMgmtProjectProfitabilityAnalytics from '../../modules/project-profitability/ProjectProfitabilityAnalytics';
 import FundAvailabilityPage from '../../modules/investor-fund-availability/components/FundAvailabilityPage';
 import {
+    getAdditionalWithdrawalAmountToValidate,
     validateProjectWithdrawalOutflow,
     validateWithdrawal,
 } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
@@ -797,8 +798,22 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             const isWithdrawalEdit =
                 bankAccounts.some((a) => a.id === fromId) && equityAccounts.some((a) => a.id === toId);
             if (isWithdrawalEdit && projectId) {
+                const amountToValidate = getAdditionalWithdrawalAmountToValidate({
+                    existingAmount: mainTx.amount,
+                    existingProjectId: mainTx.projectId,
+                    existingDate: mainTx.date,
+                    newAmount: numAmount,
+                    newProjectId: projectId,
+                    asOfYmd: resolvedDate,
+                });
                 const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
-                const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy);
+                const v = validateProjectWithdrawalOutflow({
+                    state,
+                    projectId,
+                    amount: amountToValidate,
+                    asOfYmd: resolvedDate,
+                    reservePolicy,
+                });
                 if (!v.ok) {
                     await showAlert(
                         formatLiquidityGuardMessage(v),
@@ -829,6 +844,44 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             const investTx = allInBatch.find(t => t.id.includes('invest'));
 
             if (divestTx && investTx) {
+                const amountToValidate = getAdditionalWithdrawalAmountToValidate({
+                    existingAmount: divestTx.amount,
+                    existingProjectId: divestTx.projectId,
+                    existingDate: divestTx.date,
+                    newAmount: numAmount,
+                    newProjectId: projectId,
+                    asOfYmd: resolvedDate,
+                });
+                if (amountToValidate > 0.005) {
+                    const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
+                    const v = validateProjectWithdrawalOutflow({
+                        state,
+                        projectId,
+                        amount: amountToValidate,
+                        asOfYmd: resolvedDate,
+                        reservePolicy,
+                    });
+                    if (!v.ok) {
+                        await showAlert(formatLiquidityGuardMessage(v), { title: 'Liquidity guard' });
+                        return;
+                    }
+
+                    if (divestTx.fromAccountId) {
+                        const availableOnSource = computeProjectScopedBankCashBalance(
+                            state,
+                            divestTx.fromAccountId,
+                            projectId,
+                            resolvedDate
+                        );
+                        if (amountToValidate > availableOnSource + 0.005) {
+                            await showAlert(
+                                `Insufficient cash on the source account for this project. Available: ${CURRENCY} ${availableOnSource.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Required additional cash: ${CURRENCY} ${amountToValidate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Fund the project or reduce the transfer.`
+                            );
+                            return;
+                        }
+                    }
+                }
+
                 // Update Divest (Source Project)
                 txsToUpdate.push({
                     ...divestTx,
