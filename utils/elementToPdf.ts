@@ -12,14 +12,23 @@ function a4ContentWidthPx(orientation: PrintOrientation, marginMm = 8): number {
   return ((pageWidthMm - 2 * marginMm) * 96) / 25.4;
 }
 
+export function resolveElementToPdfCapturePlan(root: HTMLElement): {
+  captureEl: HTMLElement;
+  scrollContainers: HTMLElement[];
+} {
+  return {
+    captureEl: root,
+    scrollContainers: Array.from(root.querySelectorAll<HTMLElement>('[data-print-scroll-container]')),
+  };
+}
+
 /**
  * Rasterizes a DOM subtree to a multi-page A4 PDF.
  * Expands overflow-hidden scroll containers marked with `[data-print-scroll-container]` when present.
  * Honors `data-print-orientation="landscape"` on the root element.
  */
 export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
-  const inner = root.querySelector<HTMLElement>('[data-print-scroll-container]');
-  const captureEl = inner ?? root;
+  const { captureEl, scrollContainers } = resolveElementToPdfCapturePlan(root);
   const orientation = resolvePrintOrientation(root);
   const marginMm = 8;
   const contentWidthPx = a4ContentWidthPx(orientation, marginMm);
@@ -36,6 +45,12 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
     captureWidth: captureEl.style.width,
     captureMaxWidth: captureEl.style.maxWidth,
     captureBackgroundColor: captureEl.style.backgroundColor,
+    scrollContainers: scrollContainers.map((el) => ({
+      el,
+      overflow: el.style.overflow,
+      maxHeight: el.style.maxHeight,
+      height: el.style.height,
+    })),
   };
 
   root.style.width = `${contentWidthPx}px`;
@@ -47,6 +62,11 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
   captureEl.style.maxWidth = `${contentWidthPx}px`;
   if (!captureEl.style.backgroundColor) {
     captureEl.style.backgroundColor = '#ffffff';
+  }
+  for (const el of scrollContainers) {
+    el.style.overflow = 'visible';
+    el.style.maxHeight = 'none';
+    el.style.height = 'auto';
   }
 
   try {
@@ -92,5 +112,10 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
     captureEl.style.width = prev.captureWidth;
     captureEl.style.maxWidth = prev.captureMaxWidth;
     captureEl.style.backgroundColor = prev.captureBackgroundColor;
+    for (const saved of prev.scrollContainers) {
+      saved.el.style.overflow = saved.overflow;
+      saved.el.style.maxHeight = saved.maxHeight;
+      saved.el.style.height = saved.height;
+    }
   }
 }
