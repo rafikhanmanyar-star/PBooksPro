@@ -30,7 +30,7 @@ import {
     useProjectProfitabilityDetailsQuery,
     useProjectProfitabilitySummaryQuery,
 } from './hooks/useProjectProfitabilityAnalytics';
-import { derivePortfolioSummaryFromRows } from './services/projectProfitability.service';
+import { derivePortfolioSummaryFromRows, portfolioMonthlyTrendForProjectIds } from './services/projectProfitability.service';
 import { useProfitabilityFiltersStore } from './store/profitabilityFiltersStore';
 
 const COLUMN_PRESETS: { id: string; label: string }[] = [
@@ -128,12 +128,21 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
         return derivePortfolioSummaryFromRows(filteredRows, endDate);
     }, [summaryQuery.data, filteredRows, endDate]);
 
+    const filteredProjectIds = useMemo(() => filteredRows.map((r) => r.projectId), [filteredRows]);
+    const isPortfolioFiltered = !!summaryQuery.data && filteredRows.length !== summaryQuery.data.rows.length;
+
     const monthlyChartPoints = useMemo(() => {
-        if (focusedProjectId && projectDetailsQuery.data?.monthlyTrend?.length) {
-            return projectDetailsQuery.data.monthlyTrend;
+        if (focusedProjectId) {
+            if (projectDetailsQuery.data?.monthlyTrend?.length) {
+                return projectDetailsQuery.data.monthlyTrend;
+            }
+            return portfolioMonthlyTrendForProjectIds(state, endDate, [focusedProjectId], 12);
+        }
+        if (isPortfolioFiltered) {
+            return portfolioMonthlyTrendForProjectIds(state, endDate, filteredProjectIds, 12);
         }
         return monthlyQuery.data ?? [];
-    }, [focusedProjectId, projectDetailsQuery.data, monthlyQuery.data]);
+    }, [focusedProjectId, projectDetailsQuery.data, isPortfolioFiltered, state, endDate, filteredProjectIds, monthlyQuery.data]);
 
     const selectedProjectName =
         focusedProjectId != null ? state.projects.find((p) => p.id === focusedProjectId)?.name : null;

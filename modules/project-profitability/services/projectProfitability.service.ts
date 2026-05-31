@@ -195,7 +195,12 @@ function investorLedgerForProject(state: AppState, projectId: string, endYmd: st
     return { deposits, withdrawals, profitAllocations };
 }
 
-function monthlyTrendForProject(state: AppState, projectId: string, endYmd: string, maxMonths = 12): MonthlyProfitPoint[] {
+function buildMonthlyTrend(
+    state: AppState,
+    endYmd: string,
+    maxMonths: number,
+    projectIds: readonly string[] | null
+): MonthlyProfitPoint[] {
     const end = new Date(endYmd);
     const out: MonthlyProfitPoint[] = [];
     for (let i = 0; i < maxMonths; i++) {
@@ -204,12 +209,28 @@ function monthlyTrendForProject(state: AppState, projectId: string, endYmd: stri
         const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
         const s = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
         const e = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
-        const pl = computeProjectProfitLossTotals(state, projectId, s, e);
+        const pl =
+            projectIds == null
+                ? computeProjectProfitLossTotals(state, 'all', s, e)
+                : projectIds.reduce(
+                      (acc, projectId) => {
+                          const projectPl = computeProjectProfitLossTotals(state, projectId, s, e);
+                          acc.totalIncome += projectPl.totalIncome;
+                          acc.totalExpense += projectPl.totalExpense;
+                          acc.netProfit += projectPl.netProfit;
+                          return acc;
+                      },
+                      { totalIncome: 0, totalExpense: 0, netProfit: 0 }
+                  );
         const monthKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
         const label = start.toLocaleString(undefined, { month: 'short', year: 'numeric' });
         out.push({ monthKey, label, revenue: pl.totalIncome, expense: pl.totalExpense, netProfit: pl.netProfit });
     }
     return out.reverse();
+}
+
+function monthlyTrendForProject(state: AppState, projectId: string, endYmd: string, maxMonths = 12): MonthlyProfitPoint[] {
+    return buildMonthlyTrend(state, endYmd, maxMonths, [projectId]);
 }
 
 function plCategoryTrace(state: AppState, projectId: string, endYmd: string): ProjectProfitabilityDetails['plCategoryRollup'] {
@@ -537,20 +558,16 @@ export function filterProfitabilityRows(
 }
 
 export function portfolioMonthlyTrend(state: AppState, endYmd: string, maxMonths = 12): MonthlyProfitPoint[] {
-    const end = new Date(endYmd);
-    const out: MonthlyProfitPoint[] = [];
-    for (let i = 0; i < maxMonths; i++) {
-        const d = new Date(end.getFullYear(), end.getMonth() - i, 1);
-        const start = new Date(d.getFullYear(), d.getMonth(), 1);
-        const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-        const s = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
-        const e = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
-        const pl = computeProjectProfitLossTotals(state, 'all', s, e);
-        const monthKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
-        const label = start.toLocaleString(undefined, { month: 'short', year: 'numeric' });
-        out.push({ monthKey, label, revenue: pl.totalIncome, expense: pl.totalExpense, netProfit: pl.netProfit });
-    }
-    return out.reverse();
+    return buildMonthlyTrend(state, endYmd, maxMonths, null);
+}
+
+export function portfolioMonthlyTrendForProjectIds(
+    state: AppState,
+    endYmd: string,
+    projectIds: readonly string[],
+    maxMonths = 12
+): MonthlyProfitPoint[] {
+    return buildMonthlyTrend(state, endYmd, maxMonths, projectIds);
 }
 
 export function uniqueProjectTypes(rows: ProjectProfitabilityRow[]): string[] {
