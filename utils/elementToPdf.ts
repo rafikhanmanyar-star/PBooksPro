@@ -17,9 +17,14 @@ function a4ContentWidthPx(orientation: PrintOrientation, marginMm = 8): number {
  * Expands overflow-hidden scroll containers marked with `[data-print-scroll-container]` when present.
  * Honors `data-print-orientation="landscape"` on the root element.
  */
+export function resolvePdfCaptureTarget(root: HTMLElement): HTMLElement {
+  return root;
+}
+
 export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
   const inner = root.querySelector<HTMLElement>('[data-print-scroll-container]');
-  const captureEl = inner ?? root;
+  const captureEl = resolvePdfCaptureTarget(root);
+  const expandableEl = inner ?? captureEl;
   const orientation = resolvePrintOrientation(root);
   const marginMm = 8;
   const contentWidthPx = a4ContentWidthPx(orientation, marginMm);
@@ -30,9 +35,9 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
   const prev = {
     rootWidth: root.style.width,
     rootMaxWidth: root.style.maxWidth,
-    captureOverflow: captureEl.style.overflow,
-    captureMaxHeight: captureEl.style.maxHeight,
-    captureHeight: captureEl.style.height,
+    expandableOverflow: expandableEl.style.overflow,
+    expandableMaxHeight: expandableEl.style.maxHeight,
+    expandableHeight: expandableEl.style.height,
     captureWidth: captureEl.style.width,
     captureMaxWidth: captureEl.style.maxWidth,
     captureBackgroundColor: captureEl.style.backgroundColor,
@@ -40,9 +45,9 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
 
   root.style.width = `${contentWidthPx}px`;
   root.style.maxWidth = `${contentWidthPx}px`;
-  captureEl.style.overflow = 'visible';
-  captureEl.style.maxHeight = 'none';
-  captureEl.style.height = 'auto';
+  expandableEl.style.overflow = 'visible';
+  expandableEl.style.maxHeight = 'none';
+  expandableEl.style.height = 'auto';
   captureEl.style.width = `${contentWidthPx}px`;
   captureEl.style.maxWidth = `${contentWidthPx}px`;
   if (!captureEl.style.backgroundColor) {
@@ -86,9 +91,9 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
     }
     root.style.width = prev.rootWidth;
     root.style.maxWidth = prev.rootMaxWidth;
-    captureEl.style.overflow = prev.captureOverflow;
-    captureEl.style.maxHeight = prev.captureMaxHeight;
-    captureEl.style.height = prev.captureHeight;
+    expandableEl.style.overflow = prev.expandableOverflow;
+    expandableEl.style.maxHeight = prev.expandableMaxHeight;
+    expandableEl.style.height = prev.expandableHeight;
     captureEl.style.width = prev.captureWidth;
     captureEl.style.maxWidth = prev.captureMaxWidth;
     captureEl.style.backgroundColor = prev.captureBackgroundColor;
