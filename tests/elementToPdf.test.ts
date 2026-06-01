@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePdfCaptureTargets } from '../utils/elementToPdf';
+import { resolvePdfCanvasSize, resolvePdfCaptureTargets } from '../utils/elementToPdf';
 
 type FakeElement = {
   name: string;
@@ -48,4 +48,21 @@ test('PDF capture keeps scroll container target when it is the only printable co
 
   assert.strictEqual(targets.captureEl, scroll);
   assert.strictEqual(targets.scrollEl, scroll);
+});
+
+test('PDF canvas sizing uses full scroll height for expanded long reports', () => {
+  const captureEl = {
+    scrollHeight: 2400,
+    offsetHeight: 600,
+    getBoundingClientRect: () => ({ height: 600 }),
+  };
+
+  const size = resolvePdfCanvasSize(captureEl as unknown as HTMLElement, 1062);
+
+  assert.deepStrictEqual(size, {
+    width: 1062,
+    height: 2400,
+    windowWidth: 1062,
+    windowHeight: 2400,
+  });
 });

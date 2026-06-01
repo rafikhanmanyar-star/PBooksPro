@@ -7,6 +7,13 @@ export interface PdfCaptureTargets {
   scrollEl: HTMLElement | null;
 }
 
+export interface PdfCanvasSize {
+  width: number;
+  height: number;
+  windowWidth: number;
+  windowHeight: number;
+}
+
 function resolvePrintOrientation(root: HTMLElement): PrintOrientation {
   return root.dataset.printOrientation === 'landscape' ? 'landscape' : 'portrait';
 }
@@ -33,6 +40,23 @@ export function resolvePdfCaptureTargets(root: HTMLElement): PdfCaptureTargets {
   };
 }
 
+export function resolvePdfCanvasSize(captureEl: HTMLElement, contentWidthPx: number): PdfCanvasSize {
+  const rectHeight = captureEl.getBoundingClientRect().height;
+  const contentHeightPx = Math.max(
+    1,
+    Math.ceil(captureEl.scrollHeight),
+    Math.ceil(captureEl.offsetHeight),
+    Math.ceil(rectHeight),
+  );
+
+  return {
+    width: contentWidthPx,
+    height: contentHeightPx,
+    windowWidth: contentWidthPx,
+    windowHeight: contentHeightPx,
+  };
+}
+
 /**
  * Rasterizes a DOM subtree to a multi-page A4 PDF.
  * Expands overflow-hidden scroll containers marked with `[data-print-scroll-container]` when present.
@@ -54,6 +78,9 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
     captureWidth: captureEl.style.width,
     captureMaxWidth: captureEl.style.maxWidth,
     captureBackgroundColor: captureEl.style.backgroundColor,
+    captureOverflow: captureEl.style.overflow,
+    captureMaxHeight: captureEl.style.maxHeight,
+    captureHeight: captureEl.style.height,
     overflow: overflowEl.style.overflow,
     overflowMaxHeight: overflowEl.style.maxHeight,
     overflowHeight: overflowEl.style.height,
@@ -61,6 +88,9 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
 
   root.style.width = `${contentWidthPx}px`;
   root.style.maxWidth = `${contentWidthPx}px`;
+  captureEl.style.overflow = 'visible';
+  captureEl.style.maxHeight = 'none';
+  captureEl.style.height = 'auto';
   overflowEl.style.overflow = 'visible';
   overflowEl.style.maxHeight = 'none';
   overflowEl.style.height = 'auto';
@@ -71,13 +101,13 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
   }
 
   try {
+    const canvasSize = resolvePdfCanvasSize(captureEl, contentWidthPx);
     const canvas = await html2canvas(captureEl, {
       scale: 2,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      width: contentWidthPx,
-      windowWidth: contentWidthPx,
+      ...canvasSize,
     });
 
     const { jsPDF } = await import('jspdf');
@@ -110,6 +140,9 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
     captureEl.style.width = prev.captureWidth;
     captureEl.style.maxWidth = prev.captureMaxWidth;
     captureEl.style.backgroundColor = prev.captureBackgroundColor;
+    captureEl.style.overflow = prev.captureOverflow;
+    captureEl.style.maxHeight = prev.captureMaxHeight;
+    captureEl.style.height = prev.captureHeight;
     overflowEl.style.overflow = prev.overflow;
     overflowEl.style.maxHeight = prev.overflowMaxHeight;
     overflowEl.style.height = prev.overflowHeight;
