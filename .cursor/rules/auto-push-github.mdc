@@ -1,22 +1,22 @@
 ---
-description: Commit and push code changes to GitHub after editing files
+description: Push committed changes to GitHub after editing files
 alwaysApply: true
 ---
 
-# Auto-push to GitHub
+# Push to GitHub
 
-When you modify project files in a session, keep GitHub in sync before finishing:
+When you modify project files in a session:
 
-1. Stage changes with `git add -A` (`.gitignore` excludes `.env`, secrets, and build artifacts).
-2. If there are staged changes, commit with a clear message describing what changed.
-3. Push the current branch: `git push -u origin HEAD`.
+1. Commit with a **clear message** describing what changed (do not use generic "Auto-sync" commits on `main` or `staging`).
+2. Push the current branch: `git push -u origin HEAD`.
 
-Do this at the end of every task where you changed code. Do not wait for the user to ask.
+Use **`npm run release:staging`** or **`npm run release:production`** for version bumps and installer releases — do not duplicate those steps with ad-hoc commits.
 
 Safety rules:
 
 - Never commit `.env` or other secret/credential files.
 - Never use `git push --force` on `main` or `master`.
+- Keep **`main` and `staging` in sync** after production releases (`release:production` merges staging→main automatically).
 - If push fails (auth, conflicts, network), tell the user what failed and how to fix it.
 
-The project `stop` hook also auto-commits and pushes when an agent session ends.
+The project `stop` hook **pushes unpushed commits only** — it does not auto-commit (prevents branch divergence).
