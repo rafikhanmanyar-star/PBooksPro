@@ -40,7 +40,7 @@ function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>)
   return x as T;
 }
 
-async function loadOwnerRentalIncomeStateInput(
+export async function loadOwnerRentalIncomeStateInput(
   client: pg.PoolClient,
   tenantId: string,
   endDate: string

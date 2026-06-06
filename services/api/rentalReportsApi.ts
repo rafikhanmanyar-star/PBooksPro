@@ -135,3 +135,57 @@ export async function fetchRentalReceivableReport(options: {
       (raw.propertyReceivables as RentalReceivableReportApiResult['propertyReceivables']) ?? [],
   };
 }
+
+export type OwnerIncomeSummaryReportApiResult = {
+  summaries: import('../../components/reports/ownerIncomeSummaryReportEngine').OwnerSummary[];
+};
+
+export async function fetchOwnerIncomeSummaryReport(options: {
+  startDate: string;
+  endDate: string;
+  buildingId?: string;
+  ownerId?: string;
+  search?: string;
+}): Promise<OwnerIncomeSummaryReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+  });
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
+  if (options.ownerId && options.ownerId !== 'all') q.set('ownerId', options.ownerId);
+  if (options.search?.trim()) q.set('search', options.search.trim());
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/owner-income-summary?${q.toString()}`);
+  return {
+    summaries: (raw.summaries as OwnerIncomeSummaryReportApiResult['summaries']) ?? [],
+  };
+}
+
+export type OwnerSecurityDepositReportApiResult = {
+  rows: import('../../components/reports/ownerSecurityDepositReportEngine').SecurityDepositReportRow[];
+};
+
+export async function fetchOwnerSecurityDepositReport(options: {
+  startDate: string;
+  endDate: string;
+  buildingId?: string;
+  ownerId?: string;
+  propertyId?: string;
+  search?: string;
+  sortKey?: string;
+  sortDirection?: 'asc' | 'desc';
+}): Promise<OwnerSecurityDepositReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+  });
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
+  if (options.ownerId && options.ownerId !== 'all') q.set('ownerId', options.ownerId);
+  if (options.propertyId && options.propertyId !== 'all') q.set('propertyId', options.propertyId);
+  if (options.search?.trim()) q.set('search', options.search.trim());
+  if (options.sortKey) q.set('sortKey', options.sortKey);
+  if (options.sortDirection) q.set('sortDirection', options.sortDirection);
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/owner-security-deposit?${q.toString()}`);
+  return {
+    rows: (raw.rows as OwnerSecurityDepositReportApiResult['rows']) ?? [],
+  };
+}

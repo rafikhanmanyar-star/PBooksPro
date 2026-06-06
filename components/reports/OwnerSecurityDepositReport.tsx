@@ -28,7 +28,6 @@ import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import TreeView, { TreeNode } from '../ui/TreeView';
-import { buildLedgerOwnerIdsByPropertyId } from '../../services/propertyOwnershipService';
 import {
     TREE_SELECT_AUTO,
     pruneTreeNodesBySearchQuery,
@@ -39,38 +38,19 @@ import {
 } from './rentalPortfolioReportTree';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-
-interface SecurityDepositRow {
-    id: string;
-    date: string;
-    ownerName: string;
-    tenantName: string;
-    propertyName: string;
-    buildingName: string;
-    particulars: string;
-    depositIn: number;
-    refundOut: number;
-    balance: number;
-    entityType: 'transaction';
-    entityId: string;
-}
+import {
+    computeOwnerSecurityDepositReport,
+    type SecurityDepositReportRow,
+    type SecurityDepositSortKey,
+} from './ownerSecurityDepositReportEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchOwnerSecurityDepositReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
-type SortKey =
-    | 'date'
-    | 'ownerName'
-    | 'tenantName'
-    | 'propertyName'
-    | 'buildingName'
-    | 'particulars'
-    | 'depositIn'
-    | 'refundOut'
-    | 'balance';
+type SortKey = SecurityDepositSortKey;
 
 const SD_ROW_HEIGHT = 40;
 const SD_VIRTUALIZE_THRESHOLD = 80;
-
-type SecurityDepositReportRow = SecurityDepositRow & { balance: number };
 
 type SecurityDepositWaContext = {
     recipient: Contact;
@@ -353,176 +333,77 @@ const OwnerSecurityDepositReport: React.FC = () => {
         return { buildingName, ownerName, unitName };
     }, [selectedBuildingId, selectedOwnerId, selectedUnitId, rentalState.buildings, rentalState.contacts, rentalState.properties]);
 
-    const reportData = useMemo((): SecurityDepositReportRow[] => {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+    const localOnly = isLocalOnlyMode();
+    const [serverRows, setServerRows] = useState<SecurityDepositReportRow[] | null>(null);
+    const [reportLoading, setReportLoading] = useState(false);
+    const [reportFetchError, setReportFetchError] = useState<string | null>(null);
 
-        const securityDepositCategory = rentalState.categories.find((c) => c.name === 'Security Deposit');
-        const refundCategory = rentalState.categories.find((c) => c.name === 'Security Deposit Refund');
-        const ownerPayoutCategory = rentalState.categories.find((c) => c.name === 'Owner Security Payout');
-
-        if (!securityDepositCategory) return [];
-
-        const categoryById = new Map(rentalState.categories.map((c) => [c.id, c]));
-        const invoiceById = new Map(rentalState.invoices.map((i) => [i.id, i]));
-        const propertyById = new Map(rentalState.properties.map((p) => [String(p.id), p]));
-        const contactById = new Map(rentalState.contacts.map((c) => [c.id, c]));
-        const buildingById = new Map(rentalState.buildings.map((b) => [b.id, b]));
-
-        const ledgerOwnersByPropertyId =
-            selectedOwnerId !== 'all' ? buildLedgerOwnerIdsByPropertyId(rentalState) : null;
-
-        const rows: SecurityDepositRow[] = [];
-
-        for (const tx of rentalState.transactions) {
-            const txDate = new Date(tx.date);
-            if (txDate < start || txDate > end) continue;
-
-            let isRelevant = false;
-            let type: 'Deposit' | 'Refund' | 'Deduction' | 'Payout' = 'Deposit';
-
-            if (tx.type === TransactionType.INCOME && tx.categoryId === securityDepositCategory.id) {
-                isRelevant = true;
-                type = 'Deposit';
-            } else if (tx.type === TransactionType.EXPENSE) {
-                const category = categoryById.get(tx.categoryId ?? '');
-
-                if (ownerPayoutCategory && tx.categoryId === ownerPayoutCategory.id) {
-                    isRelevant = true;
-                    type = 'Payout';
-                } else if (refundCategory && tx.categoryId === refundCategory.id) {
-                    isRelevant = true;
-                    type = 'Refund';
-                } else {
-                    const contact = tx.contactId ? contactById.get(tx.contactId) : undefined;
-                    if (contact?.type === ContactType.TENANT) {
-                        isRelevant = true;
-                        type = 'Deduction';
-                    } else if (category?.name.includes('(Tenant)')) {
-                        isRelevant = true;
-                        type = 'Deduction';
-                    }
-                }
-            }
-
-            if (!isRelevant) continue;
-
-            let propertyId = tx.propertyId;
-            let ownerId = '';
-            let buildingId = tx.buildingId;
-            const tenantId = tx.contactId;
-
-            if (!propertyId && tx.invoiceId) {
-                const inv = invoiceById.get(tx.invoiceId);
-                if (inv) {
-                    propertyId = inv.propertyId;
-                    if (!buildingId) buildingId = inv.buildingId;
-                }
-            }
-
-            if (tx.contactId && type === 'Payout') ownerId = tx.contactId;
-
-            if (propertyId) {
-                const property = propertyById.get(String(propertyId));
-                if (property) {
-                    if (!ownerId) ownerId = property.ownerId;
-                    if (!buildingId) buildingId = property.buildingId;
-                }
-            }
-
-            if (selectedUnitId !== 'all') {
-                if (!propertyId || String(propertyId) !== String(selectedUnitId)) continue;
-            }
-            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
-            if (selectedOwnerId !== 'all') {
-                if (propertyId) {
-                    const owners = ledgerOwnersByPropertyId?.get(String(propertyId));
-                    if (!owners?.has(selectedOwnerId)) continue;
-                } else if (ownerId !== selectedOwnerId) {
-                    continue;
-                }
-            }
-
-            const owner = ownerId ? contactById.get(ownerId) : undefined;
-            const tenant = type === 'Payout' ? null : tenantId ? contactById.get(tenantId) : undefined;
-            const property = propertyId ? propertyById.get(String(propertyId)) : undefined;
-            const building = buildingId ? buildingById.get(buildingId) : undefined;
-
-            rows.push({
-                id: tx.id,
-                date: tx.date,
-                ownerName: owner?.name || 'Unknown',
-                tenantName: tenant?.name || (type === 'Payout' ? '-' : 'Unknown'),
-                propertyName: property?.name || '-',
-                buildingName: building?.name || '-',
-                particulars: tx.description || type,
-                depositIn: type === 'Deposit' ? tx.amount : 0,
-                refundOut: type === 'Refund' || type === 'Deduction' || type === 'Payout' ? tx.amount : 0,
-                entityType: 'transaction' as const,
-                entityId: tx.id,
-                balance: 0,
+    useEffect(() => {
+        if (localOnly) {
+            setServerRows(null);
+            setReportFetchError(null);
+            return;
+        }
+        let cancelled = false;
+        setReportLoading(true);
+        setReportFetchError(null);
+        void fetchOwnerSecurityDepositReport({
+            startDate,
+            endDate,
+            buildingId: selectedBuildingId,
+            ownerId: selectedOwnerId,
+            propertyId: selectedUnitId,
+            search: searchQuery,
+            sortKey: sortConfig.key,
+            sortDirection: sortConfig.direction,
+        })
+            .then((r) => {
+                if (!cancelled) setServerRows(r.rows);
+            })
+            .catch((e) => {
+                if (!cancelled) setReportFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setReportLoading(false);
             });
-        }
-
-        rows.sort((a, b) => {
-            let valA: string | number = a[sortConfig.key] as string | number;
-            let valB: string | number = b[sortConfig.key] as string | number;
-
-            if (sortConfig.key === 'date') {
-                valA = new Date(a.date).getTime();
-                valB = new Date(b.date).getTime();
-
-                if (valA === valB) {
-                    if (a.depositIn > 0 && b.depositIn === 0) return -1;
-                    if (a.depositIn === 0 && b.depositIn > 0) return 1;
-                    return 0;
-                }
-            } else if (typeof valA === 'string') {
-                valA = valA.toLowerCase();
-                valB = (valB as string).toLowerCase();
-            }
-
-            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        let runningBalance = 0;
-        let processedRows: SecurityDepositReportRow[] = rows.map((row) => {
-            runningBalance += row.depositIn - row.refundOut;
-            return { ...row, balance: runningBalance };
-        });
-
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            processedRows = processedRows.filter(
-                (r) =>
-                    r.ownerName.toLowerCase().includes(q) ||
-                    r.tenantName.toLowerCase().includes(q) ||
-                    r.propertyName.toLowerCase().includes(q) ||
-                    r.particulars.toLowerCase().includes(q)
-            );
-        }
-
-        return processedRows;
+        return () => {
+            cancelled = true;
+        };
     }, [
-        rentalState.transactions,
-        rentalState.invoices,
-        rentalState.properties,
-        rentalState.buildings,
-        rentalState.categories,
-        rentalState.contacts,
-        rentalState.rentalAgreements,
+        localOnly,
         startDate,
         endDate,
         selectedBuildingId,
         selectedOwnerId,
         selectedUnitId,
-        sortConfig,
         searchQuery,
+        sortConfig,
     ]);
+
+    const localReportData = useMemo(
+        () =>
+            computeOwnerSecurityDepositReport(rentalState, {
+                startDate,
+                endDate,
+                selectedBuildingId,
+                selectedOwnerId,
+                selectedUnitId,
+                sortConfig,
+                searchQuery,
+            }),
+        [
+            rentalState,
+            startDate,
+            endDate,
+            selectedBuildingId,
+            selectedOwnerId,
+            selectedUnitId,
+            sortConfig,
+            searchQuery,
+        ]
+    );
+
+    const reportData = localOnly ? localReportData : (serverRows ?? localReportData);
 
     const totals = useMemo(() => {
         return reportData.reduce(
@@ -823,6 +704,12 @@ const OwnerSecurityDepositReport: React.FC = () => {
                                 />
                             </div>
                         </div>
+                        {!localOnly && reportLoading && (
+                            <p className="text-sm text-app-muted mt-2">Loading security deposit report from server…</p>
+                        )}
+                        {!localOnly && reportFetchError && (
+                            <p className="text-sm text-danger mt-2">Failed to load report: {reportFetchError}</p>
+                        )}
                     </div>
 
                     <div className="flex flex-col flex-1 min-h-0 overflow-hidden printable-area" id="printable-area">

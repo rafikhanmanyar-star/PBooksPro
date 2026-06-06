@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRentalReportAppState } from '../../hooks/useSelectiveState';
-import { ContactType, TransactionType, Transaction } from '../../types';
+import { ContactType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -18,37 +18,13 @@ import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import {
-    getPropertyIdsForOwner,
-    hasMultipleOwnersOnDate,
-    getOwnerSharePercentageOnDate,
-    resolveOwnerForTransaction,
-    getPropertyExpenseAllocatedAmountForOwner,
-    getBrokerFeeAllocatedAmountForOwner,
-    getBillCostAllocatedAmountForOwner,
-} from '../../services/propertyOwnershipService';
-import { billAffectsOwnerRentalIncomeLedger, isBillPaymentFromSecurityDepositIncome } from '../../utils/rentalBillPayments';
+    computeOwnerIncomeSummaryReport,
+    type OwnerSummary,
+} from './ownerIncomeSummaryReportEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchOwnerIncomeSummaryReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
-
-interface UnitSummary {
-    unitId: string;
-    unitName: string;
-    collected: number;
-    expenses: number;
-    brokerFee: number;
-    billAmount: number;
-    payable: number;
-}
-
-interface OwnerSummary {
-    ownerId: string;
-    ownerName: string;
-    units: UnitSummary[];
-    generalPayouts: number; // Payouts not linked to a specific unit
-    totalBrokerFee: number; // Total broker fees across all units
-    totalBillAmount: number; // Total bill amounts (cost center = owner) across all units
-    totalPayable: number;
-}
 
 const OwnerIncomeSummaryReport: React.FC = () => {
     const rentalState = useRentalReportAppState();
@@ -91,215 +67,54 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         setDateRange('custom');
     };
 
-    const reportData = useMemo<OwnerSummary[]>(() => {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+    const localOnly = isLocalOnlyMode();
+    const [serverSummaries, setServerSummaries] = useState<OwnerSummary[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
-        const rentalIncomeCategory = rentalState.categories.find(c => c.name === 'Rental Income');
-        const brokerFeeCategory = rentalState.categories.find(c => c.name === 'Broker Fee');
-        const ownerPayoutCategory = rentalState.categories.find(c => c.name === 'Owner Payout');
-        const ownerShareCat = rentalState.categories.find(c => c.name === 'Owner Rental Income Share');
-        const clearingRentCat = rentalState.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
-
-        if (!rentalIncomeCategory) return [];
-
-        // Build a set of broker fee transaction IDs for quick lookup (to exclude from expenses)
-        const brokerFeeTxIds = new Set<string>();
-        if (brokerFeeCategory) {
-            rentalState.transactions.forEach(tx => {
-                if (tx.type === TransactionType.EXPENSE && tx.categoryId === brokerFeeCategory.id) {
-                    brokerFeeTxIds.add(tx.id);
-                }
-            });
+    useEffect(() => {
+        if (localOnly) {
+            setServerSummaries(null);
+            setFetchError(null);
+            return;
         }
-
-        // 1. Filter owners
-        const filteredOwners = rentalState.contacts.filter(c =>
-            (c.type === ContactType.OWNER || c.type === ContactType.CLIENT) &&
-            (selectedOwnerId === 'all' || c.id === selectedOwnerId)
-        );
-
-        const summaries: OwnerSummary[] = filteredOwners.map(owner => {
-            const b = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
-            const stakeIds = getPropertyIdsForOwner(rentalState, owner.id, b);
-            const ownerProperties = rentalState.properties.filter((p) => stakeIds.has(String(p.id)));
-            const unitData: { [unitId: string]: UnitSummary } = {};
-
-            ownerProperties.forEach(p => {
-                unitData[p.id] = {
-                    unitId: p.id,
-                    unitName: p.name,
-                    collected: 0,
-                    expenses: 0,
-                    brokerFee: 0,
-                    billAmount: 0,
-                    payable: 0
-                };
+        let cancelled = false;
+        setLoading(true);
+        setFetchError(null);
+        void fetchOwnerIncomeSummaryReport({
+            startDate,
+            endDate,
+            buildingId: selectedBuildingId,
+            ownerId: selectedOwnerId,
+            search: searchQuery,
+        })
+            .then((r) => {
+                if (!cancelled) setServerSummaries(r.summaries);
+            })
+            .catch((e) => {
+                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
             });
+        return () => {
+            cancelled = true;
+        };
+    }, [localOnly, startDate, endDate, selectedBuildingId, selectedOwnerId, searchQuery]);
 
-            // Include properties that have transactions with tx.ownerId === owner (historical ownership)
-            rentalState.transactions.forEach(tx => {
-                if (tx.ownerId === owner.id && tx.propertyId && !unitData[tx.propertyId]) {
-                    const prop = rentalState.properties.find(p => p.id === tx.propertyId);
-                    if (prop && (selectedBuildingId === 'all' || prop.buildingId === selectedBuildingId)) {
-                        unitData[tx.propertyId] = {
-                            unitId: tx.propertyId,
-                            unitName: prop.name,
-                            collected: 0,
-                            expenses: 0,
-                            brokerFee: 0,
-                            billAmount: 0,
-                            payable: 0
-                        };
-                    }
-                }
-            });
+    const localReportData = useMemo(
+        () =>
+            computeOwnerIncomeSummaryReport(rentalState, {
+                startDate,
+                endDate,
+                selectedBuildingId,
+                selectedOwnerId,
+                searchQuery,
+            }),
+        [rentalState, startDate, endDate, selectedBuildingId, selectedOwnerId, searchQuery]
+    );
 
-            let generalPayouts = 0;
-
-            // Derive broker fees from rental agreements (same approach as BrokerFeeReport)
-            // This is the most reliable source - shows fee accrued per property from agreements
-            rentalState.rentalAgreements.forEach(ra => {
-                if (!ra.brokerId || !(ra.brokerFee) || ra.brokerFee <= 0) return;
-                if (!ra.propertyId || !unitData[ra.propertyId]) return;
-
-                const raDate = new Date(ra.startDate);
-                if (raDate < start || raDate > end) return;
-
-                const fee = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
-                if (isNaN(fee) || fee <= 0) return;
-                const share = getBrokerFeeAllocatedAmountForOwner(rentalState, ra, owner.id);
-                if (share > 0) unitData[ra.propertyId!].brokerFee += share;
-            });
-
-            // Derive bill amounts — owner/building allocations only (tenant bills are excluded from owner rent economics)
-            (rentalState.bills || []).forEach(bill => {
-                if (!bill.propertyId || bill.projectId || !unitData[bill.propertyId]) return;
-                if (!billAffectsOwnerRentalIncomeLedger(bill, rentalState)) return;
-                const billDate = new Date(bill.issueDate);
-                if (billDate < start || billDate > end) return;
-                const share = getBillCostAllocatedAmountForOwner(rentalState, bill, owner.id);
-                if (share > 0) unitData[bill.propertyId].billAmount += share;
-            });
-
-            // Build set of bill payment tx IDs to exclude from expenses (bill amount already in billAmount above)
-            const ownerBillIds = new Set((rentalState.bills || []).filter(b => b.propertyId && !b.projectId).map(b => b.id));
-            const billPaymentTxIds = new Set<string>();
-            rentalState.transactions.forEach(tx => {
-                if (tx.type === TransactionType.EXPENSE && tx.billId && ownerBillIds.has(tx.billId)) billPaymentTxIds.add(tx.id);
-            });
-
-            // Process transactions for this owner
-            rentalState.transactions.forEach(tx => {
-                const txDate = new Date(tx.date);
-                if (txDate < start || txDate > end) return;
-
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                if (isNaN(amount)) return;
-
-                if (clearingRentCat && tx.categoryId === clearingRentCat.id) return;
-
-                // Case 1: Rental Income — gross (single-owner) or per-owner share (multi-owner)
-                if (tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id) {
-                    if (isBillPaymentFromSecurityDepositIncome(tx)) return;
-                    if (tx.propertyId && unitData[tx.propertyId]) {
-                        const d = (tx.date || '').slice(0, 10);
-                        if (d && hasMultipleOwnersOnDate(rentalState, String(tx.propertyId), d)) {
-                            // Multi-owner: check for explicit share lines; if none, compute proportional share
-                            const hasExplicitShares = ownerShareCat && rentalState.transactions.some(
-                                st => st.categoryId === ownerShareCat.id &&
-                                    ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
-                            );
-                            if (!hasExplicitShares) {
-                                const pct = getOwnerSharePercentageOnDate(rentalState, String(tx.propertyId), owner.id, d);
-                                if (pct > 0) unitData[tx.propertyId].collected += Math.round(amount * pct) / 100;
-                            }
-                            return;
-                        }
-                        const resolvedOwner = resolveOwnerForTransaction(rentalState, tx) ?? rentalState.properties.find(p => p.id === tx.propertyId)?.ownerId;
-                        if (resolvedOwner === owner.id) unitData[tx.propertyId].collected += amount;
-                    }
-                }
-
-                if (
-                    tx.type === TransactionType.INCOME &&
-                    ownerShareCat &&
-                    tx.categoryId === ownerShareCat.id &&
-                    tx.contactId === owner.id &&
-                    tx.propertyId &&
-                    unitData[tx.propertyId]
-                ) {
-                    unitData[tx.propertyId].collected += amount;
-                }
-
-                // Case 2: Expenses & Payouts
-                if (tx.type === TransactionType.EXPENSE) {
-                    const category = rentalState.categories.find(c => c.id === tx.categoryId);
-                    const catName = category?.name || '';
-
-                    // Exclude Security/Tenant items (same as OwnerPayoutsPage)
-                    if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
-
-                    // Skip broker fee payment transactions (broker fee is derived from agreements above)
-                    if (brokerFeeTxIds.has(tx.id)) return;
-                    // Skip bill payment transactions (bill amount is derived from bills above)
-                    if (billPaymentTxIds.has(tx.id)) return;
-
-                    // Owner Payout: 100% to payee (contact); never split by co-ownership
-                    if (ownerPayoutCategory && tx.categoryId === ownerPayoutCategory.id) {
-                        if (tx.contactId === owner.id) {
-                            if (tx.propertyId && unitData[tx.propertyId]) {
-                                unitData[tx.propertyId].expenses += amount;
-                            } else {
-                                generalPayouts += amount;
-                            }
-                        }
-                        return;
-                    }
-
-                    // A. Property-linked Expense — co-owner split matches Owner Ledger
-                    if (tx.propertyId && unitData[tx.propertyId]) {
-                        unitData[tx.propertyId].expenses += getPropertyExpenseAllocatedAmountForOwner(rentalState, tx, amount, owner.id);
-                    }
-                    // B. Direct expense to contact (no property cost center)
-                    else if (tx.contactId === owner.id) {
-                        generalPayouts += amount;
-                    }
-                }
-            });
-
-            const units = Object.values(unitData).map(u => ({
-                ...u,
-                payable: u.collected - u.expenses - u.brokerFee - u.billAmount
-            })).filter(u => u.collected !== 0 || u.expenses !== 0 || u.brokerFee !== 0 || u.billAmount !== 0);
-
-            const totalUnitPayable = units.reduce((sum, u) => sum + u.payable, 0);
-            const totalBrokerFee = units.reduce((sum, u) => sum + u.brokerFee, 0);
-            const totalBillAmount = units.reduce((sum, u) => sum + u.billAmount, 0);
-
-            return {
-                ownerId: owner.id,
-                ownerName: owner.name,
-                units,
-                generalPayouts,
-                totalBrokerFee,
-                totalBillAmount,
-                totalPayable: totalUnitPayable - generalPayouts
-            };
-        }).filter(s => s.units.length > 0 || s.generalPayouts !== 0);
-
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            return summaries.filter(s =>
-                s.ownerName.toLowerCase().includes(q) ||
-                s.units.some(u => u.unitName.toLowerCase().includes(q))
-            );
-        }
-
-        return summaries;
-    }, [rentalState, startDate, endDate, selectedOwnerId, selectedBuildingId, searchQuery]);
+    const reportData = localOnly ? localReportData : (serverSummaries ?? localReportData);
 
     const totals = useMemo(() => {
         return reportData.reduce((acc, curr) => ({
@@ -456,6 +271,12 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                         />
                     </div>
                 </div>
+                {!localOnly && loading && (
+                    <p className="text-sm text-app-muted mt-2 px-1">Loading summary from server…</p>
+                )}
+                {!localOnly && fetchError && (
+                    <p className="text-sm text-danger mt-2 px-1">Failed to load report: {fetchError}</p>
+                )}
             </div>
 
             <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
