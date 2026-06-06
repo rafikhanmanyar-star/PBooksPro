@@ -1,6 +1,15 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBills,
+    useBuildings,
+    useCategories,
+    useContacts,
+    useInvoices,
+    useProperties,
+    useRentalAgreements,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
 import { TransactionType, InvoiceType, InvoiceStatus, ContactType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -50,7 +59,14 @@ type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type SortKey = 'buildingName' | 'collected' | 'receivable' | 'expenses' | 'net';
 
 const BMAnalysisReport: React.FC = () => {
-    const { state } = useAppContext();
+    const allBuildings = useBuildings();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const properties = useProperties();
+    const transactions = useTransactions();
+    const bills = useBills();
+    const invoices = useInvoices();
+    const rentalAgreements = useRentalAgreements();
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState('2100-12-31');
@@ -62,7 +78,7 @@ const BMAnalysisReport: React.FC = () => {
     const [detailBuildingId, setDetailBuildingId] = useState<string | null>(null);
     const [detailTab, setDetailTab] = useState('Collected');
 
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -103,7 +119,7 @@ const BMAnalysisReport: React.FC = () => {
         const detailsMap: Record<string, BMBuildingDetail> = {};
 
         // Initialize all buildings
-        state.buildings.forEach(b => {
+        allBuildings.forEach(b => {
             if (selectedBuildingId !== 'all' && b.id !== selectedBuildingId) return;
             buildingData[b.id] = {
                 id: b.id,
@@ -123,7 +139,7 @@ const BMAnalysisReport: React.FC = () => {
         });
 
         // Categories definition - Broad matching for Service Income
-        const serviceIncomeCatIds = new Set(state.categories
+        const serviceIncomeCatIds = new Set(categories
             .filter(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes('service charge'))
             .map(c => c.id));
         
@@ -135,7 +151,7 @@ const BMAnalysisReport: React.FC = () => {
             'Owner Security Payout'
         ];
         
-        const getCategory = (id: string | undefined) => state.categories.find(c => c.id === id);
+        const getCategory = (id: string | undefined) => categories.find(c => c.id === id);
         
         const isOwnerExpense = (catId: string | undefined) => {
             const cat = getCategory(catId);
@@ -146,24 +162,24 @@ const BMAnalysisReport: React.FC = () => {
 
         const isTenant = (contactId: string | undefined) => {
             if (!contactId) return false;
-            const c = state.contacts.find(con => con.id === contactId);
+            const c = contacts.find(con => con.id === contactId);
             return c?.type === ContactType.TENANT;
         };
 
-        const isTenantBill = (bill: typeof state.bills[0]) => {
+        const isTenantBill = (bill: typeof bills[0]) => {
             if (!bill.projectAgreementId) return false;
-            return state.rentalAgreements.some(ra => ra.id === bill.projectAgreementId);
+            return rentalAgreements.some(ra => ra.id === bill.projectAgreementId);
         };
 
         // 1. Process Transactions (Collected & Direct Expenses)
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             const date = new Date(tx.date);
             if (date < start || date > end) return;
 
             // Income Logic
             let buildingId = tx.buildingId;
             if (!buildingId && tx.propertyId) {
-                const prop = state.properties.find(p => p.id === tx.propertyId);
+                const prop = properties.find(p => p.id === tx.propertyId);
                 if (prop) buildingId = prop.buildingId;
             }
 
@@ -209,7 +225,7 @@ const BMAnalysisReport: React.FC = () => {
         });
 
         // 2. Process Bills (Incurred Expenses - Accrual Basis)
-        state.bills.forEach(bill => {
+        bills.forEach(bill => {
             const date = new Date(bill.issueDate);
             if (date < start || date > end) return;
 
@@ -260,21 +276,21 @@ const BMAnalysisReport: React.FC = () => {
         });
 
         // 3. Process Invoices (Receivable)
-        state.invoices.forEach(inv => {
+        invoices.forEach(inv => {
             const date = new Date(inv.issueDate);
             if (date < start || date > end) return;
 
             if (inv.invoiceType === InvoiceType.RENTAL && inv.status !== InvoiceStatus.PAID && (inv.serviceCharges || 0) > 0) {
                 let buildingId = inv.buildingId;
                 if (!buildingId && inv.propertyId) {
-                    const prop = state.properties.find(p => p.id === inv.propertyId);
+                    const prop = properties.find(p => p.id === inv.propertyId);
                     if (prop) buildingId = prop.buildingId;
                 }
 
                 if (buildingId && buildingData[buildingId]) {
                     const sc = inv.serviceCharges || 0;
                     buildingData[buildingId].receivable += sc;
-                    const tenantName = state.contacts.find(c => c.id === inv.contactId)?.name;
+                    const tenantName = contacts.find(c => c.id === inv.contactId)?.name;
                     detailsMap[buildingId].receivable.push({
                         id: `inv-${inv.id}-sc`,
                         kind: 'receivable',
@@ -314,7 +330,7 @@ const BMAnalysisReport: React.FC = () => {
 
         return { reportData: result, bmDetailsByBuilding: detailsMap };
 
-    }, [state, startDate, endDate, selectedBuildingId, searchQuery, sortConfig]);
+    }, [allBuildings, categories, contacts, properties, transactions, bills, invoices, rentalAgreements, startDate, endDate, selectedBuildingId, searchQuery, sortConfig]);
 
     const activeDetail = detailBuildingId ? bmDetailsByBuilding[detailBuildingId] : null;
 

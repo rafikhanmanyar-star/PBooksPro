@@ -1,5 +1,13 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBills,
+    useFinancialReportAppState,
+    useInvoices,
+    useProjects,
+    useStateSelector,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
+import { _getAppState } from '../../context/appStateStore';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -185,14 +193,22 @@ const SECTION_SHORT: Record<string, string> = {
 };
 
 const ProjectCashFlowReport: React.FC = () => {
-    const { state } = useAppContext();
+    const projects = useProjects();
+    const transactions = useTransactions();
+    const invoices = useInvoices();
+    const bills = useBills();
+    const projectAgreements = useStateSelector((s) => s.projectAgreements);
+    const cashFlowCategoryMappings = useStateSelector((s) => s.cashFlowCategoryMappings);
+    const reportState = useFinancialReportAppState();
     const { print: triggerPrint } = usePrintContext();
 
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState(() => todayLocalYyyyMmDd());
 
-    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(
+        () => _getAppState().defaultProjectId || 'all'
+    );
     const [interestPaidAsOperating, setInterestPaidAsOperating] = useState(true);
 
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
@@ -208,7 +224,7 @@ const ProjectCashFlowReport: React.FC = () => {
 
     const [auditOpen, setAuditOpen] = useState(false);
 
-    const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
+    const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
     const localOnly = isLocalOnlyMode();
     const [serverReport, setServerReport] = useState<CashFlowReportResult | null>(null);
@@ -239,8 +255,8 @@ const ProjectCashFlowReport: React.FC = () => {
     }, [localOnly, startDate, endDate, selectedProjectId]);
 
     const transactionsById = useMemo(
-        () => new Map(state.transactions.map((t) => [t.id, t])),
-        [state.transactions]
+        () => new Map(transactions.map((t) => [t.id, t])),
+        [transactions]
     );
 
     const handleRangeChange = (type: ReportDateRange) => {
@@ -270,17 +286,18 @@ const ProjectCashFlowReport: React.FC = () => {
 
     const report = useMemo(() => {
         if (!localOnly && serverReport) return serverReport;
-        return computeCashFlowReport(state, {
+        return computeCashFlowReport(reportState, {
             fromDate: startDate,
             toDate: endDate,
             selectedProjectId,
             interestPaidAsOperating,
-            cashFlowCategoryByAccountId: cashFlowCategoryMapFromEntries(state.cashFlowCategoryMappings),
+            cashFlowCategoryByAccountId: cashFlowCategoryMapFromEntries(cashFlowCategoryMappings),
         });
     }, [
         localOnly,
         serverReport,
-        state,
+        reportState,
+        cashFlowCategoryMappings,
         startDate,
         endDate,
         selectedProjectId,
@@ -588,7 +605,7 @@ const ProjectCashFlowReport: React.FC = () => {
                             <p className="text-sm text-slate-500 font-medium mt-1">
                                 {selectedProjectId === 'all'
                                     ? 'All Projects'
-                                    : state.projects.find((p) => p.id === selectedProjectId)?.name}
+                                    : projects.find((p) => p.id === selectedProjectId)?.name}
                             </p>
                             <p className="text-xs text-slate-400">
                                 Direct method — For the period from {formatDate(startDate)} to {formatDate(endDate)}
@@ -694,11 +711,11 @@ const ProjectCashFlowReport: React.FC = () => {
                 title={drilldown?.sectionTitle ?? ''}
                 lines={drilldown?.lines ?? []}
                 transactionsById={transactionsById}
-                allTransactions={state.transactions}
+                allTransactions={transactions}
                 reportStateSlice={{
-                    invoices: state.invoices,
-                    bills: state.bills,
-                    projectAgreements: state.projectAgreements,
+                    invoices,
+                    bills,
+                    projectAgreements,
                 }}
                 selectedProjectId={selectedProjectId}
             />

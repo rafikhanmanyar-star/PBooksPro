@@ -157,6 +157,7 @@ export function useFinancialReportAppState(): AppState {
     const rentalAgreements = useRentalAgreements();
     const projectReceivedAssets = useStateSelector((s) => s.projectReceivedAssets);
     const units = useUnits();
+    const cashFlowCategoryMappings = useStateSelector((s) => s.cashFlowCategoryMappings);
     return useMemo(
         () => _getAppState(),
         [
@@ -172,6 +173,7 @@ export function useFinancialReportAppState(): AppState {
             rentalAgreements,
             projectReceivedAssets,
             units,
+            cashFlowCategoryMappings,
         ]
     );
 }

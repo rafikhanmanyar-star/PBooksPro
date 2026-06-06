@@ -1,6 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useCategories,
+    useContacts,
+    useInvoices,
+    useProjects,
+    useStateSelector,
+    useTransactions,
+    useUnits,
+} from '../../hooks/useSelectiveState';
 import { ContactType, InvoiceType, TransactionType, ProjectAgreementStatus, Transaction } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -75,7 +83,14 @@ function transactionMatchesUnit(
 }
 
 const ClientLedgerReport: React.FC = () => {
-    const { state } = useAppContext();
+    const contacts = useContacts();
+    const projects = useProjects();
+    const units = useUnits();
+    const invoices = useInvoices();
+    const transactions = useTransactions();
+    const categories = useCategories();
+    const projectAgreements = useStateSelector((s) => s.projectAgreements);
+    const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
 
@@ -118,15 +133,15 @@ const ClientLedgerReport: React.FC = () => {
     };
 
     // Include both CLIENT and OWNER types
-    const owners = useMemo(() => state.contacts.filter(c => c.type === ContactType.CLIENT || c.type === ContactType.OWNER), [state.contacts]);
+    const owners = useMemo(() => contacts.filter(c => c.type === ContactType.CLIENT || c.type === ContactType.OWNER), [contacts]);
 
     const agreementUnitMap = useMemo(() => {
         const m = new Map<string, Set<string>>();
-        state.projectAgreements.forEach(pa => {
+        projectAgreements.forEach(pa => {
             m.set(pa.id, new Set(pa.unitIds || []));
         });
         return m;
-    }, [state.projectAgreements]);
+    }, [projectAgreements]);
 
     /** Owners with units for sidebar tree (agreements + installment invoices). */
     const ledgerTreeOwners = useMemo(() => {
@@ -135,32 +150,32 @@ const ClientLedgerReport: React.FC = () => {
             if (!ownerUnits.has(ownerId)) ownerUnits.set(ownerId, new Map());
             ownerUnits.get(ownerId)!.set(unitId, { name: unitName, projectName });
         };
-        state.projectAgreements.forEach(pa => {
-            const project = state.projects.find(p => p.id === pa.projectId);
+        projectAgreements.forEach(pa => {
+            const project = projects.find(p => p.id === pa.projectId);
             const pn = project?.name || 'Unknown';
             (pa.unitIds || []).forEach(uid => {
-                const u = state.units.find(x => x.id === uid);
+                const u = units.find(x => x.id === uid);
                 if (u) put(pa.clientId, uid, u.name, pn);
             });
         });
-        state.invoices
+        invoices
             .filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT && inv.contactId && inv.unitId)
             .forEach(inv => {
-                const u = state.units.find(x => x.id === inv.unitId);
+                const u = units.find(x => x.id === inv.unitId);
                 if (!u) return;
-                const project = inv.projectId ? state.projects.find(p => p.id === inv.projectId) : undefined;
+                const project = inv.projectId ? projects.find(p => p.id === inv.projectId) : undefined;
                 put(inv.contactId!, inv.unitId!, u.name, project?.name || 'Unknown');
             });
         return [...ownerUnits.entries()]
             .map(([ownerId, umap]) => {
-                const owner = state.contacts.find(c => c.id === ownerId);
+                const owner = contacts.find(c => c.id === ownerId);
                 const units = [...umap.entries()]
                     .map(([id, meta]) => ({ id, name: meta.name, projectName: meta.projectName }))
                     .sort((a, b) => a.name.localeCompare(b.name));
                 return { id: ownerId, name: owner?.name || 'Unknown', units };
             })
             .sort((a, b) => a.name.localeCompare(b.name));
-    }, [state.projectAgreements, state.projects, state.units, state.invoices, state.contacts]);
+    }, [projectAgreements, projects, units, invoices, contacts]);
 
     const filteredLedgerTree = useMemo(() => {
         const q = treeSearch.trim().toLowerCase();
@@ -184,47 +199,47 @@ const ClientLedgerReport: React.FC = () => {
     const resolvedWhatsappOwnerId = useMemo(() => {
         if (ledgerSelection.kind === 'owner') return ledgerSelection.ownerId;
         if (ledgerSelection.kind === 'unit') {
-            const pa = state.projectAgreements.find(p => p.unitIds?.includes(ledgerSelection.unitId));
+            const pa = projectAgreements.find(p => p.unitIds?.includes(ledgerSelection.unitId));
             if (pa) return pa.clientId;
-            const inv = state.invoices.find(
+            const inv = invoices.find(
                 i => i.invoiceType === InvoiceType.INSTALLMENT && i.unitId === ledgerSelection.unitId
             );
             return inv?.contactId ?? null;
         }
         return null;
-    }, [ledgerSelection, state.projectAgreements, state.invoices]);
+    }, [ledgerSelection, projectAgreements, invoices]);
 
     const selectionSubtitle = useMemo(() => {
         if (ledgerSelection.kind === 'all') return 'All Owners';
         if (ledgerSelection.kind === 'owner') {
-            return state.contacts.find(c => c.id === ledgerSelection.ownerId)?.name || 'Owner';
+            return contacts.find(c => c.id === ledgerSelection.ownerId)?.name || 'Owner';
         }
-        const u = state.units.find(x => x.id === ledgerSelection.unitId);
+        const u = units.find(x => x.id === ledgerSelection.unitId);
         const oid = resolvedWhatsappOwnerId;
-        const on = oid ? state.contacts.find(c => c.id === oid)?.name : '';
+        const on = oid ? contacts.find(c => c.id === oid)?.name : '';
         return u ? `Unit: ${u.name}${on ? ` (${on})` : ''}` : 'Unit';
-    }, [ledgerSelection, state.contacts, state.units, resolvedWhatsappOwnerId]);
+    }, [ledgerSelection, contacts, units, resolvedWhatsappOwnerId]);
 
     // --- Summary Data Calculation ---
     const agreementSummaries = useMemo<AgreementSummary[]>(() => {
-        const agreements = state.projectAgreements.filter(pa => {
+        const agreements = projectAgreements.filter(pa => {
             if (ledgerSelection.kind === 'all') return true;
             if (ledgerSelection.kind === 'owner') return pa.clientId === ledgerSelection.ownerId;
             return pa.unitIds?.includes(ledgerSelection.unitId) ?? false;
         });
 
         return agreements.map(pa => {
-            const owner = state.contacts.find(c => c.id === pa.clientId);
-            const project = state.projects.find(p => p.id === pa.projectId);
-            const units = state.units.filter(u => pa.unitIds?.includes(u.id) ?? false);
+            const owner = contacts.find(c => c.id === pa.clientId);
+            const project = projects.find(p => p.id === pa.projectId);
+            const agreementUnits = units.filter(u => pa.unitIds?.includes(u.id) ?? false);
             const unitLabel =
                 ledgerSelection.kind === 'unit'
-                    ? units.find(u => u.id === ledgerSelection.unitId)?.name ||
-                      state.units.find(u => u.id === ledgerSelection.unitId)?.name ||
-                      units.map(u => u.name).join(', ')
-                    : units.map(u => u.name).join(', ');
+                    ? agreementUnits.find(u => u.id === ledgerSelection.unitId)?.name ||
+                      units.find(u => u.id === ledgerSelection.unitId)?.name ||
+                      agreementUnits.map(u => u.name).join(', ')
+                    : agreementUnits.map(u => u.name).join(', ');
 
-            let agreementInvoices = state.invoices.filter(
+            let agreementInvoices = invoices.filter(
                 inv =>
                     inv.agreementId === pa.id &&
                     inv.invoiceType === InvoiceType.INSTALLMENT &&
@@ -240,16 +255,16 @@ const ClientLedgerReport: React.FC = () => {
 
             const agreementInvoiceIds = new Set(agreementInvoices.map(inv => inv.id));
 
-            const totalReceived = state.transactions
+            const totalReceived = transactions
                 .filter(tx => {
                     if (tx.type !== TransactionType.INCOME) return false;
                     if (!tx.invoiceId) return false;
                     if (!agreementInvoiceIds.has(tx.invoiceId)) return false;
-                    const inv = state.invoices.find(i => i.id === tx.invoiceId);
+                    const inv = invoices.find(i => i.id === tx.invoiceId);
                     if (!inv || inv.invoiceType !== InvoiceType.INSTALLMENT) return false;
                     if (ledgerSelection.kind === 'owner' && tx.contactId !== ledgerSelection.ownerId) return false;
                     if (ledgerSelection.kind === 'unit' && tx.invoiceId) {
-                        const inv2 = state.invoices.find(i => i.id === tx.invoiceId);
+                        const inv2 = invoices.find(i => i.id === tx.invoiceId);
                         if (inv2 && !invoiceMatchesUnit(inv2, ledgerSelection.unitId, agreementUnitMap)) return false;
                     }
                     return true;
@@ -276,12 +291,12 @@ const ClientLedgerReport: React.FC = () => {
             };
         });
     }, [
-        state.projectAgreements,
-        state.contacts,
-        state.projects,
-        state.units,
-        state.invoices,
-        state.transactions,
+        projectAgreements,
+        contacts,
+        projects,
+        units,
+        invoices,
+        transactions,
         ledgerSelection,
         agreementUnitMap
     ]);
@@ -294,16 +309,16 @@ const ClientLedgerReport: React.FC = () => {
         end.setHours(23, 59, 59, 999);
 
         // Rental Category Set for exclusion
-        const rentalCategoryIds = new Set(state.categories.filter(c => c.isRental).map(c => c.id));
+        const rentalCategoryIds = new Set(categories.filter(c => c.isRental).map(c => c.id));
         // Broker commission / project rebate payouts are project expenses (Broker Report), not owner balance items
         const brokerCommissionExpenseCategoryIds = new Set(
             ['Broker Fee', 'Rebate Amount']
-                .map(n => state.categories.find(c => c.name === n)?.id)
+                .map(n => categories.find(c => c.name === n)?.id)
                 .filter((id): id is string => Boolean(id))
         );
 
         // 1. Invoices (Debit - They owe us) - Only Project Installments
-        let ownerInvoices = state.invoices.filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT);
+        let ownerInvoices = invoices.filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT);
 
         if (ledgerSelection.kind === 'owner') {
             ownerInvoices = ownerInvoices.filter(inv => inv.contactId === ledgerSelection.ownerId);
@@ -314,19 +329,19 @@ const ClientLedgerReport: React.FC = () => {
         }
 
         // 2. Payments Received (Credit - They paid us) - INCOME
-        let ownerPayments = state.transactions.filter(tx => 
+        let ownerPayments = transactions.filter(tx => 
             tx.type === TransactionType.INCOME &&
             tx.invoiceId // Must be linked to an invoice
         );
         
         // STRICTER FILTER: Ensure linked invoice is INSTALLMENT type (not Rental)
         ownerPayments = ownerPayments.filter(tx => {
-             const inv = state.invoices.find(i => i.id === tx.invoiceId);
+             const inv = invoices.find(i => i.id === tx.invoiceId);
              return inv && inv.invoiceType === InvoiceType.INSTALLMENT;
         });
 
         // 3. Refunds/Payouts Given (Debit - We paid them back) - EXPENSE
-        let ownerRefunds = state.transactions.filter(tx => 
+        let ownerRefunds = transactions.filter(tx => 
             tx.type === TransactionType.EXPENSE &&
             tx.contactId 
         );
@@ -346,10 +361,10 @@ const ClientLedgerReport: React.FC = () => {
             ownerRefunds = ownerRefunds.filter(tx => tx.contactId === ledgerSelection.ownerId);
         } else {
             ownerPayments = ownerPayments.filter(tx =>
-                transactionMatchesUnit(tx, ledgerSelection.unitId, agreementUnitMap, state.invoices)
+                transactionMatchesUnit(tx, ledgerSelection.unitId, agreementUnitMap, invoices)
             );
             ownerRefunds = ownerRefunds.filter(tx =>
-                transactionMatchesUnit(tx, ledgerSelection.unitId, agreementUnitMap, state.invoices)
+                transactionMatchesUnit(tx, ledgerSelection.unitId, agreementUnitMap, invoices)
             );
         }
 
@@ -361,14 +376,14 @@ const ClientLedgerReport: React.FC = () => {
             let projectName = '-';
             
             if (projectId) {
-                projectName = state.projects.find(p => p.id === projectId)?.name || '-';
+                projectName = projects.find(p => p.id === projectId)?.name || '-';
             }
 
             if (invoiceId) {
-                const inv = state.invoices.find(i => i.id === invoiceId);
+                const inv = invoices.find(i => i.id === invoiceId);
                 if (inv) {
-                    if (inv.unitId) unitName = state.units.find(u => u.id === inv.unitId)?.name || '-';
-                    if (!projectName && inv.projectId) projectName = state.projects.find(p => p.id === inv.projectId)?.name || '-';
+                    if (inv.unitId) unitName = units.find(u => u.id === inv.unitId)?.name || '-';
+                    if (!projectName && inv.projectId) projectName = projects.find(p => p.id === inv.projectId)?.name || '-';
                 }
             }
             
@@ -379,7 +394,7 @@ const ClientLedgerReport: React.FC = () => {
         ownerInvoices.forEach(inv => {
             const invDate = new Date(inv.issueDate);
             if(invDate >= start && invDate <= end) {
-                const owner = state.contacts.find(c => c.id === inv.contactId);
+                const owner = contacts.find(c => c.id === inv.contactId);
                 const { unitName, projectName } = getContext(inv.id, inv.projectId);
                 rawItems.push({ 
                     date: inv.issueDate, 
@@ -397,7 +412,7 @@ const ClientLedgerReport: React.FC = () => {
         ownerPayments.forEach(tx => {
             const txDate = new Date(tx.date);
             if(txDate >= start && txDate <= end) {
-                const owner = state.contacts.find(c => c.id === tx.contactId);
+                const owner = contacts.find(c => c.id === tx.contactId);
                 const { unitName, projectName } = getContext(tx.invoiceId, tx.projectId);
                 rawItems.push({ 
                     date: tx.date, 
@@ -415,7 +430,7 @@ const ClientLedgerReport: React.FC = () => {
         ownerRefunds.forEach(tx => {
             const txDate = new Date(tx.date);
             if(txDate >= start && txDate <= end) {
-                const owner = state.contacts.find(c => c.id === tx.contactId);
+                const owner = contacts.find(c => c.id === tx.contactId);
                 const { unitName, projectName } = getContext(tx.invoiceId, tx.projectId);
                 rawItems.push({ 
                     date: tx.date, 
@@ -430,7 +445,7 @@ const ClientLedgerReport: React.FC = () => {
         });
 
         // 4. Synthetic Penalties (Debit)
-        state.projectAgreements.forEach(pa => {
+        projectAgreements.forEach(pa => {
             if (pa.status === ProjectAgreementStatus.CANCELLED && pa.cancellationDetails && pa.cancellationDetails.penaltyAmount > 0) {
                 const paMatches =
                     ledgerSelection.kind === 'all' ||
@@ -439,12 +454,12 @@ const ClientLedgerReport: React.FC = () => {
                 if (paMatches) {
                     const cancelDate = new Date(pa.cancellationDetails.date);
                     if (cancelDate >= start && cancelDate <= end) {
-                        const owner = state.contacts.find(c => c.id === pa.clientId);
-                        const project = state.projects.find(p => p.id === pa.projectId);
+                        const owner = contacts.find(c => c.id === pa.clientId);
+                        const project = projects.find(p => p.id === pa.projectId);
                         const unitNamesStr =
                             ledgerSelection.kind === 'unit'
-                                ? state.units.find(u => u.id === ledgerSelection.unitId)?.name || '-'
-                                : state.units.filter(u => pa.unitIds?.includes(u.id) ?? false).map(u => u.name).join(', ');
+                                ? units.find(u => u.id === ledgerSelection.unitId)?.name || '-'
+                                : units.filter(u => pa.unitIds?.includes(u.id) ?? false).map(u => u.name).join(', ');
                         
                         rawItems.push({
                             date: pa.cancellationDetails.date,
@@ -479,7 +494,7 @@ const ClientLedgerReport: React.FC = () => {
 
         return finalItems;
 
-    }, [state, startDate, endDate, ledgerSelection, agreementUnitMap, owners, sortConfig]);
+    }, [projectAgreements, contacts, projects, units, invoices, transactions, categories, startDate, endDate, ledgerSelection, agreementUnitMap, owners, sortConfig]);
     
     const requestSort = (key: keyof LedgerItem) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -539,7 +554,7 @@ const ClientLedgerReport: React.FC = () => {
                 message += `\nTotal selling price: *${CURRENCY} ${totalSelling.toLocaleString()}*\n`;
                 message += `Total paid amount: *${CURRENCY} ${totalPaid.toLocaleString()}*\n`;
             } else if (ledgerSelection.kind === 'unit') {
-                const u = state.units.find(x => x.id === ledgerSelection.unitId);
+                const u = units.find(x => x.id === ledgerSelection.unitId);
                 const treeOwner = ledgerTreeOwners.find(o => o.id === waOwnerId);
                 const treeUnit = treeOwner?.units.find(x => x.id === ledgerSelection.unitId);
                 const unitName = u?.name || '—';
@@ -560,7 +575,7 @@ const ClientLedgerReport: React.FC = () => {
 
             sendOrOpenWhatsApp(
                 { contact: selectedOwner, message, phoneNumber: selectedOwner.contactNo },
-                () => state.whatsAppMode,
+                () => whatsAppMode,
                 openChat
             );
         } catch (error) {
