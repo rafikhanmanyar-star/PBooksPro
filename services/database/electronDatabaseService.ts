@@ -11,24 +11,6 @@ import type { SchemaHealthResult } from './schemaHealth';
 import { logger } from '../logger';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 
-declare global {
-  interface Window {
-    sqliteBridge?: {
-      querySync: (sql: string, params?: unknown[]) => { ok: boolean; rows?: unknown[]; error?: string };
-      runSync: (sql: string, params?: unknown[]) => { ok: boolean; error?: string; changes?: number; lastInsertRowid?: number };
-      execSync: (sql: string) => { ok: boolean; error?: string };
-      readDbBytesSync?: () => { ok: boolean; data?: number[] | null; error?: string };
-      schemaHealth?: () => Promise<Record<string, unknown>>;
-      isReadOnly?: () => Promise<boolean>;
-      query: (sql: string, params?: unknown[]) => Promise<{ ok: boolean; rows?: unknown[]; error?: string }>;
-      run: (sql: string, params?: unknown[]) => Promise<{ ok: boolean; error?: string; changes?: number; lastInsertRowid?: number }>;
-      exec: (sql: string) => Promise<{ ok: boolean; error?: string }>;
-      commitAllPending?: () => Promise<{ ok: boolean; error?: string }>;
-      transaction: (operations: { type: 'query' | 'run'; sql: string; params?: unknown[] }[]) => Promise<{ ok: boolean; results?: unknown[]; error?: string }>;
-    };
-  }
-}
-
 function getBridge() {
   if (typeof window === 'undefined' || !window.sqliteBridge?.querySync) {
     throw new Error('SQLite bridge not available');
@@ -938,7 +920,7 @@ export class ElectronDatabaseService {
     try {
       const fn = window.sqliteBridge?.schemaHealth;
       if (!fn) return null;
-      return (await fn()) as SchemaHealthResult;
+      return await fn();
     } catch {
       return null;
     }

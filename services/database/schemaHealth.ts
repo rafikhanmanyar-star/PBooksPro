@@ -16,15 +16,6 @@ export interface SchemaHealthResult {
   integrityOk?: boolean;
 }
 
-declare global {
-  interface Window {
-    sqliteBridge?: {
-      schemaHealth?: () => Promise<SchemaHealthResult>;
-      isReadOnly?: () => Promise<boolean>;
-    };
-  }
-}
-
 export async function fetchSchemaHealth(): Promise<SchemaHealthResult | null> {
   try {
     const fn = window.sqliteBridge?.schemaHealth;

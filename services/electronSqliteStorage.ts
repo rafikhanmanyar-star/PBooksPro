@@ -6,16 +6,6 @@
  * sync queue and locks to native SQLite instead of localStorage.
  */
 
-declare global {
-  interface Window {
-    sqliteBridge?: {
-      query: (sql: string, params?: unknown[]) => Promise<{ ok: boolean; rows?: unknown[]; error?: string }>;
-      run: (sql: string, params?: unknown[]) => Promise<{ ok: boolean; changes?: number; lastInsertRowid?: number; error?: string }>;
-      exec: (sql: string) => Promise<{ ok: boolean; error?: string }>;
-    };
-  }
-}
-
 /** Check if we're in Electron with native SQLite bridge available */
 export function isElectronWithSqlite(): boolean {
   return typeof window !== 'undefined' && !!window.sqliteBridge?.query;

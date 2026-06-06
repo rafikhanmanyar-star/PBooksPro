@@ -60,6 +60,7 @@
     "smoke:design-system:full": "node scripts/smoke-test-design-system.mjs --build",
     "verify:financial-engine": "node scripts/verify-financial-engine.mjs",
     "typecheck:strict-financial": "tsc -p tsconfig.strict-financial.json --noEmit",
+    "typecheck:c2": "tsc -p tsconfig.strict-financial.json --noEmit",
     "verify:equity-ledger": "node scripts/verify-equity-ledger.mjs",
     "test:date-only": "tsx tests/dateOnlySerialization.test.ts",
     "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",
@@ -88,6 +89,8 @@
   "devDependencies": {
     "@google/genai": "^1.29.0",
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@types/react-window": "^1.8.8",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.23",

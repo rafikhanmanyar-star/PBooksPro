@@ -1,7 +1,9 @@
 /**
  * Electron preload exposes sqliteBridge on window (local-only mode).
- * Consolidated here so strict typecheck slices can reference it without pulling every service file.
+ * Single declaration — do not redeclare in service files (strictNullChecks merge conflicts).
  */
+import type { SchemaHealthResult } from '../services/database/schemaHealth';
+
 export {};
 
 declare global {
@@ -16,15 +18,18 @@ declare global {
       transaction: (
         operations: Array<{ type: string; sql: string; params?: unknown[] }>
       ) => Promise<{ ok: boolean; results?: unknown[]; error?: string }>;
-      querySync?: (sql: string, params?: unknown[]) => { ok: boolean; rows?: unknown[]; error?: string };
-      runSync?: (
+      querySync: (sql: string, params?: unknown[]) => { ok: boolean; rows?: unknown[]; error?: string };
+      runSync: (
         sql: string,
         params?: unknown[]
       ) => { ok: boolean; error?: string; changes?: number; lastInsertRowid?: number };
-      execSync?: (sql: string) => { ok: boolean; error?: string };
-      schemaHealth?: () => Promise<Record<string, unknown>>;
+      execSync: (sql: string) => { ok: boolean; error?: string };
+      readDbBytesSync?: () => { ok: boolean; data?: number[] | null; error?: string };
+      schemaHealth?: () => Promise<SchemaHealthResult>;
       isReadOnly?: () => Promise<boolean>;
       commitAllPending?: () => Promise<{ ok: boolean; error?: string }>;
+      loadBlob?: () => Promise<unknown>;
+      clearBlob?: () => Promise<unknown>;
     };
   }
 }
