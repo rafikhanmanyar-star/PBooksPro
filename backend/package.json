@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "node ../scripts/ensure-balance-sheet-engine.mjs && node ../scripts/ensure-profit-loss-engine.mjs && node ../scripts/ensure-cash-flow-engine.mjs && node ../scripts/ensure-owner-rental-income-engine.mjs && node ../scripts/ensure-rental-bills-dashboard-engine.mjs && node ../scripts/ensure-rental-receivable-engine.mjs && node ../scripts/ensure-owner-income-summary-engine.mjs && node ../scripts/ensure-owner-security-deposit-engine.mjs && tsc",
+    "build": "node ../scripts/ensure-shared-financial-cores.mjs && node ../scripts/ensure-balance-sheet-engine.mjs && node ../scripts/ensure-profit-loss-engine.mjs && node ../scripts/ensure-cash-flow-engine.mjs && node ../scripts/ensure-owner-rental-income-engine.mjs && node ../scripts/ensure-rental-bills-dashboard-engine.mjs && node ../scripts/ensure-rental-receivable-engine.mjs && node ../scripts/ensure-owner-income-summary-engine.mjs && node ../scripts/ensure-owner-security-deposit-engine.mjs && tsc",
     "start": "node dist/index.js",
-    "dev": "node ../scripts/ensure-balance-sheet-engine.mjs && node ../scripts/ensure-profit-loss-engine.mjs && node ../scripts/ensure-cash-flow-engine.mjs && node ../scripts/ensure-owner-rental-income-engine.mjs && node ../scripts/ensure-rental-bills-dashboard-engine.mjs && node ../scripts/ensure-rental-receivable-engine.mjs && node ../scripts/ensure-owner-income-summary-engine.mjs && node ../scripts/ensure-owner-security-deposit-engine.mjs && tsx watch src/index.ts",
+    "dev": "node ../scripts/ensure-shared-financial-cores.mjs && node ../scripts/ensure-balance-sheet-engine.mjs && node ../scripts/ensure-profit-loss-engine.mjs && node ../scripts/ensure-cash-flow-engine.mjs && node ../scripts/ensure-owner-rental-income-engine.mjs && node ../scripts/ensure-rental-bills-dashboard-engine.mjs && node ../scripts/ensure-rental-receivable-engine.mjs && node ../scripts/ensure-owner-income-summary-engine.mjs && node ../scripts/ensure-owner-security-deposit-engine.mjs && tsx watch src/index.ts",
     "migrate": "tsx src/migrate.ts",
     "reset-pm-cycle": "tsx src/scripts/runResetPmCycle.ts",
     "backfill-payroll-ledger": "tsx src/scripts/backfillPayrollLedger.ts",

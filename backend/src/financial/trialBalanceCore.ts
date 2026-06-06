@@ -1,5 +1,11 @@
 /**
- * Trial balance presentation from journal aggregates (shared backend logic).
+ * AUTO-GENERATED — do not edit. Source: services/financialEngine/trialBalanceCore.ts
+ * Regenerate: node scripts/ensure-shared-financial-cores.mjs
+ */
+
+/**
+ * Trial balance presentation from journal line aggregates (gross debit/credit per account).
+ * Net columns: balance = grossDebit - grossCredit; one column holds |balance|, the other 0.
  */
 
 import { MONEY_EPSILON, roundMoney } from './validation.js';
@@ -25,7 +31,9 @@ export interface TrialBalanceAccountLine extends TrialBalanceRawRow {
 }
 
 export interface TrialBalanceTotals {
+  /** Sum of net debit column */
   totalDebit: number;
+  /** Sum of net credit column */
   totalCredit: number;
   grossDebit: number;
   grossCredit: number;
@@ -34,9 +42,13 @@ export interface TrialBalanceTotals {
 export interface TrialBalanceReportPayload {
   accounts: TrialBalanceAccountLine[];
   totals: TrialBalanceTotals;
+  /** True when net columns balance (and gross debits == gross credits). */
   isBalanced: boolean;
 }
 
+/**
+ * Split gross amounts into net debit/credit presentation columns.
+ */
 export function netColumnsFromGross(grossDebit: number, grossCredit: number): { debit: number; credit: number; netBalance: number } {
   const gd = roundMoney(grossDebit);
   const gc = roundMoney(grossCredit);
@@ -92,6 +104,7 @@ export function buildTrialBalanceReport(rows: TrialBalanceRawRow[]): TrialBalanc
   };
 }
 
+/** Group account types for section headers (order matters). */
 export const TRIAL_BALANCE_TYPE_ORDER: string[] = ['Bank', 'Cash', 'Asset', 'Liability', 'Equity'];
 
 export function compareTrialBalanceType(a: string, b: string): number {
@@ -101,4 +114,16 @@ export function compareTrialBalanceType(a: string, b: string): number {
   const sb = ib === -1 ? 999 : ib;
   if (sa !== sb) return sa - sb;
   return a.localeCompare(b);
+}
+
+/**
+ * SQLite local DB may store tenant_id as '', 'local', or a UUID; journal rows must match app data.
+ */
+export function ledgerTenantIdsForLocalQuery(raw: string | undefined | null): string[] {
+  const set = new Set<string>();
+  const t = (raw ?? '').trim();
+  set.add(t);
+  set.add('local');
+  set.add('');
+  return [...set];
 }

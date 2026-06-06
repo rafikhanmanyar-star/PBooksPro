@@ -1,5 +1,7 @@
-import { formatPgDateToYyyyMmDd, todayUtcYyyyMmDd } from '../utils/dateOnly.js';
-import { payPeriodCalendarBounds } from '../utils/payrollPeriod.js';
+/**
+ * AUTO-GENERATED — do not edit. Source: shared/payrollLedgerCore.ts
+ * Regenerate: node scripts/ensure-shared-financial-cores.mjs
+ */
 
 export const PAYROLL_LEDGER_TYPES = [
   'PAYSLIP',
@@ -21,7 +23,6 @@ export type LedgerBuildPayslip = {
 export type LedgerBuildRun = {
   id: string;
   period_end: Date | string | null;
-  /** From `payroll_runs`; used when `period_end` was never persisted. */
   month?: string;
   year?: number;
 };
@@ -29,7 +30,6 @@ export type LedgerBuildRun = {
 export type LedgerBuildTx = {
   id: string;
   payslip_id: string | null;
-  /** Expense amounts are positive numbers in payroll flow */
   amount: number;
   date: Date | string;
   description?: string | null;
@@ -55,39 +55,59 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-/** Calendar-only `YYYY-MM-DD`, or '' when absent / unreadable — never coerce null to unix epoch for ledgers. */
-function toLedgerYyyyMmDd(d: Date | string | null | undefined): string {
-  if (d == null) return '';
-  if (d instanceof Date) {
-    const out = Number.isNaN(d.getTime()) ? '' : formatPgDateToYyyyMmDd(d);
-    return out;
+const MONTH_LABEL_TO_NUM_LC: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function resolveMonthNumber(monthRaw: string): number | null {
+  const t = String(monthRaw ?? '').trim().toLowerCase();
+  if (!t) return null;
+  const nm = /^(\d{1,2})$/.exec(t);
+  if (nm) {
+    const n = Number(nm[1]);
+    return n >= 1 && n <= 12 ? n : null;
   }
+  return MONTH_LABEL_TO_NUM_LC[t] ?? null;
+}
+
+function payPeriodCalendarEndYyyyMmDd(monthRaw: string, yearRaw: number): string {
+  const mn = resolveMonthNumber(monthRaw);
+  const year = Number(yearRaw);
+  if (mn === null || !Number.isFinite(year) || year < 1901 || year > 3000) return '';
+  const d = new Date(Date.UTC(year, mn, 0));
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+export function ledgerToYyyyMmDd(d: Date | string | null | undefined): string {
+  if (d == null) return '';
   const s = String(d).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
   if (m) return m[1]!;
+  if (d instanceof Date && !Number.isNaN(d.getTime())) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
   const t = new Date(s).getTime();
-  if (!Number.isNaN(t)) return formatPgDateToYyyyMmDd(new Date(t));
+  if (!Number.isNaN(t)) {
+    const x = new Date(t);
+    return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
+  }
   return '';
 }
 
-/** True for empty string or plausible “unset” sentinel from bad imports / unix epoch DATE. */
 function isUnsetPayrollLedgerDate(iso: string): boolean {
   if (!iso || iso.length < 10) return true;
   return iso.startsWith('1970-');
 }
 
-/** Calendar date of payslip creation — matches PayrollHub `formatTableDate(ps.created_at)` (local components). */
-function payslipCreatedAtCalendarYyyyMmDd(created_at: Date | string | null | undefined): string {
-  if (created_at == null) return '';
-  if (created_at instanceof Date) {
-    if (Number.isNaN(created_at.getTime())) return '';
-    const y = created_at.getFullYear();
-    const mo = created_at.getMonth() + 1;
-    const day = created_at.getDate();
-    return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  }
-  return toLedgerYyyyMmDd(String(created_at));
+function todayUtcYyyyMmDd(): string {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
 function toMillis(d: Date | string | null | undefined): number {
@@ -100,13 +120,6 @@ function toMillis(d: Date | string | null | undefined): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-/**
- * PAYSLIP increases payable (debit); PAYMENT reduces payable (credit).
- * Balance = Σ debit − Σ credit. Positive ⇒ company owes employee; negative ⇒ advance balance.
- *
- * PAYSLIP `transaction_date` is the payslip’s `created_at` calendar day first (same column as Payroll Cycle “Date”),
- * then `payroll_runs.period_end`, then last day of run month/year when `created_at` is missing/sentinel (e.g. epoch).
- */
 export function buildPayrollLedgerRowsFromSource(
   payslips: LedgerBuildPayslip[],
   runsById: Map<string, LedgerBuildRun>,
@@ -119,23 +132,27 @@ export function buildPayrollLedgerRowsFromSource(
 
   for (const ps of payslips) {
     const run = runsById.get(ps.payroll_run_id);
-    const periodEndCandidate = run ? toLedgerYyyyMmDd(run.period_end) : '';
+    const periodEndCand = run ? ledgerToYyyyMmDd(run.period_end) : '';
+    const runYear = run?.year != null ? Number(run.year) : NaN;
     const fromRunPeriod =
-      run?.month !== undefined && run.year !== undefined
-        ? payPeriodCalendarBounds(run.month, run.year)?.end ?? ''
+      run?.month != null &&
+      String(run.month).trim() !== '' &&
+      Number.isFinite(runYear) &&
+      runYear >= 1901
+        ? payPeriodCalendarEndYyyyMmDd(String(run.month), runYear)
         : '';
-    const createdStr = payslipCreatedAtCalendarYyyyMmDd(ps.created_at);
-    const txnDate =
+    const createdStr = ledgerToYyyyMmDd(ps.created_at);
+    const txnCandidate =
       createdStr && !isUnsetPayrollLedgerDate(createdStr)
         ? createdStr
-        : periodEndCandidate && !isUnsetPayrollLedgerDate(periodEndCandidate)
-          ? periodEndCandidate
+        : periodEndCand && !isUnsetPayrollLedgerDate(periodEndCand)
+          ? periodEndCand
           : fromRunPeriod && !isUnsetPayrollLedgerDate(fromRunPeriod)
             ? fromRunPeriod
             : '';
     const payslipTs = toMillis(ps.created_at);
     const net = round2(Number(ps.net_pay) || 0);
-    const safeTxn = txnDate || todayUtcYyyyMmDd();
+    const safeTxn = txnCandidate || todayUtcYyyyMmDd();
     events.push({
       kind: 'PAYSLIP',
       row: {
@@ -157,13 +174,12 @@ export function buildPayrollLedgerRowsFromSource(
   for (const tx of payrollTransactions) {
     const pid = tx.payslip_id && String(tx.payslip_id).trim() ? String(tx.payslip_id).trim() : '';
     if (!pid || !payslipIds.has(pid)) continue;
-    const ttype = String(tx.type || '').toLowerCase();
-    if (ttype !== 'expense') continue;
+    if (String(tx.type || '').toLowerCase() !== 'expense') continue;
     const amt = round2(Number(tx.amount) || 0);
     if (amt <= 0) continue;
-    let txnDate = toLedgerYyyyMmDd(tx.date);
+    let txnDate = ledgerToYyyyMmDd(tx.date);
     if (!txnDate || isUnsetPayrollLedgerDate(txnDate)) {
-      txnDate = tx.created_at != null ? toLedgerYyyyMmDd(tx.created_at) : '';
+      txnDate = tx.created_at != null ? ledgerToYyyyMmDd(tx.created_at) : '';
     }
     if (!txnDate || isUnsetPayrollLedgerDate(txnDate)) txnDate = todayUtcYyyyMmDd();
     const ct = tx.created_at != null ? toMillis(tx.created_at) : new Date(`${txnDate}T12:00:00Z`).getTime();
@@ -207,6 +223,19 @@ export function buildPayrollLedgerRowsFromSource(
   return out;
 }
 
+export function sortLedgerRowsChronological(rows: BuiltPayrollLedgerRow[]): BuiltPayrollLedgerRow[] {
+  return [...rows].sort((a, b) => {
+    const dd = a.transaction_date.localeCompare(b.transaction_date);
+    if (dd !== 0) return dd;
+    const ts = (a.ledger_sort_ts || 0) - (b.ledger_sort_ts || 0);
+    if (ts !== 0) return ts;
+    const pri = (r: BuiltPayrollLedgerRow) => (r.transaction_type === 'PAYSLIP' ? 0 : 1);
+    const kp = pri(a) - pri(b);
+    if (kp !== 0) return kp;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export function summarizePayrollBalanceFromRows(rows: BuiltPayrollLedgerRow[]): {
   totalDebit: number;
   totalCredit: number;
@@ -225,10 +254,36 @@ export function summarizePayrollBalanceFromRows(rows: BuiltPayrollLedgerRow[]): 
   const balance = rows.length === 0 ? 0 : round2(rows[rows.length - 1]!.balance_after);
   let advanceAmount = 0;
   let payableAmount = 0;
-  if (balance < -0.01) {
-    advanceAmount = round2(Math.abs(balance));
-  } else if (balance > 0.01) {
-    payableAmount = balance;
-  }
+  if (balance < -0.01) advanceAmount = round2(Math.abs(balance));
+  else if (balance > 0.01) payableAmount = balance;
   return { totalDebit, totalCredit, balance, advanceAmount, payableAmount };
+}
+
+export function employeePayrollNetBalanceFromTotals(
+  payslipNets: number[],
+  paymentAmounts: number[]
+): { balance: number; payableAmount: number; advanceAmount: number } {
+  const debit = round2(payslipNets.reduce((s, n) => s + n, 0));
+  const credit = round2(paymentAmounts.reduce((s, n) => s + n, 0));
+  const balance = round2(debit - credit);
+  let advanceAmount = 0;
+  let payableAmount = 0;
+  if (balance < -0.01) advanceAmount = round2(Math.abs(balance));
+  else if (balance > 0.01) payableAmount = balance;
+  return { balance, payableAmount, advanceAmount };
+}
+
+export type LedgerRowFilter = 'all' | 'payslips' | 'payments' | 'advances';
+
+export function filterBuiltLedgerRows(rows: BuiltPayrollLedgerRow[], filter: LedgerRowFilter): BuiltPayrollLedgerRow[] {
+  if (filter === 'all') return rows;
+  if (filter === 'payslips') return rows.filter((r) => r.transaction_type === 'PAYSLIP');
+  if (filter === 'payments') return rows.filter((r) => r.transaction_type === 'PAYMENT');
+  return rows.filter(
+    (r) =>
+      ((r.transaction_type as string) === 'ADVANCE' ||
+        (r.transaction_type as string) === 'ADVANCE_ADJUSTMENT' ||
+        (r.transaction_type as string) === 'MANUAL_ADJUSTMENT') ||
+      (r.transaction_type === 'PAYMENT' && r.balance_after < -0.01)
+  );
 }
