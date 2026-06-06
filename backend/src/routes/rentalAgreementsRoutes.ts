@@ -13,6 +13,7 @@ import {
   syncReconcileRentalAgreementsForTenant,
   updateRentalAgreement,
 } from '../services/rentalAgreementsService.js';
+import { LockGuardError } from '../services/recordLocksService.js';
 import { listInvoices, rowToInvoiceApi } from '../services/invoicesService.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
@@ -191,7 +192,7 @@ rentalAgreementsRouter.put('/rental-agreements/:id', async (req: AuthedRequest, 
   const { id } = req.params;
   try {
     const result = await withTransaction(async (client) => {
-      const u = await updateRentalAgreement(client, tenantId, id, req.body as Record<string, unknown>);
+      const u = await updateRentalAgreement(client, tenantId, id, req.body as Record<string, unknown>, req.userId ?? null);
       if (u.conflict || !u.row) return u;
       await syncReconcileRentalAgreementsForTenant(client, tenantId);
       const refreshed = await getRentalAgreementById(client, tenantId, id);
@@ -209,6 +210,10 @@ rentalAgreementsRouter.put('/rental-agreements/:id', async (req: AuthedRequest, 
     emitEntityEvent(tenantId, 'updated', 'rental_agreement', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow);
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }

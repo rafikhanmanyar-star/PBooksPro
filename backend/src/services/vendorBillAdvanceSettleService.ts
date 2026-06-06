@@ -313,7 +313,8 @@ export async function settleVendorBillsBatchWithAdvances(
           categoryId: resolveBillRowCategoryIdForExpenseMirror(bill),
           batchId: input.batchId ?? undefined,
         },
-        actorUserId
+        actorUserId,
+        { skipJournalMirror: true }
       );
       cashExpenseTransactions.push(txRow);
     }

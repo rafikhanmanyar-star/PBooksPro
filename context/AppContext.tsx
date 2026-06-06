@@ -1771,7 +1771,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 setInitMessage('Loading application data from server...');
                                 setInitProgress(60);
                                 const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
-                                const partial = await getAppStateApiService().loadState();
+                                const partial = await getAppStateApiService().loadStateBulkChunked(
+                                    (loaded, total) => {
+                                        if (isMounted && total > 0) {
+                                            const pct = Math.min(95, 60 + Math.floor((loaded / total) * 35));
+                                            setInitProgress(pct);
+                                        }
+                                    }
+                                );
                                 if (isMounted) {
                                     const mergedInit = { ...initialState, ...partial, ...pickTenantSettingsPartial(partial) } as AppState;
                                     setStoredState(mergedInit);

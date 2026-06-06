@@ -9,6 +9,7 @@ import {
   softDeleteBill,
   upsertBill,
 } from '../services/billsService.js';
+import { LockGuardError } from '../services/recordLocksService.js';
 import {
   getContractorAdvanceById,
   rowAdvanceToApi,
@@ -118,6 +119,10 @@ billsRouter.post('/bills', async (req: AuthedRequest, res) => {
     emitEntityEvent(tenantId, action, 'bill', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, result.wasInsert ? 201 : 200);
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
       sendFailure(res, 409, 'DUPLICATE', msg);
@@ -453,6 +458,10 @@ billsRouter.put('/bills/:id', async (req: AuthedRequest, res) => {
     emitEntityEvent(tenantId, action, 'bill', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow);
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
       sendFailure(res, 409, 'DUPLICATE', msg);

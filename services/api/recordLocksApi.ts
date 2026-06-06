@@ -4,7 +4,7 @@
 
 import { apiClient } from './client';
 
-export type RecordLockType = 'agreement' | 'invoice';
+export type RecordLockType = 'agreement' | 'invoice' | 'bill' | 'rental' | 'payroll';
 
 export type LockAcquireResponse =
   | { locked: true; lockedBy: string; lockedByUserId?: string }

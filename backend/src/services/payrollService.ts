@@ -10,6 +10,7 @@ import { todayUtcYyyyMmDd } from '../utils/dateOnly.js';
 import { payPeriodCalendarBounds } from '../utils/payrollPeriod.js';
 import { ExpenseCashValidationBatchContext } from '../financial/expenseCashValidation.js';
 import { createTransaction, rowToTransactionApi } from './transactionsService.js';
+import { enforceLockForSave } from './recordLocksService.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -913,8 +914,10 @@ export async function updatePayrollRun(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  actorUserId?: string | null
 ): Promise<PayrollRunRow | null> {
+  await enforceLockForSave(client, tenantId, 'payroll', id, actorUserId);
   const status = body.status !== undefined ? String(body.status) : undefined;
   const total_amount =
     body.total_amount !== undefined || body.totalAmount !== undefined
@@ -1359,7 +1362,7 @@ export async function payPayslip(
     tenantId,
     txBody,
     userId,
-    options?.expenseCashBatchCtx ?? null
+    { expenseCashBatchCtx: options?.expenseCashBatchCtx ?? null }
   );
 
   const row = await getPayslip(client, tenantId, payslipId);

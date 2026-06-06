@@ -256,7 +256,7 @@ export async function reverseJournalEntry(
 
 function normalBalanceDirection(accountType: string): 1 | -1 {
   const t = (accountType || '').toLowerCase();
-  if (t === 'asset' || t === 'expense') return 1;
+  if (t === 'asset' || t === 'expense' || t === 'bank' || t === 'cash') return 1;
   return -1;
 }
 

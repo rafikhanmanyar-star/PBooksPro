@@ -8,6 +8,7 @@ import {
 } from '../rentalAgreementReconcile.js';
 import { getPropertyById } from './propertiesService.js';
 import { createInvoice, rowToInvoiceApi } from './invoicesService.js';
+import { enforceLockForSave } from './recordLocksService.js';
 
 export type RentalAgreementRow = {
   id: string;
@@ -226,8 +227,10 @@ export async function updateRentalAgreement(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  actorUserId?: string | null
 ): Promise<{ row: RentalAgreementRow | null; conflict: boolean }> {
+  await enforceLockForSave(client, tenantId, 'rental', id, actorUserId);
   const p = pickBody(body);
   const expectedVersion = p.version;
 

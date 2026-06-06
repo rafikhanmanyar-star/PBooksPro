@@ -50,6 +50,12 @@ import { trialBalanceRouter } from './routes/trialBalanceRoutes.js';
 import { rentalOwnerSummariesRouter } from './routes/rentalOwnerSummariesRoutes.js';
 import { customReportsRouter } from './routes/customReportsRoutes.js';
 import { authMiddleware } from './middleware/authMiddleware.js';
+import { requireFinancialWriteOnMutations } from './middleware/rbacMiddleware.js';
+import {
+  publicIntrospectionLimiter,
+  requireConnectedClientsAccess,
+  requireDiscoveryToken,
+} from './middleware/introspectionGuard.js';
 import { seedDevIfEnabled } from './seed.js';
 import { sendFailure, sendSuccess } from './utils/apiResponse.js';
 
@@ -85,8 +91,8 @@ function discoverServerIp(req: express.Request): string {
   return ip;
 }
 
-/** Public: no auth; used for LAN discovery and manual connection checks. */
-app.get('/api/discover', (req, res) => {
+/** Public: LAN discovery (optional DISCOVERY_TOKEN); rate-limited. */
+app.get('/api/discover', publicIntrospectionLimiter, requireDiscoveryToken, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     name: 'PBooksPro Server',
@@ -113,8 +119,8 @@ app.get('/api/app-info/version', (_req, res) => {
   });
 });
 
-/** Public: WebSocket client count + user names (for API Server Electron tray UI; LAN introspection). */
-app.get('/api/server/connected-clients', async (_req, res) => {
+/** Authenticated admins: WebSocket client count (set ALLOW_PUBLIC_CONNECTED_CLIENTS=true to open). */
+app.get('/api/server/connected-clients', authMiddleware, requireConnectedClientsAccess, async (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const data = await getConnectedClientsSnapshot();
@@ -141,68 +147,68 @@ app.use('/api', authMiddleware, cashFlowRouter);
 app.use('/api', authMiddleware, trialBalanceRouter);
 app.use('/api', authMiddleware, rentalOwnerSummariesRouter);
 
-app.use('/api', authMiddleware, accountsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, accountsRouter);
 
-app.use('/api', authMiddleware, categoriesRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, categoriesRouter);
 
-app.use('/api', authMiddleware, billsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, billsRouter);
 
-app.use('/api', authMiddleware, contactsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, contactsRouter);
 
-app.use('/api', authMiddleware, buildingsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, buildingsRouter);
 
-app.use('/api', authMiddleware, propertiesRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, propertiesRouter);
 
-app.use('/api', authMiddleware, projectsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, projectsRouter);
 
-app.use('/api', authMiddleware, unitsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, unitsRouter);
 
-app.use('/api', authMiddleware, vendorsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, vendorsRouter);
 
-app.use('/api', authMiddleware, appSettingsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, appSettingsRouter);
 
 app.use('/api', authMiddleware, stateRouter);
 
-app.use('/api', authMiddleware, rentalAgreementsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, rentalAgreementsRouter);
 
-app.use('/api', authMiddleware, projectAgreementsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, projectAgreementsRouter);
 
-app.use('/api', authMiddleware, projectReceivedAssetsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, projectReceivedAssetsRouter);
 
-app.use('/api', authMiddleware, salesReturnsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, salesReturnsRouter);
 
-app.use('/api', authMiddleware, contractsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, contractsRouter);
 
-app.use('/api', authMiddleware, budgetsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, budgetsRouter);
 
-app.use('/api', authMiddleware, invoicesRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, invoicesRouter);
 
 /** GL journal routes use /transactions/journal — register before app ledger /transactions/:id */
-app.use('/api', authMiddleware, journalRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, journalRouter);
 
-app.use('/api', authMiddleware, investorJournalRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, investorJournalRouter);
 
-app.use('/api', authMiddleware, transactionsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, transactionsRouter);
 
 app.use('/api', authMiddleware, usersRouter);
 
 app.use('/api', authMiddleware, databaseBackupRouter);
 
-app.use('/api', authMiddleware, recurringInvoiceTemplatesRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, recurringInvoiceTemplatesRouter);
 
-app.use('/api', authMiddleware, pmCycleAllocationsRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, pmCycleAllocationsRouter);
 
-app.use('/api', authMiddleware, planAmenitiesRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, planAmenitiesRouter);
 
-app.use('/api', authMiddleware, installmentPlansRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, installmentPlansRouter);
 
-app.use('/api', authMiddleware, locksRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, locksRouter);
 
-app.use('/api', authMiddleware, payrollRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, payrollRouter);
 
-app.use('/api', authMiddleware, contractorRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, contractorRouter);
 
-app.use('/api', authMiddleware, personalFinanceRouter);
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, personalFinanceRouter);
 
 app.use('/api', authMiddleware, tasksRouter);
 

@@ -1,0 +1,228 @@
+/**
+ * Mirror operational transactions into journal_entries / journal_lines (Phase A ledger unification).
+ * Uses sys-acc-clearing for P&L counterparty legs (matches client trialBalanceFromTransactions).
+ */
+import type pg from 'pg';
+import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
+import { roundMoney, type JournalLineInput } from '../financial/validation.js';
+import {
+  insertJournalEntry,
+  isJournalReversed,
+  reverseJournalEntry,
+  type CreateJournalBody,
+} from './journalService.js';
+import type { TransactionRow } from './transactionsService.js';
+import { isVendorSettlementCashMirrorReference } from '../constants/vendorSettlement.js';
+
+export const TRANSACTION_JOURNAL_SOURCE_MODULE = 'transaction';
+
+/** Canonical system account ids (tenantBootstrap SYSTEM_ACCOUNT_DEFS). */
+const SYS_AR = 'sys-acc-ar';
+const SYS_AP = 'sys-acc-ap';
+const SYS_CLEARING = 'sys-acc-clearing';
+
+const EQ_SUB_INVESTMENT = 'equity_investment';
+const EQ_SUB_WITHDRAWAL = 'equity_withdrawal';
+
+function txDateYmd(row: TransactionRow): string {
+  return formatPgDateToYyyyMmDd(row.date as Date | string);
+}
+
+function txProjectId(row: TransactionRow): string | null {
+  const p = row.project_id;
+  return p != null && String(p).trim() !== '' ? String(p).trim() : null;
+}
+
+export function shouldSkipTransactionJournalMirror(row: Pick<TransactionRow, 'id' | 'reference' | 'is_system' | 'subtype'>): boolean {
+  if (isVendorSettlementCashMirrorReference(row.reference)) return true;
+  if (String(row.id).startsWith('invj_tx_')) return true;
+  const st = String(row.subtype ?? '');
+  if (row.is_system && (st === EQ_SUB_INVESTMENT || st === EQ_SUB_WITHDRAWAL)) return true;
+  return false;
+}
+
+async function findActiveJournalEntryIdForTransaction(
+  client: pg.PoolClient,
+  tenantId: string,
+  transactionId: string
+): Promise<string | null> {
+  const r = await client.query<{ id: string }>(
+    `SELECT id FROM journal_entries
+     WHERE tenant_id = $1 AND source_module = $2 AND source_id = $3
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [tenantId, TRANSACTION_JOURNAL_SOURCE_MODULE, transactionId]
+  );
+  const id = r.rows[0]?.id;
+  if (!id) return null;
+  if (await isJournalReversed(client, id, tenantId)) return null;
+  return id;
+}
+
+export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLineInput[] | null {
+  const M = roundMoney(Math.abs(Number(row.amount)));
+  if (M < 0.005) return null;
+
+  const projectId = txProjectId(row);
+  const type = String(row.type ?? '').trim();
+
+  if (type.toLowerCase() === 'income') {
+    const creditAccount = row.invoice_id ? SYS_AR : SYS_CLEARING;
+    return [
+      { accountId: row.account_id, debitAmount: M, creditAmount: 0, projectId },
+      { accountId: creditAccount, debitAmount: 0, creditAmount: M, projectId },
+    ];
+  }
+
+  if (type.toLowerCase() === 'expense') {
+    const debitAccount = row.bill_id ? SYS_AP : SYS_CLEARING;
+    return [
+      { accountId: debitAccount, debitAmount: M, creditAmount: 0, projectId },
+      { accountId: row.account_id, debitAmount: 0, creditAmount: M, projectId },
+    ];
+  }
+
+  if (type.toLowerCase() === 'transfer') {
+    const fromId = row.from_account_id && String(row.from_account_id).trim();
+    const toId = row.to_account_id && String(row.to_account_id).trim();
+    if (!fromId || !toId) return null;
+    return [
+      { accountId: toId, debitAmount: M, creditAmount: 0, projectId },
+      { accountId: fromId, debitAmount: 0, creditAmount: M, projectId },
+    ];
+  }
+
+  if (type.toLowerCase() === 'loan') {
+    const st = String(row.subtype ?? '');
+    const isIn =
+      st.includes('Receive') ||
+      st.includes('Collect') ||
+      st.toLowerCase() === 'receive' ||
+      st.toLowerCase() === 'collect';
+    const isOut =
+      st.includes('Give') ||
+      st.includes('Repay') ||
+      st.toLowerCase() === 'give' ||
+      st.toLowerCase() === 'repay';
+    if (isIn) {
+      return [
+        { accountId: row.account_id, debitAmount: M, creditAmount: 0, projectId },
+        { accountId: SYS_CLEARING, debitAmount: 0, creditAmount: M, projectId },
+      ];
+    }
+    if (isOut) {
+      return [
+        { accountId: SYS_CLEARING, debitAmount: M, creditAmount: 0, projectId },
+        { accountId: row.account_id, debitAmount: 0, creditAmount: M, projectId },
+      ];
+    }
+  }
+
+  return null;
+}
+
+function buildJournalBodyFromTransaction(row: TransactionRow, lines: JournalLineInput[]): CreateJournalBody {
+  const desc =
+    (row.description && String(row.description).trim()) ||
+    `${row.type} ${Number(row.amount)}`;
+  return {
+    entryDate: txDateYmd(row),
+    reference: row.reference?.trim() ? String(row.reference).trim() : `TX:${row.id}`,
+    description: desc,
+    sourceModule: TRANSACTION_JOURNAL_SOURCE_MODULE,
+    sourceId: row.id,
+    createdBy: row.user_id,
+    projectId: txProjectId(row),
+    lines,
+  };
+}
+
+async function reverseExistingTransactionJournalIfAny(
+  client: pg.PoolClient,
+  tenantId: string,
+  transactionId: string,
+  actorUserId: string | null
+): Promise<void> {
+  const existingId = await findActiveJournalEntryIdForTransaction(client, tenantId, transactionId);
+  if (!existingId) return;
+  await reverseJournalEntry(
+    client,
+    tenantId,
+    existingId,
+    'Transaction updated or removed',
+    actorUserId
+  );
+}
+
+/**
+ * Create or replace the journal mirror for a live transaction row.
+ * On update: reverses prior entry then posts a new one.
+ */
+export async function syncTransactionJournalMirror(
+  client: pg.PoolClient,
+  tenantId: string,
+  row: TransactionRow,
+  actorUserId: string | null,
+  options?: { replaceExisting?: boolean }
+): Promise<{ journalEntryId: string | null }> {
+  if (shouldSkipTransactionJournalMirror(row)) {
+    return { journalEntryId: null };
+  }
+
+  const replace = options?.replaceExisting !== false;
+  if (replace) {
+    await reverseExistingTransactionJournalIfAny(client, tenantId, row.id, actorUserId);
+  }
+
+  const lines = buildJournalLinesFromTransaction(row);
+  if (!lines) return { journalEntryId: null };
+
+  const body = buildJournalBodyFromTransaction(row, lines);
+  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  return { journalEntryId };
+}
+
+/** Reverse journal mirror when a transaction is soft-deleted. */
+export async function reverseTransactionJournalMirror(
+  client: pg.PoolClient,
+  tenantId: string,
+  transactionId: string,
+  actorUserId: string | null
+): Promise<void> {
+  await reverseExistingTransactionJournalIfAny(client, tenantId, transactionId, actorUserId);
+}
+
+/** True when a non-reversed journal entry already mirrors this transaction. */
+export async function hasActiveTransactionJournalMirror(
+  client: pg.PoolClient,
+  tenantId: string,
+  transactionId: string
+): Promise<boolean> {
+  const id = await findActiveJournalEntryIdForTransaction(client, tenantId, transactionId);
+  return id != null;
+}
+
+/**
+ * Post journal mirror only when missing (no reversal of existing entries).
+ * Used by backfill and idempotent repair jobs.
+ */
+export async function ensureTransactionJournalMirror(
+  client: pg.PoolClient,
+  tenantId: string,
+  row: TransactionRow,
+  actorUserId: string | null
+): Promise<{ journalEntryId: string | null; skipped: 'mirror_rule' | 'no_lines' | 'already_posted' | null }> {
+  if (shouldSkipTransactionJournalMirror(row)) {
+    return { journalEntryId: null, skipped: 'mirror_rule' };
+  }
+  if (await hasActiveTransactionJournalMirror(client, tenantId, row.id)) {
+    return { journalEntryId: null, skipped: 'already_posted' };
+  }
+  const lines = buildJournalLinesFromTransaction(row);
+  if (!lines) {
+    return { journalEntryId: null, skipped: 'no_lines' };
+  }
+  const body = buildJournalBodyFromTransaction(row, lines);
+  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  return { journalEntryId, skipped: null };
+}

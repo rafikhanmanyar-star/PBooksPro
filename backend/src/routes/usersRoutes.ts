@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { requireOrgUserAdmin } from '../middleware/authMiddleware.js';
 import { getPool } from '../db/pool.js';
+import { validatePassword } from '../utils/passwordPolicy.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
 export const usersRouter = Router();
@@ -111,6 +112,11 @@ usersRouter.post('/users', requireOrgUserAdmin, async (req: AuthedRequest, res) 
     return;
   }
   const { username, name, email, password, role } = parsed.data;
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', passwordError);
+    return;
+  }
   const id = `user_${randomUUID().replace(/-/g, '')}`;
   const passwordHash = await bcrypt.hash(password, 10);
   const emailVal = email && email.length > 0 ? email : null;
@@ -160,6 +166,11 @@ usersRouter.put('/users/:id', requireOrgUserAdmin, async (req: AuthedRequest, re
     }
 
     if (password && password.length > 0) {
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        sendFailure(res, 400, 'VALIDATION_ERROR', passwordError);
+        return;
+      }
       const passwordHash = await bcrypt.hash(password, 10);
       const r = await pool.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
         `UPDATE users SET username = $1, name = $2, email = $3, role = $4, password_hash = $5, updated_at = NOW()

@@ -190,6 +190,18 @@ export async function getInvoiceByIdIncludingDeleted(
   return r.rows[0] ?? null;
 }
 
+/** Server-authoritative paid_amount/status from payment transactions (ignores client-supplied values). */
+async function finalizeInvoiceSaveFromLedger(
+  client: pg.PoolClient,
+  tenantId: string,
+  invoiceId: string
+): Promise<InvoiceRow> {
+  await recalculateInvoicePaymentAggregates(client, tenantId, invoiceId);
+  const row = await getInvoiceById(client, tenantId, invoiceId);
+  if (!row) throw new Error('Invoice not found after save.');
+  return row;
+}
+
 /**
  * POST /invoices: insert or update by id (matches client saveInvoice always using POST).
  * Restores soft-deleted rows when updating by id.
@@ -258,7 +270,8 @@ export async function upsertInvoice(
   );
   const row = u.rows[0];
   if (!row) throw new Error('Upsert failed.');
-  return { row, conflict: false, wasInsert: false };
+  const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
+  return { row: finalized, conflict: false, wasInsert: false };
 }
 
 export async function createInvoice(
@@ -310,7 +323,7 @@ export async function createInvoice(
       p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
     ]
   );
-  return r.rows[0];
+  return finalizeInvoiceSaveFromLedger(client, tenantId, id);
 }
 
 export async function updateInvoice(
@@ -369,7 +382,8 @@ export async function updateInvoice(
       if (!exists) return { row: null, conflict: false };
       return { row: null, conflict: true };
     }
-    return { row: u.rows[0], conflict: false };
+    const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
+    return { row: finalized, conflict: false };
   }
 
   const u = await client.query<InvoiceRow>(
@@ -385,7 +399,9 @@ export async function updateInvoice(
                security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId, ...vals]
   );
-  return { row: u.rows[0] ?? null, conflict: false };
+  if (!u.rows[0]) return { row: null, conflict: false };
+  const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
+  return { row: finalized, conflict: false };
 }
 
 export async function softDeleteInvoice(

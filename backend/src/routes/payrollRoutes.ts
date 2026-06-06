@@ -4,6 +4,7 @@ import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../db/pool.js';
 import { emitEntityEvent } from '../core/realtime.js';
 import { perfPayrollLog, perfPayrollNow } from '../utils/payrollPerf.js';
+import { LockGuardError } from '../services/recordLocksService.js';
 import type { BulkPayPayslipLine } from '../services/payrollService.js';
 import {
   createPayrollRun,
@@ -519,7 +520,9 @@ payrollRouter.put('/payroll/runs/:id', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const row = await withTransaction((c) => updatePayrollRun(c, tenantId, req.params.id, req.body as Record<string, unknown>));
+    const row = await withTransaction((c) =>
+      updatePayrollRun(c, tenantId, req.params.id, req.body as Record<string, unknown>, req.userId ?? null)
+    );
     if (!row) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
@@ -527,6 +530,10 @@ payrollRouter.put('/payroll/runs/:id', async (req: AuthedRequest, res) => {
     emitEntityEvent(tenantId, 'updated', 'payroll_run', { data: rowToPayrollRunApi(row), sourceUserId: req.userId });
     sendSuccess(res, rowToPayrollRunApi(row));
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }

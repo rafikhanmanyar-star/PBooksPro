@@ -7,6 +7,16 @@ import { getPool, withTransaction } from '../db/pool.js';
 import { signAccessToken } from '../auth/jwt.js';
 import { bootstrapTenantChart } from '../services/tenantBootstrap.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
+import { validatePassword } from '../utils/passwordPolicy.js';
+import {
+  optionalAuthMiddleware,
+} from '../middleware/authMiddleware.js';
+import {
+  publicIntrospectionLimiter,
+  requireDiscoveryToken,
+  requireTenantDirectoryAccess,
+  tenantDirectoryLimiter,
+} from '../middleware/introspectionGuard.js';
 
 export const authRouter = Router();
 
@@ -22,7 +32,7 @@ const registerTenantSchema = z.object({
   phone: z.string().max(80).optional(),
   address: z.string().max(500).optional(),
   adminUsername: z.string().min(3).max(64),
-  adminPassword: z.string().min(6).max(256),
+  adminPassword: z.string().min(8).max(256),
   adminName: z.string().min(1).max(200),
   isSupplier: z.boolean().optional(),
   requestedTenantId: z.preprocess(
@@ -48,6 +58,19 @@ const registerLimiter = rateLimit({
   },
 });
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    success: false,
+    data: null,
+    error: { code: 'RATE_LIMIT', message: 'Too many login attempts. Try again later.' },
+  },
+});
+
 const RESERVED_TENANT_IDS = new Set(['default', 'admin', 'api', 'system', 'www', 'mail', 'ftp']);
 
 function slugify(s: string): string {
@@ -69,7 +92,12 @@ function generateTenantId(companyName: string): string {
  * Public directory of organizations for the login screen (LAN / self-hosted).
  * Returns id + display name only; no secrets.
  */
-authRouter.get('/auth/tenants', async (_req, res) => {
+authRouter.get(
+  '/auth/tenants',
+  tenantDirectoryLimiter,
+  optionalAuthMiddleware,
+  requireTenantDirectoryAccess,
+  async (_req, res) => {
   try {
     const pool = getPool();
     const r = await pool.query<{ id: string; name: string }>(
@@ -88,7 +116,7 @@ authRouter.post('/auth/logout', async (_req, res) => {
   sendSuccess(res, { ok: true });
 });
 
-authRouter.post('/auth/login', async (req, res) => {
+authRouter.post('/auth/login', loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     sendFailure(res, 400, 'VALIDATION_ERROR', 'username and password required');
@@ -169,6 +197,12 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
   }
 
   const { companyName, email, adminUsername, adminPassword, adminName, requestedTenantId } = parsed.data;
+
+  const passwordError = validatePassword(adminPassword);
+  if (passwordError) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', passwordError);
+    return;
+  }
 
   let tenantId: string;
   if (requestedTenantId) {

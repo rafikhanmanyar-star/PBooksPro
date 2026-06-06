@@ -60,22 +60,21 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const { rentalInvoiceSettings, projectInvoiceSettings } = state;
 
   const recordLock = useRecordLock({
-    recordType: 'invoice',
-    recordId: type === 'invoice' ? itemToEdit?.id : undefined,
-    enabled: type === 'invoice' && Boolean(itemToEdit?.id) && !isLocalOnlyMode(),
+    recordType: type === 'invoice' ? 'invoice' : 'bill',
+    recordId: itemToEdit?.id,
+    enabled: Boolean(itemToEdit?.id) && !isLocalOnlyMode(),
     currentUserId: state.currentUser?.id,
     currentUserName: state.currentUser?.name,
     userRole: state.currentUser?.role,
   });
 
-  const handleForceInvoiceLock = async () => {
+  const handleForceRecordLock = async () => {
     const ok = await showConfirm(
       'Take over editing? The other user may lose unsaved changes.',
       { title: 'Force edit' }
     );
     if (ok) await recordLock.forceTakeover();
   };
-
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [isDirty, setIsDirty] = useState(false);
@@ -971,7 +970,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const handleDelete = async () => {
     if (!itemToEdit) return;
-    if (type === 'invoice' && !isLocalOnlyMode() && recordLock.viewOnly) {
+    if (itemToEdit && !isLocalOnlyMode() && recordLock.viewOnly) {
       await showAlert('This invoice is open in view-only mode.', { title: 'Cannot delete' });
       return;
     }
@@ -1084,7 +1083,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const handleSubmit = async (e: React.FormEvent, skipClose = false) => {
     if (e) e.preventDefault();
 
-    if (type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.viewOnly) {
+    if (itemToEdit?.id && !isLocalOnlyMode() && recordLock.viewOnly) {
       await showAlert('This invoice is open in view-only mode.', { title: 'Cannot save' });
       return;
     }
@@ -1649,7 +1648,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             <div className="space-y-2">
               <Button
                 type="submit"
-                disabled={!!numberError || isAgreementCancelled || (type === 'invoice' && Boolean(itemToEdit) && recordLock.viewOnly)}
+                disabled={!!numberError || isAgreementCancelled || (Boolean(itemToEdit) && recordLock.viewOnly)}
                 className="w-full text-sm py-2.5 bg-blue-600 hover:bg-blue-700"
               >
                 {itemToEdit ? 'Update Invoice' : 'Save Invoice'}
@@ -1671,16 +1670,16 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   <button
                     type="button"
                     onClick={handleDuplicateClick}
-                    disabled={!canDuplicateRentalInvoice || (type === 'invoice' && recordLock.viewOnly)}
+                    disabled={!canDuplicateRentalInvoice || recordLock.viewOnly}
                     title={
                       !canDuplicateRentalInvoice
                         ? 'Duplication requires an active rental agreement for this property.'
-                        : type === 'invoice' && recordLock.viewOnly
+                        : recordLock.viewOnly
                           ? 'View-only mode'
                           : undefined
                     }
                     className={`inline-flex items-center gap-1.5 text-sm transition-colors ${
-                      !canDuplicateRentalInvoice || (type === 'invoice' && recordLock.viewOnly)
+                      !canDuplicateRentalInvoice || recordLock.viewOnly
                         ? 'text-slate-400 cursor-not-allowed'
                         : 'text-slate-600 hover:text-indigo-600'
                     }`}
@@ -1692,7 +1691,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 <button
                   type="button"
                   onClick={handleDelete}
-                  disabled={isAgreementCancelled || (type === 'invoice' && recordLock.viewOnly)}
+                  disabled={isAgreementCancelled || recordLock.viewOnly}
                   className="inline-flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -2658,14 +2657,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         lockedByName={recordLock.lockedByName ?? 'Another user'}
         isAdmin={isAdminRole(state.currentUser?.role)}
         onViewOnly={recordLock.chooseViewOnly}
-        onForceEdit={handleForceInvoiceLock}
+        onForceEdit={handleForceRecordLock}
         onDismiss={recordLock.dismissModal}
       />
       <form onSubmit={handleSubmit} className="flex flex-col h-full" style={formStyle}>
-        {type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && !isRentalLayout && (
+        {itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && !isRentalLayout && (
           <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
         )}
-        {type === 'invoice' && itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
+        {itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
           <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
         )}
         {isPartiallyPaid && type === 'bill' && (
@@ -2685,7 +2684,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         )}
         <div
           className={`flex-grow min-h-0 overflow-y-auto pr-1 -mr-1 ${
-            type === 'invoice' && recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''
+            itemToEdit && recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''
           }`}
         >
           <div className="space-y-3">
@@ -2703,7 +2702,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   type="button"
                   variant="danger"
                   onClick={handleDelete}
-                  disabled={isAgreementCancelled || (type === 'invoice' && recordLock.viewOnly)}
+                  disabled={isAgreementCancelled || recordLock.viewOnly}
                   className="w-full sm:w-auto text-sm py-2"
                 >
                   Delete
@@ -2714,11 +2713,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   type="button"
                   variant="secondary"
                   onClick={handleDuplicateClick}
-                  disabled={!canDuplicateRentalInvoice || (type === 'invoice' && recordLock.viewOnly)}
+                  disabled={!canDuplicateRentalInvoice || recordLock.viewOnly}
                   title={
                     !canDuplicateRentalInvoice
                       ? 'Duplication requires an active rental agreement for this property.'
-                      : type === 'invoice' && recordLock.viewOnly
+                      : recordLock.viewOnly
                         ? 'View-only mode'
                         : undefined
                   }
@@ -2738,7 +2737,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
               <Button
                 type="submit"
-                disabled={!!numberError || isAgreementCancelled || (type === 'invoice' && Boolean(itemToEdit) && recordLock.viewOnly)}
+                disabled={!!numberError || isAgreementCancelled || (Boolean(itemToEdit) && recordLock.viewOnly)}
                 className="w-full sm:w-auto text-sm py-2"
               >
                 {itemToEdit ? 'Update' : 'Save'}

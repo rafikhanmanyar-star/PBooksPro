@@ -3,7 +3,7 @@ import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../db/pool.js';
 import { getStateChanges } from '../services/stateChangesService.js';
-import { getBulkAppState } from '../services/appStateBulkService.js';
+import { getBulkAppState, getBulkAppStateChunked } from '../services/appStateBulkService.js';
 
 export const stateRouter = Router();
 
@@ -28,6 +28,32 @@ stateRouter.get('/state/bulk', async (req: AuthedRequest, res) => {
     }
   } catch (e) {
     handleRouteError(res, e, { route: 'GET /state/bulk' });
+  }
+});
+
+/** Chunked bulk load for large tenants (primarily paginates transactions). */
+stateRouter.get('/state/bulk-chunked', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const payload = await getBulkAppStateChunked(
+        client,
+        tenantId,
+        req.query.limit,
+        req.query.offset
+      );
+      sendSuccess(res, payload);
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e, { route: 'GET /state/bulk-chunked' });
   }
 });
 

@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional } from '../utils/dateOnly.js';
+import { enforceLockForSave } from './recordLocksService.js';
 
 export type BillRow = {
   id: string;
@@ -215,6 +216,18 @@ export async function getBillByIdIncludingDeleted(
   return r.rows[0] ?? null;
 }
 
+/** Server-authoritative paid_amount/status from payment transactions and advance clearings. */
+async function finalizeBillSaveFromLedger(
+  client: pg.PoolClient,
+  tenantId: string,
+  billId: string
+): Promise<BillRow> {
+  await recalculateBillPaymentAggregates(client, tenantId, billId);
+  const row = await getBillById(client, tenantId, billId);
+  if (!row) throw new Error('Bill not found after save.');
+  return row;
+}
+
 /** Unique index is on (tenant_id, bill_number) for all rows; used to reconcile POST upserts when client id drifts. */
 export async function getBillByTenantAndBillNumberIncludingDeleted(
   client: pg.PoolClient,
@@ -362,7 +375,8 @@ export async function updateBill(
       if (!exists) return { row: null, conflict: false };
       return { row: null, conflict: true };
     }
-    return { row: u.rows[0], conflict: false };
+    const finalized = await finalizeBillSaveFromLedger(client, tenantId, id);
+    return { row: finalized, conflict: false };
   }
 
   const u = await client.query<BillRow>(
@@ -379,7 +393,9 @@ export async function updateBill(
                expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId, ...vals]
   );
-  return { row: u.rows[0] ?? null, conflict: false };
+  if (!u.rows[0]) return { row: null, conflict: false };
+  const finalized = await finalizeBillSaveFromLedger(client, tenantId, id);
+  return { row: finalized, conflict: false };
 }
 
 /**
@@ -400,9 +416,14 @@ async function upsertBillByTenantAndBillNumber(
     typeof p.version === 'number' && Number.isFinite(p.version) ? Math.trunc(p.version) : null;
 
   const hadRowBefore = await client.query(
-    `SELECT 1 FROM bills WHERE tenant_id = $1 AND bill_number = $2 LIMIT 1`,
+    `SELECT id FROM bills WHERE tenant_id = $1 AND bill_number = $2 LIMIT 1`,
     [tenantId, p.bill_number]
   );
+
+  if (hadRowBefore.rows.length > 0) {
+    const lockId = String(hadRowBefore.rows[0].id);
+    await enforceLockForSave(client, tenantId, 'bill', lockId, actorUserId);
+  }
 
   const vals: unknown[] = [
     proposeId,
@@ -484,7 +505,8 @@ async function upsertBillByTenantAndBillNumber(
     return { row: stale, conflict: true, wasInsert: false };
   }
 
-  return { row, conflict: false, wasInsert: hadRowBefore.rows.length === 0 };
+  const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id);
+  return { row: finalized, conflict: false, wasInsert: hadRowBefore.rows.length === 0 };
 }
 
 export async function upsertBill(
@@ -538,6 +560,8 @@ export async function upsertBill(
   if (expectedVersion !== undefined && existingById.version !== expectedVersion) {
     return { row: existingById, conflict: true, wasInsert: false };
   }
+
+  await enforceLockForSave(client, tenantId, 'bill', id, actorUserId);
 
   const vals = [
     p.bill_number,

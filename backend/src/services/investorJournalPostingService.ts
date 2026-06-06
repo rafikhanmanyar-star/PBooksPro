@@ -47,7 +47,8 @@ async function mirrorContributionToTransactionsRow(
       projectId: input.projectId,
       isSystem: true,
     },
-    input.createdBy ?? null
+    input.createdBy ?? null,
+    { skipJournalMirror: true }
   );
 }
 
@@ -84,7 +85,8 @@ async function mirrorWithdrawalToTransactionsRow(
       projectId: input.projectId,
       isSystem: true,
     },
-    input.createdBy ?? null
+    input.createdBy ?? null,
+    { skipJournalMirror: true }
   );
 }
 

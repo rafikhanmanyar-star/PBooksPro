@@ -12,6 +12,10 @@ import { syncOwnerSummariesForTransactionChange } from './ownerRentalSummaryServ
 import {
   isVendorSettlementCashMirrorReference,
 } from '../constants/vendorSettlement.js';
+import {
+  reverseTransactionJournalMirror,
+  syncTransactionJournalMirror,
+} from './transactionJournalPostingService.js';
 
 /**
  * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
@@ -424,13 +428,21 @@ function rowToProjectCashTxRow(row: TransactionRow): ProjectCashTxRow {
   };
 }
 
+export type CreateTransactionOptions = {
+  expenseCashBatchCtx?: ExpenseCashValidationBatchContext | null;
+  /** Skip GL mirror when journal already exists (investor flows, vendor settlement cash leg). */
+  skipJournalMirror?: boolean;
+};
+
 export async function createTransaction(
   client: pg.PoolClient,
   tenantId: string,
   body: Record<string, unknown>,
   actorUserId: string | null,
-  expenseCashBatchCtx?: ExpenseCashValidationBatchContext | null
+  options?: CreateTransactionOptions | null
 ): Promise<TransactionRow> {
+  const expenseCashBatchCtx = options?.expenseCashBatchCtx ?? null;
+  const skipJournalMirror = options?.skipJournalMirror === true;
   const p = pickBody(body);
   if (!p.type) throw new Error('type is required.');
   if (!p.account_id) throw new Error('accountId is required.');
@@ -510,6 +522,9 @@ export async function createTransaction(
   }
   await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id], [row.payslip_id]);
   await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
+  if (!skipJournalMirror) {
+    await syncTransactionJournalMirror(client, tenantId, row, actorUserId);
+  }
   return row;
 }
 
@@ -637,6 +652,9 @@ export async function updateTransaction(
       row.payslip_id,
     ]);
     await syncOwnerSummariesForTransactionChange(client, tenantId, before, row);
+    if (!isVendorSettlementCashMirrorReference(row.reference)) {
+      await syncTransactionJournalMirror(client, tenantId, row, row.user_id);
+    }
     const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
     const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
     return { row, conflict: false, affectedInvoiceIds, affectedBillIds };
@@ -664,6 +682,9 @@ export async function updateTransaction(
     row.payslip_id,
   ]);
   await syncOwnerSummariesForTransactionChange(client, tenantId, before, row);
+  if (!isVendorSettlementCashMirrorReference(row.reference)) {
+    await syncTransactionJournalMirror(client, tenantId, row, row.user_id);
+  }
   const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
   return { row, conflict: false, affectedInvoiceIds, affectedBillIds };
@@ -785,6 +806,9 @@ export async function upsertTransaction(
   } else {
     await syncOwnerSummariesForTransactionChange(client, tenantId, existing, row);
   }
+  if (!isVendorSettlementCashMirrorReference(row.reference)) {
+    await syncTransactionJournalMirror(client, tenantId, row, actorUserId);
+  }
   const affectedInvoiceIds = [...new Set([existing.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([existing.bill_id, row.bill_id].filter(Boolean))] as string[];
   return { row, conflict: false, wasInsert: false, affectedInvoiceIds, affectedBillIds };
@@ -835,6 +859,8 @@ export async function softDeleteTransaction(
     );
     if ((r.rowCount ?? 0) === 0) return { ok: false, conflict: false };
   }
+
+  await reverseTransactionJournalMirror(client, tenantId, id, row.user_id);
 
   let recalculatedInvoiceId: string | null = null;
   let recalculatedBillId: string | null = null;

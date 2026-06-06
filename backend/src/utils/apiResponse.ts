@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { logger } from './logger.js';
 
 export type ApiSuccessEnvelope<T> = { success: true; data: T; error: null };
 export type ApiErrorEnvelope = {
@@ -79,16 +80,22 @@ function mapErrorToHttp(e: unknown): {
         message: 'The operation took too long. Please try again.',
       };
     }
+    const isProd = process.env.NODE_ENV === 'production';
     return {
       status: 500,
       code: 'SERVER_ERROR',
-      message: e.message || 'An unexpected error occurred.',
+      message: isProd ? 'An unexpected error occurred.' : e.message || 'An unexpected error occurred.',
     };
   }
   return {
     status: 500,
     code: 'SERVER_ERROR',
-    message: e == null ? 'Unknown error' : String(e),
+    message:
+      process.env.NODE_ENV === 'production'
+        ? 'An unexpected error occurred.'
+        : e == null
+          ? 'Unknown error'
+          : String(e),
   };
 }
 
@@ -99,14 +106,12 @@ export function handleRouteError(
   context?: { route?: string; payload?: unknown }
 ): void {
   const mapped = mapErrorToHttp(e);
-  const dev = process.env.NODE_ENV !== 'production';
-  if (dev) {
-    console.error('[API route error]', context?.route, context?.payload, e);
-  } else {
-    console.error('[API route error]', mapped.code, mapped.message);
-  }
-  if (e instanceof Error && e.stack) {
-    console.error(e.stack);
-  }
+  logger.error('API route error', {
+    route: context?.route,
+    code: mapped.code,
+    status: mapped.status,
+    message: e instanceof Error ? e.message : String(e),
+    stack: e instanceof Error ? e.stack : undefined,
+  });
   sendFailure(res, mapped.status, mapped.code, mapped.message, mapped.extra);
 }

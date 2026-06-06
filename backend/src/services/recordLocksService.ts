@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 
 const LOCK_TTL_MS = 10 * 60 * 1000;
 
-export type RecordLockType = 'agreement' | 'invoice';
+export type RecordLockType = 'agreement' | 'invoice' | 'bill' | 'rental' | 'payroll';
 
 export type RecordLockRow = {
   id: string;
@@ -18,7 +18,19 @@ export type RecordLockRow = {
 
 function normalizeRecordType(v: unknown): RecordLockType | null {
   const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  if (s === 'agreement' || s === 'invoice') return s;
+  if (
+    s === 'agreement' ||
+    s === 'invoice' ||
+    s === 'bill' ||
+    s === 'rental' ||
+    s === 'rental_agreement' ||
+    s === 'payroll' ||
+    s === 'payroll_run'
+  ) {
+    if (s === 'rental_agreement') return 'rental';
+    if (s === 'payroll_run') return 'payroll';
+    return s as RecordLockType;
+  }
   return null;
 }
 

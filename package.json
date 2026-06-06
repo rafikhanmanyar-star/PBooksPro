@@ -69,6 +69,7 @@
     "test:backend": "npm test --prefix backend",
     "db:migrate:lan": "dotenv -e .env -- npm run migrate --prefix backend",
     "db:backfill-payroll-ledger": "dotenv -e .env -- npm run backfill-payroll-ledger --prefix backend --",
+    "db:backfill-transaction-journal": "dotenv -e .env -- npm run backfill-transaction-journal --prefix backend --",
     "reset-pm-cycle": "dotenv -e .env -- npm run reset-pm-cycle --prefix backend --"
   },
   "dependencies": {

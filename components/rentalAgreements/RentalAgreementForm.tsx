@@ -13,6 +13,9 @@ import { CURRENCY, ICONS } from '../../constants';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
+import RecordLockBanner from '../recordLock/RecordLockBanner';
+import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
 import { RentalAgreementsApiRepository } from '../../services/api/repositories/rentalAgreementsApi';
 import { ContactsApiRepository, normalizeContactFromApi } from '../../services/api/repositories/contactsApi';
 import {
@@ -32,6 +35,23 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const { state, dispatch } = useAppContext();
     const { showConfirm, showToast, showAlert } = useNotification();
     const { rentalInvoiceSettings } = state;
+
+    const recordLock = useRecordLock({
+        recordType: 'rental',
+        recordId: agreementToEdit?.id,
+        enabled: Boolean(agreementToEdit?.id) && !isLocalOnlyMode(),
+        currentUserId: state.currentUser?.id,
+        currentUserName: state.currentUser?.name,
+        userRole: state.currentUser?.role,
+    });
+
+    const handleForceRecordLock = async () => {
+        const ok = await showConfirm(
+            'Take over editing? The other user may lose unsaved changes.',
+            { title: 'Force edit' }
+        );
+        if (ok) await recordLock.forceTakeover();
+    };
 
     const isEditMode = !!agreementToEdit;
     const [currentStep, setCurrentStep] = useState<Step>(0);
@@ -439,6 +459,11 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             return;
         }
 
+        if (recordLock.viewOnly) {
+            await showAlert('This agreement is being edited by another user.');
+            return;
+        }
+
         if (!contactId || !propertyId || !startDate || !endDate || !monthlyRent) {
             await showAlert("Please fill in all required fields.");
             return;
@@ -770,7 +795,21 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     // === EDIT VIEW (inline form, not wizard) ===
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0" style={formBackgroundStyle}>
-            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[5fr_3fr] gap-3 lg:gap-4 overflow-y-auto overflow-x-hidden">
+            <RecordLockConflictModal
+                isOpen={recordLock.showConflictModal}
+                lockedByName={recordLock.lockedByName ?? 'Another user'}
+                canForceEdit={isAdminRole(state.currentUser?.role)}
+                onViewOnly={recordLock.chooseViewOnly}
+                onForceEdit={handleForceRecordLock}
+                onDismiss={recordLock.dismissModal}
+            />
+            {agreementToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && (
+                <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
+            )}
+            {agreementToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
+                <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
+            )}
+            <div className={`flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[5fr_3fr] gap-3 lg:gap-4 overflow-y-auto overflow-x-hidden${recordLock.viewOnly ? ' pointer-events-none opacity-[0.88]' : ''}`}>
                 {/* Left Column */}
                 <div className="flex flex-col gap-3 min-h-0">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3">

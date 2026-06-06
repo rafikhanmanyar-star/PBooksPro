@@ -1,11 +1,19 @@
 import bcrypt from 'bcryptjs';
 import { getPool } from './db/pool.js';
 import { bootstrapTenantChart } from './services/tenantBootstrap.js';
+import { logger } from './utils/logger.js';
 
 /**
  * Idempotent dev seed: default tenant, admin user (admin/admin), system accounts.
+ * Never runs in production (even when SEED_DEV_USER=1).
  */
 export async function seedDevIfEnabled(): Promise<void> {
+  if (process.env.NODE_ENV === 'production') {
+    if (process.env.SEED_DEV_USER === '1') {
+      logger.warn('Refusing dev seed in production (SEED_DEV_USER is ignored)');
+    }
+    return;
+  }
   if (process.env.SEED_DEV_USER !== '1' && process.env.NODE_ENV !== 'development') {
     return;
   }
@@ -39,5 +47,5 @@ export async function seedDevIfEnabled(): Promise<void> {
 
   await bootstrapTenantChart(pool, 'default', { legacyIds: true });
 
-  console.log('[seed] Dev logins — tenant=default | admin / (DEV_ADMIN_PASSWORD or "admin") | Rafi / (DEV_RAFI_PASSWORD or "Rafi123")');
+  logger.info('Dev seed complete — tenant=default | admin / (DEV_ADMIN_PASSWORD or "admin") | Rafi / (DEV_RAFI_PASSWORD or "Rafi123")');
 }

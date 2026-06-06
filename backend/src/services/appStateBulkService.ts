@@ -46,6 +46,12 @@ import {
 } from './personalTransactionsService.js';
 import { listAllSettings } from './appSettingsService.js';
 
+/** Max transactions returned by GET /state/bulk (use /state/bulk-chunked for larger tenants). */
+export const BULK_TRANSACTION_CAP = 50_000;
+
+const BULK_STATIC_ENTITIES =
+  'accounts,contacts,categories,projects,buildings,properties,units,invoices,bills,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,recurringInvoiceTemplates,pmCycleAllocations,vendors,personalCategories,personalTransactions,appSettings';
+
 type BulkEntityKey =
   | 'accounts'
   | 'contacts'
@@ -135,7 +141,7 @@ export async function getBulkAppState(
     wantEntity('accounts', filter) ? listAccounts(client, tenantId) : Promise.resolve([]),
     wantEntity('contacts', filter) ? listContacts(client, tenantId) : Promise.resolve([]),
     wantEntity('transactions', filter)
-      ? listTransactions(client, tenantId, { limit: 500_000 })
+      ? listTransactions(client, tenantId, { limit: BULK_TRANSACTION_CAP })
       : Promise.resolve([]),
     wantEntity('categories', filter) ? listCategories(client, tenantId) : Promise.resolve([]),
     wantEntity('projects', filter) ? listProjects(client, tenantId) : Promise.resolve([]),
@@ -273,4 +279,60 @@ export async function getBulkAppState(
   }
 
   return out;
+}
+
+export type BulkChunkResult = {
+  entities: Record<string, unknown>;
+  totals: Record<string, number>;
+  has_more: boolean;
+  next_offset: number | null;
+};
+
+export async function countTenantTransactions(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<number> {
+  const r = await client.query<{ c: number }>(
+    `SELECT COUNT(*)::int AS c FROM transactions WHERE tenant_id = $1 AND deleted_at IS NULL`,
+    [tenantId]
+  );
+  return r.rows[0]?.c ?? 0;
+}
+
+/**
+ * Paginated bulk load: offset 0 returns all static entities plus the first transaction page;
+ * subsequent requests return transaction pages only.
+ */
+export async function getBulkAppStateChunked(
+  client: pg.PoolClient,
+  tenantId: string,
+  limitRaw: unknown,
+  offsetRaw: unknown
+): Promise<BulkChunkResult> {
+  const limit = Math.min(Math.max(Number(limitRaw) || 200, 1), 500);
+  const offset = Math.max(Number(offsetRaw) || 0, 0);
+
+  const txTotal = await countTenantTransactions(client, tenantId);
+  const entities: Record<string, unknown> = {};
+  const totals: Record<string, number> = { transactions: txTotal };
+
+  if (offset === 0) {
+    const staticState = await getBulkAppState(client, tenantId, BULK_STATIC_ENTITIES);
+    Object.assign(entities, staticState);
+    for (const [key, val] of Object.entries(staticState)) {
+      if (Array.isArray(val)) totals[key] = val.length;
+    }
+  }
+
+  const txRows = await listTransactions(client, tenantId, { limit, offset });
+  entities.transactions = txRows.map((r) => rowToTransactionApi(r));
+
+  const loadedTx = offset + txRows.length;
+  const has_more = loadedTx < txTotal;
+  return {
+    entities,
+    totals,
+    has_more,
+    next_offset: has_more ? loadedTx : null,
+  };
 }
