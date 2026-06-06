@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "noImplicitAny": true
+  },
+  "include": [
+    "vite-env.d.ts",
+    "types/**/*.d.ts",
+    "services/financialEngine/**/*.ts",
+    "services/api/financialReportsApi.ts",
+    "services/api/customReportsApi.ts"
+  ]
+}

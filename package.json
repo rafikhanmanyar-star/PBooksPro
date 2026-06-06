@@ -59,6 +59,7 @@
     "smoke:design-system": "node scripts/smoke-test-design-system.mjs",
     "smoke:design-system:full": "node scripts/smoke-test-design-system.mjs --build",
     "verify:financial-engine": "node scripts/verify-financial-engine.mjs",
+    "typecheck:strict-financial": "tsc -p tsconfig.strict-financial.json --noEmit",
     "verify:equity-ledger": "node scripts/verify-equity-ledger.mjs",
     "test:date-only": "tsx tests/dateOnlySerialization.test.ts",
     "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",

@@ -127,10 +127,14 @@ export interface PlBillDrilldownEntry {
 }
 
 function resolveBillVendorDisplayName(state: AppState, bill: Bill): string {
-    const v = bill.vendorId && state.vendors.find((x) => x.id === bill.vendorId);
-    if (v?.name) return v.name;
-    const c = bill.contactId && state.contacts.find((x) => x.id === bill.contactId);
-    if (c?.name) return c.name;
+    if (bill.vendorId) {
+        const v = state.vendors.find((x) => x.id === bill.vendorId);
+        if (v?.name) return v.name;
+    }
+    if (bill.contactId) {
+        const c = state.contacts.find((x) => x.id === bill.contactId);
+        if (c?.name) return c.name;
+    }
     return 'Vendor bill';
 }
 
