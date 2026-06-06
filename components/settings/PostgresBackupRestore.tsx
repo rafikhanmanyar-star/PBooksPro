@@ -14,6 +14,7 @@ import {
 import {
   fetchDatabaseBackupCapabilities,
   downloadPostgresBackup,
+  downloadTenantBackup,
   restorePostgresBackup,
   type DatabaseBackupCapabilities,
 } from '../../services/databaseBackupService';
@@ -22,6 +23,7 @@ const PostgresBackupRestore: React.FC = () => {
   const [caps, setCaps] = useState<DatabaseBackupCapabilities | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [backingUpTenant, setBackingUpTenant] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
@@ -53,6 +55,22 @@ const PostgresBackupRestore: React.FC = () => {
       });
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const handleTenantBackup = async () => {
+    setBackingUpTenant(true);
+    setMessage(null);
+    try {
+      await downloadTenantBackup();
+      setMessage({ type: 'success', text: 'Organization backup downloaded (JSON, gzip).' });
+    } catch (e) {
+      setMessage({
+        type: 'error',
+        text: e instanceof Error ? e.message : 'Tenant backup failed.',
+      });
+    } finally {
+      setBackingUpTenant(false);
     }
   };
 
@@ -91,7 +109,7 @@ const PostgresBackupRestore: React.FC = () => {
     }
   };
 
-  const busy = backingUp || restoring;
+  const busy = backingUp || backingUpTenant || restoring;
 
   if (loadError) {
     return (
@@ -133,7 +151,7 @@ const PostgresBackupRestore: React.FC = () => {
           PostgreSQL backup
         </h3>
         <p className="text-sm text-gray-500 mt-0.5">
-          Download a full snapshot of the database used by this API server, or restore from a previous <code className="text-xs bg-gray-100 px-1 rounded">.dump</code> file.
+          Download a full snapshot of the database used by this API server, export this organization only, or restore from a previous <code className="text-xs bg-gray-100 px-1 rounded">.dump</code> file.
         </p>
       </div>
 
@@ -191,6 +209,27 @@ const PostgresBackupRestore: React.FC = () => {
             </>
           )}
         </button>
+
+        {caps.tenantBackupEnabled !== false && (
+          <button
+            type="button"
+            onClick={handleTenantBackup}
+            disabled={busy}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+          >
+            {backingUpTenant ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Exporting organization…
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                Export this organization (.json.gz)
+              </>
+            )}
+          </button>
+        )}
 
         <label
           className={`flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium transition-colors ${

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -15,7 +15,10 @@ import {
   BS_GROUP_LABELS,
   type BalanceSheetLine,
   type BsGroupKey,
+  type BalanceSheetReportResult,
 } from './balanceSheetEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchBalanceSheetReport } from '../../services/api/financialReportsApi';
 import SettingsLedgerModal from '../settings/SettingsLedgerModal';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -54,13 +57,40 @@ const ProjectBalanceSheetReport: React.FC = () => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [ledger, setLedger] = useState<{ id: string; name: string } | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
+  const localOnly = isLocalOnlyMode();
+  const [serverReport, setServerReport] = useState<BalanceSheetReportResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
 
-  const report = useMemo(
-    () => computeBalanceSheetReport(state, { asOfDate, selectedProjectId }),
-    [state, asOfDate, selectedProjectId]
-  );
+  useEffect(() => {
+    if (localOnly) {
+      setServerReport(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setFetchError(null);
+    void fetchBalanceSheetReport({ asOfDate, projectId: selectedProjectId, debug: debugOpen })
+      .then((r) => {
+        if (!cancelled) setServerReport(r);
+      })
+      .catch((e) => {
+        if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [localOnly, asOfDate, selectedProjectId, debugOpen]);
+
+  const report = useMemo(() => {
+    if (!localOnly && serverReport) return serverReport;
+    return computeBalanceSheetReport(state, { asOfDate, selectedProjectId });
+  }, [localOnly, serverReport, state, asOfDate, selectedProjectId]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -255,6 +285,12 @@ const ProjectBalanceSheetReport: React.FC = () => {
                 : state.projects.find((p) => p.id === selectedProjectId)?.name}
             </p>
             <p className="text-[11px] text-app-muted/90 leading-tight">As of {formatDate(asOfDate)}</p>
+            {!localOnly && loading && (
+              <p className="text-xs text-app-muted mt-1">Loading from server…</p>
+            )}
+            {!localOnly && fetchError && (
+              <p className="text-xs text-ds-danger mt-1">{fetchError}</p>
+            )}
           </div>
 
           <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">

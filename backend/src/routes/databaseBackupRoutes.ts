@@ -16,8 +16,9 @@ import { pipeline } from 'node:stream/promises';
 import pg from 'pg';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { requireOrgUserAdmin } from '../middleware/authMiddleware.js';
-import { closePool } from '../db/pool.js';
+import { closePool, getPool } from '../db/pool.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
+import { buildTenantBackupPayload, compressTenantBackup } from '../services/tenantBackupService.js';
 
 export const databaseBackupRouter = Router();
 
@@ -128,15 +129,49 @@ databaseBackupRouter.get('/database/backup/capabilities', requireOrgUserAdmin, (
   const enabled = hasUrl && isDatabaseBackupRestoreEnabled();
   sendSuccess(res, {
     backupRestoreEnabled: enabled,
+    tenantBackupEnabled: enabled,
     format: 'custom',
+    tenantFormat: 'json.gz',
     fileExtension: '.dump',
     hint: enabled
-      ? 'Backup downloads a pg_dump custom-format file. Restore replaces the entire PostgreSQL database used by this API server.'
+      ? 'Full backup downloads a pg_dump custom-format file. Tenant backup exports this organization\'s rows as JSON (restore manually or contact support).'
       : hasUrl
         ? 'Set ENABLE_DB_BACKUP_RESTORE=true in the API server environment to allow backup/restore when not using localhost.'
         : 'DATABASE_URL is not set on the API server.',
   });
 });
+
+/** Organization-scoped JSON backup (current tenant only; admin). */
+databaseBackupRouter.get(
+  '/database/backup/tenant',
+  requireOrgUserAdmin,
+  requireBackupEnabled,
+  async (req: AuthedRequest, res: Response) => {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+      return;
+    }
+    const pool = getPool();
+    try {
+      const client = await pool.connect();
+      try {
+        const payload = await buildTenantBackupPayload(client, tenantId);
+        const body = compressTenantBackup(payload);
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `pbooks-tenant-${tenantId}-${stamp}.json.gz`;
+        res.setHeader('Content-Type', 'application/gzip');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', String(body.length));
+        res.send(body);
+      } finally {
+        client.release();
+      }
+    } catch (e) {
+      if (!res.headersSent) handleRouteError(res, e, { route: 'GET /database/backup/tenant' });
+    }
+  }
+);
 
 databaseBackupRouter.get(
   '/database/backup',

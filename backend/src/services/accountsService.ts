@@ -1,36 +1,10 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
-
-/** Balance for rows with tenant_id = GLOBAL_SYSTEM_TENANT_ID is derived per requesting tenant from transactions plus opening_balance. */
-const ACCOUNT_BALANCE_CASE = `CASE WHEN a.tenant_id = $2 THEN COALESCE((
-    SELECT SUM(
-      CASE
-        WHEN t.type = 'Income' AND t.account_id = a.id THEN t.amount
-        WHEN t.type = 'Expense' AND t.account_id = a.id THEN -t.amount
-        WHEN t.type = 'Transfer' AND t.from_account_id = a.id THEN -t.amount
-        WHEN t.type = 'Transfer' AND t.to_account_id = a.id THEN t.amount
-        WHEN t.type = 'Loan' AND t.account_id = a.id THEN
-          CASE WHEN t.subtype IN ('Receive Loan', 'Collect Loan') THEN t.amount ELSE -t.amount END
-        ELSE 0
-      END
-    ) FROM transactions t WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
-  ), 0) + COALESCE(a.opening_balance, 0) ELSE a.balance END`;
-
-/** Same as ACCOUNT_BALANCE_CASE but $1 = id param, $2 = tenantId, $3 = GLOBAL for get-by-id queries. */
-const ACCOUNT_BALANCE_CASE_BY_ID = `CASE WHEN a.tenant_id = $3 THEN COALESCE((
-    SELECT SUM(
-      CASE
-        WHEN t.type = 'Income' AND t.account_id = a.id THEN t.amount
-        WHEN t.type = 'Expense' AND t.account_id = a.id THEN -t.amount
-        WHEN t.type = 'Transfer' AND t.from_account_id = a.id THEN -t.amount
-        WHEN t.type = 'Transfer' AND t.to_account_id = a.id THEN t.amount
-        WHEN t.type = 'Loan' AND t.account_id = a.id THEN
-          CASE WHEN t.subtype IN ('Receive Loan', 'Collect Loan') THEN t.amount ELSE -t.amount END
-        ELSE 0
-      END
-    ) FROM transactions t WHERE t.tenant_id = $2 AND t.deleted_at IS NULL
-  ), 0) + COALESCE(a.opening_balance, 0) ELSE a.balance END`;
+import {
+  ACCOUNT_BALANCE_CASE,
+  ACCOUNT_BALANCE_CASE_BY_ID,
+} from '../financial/accountBalanceSql.js';
 
 export type AccountRow = {
   id: string;

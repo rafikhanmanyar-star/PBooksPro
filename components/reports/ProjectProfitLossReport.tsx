@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType } from '../../types';
 import Card from '../ui/Card';
@@ -7,12 +7,14 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
-import { computeProfitLossReport, type ProfitLossLine } from './profitLossEngine';
+import { computeProfitLossReport, type ProfitLossLine, type ProfitLossReportResult } from './profitLossEngine';
 import ComboBox from '../ui/ComboBox';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import ProjectTransactionModal from '../dashboard/ProjectTransactionModal';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchProfitLossReport } from '../../services/api/financialReportsApi';
 
 function MetricBanner({
   label,
@@ -64,6 +66,34 @@ const ProjectProfitLossReport: React.FC = () => {
 
   const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
 
+  const localOnly = isLocalOnlyMode();
+  const [serverReport, setServerReport] = useState<ProfitLossReportResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (localOnly) {
+      setServerReport(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setFetchError(null);
+    void fetchProfitLossReport({ from: startDate, to: endDate, projectId: selectedProjectId })
+      .then((r) => {
+        if (!cancelled) setServerReport(r);
+      })
+      .catch((e) => {
+        if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [localOnly, startDate, endDate, selectedProjectId]);
+
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
     const now = new Date();
@@ -89,10 +119,10 @@ const ProjectProfitLossReport: React.FC = () => {
     if (dateRange !== 'custom') setDateRange('custom');
   };
 
-  const report = useMemo(
-    () => computeProfitLossReport(state, { startDate, endDate, selectedProjectId }),
-    [state, startDate, endDate, selectedProjectId]
-  );
+  const report = useMemo(() => {
+    if (!localOnly && serverReport) return serverReport;
+    return computeProfitLossReport(state, { startDate, endDate, selectedProjectId });
+  }, [localOnly, serverReport, state, startDate, endDate, selectedProjectId]);
 
   const toggleOpexRoot = useCallback((id: string) => {
     setCollapsedOpexRoots((prev) => {
@@ -224,6 +254,12 @@ const ProjectProfitLossReport: React.FC = () => {
             <br />
             {formatDate(startDate)} — {formatDate(endDate)}
           </p>
+          {!localOnly && loading && (
+            <p className="text-center text-xs text-slate-500 mb-2">Loading from server…</p>
+          )}
+          {!localOnly && fetchError && (
+            <p className="text-center text-xs text-rose-600 mb-2">{fetchError}</p>
+          )}
 
           {report.validation.issues.length > 0 && (
             <div className="max-w-4xl mx-auto mb-4 space-y-1">

@@ -410,7 +410,6 @@ const UserManagement: React.FC = () => {
                         <optgroup label="POS & Shop Roles">
                             <option value="Store Manager">Store Manager (Shop Operations)</option>
                             <option value="Cashier">Cashier (POS Only)</option>
-                            <option value="Inventory Manager">Inventory Manager (Stock Control)</option>
                         </optgroup>
                     </Select>
 
@@ -467,17 +466,6 @@ const UserManagement: React.FC = () => {
                                     <li>Process sales transactions and payments</li>
                                     <li>Handle customer checkouts</li>
                                     <li>Cannot modify prices or products</li>
-                                </ul>
-                            </div>
-                        )}
-                        {role === 'Inventory Manager' && (
-                            <div>
-                                <p className="font-bold text-slate-700 mb-1">Inventory Manager</p>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Full access to Inventory module</li>
-                                    <li>Manage stock levels and warehouses</li>
-                                    <li>Process stock adjustments and transfers</li>
-                                    <li>Handle procurement and purchase orders</li>
                                 </ul>
                             </div>
                         )}

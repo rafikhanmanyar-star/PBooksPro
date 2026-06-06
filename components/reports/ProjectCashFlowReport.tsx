@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -22,12 +22,15 @@ import {
     type CashFlowLine,
     type CashFlowSectionResult,
     type CashFlowAuditRow,
+    type CashFlowReportResult,
 } from './cashFlowEngine';
 import type { Transaction } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import type { ReportStateSlice } from './reportUtils';
 import { resolveProjectIdForTransaction } from './reportUtils';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchCashFlowReport } from '../../services/api/financialReportsApi';
 
 /**
  * Drill-down rows for cash flow lines. When a single project is selected, batch-linked transfers
@@ -207,6 +210,34 @@ const ProjectCashFlowReport: React.FC = () => {
 
     const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
 
+    const localOnly = isLocalOnlyMode();
+    const [serverReport, setServerReport] = useState<CashFlowReportResult | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (localOnly) {
+            setServerReport(null);
+            return;
+        }
+        let cancelled = false;
+        setLoading(true);
+        setFetchError(null);
+        void fetchCashFlowReport({ from: startDate, to: endDate, projectId: selectedProjectId })
+            .then((r) => {
+                if (!cancelled) setServerReport(r);
+            })
+            .catch((e) => {
+                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [localOnly, startDate, endDate, selectedProjectId]);
+
     const transactionsById = useMemo(
         () => new Map(state.transactions.map((t) => [t.id, t])),
         [state.transactions]
@@ -238,6 +269,7 @@ const ProjectCashFlowReport: React.FC = () => {
     };
 
     const report = useMemo(() => {
+        if (!localOnly && serverReport) return serverReport;
         return computeCashFlowReport(state, {
             fromDate: startDate,
             toDate: endDate,
@@ -246,6 +278,8 @@ const ProjectCashFlowReport: React.FC = () => {
             cashFlowCategoryByAccountId: cashFlowCategoryMapFromEntries(state.cashFlowCategoryMappings),
         });
     }, [
+        localOnly,
+        serverReport,
         state,
         startDate,
         endDate,
@@ -559,6 +593,12 @@ const ProjectCashFlowReport: React.FC = () => {
                             <p className="text-xs text-slate-400">
                                 Direct method — For the period from {formatDate(startDate)} to {formatDate(endDate)}
                             </p>
+                            {!localOnly && loading && (
+                                <p className="text-xs text-slate-500 mt-1">Loading from server…</p>
+                            )}
+                            {!localOnly && fetchError && (
+                                <p className="text-xs text-rose-600 mt-1">{fetchError}</p>
+                            )}
                         </div>
 
                         <div className="max-w-4xl mx-auto bg-white p-4 md:p-8 rounded-xl border border-slate-200 shadow-sm">

@@ -6,7 +6,9 @@ import { apiClient, formatApiErrorMessage } from './api/client';
 
 export interface DatabaseBackupCapabilities {
   backupRestoreEnabled: boolean;
+  tenantBackupEnabled?: boolean;
   format: string;
+  tenantFormat?: string;
   fileExtension: string;
   hint: string;
 }
@@ -115,4 +117,34 @@ export async function restorePostgresBackup(file: File): Promise<string> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function downloadTenantBackup(): Promise<void> {
+  const base = apiClient.getBaseUrl().replace(/\/$/, '');
+  const token = apiClient.getToken();
+  if (!token) throw new Error('Not authenticated');
+
+  const headers: HeadersInit = { Authorization: `Bearer ${token}` };
+  const tid = apiClient.getTenantId();
+  if (tid) (headers as Record<string, string>)['X-Tenant-ID'] = tid;
+
+  const res = await fetch(`${base}/database/backup/tenant`, { method: 'GET', headers });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(parseJsonError(text) || `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get('Content-Disposition');
+  let filename = 'pbooks-tenant-backup.json.gz';
+  const m = cd?.match(/filename="([^"]+)"/i) || cd?.match(/filename=([^;\s]+)/i);
+  if (m) filename = m[1].trim();
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
