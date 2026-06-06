@@ -90,6 +90,18 @@ export default defineConfig({
       },
       output: {
         manualChunks: (id) => {
+          if (id.includes('/config/queryClient') || id.endsWith('config\\queryClient.ts')) {
+            return 'query-client';
+          }
+          // Keep stability layer out of the entry chunk — App/CompanyContext import it while
+          // index.tsx is still initializing, which caused "Cannot access 'te' before initialization".
+          if (
+            id.includes('/services/stability/') ||
+            id.endsWith('services\\stability\\stabilityLayer.ts') ||
+            id.endsWith('services\\stability\\safeInvoke.ts')
+          ) {
+            return 'stability';
+          }
           if (id.includes('node_modules')) {
             if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
             if (!isElectronBuild && id.includes('sql.js')) return 'vendor-db';

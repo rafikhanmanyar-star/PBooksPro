@@ -49,6 +49,8 @@ import { cashFlowRouter } from './routes/cashFlowRoutes.js';
 import { trialBalanceRouter } from './routes/trialBalanceRoutes.js';
 import { rentalOwnerSummariesRouter } from './routes/rentalOwnerSummariesRoutes.js';
 import { customReportsRouter } from './routes/customReportsRoutes.js';
+import { ownerRentalIncomeRouter } from './routes/ownerRentalIncomeRoutes.js';
+import { rentalBillsDashboardRouter } from './routes/rentalBillsDashboardRoutes.js';
 import { authMiddleware } from './middleware/authMiddleware.js';
 import { requireFinancialWriteOnMutations } from './middleware/rbacMiddleware.js';
 import {
@@ -149,6 +151,8 @@ app.use('/api', authMiddleware, cashFlowRouter);
 
 app.use('/api', authMiddleware, trialBalanceRouter);
 app.use('/api', authMiddleware, rentalOwnerSummariesRouter);
+app.use('/api', authMiddleware, ownerRentalIncomeRouter);
+app.use('/api', authMiddleware, rentalBillsDashboardRouter);
 
 app.use('/api', authMiddleware, requireFinancialWriteOnMutations, accountsRouter);
 

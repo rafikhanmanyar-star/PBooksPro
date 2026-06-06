@@ -6,7 +6,6 @@
 
 import { BaseRepository } from './baseRepository';
 export { BaseRepository } from './baseRepository';
-export { AppStateRepository } from './appStateRepository';
 import { getNativeDatabaseService } from '../nativeDatabaseService';
 import { getDatabaseService } from '../databaseService';
 import { isLocalOnlyMode } from '../../../config/apiUrl';

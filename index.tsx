@@ -5,7 +5,6 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { setupElectronFocusRecovery } from './utils/electronFocusRecovery';
 import { initStabilityLayer } from './services/stability/stabilityLayer';
-import { getQueryClient } from './config/queryClient';
 import { ensureLegacyOfflineApiSessionMarked } from './config/apiUrl';
 
 // Get root element
@@ -99,10 +98,11 @@ const initApp = async () => {
   try {
     console.log('[index] Starting application load...');
 
-    // Import all providers
+    // Import all providers (AppContext before App — App imports KPIContext → AppContext)
+    const { AppProvider } = await import('./context/AppContext');
+
     const [
       { default: App },
-      { AppProvider },
       { ThemeProvider },
       { AuthProvider },
       { CompanyProvider },
@@ -122,7 +122,6 @@ const initApp = async () => {
       { SpellCheckerProvider },
     ] = await Promise.all([
       import('./App'),
-      import('./context/AppContext'),
       import('./context/ThemeContext'),
       import('./context/AuthContext'),
       import('./context/CompanyContext'),
@@ -142,6 +141,7 @@ const initApp = async () => {
       import('./context/SpellCheckerContext'),
     ]);
 
+    const { getQueryClient } = await import('./config/queryClient');
     const root = ReactDOM.createRoot(rootElement);
     const queryClient = getQueryClient();
 
