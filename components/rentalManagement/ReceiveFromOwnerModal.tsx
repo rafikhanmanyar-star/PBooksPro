@@ -1,6 +1,15 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useAccounts,
+    useBills,
+    useBuildings,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useProperties,
+    useRentalAgreements,
+} from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { InvoiceStatus, Transaction, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
@@ -36,7 +45,13 @@ const ReceiveFromOwnerModal: React.FC<{
     ownerName: string;
     suggestedAmount: number;
 }> = ({ isOpen, onClose, ownerId, ownerName, suggestedAmount }) => {
-    const { state, dispatch } = useAppContext();
+    const properties = useProperties();
+    const buildings = useBuildings();
+    const bills = useBills();
+    const rentalAgreements = useRentalAgreements();
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 
     const [amount, setAmount] = useState('');
@@ -45,27 +60,27 @@ const ReceiveFromOwnerModal: React.FC<{
     const [reference, setReference] = useState('');
 
     const propertyById = useMemo(
-        () => new Map(state.properties.map((p) => [p.id, p])),
-        [state.properties]
+        () => new Map(properties.map((p) => [p.id, p])),
+        [properties]
     );
 
     const buildingById = useMemo(
-        () => new Map(state.buildings.map((b) => [b.id, b])),
-        [state.buildings]
+        () => new Map(buildings.map((b) => [b.id, b])),
+        [buildings]
     );
 
     const ownerBearerBillRows = useMemo((): OwnerBearerBillRow[] => {
-        const ownerProps = state.properties.filter((p) => p.ownerId === ownerId);
+        const ownerProps = properties.filter((p) => p.ownerId === ownerId);
         const propIds = new Set(ownerProps.map((p) => p.id));
         const ownerBuildingIds = new Set(
             ownerProps.map((p) => p.buildingId).filter((id): id is string => !!id && id.trim() !== '')
         );
         if (propIds.size === 0 && ownerBuildingIds.size === 0) return [];
 
-        const raState = { rentalAgreements: state.rentalAgreements };
+        const raState = { rentalAgreements: rentalAgreements };
         const rows: OwnerBearerBillRow[] = [];
 
-        for (const b of state.bills) {
+        for (const b of bills) {
             if (b.status === InvoiceStatus.DRAFT) continue;
 
             const bearer = getExpenseBearerType(b, raState);
@@ -118,7 +133,7 @@ const ReceiveFromOwnerModal: React.FC<{
 
         rows.sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''));
         return rows;
-    }, [state.bills, state.properties, state.buildings, state.rentalAgreements, ownerId, propertyById, buildingById]);
+    }, [bills, properties, buildings, rentalAgreements, ownerId, propertyById, buildingById]);
 
     const billTotals = useMemo(() => {
         return ownerBearerBillRows.reduce(
@@ -132,24 +147,24 @@ const ReceiveFromOwnerModal: React.FC<{
     }, [ownerBearerBillRows]);
 
     const accountOptions = useMemo(() => {
-        return state.accounts.filter((a) => a.type === 'Bank' || a.type === 'Cash' || a.name === 'Cash');
-    }, [state.accounts]);
+        return accounts.filter((a) => a.type === 'Bank' || a.type === 'Cash' || a.name === 'Cash');
+    }, [accounts]);
 
     useEffect(() => {
         if (isOpen) {
             setAmount(Number.isFinite(suggestedAmount) ? suggestedAmount.toFixed(2) : '0');
             setDate(toLocalDateString(new Date()));
-            const cashAccount = state.accounts.find((a) => a.name === 'Cash');
+            const cashAccount = accounts.find((a) => a.name === 'Cash');
             setAccountId(cashAccount?.id || accountOptions[0]?.id || '');
             setReference('');
         }
-    }, [isOpen, suggestedAmount, state.accounts, accountOptions]);
+    }, [isOpen, suggestedAmount, accounts, accountOptions]);
 
     const vacantProperties = useMemo(() => {
-        return state.properties
+        return properties
             .filter((p) => p.ownerId === ownerId && (p.monthlyServiceCharge || 0) > 0)
             .map((p) => p.name);
-    }, [state.properties, ownerId]);
+    }, [properties, ownerId]);
 
     const handleSubmit = async () => {
         const numAmount = parseFloat(amount);
@@ -168,10 +183,10 @@ const ReceiveFromOwnerModal: React.FC<{
             return;
         }
 
-        const ownSvcResolved = resolveSystemCategoryId(state.categories, 'sys-cat-own-svc-pay');
+        const ownSvcResolved = resolveSystemCategoryId(categories, 'sys-cat-own-svc-pay');
         let ownerSvcPayCategory =
-            (ownSvcResolved ? state.categories.find((c) => c.id === ownSvcResolved) : undefined) ??
-            state.categories.find((c) => c.name === 'Owner Service Charge Payment');
+            (ownSvcResolved ? categories.find((c) => c.id === ownSvcResolved) : undefined) ??
+            categories.find((c) => c.name === 'Owner Service Charge Payment');
 
         if (!ownerSvcPayCategory) {
             ownerSvcPayCategory = {

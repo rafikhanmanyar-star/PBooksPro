@@ -1,5 +1,14 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+  useBuildings,
+  useCategories,
+  useContacts,
+  useDispatchOnly,
+  useInvoices,
+  useProperties,
+  useRentalAgreements,
+  useStateSelector,
+} from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { Invoice, InvoiceStatus, InvoiceType } from '../../types';
@@ -35,10 +44,16 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   initialInvoiceType = 'rental',
   initialPreFillPropertyId = null,
 }) => {
-  const { state, dispatch } = useAppContext();
-  const { showToast, showAlert } = useNotification();
-  const { openChat } = useWhatsApp();
-  const { rentalInvoiceSettings } = state;
+  const rentalAgreements = useRentalAgreements();
+  const properties = useProperties();
+  const buildings = useBuildings();
+  const contacts = useContacts();
+  const invoices = useInvoices();
+  const categories = useCategories();
+  const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
+  const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
+  const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
+  const dispatch = useDispatchOnly();
 
   const [selectedAgreementId, setSelectedAgreementId] = useState<string>('');
   const [invoiceTypeChoice, setInvoiceTypeChoice] = useState<InvoiceTypeChoice>(initialInvoiceType);

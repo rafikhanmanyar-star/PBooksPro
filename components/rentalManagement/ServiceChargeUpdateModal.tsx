@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useProperties, useTransactions } from '../../hooks/useSelectiveState';
 import { Transaction } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -21,7 +21,9 @@ interface ServiceChargeUpdateModalProps {
 }
 
 const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isOpen, onClose, transaction }) => {
-    const { state, dispatch } = useAppContext();
+    const properties = useProperties();
+    const transactions = useTransactions();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
 
     const [amount, setAmount] = useState('');
@@ -81,11 +83,11 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
              pairId = transaction.id.replace('bm-debit', 'bm-credit');
         }
 
-        let pairTx = state.transactions.find(t => t.id === pairId);
+        let pairTx = transactions.find(t => t.id === pairId);
 
         // Heuristic 2: Loose matching if IDs don't match (e.g. manual or legacy)
         if (!pairTx) {
-            pairTx = state.transactions.find(t => 
+            pairTx = transactions.find(t => 
                 t.id !== transaction.id &&
                 t.propertyId === transaction.propertyId &&
                 t.date === transaction.date &&
@@ -121,11 +123,11 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
                  pairId = transaction.id.replace('bm-debit', 'bm-credit');
              }
              
-             let pairTx = state.transactions.find(t => t.id === pairId);
+             let pairTx = transactions.find(t => t.id === pairId);
              
              if (!pairTx) {
                  // Fallback match
-                 pairTx = state.transactions.find(t => 
+                 pairTx = transactions.find(t => 
                     t.id !== transaction.id &&
                     t.propertyId === transaction.propertyId &&
                     t.date === transaction.date &&
@@ -144,7 +146,7 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
 
     if (!transaction) return null;
 
-    const property = state.properties.find(p => p.id === transaction.propertyId);
+    const property = properties.find(p => p.id === transaction.propertyId);
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Update Service Charge">

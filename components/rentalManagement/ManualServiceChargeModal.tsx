@@ -1,6 +1,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useAccounts,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useProperties,
+    useRentalAgreements,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { Transaction, TransactionType, Category, RentalAgreementStatus } from '../../types';
 import Modal from '../ui/Modal';
@@ -23,7 +31,13 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
     onClose,
     initialPropertyId = null,
 }) => {
-    const { state, dispatch } = useAppContext();
+    const properties = useProperties();
+    const contacts = useContacts();
+    const rentalAgreements = useRentalAgreements();
+    const categories = useCategories();
+    const accounts = useAccounts();
+    const transactions = useTransactions();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 
     const [month, setMonth] = useState(currentMonthYyyyMm()); // YYYY-MM
@@ -32,30 +46,30 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
 
     // Helper to check rental status
     const getPropertyStatus = (propId: string): 'Rented' | 'Vacant' => {
-        return state.rentalAgreements.some(
+        return rentalAgreements.some(
             a => a.propertyId === propId && a.status === RentalAgreementStatus.ACTIVE
         ) ? 'Rented' : 'Vacant';
     };
 
     // Filter properties - show status and owner
-    const propertyItems = useMemo(() => state.properties.map(p => {
-        const owner = state.contacts.find(c => c.id === p.ownerId)?.name || 'Unknown';
+    const propertyItems = useMemo(() => properties.map(p => {
+        const owner = contacts.find(c => c.id === p.ownerId)?.name || 'Unknown';
         const status = getPropertyStatus(p.id);
         return { 
             id: p.id, 
             name: `${p.name} [${status}] (Owner: ${owner})` 
         };
-    }), [state.properties, state.contacts, state.rentalAgreements]);
+    }), [properties, contacts, rentalAgreements]);
 
     // Auto-fill amount when property changes
     useEffect(() => {
         if (propertyId) {
-            const property = state.properties.find(p => p.id === propertyId);
+            const property = properties.find(p => p.id === propertyId);
             if (property) {
                 setAmount(property.monthlyServiceCharge?.toString() || '0');
             }
         }
-    }, [propertyId, state.properties]);
+    }, [propertyId, properties]);
 
     // Reset on open (optionally pre-fill from Visual Layout card)
     useEffect(() => {
@@ -63,14 +77,14 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
             setMonth(currentMonthYyyyMm());
             if (initialPropertyId) {
                 setPropertyId(initialPropertyId);
-                const p = state.properties.find(x => x.id === initialPropertyId);
+                const p = properties.find(x => x.id === initialPropertyId);
                 setAmount(p?.monthlyServiceCharge?.toString() || '0');
             } else {
                 setPropertyId('');
                 setAmount('');
             }
         }
-    }, [isOpen, initialPropertyId, state.properties]);
+    }, [isOpen, initialPropertyId, properties]);
 
     const handleSubmit = async () => {
         if (!month) {
@@ -89,15 +103,15 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
             return;
         }
 
-        const property = state.properties.find(p => p.id === propertyId);
+        const property = properties.find(p => p.id === propertyId);
         if (!property || !property.ownerId) {
             await showAlert('Selected property does not have a valid owner assigned.');
             return;
         }
 
         // 1. Identify Categories
-        let rentalIncomeCategory = state.categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
-        let serviceIncomeCategory = state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
+        let rentalIncomeCategory = categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
+        let serviceIncomeCategory = categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
 
         // Ensure categories exist (similar to bulk run)
         if (!rentalIncomeCategory || !serviceIncomeCategory) {
@@ -106,8 +120,8 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
         }
 
         // 2. Find System Account (Cash)
-        let cashAccount = state.accounts.find(a => a.name === 'Cash');
-        if (!cashAccount) cashAccount = state.accounts[0];
+        let cashAccount = accounts.find(a => a.name === 'Cash');
+        if (!cashAccount) cashAccount = accounts[0];
         if (!cashAccount) {
             await showAlert("No accounts found to record transaction.");
             return;
@@ -115,7 +129,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
 
         // 3. DUPLICATE CHECK
         // Check if a 'Service Charge Income' transaction exists for this property in this month
-        const alreadyExists = state.transactions.some(tx => 
+        const alreadyExists = transactions.some(tx => 
             tx.propertyId === propertyId &&
             tx.categoryId === serviceIncomeCategory!.id &&
             tx.date.startsWith(month)
@@ -137,7 +151,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
         const isRented = getPropertyStatus(propertyId) === 'Rented';
         const statusLabel = isRented ? 'Rented' : 'Vacant';
         const ownerId =
-            resolveOwnerForPropertyOnDate(state, property.id, dateStr) ?? property.ownerId ?? undefined;
+            resolveOwnerForPropertyOnDate({ properties }, property.id, dateStr) ?? property.ownerId ?? undefined;
 
         const newTxs: Transaction[] = [];
 
