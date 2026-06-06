@@ -131,15 +131,32 @@ export default defineConfig({
       }
     },
     {
-      name: 'write-env-config',
+      name: 'staging-html-title',
+      transformIndexHtml(html) {
+        const isStaging =
+          process.env.VITE_STAGING === 'true' ||
+          (process.env.VITE_API_URL || '').includes(':3001');
+        if (!isStaging) return html;
+        return html
+          .replace(/<title>PBooks Pro<\/title>/, '<title>PBooks Pro Staging Client</title>')
+          .replace(
+            /content="PBooks Pro"/g,
+            'content="PBooks Pro Staging Client"'
+          );
+      },
+    },
       closeBundle() {
         const distDir = join(process.cwd(), 'dist');
         if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
         const apiUrl = process.env.VITE_API_URL || '';
-        const isStaging = process.env.VITE_STAGING === 'true' || apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com');
+        const isStaging =
+          process.env.VITE_STAGING === 'true' ||
+          apiUrl.includes('-staging') ||
+          apiUrl.includes('staging.onrender.com') ||
+          /:3001(\/|$)/.test(apiUrl);
         writeFileSync(
           join(distDir, 'env-config.json'),
-          JSON.stringify({ apiUrl, isStaging }, null, 2)
+          JSON.stringify({ apiUrl, isStaging, appName: isStaging ? 'PBooks Pro Staging' : 'PBooks Pro' }, null, 2)
         );
         console.log(`✅ Wrote env-config.json (isStaging=${isStaging})`);
       }

@@ -1,6 +1,6 @@
 # Staging API Client — connects to staging API (pbooks_staging). Output: release-api-client-staging/
 appId: com.pbookspro.app.client.staging
-productName: PBooks Pro Client (Staging)
+productName: PBooks Pro Staging Client
 compression: maximum
 directories:
   output: release-api-client-staging
@@ -59,8 +59,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: PBooks Pro Client (Staging)
-  artifactName: PBooks-Pro-Client-Staging-Setup-${version}.${ext}
+  shortcutName: PBooks Pro Staging Client
+  artifactName: PBooks-Pro-Staging-Client-Setup-${version}.${ext}
 publish:
   - provider: github
     releaseType: prerelease

@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lock, AlertCircle, Eye, EyeOff, Server, Building2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getApiRootUrl } from '../../config/apiUrl';
+import { getApiRootUrl, getAppDisplayName, isStagingEnvironment } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
 import { requestElectronWebContentsFocus } from '../../utils/electronFocusRecovery';
 import { useNotification } from '../../context/NotificationContext';
@@ -341,7 +341,12 @@ const ApiLoginScreen: React.FC = () => {
               <Lock className="w-7 h-7" />
             )}
           </div>
-          <h1 className="text-xl font-bold text-gray-900">PBooks Pro</h1>
+          <h1 className="text-xl font-bold text-gray-900">{getAppDisplayName()}</h1>
+          {isStagingEnvironment() && (
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-amber-700 bg-amber-100 inline-block px-2 py-1 rounded">
+              Staging — test environment
+            </p>
+          )}
           <p className="text-gray-500 mt-1 text-sm">
             {view === 'login' && 'Sign in to your organization (API mode)'}
             {view === 'register' && 'Create a new organization'}

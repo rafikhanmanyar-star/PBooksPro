@@ -215,6 +215,7 @@ function createWindow() {
     width: 560,
     height: 640,
     show: true,
+    title: app.getName(),
     icon,
     webPreferences: {
       preload: path.join(__dirname, 'server-preload.cjs'),
@@ -263,7 +264,7 @@ function createTray() {
       },
     },
   ]);
-  tray.setToolTip('PBooks Pro API Server');
+  tray.setToolTip(app.getName());
   tray.setContextMenu(menu);
   tray.on('click', () => {
     if (mainWindow) {
@@ -300,6 +301,7 @@ ipcMain.handle('server:get-state', () => {
     listenUrl: 'http://127.0.0.1:' + port + ' (API /api, health /health)',
     addresses,
     appVersion: app.getVersion(),
+    appName: app.getName(),
     userEnvDir: getUserBackendConfigDir(),
   };
 });

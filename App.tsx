@@ -18,7 +18,7 @@ import LicenseLockScreen from './components/license/LicenseLockScreen';
 import PaymentSuccessPage from './components/license/PaymentSuccessPage';
 import PaddleCheckoutPage from './components/license/PaddleCheckoutPage';
 import { useAuth } from './context/AuthContext';
-import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode } from './config/apiUrl';
+import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode, getAppDisplayName } from './config/apiUrl';
 import { verifyServerReachable } from './services/lanDiscovery';
 import { useCompanyOptional } from './context/CompanyContext';
 import { apiClient } from './services/api/client';
@@ -585,7 +585,7 @@ const App: React.FC = () => {
       case 'payroll': return 'Payroll Management';
       case 'personalTransactions': return 'Personal transactions';
 
-      default: return 'PBooks Pro';
+      default: return getAppDisplayName();
     }
   };
 

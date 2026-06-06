@@ -3,7 +3,7 @@ extends: null
 electronUpdaterCompatibility: '>= 2.16'
 npmRebuild: false
 appId: com.pbookspro.api.server.staging
-productName: PBooks Pro API Server (Staging)
+productName: PBooks Pro Staging API Server
 extraMetadata:
   main: electron/server-main.cjs
 compression: maximum
@@ -52,8 +52,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: false
   createStartMenuShortcut: true
-  shortcutName: PBooks Pro API Server (Staging)
-  artifactName: PBooks-Pro-API-Server-Staging-Setup-${version}.${ext}
+  shortcutName: PBooks Pro Staging API Server
+  artifactName: PBooks-Pro-Staging-API-Server-Setup-${version}.${ext}
 publish:
   - provider: github
     releaseType: prerelease

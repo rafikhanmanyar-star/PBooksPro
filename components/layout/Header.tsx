@@ -647,7 +647,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       <header className="sticky top-0 z-30 bg-app-header border-b border-app-border shadow-ds-header transition-all duration-ds">
         {isStagingEnvironment() && (
           <div className="w-full bg-amber-500 text-amber-950 text-center py-1 text-xs font-semibold tracking-wider">
-            STAGING
+            STAGING — test environment (not production)
           </div>
         )}
         {isNavigating && (

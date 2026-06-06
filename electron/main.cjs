@@ -240,7 +240,7 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    title: 'PBooks Pro',
+    title: app.getName(),
     focusable: true,
     ...iconOption,
     webPreferences: {

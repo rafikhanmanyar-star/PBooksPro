@@ -131,8 +131,18 @@ export function getWsServerUrl(): string {
  * Used to show a "Staging" banner in the UI to avoid confusion with production.
  */
 export function isStagingEnvironment(): boolean {
+  const v = import.meta.env.VITE_STAGING;
+  if (v === 'true' || v === true) return true;
   const apiUrl = (import.meta.env.VITE_API_URL as string) || '';
-  return apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com');
+  if (apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com')) return true;
+  // Local staging API on same machine (production uses port 3000)
+  if (/:3001(\/|$)/.test(apiUrl)) return true;
+  return false;
+}
+
+/** Display name for window title / login screen (staging vs production). */
+export function getAppDisplayName(): string {
+  return isStagingEnvironment() ? 'PBooks Pro Staging' : 'PBooks Pro';
 }
 
 /**

@@ -175,6 +175,14 @@
 
   async function refresh() {
     const st = await ui.getState();
+    const appName = st.appName || 'PBooks Pro API Server';
+    document.title = appName;
+    const titleEl = $('appTitle');
+    if (titleEl) titleEl.textContent = appName;
+    const stagingBadge = $('stagingBadge');
+    if (stagingBadge) {
+      stagingBadge.style.display = /staging/i.test(appName) ? 'block' : 'none';
+    }
     $('appVer').textContent = st.appVersion || '—';
     const running = st.running;
     $('statusBadge').textContent = running ? 'Running' : 'Stopped';

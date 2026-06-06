@@ -104,8 +104,8 @@ npm run deploy:production
 ## Auto-update from GitHub
 
 - **Production client** checks the GitHub repo’s **latest full release** (tag `vX.Y.Z`).
-- **Staging client** ("PBooks Pro Client (Staging)") checks **prereleases** only — it will not pick up production releases.
-- **API Server (Staging)** uses update channel `api-server-staging`; production API Server uses channel `api-server`.
+- **Staging client** ("PBooks Pro Staging Client") checks **prereleases** only — it will not pick up production releases.
+- **Staging API Server** ("PBooks Pro Staging API Server") uses update channel `api-server-staging`; production API Server uses channel `api-server`.
 - In `package.json`, set **repository** to your real GitHub repo (e.g. `"repository": { "type": "git", "url": "https://github.com/YourOrg/PBooksPro.git" }`). electron-builder and electron-updater use this to publish and to resolve the update feed.
 - For **publish** to work, set a GitHub token with `repo` scope: `GH_TOKEN` or `GITHUB_TOKEN` (e.g. in your environment or in a `.env` file that your shell loads). Without the token, the build still runs and outputs to `release/` or `release-staging/`, but nothing is uploaded to GitHub.
 
