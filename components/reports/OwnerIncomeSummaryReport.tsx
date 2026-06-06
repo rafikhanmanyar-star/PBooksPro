@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import { ContactType, TransactionType, Transaction } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -51,7 +51,7 @@ interface OwnerSummary {
 }
 
 const OwnerIncomeSummaryReport: React.FC = () => {
-    const { state } = useAppContext();
+    const rentalState = useRentalReportAppState();
     const { print: triggerPrint } = usePrintContext();
 
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
@@ -62,12 +62,12 @@ const OwnerIncomeSummaryReport: React.FC = () => {
     const [groupBy, setGroupBy] = useState<'' | 'owner'>('');
     const [searchQuery, setSearchQuery] = useState('');
 
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...rentalState.buildings], [rentalState.buildings]);
 
     const owners = useMemo(() => {
-        const ownerContacts = state.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
+        const ownerContacts = rentalState.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
         return [{ id: 'all', name: 'All Owners' }, ...ownerContacts];
-    }, [state.contacts]);
+    }, [rentalState.contacts]);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -97,18 +97,18 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
-        const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
-        const clearingRentCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
+        const rentalIncomeCategory = rentalState.categories.find(c => c.name === 'Rental Income');
+        const brokerFeeCategory = rentalState.categories.find(c => c.name === 'Broker Fee');
+        const ownerPayoutCategory = rentalState.categories.find(c => c.name === 'Owner Payout');
+        const ownerShareCat = rentalState.categories.find(c => c.name === 'Owner Rental Income Share');
+        const clearingRentCat = rentalState.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
 
         if (!rentalIncomeCategory) return [];
 
         // Build a set of broker fee transaction IDs for quick lookup (to exclude from expenses)
         const brokerFeeTxIds = new Set<string>();
         if (brokerFeeCategory) {
-            state.transactions.forEach(tx => {
+            rentalState.transactions.forEach(tx => {
                 if (tx.type === TransactionType.EXPENSE && tx.categoryId === brokerFeeCategory.id) {
                     brokerFeeTxIds.add(tx.id);
                 }
@@ -116,15 +116,15 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         }
 
         // 1. Filter owners
-        const filteredOwners = state.contacts.filter(c =>
+        const filteredOwners = rentalState.contacts.filter(c =>
             (c.type === ContactType.OWNER || c.type === ContactType.CLIENT) &&
             (selectedOwnerId === 'all' || c.id === selectedOwnerId)
         );
 
         const summaries: OwnerSummary[] = filteredOwners.map(owner => {
             const b = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
-            const stakeIds = getPropertyIdsForOwner(state, owner.id, b);
-            const ownerProperties = state.properties.filter((p) => stakeIds.has(String(p.id)));
+            const stakeIds = getPropertyIdsForOwner(rentalState, owner.id, b);
+            const ownerProperties = rentalState.properties.filter((p) => stakeIds.has(String(p.id)));
             const unitData: { [unitId: string]: UnitSummary } = {};
 
             ownerProperties.forEach(p => {
@@ -140,9 +140,9 @@ const OwnerIncomeSummaryReport: React.FC = () => {
             });
 
             // Include properties that have transactions with tx.ownerId === owner (historical ownership)
-            state.transactions.forEach(tx => {
+            rentalState.transactions.forEach(tx => {
                 if (tx.ownerId === owner.id && tx.propertyId && !unitData[tx.propertyId]) {
-                    const prop = state.properties.find(p => p.id === tx.propertyId);
+                    const prop = rentalState.properties.find(p => p.id === tx.propertyId);
                     if (prop && (selectedBuildingId === 'all' || prop.buildingId === selectedBuildingId)) {
                         unitData[tx.propertyId] = {
                             unitId: tx.propertyId,
@@ -161,7 +161,7 @@ const OwnerIncomeSummaryReport: React.FC = () => {
 
             // Derive broker fees from rental agreements (same approach as BrokerFeeReport)
             // This is the most reliable source - shows fee accrued per property from agreements
-            state.rentalAgreements.forEach(ra => {
+            rentalState.rentalAgreements.forEach(ra => {
                 if (!ra.brokerId || !(ra.brokerFee) || ra.brokerFee <= 0) return;
                 if (!ra.propertyId || !unitData[ra.propertyId]) return;
 
@@ -170,29 +170,29 @@ const OwnerIncomeSummaryReport: React.FC = () => {
 
                 const fee = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
                 if (isNaN(fee) || fee <= 0) return;
-                const share = getBrokerFeeAllocatedAmountForOwner(state, ra, owner.id);
+                const share = getBrokerFeeAllocatedAmountForOwner(rentalState, ra, owner.id);
                 if (share > 0) unitData[ra.propertyId!].brokerFee += share;
             });
 
             // Derive bill amounts — owner/building allocations only (tenant bills are excluded from owner rent economics)
-            (state.bills || []).forEach(bill => {
+            (rentalState.bills || []).forEach(bill => {
                 if (!bill.propertyId || bill.projectId || !unitData[bill.propertyId]) return;
-                if (!billAffectsOwnerRentalIncomeLedger(bill, state)) return;
+                if (!billAffectsOwnerRentalIncomeLedger(bill, rentalState)) return;
                 const billDate = new Date(bill.issueDate);
                 if (billDate < start || billDate > end) return;
-                const share = getBillCostAllocatedAmountForOwner(state, bill, owner.id);
+                const share = getBillCostAllocatedAmountForOwner(rentalState, bill, owner.id);
                 if (share > 0) unitData[bill.propertyId].billAmount += share;
             });
 
             // Build set of bill payment tx IDs to exclude from expenses (bill amount already in billAmount above)
-            const ownerBillIds = new Set((state.bills || []).filter(b => b.propertyId && !b.projectId).map(b => b.id));
+            const ownerBillIds = new Set((rentalState.bills || []).filter(b => b.propertyId && !b.projectId).map(b => b.id));
             const billPaymentTxIds = new Set<string>();
-            state.transactions.forEach(tx => {
+            rentalState.transactions.forEach(tx => {
                 if (tx.type === TransactionType.EXPENSE && tx.billId && ownerBillIds.has(tx.billId)) billPaymentTxIds.add(tx.id);
             });
 
             // Process transactions for this owner
-            state.transactions.forEach(tx => {
+            rentalState.transactions.forEach(tx => {
                 const txDate = new Date(tx.date);
                 if (txDate < start || txDate > end) return;
 
@@ -206,19 +206,19 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                     if (isBillPaymentFromSecurityDepositIncome(tx)) return;
                     if (tx.propertyId && unitData[tx.propertyId]) {
                         const d = (tx.date || '').slice(0, 10);
-                        if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
+                        if (d && hasMultipleOwnersOnDate(rentalState, String(tx.propertyId), d)) {
                             // Multi-owner: check for explicit share lines; if none, compute proportional share
-                            const hasExplicitShares = ownerShareCat && state.transactions.some(
+                            const hasExplicitShares = ownerShareCat && rentalState.transactions.some(
                                 st => st.categoryId === ownerShareCat.id &&
                                     ((st.invoiceId && st.invoiceId === tx.invoiceId) || (st.batchId && st.batchId === tx.batchId))
                             );
                             if (!hasExplicitShares) {
-                                const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId), owner.id, d);
+                                const pct = getOwnerSharePercentageOnDate(rentalState, String(tx.propertyId), owner.id, d);
                                 if (pct > 0) unitData[tx.propertyId].collected += Math.round(amount * pct) / 100;
                             }
                             return;
                         }
-                        const resolvedOwner = resolveOwnerForTransaction(state, tx) ?? state.properties.find(p => p.id === tx.propertyId)?.ownerId;
+                        const resolvedOwner = resolveOwnerForTransaction(rentalState, tx) ?? rentalState.properties.find(p => p.id === tx.propertyId)?.ownerId;
                         if (resolvedOwner === owner.id) unitData[tx.propertyId].collected += amount;
                     }
                 }
@@ -236,7 +236,7 @@ const OwnerIncomeSummaryReport: React.FC = () => {
 
                 // Case 2: Expenses & Payouts
                 if (tx.type === TransactionType.EXPENSE) {
-                    const category = state.categories.find(c => c.id === tx.categoryId);
+                    const category = rentalState.categories.find(c => c.id === tx.categoryId);
                     const catName = category?.name || '';
 
                     // Exclude Security/Tenant items (same as OwnerPayoutsPage)
@@ -261,7 +261,7 @@ const OwnerIncomeSummaryReport: React.FC = () => {
 
                     // A. Property-linked Expense — co-owner split matches Owner Ledger
                     if (tx.propertyId && unitData[tx.propertyId]) {
-                        unitData[tx.propertyId].expenses += getPropertyExpenseAllocatedAmountForOwner(state, tx, amount, owner.id);
+                        unitData[tx.propertyId].expenses += getPropertyExpenseAllocatedAmountForOwner(rentalState, tx, amount, owner.id);
                     }
                     // B. Direct expense to contact (no property cost center)
                     else if (tx.contactId === owner.id) {
@@ -299,7 +299,7 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         }
 
         return summaries;
-    }, [state, startDate, endDate, selectedOwnerId, selectedBuildingId, searchQuery]);
+    }, [rentalState, startDate, endDate, selectedOwnerId, selectedBuildingId, searchQuery]);
 
     const totals = useMemo(() => {
         return reportData.reduce((acc, curr) => ({
@@ -469,8 +469,8 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                         {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all' || groupBy) && (
                             <p className="text-xs text-app-muted mt-1">
                                 Filters:
-                                {selectedBuildingId !== 'all' && ` Building: ${state.buildings.find(b => b.id === selectedBuildingId)?.name} `}
-                                {selectedOwnerId !== 'all' && ` Owner: ${state.contacts.find(c => c.id === selectedOwnerId)?.name}`}
+                                {selectedBuildingId !== 'all' && ` Building: ${rentalState.buildings.find(b => b.id === selectedBuildingId)?.name} `}
+                                {selectedOwnerId !== 'all' && ` Owner: ${rentalState.contacts.find(c => c.id === selectedOwnerId)?.name}`}
                                 {groupBy && ` | Grouped by: ${groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}`}
                             </p>
                         )}

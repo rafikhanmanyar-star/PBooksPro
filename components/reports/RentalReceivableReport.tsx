@@ -1,6 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBuildings,
+    useContacts,
+    useInvoices,
+    useProperties,
+} from '../../hooks/useSelectiveState';
 import { InvoiceType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -37,22 +42,25 @@ export interface PropertyReceivable {
 }
 
 const RentalReceivableReport: React.FC = () => {
-    const { state } = useAppContext();
+    const allBuildings = useBuildings();
+    const properties = useProperties();
+    const contacts = useContacts();
+    const invoices = useInvoices();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
 
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
-    const propertiesById = useMemo(() => new Map(state.properties.map(p => [p.id, p])), [state.properties]);
-    const buildingsById = useMemo(() => new Map(state.buildings.map(b => [b.id, b])), [state.buildings]);
-    const contactsById = useMemo(() => new Map(state.contacts.map(c => [c.id, c])), [state.contacts]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
+    const propertiesById = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
+    const buildingsById = useMemo(() => new Map(allBuildings.map(b => [b.id, b])), [allBuildings]);
+    const contactsById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
 
     // Due invoices: RENTAL or SECURITY_DEPOSIT with balance > 0
     const dueInvoices = useMemo(() => {
-        return state.invoices.filter(inv =>
+        return invoices.filter(inv =>
             (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) &&
             (inv.amount - inv.paidAmount) > 0
         );
-    }, [state.invoices]);
+    }, [invoices]);
 
     // Group by property, then sort lines by date and compute running balance
     const propertyReceivables = useMemo<PropertyReceivable[]>(() => {

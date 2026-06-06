@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useRentalReportAppState } from '../../hooks/useSelectiveState';
 import { TransactionType, Transaction } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -46,7 +46,8 @@ import { fetchOwnerRentalIncomeReport } from '../../services/api/rentalReportsAp
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
 
 const OwnerPayoutsReport: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const rentalState = useRentalReportAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();
@@ -60,8 +61,8 @@ const OwnerPayoutsReport: React.FC = () => {
     const [treeSearchQuery, setTreeSearchQuery] = useState('');
 
     const unfilteredBuildingNodes = useMemo(
-        () => buildRentalPortfolioTreeNodes(state),
-        [state]
+        () => buildRentalPortfolioTreeNodes(rentalState),
+        [rentalState]
     );
 
     const treeData = useMemo((): TreeNode[] => {
@@ -95,8 +96,8 @@ const OwnerPayoutsReport: React.FC = () => {
 
     // Derive filters from tree selection (so report logic stays unchanged)
     const { selectedBuildingId, selectedOwnerId, selectedUnitId } = useMemo(
-        () => resolvePortfolioTreeSelection(resolvedTreeIdForFilters, state.properties),
-        [resolvedTreeIdForFilters, state.properties]
+        () => resolvePortfolioTreeSelection(resolvedTreeIdForFilters, rentalState.properties),
+        [resolvedTreeIdForFilters, rentalState.properties]
     );
 
     // Sorting State
@@ -156,7 +157,7 @@ const OwnerPayoutsReport: React.FC = () => {
 
     const localLedger = useMemo(
         () =>
-            computeOwnerRentalIncomeReport(state, {
+            computeOwnerRentalIncomeReport(rentalState, {
                 startDate,
                 endDate,
                 selectedBuildingId,
@@ -165,7 +166,7 @@ const OwnerPayoutsReport: React.FC = () => {
                 searchQuery,
                 sortConfig,
             }),
-        [state, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, selectedUnitId, sortConfig]
+        [rentalState, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, selectedUnitId, sortConfig]
     );
 
     useEffect(() => {
@@ -256,13 +257,13 @@ const OwnerPayoutsReport: React.FC = () => {
     }, [receiveFromReportEligible, receiveModalOpen]);
 
     const payModalOwner = useMemo(
-        () => (selectedOwnerId !== 'all' ? state.contacts.find((c) => c.id === selectedOwnerId) ?? null : null),
-        [selectedOwnerId, state.contacts]
+        () => (selectedOwnerId !== 'all' ? rentalState.contacts.find((c) => c.id === selectedOwnerId) ?? null : null),
+        [selectedOwnerId, rentalState.contacts]
     );
 
     const payModalProperty = useMemo(
-        () => (selectedUnitId !== 'all' ? state.properties.find((p) => p.id === selectedUnitId) ?? null : null),
-        [selectedUnitId, state.properties]
+        () => (selectedUnitId !== 'all' ? rentalState.properties.find((p) => p.id === selectedUnitId) ?? null : null),
+        [selectedUnitId, rentalState.properties]
     );
 
     const totals = useMemo(() => {
@@ -337,11 +338,11 @@ const OwnerPayoutsReport: React.FC = () => {
         });
         message += `\n*Totals: Rent In ${CURRENCY} ${formatCurrency(totals.totalIn)} | Paid Out ${CURRENCY} ${formatCurrency(totals.totalOut)} | Balance ${CURRENCY} ${formatCurrency(totals.netBalance)}*`;
 
-        const ownerContact = selectedOwnerId !== 'all' ? state.contacts.find(c => c.id === selectedOwnerId) : undefined;
+        const ownerContact = selectedOwnerId !== 'all' ? rentalState.contacts.find(c => c.id === selectedOwnerId) : undefined;
         if (ownerContact) {
             sendOrOpenWhatsApp(
                 { contact: ownerContact, message, phoneNumber: ownerContact.contactNo || undefined },
-                () => state.whatsAppMode,
+                () => rentalState.whatsAppMode,
                 openChat
             );
         } else {
@@ -352,11 +353,11 @@ const OwnerPayoutsReport: React.FC = () => {
     const activeFilters = useMemo(() => {
         const filters: { key: string; label: string; value: string; onClear: () => void }[] = [];
         if (selectedBuildingId !== 'all') {
-            const building = state.buildings.find(b => b.id === selectedBuildingId);
+            const building = rentalState.buildings.find(b => b.id === selectedBuildingId);
             if (building) filters.push({ key: 'building', label: 'Building', value: building.name, onClear: () => setSelectedTreeId('all') });
         }
         if (selectedOwnerId !== 'all') {
-            const owner = state.contacts.find(c => c.id === selectedOwnerId);
+            const owner = rentalState.contacts.find(c => c.id === selectedOwnerId);
             if (owner) filters.push({ key: 'owner', label: 'Owner', value: owner.name, onClear: () => {
                 if (selectedBuildingId !== 'all') {
                     setSelectedTreeId(`building:${selectedBuildingId}`);
@@ -366,7 +367,7 @@ const OwnerPayoutsReport: React.FC = () => {
             }});
         }
         if (selectedUnitId !== 'all') {
-            const unit = state.properties.find(p => p.id === selectedUnitId);
+            const unit = rentalState.properties.find(p => p.id === selectedUnitId);
             if (unit) filters.push({ key: 'unit', label: 'Unit', value: unit.name, onClear: () => {
                 if (selectedOwnerId !== 'all') {
                     const ownerNodeId = selectedBuildingId !== 'all'
@@ -381,36 +382,36 @@ const OwnerPayoutsReport: React.FC = () => {
             }});
         }
         return filters;
-    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, state.buildings, state.contacts, state.properties]);
+    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, rentalState.buildings, rentalState.contacts, rentalState.properties]);
 
     const activeOwnerName = useMemo(() => {
-        if (selectedOwnerId !== 'all') return state.contacts.find(c => c.id === selectedOwnerId)?.name || null;
+        if (selectedOwnerId !== 'all') return rentalState.contacts.find(c => c.id === selectedOwnerId)?.name || null;
         return null;
-    }, [selectedOwnerId, state.contacts]);
+    }, [selectedOwnerId, rentalState.contacts]);
 
     const activePropertyName = useMemo(() => {
-        if (selectedUnitId !== 'all') return state.properties.find(p => p.id === selectedUnitId)?.name || null;
+        if (selectedUnitId !== 'all') return rentalState.properties.find(p => p.id === selectedUnitId)?.name || null;
         return null;
-    }, [selectedUnitId, state.properties]);
+    }, [selectedUnitId, rentalState.properties]);
 
     const handlePrintReport = useCallback(() => {
         const fileName = `Owner-Rental-Income-${formatDate(startDate)}-${formatDate(endDate)}.pdf`.replace(/[<>:"/\\|?*]+/g, '-');
-        const ownerContact = selectedOwnerId !== 'all' ? state.contacts.find(c => c.id === selectedOwnerId) ?? null : null;
+        const ownerContact = selectedOwnerId !== 'all' ? rentalState.contacts.find(c => c.id === selectedOwnerId) ?? null : null;
 
         triggerPrint('REPORT', {
             elementId: 'owner-rental-income-print-root',
             pdfWhatsApp: { fileName, contact: ownerContact },
         });
-    }, [startDate, endDate, selectedOwnerId, state.contacts, triggerPrint]);
+    }, [startDate, endDate, selectedOwnerId, rentalState.contacts, triggerPrint]);
 
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
         if (tx.invoiceId) {
-            const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+            const invoice = rentalState.invoices.find(i => i.id === tx.invoiceId);
             return invoice ? `Invoice #${invoice.invoiceNumber}` : 'an Invoice';
         }
         if (tx.billId) {
-            const bill = state.bills.find(b => b.id === tx.billId);
+            const bill = rentalState.bills.find(b => b.id === tx.billId);
             return bill ? `Bill #${bill.billNumber}` : 'a Bill';
         }
         return 'a linked item';
@@ -418,8 +419,8 @@ const OwnerPayoutsReport: React.FC = () => {
 
     /** Service Charge Update modal expects the positive Service Charge Income (credit) tx — report rows use the paired debit line. */
     const resolveServiceChargeCreditTx = useCallback((tx: Transaction | undefined): Transaction | null => {
-        const svcIncomeCategory = state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+        const svcIncomeCategory = rentalState.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
+        const rentalIncomeCategory = rentalState.categories.find(c => c.name === 'Rental Income');
         if (!tx || !svcIncomeCategory || !rentalIncomeCategory) return null;
 
         if (tx.type === TransactionType.INCOME && tx.categoryId === svcIncomeCategory.id) {
@@ -442,9 +443,9 @@ const OwnerPayoutsReport: React.FC = () => {
         let pairId = '';
         if (tx.id.includes('bm-credit')) pairId = tx.id.replace('bm-credit', 'bm-debit');
         else if (tx.id.includes('bm-debit')) pairId = tx.id.replace('bm-debit', 'bm-credit');
-        let pair = pairId ? state.transactions.find(t => t.id === pairId) : undefined;
+        let pair = pairId ? rentalState.transactions.find(t => t.id === pairId) : undefined;
         if (!pair) {
-            pair = state.transactions.find(t =>
+            pair = rentalState.transactions.find(t =>
                 t.id !== tx.id &&
                 t.propertyId === tx.propertyId &&
                 t.date === tx.date &&
@@ -454,7 +455,7 @@ const OwnerPayoutsReport: React.FC = () => {
             );
         }
         return pair ?? null;
-    }, [state.categories, state.transactions]);
+    }, [rentalState.categories, rentalState.transactions]);
 
     const handleShowDeleteWarning = (tx: Transaction) => {
         setTransactionToEdit(null);
@@ -736,7 +737,7 @@ const OwnerPayoutsReport: React.FC = () => {
                                         )}
 
                                         {reportData.map((item) => {
-                                            const transaction = state.transactions.find(t => t.id === item.entityId);
+                                            const transaction = rentalState.transactions.find(t => t.id === item.entityId);
                                             const serviceChargeCredit = resolveServiceChargeCreditTx(transaction);
                                             return (
                                                 <tr

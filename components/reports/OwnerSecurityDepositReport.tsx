@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
 import { List, type RowComponentProps } from 'react-window';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useRentalReportAppState } from '../../hooks/useSelectiveState';
 import { TransactionType, ContactType, Transaction, Category, Contact } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -177,7 +177,8 @@ const VirtualSdListRow = memo(function VirtualSdListRow(props: RowComponentProps
 });
 
 const OwnerSecurityDepositReport: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const rentalState = useRentalReportAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { openChat } = useWhatsApp();
     const { print: triggerPrint } = usePrintContext();
@@ -209,14 +210,14 @@ const OwnerSecurityDepositReport: React.FC = () => {
     });
 
     const unfilteredBuildingNodes = useMemo(
-        () => buildRentalPortfolioTreeNodes(state),
+        () => buildRentalPortfolioTreeNodes(rentalState),
         [
-            state.buildings,
-            state.properties,
-            state.rentalAgreements,
-            state.transactions,
-            state.invoices,
-            state.contacts,
+            rentalState.buildings,
+            rentalState.properties,
+            rentalState.rentalAgreements,
+            rentalState.transactions,
+            rentalState.invoices,
+            rentalState.contacts,
         ]
     );
 
@@ -245,8 +246,8 @@ const OwnerSecurityDepositReport: React.FC = () => {
     }, [selectedTreeId, treeVisibleIds, firstOwnerIdInTree]);
 
     const { selectedBuildingId, selectedOwnerId, selectedUnitId } = useMemo(
-        () => resolvePortfolioTreeSelection(resolvedTreeIdForFilters, state.properties),
-        [resolvedTreeIdForFilters, state.properties]
+        () => resolvePortfolioTreeSelection(resolvedTreeIdForFilters, rentalState.properties),
+        [resolvedTreeIdForFilters, rentalState.properties]
     );
 
     const handleTreeSelect = useCallback((id: string) => {
@@ -285,13 +286,13 @@ const OwnerSecurityDepositReport: React.FC = () => {
     };
 
     const ownerPropertyBreakdown = useMemo(
-        () => buildOwnerSecurityPropertyBreakdownOnly(state),
+        () => buildOwnerSecurityPropertyBreakdownOnly(rentalState),
         [
-            state.transactions,
-            state.invoices,
-            state.properties,
-            state.rentalAgreements,
-            state.categories,
+            rentalState.transactions,
+            rentalState.invoices,
+            rentalState.properties,
+            rentalState.rentalAgreements,
+            rentalState.categories,
         ]
     );
 
@@ -299,14 +300,14 @@ const OwnerSecurityDepositReport: React.FC = () => {
         if (selectedOwnerId === 'all') return [];
         if (selectedUnitId !== 'all') {
             return getOwnerPayoutModalPropertyBreakdownForProperty(
-                state,
+                rentalState,
                 selectedOwnerId,
                 selectedUnitId,
                 'Security',
                 ownerPropertyBreakdown
             );
         }
-        return getOwnerPayoutModalPropertyBreakdown(state, selectedOwnerId, 'Security', ownerPropertyBreakdown);
+        return getOwnerPayoutModalPropertyBreakdown(rentalState, selectedOwnerId, 'Security', ownerPropertyBreakdown);
     }, [selectedOwnerId, selectedUnitId, ownerPropertyBreakdown]);
 
     const securityPayableTotal = useMemo(
@@ -326,31 +327,31 @@ const OwnerSecurityDepositReport: React.FC = () => {
     }, [payFromReportEligible, securityPayModalOpen]);
 
     const payModalOwner = useMemo(
-        () => (selectedOwnerId !== 'all' ? state.contacts.find((c) => c.id === selectedOwnerId) ?? null : null),
-        [selectedOwnerId, state.contacts]
+        () => (selectedOwnerId !== 'all' ? rentalState.contacts.find((c) => c.id === selectedOwnerId) ?? null : null),
+        [selectedOwnerId, rentalState.contacts]
     );
 
     const payModalProperty = useMemo(
-        () => (selectedUnitId !== 'all' ? state.properties.find((p) => p.id === selectedUnitId) ?? null : null),
-        [selectedUnitId, state.properties]
+        () => (selectedUnitId !== 'all' ? rentalState.properties.find((p) => p.id === selectedUnitId) ?? null : null),
+        [selectedUnitId, rentalState.properties]
     );
 
     const transactionById = useMemo(
-        () => new Map(state.transactions.map((t) => [t.id, t])),
-        [state.transactions]
+        () => new Map(rentalState.transactions.map((t) => [t.id, t])),
+        [rentalState.transactions]
     );
 
     const filterSubtitle = useMemo(() => {
         const buildingName =
             selectedBuildingId !== 'all'
-                ? state.buildings.find((b) => b.id === selectedBuildingId)?.name
+                ? rentalState.buildings.find((b) => b.id === selectedBuildingId)?.name
                 : undefined;
         const ownerName =
-            selectedOwnerId !== 'all' ? state.contacts.find((c) => c.id === selectedOwnerId)?.name : undefined;
+            selectedOwnerId !== 'all' ? rentalState.contacts.find((c) => c.id === selectedOwnerId)?.name : undefined;
         const unitName =
-            selectedUnitId !== 'all' ? state.properties.find((p) => p.id === selectedUnitId)?.name : undefined;
+            selectedUnitId !== 'all' ? rentalState.properties.find((p) => p.id === selectedUnitId)?.name : undefined;
         return { buildingName, ownerName, unitName };
-    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, state.buildings, state.contacts, state.properties]);
+    }, [selectedBuildingId, selectedOwnerId, selectedUnitId, rentalState.buildings, rentalState.contacts, rentalState.properties]);
 
     const reportData = useMemo((): SecurityDepositReportRow[] => {
         const start = new Date(startDate);
@@ -358,24 +359,24 @@ const OwnerSecurityDepositReport: React.FC = () => {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        const securityDepositCategory = state.categories.find((c) => c.name === 'Security Deposit');
-        const refundCategory = state.categories.find((c) => c.name === 'Security Deposit Refund');
-        const ownerPayoutCategory = state.categories.find((c) => c.name === 'Owner Security Payout');
+        const securityDepositCategory = rentalState.categories.find((c) => c.name === 'Security Deposit');
+        const refundCategory = rentalState.categories.find((c) => c.name === 'Security Deposit Refund');
+        const ownerPayoutCategory = rentalState.categories.find((c) => c.name === 'Owner Security Payout');
 
         if (!securityDepositCategory) return [];
 
-        const categoryById = new Map(state.categories.map((c) => [c.id, c]));
-        const invoiceById = new Map(state.invoices.map((i) => [i.id, i]));
-        const propertyById = new Map(state.properties.map((p) => [String(p.id), p]));
-        const contactById = new Map(state.contacts.map((c) => [c.id, c]));
-        const buildingById = new Map(state.buildings.map((b) => [b.id, b]));
+        const categoryById = new Map(rentalState.categories.map((c) => [c.id, c]));
+        const invoiceById = new Map(rentalState.invoices.map((i) => [i.id, i]));
+        const propertyById = new Map(rentalState.properties.map((p) => [String(p.id), p]));
+        const contactById = new Map(rentalState.contacts.map((c) => [c.id, c]));
+        const buildingById = new Map(rentalState.buildings.map((b) => [b.id, b]));
 
         const ledgerOwnersByPropertyId =
-            selectedOwnerId !== 'all' ? buildLedgerOwnerIdsByPropertyId(state) : null;
+            selectedOwnerId !== 'all' ? buildLedgerOwnerIdsByPropertyId(rentalState) : null;
 
         const rows: SecurityDepositRow[] = [];
 
-        for (const tx of state.transactions) {
+        for (const tx of rentalState.transactions) {
             const txDate = new Date(tx.date);
             if (txDate < start || txDate > end) continue;
 
@@ -507,13 +508,13 @@ const OwnerSecurityDepositReport: React.FC = () => {
 
         return processedRows;
     }, [
-        state.transactions,
-        state.invoices,
-        state.properties,
-        state.buildings,
-        state.categories,
-        state.contacts,
-        state.rentalAgreements,
+        rentalState.transactions,
+        rentalState.invoices,
+        rentalState.properties,
+        rentalState.buildings,
+        rentalState.categories,
+        rentalState.contacts,
+        rentalState.rentalAgreements,
         startDate,
         endDate,
         selectedBuildingId,
@@ -566,11 +567,11 @@ const OwnerSecurityDepositReport: React.FC = () => {
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
         if (tx.invoiceId) {
-            const invoice = state.invoices.find((i) => i.id === tx.invoiceId);
+            const invoice = rentalState.invoices.find((i) => i.id === tx.invoiceId);
             return invoice ? `Invoice #${invoice.invoiceNumber}` : 'an Invoice';
         }
         if (tx.billId) {
-            const bill = state.bills.find((b) => b.id === tx.billId);
+            const bill = rentalState.bills.find((b) => b.id === tx.billId);
             return bill ? `Bill #${bill.billNumber}` : 'a Bill';
         }
         return 'a linked item';
@@ -625,10 +626,10 @@ const OwnerSecurityDepositReport: React.FC = () => {
         if (!transactionToEdit) return null;
         return resolveSecurityDepositWhatsAppContext(
             transactionToEdit,
-            state.categories,
-            state.contacts
+            rentalState.categories,
+            rentalState.contacts
         );
-    }, [transactionToEdit, state.categories, state.contacts]);
+    }, [transactionToEdit, rentalState.categories, rentalState.contacts]);
 
     const handleSecurityDepositWhatsApp = useCallback(async () => {
         if (!transactionToEdit || !securityDepositWaContext) return;
@@ -645,7 +646,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
             return;
         }
         const tpl =
-            state.whatsAppTemplates.payoutConfirmation ||
+            rentalState.whatsAppTemplates.payoutConfirmation ||
             'Dear {contactName},\n\nA {payoutType} payment of {amount} has been made to you.\nReference: {reference}\n\nThank you.';
         const message = WhatsAppService.generatePayoutConfirmation(
             tpl,
@@ -657,7 +658,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
         try {
             sendOrOpenWhatsApp(
                 { contact: recipient, message, phoneNumber: phone },
-                () => state.whatsAppMode,
+                () => rentalState.whatsAppMode,
                 openChat
             );
         } catch (err) {
@@ -666,8 +667,8 @@ const OwnerSecurityDepositReport: React.FC = () => {
     }, [
         transactionToEdit,
         securityDepositWaContext,
-        state.whatsAppTemplates.payoutConfirmation,
-        state.whatsAppMode,
+        rentalState.whatsAppTemplates.payoutConfirmation,
+        rentalState.whatsAppMode,
         openChat,
         showAlert,
     ]);

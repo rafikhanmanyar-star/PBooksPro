@@ -177,3 +177,36 @@ export function useFinancialReportAppState(): AppState {
         ]
     );
 }
+
+/**
+ * Subscribe to rental-report slices only (portfolio tree, owner income, security deposit, receivables).
+ */
+export function useRentalReportAppState(): AppState {
+    const buildings = useBuildings();
+    const properties = useProperties();
+    const contacts = useContacts();
+    const transactions = useTransactions();
+    const categories = useCategories();
+    const bills = useBills();
+    const invoices = useInvoices();
+    const rentalAgreements = useRentalAgreements();
+    const units = useUnits();
+    const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
+    const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
+    return useMemo(
+        () => _getAppState(),
+        [
+            buildings,
+            properties,
+            contacts,
+            transactions,
+            categories,
+            bills,
+            invoices,
+            rentalAgreements,
+            units,
+            whatsAppTemplates,
+            whatsAppMode,
+        ]
+    );
+}
