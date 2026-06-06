@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { RentalAgreement, RentalAgreementStatus } from '../../types';
 import Button from '../ui/Button';
@@ -22,7 +22,8 @@ interface RentalRenewalFormProps {
 }
 
 const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClose }) => {
-  const { state, dispatch } = useAppContext();
+  const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
   const { showToast, showAlert } = useNotification();
 
   const defaultStart = useMemo(

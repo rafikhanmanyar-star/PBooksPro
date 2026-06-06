@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { AppAction, RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType } from '../../types';
 import Input from '../ui/Input';
@@ -32,7 +32,8 @@ const STEPS = ['Property', 'Lease Terms', 'Broker & Review'] as const;
 type Step = 0 | 1 | 2;
 
 const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agreementToEdit }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showConfirm, showToast, showAlert } = useNotification();
     const { rentalInvoiceSettings } = state;
 

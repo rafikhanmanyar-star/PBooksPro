@@ -1,4 +1,5 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Project, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
@@ -6,7 +7,6 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { ICONS } from '../../constants';
 
@@ -18,7 +18,7 @@ interface ProjectPMConfigFormProps {
 }
 
 const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClose, project, onSave }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { showConfirm, showToast } = useNotification();
     const [rate, setRate] = useState(project.pmConfig?.rate?.toString() || '0');
     const [frequency, setFrequency] = useState<'Monthly' | 'Weekly' | 'Yearly'>(project.pmConfig?.frequency || 'Monthly');

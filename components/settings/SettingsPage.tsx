@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useOffline } from '../../context/OfflineContext';
 import Button from '../ui/Button';
@@ -73,7 +73,8 @@ function ianaTimeZoneCityLabel(iana: string): string {
 }
 
 const SettingsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { user: authUser } = useAuth();
     const { showConfirm, showToast, showAlert } = useNotification();
     const { setVisibleKpiIds } = useKpis();

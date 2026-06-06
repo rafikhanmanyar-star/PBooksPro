@@ -1,4 +1,5 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Property, Contact, ContactType, Building, InvoiceType } from '../../types';
 import Input from '../ui/Input';
@@ -8,7 +9,6 @@ import ComboBox from '../ui/ComboBox';
 import Modal from '../ui/Modal';
 import ContactForm from './ContactForm';
 import BuildingForm from './BuildingForm';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -26,7 +26,8 @@ interface PropertyFormProps {
 }
 
 const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelete, propertyToEdit, contacts, buildings, properties }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
     const { isAuthenticated } = useAuth();
     

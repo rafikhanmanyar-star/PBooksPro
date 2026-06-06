@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, LoanSubtype, Transaction } from '../../types';
 import TransactionForm from '../transactions/TransactionForm';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
@@ -49,7 +49,8 @@ interface LoanSummary {
 }
 
 const LoanManagementPage: React.FC = () => {
-  const { state, dispatch } = useAppContext();
+  const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
   const { showAlert } = useNotification();
   const { print: triggerPrint } = usePrintContext();
   const { openChat } = useWhatsApp();

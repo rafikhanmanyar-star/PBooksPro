@@ -4,11 +4,11 @@
  * Uses same account, date, and note for all.
  */
 
+import { useDispatchOnly, useFullAppState } from '../../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Banknote, Loader2, AlertCircle } from 'lucide-react';
 import { PayrollEmployee, Payslip, PayrollRun, PayrollStatus } from '../types';
 import { storageService } from '../services/storageService';
-import { useAppContext } from '../../../context/AppContext';
 import { Transaction, TransactionType } from '../../../types';
 import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
@@ -42,7 +42,8 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
   tenantId,
   userId
 }) => {
-  const { state, dispatch } = useAppContext();
+  const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
   const [accountId, setAccountId] = useState('');
   const [note, setNote] = useState('');
   const [paymentDate, setPaymentDate] = useState(() => toLocalDateString(new Date()));

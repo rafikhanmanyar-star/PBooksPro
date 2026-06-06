@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../ui/Card';
 import ComboBox from '../ui/ComboBox';
@@ -24,7 +24,7 @@ function money(n: number): string {
 }
 
 const TrialBalanceReport: React.FC = () => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const { user } = useAuth();
   const { print: triggerPrint } = usePrintContext();
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');

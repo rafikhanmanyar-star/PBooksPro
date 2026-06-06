@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Warehouse } from '../../types';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
@@ -14,7 +14,8 @@ interface WarehouseManagementProps {
 }
 
 const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormRequest }) => {
-    const { state: appState, dispatch: appDispatch } = useAppContext();
+    const const appState = useFullAppState();
+    const appDispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
     
     // Form state

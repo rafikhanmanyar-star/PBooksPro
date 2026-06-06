@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ProjectAgreementStatus, TransactionType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -60,7 +60,7 @@ function compareCell(a: string | number, b: string | number, kind: 'text' | 'num
 }
 
 const BrokerProjectFeeDimensionReport: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const [groupBy, setGroupBy] = useState<BrokerFeeGroupBy>('project');
     const [sortKey, setSortKey] = useState<string>('group');
     const [sortDir, setSortDir] = useState<SortDirection>('asc');

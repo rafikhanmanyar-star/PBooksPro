@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, ContactType, Transaction } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -37,7 +37,8 @@ interface ReportRow {
 type SortKey = 'date' | 'buildingName' | 'propertyName' | 'ownerName' | 'particulars' | 'amount';
 
 const ServiceChargesDeductionReport: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     

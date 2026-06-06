@@ -1,7 +1,7 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
-import { useAppContext } from '../../context/AppContext';
 import TransactionItem from '../transactions/TransactionItem';
 import { TransactionType, LoanSubtype, AccountType } from '../../types';
 import Button from '../ui/Button';
@@ -17,7 +17,8 @@ interface SettingsLedgerModalProps {
 }
 
 const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClose, entityId, entityType, entityName }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
 
     const [contractorLedger, setContractorLedger] = useState<{
         advances: Array<{ id: string; advanceDate: string; originalAmount: number; remainingAmount: number; description?: string }>;

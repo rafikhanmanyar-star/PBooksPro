@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useRef, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { PrintSettings } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -9,7 +9,8 @@ import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 
 const PrintTemplateForm: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
     const [settings, setSettings] = useState<PrintSettings>(state.printSettings);
     const [invoiceHtml, setInvoiceHtml] = useState(state.invoiceHtmlTemplate || '');

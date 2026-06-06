@@ -1,6 +1,6 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Bill, InvoiceStatus } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -18,7 +18,7 @@ interface VendorBillsProps {
 type SortKey = 'issueDate' | 'billNumber' | 'amount' | 'paidAmount' | 'status' | 'balance' | 'description';
 
 const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
     const [search, setSearch] = useState('');

@@ -1,4 +1,5 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Account, AccountType } from '../../types';
 import Input from '../ui/Input';
@@ -6,8 +7,6 @@ import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
-import { useAppContext } from '../../context/AppContext';
-
 const SYSTEM_ACCOUNT_NAMES = new Set([
     'cash', 'accounts receivable', 'accounts payable', 'owner equity', 'internal clearing',
     'security liability', 'project received assets'
@@ -26,7 +25,7 @@ interface AccountFormProps {
 }
 
 const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete, accountToEdit, initialName }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const [name, setName] = useState(accountToEdit?.name || initialName || '');
     const [description, setDescription] = useState(accountToEdit?.description || '');
     const [type, setType] = useState<AccountType>(accountToEdit?.type || AccountType.BANK);

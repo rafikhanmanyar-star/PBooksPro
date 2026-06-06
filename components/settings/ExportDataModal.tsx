@@ -1,8 +1,8 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import { useAppContext } from '../../context/AppContext';
 import { exportData, getExportTypesByCategory, ExportFormat } from '../../services/csvExportService';
 import { useProgress } from '../../context/ProgressContext';
 import { useNotification } from '../../context/NotificationContext';
@@ -13,7 +13,7 @@ interface ExportDataModalProps {
 }
 
 const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { startProgress, updateProgress, finishProgress, errorProgress } = useProgress();
     const { showToast, showAlert } = useNotification();
     

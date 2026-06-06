@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../hooks/useSelectiveState';
 import { useMemo, useCallback, useState } from 'react';
-import { useAppContext } from '../context/AppContext';
 import { useNotification } from '../context/NotificationContext';
 import { RecurringInvoiceTemplate, Invoice, InvoiceType, InvoiceStatus } from '../types';
 import {
@@ -10,7 +10,8 @@ import {
 } from '../utils/dateUtils';
 
 export function useGenerateDueInvoices() {
-  const { state, dispatch } = useAppContext();
+  const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
   const { showToast, showConfirm } = useNotification();
   const [isGenerating, setIsGenerating] = useState(false);
 

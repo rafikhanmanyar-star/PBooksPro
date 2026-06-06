@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import Button from '../ui/Button';
@@ -18,7 +18,8 @@ import InstallmentConfigForm, { type InstallmentConfig } from '../settings/Insta
 import { ImportType } from '../../services/importService';
 
 const ProjectSettingsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const hasAuthToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
     const { showConfirm, showToast } = useNotification();

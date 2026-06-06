@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ProjectReceivedAsset, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -23,7 +23,8 @@ interface RecordSaleModalProps {
 }
 
 const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asset, onSuccess, mode = 'record' }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 
     const [saleDate, setSaleDate] = useState(toLocalDateString(new Date()));

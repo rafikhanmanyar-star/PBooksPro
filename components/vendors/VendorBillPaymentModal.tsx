@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Vendor, Transaction, TransactionType, InvoiceStatus, AccountType, Bill } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -47,7 +47,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     presetSelectedBillIds,
     editSettlement,
 }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();
 

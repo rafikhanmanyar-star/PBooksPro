@@ -1,8 +1,8 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useCallback } from 'react';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
-import { useAppContext } from '../../context/AppContext';
 import type { Account } from '../../types';
 import { AccountType } from '../../types';
 import { JournalEntryPreview } from '../financial/JournalEntryPreview';
@@ -46,7 +46,7 @@ function toJournalLines(drafts: LineDraft[]): JournalLineInput[] {
  * Local-only: posts immutable double-entry journals via the financial engine.
  */
 const ManualJournalEntrySection: React.FC = () => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const { showToast, showAlert } = useNotification();
 
   const flatAccounts = useMemo(() => flattenAccounts(state.accounts), [state.accounts]);

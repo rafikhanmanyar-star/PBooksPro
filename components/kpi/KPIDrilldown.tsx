@@ -1,7 +1,7 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { useKpis } from '../../context/KPIContext';
-import { useAppContext } from '../../context/AppContext';
 import { ICONS, CURRENCY } from '../../constants';
 import { InvoiceStatus, RentalAgreementStatus, ContactType, TransactionType, LoanSubtype, AccountType } from '../../types';
 import { formatDate } from '../../utils/dateUtils';
@@ -14,7 +14,8 @@ type SortConfig = {
 
 const KPIDrilldown: React.FC = () => {
     const { activeDrilldownKpi, closeDrilldown } = useKpis();
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
 
     const drilldownData = useMemo(() => {

@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Contract, ContractExpenseCategoryItem, ContactType, ContractStatus, TransactionType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -21,7 +21,8 @@ interface ProjectContractFormProps {
 }
 
 const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, contractToEdit }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();
 

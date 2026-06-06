@@ -1,4 +1,5 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Category, TransactionType, ProfitLossSubType } from '../../types';
 import Input from '../ui/Input';
@@ -6,8 +7,6 @@ import Select from '../ui/Select';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
-import { useAppContext } from '../../context/AppContext';
-
 interface CategoryFormProps {
     onSubmit: (category: Omit<Category, 'id'>) => void;
     onCancel: () => void;
@@ -18,7 +17,7 @@ interface CategoryFormProps {
 }
 
 const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelete, categoryToEdit, fixedTypeForNew, initialName }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const [name, setName] = useState(categoryToEdit?.name || initialName || '');
     const [description, setDescription] = useState(categoryToEdit?.description || '');
     const [type, setType] = useState<TransactionType>(categoryToEdit?.type || fixedTypeForNew || TransactionType.EXPENSE);

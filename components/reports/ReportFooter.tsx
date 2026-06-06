@@ -1,8 +1,7 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React from 'react';
-import { useAppContext } from '../../context/AppContext';
-
 const ReportFooter: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { printSettings } = state;
 
     if (!printSettings) return null;

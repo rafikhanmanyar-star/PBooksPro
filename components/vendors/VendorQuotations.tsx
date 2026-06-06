@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Quotation, Contact } from '../../types';
 import { ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -14,7 +14,8 @@ interface VendorQuotationsProps {
 }
 
 const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuotation, onViewDocument }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
     const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');

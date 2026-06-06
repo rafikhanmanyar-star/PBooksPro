@@ -1,6 +1,6 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Unit, ProjectAgreementStatus } from '../../types';
 import Card from '../ui/Card';
 import ComboBox from '../ui/ComboBox';
@@ -24,7 +24,7 @@ interface ReportRow {
 }
 
 const ProjectUnitReport: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');

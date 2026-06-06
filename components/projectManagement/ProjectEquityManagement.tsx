@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { AccountType, TransactionType, Transaction, EquityLedgerSubtype } from '../../types';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
@@ -156,7 +156,8 @@ export interface ProjectEquityManagementProps {
 }
 
 const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equityTab, onEquityTabChange }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     
     // State - default to 'root-investors' so the ledger shows all equity transactions on load

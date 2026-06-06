@@ -1,3 +1,4 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -12,7 +13,6 @@ import {
 } from './personalCategoriesService';
 import { ICONS } from '../../constants';
 import { isLocalOnlyMode } from '../../config/apiUrl';
-import { useAppContext } from '../../context/AppContext';
 import { useOffline } from '../../context/OfflineContext';
 import { useNotification } from '../../context/NotificationContext';
 
@@ -45,7 +45,7 @@ type EditorState =
  * Chart-of-accounts-style management for personal income/expense categories only (no bank accounts).
  */
 const PersonalCategoriesSettingsPanel: React.FC = () => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const { isOffline } = useOffline();
   const { showConfirm, showToast } = useNotification();
 

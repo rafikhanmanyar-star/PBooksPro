@@ -1,4 +1,5 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { Unit, Project, Contact, ContactType, UnitOccupancyStatus } from '../../types';
 import Input from '../ui/Input';
@@ -6,7 +7,6 @@ import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import Modal from '../ui/Modal';
 import ContactForm from './ContactForm';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 // Note: useEntityFormModal removed to avoid circular dependency - using local modal pattern instead
 
@@ -18,7 +18,8 @@ interface UnitFormProps {
 }
 
 const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitToEdit }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
     const [name, setName] = useState(unitToEdit?.name || '');
     const [projectId, setProjectId] = useState(unitToEdit?.projectId || state.defaultProjectId || '');

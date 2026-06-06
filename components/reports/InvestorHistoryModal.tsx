@@ -1,7 +1,7 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import Modal from '../ui/Modal';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, AccountType } from '../../types';
 import { CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -16,7 +16,7 @@ interface InvestorHistoryModalProps {
 }
 
 const InvestorHistoryModal: React.FC<InvestorHistoryModalProps> = ({ isOpen, onClose, investorId, investorName, initialProjectId }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const [showAllProjects, setShowAllProjects] = useState(initialProjectId === 'all' || !initialProjectId);
 
     const transactions = useMemo(() => {

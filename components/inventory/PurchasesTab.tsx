@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ShopPurchaseBill, ShopBillItem, ShopBillStatus, ShopInventoryItem, ShopPayment, TransactionType, Account, AccountType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import { formatInvAmount } from './formatInvDisplay';
@@ -20,7 +20,8 @@ const generateBillNumber = (bills: ShopPurchaseBill[]): string => {
 };
 
 const PurchasesTab: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
 
     // Local state for shop data (persisted to localStorage)
     const [bills, setBills] = useState<ShopPurchaseBill[]>(() => {

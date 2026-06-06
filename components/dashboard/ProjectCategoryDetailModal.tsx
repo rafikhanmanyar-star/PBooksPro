@@ -1,7 +1,7 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { TransactionType } from '../../types';
-import { useAppContext } from '../../context/AppContext';
 import { CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import { formatRoundedNumber } from '../../utils/numberUtils';
@@ -17,7 +17,7 @@ interface ProjectCategoryDetailModalProps {
 }
 
 const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({ isOpen, onClose, data }) => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
 
   const categorySummary = useMemo(() => {
     if (!data) return [];

@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionLogEntry, Transaction } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -25,7 +25,8 @@ interface TransactionLogViewerProps {
 type DateRangeType = 'today' | 'thisMonth' | 'lastMonth' | 'custom';
 
 const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onClose }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
     const { currentUser } = state;
     

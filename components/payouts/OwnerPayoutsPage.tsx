@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ContactType, TransactionType, Transaction, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatAmountNoTrailingZeros, formatCurrency } from '../../utils/numberUtils';
@@ -68,7 +68,8 @@ type SortKey = 'name' | 'category' | 'collected' | 'paid' | 'balance';
 // --- Component ---
 
 const OwnerPayoutsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { openChat } = useWhatsApp();
     const { showToast } = useNotification();
     const { isAuthenticated } = useAuth();

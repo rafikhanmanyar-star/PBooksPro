@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Quotation, TransactionType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -31,7 +31,7 @@ interface VendorComparisonReportProps {
 }
 
 const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
 

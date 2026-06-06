@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Contact } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -27,7 +27,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
   templateVariables,
   initialMessage
 }) => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const { showAlert } = useNotification();
   const { openChat } = useWhatsApp();
   const [message, setMessage] = useState('');

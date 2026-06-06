@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Vendor, Account, AccountType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -70,7 +70,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     vendor,
     defaultProjectId,
 }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { showToast, showAlert } = useNotification();
 
     const [advanceDate, setAdvanceDate] = useState(toLocalDateString(new Date()));

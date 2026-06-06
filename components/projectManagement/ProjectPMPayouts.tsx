@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, Transaction, AccountType } from '../../types';
 import { CURRENCY } from '../../constants';
 import Card from '../ui/Card';
@@ -21,7 +21,8 @@ interface PMProjectBalance {
 }
 
 const ProjectPMPayouts: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showAlert, showToast } = useNotification();
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(state.defaultProjectId || null);
     const [isModalOpen, setIsModalOpen] = useState(false);

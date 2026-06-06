@@ -1,10 +1,10 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useKpis } from '../../context/KPIContext';
 import type { KpiDefinition } from '../../types';
-import { useAppContext } from '../../context/AppContext';
 import { DashboardConfig } from '../../types';
 import { ICONS } from '../../constants';
 
@@ -39,7 +39,8 @@ const DraggableKpiItem: React.FC<{
 };
 
 const DashboardConfigModal: React.FC<DashboardConfigModalProps> = ({ isOpen, onClose }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { allKpis } = useKpis();
     const [visibleKpis, setVisibleKpis] = useState<string[]>(Array.isArray(state.dashboardConfig?.visibleKpis) ? state.dashboardConfig.visibleKpis : []);
     

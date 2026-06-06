@@ -1,10 +1,10 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { Building } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 
 interface BuildingFormProps {
@@ -16,7 +16,7 @@ interface BuildingFormProps {
 }
 
 const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelete, buildingToEdit, initialName }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { showAlert } = useNotification();
     const [name, setName] = useState(buildingToEdit?.name || initialName || '');
     const [description, setDescription] = useState(buildingToEdit?.description || '');

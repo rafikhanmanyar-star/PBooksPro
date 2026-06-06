@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Invoice, ProjectReceivedAsset, ProjectReceivedAssetType, InvoiceStatus, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -27,7 +27,8 @@ interface AssetPaymentModalProps {
 }
 
 const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, invoice, onSuccess, renderInline }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 
     const [description, setDescription] = useState('');

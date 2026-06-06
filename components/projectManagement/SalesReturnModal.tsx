@@ -1,4 +1,5 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     InvoiceStatus,
@@ -8,7 +9,6 @@ import {
     ProjectAgreementStatus,
     normalizeProjectAgreementStatus,
 } from '../../types';
-import { useAppContext } from '../../context/AppContext';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -23,7 +23,8 @@ interface SalesReturnModalProps {
 }
 
 const SalesReturnModal: React.FC<SalesReturnModalProps> = ({ isOpen, onClose, agreementId }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const [selectedAgreementId, setSelectedAgreementId] = useState<string>(agreementId || '');
     const [returnReason, setReturnReason] = useState<SalesReturnReason>(SalesReturnReason.CUSTOMER_REQUEST);
     const [reasonNotes, setReasonNotes] = useState('');

@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useCallback, useRef, startTransition } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Invoice, Transaction, TransactionType, AccountType, InvoiceType, ProjectReceivedAsset, ProjectReceivedAssetType, InvoiceStatus } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -29,7 +29,8 @@ interface BulkPaymentModalProps {
 }
 
 const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, selectedInvoices, onPaymentComplete }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const totalAmountInputRef = useRef<HTMLInputElement>(null);
 

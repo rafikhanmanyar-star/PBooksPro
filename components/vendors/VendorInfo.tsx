@@ -1,8 +1,8 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React from 'react';
 import { Contact } from '../../types';
 import { ICONS } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
@@ -17,7 +17,7 @@ interface VendorInfoProps {
 }
 
 const VendorInfo: React.FC<VendorInfoProps> = ({ vendor, onEdit, onCreateBill, onRecordPayment, onCreateQuotation }) => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const { showAlert } = useNotification();
   const { openChat } = useWhatsApp();
 

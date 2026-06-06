@@ -1,6 +1,6 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ContactType, TransactionType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -27,7 +27,7 @@ interface ReportRow {
 type SortKey = 'date' | 'brokerName' | 'projectName' | 'particulars' | 'accrued' | 'paid' | 'balance';
 
 const ProjectBrokerReport: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));

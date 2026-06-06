@@ -1,7 +1,7 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import { useAppContext } from '../../context/AppContext';
 import { AccountType } from '../../types';
 import { CURRENCY } from '../../constants';
 import {
@@ -48,7 +48,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
   onImported,
   dataRevision,
 }) => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const [pasteText, setPasteText] = useState('');
   const [parsedLines, setParsedLines] = useState<ParsedPasteLine[]>([]);
   const [hasHeader, setHasHeader] = useState(false);

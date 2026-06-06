@@ -1,8 +1,8 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Contact } from '../../types';
 import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useNotification } from '../../context/NotificationContext';
-import { useAppContext } from '../../context/AppContext';
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {} });
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -23,7 +23,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
   phoneNumber: propPhoneNumber,
 }) => {
   const { showAlert, showToast } = useNotification();
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);

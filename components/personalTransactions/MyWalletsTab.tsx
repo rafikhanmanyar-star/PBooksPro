@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { getPersonalBalancesByAccount } from './personalTransactionsService';
 import { CURRENCY } from '../../constants';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -11,7 +11,7 @@ function formatAmount(amount: number): string {
 }
 
 const MyWalletsTab: React.FC = () => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
 
   const accountIdToName = useMemo(() => {
     const map = new Map<string, string>();

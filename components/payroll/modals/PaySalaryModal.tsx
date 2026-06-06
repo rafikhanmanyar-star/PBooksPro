@@ -3,11 +3,11 @@
  * and pay the rest from Bank/Cash. Totals reconcile with payroll ledger (Σ nets − Σ expenses).
  */
 
+import { useDispatchOnly, useFullAppState } from '../../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { X, Banknote, Loader2, AlertCircle } from 'lucide-react';
 import { PayrollEmployee, Payslip, PayrollRun, PayrollStatus } from '../types';
 import { storageService } from '../services/storageService';
-import { useAppContext } from '../../../context/AppContext';
 import { Account, Transaction, TransactionType, AccountType } from '../../../types';
 import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
@@ -82,7 +82,8 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
   tenantId,
   userId,
 }) => {
-  const { state, dispatch } = useAppContext();
+  const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
   const [advanceApplyStr, setAdvanceApplyStr] = useState('');
   const [cashAmountStr, setCashAmountStr] = useState('');
   const [advanceClearingAccountId, setAdvanceClearingAccountId] = useState('');

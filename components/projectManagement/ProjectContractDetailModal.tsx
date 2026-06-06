@@ -1,7 +1,7 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import { Contract } from '../../types';
-import { useAppContext } from '../../context/AppContext';
 import { CURRENCY, ICONS } from '../../constants';
 import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
@@ -21,7 +21,7 @@ interface ProjectContractDetailModalProps {
 }
 
 const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({ contract, onClose, onEdit }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { handlePrint } = usePrint();
     const { openChat } = useWhatsApp();
     const { showAlert } = useNotification();

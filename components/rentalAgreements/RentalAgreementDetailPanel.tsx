@@ -1,6 +1,6 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { RentalAgreement, RentalAgreementStatus, InvoiceStatus } from '../../types';
 import Button from '../ui/Button';
 import { ICONS, CURRENCY } from '../../constants';
@@ -17,7 +17,7 @@ interface RentalAgreementDetailPanelProps {
 const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
     agreement, onClose, onEdit, onRenew, onTerminate
 }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
 
     const property = useMemo(() => state.properties.find(p => p.id === agreement.propertyId), [agreement.propertyId, state.properties]);
     const tenant = useMemo(() => state.contacts.find(c => c.id === agreement.contactId), [agreement.contactId, state.contacts]);

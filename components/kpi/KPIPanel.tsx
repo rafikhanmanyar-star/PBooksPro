@@ -1,7 +1,7 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useKpis } from '../../context/KPIContext';
-import { useAppContext } from '../../context/AppContext';
 import KPICard from './KPICard';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
@@ -90,7 +90,8 @@ const KPIPanel: React.FC = () => {
         allReports, 
         favoriteReportIds 
     } = useKpis();
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [selectorInitialTab, setSelectorInitialTab] = useState<'KPIs' | 'Reports'>('KPIs');
     

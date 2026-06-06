@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Quotation } from '../../types';
 import { ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -14,7 +14,8 @@ interface AllQuotationsTableProps {
 type SortKey = 'date' | 'name' | 'totalAmount' | 'itemsCount' | 'vendorName';
 
 const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
     const [search, setSearch] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });

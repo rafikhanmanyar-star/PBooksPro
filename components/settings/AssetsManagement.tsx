@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { Project, Building, Property, Unit, UnitOccupancyStatus, ContactType, TransactionType } from '../../types';
@@ -33,7 +33,8 @@ type AssetEntity = Project | Building | Property | Unit;
 type AssetType = 'project' | 'building' | 'property' | 'unit';
 
 const AssetsManagement: React.FC = () => {
-    const { state: appState, dispatch: appDispatch } = useAppContext();
+    const const appState = useFullAppState();
+    const appDispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     /** Match delete flow / header: persist when JWT exists even if AuthContext lags behind the token. */
     const hasAuthToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');

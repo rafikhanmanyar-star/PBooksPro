@@ -1,6 +1,6 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { RentalAgreementStatus } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -31,7 +31,7 @@ interface AgreementExpiryRow {
 type SortKey = 'propertyName' | 'tenantName' | 'monthlyRent' | 'endDate' | 'daysUntilExpiry';
 
 const AgreementExpiryReport: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 

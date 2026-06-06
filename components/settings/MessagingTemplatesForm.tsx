@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { WhatsAppTemplates } from '../../types';
 import Textarea from '../ui/Textarea';
 import Button from '../ui/Button';
@@ -55,7 +55,8 @@ const TemplateField: React.FC<{
 
 const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, MessagingTemplatesFormProps>(
   ({ onClose }, ref) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
     const [templates, setTemplates] = useState<WhatsAppTemplates>(() => ({ ...state.whatsAppTemplates }));
     const templatesRef = useRef(templates);

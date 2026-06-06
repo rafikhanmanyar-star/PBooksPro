@@ -1,8 +1,8 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { TransactionType, Project } from '../../types';
-import { useAppContext } from '../../context/AppContext';
 import { CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import Tabs from '../ui/Tabs';
@@ -16,7 +16,7 @@ interface ProjectCategoryDetailModalProps {
 }
 
 const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({ isOpen, onClose, project, startDate, endDate }) => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const [activeTab, setActiveTab] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
 
   const categorySummary = useMemo(() => {

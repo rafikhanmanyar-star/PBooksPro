@@ -1,6 +1,6 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { AccountType } from '../../types';
 import Card from '../ui/Card';
 import { formatRoundedNumber } from '../../utils/numberUtils';
@@ -19,7 +19,7 @@ interface BankAccountsReportProps {
 }
 
 const BankAccountsReport: React.FC<BankAccountsReportProps> = ({ hideZeroNetBalance = false }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
 
     const bankAccounts = useMemo(() => {
         return state.accounts.filter(acc =>

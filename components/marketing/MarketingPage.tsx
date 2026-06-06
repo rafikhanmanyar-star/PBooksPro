@@ -1,7 +1,7 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
 import { isLocalOnlyMode } from '../../config/apiUrl';
-import { useAppContext } from '../../context/AppContext';
 import { 
     ContactType, 
     Project, 
@@ -256,7 +256,8 @@ const ApprovalRequestModal: React.FC<{
 };
 
 const MarketingPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();
     const { print: triggerPrint } = usePrintContext();

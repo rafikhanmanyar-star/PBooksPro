@@ -1,10 +1,10 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Project, ProjectStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { suggestProjectClosed } from '../../services/accounting/accountingLedgerCore';
 import { toLocalDateString } from '../../utils/dateUtils';
@@ -18,7 +18,7 @@ interface ProjectFormProps {
 }
 
 const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete, projectToEdit, initialName }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { showAlert } = useNotification();
     const [name, setName] = useState(projectToEdit?.name || initialName || '');
     const [description, setDescription] = useState(projectToEdit?.description || '');

@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, ContactType, AccountType, Account } from '../../types';
 import { ICONS } from '../../constants';
 import AccountForm from './AccountForm';
@@ -17,7 +17,8 @@ interface SettingsDetailPageProps {
 }
 
 const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoBack }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { showConfirm } = useNotification();
     const { editingEntity } = state;
 

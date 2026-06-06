@@ -122,6 +122,221 @@ export function useVendors() {
     return useStateSelector(s => s.vendors);
 }
 
+export function useQuotations() {
+    return useStateSelector(s => s.quotations);
+}
+
+export function useProjectAgreements() {
+    return useStateSelector(s => s.projectAgreements);
+}
+
+export function useSalesReturns() {
+    return useStateSelector(s => s.salesReturns);
+}
+
+export function useProjectReceivedAssets() {
+    return useStateSelector(s => s.projectReceivedAssets);
+}
+
+export function useContracts() {
+    return useStateSelector(s => s.contracts);
+}
+
+export function useBudgets() {
+    return useStateSelector(s => s.budgets);
+}
+
+export function useDocuments() {
+    return useStateSelector(s => s.documents);
+}
+
+export function useCurrentUser() {
+    return useStateSelector(s => s.currentUser);
+}
+
+export function usePersonalTransactions() {
+    return useStateSelector(s => s.personalTransactions);
+}
+
+export function usePersonalCategories() {
+    return useStateSelector(s => s.personalCategories);
+}
+
+export function useInstallmentPlans() {
+    return useStateSelector(s => s.installmentPlans);
+}
+
+export function usePlanAmenities() {
+    return useStateSelector(s => s.planAmenities);
+}
+
+export function usePmCycleAllocations() {
+    return useStateSelector(s => s.pmCycleAllocations);
+}
+
+export function usePrintSettings() {
+    return useStateSelector(s => s.printSettings);
+}
+
+export function useWhatsAppTemplates() {
+    return useStateSelector(s => s.whatsAppTemplates);
+}
+
+export function useWhatsAppMode() {
+    return useStateSelector(s => s.whatsAppMode);
+}
+
+export function useUsers() {
+    return useStateSelector(s => s.users);
+}
+
+/**
+ * Subscribe to all AppState slices. Use when a component reads many fields or passes full state to utilities.
+ * Prefer narrower hooks (useAccounts, useFinancialReportAppState, etc.) in new code.
+ */
+export function useFullAppState(): AppState {
+    const accounts = useAccounts();
+    const transactions = useTransactions();
+    const categories = useCategories();
+    const bills = useBills();
+    const invoices = useInvoices();
+    const vendors = useVendors();
+    const contacts = useContacts();
+    const projects = useProjects();
+    const buildings = useBuildings();
+    const properties = useProperties();
+    const units = useUnits();
+    const rentalAgreements = useRentalAgreements();
+    const projectAgreements = useProjectAgreements();
+    const salesReturns = useSalesReturns();
+    const projectReceivedAssets = useProjectReceivedAssets();
+    const contracts = useContracts();
+    const quotations = useQuotations();
+    const budgets = useBudgets();
+    const documents = useDocuments();
+    const currentUser = useCurrentUser();
+    const personalTransactions = usePersonalTransactions();
+    const personalCategories = usePersonalCategories();
+    const installmentPlans = useInstallmentPlans();
+    const planAmenities = usePlanAmenities();
+    const pmCycleAllocations = usePmCycleAllocations();
+    const printSettings = usePrintSettings();
+    const whatsAppTemplates = useWhatsAppTemplates();
+    const whatsAppMode = useWhatsAppMode();
+    const users = useUsers();
+    const cashFlowCategoryMappings = useStateSelector((s) => s.cashFlowCategoryMappings);
+    const agreementSettings = useStateSelector((s) => s.agreementSettings);
+    const projectAgreementSettings = useStateSelector((s) => s.projectAgreementSettings);
+    const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
+    const projectInvoiceSettings = useStateSelector((s) => s.projectInvoiceSettings);
+    const dashboardConfig = useStateSelector((s) => s.dashboardConfig);
+    const accountConsistency = useStateSelector((s) => s.accountConsistency);
+    const recurringInvoiceTemplates = useStateSelector((s) => s.recurringInvoiceTemplates);
+    const transactionLog = useStateSelector((s) => s.transactionLog);
+    const errorLog = useStateSelector((s) => s.errorLog);
+    const pmCostPercentage = useStateSelector((s) => s.pmCostPercentage);
+    const defaultProjectId = useStateSelector((s) => s.defaultProjectId);
+    const enableColorCoding = useStateSelector((s) => s.enableColorCoding);
+    const showSystemTransactions = useStateSelector((s) => s.showSystemTransactions);
+    return useMemo(
+        () => _getAppState(),
+        [
+            accounts,
+            transactions,
+            categories,
+            bills,
+            invoices,
+            vendors,
+            contacts,
+            projects,
+            buildings,
+            properties,
+            units,
+            rentalAgreements,
+            projectAgreements,
+            salesReturns,
+            projectReceivedAssets,
+            contracts,
+            quotations,
+            budgets,
+            documents,
+            currentUser,
+            personalTransactions,
+            personalCategories,
+            installmentPlans,
+            planAmenities,
+            pmCycleAllocations,
+            printSettings,
+            whatsAppTemplates,
+            whatsAppMode,
+            users,
+            cashFlowCategoryMappings,
+            agreementSettings,
+            projectAgreementSettings,
+            rentalInvoiceSettings,
+            projectInvoiceSettings,
+            dashboardConfig,
+            accountConsistency,
+            recurringInvoiceTemplates,
+            transactionLog,
+            errorLog,
+            pmCostPercentage,
+            defaultProjectId,
+            enableColorCoding,
+            showSystemTransactions,
+        ]
+    );
+}
+
+/**
+ * Project-management screens: agreements, units, contracts, sales returns, received assets, PM config.
+ */
+export function useProjectReportAppState(): AppState {
+    const projects = useProjects();
+    const units = useUnits();
+    const contacts = useContacts();
+    const categories = useCategories();
+    const invoices = useInvoices();
+    const bills = useBills();
+    const transactions = useTransactions();
+    const accounts = useAccounts();
+    const projectAgreements = useProjectAgreements();
+    const salesReturns = useSalesReturns();
+    const projectReceivedAssets = useProjectReceivedAssets();
+    const contracts = useContracts();
+    const vendors = useVendors();
+    const installmentPlans = useInstallmentPlans();
+    const planAmenities = usePlanAmenities();
+    const pmCycleAllocations = usePmCycleAllocations();
+    const pmCostPercentage = useStateSelector((s) => s.pmCostPercentage);
+    const defaultProjectId = useStateSelector((s) => s.defaultProjectId);
+    const currentUser = useCurrentUser();
+    return useMemo(
+        () => _getAppState(),
+        [
+            projects,
+            units,
+            contacts,
+            categories,
+            invoices,
+            bills,
+            transactions,
+            accounts,
+            projectAgreements,
+            salesReturns,
+            projectReceivedAssets,
+            contracts,
+            vendors,
+            installmentPlans,
+            planAmenities,
+            pmCycleAllocations,
+            pmCostPercentage,
+            defaultProjectId,
+            currentUser,
+        ]
+    );
+}
+
 /**
  * Get dispatch without subscribing to state changes.
  * Uses module-level dispatch ref, so this hook never causes re-renders.

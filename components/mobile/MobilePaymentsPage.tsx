@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import Tabs from '../ui/Tabs';
 import { Invoice, Bill, Transaction, TransactionType, InvoiceStatus } from '../../types';
 import InvoiceBillItem from '../invoices/InvoiceBillItem';
@@ -12,7 +12,8 @@ import { ICONS } from '../../constants';
 import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 
 const MobilePaymentsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const [activeTab, setActiveTab] = useState('Pay Bills');
     const [searchQuery, setSearchQuery] = useState('');
     const [projectFilter, setProjectFilter] = useState(state.defaultProjectId || 'all');

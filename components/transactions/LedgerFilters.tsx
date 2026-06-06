@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, SortDirection, LedgerSortKey as SortKey, FilterCriteria } from '../../types';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
@@ -22,7 +22,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
     onClear,
     onClose
 }) => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const [tempFilters, setTempFilters] = useState<FilterCriteria>(filters);
 
     // Filter out Internal Clearing account from combo box - with defensive check

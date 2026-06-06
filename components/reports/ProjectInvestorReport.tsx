@@ -1,6 +1,6 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, AccountType, AppState } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -69,7 +69,7 @@ function mapEntryToInvestorRow(
 }
 
 const ProjectInvestorReport: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();

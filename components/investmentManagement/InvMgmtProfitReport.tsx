@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from '../reports/ReportHeader';
@@ -15,7 +15,7 @@ function fmtMoney(n: number): string {
 }
 
 const InvMgmtProfitReport: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [endDate, setEndDate] = useState(toLocalDateString(new Date()));

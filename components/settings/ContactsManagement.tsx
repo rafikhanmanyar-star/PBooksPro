@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Contact, ContactType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
@@ -32,7 +32,8 @@ interface ContactTypeOption {
 }
 
 const ContactsManagement: React.FC = () => {
-    const { state: appState, dispatch: appDispatch } = useAppContext();
+    const const appState = useFullAppState();
+    const appDispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
 
     // Form state

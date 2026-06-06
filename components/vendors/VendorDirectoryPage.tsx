@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -38,7 +38,8 @@ const AddVendorSection: React.FC<{
     triggerAddVendor?: boolean;
     onModalOpenHandled?: () => void;
 }> = ({ optionsView, setOptionsView, setSelectedVendorId, triggerAddVendor, onModalOpenHandled }) => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const { showToast } = useNotification();
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -144,7 +145,8 @@ type SortKey = 'name' | 'payable';
 type SortDirection = 'asc' | 'desc';
 
 const VendorDirectoryPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const const state = useFullAppState();
+    const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const { showConfirm, showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();

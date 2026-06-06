@@ -1,5 +1,5 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { RentalAgreement, RentalAgreementStatus } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -16,7 +16,7 @@ type ViewBy = 'building' | 'property' | 'tenant' | 'owner';
 type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
 
 const RentalAgreementsDashboard: React.FC = () => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
 
   const [viewBy, setViewBy] = useLocalStorage<ViewBy>('agreements_dash_viewBy', 'building');
   const [statusFilter, setStatusFilter] = useLocalStorage<StatusFilter>('agreements_dash_status', 'all');

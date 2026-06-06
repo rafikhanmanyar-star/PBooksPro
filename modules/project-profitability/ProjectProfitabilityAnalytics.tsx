@@ -1,3 +1,4 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { VisibilityState } from '@tanstack/react-table';
@@ -6,7 +7,6 @@ import ReportFooter from '../../components/reports/ReportFooter';
 import ReportHeader from '../../components/reports/ReportHeader';
 import Button from '../../components/ui/Button';
 import { CURRENCY } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePrintContext } from '../../context/PrintContext';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
@@ -58,7 +58,7 @@ const COLUMN_PRESETS: { id: string; label: string }[] = [
  * Inv. Mgmt → Reports: enterprise project profitability analytics (Vite + React; data from synced AppState).
  */
 const ProjectProfitabilityAnalytics: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { user } = useAuth();
     const perm = useProfitabilityPermissions(user?.role);
     const { print: triggerPrint } = usePrintContext();

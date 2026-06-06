@@ -14,10 +14,9 @@
  * - Print styles: printForm.css @media print
  */
 
+import { useFullAppState } from '../hooks/useSelectiveState';
 import { useRef, useCallback, ReactElement } from 'react';
 import { useReactToPrint } from 'react-to-print';
-import { useAppContext } from '../context/AppContext';
-
 export interface UsePrintFormOptions {
   /** Optional custom document title in print dialog */
   documentTitle?: string;
@@ -53,7 +52,7 @@ export interface UsePrintFormReturn {
  * );
  */
 export function usePrintForm(options: UsePrintFormOptions = {}): UsePrintFormReturn {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const printRef = useRef<HTMLDivElement | null>(null);
   const { documentTitle = 'Print', onAfterPrint, onBeforePrint } = options;
 

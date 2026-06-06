@@ -1,3 +1,4 @@
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   BarChart,
@@ -10,7 +11,6 @@ import {
 } from 'recharts';
 import Button from '../ui/Button';
 import { CURRENCY, ICONS } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
 import {
   listPersonalTransactions,
   deletePersonalTransaction,
@@ -171,7 +171,7 @@ function compareTxTableRows(a: TxTableRow, b: TxTableRow, col: SortableCol, dir:
 }
 
 const PersonalTransactionsTab: React.FC = () => {
-  const { state } = useAppContext();
+  const const state = useFullAppState();
   const [search, setSearch] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PersonalTxPeriodFilter>('thisMonth');
   const [categoryFilterId, setCategoryFilterId] = useState('');

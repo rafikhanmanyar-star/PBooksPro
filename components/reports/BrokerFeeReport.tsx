@@ -1,6 +1,6 @@
 
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ContactType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -52,7 +52,7 @@ interface PropertyReportRow {
 }
 
 const BrokerFeeReport: React.FC = () => {
-    const { state } = useAppContext();
+    const const state = useFullAppState();
     const { showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();
