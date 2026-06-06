@@ -23,7 +23,15 @@ import Select from '../ui/Select';
 type SortKey = 'property' | 'amount' | 'nextDue' | 'status';
 
 const RecurringInvoicesList: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const recurringInvoiceTemplates = useStateSelector((s) => s.recurringInvoiceTemplates);
+    const rentalAgreements = useRentalAgreements();
+    const contacts = useContacts();
+    const properties = useProperties();
+    const buildings = useBuildings();
+    const invoices = useInvoices();
+    const categories = useCategories();
+    const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
+    const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
 
     // --- State ---
@@ -48,15 +56,15 @@ const RecurringInvoicesList: React.FC = () => {
 
     // --- Data --- (exclude soft-deleted and templates for terminated/renewed/expired agreements)
     const templates = useMemo(() => {
-        const list = (state.recurringInvoiceTemplates || []).filter(t => !t.deletedAt);
-        const agreements = state.rentalAgreements || [];
+        const list = (recurringInvoiceTemplates || []).filter(t => !t.deletedAt);
+        const agreements = rentalAgreements || [];
         return list.filter(t => {
             if (!t.agreementId) return true; // standalone template, keep
             const agreement = agreements.find(a => a.id === t.agreementId);
             if (!agreement) return true; // agreement missing (e.g. deleted), show so user can clean up
             return agreement.status === RentalAgreementStatus.ACTIVE;
         });
-    }, [state.recurringInvoiceTemplates, state.rentalAgreements]);
+    }, [recurringInvoiceTemplates, rentalAgreements]);
 
     const today = useMemo(() => {
         const d = new Date();
@@ -76,8 +84,8 @@ const RecurringInvoicesList: React.FC = () => {
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             result = result.filter(t => {
-                const tenant = state.contacts.find(c => c.id === t.contactId);
-                const property = state.properties.find(p => p.id === t.propertyId);
+                const tenant = contacts.find(c => c.id === t.contactId);
+                const property = properties.find(p => p.id === t.propertyId);
                 return (
                     tenant?.name.toLowerCase().includes(q) ||
                     property?.name.toLowerCase().includes(q) ||
@@ -99,8 +107,8 @@ const RecurringInvoicesList: React.FC = () => {
                 case 'nextDue': valA = parseYyyyMmDdToLocalDate(effectiveNextDue(a)).getTime(); valB = parseYyyyMmDdToLocalDate(effectiveNextDue(b)).getTime(); break;
                 case 'status': valA = a.active ? 1 : 0; valB = b.active ? 1 : 0; break;
                 case 'property':
-                    valA = state.properties.find(p => p.id === a.propertyId)?.name || '';
-                    valB = state.properties.find(p => p.id === b.propertyId)?.name || '';
+                    valA = properties.find(p => p.id === a.propertyId)?.name || '';
+                    valB = properties.find(p => p.id === b.propertyId)?.name || '';
                     break;
             }
 
@@ -113,7 +121,7 @@ const RecurringInvoicesList: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [templates, searchQuery, buildingFilter, sortConfig, state.contacts, state.properties, effectiveNextDue]);
+    }, [templates, searchQuery, buildingFilter, sortConfig, contacts, properties, effectiveNextDue]);
 
     // Overdue templates: active, nextDueDate <= today
     const overdueTemplates = useMemo(() => {
@@ -152,10 +160,9 @@ const RecurringInvoicesList: React.FC = () => {
     };
 
     const getNextInvoiceNumber = useCallback(() => {
-        const { rentalInvoiceSettings } = state;
         const { prefix, nextNumber, padding } = rentalInvoiceSettings;
         let maxNum = nextNumber;
-        state.invoices.forEach(inv => {
+        invoices.forEach(inv => {
             if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
                 const part = inv.invoiceNumber.substring(prefix.length);
                 if (/^\d+$/.test(part)) {
@@ -165,7 +172,7 @@ const RecurringInvoicesList: React.FC = () => {
             }
         });
         return { maxNum, prefix, padding };
-    }, [state]);
+    }, [rentalInvoiceSettings, invoices]);
 
     // --- Generate a single invoice from a template ---
     const generateSingleInvoice = useCallback((template: RecurringInvoiceTemplate, invoiceNum: number, prefix: string, padding: number): Invoice => {
@@ -178,7 +185,7 @@ const RecurringInvoicesList: React.FC = () => {
         const monthYear = issueDateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
         const description = template.descriptionTemplate.replace('{Month}', monthYear);
 
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+        const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
 
         return {
             id: `inv-rec-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -198,7 +205,7 @@ const RecurringInvoicesList: React.FC = () => {
             rentalMonth: issueDate.slice(0, 7),
             securityDepositCharge: 0,
         };
-    }, [state.categories]);
+    }, [categories]);
 
     // --- Generate all due invoices (bulk) ---
     const handleGenerateAllDue = useCallback(async () => {
@@ -214,8 +221,6 @@ const RecurringInvoicesList: React.FC = () => {
         setIsGenerating(true);
         let totalCreated = 0;
         let { maxNum, prefix, padding } = getNextInvoiceNumber();
-
-        const rentalAgreements = state.rentalAgreements || [];
 
         for (const template of dueTemplates) {
             let currentTemplate = { ...template };
@@ -283,12 +288,12 @@ const RecurringInvoicesList: React.FC = () => {
         if (totalCreated > 0) {
             dispatch({
                 type: 'UPDATE_RENTAL_INVOICE_SETTINGS',
-                payload: { ...state.rentalInvoiceSettings, nextNumber: maxNum }
+                payload: { ...rentalInvoiceSettings, nextNumber: maxNum }
             });
             showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
         }
         setIsGenerating(false);
-    }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, state.rentalAgreements, showConfirm, showToast, effectiveNextDue]);
+    }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, rentalInvoiceSettings, rentalAgreements, showConfirm, showToast, effectiveNextDue]);
 
     // --- Generate for a single template (from row or modal) ---
     const handleGenerateSingle = useCallback(async (template: RecurringInvoiceTemplate) => {
@@ -299,7 +304,7 @@ const RecurringInvoicesList: React.FC = () => {
         );
 
         if (template.agreementId) {
-            const agreement = state.rentalAgreements?.find((ra) => ra.id === template.agreementId);
+            const agreement = rentalAgreements?.find((ra) => ra.id === template.agreementId);
             if (agreement?.endDate) {
                 const nextDue = parseYyyyMmDdToLocalDate(issueDateForGen);
                 nextDue.setHours(0, 0, 0, 0);
@@ -328,7 +333,7 @@ const RecurringInvoicesList: React.FC = () => {
         dispatch({ type: 'ADD_INVOICE', payload: invoice });
         dispatch({
             type: 'UPDATE_RENTAL_INVOICE_SETTINGS',
-            payload: { ...state.rentalInvoiceSettings, nextNumber: maxNum + 1 }
+            payload: { ...rentalInvoiceSettings, nextNumber: maxNum + 1 }
         });
 
         const nextDueStr = getNextRecurringDueDate(issueDateForGen, template.dayOfMonth || 1);
@@ -341,7 +346,7 @@ const RecurringInvoicesList: React.FC = () => {
         }
         // Deactivate when next date would exceed agreement end
         if (template.agreementId && isActive) {
-            const agreement = state.rentalAgreements?.find((ra) => ra.id === template.agreementId);
+            const agreement = rentalAgreements?.find((ra) => ra.id === template.agreementId);
             if (agreement?.endDate) {
                 const endDate = new Date(agreement.endDate);
                 endDate.setHours(0, 0, 0, 0);
@@ -361,7 +366,7 @@ const RecurringInvoicesList: React.FC = () => {
         dispatch({ type: 'UPDATE_RECURRING_TEMPLATE', payload: updatedTemplate });
         showToast(`Invoice #${invoice.invoiceNumber} created.`, 'success');
         setIsEditModalOpen(false);
-    }, [getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, state.rentalAgreements, showConfirm, showToast]);
+    }, [getNextInvoiceNumber, generateSingleInvoice, dispatch, rentalInvoiceSettings, rentalAgreements, showConfirm, showToast]);
 
     // --- Toggle active/paused inline ---
     const handleToggleActive = useCallback((template: RecurringInvoiceTemplate, e: React.MouseEvent) => {
@@ -464,9 +469,9 @@ const RecurringInvoicesList: React.FC = () => {
     );
 
     // --- Resolve names for edit modal ---
-    const editPropertyName = templateToEdit ? (state.properties.find(p => p.id === templateToEdit.propertyId)?.name || 'Unknown') : '';
-    const editTenantName = templateToEdit ? (state.contacts.find(c => c.id === templateToEdit.contactId)?.name || 'Unknown') : '';
-    const editAgreement = templateToEdit?.agreementId ? state.rentalAgreements.find(a => a.id === templateToEdit.agreementId) : null;
+    const editPropertyName = templateToEdit ? (properties.find(p => p.id === templateToEdit.propertyId)?.name || 'Unknown') : '';
+    const editTenantName = templateToEdit ? (contacts.find(c => c.id === templateToEdit.contactId)?.name || 'Unknown') : '';
+    const editAgreement = templateToEdit?.agreementId ? rentalAgreements.find(a => a.id === templateToEdit.agreementId) : null;
 
     return (
         <div className="flex flex-col h-full gap-3">
@@ -515,7 +520,7 @@ const RecurringInvoicesList: React.FC = () => {
                     aria-label="Filter by building"
                 >
                     <option value="all">All Buildings</option>
-                    {state.buildings.map(b => (
+                    {buildings.map(b => (
                         <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
                 </select>
@@ -549,8 +554,8 @@ const RecurringInvoicesList: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-200 bg-white">
                             {filteredTemplates.length > 0 ? filteredTemplates.map(template => {
-                                const tenantName = state.contacts.find(c => c.id === template.contactId)?.name || 'Unknown';
-                                const propertyName = state.properties.find(p => p.id === template.propertyId)?.name || 'Unknown';
+                                const tenantName = contacts.find(c => c.id === template.contactId)?.name || 'Unknown';
+                                const propertyName = properties.find(p => p.id === template.propertyId)?.name || 'Unknown';
                                 const nextDueDisplay = effectiveNextDue(template);
                                 const dateStatus = getDateStatus(nextDueDisplay, template.active);
                                 const isOverdue = dateStatus === 'overdue' || dateStatus === 'due';
