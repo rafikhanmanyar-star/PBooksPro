@@ -19,8 +19,6 @@ const notFound = (_req: AuthedRequest, res: Response) => {
 
 /** Collection GET paths — keep in sync with services/api/repositories/*Api.ts findAll() */
 const LIST_PATHS = [
-  'quotations',
-  'documents',
   'transaction-audit',
 ] as const;
 

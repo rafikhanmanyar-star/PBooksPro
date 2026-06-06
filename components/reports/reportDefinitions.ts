@@ -13,7 +13,10 @@ export const reportDefinitions: ReportDefinition[] = [
     // Rental Reports
     { id: 'rental-building-analysis', title: 'Building Analysis Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Building Analysis' },
     { id: 'rental-visual-layout', title: 'Building Visual Layout', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Visual Layout' },
-    { id: 'rental-unit-status', title: 'Property Status Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Property Status' },
+    { id: 'rental-unit-status', title: 'Property Status Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Tabular Layout' },
+    { id: 'rental-agreement-expiry', title: 'Agreement Expiry Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Agreement Expiry' },
+    { id: 'rental-bm-analysis', title: 'BM Analysis Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:BM Analysis' },
+    { id: 'rental-invoice-payment-analysis', title: 'Invoice & Payment Analysis', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Invoice & Payment Analysis' },
     { id: 'rental-owner-payouts', title: 'Owner Rental Income', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Rental Income' },
     { id: 'rental-owner-income-summary', title: 'Owner Rental Income Summary', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Rental Income Summary' },
     { id: 'rental-service-charges', title: 'Service Charges Deduction', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Service Charges Deduction' },
@@ -36,6 +39,14 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'project-broker-report', title: 'Broker Report (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Broker Report' },
     { id: 'project-vendor-ledger', title: 'Vendor Ledger (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Vendor Ledger' },
     { id: 'project-contract-report', title: 'Contract Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Contract Report' },
+    { id: 'project-material-report', title: 'Material Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Material Report' },
+    { id: 'project-budget-vs-actual', title: 'Budget vs Actual Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Budget vs Actual' },
+    { id: 'project-custom-report-builder', title: 'Custom Report Builder', group: 'Project', path: 'projectManagement', subPath: 'Reports:Custom Report Builder' },
+    { id: 'project-profit-loss', title: 'Profit & Loss Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Profit & Loss' },
+    { id: 'project-balance-sheet', title: 'Balance Sheet Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Balance Sheet' },
+    { id: 'project-trial-balance', title: 'Trial Balance Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Trial Balance' },
+    { id: 'project-cash-flows', title: 'Cash Flow Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Cash Flows' },
+    { id: 'project-investor-distribution', title: 'Investor Distribution Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Investor Distribution' },
 
     // General Reports
     { id: 'transfer-statistics', title: 'Transfer Statistics Report', group: 'General', path: 'dashboard', subPath: '' },

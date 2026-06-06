@@ -16,6 +16,8 @@ export type RealtimeEntityType =
   | 'contact'
   | 'user'
   | 'vendor'
+  | 'quotation'
+  | 'document'
   | 'building'
   | 'property'
   | 'settings'

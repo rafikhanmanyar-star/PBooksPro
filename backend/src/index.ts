@@ -29,6 +29,8 @@ import { optionalFeatureRouter } from './routes/optionalFeatureRoutes.js';
 import { projectsRouter } from './routes/projectsRoutes.js';
 import { unitsRouter } from './routes/unitsRoutes.js';
 import { vendorsRouter } from './routes/vendorsRoutes.js';
+import { quotationsRouter } from './routes/quotationsRoutes.js';
+import { documentsRouter } from './routes/documentsRoutes.js';
 import { appSettingsRouter } from './routes/appSettingsRoutes.js';
 import { stateRouter } from './routes/stateRoutes.js';
 import { entityListStubsRouter } from './routes/entityListStubsRoutes.js';
@@ -177,6 +179,10 @@ app.use('/api', authMiddleware, requireFinancialWriteOnMutations, projectsRouter
 app.use('/api', authMiddleware, requireFinancialWriteOnMutations, unitsRouter);
 
 app.use('/api', authMiddleware, requireFinancialWriteOnMutations, vendorsRouter);
+
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, quotationsRouter);
+
+app.use('/api', authMiddleware, requireFinancialWriteOnMutations, documentsRouter);
 
 app.use('/api', authMiddleware, requireFinancialWriteOnMutations, appSettingsRouter);
 

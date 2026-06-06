@@ -36,6 +36,8 @@ import {
   rowToPmCycleAllocationApi,
 } from './pmCycleAllocationsService.js';
 import { listVendors, rowToVendorApi } from './vendorsService.js';
+import { listQuotations, rowToQuotationApi } from './quotationsService.js';
+import { listDocuments, rowToDocumentApi } from './documentsService.js';
 import {
   listPersonalCategories,
   rowToPersonalCategoryApi,
@@ -134,6 +136,8 @@ export async function getBulkAppState(
     recurringTemplateRows,
     pmCycleAllocationRows,
     vendorRows,
+    quotationRows,
+    documentRows,
     personalCategoryRows,
     personalTransactionRows,
     appSettingsFlat,
@@ -173,6 +177,8 @@ export async function getBulkAppState(
       ? listPmCycleAllocations(client, tenantId)
       : Promise.resolve([]),
     wantEntity('vendors', filter) ? listVendors(client, tenantId) : Promise.resolve([]),
+    wantEntity('quotations', filter) ? listQuotations(client, tenantId) : Promise.resolve([]),
+    wantEntity('documents', filter) ? listDocuments(client, tenantId) : Promise.resolve([]),
     wantEntity('personalCategories', filter)
       ? listPersonalCategories(client, tenantId)
       : Promise.resolve([]),
@@ -247,10 +253,10 @@ export async function getBulkAppState(
     out.salesReturns = salesReturnRows.map((r) => rowToSalesReturnApi(r));
   }
   if (wantEntity('quotations', filter)) {
-    out.quotations = [];
+    out.quotations = quotationRows.map((r) => rowToQuotationApi(r));
   }
   if (wantEntity('documents', filter)) {
-    out.documents = [];
+    out.documents = documentRows.map((r) => rowToDocumentApi(r));
   }
   if (wantEntity('recurringInvoiceTemplates', filter)) {
     out.recurringInvoiceTemplates = recurringTemplateRows.map((r) =>
