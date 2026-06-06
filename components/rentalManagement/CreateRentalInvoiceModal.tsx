@@ -52,8 +52,10 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   const categories = useCategories();
   const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
   const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
-  const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
+  const appWhatsAppMode = useStateSelector((s) => s.whatsAppMode);
   const dispatch = useDispatchOnly();
+  const { showToast, showAlert } = useNotification();
+  const { openChat } = useWhatsApp();
 
   const [selectedAgreementId, setSelectedAgreementId] = useState<string>('');
   const [invoiceTypeChoice, setInvoiceTypeChoice] = useState<InvoiceTypeChoice>(initialInvoiceType);
@@ -62,14 +64,14 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   const [invoiceDate, setInvoiceDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [description, setDescription] = useState('');
-  const autoSend = state.rentalInvoiceSettings?.autoSendInvoiceWhatsApp ?? false;
+  const autoSend = rentalInvoiceSettings?.autoSendInvoiceWhatsApp ?? false;
   const [sendWhatsApp, setSendWhatsApp] = useState(false);
   const [whatsAppMode, setWhatsAppMode] = useState<'auto' | 'manual'>('manual');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const activeAgreements = useMemo(() => {
-    return state.rentalAgreements.filter(ra => ra.status === 'Active');
-  }, [state.rentalAgreements]);
+    return rentalAgreements.filter(ra => ra.status === 'Active');
+  }, [rentalAgreements]);
 
   const selectedAgreement = useMemo(() => {
     return activeAgreements.find(a => a.id === selectedAgreementId) || null;
@@ -77,38 +79,38 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
 
   const property = useMemo(() => {
     return selectedAgreement
-      ? state.properties.find(p => p.id === selectedAgreement.propertyId)
+      ? properties.find(p => p.id === selectedAgreement.propertyId)
       : null;
-  }, [selectedAgreement, state.properties]);
+  }, [selectedAgreement, properties]);
 
   const building = useMemo(() => {
-    return property ? state.buildings.find(b => b.id === property.buildingId) : null;
-  }, [property, state.buildings]);
+    return property ? buildings.find(b => b.id === property.buildingId) : null;
+  }, [property, buildings]);
 
   const tenant = useMemo(() => {
     return selectedAgreement
-      ? state.contacts.find(c => c.id === selectedAgreement.contactId)
+      ? contacts.find(c => c.id === selectedAgreement.contactId)
       : null;
-  }, [selectedAgreement, state.contacts]);
+  }, [selectedAgreement, contacts]);
 
   const hasSecurityDepositInvoice = useMemo(() => {
     if (!selectedAgreementId || !selectedAgreement) return false;
     const secDep = parseFloat(String(selectedAgreement.securityDeposit || 0)) || 0;
     if (secDep <= 0) return false;
-    return state.invoices.some(
+    return invoices.some(
       inv =>
         inv.agreementId === selectedAgreementId &&
         inv.invoiceType !== InvoiceType.INSTALLMENT &&
         (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT ||
           ((inv.securityDepositCharge || 0) >= secDep * 0.99 && inv.amount >= secDep * 0.99))
     );
-  }, [selectedAgreementId, selectedAgreement, state.invoices]);
+  }, [selectedAgreementId, selectedAgreement, invoices]);
 
   const generateNextInvoiceNumber = useCallback(() => {
     if (!rentalInvoiceSettings) return '';
     const { prefix, nextNumber, padding } = rentalInvoiceSettings;
     let maxNum = nextNumber;
-    state.invoices.forEach(inv => {
+    invoices.forEach(inv => {
       if (inv.invoiceNumber?.startsWith(prefix)) {
         const part = inv.invoiceNumber.substring(prefix.length);
         if (/^\d+$/.test(part)) {
@@ -118,7 +120,7 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
       }
     });
     return `${prefix}${String(maxNum).padStart(padding, '0')}`;
-  }, [rentalInvoiceSettings, state.invoices]);
+  }, [rentalInvoiceSettings, invoices]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -208,7 +210,7 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
       return;
     }
 
-    const isDuplicate = state.invoices.some(
+    const isDuplicate = invoices.some(
       inv => inv.invoiceNumber?.trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
     );
     if (isDuplicate) {
@@ -216,8 +218,8 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
       return;
     }
 
-    const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-    const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
+    const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
+    const securityDepositCategory = categories.find(c => c.name === 'Security Deposit');
     if (!rentalIncomeCategory) {
       await showAlert("'Rental Income' category not found. Please check settings.");
       return;
@@ -276,7 +278,7 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
       if (sendWhatsApp && tenant?.contactNo) {
         const subject = property?.name || 'your invoice';
         const message = WhatsAppService.generateInvoiceReminder(
-          state.whatsAppTemplates.invoiceReminder,
+          whatsAppTemplates.invoiceReminder,
           tenant,
           invoiceNumber,
           amount,
@@ -299,7 +301,7 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
         } else {
           sendOrOpenWhatsApp(
             { contact: tenant, message, phoneNumber: tenant.contactNo },
-            () => state.whatsAppMode,
+            () => appWhatsAppMode,
             openChat
           );
           showToast('Invoice created. WhatsApp opened for review.', 'success');
@@ -330,9 +332,9 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   };
 
   const agreementOptions = activeAgreements.map(ag => {
-    const prop = state.properties.find(p => p.id === ag.propertyId);
-    const bld = prop ? state.buildings.find(b => b.id === prop.buildingId) : null;
-    const contact = state.contacts.find(c => c.id === ag.contactId);
+    const prop = properties.find(p => p.id === ag.propertyId);
+    const bld = prop ? buildings.find(b => b.id === prop.buildingId) : null;
+    const contact = contacts.find(c => c.id === ag.contactId);
     return {
       id: ag.id,
       label: `${prop?.name || 'Unknown'} - ${contact?.name || 'Unknown'} (${bld?.name || 'N/A'})`,

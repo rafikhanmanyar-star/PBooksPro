@@ -1,6 +1,17 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useAccounts,
+    useBills,
+    useBuildings,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useInvoices,
+    useProperties,
+    useRentalAgreements,
+    useStateSelector,
+} from '../../hooks/useSelectiveState';
 import { Contact, TransactionType, Transaction, AccountType, Category, Invoice, InvoiceStatus, InvoiceType, RentalAgreementStatus, Bill } from '../../types';
 import { getExpenseBearerType } from '../../utils/rentalBillPayments';
 import { SECURITY_SETTLEMENT_BATCH_PREFIX } from '../../utils/rentalSecurityDepositSettlement';
@@ -77,7 +88,17 @@ interface OwnerPayoutModalProps {
 }
 
 const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, owner, balanceDue, payoutType = 'Rent', preSelectedBuildingId, transactionToEdit, propertyBreakdown = [], tenant, tenantUnpaidAmount = 0 }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const properties = useProperties();
+    const buildings = useBuildings();
+    const contacts = useContacts();
+    const rentalAgreements = useRentalAgreements();
+    const invoices = useInvoices();
+    const bills = useBills();
+    const categories = useCategories();
+    const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
+    const appWhatsAppMode = useStateSelector((s) => s.whatsAppMode);
+    const dispatch = useDispatchOnly();
     const { showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
 
@@ -101,14 +122,14 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const [invoiceAdjustments, setInvoiceAdjustments] = useState<InvoiceAdjustmentRow[]>([]);
     const [billAdjustments, setBillAdjustments] = useState<BillAdjustmentRow[]>([]);
 
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
+    const userSelectableAccounts = useMemo(() => accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [accounts]);
     const buildingsForOwner = useMemo(() => {
         if (!owner) return [];
         const ownerPropertyBuildingIds = new Set(
-            state.properties.filter(p => p.ownerId === owner.id).map(p => p.buildingId)
+            properties.filter(p => p.ownerId === owner.id).map(p => p.buildingId)
         );
-        return state.buildings.filter(b => ownerPropertyBuildingIds.has(b.id));
-    }, [owner, state.properties, state.buildings]);
+        return buildings.filter(b => ownerPropertyBuildingIds.has(b.id));
+    }, [owner, properties, buildings]);
 
     const singlePropertyId = useMemo(() => {
         return propertyBreakdown.length === 1 ? propertyBreakdown[0].propertyId : undefined;
@@ -120,15 +141,15 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         if (!isSecurityMode || !singlePropertyId) return null;
         const pid = String(singlePropertyId);
 
-        const activeAgreement = state.rentalAgreements.find(
+        const activeAgreement = rentalAgreements.find(
             ra => String(ra.propertyId) === pid && ra.status === RentalAgreementStatus.ACTIVE
         );
         if (activeAgreement) {
-            return state.contacts.find(c => c.id === activeAgreement.contactId) ?? null;
+            return contacts.find(c => c.id === activeAgreement.contactId) ?? null;
         }
 
         const outstandingByContact = new Map<string, number>();
-        for (const inv of state.invoices) {
+        for (const inv of invoices) {
             if (String(inv.propertyId) !== pid) continue;
             if (inv.invoiceType !== InvoiceType.RENTAL) continue;
             if (inv.securityDepositCharge && inv.securityDepositCharge > 0) continue;
@@ -147,10 +168,10 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     bestId = id;
                 }
             });
-            if (bestId) return state.contacts.find(c => c.id === bestId) ?? null;
+            if (bestId) return contacts.find(c => c.id === bestId) ?? null;
         }
 
-        const forProperty = state.rentalAgreements.filter(ra => String(ra.propertyId) === pid);
+        const forProperty = rentalAgreements.filter(ra => String(ra.propertyId) === pid);
         const candidates = forProperty.filter(ra => ra.status !== RentalAgreementStatus.RENEWED);
         const pool = candidates.length > 0 ? candidates : forProperty;
         if (pool.length === 0) return null;
@@ -160,12 +181,12 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             return tb - ta;
         });
         const latest = sorted[0];
-        return latest ? state.contacts.find(c => c.id === latest.contactId) ?? null : null;
-    }, [tenant, isSecurityMode, singlePropertyId, state.rentalAgreements, state.invoices, state.contacts]);
+        return latest ? contacts.find(c => c.id === latest.contactId) ?? null : null;
+    }, [tenant, isSecurityMode, singlePropertyId, rentalAgreements, invoices, contacts]);
 
     const unpaidPropertyInvoices = useMemo(() => {
         if (!isOpen || !singlePropertyId) return [];
-        return state.invoices
+        return invoices
             .filter(inv =>
                 String(inv.propertyId) === String(singlePropertyId) &&
                 inv.invoiceType === InvoiceType.RENTAL &&
@@ -175,15 +196,15 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 inv.amount - (inv.paidAmount || 0) > 0.01
             )
             .sort((a, b) => new Date(a.dueDate || a.issueDate).getTime() - new Date(b.dueDate || b.issueDate).getTime());
-    }, [isOpen, singlePropertyId, state.invoices]);
+    }, [isOpen, singlePropertyId, invoices]);
 
     /** Security-deposit invoices (not rent combos) whose paid amount still does not match total. */
     const outstandingSecurityDepositInvoices = useMemo(
         () =>
             isSecurityMode && isOpen && singlePropertyId
-                ? getOutstandingSecurityDepositInvoicesForProperty(state.invoices, singlePropertyId)
+                ? getOutstandingSecurityDepositInvoicesForProperty(invoices, singlePropertyId)
                 : [],
-        [isSecurityMode, isOpen, singlePropertyId, state.invoices]
+        [isSecurityMode, isOpen, singlePropertyId, invoices]
     );
 
     const computedUnpaidRentalTotal = useMemo(
@@ -197,22 +218,22 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         if (!isOpen || !singlePropertyId || !effectiveTenant) return [];
         const pid = String(singlePropertyId);
         const tid = String(effectiveTenant.id);
-        return state.bills
+        return bills
             .filter((b: Bill) => {
                 if (String(b.propertyId) !== pid) return false;
                 if (b.status === InvoiceStatus.PAID || b.status === InvoiceStatus.DRAFT) return false;
                 const out = b.amount - (b.paidAmount || 0);
                 if (out <= 0.01) return false;
-                if (getExpenseBearerType(b, state) !== 'tenant') return false;
+                if (getExpenseBearerType(b, { rentalAgreements }) !== 'tenant') return false;
                 if (b.projectAgreementId) {
-                    const ra = state.rentalAgreements.find(r => r.id === b.projectAgreementId);
+                    const ra = rentalAgreements.find(r => r.id === b.projectAgreementId);
                     return !!ra && String(ra.contactId) === tid && String(ra.propertyId) === pid;
                 }
                 if (b.expenseBearerType === 'tenant' && b.contactId && String(b.contactId) === tid) return true;
                 return false;
             })
             .sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
-    }, [isOpen, singlePropertyId, effectiveTenant, state.bills, state.rentalAgreements]);
+    }, [isOpen, singlePropertyId, effectiveTenant, bills, rentalAgreements]);
 
     const prevIsOpenRef = useRef(false);
     useEffect(() => {
@@ -280,8 +301,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     const shortfall = balanceDue > sumDue ? balanceDue - sumDue : 0;
                     let shortfallApplied = false;
                     const newItems: OwnerPayoutRow[] = propertyBreakdown.map((p, idx) => {
-                        const prop = state.properties.find(pr => String(pr.id) === String(p.propertyId));
-                        const building = prop?.buildingId ? state.buildings.find(b => b.id === prop.buildingId) : null;
+                        const prop = properties.find(pr => String(pr.id) === String(p.propertyId));
+                        const building = prop?.buildingId ? buildings.find(b => b.id === prop.buildingId) : null;
                         const payeeOwnerId = p.payeeOwnerId ?? owner.id;
                         const payeeOwnerName = p.payeeOwnerName ?? owner.name;
                         let due = useTotalForFirst && idx === 0 ? balanceDue : (p.balanceDue || 0);
@@ -311,7 +332,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 }
             }
             setError('');
-    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, state.properties, state.buildings, isSecurityMode, unpaidPropertyInvoices, unpaidTenantPropertyBills, payoutType, owner]);
+    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit, propertyBreakdown, properties, buildings, isSecurityMode, unpaidPropertyInvoices, unpaidTenantPropertyBills, payoutType, owner]);
 
     const totalToPay = items.filter(i => i.isSelected).reduce((sum, i) => sum + i.paymentAmount, 0);
     const invoiceAdjustTotal = invoiceAdjustments.filter(r => r.isSelected).reduce((s, r) => s + r.adjustAmount, 0);
@@ -505,7 +526,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const getPayoutCategory = (mode?: 'owner' | 'tenant' | 'adjust'): Category | null => {
         if (payoutType === 'Security') {
             if (mode === 'tenant') {
-                let refCat = state.categories.find(c => c.name === 'Security Deposit Refund');
+                let refCat = categories.find(c => c.name === 'Security Deposit Refund');
                 if (!refCat) {
                     const newCat: Category = {
                         id: `cat-sec-dep-ref-${Date.now()}`,
@@ -520,7 +541,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 }
                 return refCat;
             }
-            let secCat = state.categories.find(c => c.name === 'Owner Security Payout');
+            let secCat = categories.find(c => c.name === 'Owner Security Payout');
             if (!secCat) {
                 const newCat: Category = {
                     id: `cat-own-sec-pay-${Date.now()}`,
@@ -535,7 +556,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             }
             return secCat;
         }
-        return state.categories.find(c => c.name === 'Owner Payout') || null;
+        return categories.find(c => c.name === 'Owner Payout') || null;
     };
 
     const securityTotal = securityAllocations.owner + securityAllocations.tenant + invoiceAdjustTotal + billAdjustTotal;
@@ -543,7 +564,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const handleSubmit = async () => {
         if (error || !owner) return;
 
-        const payoutAccount = state.accounts.find(a => a.id === accountId);
+        const payoutAccount = accounts.find(a => a.id === accountId);
         if (!payoutAccount) {
             await showAlert(`Error: Please select a valid account to pay from.`);
             return;
@@ -552,7 +573,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         // --- Security mode: create separate transactions per allocation ---
         if (isSecurityMode && !isEditMode) {
             const blockingSecurityInvoices = singlePropertyId
-                ? getOutstandingSecurityDepositInvoicesForProperty(state.invoices, singlePropertyId)
+                ? getOutstandingSecurityDepositInvoicesForProperty(invoices, singlePropertyId)
                 : [];
             if (blockingSecurityInvoices.length > 0) {
                 const list = blockingSecurityInvoices.map((i) => `#${i.invoiceNumber}`).join(', ');
@@ -567,7 +588,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             const settlementBatchId = `${SECURITY_SETTLEMENT_BATCH_PREFIX}${baseId}`;
             const descSuffix = (notes ? ` - ${notes}` : '') + (reference ? ` (Ref: ${reference})` : '');
             const singleProp = propertyBreakdown.length === 1 ? propertyBreakdown[0] : null;
-            const prop = singleProp ? state.properties.find(p => p.id === singleProp.propertyId) : null;
+            const prop = singleProp ? properties.find(p => p.id === singleProp.propertyId) : null;
             const propBuildingId = prop?.buildingId || buildingId || preSelectedBuildingId || '';
             const propLabel = singleProp ? ` [${singleProp.propertyName}]` : '';
 
@@ -596,8 +617,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                     id: `tx-${baseId}-ten`,
                 });
             }
-            const rentCat = state.categories.find(c => c.name === 'Rent' || c.name === 'Rental Income');
-            const secDepCat = state.categories.find(c => c.name === 'Security Deposit');
+            const rentCat = categories.find(c => c.name === 'Rent' || c.name === 'Rental Income');
+            const secDepCat = categories.find(c => c.name === 'Security Deposit');
             const rentCatId = rentCat?.id || secDepCat?.id || '';
 
             if (invoiceAdjustTotal > 0.01 && effectiveTenant) {
@@ -606,7 +627,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 if (!refCatAdj) { await showAlert("'Security Deposit Refund' category not found."); return; }
 
                 for (const adj of selectedAdjustments) {
-                    const inv = state.invoices.find(i => i.id === adj.invoiceId);
+                    const inv = invoices.find(i => i.id === adj.invoiceId);
                     if (!inv) continue;
 
                     const monthLabel = adj.rentalMonth || formatDate(adj.dueDate);
@@ -647,7 +668,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             if (billAdjustTotal > 0.01 && effectiveTenant) {
                 const selectedBillRows = billAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
                 for (const adj of selectedBillRows) {
-                    const bill = state.bills.find(b => b.id === adj.billId) as Bill | undefined;
+                    const bill = bills.find(b => b.id === adj.billId) as Bill | undefined;
                     if (!bill) continue;
                     const dateLabel = bill.dueDate ? formatDate(bill.dueDate) : formatDate(bill.issueDate);
                     allTxs.push({
@@ -675,7 +696,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 if (refCat) {
                         const selectedBillRowsSd = billAdjustments.filter(r => r.isSelected && r.adjustAmount > 0.01);
                         for (const adj of selectedBillRowsSd) {
-                            const bill = state.bills.find(b => b.id === adj.billId);
+                            const bill = bills.find(b => b.id === adj.billId);
                             if (!bill) continue;
                             allTxs.push({
                                 type: TransactionType.EXPENSE,
@@ -709,7 +730,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             return;
         }
 
-        const payoutCategory = payoutType === 'Security' ? getPayoutCategory() : state.categories.find(c => c.name === 'Owner Payout');
+        const payoutCategory = payoutType === 'Security' ? getPayoutCategory() : categories.find(c => c.name === 'Owner Payout');
         if (!payoutCategory) {
             await showAlert("Critical: 'Owner Payout' category not found. Please check Rental Settings.");
             return;
@@ -730,7 +751,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             let desc = baseDescription + descriptionSuffix;
             if (opts.descriptionExtra) desc += ` ${opts.descriptionExtra}`;
             else if (opts.buildingId) {
-                const bName = state.buildings.find(b => b.id === opts.buildingId)?.name;
+                const bName = buildings.find(b => b.id === opts.buildingId)?.name;
                 if (bName) desc += ` [${bName}]`;
             }
             return {
@@ -788,7 +809,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             setLastReference(reference);
             const distinctPayees = [...new Set(selectedRows.map(r => r.payeeOwnerId))];
             if (distinctPayees.length === 1) {
-                const payee = state.contacts.find(c => c.id === distinctPayees[0]) || owner;
+                const payee = contacts.find(c => c.id === distinctPayees[0]) || owner;
                 setWhatsAppPayee(payee);
                 setShowWhatsAppConfirm(true);
             } else {
@@ -800,7 +821,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
 
         if (!buildingId && !preSelectedBuildingId) {
             const singleProp = propertyBreakdown.length === 1 ? propertyBreakdown[0] : null;
-            const propBuildingId = singleProp ? state.properties.find(p => p.id === singleProp.propertyId)?.buildingId : undefined;
+            const propBuildingId = singleProp ? properties.find(p => p.id === singleProp.propertyId)?.buildingId : undefined;
             if (!propBuildingId) {
                 await showAlert('Please assign a building to this payout.');
                 return;
@@ -808,7 +829,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         }
 
         const payoutPropertyId = propertyBreakdown.length === 1 ? propertyBreakdown[0].propertyId : undefined;
-        const singleProp = propertyBreakdown.length === 1 ? state.properties.find(p => p.id === propertyBreakdown[0].propertyId) : null;
+        const singleProp = propertyBreakdown.length === 1 ? properties.find(p => p.id === propertyBreakdown[0].propertyId) : null;
         const payoutTransaction = buildTransaction({
             amount: parseFloat(amount),
             buildingId: buildingId || preSelectedBuildingId || singleProp?.buildingId,
@@ -828,13 +849,13 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         const payee = whatsAppPayee || owner;
         if (!payee) return;
         const payoutLabel = payoutType === 'Security' ? 'Security Deposit Payout' : 'Owner Income Payout';
-        const template = state.whatsAppTemplates.payoutConfirmation || 'Dear {contactName}, a {payoutType} payment of {amount} has been made to you. Reference: {reference}';
+        const template = whatsAppTemplates.payoutConfirmation || 'Dear {contactName}, a {payoutType} payment of {amount} has been made to you. Reference: {reference}';
         const message = WhatsAppService.generatePayoutConfirmation(
             template, payee, lastPaidAmount, payoutLabel, lastReference
         );
         sendOrOpenWhatsApp(
             { contact: payee, message, phoneNumber: payee.contactNo || undefined },
-            () => state.whatsAppMode,
+            () => appWhatsAppMode,
             openChat
         );
         setShowWhatsAppConfirm(false);
@@ -1299,7 +1320,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                             </div>
                             {preSelectedBuildingId && (
                                 <p className="text-xs text-indigo-600 mt-2 font-medium">
-                                    * Filtered by Building: {state.buildings.find(b => b.id === preSelectedBuildingId)?.name}
+                                    * Filtered by Building: {buildings.find(b => b.id === preSelectedBuildingId)?.name}
                                 </p>
                             )}
                         </div>
@@ -1324,7 +1345,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                         {preSelectedBuildingId ? (
                             <Input
                                 label="Assigned Building"
-                                value={state.buildings.find(b => b.id === preSelectedBuildingId)?.name || ''}
+                                value={buildings.find(b => b.id === preSelectedBuildingId)?.name || ''}
                                 disabled
                             />
                         ) : (

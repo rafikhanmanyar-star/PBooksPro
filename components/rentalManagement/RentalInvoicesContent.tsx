@@ -111,12 +111,12 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   }, [invoices, properties]);
 
   const baseInvoices = useMemo(() => {
-    let invoices = invoices.filter(inv =>
+    let filtered = invoices.filter(inv =>
       RENTAL_INVOICE_TYPES.includes(inv.invoiceType)
     );
 
     if (entityFilterId && entityFilterId !== 'all' && groupBy === 'building') {
-      invoices = invoices.filter(inv => {
+      filtered = filtered.filter(inv => {
         if (inv.buildingId === entityFilterId) return true;
         if (inv.propertyId) {
           return propertiesById.get(inv.propertyId)?.buildingId === entityFilterId;
@@ -127,7 +127,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
 
     if (debouncedSearch.trim()) {
       const q = debouncedSearch.toLowerCase();
-      invoices = invoices.filter(inv => {
+      filtered = filtered.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
         if (contactsById.get(inv.contactId ?? '')?.name?.toLowerCase().includes(q)) return true;
         if (inv.description?.toLowerCase().includes(q)) return true;
@@ -143,14 +143,14 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     }
 
     if (statusFilter !== 'All') {
-      invoices = invoices.filter(inv => inv.status === statusFilter);
+      filtered = filtered.filter(inv => inv.status === statusFilter);
     }
 
     if (entityFilterId && entityFilterId !== 'all') {
       if (groupBy === 'tenant') {
-        invoices = invoices.filter(inv => inv.contactId === entityFilterId);
+        filtered = filtered.filter(inv => inv.contactId === entityFilterId);
       } else if (groupBy === 'owner') {
-        invoices = invoices.filter(inv => {
+        filtered = filtered.filter(inv => {
           const pid = inv.propertyId!;
           const ra = inv.agreementId ? rentalAgreements.find(a => a.id === inv.agreementId) : undefined;
           if (propertiesById.get(pid)?.ownerId === entityFilterId) return true;
@@ -158,11 +158,11 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           return false;
         });
       } else if (groupBy === 'property') {
-        invoices = invoices.filter(inv => inv.propertyId === entityFilterId);
+        filtered = filtered.filter(inv => inv.propertyId === entityFilterId);
       }
     }
 
-    return invoices;
+    return filtered;
   }, [
     invoices,
     contactsById,
@@ -176,11 +176,11 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   ]);
 
   const invoicesWithoutStatusFilter = useMemo(() => {
-    let invoices = invoices.filter(inv =>
+    let filtered = invoices.filter(inv =>
       RENTAL_INVOICE_TYPES.includes(inv.invoiceType)
     );
     if (entityFilterId && entityFilterId !== 'all' && groupBy === 'building') {
-      invoices = invoices.filter(inv => {
+      filtered = filtered.filter(inv => {
         if (inv.buildingId === entityFilterId) return true;
         if (inv.propertyId) {
           return propertiesById.get(inv.propertyId)?.buildingId === entityFilterId;
@@ -190,7 +190,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     }
     if (debouncedSearch.trim()) {
       const q = debouncedSearch.toLowerCase();
-      invoices = invoices.filter(inv => {
+      filtered = filtered.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
         if (contactsById.get(inv.contactId ?? '')?.name?.toLowerCase().includes(q)) return true;
         if (inv.description?.toLowerCase().includes(q)) return true;
@@ -201,24 +201,24 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       });
     }
     if (entityFilterId && entityFilterId !== 'all') {
-      if (groupBy === 'tenant') invoices = invoices.filter(inv => inv.contactId === entityFilterId);
+      if (groupBy === 'tenant') filtered = filtered.filter(inv => inv.contactId === entityFilterId);
       else if (groupBy === 'owner')
-        invoices = invoices.filter(inv => {
+        filtered = filtered.filter(inv => {
           const pid = inv.propertyId!;
           const ra = inv.agreementId ? rentalAgreements.find(a => a.id === inv.agreementId) : undefined;
           if (propertiesById.get(pid)?.ownerId === entityFilterId) return true;
           if (ra?.ownerId === entityFilterId) return true;
           return false;
         });
-      else if (groupBy === 'property') invoices = invoices.filter(inv => inv.propertyId === entityFilterId);
+      else if (groupBy === 'property') filtered = filtered.filter(inv => inv.propertyId === entityFilterId);
       else if (groupBy === 'building') {
-        invoices = invoices.filter(inv => {
+        filtered = filtered.filter(inv => {
           if (inv.buildingId === entityFilterId) return true;
           return propertiesById.get(inv.propertyId!)?.buildingId === entityFilterId;
         });
       }
     }
-    return invoices;
+    return filtered;
   }, [invoices, contactsById, propertiesById, debouncedSearch, groupBy, entityFilterId, rentalAgreements]);
 
   const financialRecords = useMemo<FinancialRecord[]>(() => {

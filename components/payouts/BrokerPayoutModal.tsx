@@ -1,8 +1,20 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { useAppContext, _getAppState } from '../../context/AppContext';
-import { Contact, TransactionType, Transaction, AccountType } from '../../types';
+import { _getAppState } from '../../context/appStateStore';
+import {
+    useAccounts,
+    useBuildings,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useProjects,
+    useProperties,
+    useRentalAgreements,
+    useStateSelector,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
+import { Contact, TransactionType, Transaction, AccountType, type AppState } from '../../types';
 import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -57,7 +69,33 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
     scopePropertyIds,
     aggregateRentalByProperty = false,
 }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const properties = useProperties();
+    const buildings = useBuildings();
+    const contacts = useContacts();
+    const rentalAgreements = useRentalAgreements();
+    const projectAgreements = useStateSelector((s) => s.projectAgreements);
+    const transactions = useTransactions();
+    const projects = useProjects();
+    const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
+    const appWhatsAppMode = useStateSelector((s) => s.whatsAppMode);
+    const dispatch = useDispatchOnly();
+    const engineState = useMemo(
+        () =>
+            ({
+                accounts,
+                categories,
+                properties,
+                buildings,
+                contacts,
+                rentalAgreements,
+                projectAgreements,
+                transactions,
+                projects,
+            }) as AppState,
+        [accounts, categories, properties, buildings, contacts, rentalAgreements, projectAgreements, transactions, projects]
+    );
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
     const [items, setItems] = useState<CommissionItem[]>([]);
@@ -68,7 +106,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
     const [lastPaidAmount, setLastPaidAmount] = useState(0);
     
     // Filter for Bank Accounts (exclude Internal Clearing)
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
+    const userSelectableAccounts = useMemo(() => accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [accounts]);
 
     const rentalPropertyScope = useMemo(() => {
         if (scopePropertyIds && scopePropertyIds.size > 0) return scopePropertyIds;
@@ -82,8 +120,8 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
             setAccountId(cashAccount?.id || userSelectableAccounts[0]?.id || '');
             setPaymentParticulars('');
             
-            const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-            const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+            const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
+            const rebateCategory = categories.find(c => c.name === 'Rebate Amount');
             const feeCatId = brokerFeeCategory?.id;
             const rebateCatId = rebateCategory?.id;
 
@@ -92,14 +130,14 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
             // 1. Rental Agreements (exclude renewed agreements so broker is not charged again on renewal)
             if (!context || context === 'Rental') {
                 if (aggregateRentalByProperty) {
-                    let rows = getBrokerPropertyBalanceRows(state, broker.id);
+                    let rows = getBrokerPropertyBalanceRows(engineState, broker.id);
                     if (rentalPropertyScope) {
                         rows = rows.filter((r) => rentalPropertyScope.has(String(r.propertyId)));
                     }
                     for (const r of rows) {
-                        const property = state.properties.find((p) => p.id === r.propertyId);
+                        const property = properties.find((p) => p.id === r.propertyId);
                         const owner = property
-                            ? state.contacts.find((c) => c.id === property.ownerId)
+                            ? contacts.find((c) => c.id === property.ownerId)
                             : null;
                         const splitAgreements = r.agreements.map((a) => ({
                             agreementId: a.agreementId,
@@ -120,16 +158,16 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
                         });
                     }
                 } else {
-                    state.rentalAgreements.forEach(ra => {
+                    rentalAgreements.forEach(ra => {
                         if (ra.previousAgreementId) return;
                         if (rentalPropertyScope) {
                             if (!ra.propertyId || !rentalPropertyScope.has(String(ra.propertyId))) return;
                         }
                         if (ra.brokerId === broker.id && (ra.brokerFee || 0) > 0) {
-                            const property = state.properties.find(p => p.id === ra.propertyId);
-                            const owner = state.contacts.find(c => c.id === property?.ownerId);
+                            const property = properties.find(p => p.id === ra.propertyId);
+                            const owner = contacts.find(c => c.id === property?.ownerId);
                             
-                            const paidAlready = state.transactions
+                            const paidAlready = transactions
                                 .filter(tx => {
                                     if (tx.type !== TransactionType.EXPENSE) return false;
                                     if (!(tx.categoryId === feeCatId || tx.categoryId === rebateCatId)) return false;
@@ -163,12 +201,12 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
 
             // 2. Project Agreements
             if (!context || context === 'Project') {
-                state.projectAgreements.forEach(pa => {
+                projectAgreements.forEach(pa => {
                     if (pa.rebateBrokerId === broker.id && (pa.rebateAmount || 0) > 0) {
-                        const project = state.projects.find(p => p.id === pa.projectId);
-                        const client = state.contacts.find(c => c.id === pa.clientId);
+                        const project = projects.find(p => p.id === pa.projectId);
+                        const client = contacts.find(c => c.id === pa.clientId);
 
-                        const paidAlready = state.transactions
+                        const paidAlready = transactions
                             .filter(tx =>
                                 tx.type === TransactionType.EXPENSE &&
                                 (tx.categoryId === feeCatId || tx.categoryId === rebateCatId) &&
@@ -198,7 +236,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
 
             setItems(newItems);
         }
-    }, [isOpen, broker, context, aggregateRentalByProperty, rentalPropertyScope, state.rentalAgreements, state.projectAgreements, state.transactions, state.properties, state.contacts, state.categories, userSelectableAccounts, state.projects]);
+    }, [isOpen, broker, context, aggregateRentalByProperty, rentalPropertyScope, rentalAgreements, projectAgreements, transactions, properties, contacts, categories, userSelectableAccounts, projects, engineState]);
 
     const selectAllRef = useRef<HTMLInputElement>(null);
     const allSelected = items.length > 0 && items.every(i => i.isSelected);
@@ -238,14 +276,14 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
             return;
         }
 
-        const payoutAccount = state.accounts.find(a => a.id === accountId);
+        const payoutAccount = accounts.find(a => a.id === accountId);
         if (!payoutAccount) {
             await showAlert(`Error: Please select a valid account to pay from.`);
             return;
         }
 
-        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+        const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
+        const rebateCategory = categories.find(c => c.name === 'Rebate Amount');
         
         const selectedItems = items.filter(i => i.isSelected && i.paymentAmount > 0);
         const particularsNote = paymentParticulars.trim();
@@ -273,7 +311,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
                 categoryId,
                 agreementId: opts.agreementId,
                 propertyId: opts.propertyId,
-                buildingId: state.properties.find(p => p.id === opts.propertyId)?.buildingId,
+                buildingId: properties.find(p => p.id === opts.propertyId)?.buildingId,
             };
             newTransactions.push({
                 ...payoutTransaction,
@@ -334,7 +372,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
                 agreementId: item.agreementId,
                 propertyId: item.type === 'Rental' ? item.entityId : undefined,
                 projectId: item.type === 'Project' ? item.entityId : undefined,
-                buildingId: item.type === 'Rental' ? state.properties.find(p => p.id === item.entityId)?.buildingId : undefined
+                buildingId: item.type === 'Rental' ? properties.find(p => p.id === item.entityId)?.buildingId : undefined
             };
             newTransactions.push({
                 ...payoutTransaction,
@@ -382,13 +420,13 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
 
     const handleSendWhatsAppConfirmation = () => {
         if (!broker) return;
-        const template = state.whatsAppTemplates.payoutConfirmation || 'Dear {contactName}, a {payoutType} payment of {amount} has been made to you. Reference: {reference}';
+        const template = whatsAppTemplates.payoutConfirmation || 'Dear {contactName}, a {payoutType} payment of {amount} has been made to you. Reference: {reference}';
         const message = WhatsAppService.generatePayoutConfirmation(
             template, broker, lastPaidAmount, 'Broker Commission'
         );
         sendOrOpenWhatsApp(
             { contact: broker, message, phoneNumber: broker.contactNo || undefined },
-            () => state.whatsAppMode,
+            () => appWhatsAppMode,
             openChat
         );
         setShowWhatsAppConfirm(false);

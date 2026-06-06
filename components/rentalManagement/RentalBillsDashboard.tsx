@@ -333,20 +333,20 @@ const RentalBillsDashboard: React.FC = () => {
       const vendor = vendors?.find(v => v.id === bill.vendorId);
       if (!vendor?.contactNo) { showAlert('Vendor does not have a phone number saved.'); return; }
       contact = vendor;
-      message = WhatsAppService.generateBillPayment((whatsAppTemplates as Record<string, string | undefined>)?.billPayment, vendor, bill.billNumber, bill.paidAmount);
+      message = WhatsAppService.generateBillPayment(whatsAppTemplates.billPayment ?? '', vendor, bill.billNumber, bill.paidAmount);
     } else if (recipient === 'owner') {
       const prop = bill.propertyId ? properties.find(p => p.id === bill.propertyId) : null;
       const owner = prop?.ownerId ? contacts.find(c => c.id === prop.ownerId) : null;
       if (!owner?.contactNo) { showAlert('Owner does not have a phone number saved.'); return; }
       contact = owner;
-      const billToOwner = (whatsAppTemplates as Record<string, string | undefined>)?.billToOwner || (whatsAppTemplates as Record<string, string | undefined>)?.billPayment;
+      const billToOwner = whatsAppTemplates.billToOwner || whatsAppTemplates.billPayment || '';
       message = WhatsAppService.replaceTemplateVariables(billToOwner, { contactName: owner.name, billNumber: bill.billNumber, amount: `${CURRENCY} ${bill.amount.toLocaleString()}` });
     } else if (recipient === 'tenant') {
       const ra = bill.projectAgreementId ? rentalAgreements.find(ra => ra.id === bill.projectAgreementId) : null;
       const tenant = ra?.contactId ? contacts.find(c => c.id === ra.contactId) : null;
       if (!tenant?.contactNo) { showAlert('Tenant does not have a phone number saved.'); return; }
       contact = tenant;
-      const billToTenant = (whatsAppTemplates as Record<string, string | undefined>)?.billToTenant || (whatsAppTemplates as Record<string, string | undefined>)?.billPayment;
+      const billToTenant = whatsAppTemplates.billToTenant || whatsAppTemplates.billPayment || '';
       message = WhatsAppService.replaceTemplateVariables(billToTenant, { contactName: tenant.name, billNumber: bill.billNumber, amount: `${CURRENCY} ${bill.amount.toLocaleString()}`, note: 'This amount will be deducted from your security deposit.' });
     }
     if (contact && message) {
