@@ -71,25 +71,25 @@ function migrateFile(rel) {
         return `const ${stateAlias} = useFullAppState();\n    const ${dispatchAlias} = useDispatchOnly()`;
       }
     );
-  } else if (src.includes('{ state, dispatch } = useAppContext()')) {
+  } else if (src.match(/const\s+\{\s*state\s*,\s*dispatch\s*\}\s*=\s*useAppContext\(\)/)) {
     src = src.replace(
-      /\{\s*state\s*,\s*dispatch\s*\}\s*=\s*useAppContext\(\)/g,
+      /const\s+\{\s*state\s*,\s*dispatch\s*\}\s*=\s*useAppContext\(\)/g,
       'const state = useFullAppState();\n    const dispatch = useDispatchOnly()'
     );
     hooksNeeded.add('useFullAppState');
     hooksNeeded.add('useDispatchOnly');
-  } else if (src.includes('{ dispatch, state } = useAppContext()')) {
+  } else if (src.match(/const\s+\{\s*dispatch\s*,\s*state\s*\}\s*=\s*useAppContext\(\)/)) {
     src = src.replace(
-      /\{\s*dispatch\s*,\s*state\s*\}\s*=\s*useAppContext\(\)/g,
+      /const\s+\{\s*dispatch\s*,\s*state\s*\}\s*=\s*useAppContext\(\)/g,
       'const state = useFullAppState();\n    const dispatch = useDispatchOnly()'
     );
     hooksNeeded.add('useFullAppState');
     hooksNeeded.add('useDispatchOnly');
-  } else if (src.match(/\{\s*state\s*\}\s*=\s*useAppContext\(\)/)) {
-    src = src.replace(/\{\s*state\s*\}\s*=\s*useAppContext\(\)/g, 'const state = useFullAppState()');
+  } else if (src.match(/const\s+\{\s*state\s*\}\s*=\s*useAppContext\(\)/)) {
+    src = src.replace(/const\s+\{\s*state\s*\}\s*=\s*useAppContext\(\)/g, 'const state = useFullAppState()');
     hooksNeeded.add('useFullAppState');
-  } else if (src.match(/\{\s*dispatch\s*\}\s*=\s*useAppContext\(\)/)) {
-    src = src.replace(/\{\s*dispatch\s*\}\s*=\s*useAppContext\(\)/g, 'const dispatch = useDispatchOnly()');
+  } else if (src.match(/const\s+\{\s*dispatch\s*\}\s*=\s*useAppContext\(\)/)) {
+    src = src.replace(/const\s+\{\s*dispatch\s*\}\s*=\s*useAppContext\(\)/g, 'const dispatch = useDispatchOnly()');
     hooksNeeded.add('useDispatchOnly');
   } else {
     return false;

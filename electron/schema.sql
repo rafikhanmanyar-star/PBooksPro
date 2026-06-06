@@ -867,6 +867,9 @@ CREATE INDEX IF NOT EXISTS idx_rental_agreements_contact_id ON rental_agreements
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_property_id ON rental_agreements(property_id);
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant ON rental_agreements(tenant_id);
 
+-- Sales Returns
+CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
+
 -- Properties
 CREATE INDEX IF NOT EXISTS idx_properties_building ON properties(building_id);
 CREATE INDEX IF NOT EXISTS idx_properties_owner ON properties(owner_id);

@@ -69,7 +69,7 @@ export function listPersonalTransactions(
     categoryId?: string;
     accountId?: string;
   } = {},
-  /** When API mode, pass state.personalTransactions from useAppContext. */
+  /** When API mode, pass personalTransactions from usePersonalTransactions() or _getAppState(). */
   stateRows?: PersonalTransactionEntry[]
 ): PersonalTransactionRow[] {
   if (!isLocalOnlyMode() && stateRows) {
