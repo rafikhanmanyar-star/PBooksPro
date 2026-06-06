@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useRentalAgreements } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -13,14 +13,15 @@ import Button from '../ui/Button';
  * API mode: runs server SQL + sync. Local-only: patches in-memory rows from previous_agreement chain.
  */
 const RentalAgreementContactRepairCard: React.FC = () => {
-  const { state, dispatch } = useAppContext();
+  const rentalAgreements = useRentalAgreements();
+  const dispatch = useDispatchOnly();
   const { isAuthenticated } = useAuth();
   const { showToast, showConfirm } = useNotification();
   const [busy, setBusy] = useState(false);
 
   const localPatches = useMemo(
-    () => computeRentalAgreementContactRepairs(state.rentalAgreements),
-    [state.rentalAgreements]
+    () => computeRentalAgreementContactRepairs(rentalAgreements),
+    [rentalAgreements]
   );
 
   const useApi = !isLocalOnlyMode() && isAuthenticated;

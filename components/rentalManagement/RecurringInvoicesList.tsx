@@ -1,6 +1,15 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBuildings,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useInvoices,
+    useProperties,
+    useRentalAgreements,
+    useStateSelector,
+} from '../../hooks/useSelectiveState';
 import { RecurringInvoiceTemplate, Invoice, InvoiceType, InvoiceStatus, RentalAgreementStatus } from '../../types';
 import Button from '../ui/Button';
 import { ICONS, CURRENCY } from '../../constants';

@@ -1,6 +1,15 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+  useBuildings,
+  useCategories,
+  useContacts,
+  useDispatchOnly,
+  useInvoices,
+  useProperties,
+  useRentalAgreements,
+  useStateSelector,
+} from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { Invoice, InvoiceStatus, InvoiceType } from '../../types';
 import Input from '../ui/Input';
@@ -15,28 +24,34 @@ interface CreateRentInvoiceFormProps {
 }
 
 const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyId, onClose }) => {
-  const { state, dispatch } = useAppContext();
+  const properties = useProperties();
+  const buildings = useBuildings();
+  const contacts = useContacts();
+  const rentalAgreements = useRentalAgreements();
+  const invoices = useInvoices();
+  const categories = useCategories();
+  const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
+  const dispatch = useDispatchOnly();
   const { showToast, showAlert } = useNotification();
-  const { rentalInvoiceSettings } = state;
 
   // --- Resolve property and related data ---
-  const property = useMemo(() => state.properties.find(p => p.id === propertyId), [propertyId, state.properties]);
-  const building = useMemo(() => property ? state.buildings.find(b => b.id === property.buildingId) : null, [property, state.buildings]);
-  const owner = useMemo(() => property?.ownerId ? state.contacts.find(c => c.id === property.ownerId) : null, [property, state.contacts]);
+  const property = useMemo(() => properties.find(p => p.id === propertyId), [propertyId, properties]);
+  const building = useMemo(() => property ? buildings.find(b => b.id === property.buildingId) : null, [property, buildings]);
+  const owner = useMemo(() => property?.ownerId ? contacts.find(c => c.id === property.ownerId) : null, [property, contacts]);
 
   // Find active agreement for this property
   const agreement = useMemo(() => {
-    return state.rentalAgreements.find(ra => ra.propertyId === propertyId && ra.status === 'Active');
-  }, [propertyId, state.rentalAgreements]);
+    return rentalAgreements.find(ra => ra.propertyId === propertyId && ra.status === 'Active');
+  }, [propertyId, rentalAgreements]);
 
-  const tenant = useMemo(() => agreement ? state.contacts.find(c => c.id === agreement.contactId) : null, [agreement, state.contacts]);
+  const tenant = useMemo(() => agreement ? contacts.find(c => c.id === agreement.contactId) : null, [agreement, contacts]);
 
   // --- Generate next invoice number ---
   const generateNextInvoiceNumber = () => {
     if (!rentalInvoiceSettings) return '';
     const { prefix, nextNumber, padding } = rentalInvoiceSettings;
     let maxNum = nextNumber;
-    state.invoices.forEach(inv => {
+    invoices.forEach(inv => {
       if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
         const part = inv.invoiceNumber.substring(prefix.length);
         if (/^\d+$/.test(part)) {
@@ -96,7 +111,7 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
     }
 
     // Check duplicate invoice number
-    const isDuplicate = state.invoices.some(
+    const isDuplicate = invoices.some(
       inv => inv.invoiceNumber && inv.invoiceNumber.trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
     );
     if (isDuplicate) {
@@ -105,7 +120,7 @@ const CreateRentInvoiceForm: React.FC<CreateRentInvoiceFormProps> = ({ propertyI
     }
 
     // Find Rental Income category
-    const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+    const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
     if (!rentalIncomeCategory) {
       await showAlert("'Rental Income' category not found. Please check settings.");
       return;

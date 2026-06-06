@@ -32,48 +32,80 @@ npm run test:local-only
 
 ## Build installable app (staging)
 
+**Branch:** `staging` · **Database:** `pbooks_staging` · **API port:** `3001` (same machine as production)
+
 ```powershell
+# One-time: copy .env.staging.example → .env.staging and set DATABASE_URL to pbooks_staging
 npm run deploy:staging
 ```
 
 **What it does:**
-1. **Bumps patch version** in `package.json` (e.g. 1.2.56 → 1.2.57) via `npm version patch --no-git-tag-version`
-2. Extracts schema, builds the app with `VITE_LOCAL_ONLY=true` and `VITE_STAGING=true`
-3. Builds the **staging** Windows installer with electron-builder (product name: "PBooks Pro (Staging)")
-4. Output: `release-staging/` (e.g. `PBooks-Pro-Staging-Setup-1.2.57.exe`, `latest.yml`, `.exe.blockmap`)
-5. **Publishes to GitHub** (if `GH_TOKEN` or `GITHUB_TOKEN` is set): creates a **prerelease** with tag `v1.2.57`, uploads the .exe, latest.yml, and blockmap so installed staging apps can auto-update from GitHub
-6. Installed staging app uses `PBooksPro-Staging.db` in the same AppData folder
+1. Verifies you are on the `staging` branch
+2. Loads `.env.staging` (`DATABASE_URL=.../pbooks_staging`, `PORT=3001`, `VITE_API_URL=http://127.0.0.1:3001/api`)
+3. Runs PostgreSQL migrations against **pbooks_staging**
+4. Bumps patch version in `package.json`
+5. Builds **PBooks Pro API Server (Staging)** → `release-api-server-staging/`
+6. Builds **PBooks Pro Client (Staging)** (PostgreSQL API mode) → `release-api-client-staging/`
+7. Publishes to GitHub as a **prerelease** (if `GH_TOKEN` is set)
+8. Pushes branch + tag to `origin/staging`
 
-**Best practice:** Run from your `staging` branch so the new tag/version aligns with that branch. Optionally push the version commit and tag: `git push origin HEAD:staging && git push origin v1.2.57`
+**Test locally before deploy:**
+
+```powershell
+npm run test:staging
+```
+
+Runs migrations on `pbooks_staging`, starts API on port **3001**, launches Electron client against staging API.
+
+**Both environments on one machine:** production API on port **3000** (`pbookspro`), staging API on port **3001** (`pbooks_staging`).
 
 ---
 
 ## Build installable app (production)
 
+**Branch:** `main` · **Database:** `pbookspro` · **API port:** `3000`
+
 ```powershell
+# One-time: copy .env.production.example → .env.production
 npm run deploy:production
 ```
 
 **What it does:**
-1. **Bumps patch version** in `package.json` (e.g. 1.2.82 → 1.2.83) so production gets its **own tag** and is published as a **full release** (not prerelease). That way the “latest” release on GitHub is always the production one.
-2. Extracts schema, builds backend, stages API-server resources.
-3. **First Vite build:** `VITE_LOCAL_ONLY=true` (offline SQLite desktop).
-4. Builds **PBooks Pro API Server** NSIS → `release-api-server/` (`PBooks-Pro-API-Server-Setup-*.exe`).
-5. Builds **main desktop app** NSIS (local-only) → `release/` (`PBooks-Pro-Setup-*.exe`, `latest.yml`, blockmap). **This installer does not connect to PostgreSQL**; it uses local SQLite only.
-6. **Second Vite build:** `VITE_LOCAL_ONLY=false`, then **PBooks Pro Client** NSIS → `release-api-client/` (`PBooks-Pro-Client-Setup-*.exe`). Use this + a running API server for LAN / PostgreSQL.
-7. **Publishes to GitHub** (if `GH_TOKEN` or `GITHUB_TOKEN` is set): the main step uploads `release/` assets (client auto-update). The script `upload-api-server-to-github-release.cjs` attaches the API server `.exe` to the same release tag.
-8. Installed **PBooks Pro** (local-only) uses `PBooksPro.db` in AppData; **PBooks Pro Client** talks to your API (configure base URL in the app if needed).
+1. Verifies you are on the `main` branch
+2. Loads `.env.production` (`DATABASE_URL=.../pbookspro`)
+3. Runs PostgreSQL migrations against **pbookspro**
+4. Bumps patch version
+5. Builds **PBooks Pro API Server** → `release-api-server/`
+6. Builds **PBooks Pro Client** → `release-api-client/`
+7. Publishes to GitHub as a **full release**
+8. Pushes branch + tag to `origin/main`
 
-**Important:** `release/PBooks-Pro-Setup-*.exe` is **not** “missing” the API server by mistake — it is the **offline** product. For PostgreSQL + API, install **PBooks Pro API Server** (or host `backend/`), then install **PBooks Pro Client** from `release-api-client/`, or use the web app against the API.
+**Typical promotion workflow:**
 
-**Typical workflow:** Run `npm run deploy:staging` (bumps to 1.2.82, builds and publishes **prerelease**) → test → run `npm run deploy:production` (bumps to 1.2.83, builds and publishes **full release**). The latest release on GitHub will be v1.2.83 (production). Run production from your `main` branch; optionally push version and tag: `git push origin HEAD:main && git push origin v1.2.83`.
+```powershell
+git checkout staging
+# develop, commit, push
+git push origin staging
+npm run deploy:staging
+# test against pbooks_staging on port 3001
+
+git checkout main
+git merge staging --no-ff
+git push origin main
+npm run deploy:production
+```
+
+**GitHub CI:** pushes to `main` run `.github/workflows/production.yml` (backend build + tests + frontend build). Staging deploy remains manual.
+
+**Important:** Installers are **PostgreSQL API mode** (API Server + Client). For offline SQLite desktop, use `npm run electron:installer` separately.
 
 ---
 
 ## Auto-update from GitHub
 
-- **Production** installs check the GitHub repo’s **latest release** (tag `vX.Y.Z`). If a newer version exists, the app offers to download and install (using latest.yml and the blockmap for efficient updates).
-- **Staging** installs ("PBooks Pro (Staging)") check **prereleases** only. They only see staging (prerelease) releases, not production (full) releases.
+- **Production client** checks the GitHub repo’s **latest full release** (tag `vX.Y.Z`).
+- **Staging client** ("PBooks Pro Client (Staging)") checks **prereleases** only — it will not pick up production releases.
+- **API Server (Staging)** uses update channel `api-server-staging`; production API Server uses channel `api-server`.
 - In `package.json`, set **repository** to your real GitHub repo (e.g. `"repository": { "type": "git", "url": "https://github.com/YourOrg/PBooksPro.git" }`). electron-builder and electron-updater use this to publish and to resolve the update feed.
 - For **publish** to work, set a GitHub token with `repo` scope: `GH_TOKEN` or `GITHUB_TOKEN` (e.g. in your environment or in a `.env` file that your shell loads). Without the token, the build still runs and outputs to `release/` or `release-staging/`, but nothing is uploaded to GitHub.
 
@@ -91,7 +123,12 @@ npm run deploy:production
 | `npm run github:clean-releases` | Delete old GitHub releases (keeps latest 10; use `-- --keep 5` to keep 5). Saves repo storage. Requires `GH_TOKEN` or `GITHUB_TOKEN`. |
 | `npm run prepare-local-db` | Rewrite tenant/user IDs in existing DB for local-only use |
 | `npm run clear-local-transactions` | Clear transactions (and related data) from local DB |
-| `npm run db:migrate:lan` | Run **PostgreSQL** migrations in `database/migrations/` (uses root `.env` → `DATABASE_URL`) |
+| `npm run db:migrate:lan` | Run PostgreSQL migrations using root `.env` |
+| `npm run db:migrate:staging` | Migrate **pbooks_staging** (`.env.staging`) |
+| `npm run db:migrate:production` | Migrate **pbookspro** (`.env.production`) |
+| `npm run test:staging` | Staging stack: pbooks_staging + API :3001 + Electron client |
+| `npm run start:backend:staging` | Run API against `.env.staging` (port 3001) |
+| `npm run start:backend:production` | Run API against `.env.production` (port 3000) |
 | `npm run migrate:sqlite-to-postgres` | Copy tenant data from **SQLite backup** → PostgreSQL (default path: `F:\DB Backup pbookspro\rkbuilders_14_3_2026_backup_20260329_142110`; override with `--sqlite` or `SQLITE_BACKUP_PATH`) |
 | `npm run migrate:sqlite-to-postgres:transactions` | Re-import **transactions** only for the target tenant (same defaults) |
 | `npm run repair:pg-categories` | Repair `category_id` on bills/transactions in PostgreSQL from the same SQLite backup (same defaults) |

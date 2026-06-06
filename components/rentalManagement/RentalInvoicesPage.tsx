@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, memo, startTransition } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly } from '../../hooks/useSelectiveState';
 import { ImportType } from '../../services/importService';
 import { ICONS } from '../../constants';
 import RentalARDashboard from './RentalARDashboard';
@@ -44,7 +44,7 @@ const RentalInvoicesBodySkeleton: React.FC = () => (
 );
 
 const RentalInvoicesPage: React.FC<RentalInvoicesPageProps> = () => {
-  const { dispatch } = useAppContext();
+  const dispatch = useDispatchOnly();
   const invoices = useInvoices();
   const queryClient = useQueryClient();
 

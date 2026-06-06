@@ -1,6 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBuildings,
+    useContacts,
+    useDispatchOnly,
+    useProperties,
+} from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import Button from '../ui/Button';
@@ -32,7 +37,10 @@ export interface RentalSettingsPageProps {
 }
 
 const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRentalModule = false }) => {
-    const { state, dispatch } = useAppContext();
+    const buildings = useBuildings();
+    const properties = useProperties();
+    const contacts = useContacts();
+    const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const { showConfirm, showToast } = useNotification();
     const [activeCategory, setActiveCategory] = useState('buildings');
@@ -52,14 +60,14 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
     const filteredItems = useMemo(() => {
         const query = searchQuery.toLowerCase();
         switch (activeCategory) {
-            case 'buildings': return state.buildings.filter(i => i.name.toLowerCase().includes(query));
-            case 'properties': return state.properties.filter(i => i.name.toLowerCase().includes(query));
-            case 'tenants': return state.contacts.filter(i => i.type === ContactType.TENANT && i.name.toLowerCase().includes(query));
-            case 'owners': return state.contacts.filter(i => i.type === ContactType.OWNER && i.name.toLowerCase().includes(query));
-            case 'brokers': return state.contacts.filter(i => i.type === ContactType.BROKER && i.name.toLowerCase().includes(query));
+            case 'buildings': return buildings.filter(i => i.name.toLowerCase().includes(query));
+            case 'properties': return properties.filter(i => i.name.toLowerCase().includes(query));
+            case 'tenants': return contacts.filter(i => i.type === ContactType.TENANT && i.name.toLowerCase().includes(query));
+            case 'owners': return contacts.filter(i => i.type === ContactType.OWNER && i.name.toLowerCase().includes(query));
+            case 'brokers': return contacts.filter(i => i.type === ContactType.BROKER && i.name.toLowerCase().includes(query));
             default: return [];
         }
-    }, [activeCategory, searchQuery, state]);
+    }, [activeCategory, searchQuery, buildings, properties, contacts]);
 
     const handleAddNew = () => {
         setEditingItem({ type: activeCategory });
@@ -83,7 +91,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                     const api = getAppStateApiService();
                     if (editingItem.type === 'buildings') {
                         // Use latest version from live state (string/number id must match).
-                        const latest = state.buildings.find((b) => String(b.id) === String(id));
+                        const latest = buildings.find((b) => String(b.id) === String(id));
                         const ver =
                             parseApiEntityVersion((latest as { version?: unknown } | undefined)?.version) ??
                             parseApiEntityVersion((editingItem.item as { version?: unknown } | undefined)?.version);
@@ -103,7 +111,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                                 description: payload.description as string | undefined,
                                 monthlyServiceCharge: payload.monthlyServiceCharge as number | undefined,
                             };
-                            const latest = state.properties.find((p) => String(p.id) === String(id));
+                            const latest = properties.find((p) => String(p.id) === String(id));
                             let saved: Awaited<ReturnType<typeof api.updateProperty>> | undefined;
                             let lastErr: unknown;
                             const maxAttempts = 5;
@@ -344,9 +352,9 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                         onCancel={() => setEditingItem(null)} 
                         onDelete={handleDelete}
                         propertyToEdit={editingItem.item}
-                        contacts={state.contacts}
-                        buildings={state.buildings}
-                        properties={state.properties}
+                        contacts={contacts}
+                        buildings={buildings}
+                        properties={properties}
                     />
                 )}
                 {(editingItem?.type === 'tenants' || editingItem?.type === 'owners' || editingItem?.type === 'brokers') && (
@@ -355,7 +363,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                         onCancel={() => setEditingItem(null)} 
                         onDelete={handleDelete}
                         contactToEdit={editingItem.item}
-                        existingContacts={state.contacts}
+                        existingContacts={contacts}
                         fixedTypeForNew={editingItem.type === 'tenants' ? ContactType.TENANT : editingItem.type === 'owners' ? ContactType.OWNER : ContactType.BROKER}
                     />
                 )}

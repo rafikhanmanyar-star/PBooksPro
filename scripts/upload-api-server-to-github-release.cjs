@@ -96,8 +96,11 @@ async function main() {
   }
 
   const tag = `v${version}`;
-  const releaseDir = path.join(root, 'release-api-server');
-  const base = `PBooks-Pro-API-Server-Setup-${version}`;
+  const releaseDirName = process.env.PBOOKS_RELEASE_API_SERVER_DIR || 'release-api-server';
+  const setupPrefix =
+    process.env.PBOOKS_API_SERVER_SETUP_PREFIX || 'PBooks-Pro-API-Server-Setup';
+  const releaseDir = path.join(root, releaseDirName);
+  const base = `${setupPrefix}-${version}`;
   const exe = path.join(releaseDir, `${base}.exe`);
   const blockmap = path.join(releaseDir, `${base}.exe.blockmap`);
 
@@ -122,21 +125,28 @@ async function main() {
   }
 
   const rid = release.id;
-  const channelYml = path.join(releaseDir, 'api-server.yml');
+  const channelYmlName = process.env.PBOOKS_API_SERVER_CHANNEL_YML || 'api-server.yml';
+  const channelYml = path.join(releaseDir, channelYmlName);
   const latestYml = path.join(releaseDir, 'latest.yml');
-  const updateYml = fs.existsSync(channelYml) ? channelYml : latestYml;
-  if (!fs.existsSync(updateYml)) {
+  const updateYml = fs.existsSync(channelYml)
+    ? channelYml
+    : fs.existsSync(latestYml)
+      ? latestYml
+      : null;
+  if (!updateYml) {
     console.error(
-      '[upload-api-server] Missing update metadata (expected api-server.yml or latest.yml) in',
+      '[upload-api-server] Missing update metadata (expected',
+      channelYmlName,
+      'or latest.yml) in',
       releaseDir,
-      '\nRebuild with: npm run electron:installer:api-server (or your deploy step) so electron-builder emits the channel yml + blockmap.'
+      '\nRebuild with electron-builder so the channel yml + blockmap are emitted.'
     );
     process.exit(1);
   }
   /** @type {{ name: string, file: string }[]} */
   const uploads = [{ name: `${base}.exe`, file: exe }];
   if (fs.existsSync(blockmap)) uploads.push({ name: `${base}.exe.blockmap`, file: blockmap });
-  uploads.push({ name: 'api-server.yml', file: updateYml });
+  uploads.push({ name: channelYmlName, file: updateYml });
 
   for (const { name } of uploads) {
     const existing = (release.assets || []).find((a) => a.name === name);

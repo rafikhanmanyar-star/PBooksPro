@@ -3,7 +3,7 @@ import React, { useState, useEffect, useLayoutEffect, memo, Suspense, startTrans
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import { Page } from '../../types';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import useLocalStorage from '../../hooks/useLocalStorage';
 
 /** Lazy-load each rental sub-page so opening the module does not parse one giant bundle on the main thread. */
@@ -109,8 +109,8 @@ function isPersistedOperationalView(v: RentalView): v is PersistedOperationalVie
 }
 
 const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage }) => {
-    const { state, dispatch } = useAppContext();
-    const { initialTabs } = state;
+    const initialTabs = useStateSelector((s) => s.initialTabs);
+    const dispatch = useDispatchOnly();
 
     const [activeView, setActiveView] = useLocalStorage<RentalView>('rentalManagement_activeView', 'Agreements');
     const [reportsExpanded, setReportsExpanded] = useState(true);

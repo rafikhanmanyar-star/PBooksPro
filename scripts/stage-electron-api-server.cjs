@@ -50,6 +50,8 @@ for (const name of fs.readdirSync(migrationsSrc)) {
 fs.copyFileSync(path.join(root, 'package.json'), path.join(out, 'package.json'));
 
 const envExample = `# PBooks Pro API (Electron server) — copy to backend/.env next to the installed app resources.
+# Production: DATABASE_URL=.../pbookspro  PORT=3000
+# Staging:    DATABASE_URL=.../pbooks_staging  PORT=3001
 
 DATABASE_URL=postgresql://USER:PASSWORD@127.0.0.1:5432/pbookspro
 JWT_SECRET=change-me-to-a-long-random-string
