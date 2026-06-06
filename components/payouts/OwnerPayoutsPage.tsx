@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useRentalReportAppState, useStateSelector } from '../../hooks/useSelectiveState';
 import { ContactType, TransactionType, Transaction, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatAmountNoTrailingZeros, formatCurrency } from '../../utils/numberUtils';
@@ -68,7 +68,10 @@ type SortKey = 'name' | 'category' | 'collected' | 'paid' | 'balance';
 // --- Component ---
 
 const OwnerPayoutsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const state = useRentalReportAppState();
+    const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
+    const appWhatsAppMode = useStateSelector((s) => s.whatsAppMode);
+    const dispatch = useDispatchOnly();
     const { openChat } = useWhatsApp();
     const { showToast } = useNotification();
     const { isAuthenticated } = useAuth();
@@ -1119,7 +1122,7 @@ const OwnerPayoutsPage: React.FC = () => {
     };
 
     const handleWhatsApp = (row: PayeeRow) => {
-        const templates = state.whatsAppTemplates;
+        const templates = whatsAppTemplates;
         let message = '';
 
         if (row.type === 'Broker') {
@@ -1140,7 +1143,7 @@ const OwnerPayoutsPage: React.FC = () => {
         const phoneNumber = row.contact.contactNo || '';
         sendOrOpenWhatsApp(
             { contact: row.contact, message, phoneNumber: phoneNumber || undefined },
-            () => state.whatsAppMode,
+            () => appWhatsAppMode,
             openChat
         );
     };

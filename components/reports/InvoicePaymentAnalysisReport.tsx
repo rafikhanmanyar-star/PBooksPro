@@ -30,7 +30,7 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
     const entities = useMemo(() => {
         if (groupBy === 'tenant') {
             // Filter contacts that have at least one rental invoice
-            const tenantIds = new Set(state.invoices.filter(i => i.invoiceType === InvoiceType.RENTAL).map(i => i.contactId));
+            const tenantIds = new Set(invoices.filter(i => i.invoiceType === InvoiceType.RENTAL).map(i => i.contactId));
             return contacts.filter(c => tenantIds.has(c.id)).map(c => ({ id: c.id, name: c.name }));
         } else if (groupBy === 'owner') {
             // Owners are linked to properties
@@ -39,11 +39,11 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
         } else {
             return properties.map(p => ({ id: p.id, name: p.name }));
         }
-    }, [groupBy, contacts, properties, state.invoices]);
+    }, [groupBy, contacts, properties, invoices]);
 
     // 2. Filter Data
     const { filteredInvoices, filteredPayments } = useMemo(() => {
-        let invoices = state.invoices.filter(i => i.invoiceType === InvoiceType.RENTAL);
+        let filtered = invoices.filter(i => i.invoiceType === InvoiceType.RENTAL);
 
         // Apply Date Range Filter
         const now = new Date();
@@ -52,9 +52,9 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
         const lastYearEnd = new Date(now.getFullYear() - 1, 11, 31);
 
         if (dateRange === 'this_year') {
-            invoices = invoices.filter(i => new Date(i.issueDate) >= startOfYear);
+            filtered = filtered.filter(i => new Date(i.issueDate) >= startOfYear);
         } else if (dateRange === 'last_year') {
-            invoices = invoices.filter(i => {
+            filtered = filtered.filter(i => {
                 const d = new Date(i.issueDate);
                 return d >= lastYearStart && d <= lastYearEnd;
             });
@@ -63,27 +63,24 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
         // Apply Entity Filter
         if (selectedEntityId !== 'all') {
             if (groupBy === 'tenant') {
-                invoices = invoices.filter(i => i.contactId === selectedEntityId);
+                filtered = filtered.filter(i => i.contactId === selectedEntityId);
             } else if (groupBy === 'owner') {
-                // Invoices -> Property -> Owner
                 const propertiesOwned = new Set(properties.filter(p => p.ownerId === selectedEntityId).map(p => p.id));
-                invoices = invoices.filter(i => i.propertyId && propertiesOwned.has(i.propertyId));
-            } else { // Property
-                invoices = invoices.filter(i => i.propertyId === selectedEntityId);
+                filtered = filtered.filter(i => i.propertyId && propertiesOwned.has(i.propertyId));
+            } else {
+                filtered = filtered.filter(i => i.propertyId === selectedEntityId);
             }
         }
 
-        // Get related payments (transactions)
-        // We filter transactions that are linked to these specific invoices
-        const invoiceIds = new Set(invoices.map(i => i.id));
+        const invoiceIds = new Set(filtered.map(i => i.id));
         const payments = transactions.filter(t =>
             t.type === TransactionType.INCOME &&
             t.invoiceId &&
             invoiceIds.has(t.invoiceId)
         );
 
-        return { filteredInvoices: invoices, filteredPayments: payments };
-    }, [state.invoices, transactions, properties, groupBy, selectedEntityId, dateRange]);
+        return { filteredInvoices: filtered, filteredPayments: payments };
+    }, [invoices, transactions, properties, groupBy, selectedEntityId, dateRange]);
 
     // 3. Analytics Data Preparation
     const summary = useMemo(() => {

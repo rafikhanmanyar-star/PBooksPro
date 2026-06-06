@@ -1,8 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import {
+    useBuildings,
     useDispatchOnly,
+    useProjects,
     useProperties,
     useRentalAgreements,
+    useStateSelector,
 } from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { RentalAgreement, RentalAgreementStatus, type AppState } from '../../types';
@@ -27,11 +30,18 @@ interface RentalRenewalFormProps {
 
 const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClose }) => {
   const properties = useProperties();
+  const allBuildings = useBuildings();
+  const projects = useProjects();
+  const enableColorCoding = useStateSelector((s) => s.enableColorCoding);
   const rentalAgreements = useRentalAgreements();
   const dispatch = useDispatchOnly();
   const engineState = useMemo(
     () => ({ properties, rentalAgreements }) as AppState,
     [properties, rentalAgreements]
+  );
+  const formColorState = useMemo(
+    () => ({ enableColorCoding, projects, buildings: allBuildings }) as AppState,
+    [enableColorCoding, projects, allBuildings]
   );
   const { showToast, showAlert } = useNotification();
 
@@ -62,8 +72,8 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
   );
 
   const formStyle = useMemo(
-    () => getFormBackgroundColorStyle(undefined, buildingId, state),
-    [buildingId, state]
+    () => getFormBackgroundColorStyle(undefined, buildingId, formColorState),
+    [buildingId, formColorState]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {

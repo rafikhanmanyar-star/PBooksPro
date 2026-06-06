@@ -1,6 +1,15 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBills,
+    useBuildings,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useInvoices,
+    useProperties,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
 import { TransactionType, ContactType, Transaction } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -37,7 +46,14 @@ interface ReportRow {
 type SortKey = 'date' | 'buildingName' | 'propertyName' | 'ownerName' | 'particulars' | 'amount';
 
 const ServiceChargesDeductionReport: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const allBuildings = useBuildings();
+    const contacts = useContacts();
+    const categories = useCategories();
+    const transactions = useTransactions();
+    const properties = useProperties();
+    const invoices = useInvoices();
+    const bills = useBills();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     
@@ -63,11 +79,11 @@ const ServiceChargesDeductionReport: React.FC = () => {
     });
 
     // Dropdown Items
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
     const owners = useMemo(() => {
-        const ownerContacts = state.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
+        const ownerContacts = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
         return [{ id: 'all', name: 'All Owners' }, ...ownerContacts];
-    }, [state.contacts]);
+    }, [contacts]);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -106,18 +122,18 @@ const ServiceChargesDeductionReport: React.FC = () => {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        const rentalIncomeCatId = state.categories.find(c => c.name === 'Rental Income')?.id;
+        const rentalIncomeCatId = categories.find(c => c.name === 'Rental Income')?.id;
         
-        const deductionCategoryIds = new Set(state.categories
+        const deductionCategoryIds = new Set(categories
             .filter(c => c.type === TransactionType.EXPENSE && c.name.toLowerCase().includes('service charge'))
             .map(c => c.id));
         
-        const legacyId = state.categories.find(c => c.name === 'Service Charge Deduction')?.id;
+        const legacyId = categories.find(c => c.name === 'Service Charge Deduction')?.id;
         if (legacyId) deductionCategoryIds.add(legacyId);
 
         const rows: ReportRow[] = [];
 
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             const date = new Date(tx.date);
             if (date < start || date > end) return;
 
@@ -133,9 +149,9 @@ const ServiceChargesDeductionReport: React.FC = () => {
             }
 
             if (isDeduction) {
-                const property = state.properties.find(p => p.id === tx.propertyId);
-                const building = state.buildings.find(b => b.id === (tx.buildingId || property?.buildingId));
-                const owner = state.contacts.find(c => c.id === (tx.contactId || property?.ownerId));
+                const property = properties.find(p => p.id === tx.propertyId);
+                const building = allBuildings.find(b => b.id === (tx.buildingId || property?.buildingId));
+                const owner = contacts.find(c => c.id === (tx.contactId || property?.ownerId));
 
                 // Apply Filters
                 if (selectedBuildingId !== 'all') {
@@ -190,7 +206,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
         }
 
         return rows;
-    }, [state, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, sortConfig]);
+    }, [categories, transactions, properties, contacts, allBuildings, invoices, bills, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, sortConfig]);
 
     const totalAmount = useMemo(() => reportData.reduce((sum, r) => sum + r.amount, 0), [reportData]);
 
@@ -210,11 +226,11 @@ const ServiceChargesDeductionReport: React.FC = () => {
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
         if (tx.invoiceId) {
-            const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+            const invoice = invoices.find(i => i.id === tx.invoiceId);
             return invoice ? `Invoice #${invoice.invoiceNumber}` : 'an Invoice';
         }
         if (tx.billId) {
-            const bill = state.bills.find(b => b.id === tx.billId);
+            const bill = bills.find(b => b.id === tx.billId);
             return bill ? `Bill #${bill.billNumber}` : 'a Bill';
         }
         return 'a linked item';
@@ -358,8 +374,8 @@ const ServiceChargesDeductionReport: React.FC = () => {
                         {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all') && (
                             <p className="text-xs text-app-muted mt-1">
                                 Filters: 
-                                {selectedBuildingId !== 'all' && ` Building: ${state.buildings.find(b=>b.id===selectedBuildingId)?.name} `}
-                                {selectedOwnerId !== 'all' && ` Owner: ${state.contacts.find(c=>c.id===selectedOwnerId)?.name}`}
+                                {selectedBuildingId !== 'all' && ` Building: ${allBuildings.find(b=>b.id===selectedBuildingId)?.name} `}
+                                {selectedOwnerId !== 'all' && ` Owner: ${contacts.find(c=>c.id===selectedOwnerId)?.name}`}
                             </p>
                         )}
                     </div>
@@ -378,7 +394,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-app-border bg-app-card">
                                 {reportData.map(item => {
-                                    const transaction = state.transactions.find(t => t.id === item.entityId);
+                                    const transaction = transactions.find(t => t.id === item.entityId);
                                     return (
                                         <tr 
                                             key={item.id} 
