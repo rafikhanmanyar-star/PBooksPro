@@ -1,6 +1,6 @@
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { X, HandCoins } from 'lucide-react';
-import { useAppContext } from '../../context/AppContext';
 import {
     TransactionType,
     InvoiceType,
@@ -46,7 +46,7 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
     onClose,
     unitId,
 }) => {
-    const { state } = useAppContext();
+    const state = useFinancialReportAppState();
     const [filterType, setFilterType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
         key: 'date',

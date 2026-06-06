@@ -1,6 +1,6 @@
 
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, AccountType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY, ICONS } from '../../constants';
@@ -32,7 +32,7 @@ interface TransferItem {
 type SortKey = 'date' | 'fromAccountName' | 'toAccountName' | 'amount' | 'description';
 
 const TransferStatisticsReport: React.FC = () => {
-    const { state } = useAppContext();
+    const state = useFinancialReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(() => startOfMonthYyyyMmDd());

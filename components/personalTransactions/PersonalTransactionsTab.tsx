@@ -1,3 +1,4 @@
+import { usePersonalCategories, usePersonalTransactions } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   BarChart,
@@ -10,7 +11,6 @@ import {
 } from 'recharts';
 import Button from '../ui/Button';
 import { CURRENCY, ICONS } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
 import {
   listPersonalTransactions,
   deletePersonalTransaction,
@@ -171,7 +171,8 @@ function compareTxTableRows(a: TxTableRow, b: TxTableRow, col: SortableCol, dir:
 }
 
 const PersonalTransactionsTab: React.FC = () => {
-  const { state } = useAppContext();
+  const personalCategories = usePersonalCategories();
+    const personalTransactions = usePersonalTransactions();
   const [search, setSearch] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PersonalTxPeriodFilter>('thisMonth');
   const [categoryFilterId, setCategoryFilterId] = useState('');
@@ -202,9 +203,9 @@ const PersonalTransactionsTab: React.FC = () => {
           dateFrom: getRolling12MonthsDateFrom(),
           limit: 10000,
         },
-        !isLocalOnlyMode() ? state.personalTransactions : undefined
+        !isLocalOnlyMode() ? personalTransactions : undefined
       ),
-    [refreshKey, state.personalTransactions]
+    [refreshKey, personalTransactions]
   );
 
   const monthlyBarChartData = useMemo(() => {
@@ -234,7 +235,7 @@ const PersonalTransactionsTab: React.FC = () => {
     getPersonalIncomeCategories().forEach((c) => map.set(c.id, c.name));
     getPersonalExpenseCategories().forEach((c) => map.set(c.id, c.name));
     return map;
-  }, [refreshKey, state.personalCategories]);
+  }, [refreshKey, personalCategories]);
 
   const allTransactions = useMemo(
     () =>
@@ -244,9 +245,9 @@ const PersonalTransactionsTab: React.FC = () => {
           categoryId: categoryFilterId || undefined,
           limit: 5000,
         },
-        !isLocalOnlyMode() ? state.personalTransactions : undefined
+        !isLocalOnlyMode() ? personalTransactions : undefined
       ),
-    [dateRange.dateFrom, dateRange.dateTo, categoryFilterId, refreshKey, state.personalTransactions]
+    [dateRange.dateFrom, dateRange.dateTo, categoryFilterId, refreshKey, personalTransactions]
   );
 
   const baseRows: Omit<TxTableRow, 'runningBalance'>[] = useMemo(() => {
@@ -339,7 +340,7 @@ const PersonalTransactionsTab: React.FC = () => {
     const inc = getPersonalIncomeCategories();
     const exp = getPersonalExpenseCategories();
     return [...inc, ...exp];
-  }, [refreshKey, state.personalCategories]);
+  }, [refreshKey, personalCategories]);
 
   const handleExportReport = () => {
     // TODO: wire to CSV/export

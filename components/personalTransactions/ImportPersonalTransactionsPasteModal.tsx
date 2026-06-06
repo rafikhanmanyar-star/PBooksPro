@@ -1,7 +1,7 @@
+import { useAccounts, usePersonalCategories, usePersonalTransactions } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import { useAppContext } from '../../context/AppContext';
 import { AccountType } from '../../types';
 import { CURRENCY } from '../../constants';
 import {
@@ -48,7 +48,9 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
   onImported,
   dataRevision,
 }) => {
-  const { state } = useAppContext();
+  const accounts = useAccounts();
+    const personalCategories = usePersonalCategories();
+    const personalTransactions = usePersonalTransactions();
   const [pasteText, setPasteText] = useState('');
   const [parsedLines, setParsedLines] = useState<ParsedPasteLine[]>([]);
   const [hasHeader, setHasHeader] = useState(false);
@@ -78,7 +80,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
 
   const bankCashAccounts = useMemo(
     () =>
-      state.accounts
+      accounts
         .filter(
           (a) =>
             (a.type === AccountType.BANK || a.type === AccountType.CASH) &&
@@ -86,17 +88,17 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
         )
         .map((a) => ({ id: a.id, name: a.name }))
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [state.accounts]
+    [accounts]
   );
 
   const existingTransactions = useMemo(() => {
-    const rows = listPersonalTransactions({ limit: 25000 }, isLocalOnlyMode() ? undefined : state.personalTransactions);
+    const rows = listPersonalTransactions({ limit: 25000 }, isLocalOnlyMode() ? undefined : personalTransactions);
     return rows.map((t) => ({
       transactionDate: t.transactionDate,
       amount: t.amount,
       description: t.description ?? undefined,
     }));
-  }, [state.personalTransactions, dataRevision]);
+  }, [personalTransactions, dataRevision]);
 
   const validateCtx: ValidateImportContext = useMemo(
     () => ({
@@ -105,7 +107,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
       expenseCategories: getPersonalExpenseCategories().map((c) => ({ id: c.id, name: c.name })),
       existingTransactions,
     }),
-    [bankCashAccounts, existingTransactions, dataRevision, localCategoryRevision, state.personalCategories]
+    [bankCashAccounts, existingTransactions, dataRevision, localCategoryRevision, personalCategories]
   );
 
   const previewRows = useMemo(

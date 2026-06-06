@@ -1,8 +1,8 @@
 
+import { useStateSelector } from '../../hooks/useSelectiveState';
 import React from 'react';
 import { Contact } from '../../types';
 import { ICONS } from '../../constants';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
@@ -17,7 +17,8 @@ interface VendorInfoProps {
 }
 
 const VendorInfo: React.FC<VendorInfoProps> = ({ vendor, onEdit, onCreateBill, onRecordPayment, onCreateQuotation }) => {
-  const { state } = useAppContext();
+  const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
+    const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
   const { showAlert } = useNotification();
   const { openChat } = useWhatsApp();
 
@@ -29,12 +30,12 @@ const VendorInfo: React.FC<VendorInfoProps> = ({ vendor, onEdit, onCreateBill, o
 
     try {
       const message = WhatsAppService.generateVendorGreeting(
-        state.whatsAppTemplates.vendorGreeting,
+        whatsAppTemplates.vendorGreeting,
         vendor
       );
       sendOrOpenWhatsApp(
         { contact: vendor, message, phoneNumber: vendor.contactNo },
-        () => state.whatsAppMode,
+        () => whatsAppMode,
         openChat
       );
     } catch (error) {

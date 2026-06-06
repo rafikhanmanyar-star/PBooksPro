@@ -1,5 +1,5 @@
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ContactType, ProjectAgreementStatus } from '../../types';
 import Card from '../ui/Card';
 import { ICONS } from '../../constants';
@@ -23,7 +23,7 @@ interface UserStats {
 }
 
 const MarketingActivityReport: React.FC = () => {
-    const { state } = useAppContext();
+    const state = useFinancialReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));

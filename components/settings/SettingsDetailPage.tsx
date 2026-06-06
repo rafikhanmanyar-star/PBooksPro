@@ -1,6 +1,6 @@
 
+import { useAccounts, useBuildings, useCategories, useContacts, useDispatchOnly, useFinancialReportAppState, useProjects, useProperties, useUnits } from '../../hooks/useSelectiveState';
 import React, { useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, ContactType, AccountType, Account } from '../../types';
 import { ICONS } from '../../constants';
 import AccountForm from './AccountForm';
@@ -17,7 +17,14 @@ interface SettingsDetailPageProps {
 }
 
 const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoBack }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const buildings = useBuildings();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const projects = useProjects();
+    const properties = useProperties();
+    const units = useUnits();
+    const dispatch = useDispatchOnly();
     const { showConfirm } = useNotification();
     const { editingEntity } = state;
 
@@ -45,17 +52,17 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
 
         let stateArray: any[] | undefined;
         switch (entityType) {
-            case 'ACCOUNT': stateArray = state.accounts; break;
-            case 'CONTACT': stateArray = state.contacts; break;
-            case 'PROJECT': stateArray = state.projects; break;
-            case 'BUILDING': stateArray = state.buildings; break;
-            case 'PROPERTY': stateArray = state.properties; break;
-            case 'UNIT': stateArray = state.units; break;
-            case 'CATEGORY': stateArray = state.categories; break;
+            case 'ACCOUNT': stateArray = accounts; break;
+            case 'CONTACT': stateArray = contacts; break;
+            case 'PROJECT': stateArray = projects; break;
+            case 'BUILDING': stateArray = buildings; break;
+            case 'PROPERTY': stateArray = properties; break;
+            case 'UNIT': stateArray = units; break;
+            case 'CATEGORY': stateArray = categories; break;
             default: return undefined;
         }
         return stateArray.find(item => item.id === id);
-    }, [isEditing, id, entityType, state]);
+    }, [isEditing, id, entityType, accounts, contacts, projects, buildings, properties, units, categories]);
 
     const handleFormSubmit = (data: any) => {
         if (!entityType) return;
@@ -141,13 +148,13 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
                     'FRIEND': ContactType.FRIEND_FAMILY,
                     'LEAD': ContactType.LEAD,
                 };
-                return <ContactForm onCancel={goBack} onSubmit={handleFormSubmit} contactToEdit={itemToEdit} onDelete={handleDelete} existingContacts={state.contacts} fixedTypeForNew={contactTypeMap[subType as keyof typeof contactTypeMap]} />;
+                return <ContactForm onCancel={goBack} onSubmit={handleFormSubmit} contactToEdit={itemToEdit} onDelete={handleDelete} existingContacts={contacts} fixedTypeForNew={contactTypeMap[subType as keyof typeof contactTypeMap]} />;
             case 'PROJECT':
                 return <ProjectForm onCancel={goBack} onSubmit={handleFormSubmit} projectToEdit={itemToEdit} onDelete={handleDelete} />;
             case 'BUILDING':
                 return <BuildingForm onCancel={goBack} onSubmit={handleFormSubmit} buildingToEdit={itemToEdit} onDelete={handleDelete} />;
             case 'PROPERTY':
-                return <PropertyForm onCancel={goBack} onSubmit={handleFormSubmit} propertyToEdit={itemToEdit} onDelete={handleDelete} contacts={state.contacts} buildings={state.buildings} properties={state.properties} />;
+                return <PropertyForm onCancel={goBack} onSubmit={handleFormSubmit} propertyToEdit={itemToEdit} onDelete={handleDelete} contacts={contacts} buildings={buildings} properties={properties} />;
             case 'UNIT':
                 return <UnitForm onCancel={goBack} onSubmit={handleFormSubmit} unitToEdit={itemToEdit} onDelete={handleDelete} />;
             case 'CATEGORY':

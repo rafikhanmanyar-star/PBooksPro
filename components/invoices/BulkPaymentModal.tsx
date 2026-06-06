@@ -1,6 +1,6 @@
 
+import { useAccounts, useCategories, useDispatchOnly, useFinancialReportAppState, useProjectAgreements, useProperties, useRentalAgreements } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useCallback, useRef, startTransition } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Invoice, Transaction, TransactionType, AccountType, InvoiceType, ProjectReceivedAsset, ProjectReceivedAssetType, InvoiceStatus } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -29,7 +29,12 @@ interface BulkPaymentModalProps {
 }
 
 const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, selectedInvoices, onPaymentComplete }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const projectAgreements = useProjectAgreements();
+    const properties = useProperties();
+    const rentalAgreements = useRentalAgreements();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const totalAmountInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,7 +53,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
     const isProjectContext = useMemo(() => selectedInvoices.some(inv => inv.invoiceType === InvoiceType.INSTALLMENT), [selectedInvoices]);
 
     // Filter for Bank Accounts Only (exclude Internal Clearing)
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
+    const userSelectableAccounts = useMemo(() => accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [accounts]);
 
     // Sort invoices by Due Date for display order
     const sortedInvoices = useMemo(() => {
@@ -73,8 +78,8 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
     }, [selectedInvoices]);
 
     const receivedAssetsAccountId = useMemo(
-        () => resolveSystemAccountId(state.accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets',
-        [state.accounts]
+        () => resolveSystemAccountId(accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets',
+        [accounts]
     );
 
     // Only initialize when modal transitions from closed to open. This prevents the effect from
@@ -171,14 +176,14 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 await showAlert("Please enter a description for the asset.");
                 return;
             }
-            const assetReceivedCategory = findProjectAssetCategory(state.categories, 'REVENUE_ASSET_IN_KIND');
+            const assetReceivedCategory = findProjectAssetCategory(categories, 'REVENUE_ASSET_IN_KIND');
             if (!assetReceivedCategory) {
                 await showAlert("System category for received assets is not set up.");
                 return;
             }
             let projectId = selectedInvoices[0]?.projectId;
             if (!projectId && selectedInvoices[0]?.agreementId) {
-                const pa = state.projectAgreements?.find(a => a.id === selectedInvoices[0].agreementId);
+                const pa = projectAgreements?.find(a => a.id === selectedInvoices[0].agreementId);
                 if (pa) projectId = pa.projectId;
             }
             if (!projectId) {
@@ -236,7 +241,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
         const batchId = `batch-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const label = isRentalContext ? 'Rental' : 'Installment';
         const transactions: Transaction[] = [];
-        const securityDepositIncomeCategory = state.categories.find(
+        const securityDepositIncomeCategory = categories.find(
             c => c.name === 'Security Deposit' && c.type === TransactionType.INCOME
         );
 
@@ -258,7 +263,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 let uid = inv.unitId;
                 let cid = inv.categoryId;
                 if (inv.agreementId) {
-                    const pa = state.projectAgreements?.find(a => a.id === inv.agreementId);
+                    const pa = projectAgreements?.find(a => a.id === inv.agreementId);
                     if (pa) {
                         if (!pid) pid = pa.projectId;
                         if (!uid && pa.unitIds?.length > 0) uid = pa.unitIds[0];
@@ -271,7 +276,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                         : inv.invoiceType === InvoiceType.RENTAL ? 'Rental Income'
                         : null;
                     if (catName) {
-                        const cat = state.categories.find(c => c.name === catName && c.type === TransactionType.INCOME);
+                        const cat = categories.find(c => c.name === catName && c.type === TransactionType.INCOME);
                         if (cat) cid = cat.id;
                     }
                 }
@@ -279,11 +284,11 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                     cid = securityDepositIncomeCategory.id;
                 }
 
-                const property = inv.propertyId ? state.properties.find(p => p.id === inv.propertyId) : null;
+                const property = inv.propertyId ? properties.find(p => p.id === inv.propertyId) : null;
 
                 // Resolve owner from agreement (preserves old owner for pre-transfer invoices)
                 const linkedAgreement = inv.agreementId
-                    ? state.rentalAgreements.find(a => a.id === inv.agreementId)
+                    ? rentalAgreements.find(a => a.id === inv.agreementId)
                     : null;
                 const ownerFromAgreement = linkedAgreement?.ownerId;
 

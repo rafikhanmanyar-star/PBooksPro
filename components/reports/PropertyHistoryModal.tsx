@@ -1,7 +1,7 @@
 
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
-import { useAppContext } from '../../context/AppContext';
 import { Transaction, Invoice, Bill, TransactionType, InvoiceType, ContactType, RentalAgreementStatus, InvoiceStatus } from '../../types';
 import { CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -32,7 +32,7 @@ interface HistoryItem {
 type SortKey = 'date' | 'type' | 'reference' | 'description' | 'contactName' | 'amount' | 'status';
 
 const PropertyHistoryModal: React.FC<PropertyHistoryModalProps> = ({ isOpen, onClose, propertyId, propertyName }) => {
-    const { state } = useAppContext();
+    const state = useFinancialReportAppState();
     const [filterType, setFilterType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 

@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import {
     SalesReturn,
     SalesReturnStatus,
@@ -32,7 +32,8 @@ type EnrichedSalesReturn = SalesReturn & {
 };
 
 const SalesReturnsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const state = useProjectReportAppState();
+    const dispatch = useDispatchOnly();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [returnToView, setReturnToView] = useState<EnrichedSalesReturn | null>(null);

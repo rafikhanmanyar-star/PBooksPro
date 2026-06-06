@@ -1,7 +1,7 @@
+import { useCategories, useContacts, useCurrentUser, useDispatchOnly, useInstallmentPlans, useInvoices, usePlanAmenities, useProjectAgreements, useProjects, useStateSelector, useUnits } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
 import { isLocalOnlyMode } from '../../config/apiUrl';
-import { useAppContext } from '../../context/AppContext';
 import { 
     ContactType, 
     Project, 
@@ -256,7 +256,20 @@ const ApprovalRequestModal: React.FC<{
 };
 
 const MarketingPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const appCurrentUser = useCurrentUser();
+    const editingEntity = useStateSelector((s) => s.editingEntity);
+    const installmentPlans = useInstallmentPlans();
+    const allInvoices = useInvoices();
+    const planAmenities = usePlanAmenities();
+    const projectAgreementSettings = useStateSelector((s) => s.projectAgreementSettings);
+    const projectAgreements = useProjectAgreements();
+    const projectInvoiceSettings = useStateSelector((s) => s.projectInvoiceSettings);
+    const projects = useProjects();
+    const allUnits = useUnits();
+    const users = useStateSelector((s) => s.users);
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();
     const { print: triggerPrint } = usePrintContext();
@@ -313,7 +326,7 @@ const MarketingPage: React.FC = () => {
 
     // Helper to get latest versions only
     const latestVersions = useMemo(() => {
-        const plans = state.installmentPlans || [];
+        const plans = installmentPlans || [];
         const latest: Record<string, number> = {};
         plans.forEach(p => {
             const rId = p.rootId || p.id;
@@ -322,22 +335,22 @@ const MarketingPage: React.FC = () => {
             }
         });
         return latest;
-    }, [state.installmentPlans]);
+    }, [installmentPlans]);
 
     // Get expense categories for discount mapping
     const expenseCategories = useMemo(() => 
-        state.categories.filter(c => c.type === TransactionType.EXPENSE),
-        [state.categories]
+        categories.filter(c => c.type === TransactionType.EXPENSE),
+        [categories]
     );
 
     // Get active amenities
     const activeAmenities = useMemo(() => 
-        (state.planAmenities || []).filter(a => a.isActive),
-        [state.planAmenities]
+        (planAmenities || []).filter(a => a.isActive),
+        [planAmenities]
     );
 
     // Filtered Leads
-    const leads = useMemo(() => state.contacts.filter(c => c.type === ContactType.LEAD), [state.contacts]);
+    const leads = useMemo(() => contacts.filter(c => c.type === ContactType.LEAD), [contacts]);
 
     useEffect(() => {
         const loadOrgUsers = async () => {
@@ -362,12 +375,12 @@ const MarketingPage: React.FC = () => {
         loadOrgUsers();
     }, []);
 
-    const usersForApproval = orgUsers.length > 0 ? orgUsers : state.users;
+    const usersForApproval = orgUsers.length > 0 ? orgUsers : users;
     const approvers = useMemo(
         () => {
             devLogger.log('[APPROVERS] Building approvers list...', {
-                currentUserId: state.currentUser?.id,
-                currentUsername: state.currentUser?.username,
+                currentUserId: currentUser?.id,
+                currentUsername: currentUser?.username,
                 usersForApprovalCount: usersForApproval.length,
                 usingOrgUsers: orgUsers.length > 0
             });
@@ -375,7 +388,7 @@ const MarketingPage: React.FC = () => {
             const filtered = usersForApproval
                 .filter(user => {
                     const hasRole = user.role && user.role.toLowerCase() === 'admin';
-                    const isNotCurrentUser = user.id !== state.currentUser?.id; // Don't include yourself
+                    const isNotCurrentUser = user.id !== currentUser?.id; // Don't include yourself
                     devLogger.log('[APPROVERS] Checking user:', {
                         id: user.id,
                         username: user.username,
@@ -397,19 +410,19 @@ const MarketingPage: React.FC = () => {
             });
             return filtered;
         },
-        [usersForApproval, state.currentUser]
+        [usersForApproval, currentUser]
     );
     
     // Units for selected project
     const units = useMemo(() => {
         if (!projectId) return [];
-        return state.units.filter(u => u.projectId === projectId);
-    }, [projectId, state.units]);
+        return units.filter(u => u.projectId === projectId);
+    }, [projectId, units]);
 
     const activePlan = useMemo(() => {
         if (!selectedPlanId) return null;
-        return (state.installmentPlans || []).find(p => p.id === selectedPlanId) || null;
-    }, [selectedPlanId, state.installmentPlans]);
+        return (installmentPlans || []).find(p => p.id === selectedPlanId) || null;
+    }, [selectedPlanId, installmentPlans]);
 
     const effectiveStatus = activePlan?.status || status;
     const normalizedStatus = (effectiveStatus || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
@@ -421,7 +434,7 @@ const MarketingPage: React.FC = () => {
     const effectiveApprovalRequestedById = activePlan?.approvalRequestedById || approvalRequestedById;
     const effectiveApprovalReviewedById = activePlan?.approvalReviewedById || approvalReviewedById;
     const isMatchingUser = useMemo(() => {
-        const currentUser = state.currentUser;
+        const currentUser = currentUser;
         if (!currentUser) return () => false;
         const candidates = [
             currentUser.id,
@@ -440,7 +453,7 @@ const MarketingPage: React.FC = () => {
             });
             return matches;
         };
-    }, [state.currentUser]);
+    }, [currentUser]);
     const isApproverForSelectedPlan = isPendingApproval && isMatchingUser(effectiveApprovalRequestedToId);
 
     // Debug logging for approval workflow
@@ -451,15 +464,15 @@ const MarketingPage: React.FC = () => {
                 status: activePlan.status,
                 approvalRequestedToId: activePlan.approvalRequestedToId,
                 approvalRequestedById: activePlan.approvalRequestedById,
-                currentUserId: state.currentUser?.id,
-                currentUsername: state.currentUser?.username,
-                currentUserName: state.currentUser?.name,
-                currentUserRole: state.currentUser?.role,
+                currentUserId: currentUser?.id,
+                currentUsername: currentUser?.username,
+                currentUserName: currentUser?.name,
+                currentUserRole: currentUser?.role,
                 isPendingApproval,
                 isApproverForSelectedPlan
             });
         }
-    }, [selectedPlanId, activePlan, isPendingApproval, isApproverForSelectedPlan, state.currentUser]);
+    }, [selectedPlanId, activePlan, isPendingApproval, isApproverForSelectedPlan, currentUser]);
 
     const isReadOnly = isPendingApproval || isApprovedStatus || isLockedStatus;
     const approvalRequestedToName = effectiveApprovalRequestedToId
@@ -558,12 +571,12 @@ const MarketingPage: React.FC = () => {
     // Handle Unit Selection - Auto fill list price
     useEffect(() => {
         if (unitId) {
-            const unit = state.units.find(u => u.id === unitId);
+            const unit = units.find(u => u.id === unitId);
             if (unit && unit.salePrice) {
                 setListPrice(unit.salePrice.toString());
             }
         }
-    }, [unitId, state.units]);
+    }, [unitId, units]);
 
     // Build selected amenities array for saving
     const buildSelectedAmenities = (): InstallmentPlanAmenity[] => {
@@ -651,23 +664,23 @@ const MarketingPage: React.FC = () => {
         }
 
         const existingPlan = selectedPlanId
-            ? (state.installmentPlans || []).find(p => p.id === selectedPlanId)
+            ? (installmentPlans || []).find(p => p.id === selectedPlanId)
             : null;
 
         const now = new Date().toISOString();
         const submitStatus: InstallmentPlan['status'] = mode === 'submitApproval' ? 'Pending Approval' : 'Draft';
-        const approvalRequestedBy = mode === 'submitApproval' ? (state.currentUser?.id || undefined) : undefined;
+        const approvalRequestedBy = mode === 'submitApproval' ? (currentUser?.id || undefined) : undefined;
         const approvalRequestedTo = mode === 'submitApproval' ? approverId : undefined;
 
         // Debug logging for approval submission
         if (mode === 'submitApproval') {
             devLogger.log('[APPROVAL DEBUG] Submitting plan for approval:', {
-                currentUserId: state.currentUser?.id,
-                currentUsername: state.currentUser?.username,
+                currentUserId: currentUser?.id,
+                currentUsername: currentUser?.username,
                 approvalRequestedBy,
                 approvalRequestedTo,
                 approverId,
-                hasCurrentUser: !!state.currentUser
+                hasCurrentUser: !!currentUser
             });
         }
 
@@ -720,7 +733,7 @@ const MarketingPage: React.FC = () => {
             approvalReviewedAt: undefined,
             createdAt: now,
             updatedAt: now,
-            userId: state.currentUser?.id
+            userId: currentUser?.id
         };
 
         dispatch({ type: 'ADD_INSTALLMENT_PLAN', payload: newPlan });
@@ -828,22 +841,22 @@ const MarketingPage: React.FC = () => {
     };
 
     useEffect(() => {
-        if (state.editingEntity?.type === 'INSTALLMENT_PLAN' && state.editingEntity.id) {
-            devLogger.log('[MARKETING PAGE] Editing entity received:', state.editingEntity.id);
-            const plan = (state.installmentPlans || []).find(p => p.id === state.editingEntity?.id);
+        if (editingEntity?.type === 'INSTALLMENT_PLAN' && editingEntity.id) {
+            devLogger.log('[MARKETING PAGE] Editing entity received:', editingEntity.id);
+            const plan = (installmentPlans || []).find(p => p.id === editingEntity?.id);
             if (plan) {
                 devLogger.log('[MARKETING PAGE] Plan found, opening for edit:', plan.id);
                 handleEdit(plan);
             } else {
-                console.warn('[MARKETING PAGE] Plan not found:', state.editingEntity.id);
+                console.warn('[MARKETING PAGE] Plan not found:', editingEntity.id);
             }
             dispatch({ type: 'CLEAR_EDITING_ENTITY' });
         }
-    }, [state.editingEntity, state.installmentPlans]);
+    }, [editingEntity, installmentPlans]);
 
     const handleApprovalDecision = async (decision: 'Approved' | 'Rejected') => {
         if (!selectedPlanId) return;
-        const plan = (state.installmentPlans || []).find(p => p.id === selectedPlanId);
+        const plan = (installmentPlans || []).find(p => p.id === selectedPlanId);
         if (!plan) return;
 
         const confirmed = await showConfirm(`Are you sure you want to ${decision.toLowerCase()} this plan?`);
@@ -853,7 +866,7 @@ const MarketingPage: React.FC = () => {
         const updatedPlan: InstallmentPlan = {
             ...plan,
             status: decision,
-            approvalReviewedById: state.currentUser?.id || undefined,
+            approvalReviewedById: currentUser?.id || undefined,
             approvalReviewedAt: now,
             updatedAt: now
         };
@@ -896,7 +909,7 @@ const MarketingPage: React.FC = () => {
     // Send Installment Plan via WhatsApp
     const handleSendWhatsApp = async (plan: InstallmentPlan) => {
         try {
-            const lead = state.contacts.find(l => l.id === plan.leadId);
+            const lead = contacts.find(l => l.id === plan.leadId);
             if (!lead?.contactNo) {
                 await showAlert('This lead does not have a phone number saved.');
                 return;
@@ -908,8 +921,8 @@ const MarketingPage: React.FC = () => {
             // Generate image from the plan HTML
             // First, we need to render the plan in a hidden div, capture it, then send
             // For now, let's create a simplified approach: generate the plan HTML and convert to image
-            const project = state.projects.find(p => p.id === plan.projectId);
-            const unit = state.units.find(u => u.id === plan.unitId);
+            const project = projects.find(p => p.id === plan.projectId);
+            const unit = units.find(u => u.id === plan.unitId);
             
             // Create a temporary element to render the plan
             const tempDiv = document.createElement('div');
@@ -1098,7 +1111,7 @@ const MarketingPage: React.FC = () => {
 
             // Step 1: Get the lead/client
             logProgress('Getting client information...');
-            const client = state.contacts.find(c => c.id === plan.leadId);
+            const client = contacts.find(c => c.id === plan.leadId);
             if (!client) {
                 await showAlert('Client not found for this plan.');
                 return;
@@ -1122,7 +1135,7 @@ const MarketingPage: React.FC = () => {
 
             // Step 3: Update unit with owner
             logProgress('Updating unit ownership...');
-            const unit = state.units.find(u => u.id === plan.unitId);
+            const unit = units.find(u => u.id === plan.unitId);
             if (!unit) {
                 await showAlert('Unit not found for this plan.');
                 return;
@@ -1137,7 +1150,7 @@ const MarketingPage: React.FC = () => {
 
             // Step 4: Generate agreement number
             logProgress('Generating agreement number...');
-            const agreementSettings = state.projectAgreementSettings || {
+            const agreementSettings = projectAgreementSettings || {
                 prefix: 'P-AGR-',
                 nextNumber: 1,
                 padding: 4
@@ -1145,7 +1158,7 @@ const MarketingPage: React.FC = () => {
             
             const prefix = agreementSettings.prefix || 'P-AGR-';
             let maxNum = agreementSettings.nextNumber || 1;
-            state.projectAgreements.forEach(agr => {
+            projectAgreements.forEach(agr => {
                 if (agr.agreementNumber && agr.agreementNumber.startsWith(prefix)) {
                     const numPart = parseInt(agr.agreementNumber.slice(prefix.length), 10);
                     if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
@@ -1178,7 +1191,7 @@ const MarketingPage: React.FC = () => {
                     downPaymentPercentage: plan.downPaymentPercentage,
                     frequency: plan.frequency
                 },
-                userId: state.currentUser?.id,
+                userId: currentUser?.id,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
@@ -1188,7 +1201,7 @@ const MarketingPage: React.FC = () => {
 
             // Step 6: Generate invoices
             logProgress('Generating invoices...');
-            const invoiceSettings = state.projectInvoiceSettings || {
+            const invoiceSettings = projectInvoiceSettings || {
                 prefix: 'P-INV-',
                 nextNumber: 1,
                 padding: 5
@@ -1196,13 +1209,13 @@ const MarketingPage: React.FC = () => {
             const invPrefix = invoiceSettings.prefix || 'P-INV-';
 
             let nextInvNum = invoiceSettings.nextNumber || 1;
-            let invoicesForNumberScan = state.invoices || [];
+            let invoicesForNumberScan = invoices || [];
             if (!isLocalOnlyMode()) {
                 try {
                     const { InvoicesApiRepository } = await import('../../services/api/repositories/invoicesApi');
                     const serverInvoices = await new InvoicesApiRepository().findAll({ includeDeleted: true });
                     const byId = new Map<string, Invoice>();
-                    for (const inv of state.invoices || []) {
+                    for (const inv of invoices || []) {
                         byId.set(inv.id, inv);
                     }
                     for (const inv of serverInvoices) {
@@ -1342,8 +1355,8 @@ const MarketingPage: React.FC = () => {
 
     // Filtered Plans with search - showing only latest version of each plan
     const filteredPlans = useMemo(() => {
-        const currentUserId = state.currentUser?.id;
-        const allPlans = (state.installmentPlans || []).filter(plan => 
+        const currentUserId = currentUser?.id;
+        const allPlans = (installmentPlans || []).filter(plan => 
             // 1. You created the plan (Draft, Rejected, etc.)
             plan.userId === currentUserId || 
             // 2. You submitted it for approval (it's your request)
@@ -1368,9 +1381,9 @@ const MarketingPage: React.FC = () => {
 
         const q = searchQuery.toLowerCase();
         return latestPlans.filter(plan => {
-            const lead = state.contacts.find(l => l.id === plan.leadId);
-            const project = state.projects.find(p => p.id === plan.projectId);
-            const unit = state.units.find(u => u.id === plan.unitId);
+            const lead = contacts.find(l => l.id === plan.leadId);
+            const project = projects.find(p => p.id === plan.projectId);
+            const unit = units.find(u => u.id === plan.unitId);
             
             return (
                 lead?.name.toLowerCase().includes(q) ||
@@ -1378,30 +1391,30 @@ const MarketingPage: React.FC = () => {
                 unit?.name.toLowerCase().includes(q)
             );
         });
-    }, [state.installmentPlans, state.contacts, state.projects, state.units, state.currentUser, searchQuery]);
+    }, [installmentPlans, contacts, projects, units, currentUser, searchQuery]);
 
     const approvalTasks = useMemo(() => {
-        const currentUserId = state.currentUser?.id;
-        return (state.installmentPlans || [])
+        const currentUserId = currentUser?.id;
+        return (installmentPlans || [])
             .filter(plan => 
                 plan.approvalRequestedToId === currentUserId && 
                 plan.status === 'Pending Approval'
             )
             .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-    }, [state.installmentPlans, state.currentUser]);
+    }, [installmentPlans, currentUser]);
 
     const activityFeed = useMemo(() => {
-        const currentUserId = state.currentUser?.id;
-        const feed = (state.installmentPlans || [])
+        const currentUserId = currentUser?.id;
+        const feed = (installmentPlans || [])
             .filter(plan => 
                 plan.userId === currentUserId || 
                 plan.approvalRequestedToId === currentUserId ||
                 plan.approvalRequestedById === currentUserId
             )
             .flatMap(plan => {
-            const lead = state.contacts.find(l => l.id === plan.leadId);
-            const project = state.projects.find(p => p.id === plan.projectId);
-            const unit = state.units.find(u => u.id === plan.unitId);
+            const lead = contacts.find(l => l.id === plan.leadId);
+            const project = projects.find(p => p.id === plan.projectId);
+            const unit = units.find(u => u.id === plan.unitId);
             const label = `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
 
             const creatorUser = usersForApproval.find(u => u.id === (plan.userId || plan.approvalRequestedById));
@@ -1444,7 +1457,7 @@ const MarketingPage: React.FC = () => {
 
             // Add entry for Sale Recognized status
             if (plan.status === 'Sale Recognized' && plan.updatedAt) {
-                const currentUserName = state.currentUser?.name || state.currentUser?.username || 'System';
+                const currentUserName = currentUser?.name || currentUser?.username || 'System';
                 entries.push({
                     title: '✅ Converted to Agreement',
                     detail: `${label} • Sale recognized by ${currentUserName}`,
@@ -1457,12 +1470,12 @@ const MarketingPage: React.FC = () => {
         });
 
         return feed.sort((a, b) => b.time.localeCompare(a.time));
-    }, [state.installmentPlans, state.contacts, state.projects, state.units, state.currentUser, usersForApproval]);
+    }, [installmentPlans, contacts, projects, units, currentUser, usersForApproval]);
 
     const planHistoryItems = useMemo(() => {
         if (!historyRootId) return [];
         
-        const versions = (state.installmentPlans || [])
+        const versions = (installmentPlans || [])
             .filter(p => (p.rootId || p.id) === historyRootId)
             .sort((a, b) => (a.version || 1) - (b.version || 1)); // Sort ascending for building the chronological story
 
@@ -1554,7 +1567,7 @@ const MarketingPage: React.FC = () => {
 
         // Sort all items descending (newest first) for display
         return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [historyRootId, state.installmentPlans, usersForApproval]);
+    }, [historyRootId, installmentPlans, usersForApproval]);
 
     const formatActivityTime = (time: string) => {
         if (!time) return '';
@@ -1686,7 +1699,7 @@ const MarketingPage: React.FC = () => {
                                 <div className="space-y-2 pt-2 border-t border-slate-50">
                                     <ComboBox 
                                         label="Project" 
-                                        items={state.projects} 
+                                        items={projects} 
                                         selectedId={projectId} 
                                         onSelect={item => { setProjectId(item?.id || ''); setUnitId(''); }} 
                                         placeholder="Select Project"
@@ -2029,7 +2042,7 @@ const MarketingPage: React.FC = () => {
                                                     </svg>
                                                 </div>
                                                 <div className="text-4xl font-black tracking-widest text-slate-800 uppercase">
-                                                    {state.projects.find(p => p.id === projectId)?.name || 'EMPORIUM'}
+                                                    {projects.find(p => p.id === projectId)?.name || 'EMPORIUM'}
                                                 </div>
                                             </div>
                                         </div>
@@ -2045,7 +2058,7 @@ const MarketingPage: React.FC = () => {
                                                 <span className="tracking-widest">PRIMARY DATA</span>
                                                 <div className="flex gap-8">
                                                     <div className="flex items-center gap-3">
-                                                        <span className="text-xs uppercase">{state.projects.find(p => p.id === projectId)?.name || 'Project Name'}</span>
+                                                        <span className="text-xs uppercase">{projects.find(p => p.id === projectId)?.name || 'Project Name'}</span>
                                                         <div className="w-14 h-6 border border-slate-800 bg-slate-200 flex items-center justify-center text-[10px] font-bold">YES</div>
                                                     </div>
                                                 </div>
@@ -2055,26 +2068,26 @@ const MarketingPage: React.FC = () => {
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">UNIT:</span>
                                                     <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
-                                                        {state.units.find(u => u.id === unitId)?.name || ''}
+                                                        {units.find(u => u.id === unitId)?.name || ''}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">CATEGORY:</span>
                                                     <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
-                                                        {state.units.find(u => u.id === unitId)?.type || ''}
+                                                        {units.find(u => u.id === unitId)?.type || ''}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">FLOOR:</span>
                                                     <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
-                                                        {state.units.find(u => u.id === unitId)?.floor || ''}
+                                                        {units.find(u => u.id === unitId)?.floor || ''}
                                                     </span>
                                                 </div>
                                                 
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">SIZE:</span>
                                                     <div className="border-b border-slate-400 flex-1 flex justify-between px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
-                                                        <span>{state.units.find(u => u.id === unitId)?.area?.toFixed(2) || ''}</span>
+                                                        <span>{units.find(u => u.id === unitId)?.area?.toFixed(2) || ''}</span>
                                                         <span className="text-[9px] font-normal not-italic">SFT</span>
                                                     </div>
                                                 </div>
@@ -2082,7 +2095,7 @@ const MarketingPage: React.FC = () => {
                                                     <span className="whitespace-nowrap">RATE:</span>
                                                     <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
                                                         {(() => {
-                                                            const unit = state.units.find(u => u.id === unitId);
+                                                            const unit = units.find(u => u.id === unitId);
                                                             if (unit?.salePrice && unit?.area) {
                                                                 return (unit.salePrice / unit.area).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                                             }
@@ -2249,7 +2262,7 @@ const MarketingPage: React.FC = () => {
                                         <div className="bg-[#1a237e] p-10 text-white flex justify-between items-start relative overflow-hidden">
                                             <div className="relative z-10">
                                                 <h1 className="text-4xl font-extrabold tracking-tight mb-2">
-                                                    {state.projects.find(p => p.id === projectId)?.name || 'Project Name'}
+                                                    {projects.find(p => p.id === projectId)?.name || 'Project Name'}
                                                 </h1>
                                                 <div className="flex items-center gap-2 text-indigo-200 text-sm">
                                                     <div className="w-4 h-4">{ICONS.mapPin}</div>
@@ -2284,7 +2297,7 @@ const MarketingPage: React.FC = () => {
                                                 </div>
                                                 <div className="text-slate-600 italic leading-relaxed whitespace-pre-wrap">
                                                     {introText ? introText : (
-                                                        `Dear ${leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #${units.find(u => u.id === unitId)?.name || 'A-1204'} at ${state.projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This ${units.find(u => u.id === unitId)?.type || 'Unit'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction.`
+                                                        `Dear ${leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #${units.find(u => u.id === unitId)?.name || 'A-1204'} at ${projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This ${units.find(u => u.id === unitId)?.type || 'Unit'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction.`
                                                     )}
                                                 </div>
                                             </div>
@@ -2392,7 +2405,7 @@ const MarketingPage: React.FC = () => {
                     <div className="max-w-[1400px] mx-auto no-print px-4 lg:px-8">
                         <div className="flex flex-col lg:flex-row gap-6">
                             <div className="flex-1 space-y-6">
-                                {state.currentUser?.role === 'Admin' && approvalTasks.length > 0 && (
+                                {currentUser?.role === 'Admin' && approvalTasks.length > 0 && (
                                     <Card className="p-4 bg-white border border-slate-200">
                                         <div className="flex items-center justify-between mb-3">
                                             <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Pending Plan Approvals</h2>
@@ -2411,9 +2424,9 @@ const MarketingPage: React.FC = () => {
                                                 </thead>
                                                 <tbody>
                                                     {approvalTasks.map(plan => {
-                                                        const lead = state.contacts.find(l => l.id === plan.leadId);
-                                                        const project = state.projects.find(p => p.id === plan.projectId);
-                                                        const unit = state.units.find(u => u.id === plan.unitId);
+                                                        const lead = contacts.find(l => l.id === plan.leadId);
+                                                        const project = projects.find(p => p.id === plan.projectId);
+                                                        const unit = units.find(u => u.id === plan.unitId);
                                                         const statusMeta = getStatusMeta(plan.status);
                                                         return (
                                                             <tr key={plan.id} className="border-b border-slate-100">
@@ -2456,9 +2469,9 @@ const MarketingPage: React.FC = () => {
                                 )}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {filteredPlans.map(plan => {
-                                        const lead = state.contacts.find(l => l.id === plan.leadId);
-                                        const project = state.projects.find(p => p.id === plan.projectId);
-                                        const unit = state.units.find(u => u.id === plan.unitId);
+                                        const lead = contacts.find(l => l.id === plan.leadId);
+                                        const project = projects.find(p => p.id === plan.projectId);
+                                        const unit = units.find(u => u.id === plan.unitId);
                                         const statusMeta = getStatusMeta(plan.status);
                                         const isConvertible = plan.status === 'Approved';
                                         const isLocked = plan.status === 'Locked' || plan.status === 'Sale Recognized';
@@ -2476,7 +2489,7 @@ const MarketingPage: React.FC = () => {
                                                                 {statusMeta.label} v{plan.version}
                                                             </span>
                                                         </div>
-                                                        {plan.status === 'Pending Approval' && plan.approvalRequestedToId === state.currentUser?.id && (
+                                                        {plan.status === 'Pending Approval' && plan.approvalRequestedToId === currentUser?.id && (
                                                             <div className="mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700 font-bold animate-pulse">
                                                                 ACTION REQUIRED: WAITING FOR YOUR APPROVAL
                                                             </div>
@@ -2488,7 +2501,7 @@ const MarketingPage: React.FC = () => {
                                                                 Created by: {(() => {
                                                                     const uid = plan.userId || plan.approvalRequestedById;
                                                                     if (!uid) return 'System';
-                                                                    if (uid === state.currentUser?.id) return 'You';
+                                                                    if (uid === currentUser?.id) return 'You';
                                                                     const user = usersForApproval.find(u => u.id === uid);
                                                                     return user?.name || user?.username || 'Unknown';
                                                                 })()}
@@ -2496,7 +2509,7 @@ const MarketingPage: React.FC = () => {
                                                             {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
                                                                 <p className="text-[10px] text-blue-600">
                                                                     {(() => {
-                                                                        if (plan.approvalRequestedToId === state.currentUser?.id) return 'Awaiting: You';
+                                                                        if (plan.approvalRequestedToId === currentUser?.id) return 'Awaiting: You';
                                                                         const approver = usersForApproval.find(u => u.id === plan.approvalRequestedToId);
                                                                         return `Awaiting: ${approver?.name || approver?.username || 'Unknown Approver'}`;
                                                                     })()}
@@ -2648,7 +2661,7 @@ const MarketingPage: React.FC = () => {
                                                 <button
                                                     key={`${item.planId}-${item.title}-${idx}`}
                                                     onClick={() => {
-                                                        const plan = (state.installmentPlans || []).find(p => p.id === item.planId);
+                                                        const plan = (installmentPlans || []).find(p => p.id === item.planId);
                                                         if (plan) {
                                                             handleEdit(plan);
                                                         }
@@ -2673,7 +2686,7 @@ const MarketingPage: React.FC = () => {
             <AmenityConfigModal 
                 isOpen={showConfigModal}
                 onClose={() => setShowConfigModal(false)}
-                amenities={state.planAmenities || []}
+                amenities={planAmenities || []}
                 onSave={handleSaveAmenity}
                 onDelete={handleDeleteAmenity}
             />

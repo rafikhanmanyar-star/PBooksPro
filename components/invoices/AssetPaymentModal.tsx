@@ -1,5 +1,5 @@
+import { useAccounts, useCategories, useDispatchOnly } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Invoice, ProjectReceivedAsset, ProjectReceivedAssetType, InvoiceStatus, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -27,7 +27,9 @@ interface AssetPaymentModalProps {
 }
 
 const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, invoice, onSuccess, renderInline }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 
     const [description, setDescription] = useState('');
@@ -38,16 +40,16 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
     const balanceDue = useMemo(() => Math.max(0, invoice.amount - (invoice.paidAmount || 0)), [invoice.amount, invoice.paidAmount]);
 
     const receivedAssetsAccountId = useMemo(
-        () => resolveSystemAccountId(state.accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets',
-        [state.accounts]
+        () => resolveSystemAccountId(accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets',
+        [accounts]
     );
     const receivedAssetsAccount = useMemo(
-        () => state.accounts.find(a => a.id === receivedAssetsAccountId),
-        [state.accounts, receivedAssetsAccountId]
+        () => accounts.find(a => a.id === receivedAssetsAccountId),
+        [accounts, receivedAssetsAccountId]
     );
     const assetReceivedCategory = useMemo(
-        () => findProjectAssetCategory(state.categories, 'REVENUE_ASSET_IN_KIND'),
-        [state.categories]
+        () => findProjectAssetCategory(categories, 'REVENUE_ASSET_IN_KIND'),
+        [categories]
     );
 
     const handleSubmit = async () => {

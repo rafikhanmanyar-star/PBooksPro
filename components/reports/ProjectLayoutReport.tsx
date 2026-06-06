@@ -1,6 +1,6 @@
 
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useThemeOptional } from '../../context/ThemeContext';
 import { InvoiceStatus, TransactionType } from '../../types';
 import ReportHeader from './ReportHeader';
@@ -42,7 +42,7 @@ interface ProjectLayoutData {
 }
 
 const ProjectLayoutReport: React.FC = () => {
-    const { state } = useAppContext();
+    const state = useFinancialReportAppState();
     const themeCtx = useThemeOptional();
     const isDark = themeCtx?.theme === 'dark';
     const { print: triggerPrint } = usePrintContext();

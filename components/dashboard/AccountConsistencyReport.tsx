@@ -1,5 +1,5 @@
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { AccountType, type AccountConsistencySettings } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -45,7 +45,8 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
 }
 
 const AccountConsistencyReport: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const state = useFinancialReportAppState();
+    const dispatch = useDispatchOnly();
     const tenantId =
         state.currentUser?.tenantId?.trim() ||
         (typeof window !== 'undefined' ? localStorage.getItem('tenant_id')?.trim() : null) ||

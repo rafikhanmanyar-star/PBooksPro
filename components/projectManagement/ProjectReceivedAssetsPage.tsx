@@ -1,5 +1,5 @@
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ProjectReceivedAsset } from '../../types';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
@@ -9,7 +9,8 @@ import RecordSaleModal from './RecordSaleModal';
 import { useNotification } from '../../context/NotificationContext';
 
 const ProjectReceivedAssetsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const state = useProjectReportAppState();
+    const dispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
     const [projectFilterId, setProjectFilterId] = useState<string>('');
     const [saleModalAsset, setSaleModalAsset] = useState<ProjectReceivedAsset | null>(null);

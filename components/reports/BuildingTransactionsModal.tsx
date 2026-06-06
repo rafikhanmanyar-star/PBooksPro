@@ -1,8 +1,8 @@
 
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { Building, Transaction } from '../../types';
-import { useAppContext } from '../../context/AppContext';
 import { CURRENCY, ICONS } from '../../constants';
 import Button from '../ui/Button';
 import TransactionForm from '../transactions/TransactionForm';
@@ -20,7 +20,8 @@ interface BuildingTransactionsModalProps {
 type SortKey = 'date' | 'property' | 'description' | 'amount';
 
 const BuildingTransactionsModal: React.FC<BuildingTransactionsModalProps> = ({ isOpen, onClose, building, accountType, transactions }) => {
-    const { state, dispatch } = useAppContext();
+    const state = useFinancialReportAppState();
+    const dispatch = useDispatchOnly();
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'edit' | 'delete' | null; }>({ isOpen: false, transaction: null, action: null });
     

@@ -1,3 +1,4 @@
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { memo, useEffect, useMemo } from 'react';
 import ProjectEquityManagement, {
     EQUITY_LEDGER_TABS,
@@ -5,7 +6,6 @@ import ProjectEquityManagement, {
     type InvManagementContentTab,
 } from '../projectManagement/ProjectEquityManagement';
 import InvestmentDashboard from './InvestmentDashboard';
-import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { ICONS } from '../../constants';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -23,7 +23,7 @@ function invNavLabelShort(label: string): string {
 }
 
 const InvestmentManagementPage: React.FC = () => {
-    const { state } = useAppContext();
+    const state = useProjectReportAppState();
     const { user } = useAuth();
     const { currentUser } = state;
 

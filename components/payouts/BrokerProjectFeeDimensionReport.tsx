@@ -1,5 +1,5 @@
+import { useCategories, useContacts, useProjectAgreements, useProjects, useTransactions, useUnits } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ProjectAgreementStatus, TransactionType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -60,29 +60,34 @@ function compareCell(a: string | number, b: string | number, kind: 'text' | 'num
 }
 
 const BrokerProjectFeeDimensionReport: React.FC = () => {
-    const { state } = useAppContext();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const projectAgreements = useProjectAgreements();
+    const projects = useProjects();
+    const transactions = useTransactions();
+    const units = useUnits();
     const [groupBy, setGroupBy] = useState<BrokerFeeGroupBy>('project');
     const [sortKey, setSortKey] = useState<string>('group');
     const [sortDir, setSortDir] = useState<SortDirection>('asc');
 
     const categoryIdSet = useMemo(() => {
-        const fee = state.categories.find((c) => c.name === 'Broker Fee')?.id;
-        const rebate = state.categories.find((c) => c.name === 'Rebate Amount')?.id;
+        const fee = categories.find((c) => c.name === 'Broker Fee')?.id;
+        const rebate = categories.find((c) => c.name === 'Rebate Amount')?.id;
         return new Set([fee, rebate].filter(Boolean) as string[]);
-    }, [state.categories]);
+    }, [categories]);
 
     const agreementLines = useMemo<AgreementFeeLine[]>(() => {
         const lines: AgreementFeeLine[] = [];
-        for (const pa of state.projectAgreements) {
+        for (const pa of projectAgreements) {
             if (pa.status === ProjectAgreementStatus.CANCELLED) continue;
             if (!pa.rebateBrokerId || !(pa.rebateAmount || 0)) continue;
             const earned = typeof pa.rebateAmount === 'number' ? pa.rebateAmount : parseFloat(String(pa.rebateAmount)) || 0;
             if (earned <= 0.0005) continue;
 
-            const paid = paidForProjectAgreement(pa.id, state.transactions, categoryIdSet);
-            const broker = state.contacts.find((c) => c.id === pa.rebateBrokerId);
-            const project = state.projects.find((p) => p.id === pa.projectId);
-            const client = state.contacts.find((c) => c.id === pa.clientId);
+            const paid = paidForProjectAgreement(pa.id, transactions, categoryIdSet);
+            const broker = contacts.find((c) => c.id === pa.rebateBrokerId);
+            const project = projects.find((p) => p.id === pa.projectId);
+            const client = contacts.find((c) => c.id === pa.clientId);
             lines.push({
                 agreementId: pa.id,
                 agreementNumber: pa.agreementNumber || pa.id,
@@ -98,7 +103,7 @@ const BrokerProjectFeeDimensionReport: React.FC = () => {
             });
         }
         return lines;
-    }, [state.projectAgreements, state.transactions, state.contacts, state.projects, categoryIdSet]);
+    }, [projectAgreements, transactions, contacts, projects, categoryIdSet]);
 
     const columns = useMemo((): ColumnDef[] => {
         switch (groupBy) {
@@ -215,7 +220,7 @@ const BrokerProjectFeeDimensionReport: React.FC = () => {
                 const uids = line.unitIds.length > 0 ? line.unitIds : [''];
                 const denom = Math.max(1, line.unitIds.length);
                 for (const uid of uids) {
-                    const unit = uid ? state.units.find((u) => u.id === uid) : undefined;
+                    const unit = uid ? units.find((u) => u.id === uid) : undefined;
                     const unitLabel = uid ? unit?.name || uid : '—';
                     const e = line.feeEarned / denom;
                     const p = line.feePaid / denom;
@@ -248,7 +253,7 @@ const BrokerProjectFeeDimensionReport: React.FC = () => {
         }
 
         return out;
-    }, [agreementLines, groupBy, state.units]);
+    }, [agreementLines, groupBy, units]);
 
     const sortedRows = useMemo(() => {
         const col = columns.find((c) => c.id === sortKey) ?? columns[0];

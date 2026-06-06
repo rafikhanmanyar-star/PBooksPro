@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useFinancialReportAppState, useStateSelector } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionLogEntry, Transaction } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -25,7 +25,8 @@ interface TransactionLogViewerProps {
 type DateRangeType = 'today' | 'thisMonth' | 'lastMonth' | 'custom';
 
 const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onClose }) => {
-    const { state, dispatch } = useAppContext();
+    const transactionLog = useStateSelector((s) => s.transactionLog);
+    const dispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
     const { currentUser } = state;
     
@@ -64,7 +65,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        let logs = state.transactionLog || [];
+        let logs = transactionLog || [];
         
         // RBAC Filter: If not Admin, filter by userId
         if (currentUser?.role !== 'Admin') {
@@ -98,7 +99,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
             return 0;
         });
 
-    }, [state.transactionLog, startDate, endDate, searchQuery, sortConfig, currentUser]);
+    }, [transactionLog, startDate, endDate, searchQuery, sortConfig, currentUser]);
 
     const handleSort = (key: keyof TransactionLogEntry) => {
         setSortConfig(current => ({

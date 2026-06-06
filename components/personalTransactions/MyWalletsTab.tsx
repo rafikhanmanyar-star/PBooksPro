@@ -1,5 +1,5 @@
+import { useAccounts, usePersonalTransactions } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { getPersonalBalancesByAccount } from './personalTransactionsService';
 import { CURRENCY } from '../../constants';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -11,16 +11,17 @@ function formatAmount(amount: number): string {
 }
 
 const MyWalletsTab: React.FC = () => {
-  const { state } = useAppContext();
+  const accounts = useAccounts();
+    const personalTransactions = usePersonalTransactions();
 
   const accountIdToName = useMemo(() => {
     const map = new Map<string, string>();
-    state.accounts.forEach((a) => map.set(a.id, a.name));
+    accounts.forEach((a) => map.set(a.id, a.name));
     return map;
-  }, [state.accounts]);
+  }, [accounts]);
 
   const balancesByAccount = getPersonalBalancesByAccount(
-    !isLocalOnlyMode() ? state.personalTransactions : undefined
+    !isLocalOnlyMode() ? personalTransactions : undefined
   );
 
   const rows = useMemo(

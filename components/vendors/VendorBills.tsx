@@ -1,6 +1,6 @@
 
+import { useBills, useStateSelector, useVendors } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Bill, InvoiceStatus } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -18,18 +18,20 @@ interface VendorBillsProps {
 type SortKey = 'issueDate' | 'billNumber' | 'amount' | 'paidAmount' | 'status' | 'balance' | 'description';
 
 const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
-    const { state } = useAppContext();
+    const allBills = useBills();
+    const vendors = useVendors();
+    const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'issueDate', direction: 'desc' });
 
-    const vendor = state.vendors?.find(v => v.id === vendorId);
+    const vendor = vendors?.find(v => v.id === vendorId);
 
     const bills = useMemo(() => {
-        return state.bills.filter(b => (b.vendorId || b.contactId) === vendorId);
-    }, [state.bills, vendorId]);
+        return allBills.filter(b => (b.vendorId || b.contactId) === vendorId);
+    }, [allBills, vendorId]);
 
     const filteredBills = useMemo(() => {
         let result = bills;
@@ -85,7 +87,7 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
 
             sendOrOpenWhatsApp(
                 { contact: vendor, message, phoneNumber: vendor.contactNo },
-                () => state.whatsAppMode,
+                () => whatsAppMode,
                 openChat
             );
         } catch (error) {

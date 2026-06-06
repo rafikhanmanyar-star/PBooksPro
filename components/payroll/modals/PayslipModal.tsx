@@ -2,12 +2,12 @@
  * PayslipModal - View employee payslip for a specific payroll run
  */
 
+import { useAccounts, useCategories, useDispatchOnly, useProjects } from '../../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { X, Download, Printer, ShieldCheck, Building2, Plus, TrendingDown, Wallet, CheckCircle2, Loader2, AlertCircle, MessageCircle } from 'lucide-react';
 import { PayrollEmployee, PayrollRun, Payslip } from '../types';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
-import { useAppContext } from '../../../context/AppContext';
 import { Account, Category, Project, Transaction, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
 import { isAccountingBackedByRemoteApi, isLocalOnlyMode } from '../../../config/apiUrl';
@@ -33,7 +33,10 @@ interface PayslipModalProps {
 
 const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete, initialAction }) => {
   const { tenant } = useAuth();
-  const { state, dispatch } = useAppContext();
+  const accounts = useAccounts();
+    const categories = useCategories();
+    const allProjects = useProjects();
+    const dispatch = useDispatchOnly();
   const { print: triggerPrint } = usePrintContext();
   const companyName = tenant?.companyName || tenant?.name || 'Organization';
 
@@ -50,8 +53,8 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   const [paymentAmount, setPaymentAmount] = useState<string>('');
 
   const salaryExpensesCategoryId = React.useMemo(
-    () => resolveSystemCategoryId(state.categories, 'sys-cat-sal-exp'),
-    [state.categories]
+    () => resolveSystemCategoryId(categories, 'sys-cat-sal-exp'),
+    [categories]
   );
 
   // State for accounts fetched directly from API (fallback if AppContext doesn't have them)
@@ -60,7 +63,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
 
   // Get bank and cash accounts - try AppContext first, then fetch from API if needed
   const paymentAccounts = React.useMemo(() => {
-    const accountsToUse = state.accounts.length > 0 ? state.accounts : fetchedAccounts;
+    const accountsToUse = accounts.length > 0 ? accounts : fetchedAccounts;
     if (!accountsToUse || accountsToUse.length === 0) return [];
 
     const filtered = accountsToUse.filter(a => {
@@ -72,19 +75,19 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
     });
 
     return filtered.sort((a, b) => b.balance - a.balance);
-  }, [state.accounts, fetchedAccounts]);
+  }, [accounts, fetchedAccounts]);
 
   // Get expense categories
   const expenseCategories = React.useMemo(() => {
-    return state.categories
+    return categories
       .filter(c => c.type === TransactionType.EXPENSE)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [state.categories]);
+  }, [categories]);
 
   // Get projects
   const projects = React.useMemo(() => {
-    return state.projects;
-  }, [state.projects]);
+    return projects;
+  }, [projects]);
 
   /** Project/building split for this payslip: snapshot when present, else employee profile (legacy). */
   const allocationForPayment = React.useMemo(
@@ -95,11 +98,11 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   // In local-only mode, accounts come from AppContext (local DB). Otherwise fetch from API if needed.
   useEffect(() => {
     if (isLocalOnlyMode()) {
-      if (isOpen && state.accounts.length === 0) setIsLoadingAccounts(false);
+      if (isOpen && accounts.length === 0) setIsLoadingAccounts(false);
       return;
     }
     if (!isOpen || isLoadingAccounts) return;
-    if (state.accounts.length > 0 && !showPaymentForm) return;
+    if (accounts.length > 0 && !showPaymentForm) return;
 
     setIsLoadingAccounts(true);
     apiClient.get<Account[]>('/accounts')
@@ -123,7 +126,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
         else if (error?.status === 0) setPaymentError('No internet connection. Please check your network.');
         else setPaymentError(`Failed to load accounts: ${error?.message || 'Unknown error'}. Please refresh the page.`);
       });
-  }, [isOpen, state.accounts.length, showPaymentForm, isLoadingAccounts]);
+  }, [isOpen, accounts.length, showPaymentForm, isLoadingAccounts]);
 
   // Initialize form data when modal opens or when accounts become available
   useEffect(() => {
@@ -132,12 +135,12 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       setPaymentError(null);
 
       console.log('🔍 PayslipModal opened - State check:', {
-        totalAccountsInState: state.accounts.length,
+        totalAccountsInState: accounts.length,
         fetchedAccountsCount: fetchedAccounts.length,
         paymentAccountsCount: paymentAccounts.length,
         isLoadingAccounts,
-        accountTypes: [...new Set([...state.accounts, ...fetchedAccounts].map(a => a.type))],
-        allAccountNames: [...state.accounts, ...fetchedAccounts].map(a => ({ name: a.name, type: a.type }))
+        accountTypes: [...new Set([...accounts, ...fetchedAccounts].map(a => a.type))],
+        allAccountNames: [...accounts, ...fetchedAccounts].map(a => ({ name: a.name, type: a.type }))
       });
 
       // Auto-select first account if available
@@ -153,7 +156,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
         }
       } else if (!isLoadingAccounts) {
         console.warn('⚠️ No payment accounts available to auto-select');
-        const totalAccounts = state.accounts.length + fetchedAccounts.length;
+        const totalAccounts = accounts.length + fetchedAccounts.length;
         if (totalAccounts === 0) {
           setPaymentError('No accounts found in system. Please ensure accounts are loaded.');
         } else {
@@ -182,7 +185,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       setFetchedAccounts([]);
       setIsLoadingAccounts(false);
     }
-  }, [isOpen, payslipData, paymentAccounts, expenseCategories, allocationForPayment.projects, allocationForPayment.buildings, state.accounts, fetchedAccounts, isLoadingAccounts, salaryExpensesCategoryId]);
+  }, [isOpen, payslipData, paymentAccounts, expenseCategories, allocationForPayment.projects, allocationForPayment.buildings, accounts, fetchedAccounts, isLoadingAccounts, salaryExpensesCategoryId]);
 
   // When opened with initialAction 'print', trigger print dialog (e.g. from Past Payslips Print button)
   React.useEffect(() => {
@@ -523,7 +526,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                 <button
                   onClick={() => {
                     // Local-only: accounts from AppContext. Non–local: already loaded or from useEffect.
-                    if (isAccountingBackedByRemoteApi() && (state.accounts.length === 0 || fetchedAccounts.length === 0)) {
+                    if (isAccountingBackedByRemoteApi() && (accounts.length === 0 || fetchedAccounts.length === 0)) {
                       setIsLoadingAccounts(true);
                       apiClient.get<Account[]>('/accounts')
                         .then((fresh: Account[] | undefined) => {
@@ -674,10 +677,10 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                           </div>
                         )}
                       </div>
-                      {!isLoadingAccounts && (state.accounts.length > 0 || fetchedAccounts.length > 0) && (
+                      {!isLoadingAccounts && (accounts.length > 0 || fetchedAccounts.length > 0) && (
                         <p className="text-[10px] text-slate-500 mt-1">
-                          Found {(state.accounts.length || fetchedAccounts.length)} account(s) but none are Bank or Cash type.
-                          Available types: {[...new Set([...state.accounts, ...fetchedAccounts].map(a => a.type))].join(', ')}
+                          Found {(accounts.length || fetchedAccounts.length)} account(s) but none are Bank or Cash type.
+                          Available types: {[...new Set([...accounts, ...fetchedAccounts].map(a => a.type))].join(', ')}
                         </p>
                       )}
                     </div>

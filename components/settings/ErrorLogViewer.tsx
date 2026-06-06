@@ -1,8 +1,8 @@
 
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import { useAppContext } from '../../context/AppContext';
 import { ErrorLogEntry } from '../../types';
 import { useNotification } from '../../context/NotificationContext';
 import { getErrorLogger, ExtendedErrorLogEntry } from '../../services/errorLogger';
@@ -25,7 +25,8 @@ const LogEntryView: React.FC<{ entry: ExtendedErrorLogEntry }> = ({ entry }) => 
 
 
 const ErrorLogViewer: React.FC<ErrorLogViewerProps> = ({ isOpen, onClose }) => {
-    const { state, dispatch } = useAppContext();
+    const errorLog = useStateSelector((s) => s.errorLog);
+    const dispatch = useDispatchOnly();
     const { showConfirm } = useNotification();
     const [errorLogs, setErrorLogs] = useState<ExtendedErrorLogEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -39,8 +40,8 @@ const ErrorLogViewer: React.FC<ErrorLogViewerProps> = ({ isOpen, onClose }) => {
                 setErrorLogs(logs);
             } catch (error) {
                 console.error('Failed to load error logs:', error);
-                // Fallback to state.errorLog
-                setErrorLogs(state.errorLog.map((log, index): ExtendedErrorLogEntry => ({
+                // Fallback to errorLog
+                setErrorLogs(errorLog.map((log, index): ExtendedErrorLogEntry => ({
                     id: index.toString(),
                     timestamp: log.timestamp,
                     message: log.message,
@@ -52,7 +53,7 @@ const ErrorLogViewer: React.FC<ErrorLogViewerProps> = ({ isOpen, onClose }) => {
                 setIsLoading(false);
             }
         }
-    }, [isOpen, state.errorLog]);
+    }, [isOpen, errorLog]);
 
     const handleClearLog = async () => {
         const confirmed = await showConfirm('Are you sure you want to clear the error log?', { title: 'Clear Log', confirmLabel: 'Clear' });

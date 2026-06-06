@@ -1,10 +1,10 @@
 
+import { useFinancialReportAppState, useProjects } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Project, ProjectStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { suggestProjectClosed } from '../../services/accounting/accountingLedgerCore';
 import { toLocalDateString } from '../../utils/dateUtils';
@@ -18,7 +18,7 @@ interface ProjectFormProps {
 }
 
 const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete, projectToEdit, initialName }) => {
-    const { state } = useAppContext();
+    const projects = useProjects();
     const { showAlert } = useNotification();
     const [name, setName] = useState(projectToEdit?.name || initialName || '');
     const [description, setDescription] = useState(projectToEdit?.description || '');
@@ -31,7 +31,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
     const booksClearForClose = useMemo(() => {
         if (!projectToEdit?.id) return false;
         return suggestProjectClosed(state, projectToEdit.id, toLocalDateString(new Date()));
-    }, [state, projectToEdit?.id]);
+    }, [projects, projectToEdit?.id]);
 
     useEffect(() => {
         setStatus(projectToEdit?.status || 'Active');
@@ -43,13 +43,13 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
             setNameError('Project name is required.');
             return;
         }
-        const duplicate = state.projects.find(p => p.name.toLowerCase().trim() === name.toLowerCase().trim() && p.id !== projectToEdit?.id);
+        const duplicate = projects.find(p => p.name.toLowerCase().trim() === name.toLowerCase().trim() && p.id !== projectToEdit?.id);
         if (duplicate) {
             setNameError('A project with this name already exists.');
         } else {
             setNameError('');
         }
-    }, [name, state.projects, projectToEdit]);
+    }, [name, projects, projectToEdit]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

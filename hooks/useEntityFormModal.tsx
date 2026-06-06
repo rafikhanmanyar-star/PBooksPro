@@ -1,6 +1,6 @@
 
+import { useBuildings, useContacts, useDispatchOnly, useProperties } from '../hooks/useSelectiveState';
 import React, { useState, useCallback } from 'react';
-import { useAppContext } from '../context/AppContext';
 import { ContactType, TransactionType, AccountType } from '../types';
 import Modal from '../components/ui/Modal';
 import ContactForm from '../components/settings/ContactForm';
@@ -26,7 +26,10 @@ interface UseEntityFormModalReturn {
 }
 
 export const useEntityFormModal = (): UseEntityFormModalReturn => {
-  const { state, dispatch } = useAppContext();
+  const buildings = useBuildings();
+    const contacts = useContacts();
+    const properties = useProperties();
+    const dispatch = useDispatchOnly();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formType, setFormType] = useState<EntityType | null>(null);
   const [initialName, setInitialName] = useState<string>('');
@@ -137,7 +140,10 @@ export const EntityFormModal: React.FC<{
   onClose: () => void;
   onSubmit: (data: any) => void;
 }> = ({ isOpen, formType, initialName, contactType, categoryType, onClose, onSubmit }) => {
-  const { state } = useAppContext();
+  const buildings = useBuildings();
+    const contacts = useContacts();
+    const properties = useProperties();
+    const dispatch = useDispatchOnly();
 
   const getFormTitle = () => {
     if (!formType) return 'Add New';
@@ -161,7 +167,7 @@ export const EntityFormModal: React.FC<{
         <ContactForm
           onSubmit={onSubmit}
           onCancel={onClose}
-          existingContacts={state.contacts}
+          existingContacts={contacts}
           fixedTypeForNew={contactType}
           initialName={initialName}
         />
@@ -199,9 +205,9 @@ export const EntityFormModal: React.FC<{
         <PropertyForm
           onSubmit={onSubmit}
           onCancel={onClose}
-          contacts={state.contacts}
-          buildings={state.buildings}
-          properties={state.properties}
+          contacts={contacts}
+          buildings={buildings}
+          properties={properties}
         />
       )}
       {formType === 'unit' && (

@@ -1,4 +1,5 @@
 
+import { useContacts, useDispatchOnly, useProjects, useStateSelector, useUnits } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { Unit, Project, Contact, ContactType, UnitOccupancyStatus } from '../../types';
 import Input from '../ui/Input';
@@ -6,7 +7,6 @@ import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import Modal from '../ui/Modal';
 import ContactForm from './ContactForm';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 // Note: useEntityFormModal removed to avoid circular dependency - using local modal pattern instead
 
@@ -18,10 +18,14 @@ interface UnitFormProps {
 }
 
 const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitToEdit }) => {
-    const { state, dispatch } = useAppContext();
+    const contacts = useContacts();
+    const defaultProjectId = useStateSelector((s) => s.defaultProjectId);
+    const projects = useProjects();
+    const units = useUnits();
+    const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
     const [name, setName] = useState(unitToEdit?.name || '');
-    const [projectId, setProjectId] = useState(unitToEdit?.projectId || state.defaultProjectId || '');
+    const [projectId, setProjectId] = useState(unitToEdit?.projectId || defaultProjectId || '');
     const [contactId, setContactId] = useState(unitToEdit?.contactId || '');
     const [salePrice, setSalePrice] = useState(unitToEdit?.salePrice?.toString() || '');
     const [type, setType] = useState(unitToEdit?.type || '');
@@ -36,7 +40,7 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
     const [newContactName, setNewContactName] = useState('');
 
     // Include both Owners and Clients
-    const owners = state.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
+    const owners = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
 
     // Check for duplicate unit names
     useEffect(() => {
@@ -44,7 +48,7 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
             setNameError('Unit name is required.');
             return;
         }
-        const duplicate = state.units.find(
+        const duplicate = units.find(
             u =>
                 u.projectId === projectId &&
                 u.name.toLowerCase().trim() === name.toLowerCase().trim() &&
@@ -55,7 +59,7 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
         } else {
             setNameError('');
         }
-    }, [name, projectId, state.units, unitToEdit]);
+    }, [name, projectId, units, unitToEdit]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -89,7 +93,7 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <ComboBox 
                             label="Project" 
-                            items={state.projects} 
+                            items={projects} 
                             selectedId={projectId} 
                             onSelect={(item) => setProjectId(item?.id || '')}
                             placeholder="Select a project"
@@ -159,7 +163,7 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                         setNewContactName('');
                     }} 
                     onCancel={() => setShowContactModal(false)} 
-                    existingContacts={state.contacts}
+                    existingContacts={contacts}
                     initialName={newContactName}
                     fixedTypeForNew={ContactType.OWNER}
                 />

@@ -1,4 +1,5 @@
 
+import { useCategories } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Category, TransactionType, ProfitLossSubType } from '../../types';
 import Input from '../ui/Input';
@@ -6,8 +7,6 @@ import Select from '../ui/Select';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
-import { useAppContext } from '../../context/AppContext';
-
 interface CategoryFormProps {
     onSubmit: (category: Omit<Category, 'id'>) => void;
     onCancel: () => void;
@@ -18,7 +17,7 @@ interface CategoryFormProps {
 }
 
 const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelete, categoryToEdit, fixedTypeForNew, initialName }) => {
-    const { state } = useAppContext();
+    const categories = useCategories();
     const [name, setName] = useState(categoryToEdit?.name || initialName || '');
     const [description, setDescription] = useState(categoryToEdit?.description || '');
     const [type, setType] = useState<TransactionType>(categoryToEdit?.type || fixedTypeForNew || TransactionType.EXPENSE);
@@ -43,12 +42,12 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
     }, [categoryToEdit]);
 
     const availableParents = useMemo(() => {
-        return state.categories.filter(cat => 
+        return categories.filter(cat => 
             cat.type === type && 
             cat.id !== categoryToEdit?.id &&
             !cat.parentCategoryId 
         );
-    }, [state.categories, type, categoryToEdit]);
+    }, [categories, type, categoryToEdit]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

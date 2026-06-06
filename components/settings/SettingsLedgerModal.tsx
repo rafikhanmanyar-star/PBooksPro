@@ -1,7 +1,7 @@
 
+import { useAccounts, useDispatchOnly, useTransactions } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
-import { useAppContext } from '../../context/AppContext';
 import TransactionItem from '../transactions/TransactionItem';
 import { TransactionType, LoanSubtype, AccountType } from '../../types';
 import Button from '../ui/Button';
@@ -17,7 +17,9 @@ interface SettingsLedgerModalProps {
 }
 
 const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClose, entityId, entityType, entityName }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const allTransactions = useTransactions();
+    const dispatch = useDispatchOnly();
 
     const [contractorLedger, setContractorLedger] = useState<{
         advances: Array<{ id: string; advanceDate: string; originalAmount: number; remainingAmount: number; description?: string }>;
@@ -80,7 +82,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
     const transactions = useMemo(() => {
         if (!entityId) return [];
 
-        return state.transactions.filter(tx => {
+        return transactions.filter(tx => {
             if (entityType === 'account') {
                 return tx.accountId === entityId || tx.fromAccountId === entityId || tx.toAccountId === entityId;
             }
@@ -104,11 +106,11 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
             }
             return false;
         }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [state.transactions, entityId, entityType]);
+    }, [transactions, entityId, entityType]);
 
     const totalBalance = useMemo(() => {
         if (entityType === 'account') {
-            const acc = state.accounts.find(a => a.id === entityId);
+            const acc = accounts.find(a => a.id === entityId);
             // Invert balance for Equity and Liability accounts so positive numbers mean "Credit Balance" (Money in the bucket for Equity/Liability)
             if (acc && (acc.type === AccountType.LIABILITY || acc.type === AccountType.EQUITY)) {
                 return -(acc.balance || 0);
@@ -138,7 +140,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
             }
             return sum;
         }, 0);
-    }, [transactions, entityType, entityId, state.accounts]);
+    }, [transactions, entityType, entityId, accounts]);
 
     const contractorLedgerSectionVisible =
         contractorLedger &&

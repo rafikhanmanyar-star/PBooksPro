@@ -1,6 +1,6 @@
 
+import { useBills, useBudgets, useCategories, useDispatchOnly, useInvoices, useProjects, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Category, TransactionType, Budget } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -12,7 +12,7 @@ const BudgetRow: React.FC<{
     totalSpent: number;
     projectId?: string;
 }> = ({ category, budget, totalSpent, projectId }) => {
-    const { dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
     const [amount, setAmount] = useState(budget?.amount?.toString() || '');
 
     useEffect(() => {
@@ -122,8 +122,15 @@ type SortField = 'category' | 'budget' | 'spent' | 'remaining' | 'progress';
 type SortDirection = 'asc' | 'desc';
 
 const BudgetManagement: React.FC = () => {
-    const { state } = useAppContext();
-    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || '');
+    const bills = useBills();
+    const budgets = useBudgets();
+    const categories = useCategories();
+    const defaultProjectId = useStateSelector((s) => s.defaultProjectId);
+    const invoices = useInvoices();
+    const projects = useProjects();
+    const transactions = useTransactions();
+    const dispatch = useDispatchOnly();
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(defaultProjectId || '');
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [sortField, setSortField] = useState<SortField>('category');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -137,7 +144,7 @@ const BudgetManagement: React.FC = () => {
         }
     };
 
-    const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
+    const expenseCategories = useMemo(() => categories.filter(c => c.type === TransactionType.EXPENSE), [categories]);
 
     const totalSpending = useMemo(() => {
         const spendingMap = new Map<string, number>();
@@ -149,7 +156,7 @@ const BudgetManagement: React.FC = () => {
 
         console.log(`💰 Budget Planner: Calculating spending for project "${selectedProjectId}"`);
 
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             if (tx.type !== TransactionType.EXPENSE) return;
 
             // Resolve projectId from linked entities (same logic as working reports)
@@ -158,7 +165,7 @@ const BudgetManagement: React.FC = () => {
 
             // Resolve from linked Bill if missing
             if (tx.billId) {
-                const bill = state.bills.find(b => b.id === tx.billId);
+                const bill = bills.find(b => b.id === tx.billId);
                 if (bill) {
                     if (!projectId) projectId = bill.projectId;
                     if (!categoryId) categoryId = bill.categoryId;
@@ -167,7 +174,7 @@ const BudgetManagement: React.FC = () => {
 
             // Resolve from linked Invoice if missing
             if (tx.invoiceId) {
-                const inv = state.invoices.find(i => i.id === tx.invoiceId);
+                const inv = invoices.find(i => i.id === tx.invoiceId);
                 if (inv) {
                     if (!projectId) projectId = inv.projectId;
                     if (!categoryId) categoryId = inv.categoryId;
@@ -186,7 +193,7 @@ const BudgetManagement: React.FC = () => {
         console.log(`   Total spent: ${CURRENCY} ${Array.from(spendingMap.values()).reduce((a, b) => a + b, 0).toLocaleString()}`);
 
         return spendingMap;
-    }, [state.transactions, state.bills, state.invoices, selectedProjectId]);
+    }, [transactions, bills, invoices, selectedProjectId]);
 
     // Get budgets for selected project
     const projectBudgets = useMemo(() => {
@@ -195,18 +202,18 @@ const BudgetManagement: React.FC = () => {
             return [];
         }
 
-        const filtered = state.budgets.filter(b => b.projectId === selectedProjectId);
+        const filtered = budgets.filter(b => b.projectId === selectedProjectId);
 
         console.log(`📋 Budgets for project "${selectedProjectId}": ${filtered.length}`);
         if (filtered.length > 0) {
             filtered.forEach(b => {
-                const category = state.categories.find(c => c.id === b.categoryId);
+                const category = categories.find(c => c.id === b.categoryId);
                 console.log(`   - ${category?.name || 'Unknown'}: ${b.amount}`);
             });
         }
 
         return filtered;
-    }, [state.budgets, selectedProjectId, state.categories]);
+    }, [budgets, selectedProjectId, categories]);
 
     // Filter and sort categories
     const filteredAndSortedCategories = useMemo(() => {
@@ -219,12 +226,12 @@ const BudgetManagement: React.FC = () => {
         // Sort based on selected field and direction
         filtered = [...filtered].sort((a, b) => {
             const budgetA = selectedProjectId
-                ? state.budgets.find(budget =>
+                ? budgets.find(budget =>
                     budget.categoryId === a.id && budget.projectId === selectedProjectId
                 )
                 : undefined;
             const budgetB = selectedProjectId
-                ? state.budgets.find(budget =>
+                ? budgets.find(budget =>
                     budget.categoryId === b.id && budget.projectId === selectedProjectId
                 )
                 : undefined;
@@ -261,7 +268,7 @@ const BudgetManagement: React.FC = () => {
         });
 
         return filtered;
-    }, [expenseCategories, searchQuery, sortField, sortDirection, state.budgets, selectedProjectId, totalSpending]);
+    }, [expenseCategories, searchQuery, sortField, sortDirection, budgets, selectedProjectId, totalSpending]);
 
     const totalBudgeted = projectBudgets.reduce((sum: number, b) => sum + (Number(b.amount) || 0), 0);
     const totalSpent = Array.from(totalSpending.values()).reduce((a: number, b: number) => a + (Number(b) || 0), 0);
@@ -294,7 +301,7 @@ const BudgetManagement: React.FC = () => {
                             className="w-full !py-2.5 !pl-4 !pr-10 !text-base !rounded-xl !border-app-border !bg-app-surface-2 !text-app-text shadow-ds-card focus:!ring-2 focus:!ring-primary/25 focus:!border-primary"
                         >
                             <option value="">Select a Project to Configure</option>
-                            {state.projects.map(project => (
+                            {projects.map(project => (
                                 <option key={project.id} value={project.id}>
                                     {project.name}
                                 </option>
@@ -433,7 +440,7 @@ const BudgetManagement: React.FC = () => {
                         <div className="divide-y divide-app-border">
                             {filteredAndSortedCategories.map(category => {
                                 const budget = selectedProjectId
-                                    ? state.budgets.find(b =>
+                                    ? budgets.find(b =>
                                         b.categoryId === category.id && b.projectId === selectedProjectId
                                     )
                                     : undefined;

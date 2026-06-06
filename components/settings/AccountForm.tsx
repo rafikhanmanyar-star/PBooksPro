@@ -1,4 +1,5 @@
 
+import { useAccounts } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Account, AccountType } from '../../types';
 import Input from '../ui/Input';
@@ -6,8 +7,6 @@ import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
-import { useAppContext } from '../../context/AppContext';
-
 const SYSTEM_ACCOUNT_NAMES = new Set([
     'cash', 'accounts receivable', 'accounts payable', 'owner equity', 'internal clearing',
     'security liability', 'project received assets'
@@ -26,7 +25,7 @@ interface AccountFormProps {
 }
 
 const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete, accountToEdit, initialName }) => {
-    const { state } = useAppContext();
+    const accounts = useAccounts();
     const [name, setName] = useState(accountToEdit?.name || initialName || '');
     const [description, setDescription] = useState(accountToEdit?.description || '');
     const [type, setType] = useState<AccountType>(accountToEdit?.type || AccountType.BANK);
@@ -63,12 +62,12 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
     }, [type, accountToEdit]);
 
     const availableParents = useMemo(() => {
-        return state.accounts.filter(acc =>
+        return accounts.filter(acc =>
             acc.type === type &&
             acc.id !== accountToEdit?.id && // Cannot be parent of itself
             !acc.parentAccountId // Ideally only 1 level deep for simplicity, but we can allow nesting. For now, filter to prevent circular if we implemented checks.
         );
-    }, [state.accounts, type, accountToEdit]);
+    }, [accounts, type, accountToEdit]);
 
     const id = accountToEdit?.id ?? '';
     const isSystemAccountId = id.includes('sys-acc-');

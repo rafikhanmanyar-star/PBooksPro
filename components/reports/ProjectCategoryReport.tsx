@@ -1,6 +1,6 @@
 
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY, ICONS } from '../../constants';
@@ -81,7 +81,7 @@ interface ProjectCategoryReportProps {
 type SortKey = 'categoryName' | 'count' | 'amount' | 'percentage';
 
 const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) => {
-    const { state } = useAppContext();
+    const state = useFinancialReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));

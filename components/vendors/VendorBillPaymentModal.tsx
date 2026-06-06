@@ -1,6 +1,6 @@
 
+import { useAccounts, useBills, useCategories, useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Vendor, Transaction, TransactionType, InvoiceStatus, AccountType, Bill } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -47,7 +47,10 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     presetSelectedBillIds,
     editSettlement,
 }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const allBills = useBills();
+    const categories = useCategories();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();
 
@@ -72,7 +75,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     );
 
     const pendingBills = useMemo(() => {
-        let bills = state.bills.filter((b) => {
+        let bills = bills.filter((b) => {
             if (b.vendorId !== vendor.id) return false;
             if (editSettlement && b.id === editSettlement.billId) return true;
             return b.status !== InvoiceStatus.PAID;
@@ -81,23 +84,23 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
             bills = bills.filter((b) => restrictSet.has(b.id));
         }
         return bills;
-    }, [state.bills, vendor.id, restrictSet, editSettlement?.billId]);
+    }, [bills, vendor.id, restrictSet, editSettlement?.billId]);
 
     const userSelectableAccounts = useMemo(
         () =>
-            state.accounts.filter(
+            accounts.filter(
                 (a) =>
                     (a.type === AccountType.BANK || a.type === AccountType.CASH) && a.name !== 'Internal Clearing'
             ),
-        [state.accounts]
+        [accounts]
     );
 
     const glExpenseCandidates = useMemo(
         () =>
-            state.accounts.filter(
+            accounts.filter(
                 (a) => a.type !== AccountType.BANK && a.type !== AccountType.CASH && a.name !== 'Internal Clearing'
             ),
-        [state.accounts]
+        [accounts]
     );
 
     const preloadPartyId = useMemo(() => {
@@ -630,7 +633,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                     buildingId: bill.buildingId,
                     propertyId: bill.propertyId,
                     agreementId: bill.projectAgreementId,
-                    categoryId: resolveBillLinkedExpenseCategoryId(bill, state.categories),
+                    categoryId: resolveBillLinkedExpenseCategoryId(bill, categories),
                     billId: bill.id,
                     contractId: bill.contractId,
                     batchId,
@@ -648,7 +651,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
             }
             const updatedBillsForWhatsApp: Bill[] = [];
             for (const [billId, amt] of billPayTotals) {
-                const b = state.bills.find((x) => x.id === billId);
+                const b = bills.find((x) => x.id === billId);
                 if (b) updatedBillsForWhatsApp.push(computeBillAfterPayment(b, amt));
             }
 

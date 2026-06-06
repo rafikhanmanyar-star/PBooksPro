@@ -1,5 +1,5 @@
+import { useCategories, useDispatchOnly, useQuotations } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Quotation, Contact } from '../../types';
 import { ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -14,13 +14,15 @@ interface VendorQuotationsProps {
 }
 
 const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuotation, onViewDocument }) => {
-    const { state, dispatch } = useAppContext();
+    const categories = useCategories();
+    const allQuotations = useQuotations();
+    const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
     const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
     const quotations = useMemo(() => {
-        return (state.quotations || [])
+        return (quotations || [])
             .filter(q => q.vendorId === vendorId)
             .sort((a, b) => {
                 if (sortBy === 'date') {
@@ -33,7 +35,7 @@ const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuo
                         : b.totalAmount - a.totalAmount;
                 }
             });
-    }, [state.quotations, vendorId, sortBy, sortOrder]);
+    }, [quotations, vendorId, sortBy, sortOrder]);
 
     const handleDelete = async (quotation: Quotation) => {
         const confirmed = await showConfirm(
@@ -171,7 +173,7 @@ const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuo
                                         <div className="text-xs font-medium text-slate-500 mb-2">Items:</div>
                                         <div className="space-y-1">
                                             {quotation.items.slice(0, 3).map((item, idx) => {
-                                                const category = state.categories.find(c => c.id === item.categoryId);
+                                                const category = categories.find(c => c.id === item.categoryId);
                                                 return (
                                                     <div key={idx} className="text-xs text-slate-600 flex items-center gap-2">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>

@@ -1,5 +1,5 @@
+import { useAccounts, useProjects } from '../../hooks/useSelectiveState';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Vendor, Account, AccountType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -70,7 +70,8 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     vendor,
     defaultProjectId,
 }) => {
-    const { state } = useAppContext();
+    const accounts = useAccounts();
+    const projects = useProjects();
     const { showToast, showAlert } = useNotification();
 
     const [advanceDate, setAdvanceDate] = useState(toLocalDateString(new Date()));
@@ -88,10 +89,10 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     /** Merged chart: AppContext + fresh API list (by id) so nothing is dropped when one source is partial. */
     const chartAccountRows = useMemo((): AccountJsonRow[] => {
         if (isLocalOnlyMode()) {
-            return state.accounts.map((a) => ({ ...(a as unknown as AccountJsonRow) }));
+            return accounts.map((a) => ({ ...(a as unknown as AccountJsonRow) }));
         }
         const byId = new Map<string, AccountJsonRow>();
-        for (const a of state.accounts) {
+        for (const a of accounts) {
             const id = String(a.id ?? '').trim();
             if (id) byId.set(id, { ...(a as unknown as AccountJsonRow) });
         }
@@ -100,7 +101,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
             if (id) byId.set(id, { ...r });
         }
         return Array.from(byId.values());
-    }, [state.accounts, fetchedAccountRows]);
+    }, [accounts, fetchedAccountRows]);
 
     /** Every active chart line (Settings → Chart of Accounts), so mis-classified banks (e.g. HBL as Asset) still appear. */
     const payFromAccounts = useMemo(() => {
@@ -161,9 +162,9 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     const projectItems = useMemo(
         () =>
             [{ id: '', name: '(No project)' }].concat(
-                state.projects.map((p) => ({ id: p.id, name: p.name || p.id }))
+                projects.map((p) => ({ id: p.id, name: p.name || p.id }))
             ),
-        [state.projects]
+        [projects]
     );
 
     useEffect(() => {

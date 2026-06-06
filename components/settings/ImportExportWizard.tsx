@@ -1,6 +1,6 @@
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useRef, useCallback } from 'react';
 import { getApiBaseUrl, isLocalOnlyMode } from '../../config/apiUrl';
-import { useAppContext } from '../../context/AppContext';
 import { useProgress } from '../../context/ProgressContext';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
@@ -184,7 +184,7 @@ export interface ImportExportWizardProps {
 }
 
 const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, startAtImport, onBack }) => {
-  const { dispatch, state } = useAppContext();
+  const dispatch = useDispatchOnly();
   const progress = useProgress();
   const [currentStep, setCurrentStep] = useState<WizardStep>(embedded && startAtImport ? 'import' : 'choose');
   const [stepHistory, setStepHistory] = useState<WizardStep[]>(embedded && startAtImport ? ['import'] : ['choose']);

@@ -1,7 +1,7 @@
 
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { useAppContext } from '../../context/AppContext';
 import { ProjectAgreement, ContactType, ProjectAgreementStatus, Invoice, InvoiceStatus, InvoiceType, Project, InstallmentFrequency } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -131,7 +131,8 @@ interface ProjectAgreementFormProps {
 }
 
 const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, agreementToEdit, onCancelRequest }) => {
-    const { state, dispatch } = useAppContext();
+    const state = useProjectReportAppState();
+    const dispatch = useDispatchOnly();
     const { showConfirm, showToast, showAlert, showProgress, hideProgress } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     const { projectAgreementSettings, projectInvoiceSettings } = state;

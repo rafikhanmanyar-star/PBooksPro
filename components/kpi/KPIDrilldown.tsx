@@ -1,7 +1,7 @@
 
+import { useAccounts, useBills, useBuildings, useCategories, useContacts, useDispatchOnly, useInvoices, useProjects, useProperties, useRentalAgreements, useTransactions } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { useKpis } from '../../context/KPIContext';
-import { useAppContext } from '../../context/AppContext';
 import { ICONS, CURRENCY } from '../../constants';
 import { InvoiceStatus, RentalAgreementStatus, ContactType, TransactionType, LoanSubtype, AccountType } from '../../types';
 import { formatDate } from '../../utils/dateUtils';
@@ -14,7 +14,17 @@ type SortConfig = {
 
 const KPIDrilldown: React.FC = () => {
     const { activeDrilldownKpi, closeDrilldown } = useKpis();
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const bills = useBills();
+    const buildings = useBuildings();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const invoices = useInvoices();
+    const projects = useProjects();
+    const properties = useProperties();
+    const rentalAgreements = useRentalAgreements();
+    const allTransactions = useTransactions();
+    const dispatch = useDispatchOnly();
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
 
     const drilldownData = useMemo(() => {
@@ -29,7 +39,7 @@ const KPIDrilldown: React.FC = () => {
             headers = [{ key: 'name', label: 'Name' }, { key: 'value', label: 'Value', isNumeric: true }];
             // Include Bank and Cash accounts (Liquid Assets), exclude Internal Clearing.
             // Merge by account name so each logical account appears once (system + tenant accounts with same name show as one row with summed balance).
-            const liquidAccounts = state.accounts.filter(
+            const liquidAccounts = accounts.filter(
                 acc => (acc.type === AccountType.BANK || acc.type === AccountType.CASH) && acc.name !== 'Internal Clearing'
             );
             const byName = new Map<string, { id: string; name: string; value: number }>();
@@ -59,7 +69,7 @@ const KPIDrilldown: React.FC = () => {
                 { key: 'amount', label: 'Amount', isNumeric: true }
             ];
 
-            const transactions = state.transactions
+            const transactions = transactions
                 .filter(tx => tx.accountId === accountId || tx.fromAccountId === accountId || tx.toAccountId === accountId)
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -92,23 +102,23 @@ const KPIDrilldown: React.FC = () => {
         } else if (id.startsWith('category-expense-') || id.startsWith('category-income-')) {
             headers = [{ key: 'name', label: 'Name' }, { key: 'value', label: 'Value', isNumeric: true }];
             const categoryId = id.replace('category-expense-', '').replace('category-income-', '');
-            const category = state.categories.find(c => c.id === categoryId);
+            const category = categories.find(c => c.id === categoryId);
             if (category) items = [{ id: category.id, name: `View all "${category.name}" transactions`, value: 0, filter: { name: category.name } }];
         }
         // List-based KPIs that show a table
         else if (id === 'vacantUnits') {
             headers = [{ key: 'unitName', label: 'Unit' }, { key: 'buildingName', label: 'Building' }, { key: 'ownerName', label: 'Owner' }];
-            const occupiedIds = new Set(state.rentalAgreements.filter(ra => ra.status === RentalAgreementStatus.ACTIVE).map(ra => ra.propertyId));
-            items = state.properties.filter(p => !occupiedIds.has(p.id)).map(p => ({
-                id: p.id, unitName: p.name, buildingName: state.buildings.find(b => b.id === p.buildingId)?.name || 'N/A',
-                ownerName: state.contacts.find(c => c.id === p.ownerId)?.name || 'N/A', filter: { name: p.name }
+            const occupiedIds = new Set(rentalAgreements.filter(ra => ra.status === RentalAgreementStatus.ACTIVE).map(ra => ra.propertyId));
+            items = properties.filter(p => !occupiedIds.has(p.id)).map(p => ({
+                id: p.id, unitName: p.name, buildingName: buildings.find(b => b.id === p.buildingId)?.name || 'N/A',
+                ownerName: contacts.find(c => c.id === p.ownerId)?.name || 'N/A', filter: { name: p.name }
             }));
         } else if (id === 'occupiedUnits') {
             headers = [{ key: 'unitName', label: 'Unit' }, { key: 'tenantName', label: 'Tenant' }, { key: 'endDate', label: 'Agreement Ends' }];
-            items = state.rentalAgreements.filter(ra => ra.status === RentalAgreementStatus.ACTIVE).map(ra => {
-                const property = state.properties.find(p => p.id === ra.propertyId);
+            items = rentalAgreements.filter(ra => ra.status === RentalAgreementStatus.ACTIVE).map(ra => {
+                const property = properties.find(p => p.id === ra.propertyId);
                 return {
-                    id: ra.id, unitName: property?.name || 'N/A', tenantName: state.contacts.find(c => c.id === ra.contactId)?.name || 'N/A',
+                    id: ra.id, unitName: property?.name || 'N/A', tenantName: contacts.find(c => c.id === ra.contactId)?.name || 'N/A',
                     endDate: ra.endDate, filter: { name: property?.name || '' }
                 };
             });
@@ -119,19 +129,19 @@ const KPIDrilldown: React.FC = () => {
                 { key: 'amount', label: 'Net Amount', isNumeric: true }
             ];
 
-            const secDepId = state.categories.find(c => c.name === 'Security Deposit')?.id;
-            const secRefId = state.categories.find(c => c.name === 'Security Deposit Refund')?.id;
-            const ownerSecPayId = state.categories.find(c => c.name === 'Owner Security Payout')?.id;
+            const secDepId = categories.find(c => c.name === 'Security Deposit')?.id;
+            const secRefId = categories.find(c => c.name === 'Security Deposit Refund')?.id;
+            const ownerSecPayId = categories.find(c => c.name === 'Owner Security Payout')?.id;
 
-            const transactions = state.transactions
+            const transactions = transactions
                 .filter(tx => {
                     if (tx.type === TransactionType.INCOME && tx.categoryId === secDepId) return true;
                     if (tx.type === TransactionType.EXPENSE) {
                         if ((secRefId && tx.categoryId === secRefId) || (ownerSecPayId && tx.categoryId === ownerSecPayId)) return true;
 
                         // Include other deductions
-                        const category = state.categories.find(c => c.id === tx.categoryId);
-                        const contact = state.contacts.find(c => c.id === tx.contactId);
+                        const category = categories.find(c => c.id === tx.categoryId);
+                        const contact = contacts.find(c => c.id === tx.contactId);
                         if (contact?.type === ContactType.TENANT || category?.name.includes('(Tenant)')) return true;
                     }
                     return false;
@@ -155,33 +165,33 @@ const KPIDrilldown: React.FC = () => {
         } else if (id === 'outstandingLoan') {
             headers = [{ key: 'contactName', label: 'Contact' }, { key: 'balance', label: 'Balance', isNumeric: true }];
             const loanBalances: Record<string, number> = {};
-            state.transactions.filter(tx => tx.type === 'Loan' && tx.contactId).forEach(tx => {
+            transactions.filter(tx => tx.type === 'Loan' && tx.contactId).forEach(tx => {
                 if (!loanBalances[tx.contactId!]) loanBalances[tx.contactId!] = 0;
                 loanBalances[tx.contactId!] += tx.subtype === 'Receive Loan' ? tx.amount : -tx.amount;
             });
             items = Object.entries(loanBalances).map(([contactId, balance]) => ({
-                id: contactId, contactName: state.contacts.find(c => c.id === contactId)?.name || 'N/A',
-                balance: balance, filter: { name: state.contacts.find(c => c.id === contactId)?.name || '' }
+                id: contactId, contactName: contacts.find(c => c.id === contactId)?.name || 'N/A',
+                balance: balance, filter: { name: contacts.find(c => c.id === contactId)?.name || '' }
             })).filter(item => item.balance > 0);
         } else if (id === 'accountsReceivable') {
             headers = [{ key: 'number', label: 'Invoice #' }, { key: 'contact', label: 'Name' }, { key: 'balance', label: 'Balance', isNumeric: true }];
-            items = state.invoices
+            items = invoices
                 .filter(inv => inv.status !== InvoiceStatus.PAID && inv.status !== InvoiceStatus.DRAFT)
                 .map(inv => ({
                     id: inv.id,
                     number: inv.invoiceNumber,
-                    contact: state.contacts.find(c => c.id === inv.contactId)?.name || 'N/A',
+                    contact: contacts.find(c => c.id === inv.contactId)?.name || 'N/A',
                     balance: inv.amount - inv.paidAmount,
                     filter: { name: inv.invoiceNumber }
                 }));
         } else if (id === 'accountsPayable') {
             headers = [{ key: 'number', label: 'Bill/Ref #' }, { key: 'contact', label: 'Payee' }, { key: 'balance', label: 'Balance', isNumeric: true }];
-            const unpaidBills = state.bills
+            const unpaidBills = bills
                 .filter(b => b.status !== InvoiceStatus.PAID && b.status !== InvoiceStatus.DRAFT)
                 .map(b => ({
                     id: b.id,
                     number: b.billNumber,
-                    contact: state.contacts.find(c => c.id === b.contactId)?.name || 'N/A',
+                    contact: contacts.find(c => c.id === b.contactId)?.name || 'N/A',
                     balance: b.amount - b.paidAmount,
                     filter: { name: b.billNumber }
                 }));
@@ -191,16 +201,16 @@ const KPIDrilldown: React.FC = () => {
             headers = [{ key: 'buildingName', label: 'Building' }, { key: 'amount', label: 'Net Funds', isNumeric: true }];
 
             const breakdown: Record<string, { name: string, amount: number }> = {};
-            state.buildings.forEach(b => { breakdown[b.id] = { name: b.name, amount: 0 }; });
+            buildings.forEach(b => { breakdown[b.id] = { name: b.name, amount: 0 }; });
 
-            const serviceIncomeCatIds = new Set(state.categories.filter(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes('service charge')).map(c => c.id));
+            const serviceIncomeCatIds = new Set(categories.filter(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes('service charge')).map(c => c.id));
             const ownerExpenseCategoryNames = ['Owner Payout', 'Security Deposit Refund', 'Broker Fee'];
-            const isOwnerExpense = (catId?: string) => { const c = state.categories.find(cat => cat.id === catId); return c && ownerExpenseCategoryNames.includes(c.name); };
-            const isTenant = (contactId?: string) => { const c = state.contacts.find(con => con.id === contactId); return c?.type === ContactType.TENANT; };
+            const isOwnerExpense = (catId?: string) => { const c = categories.find(cat => cat.id === catId); return c && ownerExpenseCategoryNames.includes(c.name); };
+            const isTenant = (contactId?: string) => { const c = contacts.find(con => con.id === contactId); return c?.type === ContactType.TENANT; };
 
-            state.transactions.forEach(tx => {
+            transactions.forEach(tx => {
                 let bId = tx.buildingId;
-                if (!bId && tx.propertyId) bId = state.properties.find(p => p.id === tx.propertyId)?.buildingId;
+                if (!bId && tx.propertyId) bId = properties.find(p => p.id === tx.propertyId)?.buildingId;
 
                 if (bId && breakdown[bId]) {
                     if (tx.type === TransactionType.INCOME && tx.categoryId && serviceIncomeCatIds.has(tx.categoryId)) {
@@ -212,7 +222,7 @@ const KPIDrilldown: React.FC = () => {
                 }
             });
 
-            state.bills.forEach(bill => {
+            bills.forEach(bill => {
                 if (bill.buildingId && breakdown[bill.buildingId] && !bill.propertyId && !isTenant(bill.contactId) && !isOwnerExpense(bill.categoryId)) {
                     breakdown[bill.buildingId].amount -= bill.amount;
                 }
@@ -236,48 +246,48 @@ const KPIDrilldown: React.FC = () => {
 
             const isEquityIncome = (catId?: string) => {
                 if (!catId) return false;
-                const c = state.categories.find(cat => cat.id === catId);
+                const c = categories.find(cat => cat.id === catId);
                 return c && equityCategoryNames.includes(c.name);
             };
 
             const isEquityExpense = (catId?: string) => {
                 if (!catId) return false;
-                const c = state.categories.find(cat => cat.id === catId);
+                const c = categories.find(cat => cat.id === catId);
                 return c && withdrawalCategoryNames.includes(c.name);
             };
             const isEquityExpenseForEquityOut = (catId?: string) => {
                 if (!catId) return false;
-                const c = state.categories.find(cat => cat.id === catId);
+                const c = categories.find(cat => cat.id === catId);
                 return c && withdrawalCategoryNamesForEquityOut.includes(c.name);
             };
             const isProfitDistributionExpense = (tx: { type: string; description?: string }) =>
                 tx.type === TransactionType.EXPENSE && (tx.description?.toLowerCase().includes('profit distribution') ?? false);
 
-            const equityAccountIds = new Set(state.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
+            const equityAccountIds = new Set(accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
 
             const breakdown: Record<string, { name: string, amount: number }> = {};
-            state.projects.forEach(p => {
+            projects.forEach(p => {
                 breakdown[p.id] = { name: p.name, amount: 0 };
             });
 
-            state.projects.forEach(project => {
+            projects.forEach(project => {
                 let income = 0;
                 let expense = 0;
                 let investment = 0;
                 let equityOut = 0;
                 let loanNetBalance = 0;
 
-                state.transactions.forEach(tx => {
+                transactions.forEach(tx => {
                     // Resolve projectId from transaction, bill, or invoice
                     let txProjectId = tx.projectId;
 
                     if (!txProjectId && tx.billId) {
-                        const bill = state.bills.find(b => b.id === tx.billId);
+                        const bill = bills.find(b => b.id === tx.billId);
                         if (bill) txProjectId = bill.projectId;
                     }
 
                     if (!txProjectId && tx.invoiceId) {
-                        const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+                        const invoice = invoices.find(i => i.id === tx.invoiceId);
                         if (invoice) txProjectId = invoice.projectId;
                     }
 
@@ -302,7 +312,7 @@ const KPIDrilldown: React.FC = () => {
                         const desc = tx.description?.toLowerCase() ?? '';
                         const isExplicitEquityMoveOut = desc.includes('equity move out');
                         const isCapitalPayout = desc.includes('capital payout');
-                        const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
+                        const fromAccount = accounts.find(a => a.id === tx.fromAccountId);
                         const isFromClearing = fromAccount?.name === 'Internal Clearing';
                         const isPMFeeTransfer = desc.includes('pm fee') || desc.includes('pm fee equity');
                         if (isExplicitEquityMoveOut || isCapitalPayout) {
@@ -341,19 +351,19 @@ const KPIDrilldown: React.FC = () => {
             // netBalance = (income - expense) + loanNetBalance
 
             const breakdown: Record<string, { name: string, amount: number }> = {};
-            state.buildings.forEach(b => {
+            buildings.forEach(b => {
                 breakdown[b.id] = { name: b.name, amount: 0 };
             });
 
-            state.buildings.forEach(building => {
+            buildings.forEach(building => {
                 let income = 0;
                 let expense = 0;
                 let loanNetBalance = 0;
 
-                state.transactions.forEach(tx => {
+                transactions.forEach(tx => {
                     let txBuildingId = tx.buildingId;
                     if (!txBuildingId && tx.propertyId) {
-                        const prop = state.properties.find(p => p.id === tx.propertyId);
+                        const prop = properties.find(p => p.id === tx.propertyId);
                         if (prop) txBuildingId = prop.buildingId;
                     }
 
@@ -390,7 +400,7 @@ const KPIDrilldown: React.FC = () => {
         }
 
         return { title, headers, items };
-    }, [activeDrilldownKpi, state]);
+    }, [activeDrilldownKpi, accounts, transactions, categories, rentalAgreements, properties, buildings, contacts, invoices, bills, projects]);
 
     const sortedItems = useMemo(() => {
         if (!sortConfig) return drilldownData.items;

@@ -1,8 +1,8 @@
+import { useAccounts, useCurrentUser } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useCallback } from 'react';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
-import { useAppContext } from '../../context/AppContext';
 import type { Account } from '../../types';
 import { AccountType } from '../../types';
 import { JournalEntryPreview } from '../financial/JournalEntryPreview';
@@ -46,10 +46,11 @@ function toJournalLines(drafts: LineDraft[]): JournalLineInput[] {
  * Local-only: posts immutable double-entry journals via the financial engine.
  */
 const ManualJournalEntrySection: React.FC = () => {
-  const { state } = useAppContext();
+  const accounts = useAccounts();
+    const currentUser = useCurrentUser();
   const { showToast, showAlert } = useNotification();
 
-  const flatAccounts = useMemo(() => flattenAccounts(state.accounts), [state.accounts]);
+  const flatAccounts = useMemo(() => flattenAccounts(accounts), [accounts]);
   const accountNameById = useMemo(() => {
     const m: Record<string, string> = {};
     flatAccounts.forEach((a) => {
@@ -100,7 +101,7 @@ const ManualJournalEntrySection: React.FC = () => {
         description: description.trim() || undefined,
         sourceModule: 'settings_manual',
         sourceId: undefined,
-        createdBy: state.currentUser?.id ?? null,
+        createdBy: currentUser?.id ?? null,
         lines: journalLines,
       });
       showToast(`Journal posted: ${journalEntryId}`, 'success');

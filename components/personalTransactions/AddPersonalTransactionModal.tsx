@@ -1,9 +1,9 @@
+import { useAccounts, usePersonalCategories } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
-import { useAppContext } from '../../context/AppContext';
 import { AccountType } from '../../types';
 import { getPersonalIncomeCategories, getPersonalExpenseCategories, addPersonalCategory } from './personalCategoriesService';
 import { addPersonalTransaction, updatePersonalTransaction } from './personalTransactionsService';
@@ -34,7 +34,8 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
   onSaved,
   editTransaction = null,
 }) => {
-  const { state } = useAppContext();
+  const accounts = useAccounts();
+    const personalCategories = usePersonalCategories();
   const [step, setStep] = useState(1);
   const [type, setType] = useState<'Income' | 'Expense'>('Expense');
   const [accountId, setAccountId] = useState('');
@@ -77,27 +78,27 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
       setDescription('');
       setError('');
     }
-  }, [isOpen, editTransaction, state.personalCategories]);
+  }, [isOpen, editTransaction, personalCategories]);
 
   const bankAndCashAccounts = useMemo(
     () =>
-      state.accounts
+      accounts
         .filter(
           (a) =>
             (a.type === AccountType.BANK || a.type === AccountType.CASH) &&
             a.name !== 'Internal Clearing'
         )
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [state.accounts]
+    [accounts]
   );
 
   const incomeCategories = useMemo(
     () => getPersonalIncomeCategories(),
-    [categoryListKey, state.personalCategories]
+    [categoryListKey, personalCategories]
   );
   const expenseCategories = useMemo(
     () => getPersonalExpenseCategories(),
-    [categoryListKey, state.personalCategories]
+    [categoryListKey, personalCategories]
   );
   const categories = type === 'Income' ? incomeCategories : expenseCategories;
 

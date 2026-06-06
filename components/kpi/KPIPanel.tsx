@@ -1,7 +1,7 @@
 
+import { useAccounts, useBills, useBuildings, useCategories, useDispatchOnly, useFinancialReportAppState, useInvoices, useProjects, useProperties, useTransactions } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useKpis } from '../../context/KPIContext';
-import { useAppContext } from '../../context/AppContext';
 import KPICard from './KPICard';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
@@ -90,7 +90,15 @@ const KPIPanel: React.FC = () => {
         allReports, 
         favoriteReportIds 
     } = useKpis();
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const bills = useBills();
+    const buildings = useBuildings();
+    const categories = useCategories();
+    const invoices = useInvoices();
+    const projects = useProjects();
+    const properties = useProperties();
+    const transactions = useTransactions();
+    const dispatch = useDispatchOnly();
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [selectorInitialTab, setSelectorInitialTab] = useState<'KPIs' | 'Reports'>('KPIs');
     
@@ -163,10 +171,10 @@ const KPIPanel: React.FC = () => {
             const value = kpiDef.getData ? kpiDef.getData(state) : 0;
             return { ...kpiDef, value };
         }).filter((kpi): kpi is Exclude<typeof kpi, null> => kpi !== null);
-    }, [visibleKpiIds, allKpis, state]);
+    }, [visibleKpiIds, allKpis, accounts, categories, projects, transactions, bills, invoices, buildings, properties]);
 
     // Breakdown calculations
-    const accountBreakdown = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK).map(acc => ({ name: acc.name, amount: acc.balance, type: '' })), [state.accounts]);
+    const accountBreakdown = useMemo(() => accounts.filter(a => a.type === AccountType.BANK).map(acc => ({ name: acc.name, amount: acc.balance, type: '' })), [accounts]);
     
     const projectFundsBreakdown = useMemo(() => {
         // Calculate net balance per project using the same formula as Funds Availability Report
@@ -178,45 +186,45 @@ const KPIPanel: React.FC = () => {
         
         const isEquityIncome = (catId?: string) => {
             if (!catId) return false;
-            const c = state.categories.find(cat => cat.id === catId);
+            const c = categories.find(cat => cat.id === catId);
             return c && equityCategoryNames.includes(c.name);
         };
         
         const isEquityExpense = (catId?: string) => {
             if (!catId) return false;
-            const c = state.categories.find(cat => cat.id === catId);
+            const c = categories.find(cat => cat.id === catId);
             return c && withdrawalCategoryNames.includes(c.name);
         };
         const isEquityExpenseForEquityOut = (catId?: string) => {
             if (!catId) return false;
-            const c = state.categories.find(cat => cat.id === catId);
+            const c = categories.find(cat => cat.id === catId);
             return c && withdrawalCategoryNamesForEquityOut.includes(c.name);
         };
         const isProfitDistributionExpense = (tx: { type: string; description?: string }) =>
             tx.type === TransactionType.EXPENSE && (tx.description?.toLowerCase().includes('profit distribution') ?? false);
         
-        const equityAccountIds = new Set(state.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
+        const equityAccountIds = new Set(accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
         
         const breakdown: { name: string; amount: number }[] = [];
         
-        state.projects.forEach(project => {
+        projects.forEach(project => {
             let income = 0;
             let expense = 0;
             let investment = 0;
             let equityOut = 0;
             let loanNetBalance = 0;
             
-            state.transactions.forEach(tx => {
+            transactions.forEach(tx => {
                 // Resolve projectId from transaction, bill, or invoice
                 let txProjectId = tx.projectId;
                 
                 if (!txProjectId && tx.billId) {
-                    const bill = state.bills.find(b => b.id === tx.billId);
+                    const bill = bills.find(b => b.id === tx.billId);
                     if (bill) txProjectId = bill.projectId;
                 }
                 
                 if (!txProjectId && tx.invoiceId) {
-                    const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+                    const invoice = invoices.find(i => i.id === tx.invoiceId);
                     if (invoice) txProjectId = invoice.projectId;
                 }
                 
@@ -241,7 +249,7 @@ const KPIPanel: React.FC = () => {
                     const desc = tx.description?.toLowerCase() ?? '';
                     const isExplicitEquityMoveOut = desc.includes('equity move out');
                     const isCapitalPayout = desc.includes('capital payout');
-                    const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
+                    const fromAccount = accounts.find(a => a.id === tx.fromAccountId);
                     const isFromClearing = fromAccount?.name === 'Internal Clearing';
                     const isPMFeeTransfer = desc.includes('pm fee') || desc.includes('pm fee equity');
                     if (isExplicitEquityMoveOut || isCapitalPayout) {
@@ -270,7 +278,7 @@ const KPIPanel: React.FC = () => {
         });
         
         return breakdown;
-    }, [state.projects, state.transactions, state.categories, state.accounts, state.bills, state.invoices]);
+    }, [projects, transactions, categories, accounts, bills, invoices]);
     
     const buildingFundsBreakdown = useMemo(() => {
         // Calculate net balance per building using the same formula as Funds Availability Report
@@ -278,15 +286,15 @@ const KPIPanel: React.FC = () => {
         
         const breakdown: { name: string; amount: number }[] = [];
         
-        state.buildings.forEach(building => {
+        buildings.forEach(building => {
             let income = 0;
             let expense = 0;
             let loanNetBalance = 0;
             
-            state.transactions.forEach(tx => {
+            transactions.forEach(tx => {
                 let txBuildingId = tx.buildingId;
                 if (!txBuildingId && tx.propertyId) {
-                    const prop = state.properties.find(p => p.id === tx.propertyId);
+                    const prop = properties.find(p => p.id === tx.propertyId);
                     if (prop) txBuildingId = prop.buildingId;
                 }
                 
@@ -317,7 +325,7 @@ const KPIPanel: React.FC = () => {
         });
         
         return breakdown;
-    }, [state.buildings, state.transactions, state.properties]);
+    }, [buildings, transactions, properties]);
     
     const arBreakdown = useMemo(() => [], []); 
     const apBreakdown = useMemo(() => [], []);

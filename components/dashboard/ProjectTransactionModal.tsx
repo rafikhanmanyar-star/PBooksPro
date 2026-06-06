@@ -1,7 +1,7 @@
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { TransactionType, type Transaction } from '../../types';
-import { useAppContext } from '../../context/AppContext';
 import TransactionItem from '../transactions/TransactionItem';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
@@ -69,7 +69,7 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
   data,
   listMode = 'profitLoss',
 }) => {
-  const { state } = useAppContext();
+  const state = useFinancialReportAppState();
 
   const processedBillsForPl = useMemo(() => {
     if (!data || listMode === 'categoryReport') return new Set<string>();

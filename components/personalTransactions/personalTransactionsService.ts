@@ -3,6 +3,7 @@
  * Local SQLite (Electron) or PostgreSQL API (LAN) via AppState + REST.
  */
 
+import { usePersonalTransactions } from '../../hooks/useSelectiveState';
 import { PersonalTransactionsRepository, PersonalTransactionRow } from '../../services/database/repositories';
 import { getDatabaseService } from '../../services/database/databaseService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -69,7 +70,7 @@ export function listPersonalTransactions(
     categoryId?: string;
     accountId?: string;
   } = {},
-  /** When API mode, pass state.personalTransactions from useAppContext. */
+  /** When API mode, pass personalTransactions from useAppContext. */
   stateRows?: PersonalTransactionEntry[]
 ): PersonalTransactionRow[] {
   if (!isLocalOnlyMode() && stateRows) {

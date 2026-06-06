@@ -1,7 +1,7 @@
 
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { ProjectAgreement, AccountType, InvoiceStatus, ProjectAgreementStatus } from '../../types';
-import { useAppContext } from '../../context/AppContext';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { ProjectAgreementsApiRepository } from '../../services/api/repositories/projectAgreementsApi';
 import Modal from '../ui/Modal';
@@ -16,7 +16,8 @@ interface CancelAgreementModalProps {
 }
 
 const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onClose, agreement }) => {
-    const { state, dispatch } = useAppContext();
+    const state = useProjectReportAppState();
+    const dispatch = useDispatchOnly();
     const [penaltyPercentage, setPenaltyPercentage] = useState('0');
 
     const agreementInvoices = useMemo(() => {

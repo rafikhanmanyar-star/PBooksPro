@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import React, { useState, useRef, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { PrintSettings } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -9,17 +9,19 @@ import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 
 const PrintTemplateForm: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const invoiceHtmlTemplate = useStateSelector((s) => s.invoiceHtmlTemplate);
+    const printSettings = useStateSelector((s) => s.printSettings);
+    const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
-    const [settings, setSettings] = useState<PrintSettings>(state.printSettings);
-    const [invoiceHtml, setInvoiceHtml] = useState(state.invoiceHtmlTemplate || '');
+    const [settings, setSettings] = useState<PrintSettings>(printSettings);
+    const [invoiceHtml, setInvoiceHtml] = useState(invoiceHtmlTemplate || '');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        if (state.invoiceHtmlTemplate) {
-            setInvoiceHtml(state.invoiceHtmlTemplate);
+        if (invoiceHtmlTemplate) {
+            setInvoiceHtml(invoiceHtmlTemplate);
         }
-    }, [state.invoiceHtmlTemplate]);
+    }, [invoiceHtmlTemplate]);
 
     const handleChange = (field: keyof PrintSettings, value: any) => {
         setSettings(prev => ({ ...prev, [field]: value }));

@@ -1,5 +1,5 @@
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ProjectAgreement, ContactType, ProjectAgreementStatus, TransactionType } from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -122,7 +122,8 @@ const AgreementTreeSidebar: React.FC<{
 };
 
 const ProjectAgreementsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const state = useProjectReportAppState();
+    const dispatch = useDispatchOnly();
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [agreementToEdit, setAgreementToEdit] = useState<ProjectAgreement | null>(null);

@@ -1,9 +1,9 @@
+import { useCurrentUser } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from '../ui/Modal';
 import { ChatMessagesRepository } from '../../services/database/repositories';
 import { getDatabaseService } from '../../services/database/databaseService';
 import { useAuth } from '../../context/AuthContext';
-import { useAppContext } from '../../context/AppContext';
 import { apiClient } from '../../services/api/client';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
@@ -42,8 +42,8 @@ interface ChatModalProps {
 
 const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) => {
     const { user } = useAuth();
-    const { state } = useAppContext();
-    const currentUser = user || state.currentUser;
+    const appCurrentUser = useCurrentUser();
+    const currentUser = user || currentUser;
     const currentUserId = currentUser?.id || '';
     const currentUserName = currentUser?.name || 'User';
     

@@ -1,32 +1,53 @@
 ---
-description: Build and deploy commands for staging and production (local DB only, GitHub Releases for updates)
+description: Build and deploy commands for staging and production (PostgreSQL, GitHub Releases for updates)
 alwaysApply: true
 ---
 
 # PBooks Pro – Commands
 
-## Run locally (PostgreSQL + API + Electron Client)
+## Environments overview
+
+| | **Staging** | **Production** |
+|---|-------------|----------------|
+| **Git branch** | `staging` | `main` |
+| **PostgreSQL DB** | `pBookspro_Staging` | `pbookspro` |
+| **Env file** | `.env.staging` | `.env.production` |
+| **API port** (same machine) | **3001** | **3000** |
+| **Release command** | `npm run release:staging` | `npm run release:production` |
+| **GitHub release type** | Prerelease (manual) | Full release (manual deploy; CI validates on push to `main`) |
+| **Installers** | API Server (Staging) + Client (Staging) | API Server + Client |
+
+Both APIs can run on the **same local machine** at different ports.
+
+### One-time env setup
+
+Env files are gitignored. Copy the examples and set your connection strings:
 
 ```powershell
-npm run test:local-only
+copy .env.staging.example .env.staging
+copy .env.production.example .env.production
 ```
 
-**What it does (production-like path: PostgreSQL → REST API → same Electron build style as the LAN/API client):**
-1. Loads `.env` (needs `DATABASE_URL` pointing at a local PostgreSQL instance)
-2. Rebuilds native modules for Electron
-3. Builds the backend (`build:backend`), unless you use watch mode (see below)
-4. Runs PostgreSQL migrations (`db:migrate:lan`)
-5. Starts the API on port 3000 with `NODE_ENV=production` (`node backend/dist/index.js` via cmd so the process tree can be stopped cleanly)
-6. Waits until `http://127.0.0.1:3000/health` responds (Socket.IO uses the same port for realtime)
-7. Builds the Vite app with **`VITE_LOCAL_ONLY=false`**, **`VITE_ELECTRON_BUILD=true`**, and **forces** `VITE_API_URL=http://127.0.0.1:3000/api` and `VITE_WS_URL=http://127.0.0.1:3000` so a remote `VITE_API_URL` in `.env` cannot point the test build at production
-8. Launches Electron; data loads through the API/JWT flow like production
-9. When Electron exits, stops the backend
+**Local PostgreSQL (no password):**
 
-**Realtime:** After login, the client connects Socket.IO to the same host as the API. Events `entity_created` / `entity_updated` / `entity_deleted` trigger a debounced refresh from PostgreSQL so changes from **other sessions/users** show up without relogging. Your own edits still apply through the normal client save path.
+```env
+# .env.staging
+DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pBookspro_Staging
+PORT=3001
+GH_TOKEN=ghp_...   # for GitHub prerelease publish
 
-**Backend live reload (optional):** `npm run test:local-only:watch` or `$env:PBooks_BACKEND_WATCH="1"; npm run test:local-only` skips `build:backend` and runs `npm run dev --prefix backend` (tsx watch) in a separate console so API code changes reload; the Electron bundle is still a production Vite build.
+# .env.production
+DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pbookspro
+PORT=3000
+GH_TOKEN=ghp_...   # for GitHub full release publish
+```
 
-**Requirements:** PostgreSQL must be running locally with `DATABASE_URL` configured in the root or `backend/.env` (e.g. `DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/pBookspro`).
+**Initial migrations (once per database):**
+
+```powershell
+npm run db:migrate:staging
+npm run db:migrate:production
+```
 
 ---
 
@@ -35,7 +56,6 @@ npm run test:local-only
 **One command** — commit, push to `staging`, bump version, build installers, publish GitHub **prerelease**:
 
 ```powershell
-# One-time: copy .env.staging.example → .env.staging
 npm run release:staging
 ```
 
@@ -45,9 +65,11 @@ npm run release:staging
 3. Commits any uncommitted local changes
 4. **Pushes source code to `origin/staging`**
 5. Runs the full staging build (`deploy:staging`):
-   - Migrates **pbooks_staging**
+   - Loads `.env.staging`
+   - Migrates **`pBookspro_Staging`**
    - **Bumps patch version** in `package.json`
-   - Builds **API Server (Staging)** + **Client (Staging)** installers
+   - Builds **PBooks Pro API Server (Staging)** → `release-api-server-staging/`
+   - Builds **PBooks Pro Client (Staging)** → `release-api-client-staging/`
    - Publishes GitHub **prerelease** (needs `GH_TOKEN` in `.env.staging`)
    - Pushes version commit + tag to `origin/staging`
 
@@ -57,7 +79,9 @@ npm run release:staging
 npm run test:staging
 ```
 
-**Lower-level only (already on staging, code already pushed):** `npm run deploy:staging`
+Runs migrations on `pBookspro_Staging`, starts API on port **3001**, launches Electron client against staging API.
+
+**Lower-level only** (already on `staging`, code already pushed): `npm run deploy:staging`
 
 ---
 
@@ -66,7 +90,6 @@ npm run test:staging
 **One command** — merge `staging` → `main`, build installers, publish GitHub **full release** (production client auto-update):
 
 ```powershell
-# One-time: copy .env.production.example → .env.production
 npm run release:production
 ```
 
@@ -76,26 +99,56 @@ npm run release:production
 3. **Merges `origin/staging` into `main`**
 4. **Pushes `main` to GitHub**
 5. Runs the full production build (`deploy:production`):
-   - Migrates **pbookspro**
+   - Loads `.env.production`
+   - Migrates **`pbookspro`**
    - **Bumps patch version**
-   - Builds **API Server** + **Client** installers
+   - Builds **PBooks Pro API Server** → `release-api-server/`
+   - Builds **PBooks Pro Client** → `release-api-client/`
    - Publishes GitHub **full release** (production client auto-update via `latest.yml`)
    - Uploads API Server installer to the same release tag
 6. Syncs `staging` branch with `main` so both branches stay aligned
 
-**Lower-level only (already merged on main):** `npm run deploy:production`
+**Lower-level only** (already merged on `main`): `npm run deploy:production`
+
+---
+
+## Typical workflow
+
+```powershell
+# 1. Develop on staging
+git checkout staging
+# ... make changes ...
+
+# 2. Release staging (push code + build + prerelease)
+npm run release:staging
+
+# 3. Test against pBookspro_Staging on port 3001
+npm run test:staging
+# or: npm run start:backend:staging
+
+# 4. When ready for production
+npm run release:production
+```
+
+**Git / release summary:**
+
+| Action | Command | Git | GitHub installers |
+|--------|---------|-----|-------------------|
+| Release staging | `npm run release:staging` | Push to `staging` | Prerelease (manual) |
+| Release production | `npm run release:production` | Merge staging→`main`, push | Full release (manual) |
+| CI on push to `main` | automatic | — | Build + tests only (no publish) |
 
 ---
 
 ## Build installable app (staging) — lower level
 
-**Branch:** `staging` · **Database:** `pbooks_staging` · **API port:** `3001`
+**Branch:** `staging` · **Database:** `pBookspro_Staging` · **API port:** `3001`
 
 ```powershell
 npm run deploy:staging
 ```
 
-Same build/publish steps as inside `release:staging`, but **does not** push source code first or merge branches. Use `npm run release:staging` instead.
+Same build/publish steps as inside `release:staging`, but **does not** push source code first. Use `npm run release:staging` instead.
 
 ---
 
@@ -109,16 +162,53 @@ npm run deploy:production
 
 Same build/publish steps as inside `release:production`, but **does not** merge staging → main. Use `npm run release:production` instead.
 
-**Typical workflow:**
+---
+
+## Run locally (PostgreSQL + API + Electron Client)
 
 ```powershell
-# 1. Develop on staging, then release staging
-git checkout staging
-npm run release:staging
-# test against pbooks_staging on port 3001
+npm run test:local-only
+```
 
-# 2. When ready for production
-npm run release:production
+**What it does (production-like path: PostgreSQL → REST API → same Electron build style as the LAN/API client):**
+1. Loads `.env` (needs `DATABASE_URL` pointing at a local PostgreSQL instance)
+2. Rebuilds native modules for Electron
+3. Builds the backend (`build:backend`), unless you use watch mode (see below)
+4. Runs PostgreSQL migrations (`db:migrate:lan`)
+5. Starts the API on port 3000 with `NODE_ENV=production`
+6. Waits until `http://127.0.0.1:3000/health` responds
+7. Builds the Vite app with **`VITE_LOCAL_ONLY=false`**, forces local API/WS URLs
+8. Launches Electron; data loads through the API/JWT flow like production
+9. When Electron exits, stops the backend
+
+**Backend live reload (optional):** `npm run test:local-only:watch` or `$env:PBooks_BACKEND_WATCH="1"; npm run test:local-only`
+
+**Requirements:** PostgreSQL running locally; `DATABASE_URL` in root `.env` or `backend/.env` (e.g. `postgresql://postgres:@127.0.0.1:5432/pbookspro`).
+
+---
+
+## Run staging stack locally
+
+```powershell
+npm run test:staging
+```
+
+Uses `.env.staging`, migrates **`pBookspro_Staging`**, API on port **3001**, staging Electron client.
+
+**Watch mode:** `npm run test:staging:watch`
+
+**API only:**
+
+```powershell
+npm run start:backend:staging    # compiled API, port 3001
+npm run dev:backend:staging      # tsx watch, port 3001
+```
+
+**Production API only:**
+
+```powershell
+npm run start:backend:production   # port 3000
+npm run dev:backend:production
 ```
 
 ---
@@ -128,8 +218,7 @@ npm run release:production
 - **Production client** checks the GitHub repo’s **latest full release** (tag `vX.Y.Z`).
 - **Staging client** ("PBooks Pro Client (Staging)") checks **prereleases** only — it will not pick up production releases.
 - **API Server (Staging)** uses update channel `api-server-staging`; production API Server uses channel `api-server`.
-- In `package.json`, set **repository** to your real GitHub repo (e.g. `"repository": { "type": "git", "url": "https://github.com/YourOrg/PBooksPro.git" }`). electron-builder and electron-updater use this to publish and to resolve the update feed.
-- For **publish** to work, set a GitHub token with `repo` scope: `GH_TOKEN` or `GITHUB_TOKEN` (e.g. in your environment or in a `.env` file that your shell loads). Without the token, the build still runs and outputs to `release/` or `release-staging/`, but nothing is uploaded to GitHub.
+- Set `GH_TOKEN` or `GITHUB_TOKEN` in `.env.staging` / `.env.production` (repo scope). Without a token, builds still run locally but nothing is uploaded to GitHub.
 
 ---
 
@@ -137,35 +226,39 @@ npm run release:production
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start Vite dev server (web client) |
-| `npm run build` | Build frontend only |
-| `npm run electron:dev` | Run Electron app in dev mode (local-only build + launch) |
-| `npm run electron:local` | Same as electron:dev (extract schema, build, launch) |
 | `npm run release:staging` | **Release staging:** push to `staging`, bump version, build + publish prerelease |
 | `npm run release:production` | **Release production:** merge staging→main, build + publish full release (auto-update) |
 | `npm run deploy:staging` | Staging build/publish only (no git push/merge) |
 | `npm run deploy:production` | Production build/publish only (no merge) |
-| `npm run github:clean-releases` | Delete old GitHub releases (keeps latest 10; use `-- --keep 5` to keep 5). Saves repo storage. Requires `GH_TOKEN` or `GITHUB_TOKEN`. |
-| `npm run prepare-local-db` | Rewrite tenant/user IDs in existing DB for local-only use |
-| `npm run clear-local-transactions` | Clear transactions (and related data) from local DB |
-| `npm run db:migrate:lan` | Run PostgreSQL migrations using root `.env` |
-| `npm run db:migrate:staging` | Migrate **pbooks_staging** (`.env.staging`) |
-| `npm run db:migrate:production` | Migrate **pbookspro** (`.env.production`) |
-| `npm run test:staging` | Staging stack: pbooks_staging + API :3001 + Electron client |
-| `npm run start:backend:staging` | Run API against `.env.staging` (port 3001) |
-| `npm run start:backend:production` | Run API against `.env.production` (port 3000) |
-| `npm run migrate:sqlite-to-postgres` | Copy tenant data from **SQLite backup** → PostgreSQL (default path: `F:\DB Backup pbookspro\rkbuilders_14_3_2026_backup_20260329_142110`; override with `--sqlite` or `SQLITE_BACKUP_PATH`) |
-| `npm run migrate:sqlite-to-postgres:transactions` | Re-import **transactions** only for the target tenant (same defaults) |
-| `npm run repair:pg-categories` | Repair `category_id` on bills/transactions in PostgreSQL from the same SQLite backup (same defaults) |
-| `npm run dev:backend` | Start **Express API** in dev (`tsx watch`, reload on change) — `http://localhost:3000/api` |
+| `npm run test:staging` | Staging stack: `pBookspro_Staging` + API :3001 + Electron client |
+| `npm run test:staging:watch` | Same as `test:staging` with backend tsx watch |
+| `npm run test:local-only` | Production DB stack: `pbookspro` + API :3000 + Electron client |
+| `npm run test:local-only:watch` | Same as `test:local-only` with backend tsx watch |
+| `npm run db:migrate:staging` | Migrate **`pBookspro_Staging`** (`.env.staging`) |
+| `npm run db:migrate:production` | Migrate **`pbookspro`** (`.env.production`) |
+| `npm run db:migrate:lan` | Migrate using root `.env` |
+| `npm run start:backend:staging` | Run compiled API against `.env.staging` (port 3001) |
+| `npm run start:backend:production` | Run compiled API against `.env.production` (port 3000) |
+| `npm run dev:backend:staging` | Dev API (tsx watch) against `.env.staging` |
+| `npm run dev:backend:production` | Dev API (tsx watch) against `.env.production` |
+| `npm run dev:backend` | Dev API using default backend env |
 | `npm run build:backend` | Compile `backend/` TypeScript → `backend/dist/` |
 | `npm run start:backend` | Run compiled API (`node backend/dist/index.js`) |
+| `npm run dev` | Start Vite dev server (web client) |
+| `npm run build` | Build frontend only |
+| `npm run electron:dev` | Electron dev mode (local SQLite build) |
+| `npm run electron:local` | Same as electron:dev |
+| `npm run electron:installer` | Build offline SQLite installer → `release/` (no publish) |
+| `npm run github:clean-releases` | Delete old GitHub releases (keeps latest 10) |
+| `npm run prepare-local-db` | Rewrite tenant/user IDs in local SQLite DB |
+| `npm run clear-local-transactions` | Clear transactions from local SQLite DB |
+| `npm run migrate:sqlite-to-postgres` | Import SQLite backup → PostgreSQL |
+| `npm run migrate:sqlite-to-postgres:transactions` | Re-import transactions only |
+| `npm run repair:pg-categories` | Repair category_id from SQLite backup |
 
 ---
 
 ## PostgreSQL API: migrate, run server, run web client
-
-Use this when developing against the **Node + PostgreSQL** backend in `backend/` (projects/units, journal, contacts, etc.), not the local-only Electron + SQLite flow.
 
 ### 1. Install backend dependencies (once)
 
@@ -173,138 +266,89 @@ Use this when developing against the **Node + PostgreSQL** backend in `backend/`
 npm install --prefix backend
 ```
 
-### 2. Configure `DATABASE_URL`
+### 2. Configure environment
 
-Set a PostgreSQL connection string in **repo root** `.env` (used by migrate and optional tooling), e.g.:
+Use the right env file for the target database:
 
-`DATABASE_URL=postgresql://user:password@localhost:5432/pbooks`
+| Target | Env file | Migrate command |
+|--------|----------|-----------------|
+| Staging | `.env.staging` | `npm run db:migrate:staging` |
+| Production | `.env.production` | `npm run db:migrate:production` |
+| Dev / legacy | `.env` | `npm run db:migrate:lan` |
 
-Ensure the `tenants` / `contacts` prerequisites from earlier migrations exist before relying on newer tables.
-
-### 3. Run database migrations (PostgreSQL)
-
-From **repo root** (loads root `.env` via `dotenv-cli`):
-
-```powershell
-npm run db:migrate:lan
-```
-
-Or from `backend/` with `DATABASE_URL` set in the environment or `backend/.env`:
+### 3. Run database migrations
 
 ```powershell
-cd backend
-npm run migrate
+npm run db:migrate:staging
+npm run db:migrate:production
 ```
 
-SQL files in `database/migrations/` are applied in alphabetical order (see `backend/src/migrate.ts`).
+SQL files in `database/migrations/` are applied in order (see `backend/src/migrate.ts`).
 
 ### 4. Run the API server
 
-**Development** (auto-restart on file changes):
-
 ```powershell
-npm run dev:backend
+npm run dev:backend:staging       # staging, tsx watch, port 3001
+npm run start:backend:staging     # staging, compiled
+
+npm run dev:backend:production    # production, tsx watch, port 3000
+npm run start:backend:production  # production, compiled
 ```
 
-**Production-style** (after compile):
+- Staging health: `http://127.0.0.1:3001/health`
+- Production health: `http://127.0.0.1:3000/health`
 
-```powershell
-npm run build:backend
-npm run start:backend
-```
-
-- Default URL: `http://localhost:3000` — API routes under `/api` (e.g. `http://localhost:3000/api/health`).
-- Optional: set `PORT` in `.env` if you need a different port.
-
-### 5. Run the client app (browser) against the API
-
-Build the Vite app with **local-only mode off** so the UI uses the API base URL (see `config/apiUrl.ts` — typically `http://localhost:3000/api`):
+### 5. Run the web client against the API
 
 ```powershell
 $env:VITE_LOCAL_ONLY="false"; npm run dev
 ```
 
-Then open the URL Vite prints (usually `http://localhost:5173`). Log in so the client has a JWT; the app will call `GET/POST` on `/api/projects`, `/api/units`, etc.
-
-For **offline SQLite** (no API, `VITE_LOCAL_ONLY=true`), use `npm run electron:local` or `npm run electron:dev` — not `test:local-only`, which is the **PostgreSQL + API** stack above.
-
-### 6. Import a local SQLite backup into PostgreSQL (RK Builders)
-
-Scripts use this **default backup location** (folder or `.db` inside):  
-`F:\DB Backup pbookspro\rkbuilders_14_3_2026_backup_20260329_142110`  
-Override with `SQLITE_BACKUP_PATH` in `.env` or `--sqlite "PATH"`.
-
-Full import (requires `DATABASE_URL`, `sql.js`, `pg`; see script header in `scripts/sqlite-to-postgres-rk-builders.cjs`):
-
-```powershell
-npm run migrate:sqlite-to-postgres
-```
-
-Re-import **transactions** only (after bills/invoices already exist in PostgreSQL):
-
-```powershell
-npm run migrate:sqlite-to-postgres:transactions
-```
-
-Repair **category_id** on bills and bill payments if the first import skipped categories:
-
-```powershell
-npm run repair:pg-categories
-```
-
-Dry-run repair (no writes):
-
-```powershell
-npm run repair:pg-categories -- --dry-run
-```
+For **offline SQLite**, use `npm run electron:local` — not `test:local-only` or `test:staging`.
 
 ---
 
-## Troubleshooting: deploy:staging / deploy:production
+## Troubleshooting: release / deploy
 
-**Error: "Cannot create symbolic link : A required privilege is not held by the client"** when building the Windows installer:
+**Branch mismatch:**
 
-electron-builder downloads the winCodeSign package; extracting it can fail on Windows because the archive contains symlinks. Use one of these:
+```
+[assert-git-branch] Expected branch "staging" but on "main"
+```
 
-1. **Enable Developer Mode** (recommended): Windows Settings → Privacy & security → For developers → **Developer Mode** = On. Then run `npm run deploy:staging` again.
-2. **Run as Administrator**: Open PowerShell (or your terminal) as Administrator and run `npm run deploy:staging` from the project folder.
+Run the release from the correct branch, or use `release:staging` / `release:production` which switch branches automatically.
 
-After fixing, you can clear the broken cache and retry: delete the folder `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign` (if it exists), then run the deploy command again.
+**Missing env file:**
+
+```
+[release] Missing .env.staging. Copy from .env.staging.example
+```
+
+**Database does not exist:**
+
+Confirm the staging database name is **`pBookspro_Staging`** (mixed case) in `.env.staging`, not `pbooks_staging`.
+
+**Symbolic link error when building installer:**
+
+Enable **Developer Mode** in Windows Settings → Privacy & security → For developers, or run PowerShell as Administrator. Then retry `npm run release:staging` or `npm run release:production`.
+
+Clear cache if needed: delete `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign`.
+
+**GitHub `404 Not Found` when publishing:**
+
+1. Confirm `repository.url` in `package.json` matches your GitHub repo
+2. `GH_TOKEN` must have **repo** scope (or fine-grained Contents + Releases write)
+3. Authorize token for org SSO if applicable
+
+**Build without publishing:** installers are still written to `release-api-client-staging/`, `release-api-server-staging/`, `release-api-client/`, or `release-api-server/` even when `GH_TOKEN` is missing.
 
 ---
 
-**Error: `404 Not Found` when publishing to GitHub** (POST .../repos/OWNER/REPO/releases):
-
-GitHub returns 404 when the release cannot be created. Common causes:
-
-1. **Repository doesn’t exist or wrong URL**  
-   Confirm the repo exists at the URL in `package.json` → `repository.url` (e.g. `https://github.com/rafikhanmanyar-star/PBooksPro`). If the repo has a different name or owner, update `repository.url` to match.
-
-2. **Token has no write access**  
-   The token (`GH_TOKEN` or `GITHUB_TOKEN`) must have **repo** scope (classic token) or **Contents** and **Metadata** write + **Releases** write (fine-grained token), and must be allowed for that repository.
-
-3. **Organization / SSO**  
-   If the repo is under an organization with SAML SSO, authorize the token for that org: GitHub → Settings → Developer settings → Personal access tokens → your token → “Configure SSO” → Authorize for the org.
-
-4. **Build without publishing**  
-   To only build the installer and **not** upload to GitHub, run electron-builder without `--publish always` (e.g. use `npm run electron:installer` for production, or temporarily remove `--publish always` from the deploy script). The exe and `latest.yml` will be in `release/` or `release-staging/`; you can create the release and upload assets manually on GitHub.
-
----
-
-## Clean old GitHub releases (save storage)
-
-To remove old releases and free repo storage:
+## Clean old GitHub releases
 
 ```powershell
 npm run github:clean-releases
-```
-
-This keeps the **latest 10 releases** (by publish date) and deletes the rest. The command loads `.env`, so set `GH_TOKEN` or `GITHUB_TOKEN` there (same as for deploy) with `repo` scope.
-
-To keep a different number (e.g. 5):
-
-```powershell
 npm run github:clean-releases -- --keep 5
 ```
 
-Deleting a release removes the release and its assets (e.g. .exe, blockmap). Git tags are not deleted.
+Requires `GH_TOKEN` in `.env` or `.env.production`. Keeps the latest N releases by publish date.

@@ -1,10 +1,10 @@
 
+import { useBuildings } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { Building } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 
 interface BuildingFormProps {
@@ -16,7 +16,7 @@ interface BuildingFormProps {
 }
 
 const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelete, buildingToEdit, initialName }) => {
-    const { state } = useAppContext();
+    const buildings = useBuildings();
     const { showAlert } = useNotification();
     const [name, setName] = useState(buildingToEdit?.name || initialName || '');
     const [description, setDescription] = useState(buildingToEdit?.description || '');
@@ -29,13 +29,13 @@ const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelet
             setNameError('Building name is required.');
             return;
         }
-        const duplicate = state.buildings.find(b => b.name.toLowerCase().trim() === name.toLowerCase().trim() && b.id !== buildingToEdit?.id);
+        const duplicate = buildings.find(b => b.name.toLowerCase().trim() === name.toLowerCase().trim() && b.id !== buildingToEdit?.id);
         if (duplicate) {
             setNameError('A building with this name already exists.');
         } else {
             setNameError('');
         }
-    }, [name, state.buildings, buildingToEdit]);
+    }, [name, buildings, buildingToEdit]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

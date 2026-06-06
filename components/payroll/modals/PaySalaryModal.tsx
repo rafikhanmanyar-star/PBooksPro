@@ -3,11 +3,11 @@
  * and pay the rest from Bank/Cash. Totals reconcile with payroll ledger (Σ nets − Σ expenses).
  */
 
+import { useAccounts, useCategories, useDispatchOnly, useTransactions } from '../../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { X, Banknote, Loader2, AlertCircle } from 'lucide-react';
 import { PayrollEmployee, Payslip, PayrollRun, PayrollStatus } from '../types';
 import { storageService } from '../services/storageService';
-import { useAppContext } from '../../../context/AppContext';
 import { Account, Transaction, TransactionType, AccountType } from '../../../types';
 import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
@@ -82,7 +82,10 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
   tenantId,
   userId,
 }) => {
-  const { state, dispatch } = useAppContext();
+  const accounts = useAccounts();
+    const categories = useCategories();
+    const transactions = useTransactions();
+    const dispatch = useDispatchOnly();
   const [advanceApplyStr, setAdvanceApplyStr] = useState('');
   const [cashAmountStr, setCashAmountStr] = useState('');
   const [advanceClearingAccountId, setAdvanceClearingAccountId] = useState('');
@@ -94,48 +97,48 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
 
   const bankAccounts = useMemo(
     () =>
-      (state.accounts || []).filter(
+      (accounts || []).filter(
         (a) =>
           a.type === AccountType.BANK ||
           a.type === AccountType.CASH ||
           (a as { type?: string }).type?.toLowerCase() === 'bank' ||
           (a as { type?: string }).type?.toLowerCase() === 'cash'
       ),
-    [state.accounts]
+    [accounts]
   );
 
   const liabilityAccounts = useMemo(
-    () => (state.accounts || []).filter((a) => a.type === AccountType.LIABILITY),
-    [state.accounts]
+    () => (accounts || []).filter((a) => a.type === AccountType.LIABILITY),
+    [accounts]
   );
 
   const salaryCategory = useMemo(() => {
-    const sid = resolveSystemCategoryId(state.categories, 'sys-cat-sal-exp');
-    return (state.categories || []).find((c) => (sid && c.id === sid) || c.name === 'Salary Expenses');
-  }, [state.categories]);
+    const sid = resolveSystemCategoryId(categories, 'sys-cat-sal-exp');
+    return (categories || []).find((c) => (sid && c.id === sid) || c.name === 'Salary Expenses');
+  }, [categories]);
 
   const paidSoFar = payslip ? payslipDisplayPaidAmount(payslip) : 0;
   const remainingAmount = payslip ? payslipRemainingAmount(payslip) : 0;
 
   const advanceOutstanding = useMemo(() => {
     if (!tenantId || !employee?.id) return 0;
-    return employeeSalaryAdvanceOutstanding(tenantId, employee.id, state.transactions ?? []);
-  }, [tenantId, employee?.id, state.transactions]);
+    return employeeSalaryAdvanceOutstanding(tenantId, employee.id, transactions ?? []);
+  }, [tenantId, employee?.id, transactions]);
 
   React.useEffect(() => {
     if (!isOpen || !payslip || !tenantId || !employee) return;
     const rem = payslipRemainingAmount(payslip);
-    const ao = employeeSalaryAdvanceOutstanding(tenantId, employee.id, state.transactions ?? []);
+    const ao = employeeSalaryAdvanceOutstanding(tenantId, employee.id, transactions ?? []);
     const defAdv = Math.max(0, Math.min(rem, ao));
     setAdvanceApplyStr(defAdv > EPS ? String(round2(defAdv)) : '');
     setCashAmountStr(String(round2(Math.max(0, rem - defAdv))));
-    const pick = pickSalaryAdvanceClearingAccount(state.accounts || []);
+    const pick = pickSalaryAdvanceClearingAccount(accounts || []);
     setAdvanceClearingAccountId(pick?.id ?? '');
     setBankAccountId('');
     setNote('');
     setPaymentDate(todayLocalYyyyMmDd());
     setError(null);
-  }, [isOpen, payslip?.id, tenantId, employee?.id, state.transactions, state.accounts]);
+  }, [isOpen, payslip?.id, tenantId, employee?.id, transactions, accounts]);
 
   const totalAppliedParsed = (): number =>
     round2((parseMoney(advanceApplyStr) || 0) + (parseMoney(cashAmountStr) || 0));

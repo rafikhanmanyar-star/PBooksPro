@@ -1,6 +1,6 @@
 
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ContractStatus } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -27,7 +27,7 @@ interface ContractReportRow {
 }
 
 const ProjectContractReport: React.FC = () => {
-    const { state } = useAppContext();
+    const state = useFinancialReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');

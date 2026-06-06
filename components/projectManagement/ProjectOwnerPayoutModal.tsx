@@ -1,7 +1,7 @@
 
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { useAppContext, _getAppState } from '../../context/AppContext';
 import { Contact, TransactionType, Transaction, SalesReturnStatus, ProjectAgreement } from '../../types';
 import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -24,7 +24,8 @@ interface ProjectOwnerPayoutModalProps {
 }
 
 const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpen, onClose, client, balanceDue }) => {
-    const { state, dispatch } = useAppContext();
+    const state = useProjectReportAppState();
+    const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
 
     const [amount, setAmount] = useState('');

@@ -1,5 +1,5 @@
+import { useCategories, useDispatchOnly } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { Quotation, QuotationItem, Contact, TransactionType, Document } from '../../types';
 import Input from '../ui/Input';
@@ -18,7 +18,8 @@ interface QuotationFormProps {
 }
 
 const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit, vendorId, vendorName }) => {
-    const { state, dispatch } = useAppContext();
+    const categories = useCategories();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -29,8 +30,8 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
     const [documentId, setDocumentId] = useState<string | undefined>(quotationToEdit?.documentId);
 
     const expenseCategories = useMemo(() => 
-        state.categories.filter(c => c.type === TransactionType.EXPENSE),
-        [state.categories]
+        categories.filter(c => c.type === TransactionType.EXPENSE),
+        [categories]
     );
 
     useEffect(() => {

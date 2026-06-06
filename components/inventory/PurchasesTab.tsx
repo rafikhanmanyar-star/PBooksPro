@@ -1,5 +1,5 @@
+import { useAccounts, useCategories, useDispatchOnly, useVendors } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { ShopPurchaseBill, ShopBillItem, ShopBillStatus, ShopInventoryItem, ShopPayment, TransactionType, Account, AccountType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import { formatInvAmount } from './formatInvDisplay';
@@ -20,7 +20,10 @@ const generateBillNumber = (bills: ShopPurchaseBill[]): string => {
 };
 
 const PurchasesTab: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const vendors = useVendors();
+    const dispatch = useDispatchOnly();
 
     // Local state for shop data (persisted to localStorage)
     const [bills, setBills] = useState<ShopPurchaseBill[]>(() => {
@@ -53,20 +56,20 @@ const PurchasesTab: React.FC = () => {
 
     // Get vendors from vendors table
     const vendors = useMemo(() => 
-        (state.vendors || []).sort((a, b) => a.name.localeCompare(b.name)),
-        [state.vendors]
+        (vendors || []).sort((a, b) => a.name.localeCompare(b.name)),
+        [vendors]
     );
 
     // Get expense categories for inventory items
     const expenseCategories = useMemo(() => 
-        state.categories.filter(c => c.type === TransactionType.EXPENSE).sort((a, b) => a.name.localeCompare(b.name)),
-        [state.categories]
+        categories.filter(c => c.type === TransactionType.EXPENSE).sort((a, b) => a.name.localeCompare(b.name)),
+        [categories]
     );
 
     // Get bank/cash accounts for payment
     const paymentAccounts = useMemo(() => 
-        state.accounts.filter(a => a.type === AccountType.BANK || a.type === AccountType.CASH).sort((a, b) => a.name.localeCompare(b.name)),
-        [state.accounts]
+        accounts.filter(a => a.type === AccountType.BANK || a.type === AccountType.CASH).sort((a, b) => a.name.localeCompare(b.name)),
+        [accounts]
     );
 
     // Save to localStorage when data changes
@@ -242,8 +245,8 @@ const PurchasesTab: React.FC = () => {
         );
 
         // Create expense transaction in the main ledger
-        const vendor = state.vendors?.find(v => v.id === bill.vendorId);
-        const account = state.accounts.find(a => a.id === paymentAccountId);
+        const vendor = vendors?.find(v => v.id === bill.vendorId);
+        const account = accounts.find(a => a.id === paymentAccountId);
         
         if (account) {
             const transaction = {
@@ -273,13 +276,13 @@ const PurchasesTab: React.FC = () => {
 
     // Get vendor name
     const getVendorName = (vendorId: string) => {
-        const vendor = state.vendors?.find(v => v.id === vendorId);
+        const vendor = vendors?.find(v => v.id === vendorId);
         return vendor?.name || 'Unknown Vendor';
     };
 
     // Get category name
     const getCategoryName = (categoryId: string) => {
-        const category = state.categories.find(c => c.id === categoryId);
+        const category = categories.find(c => c.id === categoryId);
         return category?.name || 'Unknown Category';
     };
 

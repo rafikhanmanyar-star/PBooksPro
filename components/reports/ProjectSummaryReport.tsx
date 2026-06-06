@@ -1,6 +1,6 @@
 
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType, Project, InvoiceStatus, InvoiceType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY, ICONS } from '../../constants';
@@ -92,7 +92,7 @@ const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: strin
 });
 
 const ProjectSummaryReport: React.FC = () => {
-    const { state } = useAppContext();
+    const state = useFinancialReportAppState();
     const { print: triggerPrint } = usePrintContext();
     
     // Filters

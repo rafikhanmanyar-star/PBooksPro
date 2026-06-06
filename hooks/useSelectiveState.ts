@@ -122,6 +122,111 @@ export function useVendors() {
     return useStateSelector(s => s.vendors);
 }
 
+export function useProjectAgreements() {
+    return useStateSelector(s => s.projectAgreements);
+}
+
+export function useSalesReturns() {
+    return useStateSelector(s => s.salesReturns);
+}
+
+export function useProjectReceivedAssets() {
+    return useStateSelector(s => s.projectReceivedAssets);
+}
+
+export function useContracts() {
+    return useStateSelector(s => s.contracts);
+}
+
+export function useQuotations() {
+    return useStateSelector(s => s.quotations);
+}
+
+export function useBudgets() {
+    return useStateSelector(s => s.budgets);
+}
+
+export function useDocuments() {
+    return useStateSelector(s => s.documents);
+}
+
+export function useCurrentUser() {
+    return useStateSelector(s => s.currentUser);
+}
+
+export function usePersonalTransactions() {
+    return useStateSelector(s => s.personalTransactions);
+}
+
+export function usePersonalCategories() {
+    return useStateSelector(s => s.personalCategories);
+}
+
+export function useInstallmentPlans() {
+    return useStateSelector(s => s.installmentPlans);
+}
+
+export function usePlanAmenities() {
+    return useStateSelector(s => s.planAmenities);
+}
+
+export function usePmCycleAllocations() {
+    return useStateSelector(s => s.pmCycleAllocations);
+}
+
+/**
+ * Project-module reports and pages (agreements, units, contracts, sales returns, assets).
+ */
+export function useProjectReportAppState(): AppState {
+    const accounts = useAccounts();
+    const transactions = useTransactions();
+    const categories = useCategories();
+    const bills = useBills();
+    const invoices = useInvoices();
+    const vendors = useVendors();
+    const contacts = useContacts();
+    const projects = useProjects();
+    const projectAgreements = useProjectAgreements();
+    const rentalAgreements = useRentalAgreements();
+    const projectReceivedAssets = useProjectReceivedAssets();
+    const units = useUnits();
+    const buildings = useBuildings();
+    const properties = useProperties();
+    const contracts = useContracts();
+    const salesReturns = useSalesReturns();
+    const budgets = useBudgets();
+    const quotations = useQuotations();
+    const installmentPlans = useInstallmentPlans();
+    const planAmenities = usePlanAmenities();
+    const pmCycleAllocations = usePmCycleAllocations();
+    return useMemo(
+        () => _getAppState(),
+        [
+            accounts,
+            transactions,
+            categories,
+            bills,
+            invoices,
+            vendors,
+            contacts,
+            projects,
+            projectAgreements,
+            rentalAgreements,
+            projectReceivedAssets,
+            units,
+            buildings,
+            properties,
+            contracts,
+            salesReturns,
+            budgets,
+            quotations,
+            installmentPlans,
+            planAmenities,
+            pmCycleAllocations,
+        ]
+    );
+}
+
 /**
  * Get dispatch without subscribing to state changes.
  * Uses module-level dispatch ref, so this hook never causes re-renders.

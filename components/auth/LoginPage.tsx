@@ -1,6 +1,6 @@
 
+import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import React, { useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 
@@ -36,7 +36,8 @@ function clearSavedLocalLogin() {
 }
 
 const LoginPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const users = useStateSelector((s) => s.users);
+    const dispatch = useDispatchOnly();
     const initialSaved = readSavedLocalLogin();
     const [username, setUsername] = useState(initialSaved?.username ?? '');
     const [password, setPassword] = useState(initialSaved?.password ?? '');
@@ -47,7 +48,7 @@ const LoginPage: React.FC = () => {
         e.preventDefault();
         setError('');
 
-        const user = state.users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+        const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
 
         if (!user) {
             setError('User not found.');

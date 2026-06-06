@@ -4,11 +4,11 @@
  * Uses same account, date, and note for all.
  */
 
+import { useAccounts, useCategories, useDispatchOnly } from '../../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Banknote, Loader2, AlertCircle } from 'lucide-react';
 import { PayrollEmployee, Payslip, PayrollRun, PayrollStatus } from '../types';
 import { storageService } from '../services/storageService';
-import { useAppContext } from '../../../context/AppContext';
 import { Transaction, TransactionType } from '../../../types';
 import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
@@ -42,7 +42,9 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
   tenantId,
   userId
 }) => {
-  const { state, dispatch } = useAppContext();
+  const accounts = useAccounts();
+    const categories = useCategories();
+    const dispatch = useDispatchOnly();
   const [accountId, setAccountId] = useState('');
   const [note, setNote] = useState('');
   const [paymentDate, setPaymentDate] = useState(() => toLocalDateString(new Date()));
@@ -52,17 +54,17 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
   const [amountByPayslipId, setAmountByPayslipId] = useState<Record<string, string>>({});
 
   const bankAccounts = useMemo(() => {
-    return (state.accounts || []).filter(
+    return (accounts || []).filter(
       (a: any) => a.type === 'Bank' || a.type === 'Cash' || a.type === 'bank' || a.type === 'cash'
     );
-  }, [state.accounts]);
+  }, [accounts]);
 
   const salaryCategory = useMemo(() => {
-    const sid = resolveSystemCategoryId(state.categories, 'sys-cat-sal-exp');
-    return (state.categories || []).find(
+    const sid = resolveSystemCategoryId(categories, 'sys-cat-sal-exp');
+    return (categories || []).find(
       (c: { id: string; name: string }) => (sid && c.id === sid) || c.name === 'Salary Expenses'
     );
-  }, [state.categories]);
+  }, [categories]);
 
   // Initialize editable amounts to remaining when modal opens or items change
   useEffect(() => {

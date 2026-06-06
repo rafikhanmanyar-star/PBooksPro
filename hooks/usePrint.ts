@@ -2,8 +2,8 @@
  * React hook for consistent print functionality
  */
 
+import { useStateSelector } from '../hooks/useSelectiveState';
 import { useState, useCallback } from 'react';
-import { useAppContext } from '../context/AppContext';
 import { printPrintableArea, printFromTemplate, PrintOptions } from '../services/printService';
 import { PrintSettings } from '../types';
 
@@ -28,7 +28,7 @@ export interface UsePrintReturn {
  * @returns Print handler, loading state, and error state
  */
 export const usePrint = (options: UsePrintOptions = {}): UsePrintReturn => {
-  const { state } = useAppContext();
+  const appPrintSettings = useStateSelector((s) => s.printSettings);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printError, setPrintError] = useState<Error | null>(null);
 
@@ -40,7 +40,7 @@ export const usePrint = (options: UsePrintOptions = {}): UsePrintReturn => {
   } = options;
 
   // Use provided print settings or fall back to app context
-  const printSettings = providedPrintSettings || state.printSettings;
+  const printSettings = providedPrintSettings || printSettings;
 
   const handlePrint = useCallback(() => {
     setIsPrinting(true);

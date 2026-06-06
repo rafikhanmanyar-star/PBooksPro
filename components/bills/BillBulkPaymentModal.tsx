@@ -1,6 +1,6 @@
 
+import { useAccounts, useCategories, useDispatchOnly, useFinancialReportAppState, useRentalAgreements } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { Bill, Transaction, TransactionType, AccountType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -25,7 +25,10 @@ interface BillBulkPaymentModalProps {
 }
 
 const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onClose, selectedBills, onPaymentComplete }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const rentalAgreements = useRentalAgreements();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();
 
@@ -37,7 +40,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
     const [reference, setReference] = useState('');
 
     // Filter for Bank Accounts Only (exclude Internal Clearing)
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
+    const userSelectableAccounts = useMemo(() => accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [accounts]);
 
     // Sort bills by Due Date for display order
     const sortedBills = useMemo(() => {
@@ -112,21 +115,21 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
 
                 // Check if bill has a rental agreement (tenant bill)
                 if (bill.projectAgreementId) {
-                    const rentalAgreement = state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
+                    const rentalAgreement = rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
                     if (rentalAgreement) {
                         tenantId = rentalAgreement.contactId;
                     }
                 }
 
-                const baseBillCategoryId = resolveBillLinkedExpenseCategoryId(bill, state.categories);
+                const baseBillCategoryId = resolveBillLinkedExpenseCategoryId(bill, categories);
 
                 // If this is a tenant-allocated bill, update category to include "(Tenant)" suffix
                 if (tenantId && baseBillCategoryId) {
-                    const originalCategory = state.categories.find(c => c.id === baseBillCategoryId);
+                    const originalCategory = categories.find(c => c.id === baseBillCategoryId);
                     if (originalCategory) {
                         // Find or use category with "(Tenant)" suffix
                         const tenantCategoryName = `${originalCategory.name} (Tenant)`;
-                        const tenantCategory = state.categories.find(c =>
+                        const tenantCategory = categories.find(c =>
                             c.name === tenantCategoryName && c.type === TransactionType.EXPENSE
                         );
                         tenantCategoryId = tenantCategory?.id || baseBillCategoryId;
