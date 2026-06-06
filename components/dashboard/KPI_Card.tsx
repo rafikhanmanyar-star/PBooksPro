@@ -35,7 +35,7 @@ const KPICard: React.FC<KPICardProps> = ({ title, amount, icon, onClick, descrip
     `}>
       <div className="flex justify-between items-start mb-3 md:mb-4">
         <div className={`p-2 md:p-3 rounded-xl ${getIconStyles()} transition-transform group-hover:scale-110 duration-300`}>
-          {React.cloneElement(icon as React.ReactElement, { width: 18, height: 18, className: 'md:w-5 md:h-5' })}
+          {React.cloneElement(icon as React.ReactElement<{ width?: number; height?: number; className?: string }>, { width: 18, height: 18, className: 'md:w-5 md:h-5' })}
         </div>
         {trend && (
           <div className={`flex items-center gap-0.5 md:gap-1 text-[10px] md:text-xs font-semibold px-1.5 md:px-2 py-0.5 md:py-1 rounded-full ${trend.isPositive ? 'ds-badge-paid' : 'ds-badge-unpaid'}`}>

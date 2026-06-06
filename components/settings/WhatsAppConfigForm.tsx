@@ -24,6 +24,8 @@ interface WhatsAppConfigFormProps {
   onClose?: () => void;
 }
 
+type WhatsAppApiResponse = { success?: boolean; message?: string; [key: string]: unknown };
+
 const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
   const { showToast, showAlert, showConfirm } = useNotification();
   const [loading, setLoading] = useState(false);
@@ -233,7 +235,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
         timestamp: new Date().toISOString(),
       });
       
-      const response = await apiClient.post('/whatsapp/test-connection');
+      const response = await apiClient.post<WhatsAppApiResponse>('/whatsapp/test-connection');
       
       const duration = Date.now() - startTime;
       devLogger.log(`[WhatsApp Client] [${testId}] Connection test successful`, {
@@ -271,7 +273,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
         });
         
         setTesting(true);
-        const response = await apiClient.post('/whatsapp/test-connection');
+        const response = await apiClient.post<WhatsAppApiResponse>('/whatsapp/test-connection');
         
         const duration = Date.now() - startTime;
         devLogger.log(`[WhatsApp Client] [${testId}] Connection test successful (stored key)`, {
@@ -342,7 +344,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       });
 
       // Test connection
-      const response = await apiClient.post('/whatsapp/test-connection');
+      const response = await apiClient.post<WhatsAppApiResponse>('/whatsapp/test-connection');
       
       const duration = Date.now() - startTime;
       devLogger.log(`[WhatsApp Client] [${testId}] Connection test successful (new credentials)`, {
@@ -491,7 +493,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       
       setSendingTest(true);
       
-      const response = await apiClient.post('/whatsapp/send', {
+      const response = await apiClient.post<WhatsAppApiResponse>('/whatsapp/send', {
         phoneNumber: cleanPhone,
         message: testMessage,
       });

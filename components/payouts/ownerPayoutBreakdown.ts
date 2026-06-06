@@ -456,7 +456,7 @@ export function buildOwnerSecurityPropertyBreakdownOnly(state: AppState): OwnerP
                 .forEach((tx) => {
                     const txOwnerId = resolveOwnerForTransaction(state, tx);
                     if (txOwnerId !== ownerId) return;
-                    const category = categoryById.get(tx.categoryId);
+                    const category = categoryById.get(tx.categoryId ?? '');
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                     if (isNaN(amount) || amount <= 0) return;
                     if (secRefCategory && tx.categoryId === secRefCategory.id) {

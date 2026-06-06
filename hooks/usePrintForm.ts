@@ -61,7 +61,7 @@ export function usePrintForm(options: UsePrintFormOptions = {}): UsePrintFormRet
     contentRef: printRef,
     documentTitle,
     onAfterPrint,
-    onBeforePrint,
+    onBeforePrint: onBeforePrint ? async () => { onBeforePrint(); } : undefined,
     pageStyle: `
       @page { size: A4; margin: 12.7mm; }
       html, body {

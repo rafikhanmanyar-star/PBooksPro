@@ -403,8 +403,8 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                     defaultHeight={dimensions.height}
                     rowCount={flatRows.length}
                     rowHeight={(index: number) => (flatRows[index]?.type === 'group-header' ? GROUP_HEADER_HEIGHT : ROW_HEIGHT)}
-                    rowComponent={LedgerListRow}
-                    rowProps={rowProps}
+                    rowComponent={LedgerListRow as any}
+                    rowProps={rowProps as any}
                     overscanCount={6}
                     style={{ height: dimensions.height, width: dimensions.width }}
                     className="scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 hover:dark:scrollbar-thumb-slate-500 scrollbar-track-transparent"

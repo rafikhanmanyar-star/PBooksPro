@@ -38,7 +38,7 @@ const PrintButton: React.FC<PrintButtonProps> = ({
   return (
     <Button
       variant={variant}
-      size={size}
+      size={size === 'md' || size === 'lg' ? 'default' : size}
       onClick={onPrint}
       disabled={disabled || isLoading}
       className={`${baseClasses} ${className}`}

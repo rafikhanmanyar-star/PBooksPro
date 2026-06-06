@@ -809,7 +809,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
                         rowCount={effectiveRecords.length}
                         rowHeight={ROW_HEIGHT}
                         rowComponent={Row}
-                        rowProps={{}}
+                        rowProps={{} as any}
                         style={{ height: listHeight }}
                         overscanCount={15}
                     />

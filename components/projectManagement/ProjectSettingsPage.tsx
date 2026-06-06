@@ -14,7 +14,7 @@ import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
 import { ContactType, Project, Unit } from '../../types';
 import { isLocalOnlyMode } from '../../config/apiUrl';
-import InstallmentConfigForm from '../settings/InstallmentConfigForm';
+import InstallmentConfigForm, { type InstallmentConfig } from '../settings/InstallmentConfigForm';
 import { ImportType } from '../../services/importService';
 
 const ProjectSettingsPage: React.FC = () => {
@@ -131,8 +131,9 @@ const ProjectSettingsPage: React.FC = () => {
         setEditingItem(null);
     };
     
-    const handleConfigSave = (project: any) => {
-        dispatch({ type: 'UPDATE_PROJECT', payload: project });
+    const handleConfigSave = (config: InstallmentConfig) => {
+        if (!configProject) return;
+        dispatch({ type: 'UPDATE_PROJECT', payload: { ...configProject, installmentConfig: config } });
         setConfigProject(null);
     };
 
@@ -251,7 +252,7 @@ const ProjectSettingsPage: React.FC = () => {
             <Modal isOpen={!!configProject} onClose={() => setConfigProject(null)} title="Installment Plan Configuration">
                 {configProject && (
                     <InstallmentConfigForm 
-                        project={configProject} 
+                        config={configProject.installmentConfig} 
                         onSave={handleConfigSave} 
                         onCancel={() => setConfigProject(null)} 
                     />

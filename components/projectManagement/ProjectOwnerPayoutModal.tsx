@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useAppContext, _getAppState } from '../../context/AppContext';
-import { Contact, TransactionType, Transaction, SalesReturnStatus } from '../../types';
+import { Contact, TransactionType, Transaction, SalesReturnStatus, ProjectAgreement } from '../../types';
 import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -114,7 +114,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
         });
         
         // Get agreement and projectId from sales return
-        let agreementFromReturn = null;
+        let agreementFromReturn: ProjectAgreement | undefined;
         if (salesReturn?.agreementId) {
             agreementFromReturn = state.projectAgreements.find(pa => pa.id === salesReturn.agreementId);
         }

@@ -74,7 +74,7 @@ export const useViewport = (debounceMs: number = 150): UseViewportReturn => {
   };
 
   // Store debounced function in ref
-  const debouncedUpdateRef = useRef<ReturnType<typeof debounce>>();
+  const debouncedUpdateRef = useRef<ReturnType<typeof debounce> | undefined>(undefined);
   
   useEffect(() => {
     if (typeof window === 'undefined') return;

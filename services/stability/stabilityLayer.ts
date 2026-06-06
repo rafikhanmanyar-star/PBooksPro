@@ -135,8 +135,10 @@ export function initStabilityLayer(): void {
   );
 
   window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason instanceof Error ? event.reason.stack : String(event.reason);
-    bumpCrashCount(event.reason instanceof Error ? event.reason.message : reason);
+    const reason = event.reason instanceof Error
+      ? (event.reason.stack ?? event.reason.message ?? 'Error')
+      : String(event.reason);
+    bumpCrashCount(event.reason instanceof Error ? (event.reason.message ?? 'Error') : reason);
     void logStability('error', 'Unhandled Promise rejection', reason);
     console.error('Unhandled Promise Rejection:', event.reason);
   });

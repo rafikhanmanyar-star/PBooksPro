@@ -281,7 +281,7 @@ const ContactsManagement: React.FC = () => {
         const emailMatch = contact.description?.match(/^email:(.+?)(?:\n|$)/);
         if (emailMatch) {
             setEmail(emailMatch[1]);
-            setNotes(contact.description.replace(/^email:.+?\n?/, '').trim());
+            setNotes((contact.description ?? '').replace(/^email:.+?\n?/, '').trim());
         } else {
             setEmail('');
             setNotes(contact.description || '');

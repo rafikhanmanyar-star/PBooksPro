@@ -977,7 +977,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 payload.transactions = mergeById(state.transactions, apiState.transactions);
             }
             if (Object.keys(payload).length > 0) {
-                dispatch({ type: 'SET_STATE', payload });
+                dispatch({ type: 'SET_STATE', payload: { ...state, ...payload } });
             }
             showToast("Investment posted to the general ledger. Chart balances were refreshed.", "success");
             setIsActionModalOpen(false);

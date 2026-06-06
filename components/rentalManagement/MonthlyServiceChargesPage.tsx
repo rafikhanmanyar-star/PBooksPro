@@ -215,7 +215,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     if (!isNaN(amount) && amount > 0) balances[tx.contactId] -= amount;
                 }
                 else if (tx.propertyId) {
-                    const category = categoryById.get(tx.categoryId);
+                    const category = categoryById.get(tx.categoryId ?? '');
                     const catName = category?.name || '';
                     if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
                     if (tx.categoryId === ownerPayoutCategory?.id) return;
@@ -748,7 +748,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
             rows.push({
                 id: tx.id,
                 monthKey: mk,
-                propertyId: tx.propertyId,
+                propertyId: tx.propertyId ?? '',
                 unit: propRow.unit,
                 ownerName: propRow.ownerName,
                 ownerId: propRow.ownerId,

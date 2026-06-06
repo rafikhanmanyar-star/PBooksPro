@@ -55,7 +55,7 @@ type OwnerLedgerRowExtra = {
 const OwnerLedgerRow = (props: RowComponentProps<OwnerLedgerRowExtra>) => {
     const { index, style, ariaAttributes, rows, onRecordClick, onPayoutClick } = props;
     const item = rows[index];
-    if (!item) return null;
+    if (!item) return <div style={style} aria-hidden />;
     const hasTransaction = !!item.transaction;
     const isClickable = hasTransaction && (onRecordClick || (item.type === 'Payout' && onPayoutClick));
     const handleRowClick = () => {
@@ -701,7 +701,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                             rows: ledgerSorted,
                             onRecordClick,
                             onPayoutClick,
-                        }}
+                        } as any}
                         rowComponent={OwnerLedgerRow}
                         style={{ height: listHeight, width: '100%' }}
                     />

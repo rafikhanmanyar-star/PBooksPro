@@ -378,7 +378,7 @@ const VirtualizedInvoiceTable: React.FC<VirtualizedInvoiceTableProps> = ({
 
           rowComponent={Row}
 
-          rowProps={{}}
+          rowProps={{} as any}
 
           style={{ height, width: '100%' }}
 

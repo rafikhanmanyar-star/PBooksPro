@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Bill, TransactionType, Transaction } from '../../types';
+import { Bill, TransactionType, Transaction, Contact, Vendor } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import ARTreeView, { ARTreeNode } from './ARTreeView';
@@ -655,7 +655,7 @@ const RentalBillsDashboard: React.FC = () => {
   const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill, recipient: 'vendor' | 'owner' | 'tenant') => {
     e.stopPropagation();
     setWhatsAppMenuBillId(null);
-    let contact: { name: string; contactNo?: string } | null = null;
+    let contact: Contact | Vendor | null = null;
     let message = '';
 
     if (recipient === 'vendor') {

@@ -10,8 +10,8 @@ import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { isMobileDevice } from '../../utils/platformDetection';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
-const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: () => {}, connect: () => {}, disconnect: () => {}, getDebugState: () => ({ status: 'disconnected' as const, serverUrl: '', tenantId: null }) });
-const getConnectionMonitor = () => ({ getStatus: () => 'online' as const, subscribe: (_l: any) => () => {} });
+const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {}, connect: (_t?: string, _tid?: string) => {}, disconnect: () => {}, getDebugState: () => ({ status: 'disconnected' as const, serverUrl: '', tenantId: null }) });
+const getConnectionMonitor = () => ({ getStatus: () => 'online' as const, checkStatus: async () => 'online' as const, subscribe: (_l: any) => () => {} });
 
 interface ConnectionStatusIndicatorProps {
   showLabel?: boolean;

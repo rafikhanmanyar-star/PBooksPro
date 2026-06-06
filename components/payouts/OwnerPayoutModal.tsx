@@ -135,7 +135,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             if (inv.status === InvoiceStatus.PAID || inv.status === InvoiceStatus.DRAFT) continue;
             const out = inv.amount - (inv.paidAmount || 0);
             if (out <= 0.01) continue;
-            outstandingByContact.set(inv.contactId, (outstandingByContact.get(inv.contactId) || 0) + out);
+            const cKey = inv.contactId ?? '';
+            outstandingByContact.set(cKey, (outstandingByContact.get(cKey) || 0) + out);
         }
         if (outstandingByContact.size >= 1) {
             let bestId = '';

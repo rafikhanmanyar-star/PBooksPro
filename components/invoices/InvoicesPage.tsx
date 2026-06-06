@@ -472,7 +472,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 const query = debouncedSearch.toLowerCase();
                 filtered = filtered.filter(inv => {
                     if (inv.invoiceNumber.toLowerCase().includes(query)) return true;
-                    if (contactMap.get(inv.contactId)?.name.toLowerCase().includes(query)) return true;
+                    if (contactMap.get(inv.contactId ?? '')?.name.toLowerCase().includes(query)) return true;
                     if (inv.description && inv.description.toLowerCase().includes(query)) return true;
                     if (inv.propertyId) {
                         const prop = propertyMap.get(inv.propertyId);
@@ -790,7 +790,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 const query = debouncedSearch.toLowerCase();
                 filtered = filtered.filter(inv => {
                     if (inv.invoiceNumber.toLowerCase().includes(query)) return true;
-                    if (contactMap.get(inv.contactId)?.name.toLowerCase().includes(query)) return true;
+                    if (contactMap.get(inv.contactId ?? '')?.name.toLowerCase().includes(query)) return true;
                     if (inv.description && inv.description.toLowerCase().includes(query)) return true;
                     if (inv.propertyId) {
                         const prop = propertyMap.get(inv.propertyId);
@@ -879,7 +879,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         const invoiceIdSet = new Set(invoicesWithoutStatusFilter.map(i => i.id));
 
         relevantInvoices.forEach(inv => {
-            const contact = contactMap.get(inv.contactId);
+            const contact = contactMap.get(inv.contactId ?? '');
             const effPaid = ledgerPaidByInvoiceId.has(inv.id)
                 ? (ledgerPaidByInvoiceId.get(inv.id) || 0)
                 : (inv.paidAmount || 0);

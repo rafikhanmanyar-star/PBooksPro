@@ -281,7 +281,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     try {
       if (employee) {
         // Update existing employee
-        const selectedDeptId = availableDepartments.find(d => d.name === formData.department)?.id ?? employee.department_id ?? null;
+        const selectedDeptId = availableDepartments.find(d => d.name === formData.department)?.id ?? (employee.department_id ?? undefined);
         const updateData = {
           name: formData.name,
           email: formData.email,
@@ -336,7 +336,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
       } else {
         // Create new employee - generate ID upfront so API and localStorage use same ID (enables sync on later update)
         const newEmployeeId = `emp-${Date.now()}`;
-        const selectedDeptId = availableDepartments.find(d => d.name === formData.department)?.id ?? null;
+        const selectedDeptId = availableDepartments.find(d => d.name === formData.department)?.id ?? undefined;
         const createData = {
           id: newEmployeeId,
           name: formData.name,

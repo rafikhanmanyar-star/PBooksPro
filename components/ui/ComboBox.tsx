@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { ICONS } from '../../constants';
 
-interface ComboBoxItem {
+export interface ComboBoxItem {
   id: string;
   name: string;
 }

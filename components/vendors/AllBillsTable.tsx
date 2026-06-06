@@ -377,8 +377,8 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                                 defaultHeight={listHeight - 40}
                                 rowCount={filteredBills.length}
                                 rowHeight={ROW_H}
-                                rowComponent={VirtualBillRow}
-                                rowProps={virtualRowProps}
+                                rowComponent={VirtualBillRow as any}
+                                rowProps={virtualRowProps as any}
                                 className="scrollbar-thin"
                             />
                         )}

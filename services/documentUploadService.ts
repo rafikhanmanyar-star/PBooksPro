@@ -97,7 +97,7 @@ export async function openDocumentById(
   const doc = documentsFromState?.find(d => d.id === documentId);
   if (doc?.fileData) {
     try {
-      const byteChars = atob(d.fileData);
+      const byteChars = atob(doc.fileData);
       const bytes = new Uint8Array(byteChars.length);
       for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
       const blob = new Blob([bytes], { type: doc.mimeType || 'application/octet-stream' });

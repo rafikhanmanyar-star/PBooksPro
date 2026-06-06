@@ -2615,7 +2615,7 @@ export const runImportProcess = async (
                     };
 
                     // Loan validation (subtype)
-                    if (txType === TransactionType.LOAN && (!tx.subtype || !Object.values(LoanSubtype).includes(tx.subtype))) {
+                    if (txType === TransactionType.LOAN && (!tx.subtype || !Object.values(LoanSubtype).includes(tx.subtype as LoanSubtype))) {
                         const valid = Object.values(LoanSubtype).join(', ');
                         log(sheetName, rowNum, 'Error', `Invalid or missing Loan subtype. Valid values: ${valid}`, row);
                         continue;

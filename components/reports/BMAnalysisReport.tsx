@@ -228,9 +228,10 @@ const BMAnalysisReport: React.FC = () => {
                         // Only add if it's not an owner expense
                         if (!isOwnerExpense(item.categoryId)) {
                             const amt = item.netValue || 0;
-                            buildingData[bill.buildingId].expenses += amt;
+                            const bId = bill.buildingId ?? '';
+                            buildingData[bId].expenses += amt;
                             const catName = getCategory(item.categoryId)?.name || 'Expense';
-                            detailsMap[bill.buildingId].expenses.push({
+                            detailsMap[bId].expenses.push({
                                 id: `bill-${bill.id}-line-${idx}`,
                                 kind: 'expense',
                                 date: bill.issueDate,

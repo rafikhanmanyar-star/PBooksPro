@@ -386,7 +386,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
                 isRelevant = true;
                 type = 'Deposit';
             } else if (tx.type === TransactionType.EXPENSE) {
-                const category = categoryById.get(tx.categoryId);
+                const category = categoryById.get(tx.categoryId ?? '');
 
                 if (ownerPayoutCategory && tx.categoryId === ownerPayoutCategory.id) {
                     isRelevant = true;
@@ -461,6 +461,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
                 refundOut: type === 'Refund' || type === 'Deduction' || type === 'Payout' ? tx.amount : 0,
                 entityType: 'transaction' as const,
                 entityId: tx.id,
+                balance: 0,
             });
         }
 

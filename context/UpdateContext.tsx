@@ -156,7 +156,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     // Save all data to SQLite before restart — never quit until save succeeds (prevents data loss on version upgrade)
     const saveResult = await new Promise<{ success: boolean }>((resolve) => {
       let settled = false;
-      let timeoutId: ReturnType<typeof setTimeout>;
+      let timeoutId: number;
       const finish = (ok: boolean) => {
         if (settled) return;
         settled = true;

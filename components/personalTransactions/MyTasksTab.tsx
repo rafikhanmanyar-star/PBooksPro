@@ -265,7 +265,7 @@ const MyTasksTab: React.FC = () => {
                       ? 'border-indigo-500 ring-1 ring-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
                       : 'border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                   }`}
-                  onClick={() => openCreate(cell.ymd)}
+                  onClick={() => openCreate(cell.ymd ?? undefined)}
                   title="Click to add task for this date"
                 >
                   <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-0.5">{cell.day}</div>

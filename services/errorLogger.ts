@@ -11,7 +11,7 @@ import { getDatabaseService } from './database/databaseService';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { ErrorLogEntry } from '../types';
 
-interface ExtendedErrorLogEntry extends ErrorLogEntry {
+export interface ExtendedErrorLogEntry extends ErrorLogEntry {
     id: string;
     url?: string;
     userAgent?: string;

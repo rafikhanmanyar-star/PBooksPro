@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
-import { Transaction, TransactionType, LoanSubtype, ContactType, Account, InvoiceStatus, AccountType, ContractStatus } from '../../types';
+import { Transaction, TransactionType, LoanSubtype, EquityLedgerSubtype, ContactType, Account, InvoiceStatus, AccountType, ContractStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
@@ -37,7 +37,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
     const entityFormModal = useEntityFormModal();
 
     const [type, setType] = useState<TransactionType>(transactionToEdit?.type || transactionTypeForNew || TransactionType.EXPENSE);
-    const [subtype, setSubtype] = useState<LoanSubtype | ''>(transactionToEdit?.subtype || '');
+    const [subtype, setSubtype] = useState<LoanSubtype | EquityLedgerSubtype | ''>(transactionToEdit?.subtype || '');
     const [amount, setAmount] = useState(transactionToEdit ? Math.abs(transactionToEdit.amount).toString() : '');
 
     // Get initial date: use preserved date if option is enabled and creating new transaction

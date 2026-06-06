@@ -409,7 +409,7 @@ const VendorDirectoryPage: React.FC = () => {
         <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
             <AddVendorSection
                 optionsView={optionsView}
-                setOptionsView={setOptionsView}
+                setOptionsView={(view) => setOptionsView(view ?? 'Quotation')}
                 setSelectedVendorId={setSelectedVendorId}
                 triggerAddVendor={triggerAddVendor}
                 onModalOpenHandled={() => setTriggerAddVendor(false)}

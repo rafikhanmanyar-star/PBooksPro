@@ -6,3 +6,7 @@ At line:1 char:1
     + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
+
+> pbooks-pro@1.2.290 typecheck:c2
+> tsc -p tsconfig.strict-all.json --noEmit
+

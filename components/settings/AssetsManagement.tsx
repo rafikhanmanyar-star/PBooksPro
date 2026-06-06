@@ -1094,7 +1094,7 @@ const AssetsManagement: React.FC = () => {
                                 <Button
                                     type="button"
                                     variant="secondary"
-                                    onClick={handleResetForm}
+                                    onClick={() => handleResetForm()}
                                     className="flex-1 text-sm py-2"
                                 >
                                     Cancel

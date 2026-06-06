@@ -184,7 +184,7 @@ export const EntityFormModal: React.FC<{
         <CategoryForm
           onSubmit={onSubmit}
           onCancel={onClose}
-          fixedTypeForNew={categoryType}
+          fixedTypeForNew={categoryType === TransactionType.INCOME || categoryType === TransactionType.EXPENSE ? categoryType : undefined}
           initialName={initialName}
         />
       )}
@@ -202,14 +202,12 @@ export const EntityFormModal: React.FC<{
           contacts={state.contacts}
           buildings={state.buildings}
           properties={state.properties}
-          initialName={initialName}
         />
       )}
       {formType === 'unit' && (
         <UnitForm
           onSubmit={onSubmit}
           onCancel={onClose}
-          initialName={initialName}
         />
       )}
     </Modal>

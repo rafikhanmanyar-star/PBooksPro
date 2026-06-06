@@ -113,7 +113,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       const q = debouncedSearch.toLowerCase();
       invoices = invoices.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
-        if (contactsById.get(inv.contactId)?.name?.toLowerCase().includes(q)) return true;
+        if (contactsById.get(inv.contactId ?? '')?.name?.toLowerCase().includes(q)) return true;
         if (inv.description?.toLowerCase().includes(q)) return true;
         if (inv.propertyId) {
           const prop = propertiesById.get(inv.propertyId);
@@ -176,7 +176,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       const q = debouncedSearch.toLowerCase();
       invoices = invoices.filter(inv => {
         if (inv.invoiceNumber?.toLowerCase().includes(q)) return true;
-        if (contactsById.get(inv.contactId)?.name?.toLowerCase().includes(q)) return true;
+        if (contactsById.get(inv.contactId ?? '')?.name?.toLowerCase().includes(q)) return true;
         if (inv.description?.toLowerCase().includes(q)) return true;
         if (inv.propertyId) {
           if (propertiesById.get(inv.propertyId)?.name?.toLowerCase().includes(q)) return true;
@@ -215,7 +215,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         type: 'Invoice',
         reference: inv.invoiceNumber,
         date: inv.issueDate,
-        accountName: contactsById.get(inv.contactId)?.name || 'Unknown',
+        accountName: contactsById.get(inv.contactId ?? '')?.name || 'Unknown',
         amount: inv.amount,
         remainingAmount: inv.amount - inv.paidAmount,
         raw: inv,

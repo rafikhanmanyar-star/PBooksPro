@@ -10,7 +10,7 @@ const PaymentSuccessPage: React.FC = () => {
   const [status, setStatus] = useState<string | null>(null);
   const [isCheckingLicense, setIsCheckingLicense] = useState(true);
   const [licenseRefreshed, setLicenseRefreshed] = useState(false);
-  const { checkLicenseStatus } = useLicense();
+  useLicense();
   const { checkLicenseStatus: checkCloudLicense } = useAuth();
 
   useEffect(() => {
@@ -31,8 +31,6 @@ const PaymentSuccessPage: React.FC = () => {
         // Try cloud license check first, fallback to local
         if (checkCloudLicense) {
           await checkCloudLicense();
-        } else if (checkLicenseStatus) {
-          await checkLicenseStatus();
         }
         
         setLicenseRefreshed(true);
@@ -54,7 +52,7 @@ const PaymentSuccessPage: React.FC = () => {
     setTimeout(() => {
       window.history.replaceState({}, '', window.location.pathname);
     }, 2000);
-  }, [checkLicenseStatus, checkCloudLicense]);
+  }, [checkCloudLicense]);
 
   const handleGoToDashboard = () => {
     // Navigate to dashboard by reloading the app

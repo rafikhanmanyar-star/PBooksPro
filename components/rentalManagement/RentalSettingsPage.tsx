@@ -12,7 +12,7 @@ import BuildingForm from '../settings/BuildingForm';
 import PropertyForm from '../settings/PropertyForm';
 import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
-import { ContactType } from '../../types';
+import { ContactType, Building, Property, Contact } from '../../types';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import RentalAgreementContactRepairCard from './RentalAgreementContactRepairCard';
 import { parseApiEntityVersion } from '../../utils/parseApiVersion';
@@ -97,11 +97,11 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                             payload = { ...payload, ...saved };
                         } else {
                             const bodyBase = {
-                                name: payload.name,
-                                ownerId: payload.ownerId,
-                                buildingId: payload.buildingId,
-                                description: payload.description,
-                                monthlyServiceCharge: payload.monthlyServiceCharge,
+                                name: String(payload.name ?? ''),
+                                ownerId: String(payload.ownerId ?? ''),
+                                buildingId: String(payload.buildingId ?? ''),
+                                description: payload.description as string | undefined,
+                                monthlyServiceCharge: payload.monthlyServiceCharge as number | undefined,
                             };
                             const latest = state.properties.find((p) => String(p.id) === String(id));
                             let saved: Awaited<ReturnType<typeof api.updateProperty>> | undefined;
@@ -195,10 +195,10 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
 
         switch (editingItem.type) {
             case 'buildings':
-                dispatch({ type: isEdit ? 'UPDATE_BUILDING' : 'ADD_BUILDING', payload });
+                dispatch({ type: isEdit ? 'UPDATE_BUILDING' : 'ADD_BUILDING', payload: payload as unknown as Building });
                 break;
             case 'properties':
-                dispatch({ type: isEdit ? 'UPDATE_PROPERTY' : 'ADD_PROPERTY', payload });
+                dispatch({ type: isEdit ? 'UPDATE_PROPERTY' : 'ADD_PROPERTY', payload: payload as unknown as Property });
                 break;
             case 'tenants':
             case 'owners':
@@ -208,7 +208,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                     payload: {
                         ...payload,
                         type: editingItem.type === 'tenants' ? ContactType.TENANT : editingItem.type === 'owners' ? ContactType.OWNER : ContactType.BROKER,
-                    },
+                    } as Contact,
                 });
                 break;
         }

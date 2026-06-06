@@ -181,7 +181,7 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
         transform: (state: AppState, maps: ExportMaps, helpers: ExportHelpers) => state.rentalAgreements.map(a => ({
             id: a.id,
             agreementNumber: a.agreementNumber,
-            tenantName: helpers.getName(maps.contactsById, a.tenantId),
+            tenantName: helpers.getName(maps.contactsById, a.contactId),
             propertyName: helpers.getName(maps.propertiesById, a.propertyId),
             startDate: a.startDate,
             endDate: a.endDate,

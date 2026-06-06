@@ -61,7 +61,6 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         try {
             console.log(`📝 [ChatModal] ensureChatDbReady called`);
             const dbService = getDatabaseService();
-            console.log(`📝 [ChatModal] Database service initialized: ${dbService.isInitialized}`);
             console.log(`📝 [ChatModal] Database ready: ${dbService.isReady()}`);
             
             if (!dbService.isReady()) {
@@ -257,7 +256,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
 
             // Send message via API (which will broadcast via WebSocket)
             console.log(`📝 [ChatModal] Sending message via API...`);
-            const response = await apiClient.post('/tenants/chat/send', {
+            const response = await apiClient.post<{ message?: InMemoryChatMessage }>('/tenants/chat/send', {
                 recipientId: selectedUserId,
                 message: messageText
             });
@@ -271,7 +270,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
                 } else {
                     appendInMemoryChatMessage(response.message as InMemoryChatMessage);
                 }
-                setMessages((prev) => [...prev, response.message]);
+                setMessages((prev) => [...prev, response.message!]);
                 await loadConversations();
             } else {
                 console.warn(`⚠️ [ChatModal] API response did not include message`);

@@ -165,7 +165,7 @@ export const VirtualizedMscLedgerTable: React.FC<VirtualizedMscLedgerTableProps>
                         key={row.id}
                         index={index}
                         style={{}}
-                        ariaAttributes={{}}
+                        ariaAttributes={{ 'aria-posinset': index + 1, 'aria-setsize': rows.length, role: 'listitem' }}
                         {...rowProps}
                     />
                 ))}
@@ -179,7 +179,7 @@ export const VirtualizedMscLedgerTable: React.FC<VirtualizedMscLedgerTableProps>
                 style={{ height, width: '100%' }}
                 rowCount={rows.length}
                 rowHeight={ROW_HEIGHT}
-                rowProps={rowProps}
+                rowProps={rowProps as any}
                 rowComponent={Row}
             />
         </div>

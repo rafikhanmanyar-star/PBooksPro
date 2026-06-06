@@ -243,8 +243,8 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
         }
 
         return data.sort((a, b) => {
-            let valA: string | number = a[sortConfig.key];
-            let valB: string | number = b[sortConfig.key];
+            let valA: string | number = a[sortConfig.key] ?? '';
+            let valB: string | number = b[sortConfig.key] ?? '';
 
             if (sortConfig.key === 'date') {
                 valA = new Date(a.date).getTime();
@@ -414,10 +414,11 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
                                             ledgerPaidByInvoiceId
                                         );
                                         const due = Math.max(0, inv.amount - paid);
-                                        const isCancelled =
+                                        const isCancelled = !!(
                                             inv.agreementId &&
                                             state.projectAgreements.find(a => a.id === inv.agreementId)?.status ===
-                                                ProjectAgreementStatus.CANCELLED;
+                                                ProjectAgreementStatus.CANCELLED
+                                        );
                                         return (
                                             <li
                                                 key={inv.id}

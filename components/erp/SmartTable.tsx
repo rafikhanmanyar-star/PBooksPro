@@ -357,7 +357,7 @@ export function SmartTable<T>(props: SmartTableProps<T>) {
             rowCount={sorted.length}
             rowHeight={rowHeight}
             rowComponent={VirtualRow}
-            rowProps={{ rows: sorted } as React.ComponentProps<typeof List>['rowProps']}
+            rowProps={{ rows: sorted } as any}
             style={{ height: tableHeight, width: '100%' }}
             overscanCount={6}
           />

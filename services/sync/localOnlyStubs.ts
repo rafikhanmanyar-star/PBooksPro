@@ -88,7 +88,7 @@ export const websocketClientStub = {
   }),
   /** Subscribe to event; returns unsubscribe. No-op in local-only. */
   on: (_event: string, _handler: (data: any) => void) => () => {},
-  off: noop,
+  off: (_event?: string, _handler?: (data: any) => void) => {},
 };
 
 export const realtimeSyncHandlerStub = {

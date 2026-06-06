@@ -20,7 +20,9 @@ const SyncProgressBar: React.FC<SyncProgressBarProps> = ({ className = '' }) => 
     const { total, completed, failed: progressFailed, inboundTotal, inboundCompleted } = progress || {
         total: pending || 0,
         completed: 0,
-        failed: 0
+        failed: 0,
+        inboundTotal: 0,
+        inboundCompleted: 0,
     };
 
     const isInbound = (inboundTotal ?? 0) > 0 && (inboundCompleted ?? 0) < (inboundTotal ?? 0);

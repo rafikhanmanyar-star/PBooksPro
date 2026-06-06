@@ -132,7 +132,7 @@ const PropertyHistoryModal: React.FC<PropertyHistoryModalProps> = ({ isOpen, onC
             .filter(inv => inv.status !== InvoiceStatus.PAID && inv.securityDepositCharge)
             .reduce((sum, inv) => {
                 const outstanding = inv.amount - inv.paidAmount;
-                const securityRatio = inv.securityDepositCharge / inv.amount;
+                const securityRatio = (inv.securityDepositCharge ?? 0) / inv.amount;
                 return sum + (outstanding * securityRatio);
             }, 0);
 

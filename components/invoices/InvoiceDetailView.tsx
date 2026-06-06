@@ -147,7 +147,7 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
       const hasMadePayment = paidAmount > 0;
       const { whatsAppTemplates } = state;
       if (hasMadePayment) {
-        const totalUnpaid = sumOutstandingInvoiceBalancesForContact(state.invoices, contactId);
+        const totalUnpaid = sumOutstandingInvoiceBalancesForContact(state.invoices, contactId ?? '');
         message = WhatsAppService.generateInvoiceReceipt(
           whatsAppTemplates.invoiceReceipt,
           contact,

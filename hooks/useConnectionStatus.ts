@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 type ConnectionStatus = 'online' | 'offline' | 'checking';
-const getConnectionMonitor = () => ({ startMonitoring: () => {}, stopMonitoring: () => {}, destroy: () => {}, getStatus: () => 'online' as ConnectionStatus, checkStatus: async () => 'online' as ConnectionStatus, subscribe: (_l: any) => () => {}, forceCheck: async () => 'online' as ConnectionStatus });
+const getConnectionMonitor = () => ({ startMonitoring: (_opts?: { onStatusChange?: (s: ConnectionStatus) => void }) => {}, stopMonitoring: () => {}, destroy: () => {}, getStatus: () => 'online' as ConnectionStatus, checkStatus: async () => 'online' as ConnectionStatus, subscribe: (_l: any) => () => {}, forceCheck: async () => 'online' as ConnectionStatus });
 
 export interface UseConnectionStatusResult {
   status: ConnectionStatus;

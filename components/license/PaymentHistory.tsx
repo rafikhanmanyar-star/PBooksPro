@@ -104,7 +104,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({ onClose }) => {
         {payments.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="w-8 h-8 text-slate-400">{ICONS.receipt || '📄'}</div>
+              <div className="w-8 h-8 text-slate-400">{(ICONS as Record<string, React.ReactNode>).receipt ?? '📄'}</div>
             </div>
             <h3 className="text-lg font-semibold text-slate-800 mb-2">No Payments Yet</h3>
             <p className="text-slate-600">You haven't made any license renewal payments yet.</p>

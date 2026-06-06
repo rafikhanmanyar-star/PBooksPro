@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AppAction, AppState, ContactType, TransactionType, AccountType, LoanSubtype } from '../types';
+import { AppAction, AppState, ContactType, TransactionType, AccountType, LoanSubtype, Project } from '../types';
 import { useProgress } from '../context/ProgressContext';
 import { getDatabaseService } from './database/databaseService';
 import { AppStateRepository } from './database/repositories/appStateRepository';
@@ -794,7 +794,7 @@ export const restoreLoansInvestorsPMBackup = async (
             if (backupProject && backupProject.pmConfig) {
                 return {
                     ...project,
-                    pmConfig: backupProject.pmConfig,
+                    pmConfig: backupProject.pmConfig as Project['pmConfig'],
                 };
             }
             return project;
@@ -802,10 +802,10 @@ export const restoreLoansInvestorsPMBackup = async (
 
         // Add any new projects from backup that don't exist
         const existingProjectIds = new Set(currentState.projects.map(p => p.id));
-        const newProjects = ((backupSlice.projectsWithPMConfig as { id: string }[] | undefined) ?? []).filter(
+        const newProjects = ((backupSlice.projectsWithPMConfig as Project[] | undefined) ?? []).filter(
             (p) => !existingProjectIds.has(p.id)
         );
-        const finalProjects = [...mergedProjects, ...newProjects];
+        const finalProjects: Project[] = [...mergedProjects, ...newProjects];
 
         progress.updateProgress(70, 'Merging related entities...');
 

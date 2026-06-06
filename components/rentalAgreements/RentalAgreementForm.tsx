@@ -798,7 +798,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             <RecordLockConflictModal
                 isOpen={recordLock.showConflictModal}
                 lockedByName={recordLock.lockedByName ?? 'Another user'}
-                canForceEdit={isAdminRole(state.currentUser?.role)}
+                isAdmin={isAdminRole(state.currentUser?.role)}
                 onViewOnly={recordLock.chooseViewOnly}
                 onForceEdit={handleForceRecordLock}
                 onDismiss={recordLock.dismissModal}

@@ -150,7 +150,7 @@ export const EXPORT_SCHEMAS: Record<string, ExportSchema> = {
         headers: ['agreementNumber', 'tenantName', 'propertyName', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'brokerFee'],
         getData: (state, maps) => state.rentalAgreements.map(a => ({
             agreementNumber: a.agreementNumber,
-            tenantName: getName(maps.contactsById, a.tenantId),
+            tenantName: getName(maps.contactsById, a.contactId),
             propertyName: getName(maps.propertiesById, a.propertyId),
             startDate: a.startDate,
             endDate: a.endDate,

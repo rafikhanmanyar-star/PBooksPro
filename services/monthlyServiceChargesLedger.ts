@@ -225,7 +225,7 @@ export function computeOwnerBalanceAsOf(ownerId: string, asOfDate: string, state
             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
             if (!isNaN(amount) && amount > 0) balances[tx.contactId] -= amount;
         } else if (tx.propertyId) {
-            const category = categoriesById.get(tx.categoryId);
+            const category = categoriesById.get(tx.categoryId ?? '');
             const catName = category?.name || '';
             if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) continue;
             if (tx.categoryId === ownerPayoutCategory?.id) continue;

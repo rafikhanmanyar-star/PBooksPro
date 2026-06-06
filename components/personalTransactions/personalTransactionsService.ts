@@ -123,7 +123,7 @@ export async function addPersonalTransaction(data: {
       type: data.type,
       amount: data.type === 'Expense' ? -Math.abs(data.amount) : Math.abs(data.amount),
       transactionDate: data.transactionDate,
-      description: data.description ?? null,
+      description: data.description ?? undefined,
     };
     repo().insert(row);
     return row;
@@ -163,7 +163,7 @@ export async function bulkImportPersonalTransactions(
         type: data.type,
         amount: data.type === 'Expense' ? -Math.abs(data.amount) : Math.abs(data.amount),
         transactionDate: data.transactionDate,
-        description: data.description ?? null,
+        description: data.description ?? undefined,
       };
       repo().insert(row);
     });

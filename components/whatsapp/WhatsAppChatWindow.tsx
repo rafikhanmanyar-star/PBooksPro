@@ -3,7 +3,7 @@ import { Contact } from '../../types';
 import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useNotification } from '../../context/NotificationContext';
 import { useAppContext } from '../../context/AppContext';
-const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: () => {} });
+const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {} });
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
@@ -283,7 +283,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
     // Optimistically add message to UI
     const tempMessage: WhatsAppMessage = {
       id: `temp-${Date.now()}`,
-      tenantId: state.tenantId || '',
+      tenantId: '',
       contactId: contact?.id,
       phoneNumber,
       direction: 'outgoing',

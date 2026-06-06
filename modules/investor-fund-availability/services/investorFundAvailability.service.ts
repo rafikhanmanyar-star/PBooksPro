@@ -444,7 +444,7 @@ function withdrawalHistory(state: AppState, projectId: string, endYmd: string): 
             description: tx.description || 'Withdrawal',
             investorAccountId: investorId,
             investorName: state.accounts.find((a) => a.id === investorId)?.name || investorId,
-            bankAccountId: bankId,
+            bankAccountId: bankId ?? null,
         });
     }
     out.sort((a, b) => b.date.localeCompare(a.date));
@@ -582,7 +582,7 @@ export function portfolioWithdrawalsByMonth(
         if (tx.type !== TransactionType.TRANSFER) continue;
         if (tx.subtype !== EquityLedgerSubtype.WITHDRAWAL && tx.subtype !== EquityLedgerSubtype.CAPITAL_PAYOUT) continue;
         const t = new Date(tx.date);
-        if (t > end.getTime()) continue;
+        if (t.getTime() > end.getTime()) continue;
         const k = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
         tally.set(k, (tally.get(k) || 0) + tx.amount);
     }

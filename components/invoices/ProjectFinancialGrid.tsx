@@ -769,7 +769,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
                         rowCount={effectiveRecords.length}
                         rowHeight={ROW_HEIGHT}
                         rowComponent={Row}
-                        rowProps={{}}
+                        rowProps={{} as any}
                         style={{ height: listHeight, overflowX: 'hidden', overflowY: 'auto' }}
                         overscanCount={15}
                     />
