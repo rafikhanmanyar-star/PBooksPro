@@ -18,10 +18,37 @@ let autoUpdater = null;
 const logLines = [];
 const MAX_LOG = 500;
 
+const STAGING_APP_NAME = 'PBooks Pro Staging API Server';
+
+function isStagingApiServer() {
+  if (process.env.PBOOKS_API_SERVER_STAGING === '1') return true;
+  const n = String(app.name || app.getName() || '').toLowerCase();
+  if (n.includes('staging')) return true;
+  if (app.isPackaged) {
+    const marker = path.join(process.resourcesPath, 'backend', '.pbooks-staging-api-server');
+    if (fs.existsSync(marker)) return true;
+    if (path.basename(process.execPath).toLowerCase().includes('staging')) return true;
+  }
+  return false;
+}
+
+function getDefaultPort() {
+  return isStagingApiServer() ? 3001 : 3000;
+}
+
+function configureAppIdentity() {
+  if (!isStagingApiServer()) return;
+  if (app.getName() !== STAGING_APP_NAME) {
+    app.setName(STAGING_APP_NAME);
+  }
+}
+
+configureAppIdentity();
+
 if (app.isPackaged) {
   try {
     autoUpdater = require('electron-updater').autoUpdater;
-    autoUpdater.channel = 'api-server';
+    autoUpdater.channel = isStagingApiServer() ? 'api-server-staging' : 'api-server';
     autoUpdater.autoDownload = false;
     autoUpdater.logger = createUpdaterLogger();
     // NSIS full installer (not web installer): required for reliable blockmap / differential downloads.
@@ -103,10 +130,62 @@ function emitDownloadProgress(payload) {
   }
 }
 
-function getPort() {
-  const merged = getMergedEnv();
-  const p = Number(merged.PORT) || 3000;
+function resolvePort(merged) {
+  let p = Number(merged.PORT) || getDefaultPort();
+  if (isStagingApiServer() && p === 3000) {
+    p = 3001;
+  }
   return p;
+}
+
+function getMergedEnvForApi() {
+  const merged = getMergedEnv();
+  merged.PORT = String(resolvePort(merged));
+  return merged;
+}
+
+function getPort() {
+  return resolvePort(getMergedEnv());
+}
+
+function ensureUserBackendEnv() {
+  const dir = getUserBackendConfigDir();
+  const envPath = path.join(dir, '.env');
+  if (!isStagingApiServer()) return;
+
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const exampleSrc = path.join(getBackendRoot(), '.env.example');
+  const exampleDst = path.join(dir, '.env.example');
+  if (fs.existsSync(exampleSrc) && !fs.existsSync(exampleDst)) {
+    try {
+      fs.copyFileSync(exampleSrc, exampleDst);
+    } catch (_) {}
+  }
+
+  if (!fs.existsSync(envPath)) {
+    if (fs.existsSync(exampleSrc)) {
+      try {
+        fs.copyFileSync(exampleSrc, envPath);
+        pushLog('[hint] Created staging config at ' + envPath + ' — set JWT_SECRET, then Start API.');
+      } catch (_) {}
+    }
+    return;
+  }
+
+  const parsed = parseEnvFile(envPath);
+  if (Number(parsed.PORT) === 3000) {
+    try {
+      let text = fs.readFileSync(envPath, 'utf8');
+      if (/^PORT\s*=\s*3000\s*$/m.test(text)) {
+        text = text.replace(/^PORT\s*=\s*3000\s*$/m, 'PORT=3001');
+      } else if (!/^PORT\s*=/m.test(text)) {
+        text = text.trimEnd() + '\nPORT=3001\n';
+      }
+      fs.writeFileSync(envPath, text, 'utf8');
+      pushLog('[hint] Staging API uses port 3001 — updated PORT in ' + envPath);
+    } catch (_) {}
+  }
 }
 
 function isIPv4(net) {
@@ -115,7 +194,7 @@ function isIPv4(net) {
 
 /** Localhost plus non-internal IPv4 addresses (API listens on 0.0.0.0 in backend). */
 function getApiEndpointAddresses(port) {
-  const p = Number(port) || 3000;
+  const p = Number(port) || getDefaultPort();
   const out = [
     {
       kind: 'localhost',
@@ -159,7 +238,7 @@ function startApiServer() {
     return { ok: false, message: msg };
   }
 
-  const env = getMergedEnv();
+  const env = getMergedEnvForApi();
   if (!env.DATABASE_URL) {
     const target = path.join(getUserBackendConfigDir(), '.env');
     const msg =
@@ -435,10 +514,12 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    configureAppIdentity();
+    ensureUserBackendEnv();
     createTray();
     createWindow();
 
-    const merged = getMergedEnv();
+    const merged = getMergedEnvForApi();
     if (merged.DATABASE_URL) {
       startApiServer();
     } else {

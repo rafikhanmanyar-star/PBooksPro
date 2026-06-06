@@ -6,6 +6,8 @@ appId: com.pbookspro.api.server.staging
 productName: PBooks Pro Staging API Server
 extraMetadata:
   main: electron/server-main.cjs
+  name: pbooks-pro-staging-api-server
+  description: PBooks Pro Staging API Server (PostgreSQL pBookspro_Staging, port 3001)
 compression: maximum
 directories:
   output: release-api-server-staging

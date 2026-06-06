@@ -10,6 +10,7 @@ const root = path.join(__dirname, '..');
 const out = path.join(root, 'build', 'electron-api-server');
 const backendSrc = path.join(root, 'backend');
 const migrationsSrc = path.join(root, 'database', 'migrations');
+const isStaging = process.env.PBOOKS_STAGE_API_SERVER === '1';
 
 function rmrf(p) {
   if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
@@ -49,16 +50,28 @@ for (const name of fs.readdirSync(migrationsSrc)) {
 
 fs.copyFileSync(path.join(root, 'package.json'), path.join(out, 'package.json'));
 
-const envExample = `# PBooks Pro API (Electron server) — copy to backend/.env next to the installed app resources.
-# Production: DATABASE_URL=.../pbookspro  PORT=3000
-# Staging:    DATABASE_URL=.../pbooks_staging  PORT=3001
+const envExample = isStaging
+  ? `# PBooks Pro Staging API Server — copy to AppData backend/.env as .env (Open config folder in the app).
+# Staging uses port 3001 so production API can stay on 3000 on the same PC.
 
-DATABASE_URL=postgresql://USER:PASSWORD@127.0.0.1:5432/pbookspro
+DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pBookspro_Staging
+JWT_SECRET=change-me-staging-secret-at-least-16-chars
+PORT=3001
+NODE_ENV=production
+`
+  : `# PBooks Pro API Server — copy to AppData backend/.env as .env (Open config folder in the app).
+# Production database pbookspro on port 3000.
+
+DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pbookspro
 JWT_SECRET=change-me-to-a-long-random-string
 PORT=3000
 NODE_ENV=production
 `;
 fs.writeFileSync(path.join(backendOut, '.env.example'), envExample, 'utf8');
+
+if (isStaging) {
+  fs.writeFileSync(path.join(backendOut, '.pbooks-staging-api-server'), '1', 'utf8');
+}
 
 console.log('npm ci --omit=dev in staged backend...');
 execSync('npm ci --omit=dev', { cwd: backendOut, stdio: 'inherit' });
