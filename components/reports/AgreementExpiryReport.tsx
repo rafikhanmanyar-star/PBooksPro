@@ -149,7 +149,7 @@ const AgreementExpiryReport: React.FC = () => {
         });
 
         return result;
-    }, [state, selectedBuildingId, searchQuery, sortConfig]);
+    }, [rentalAgreements, properties, contacts, allBuildings, selectedBuildingId, searchQuery, sortConfig]);
 
     // Chart data
     const chartData = useMemo(() => {

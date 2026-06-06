@@ -153,7 +153,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [state, selectedBuildingId, searchQuery, groupBy, sortConfig]);
+    }, [properties, rentalAgreements, contacts, allBuildings, selectedBuildingId, searchQuery, groupBy, sortConfig]);
 
 
     const handleExport = () => {

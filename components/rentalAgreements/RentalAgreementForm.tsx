@@ -197,7 +197,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     ]);
 
     // Properties filtered by building + occupancy
-    const properties = useMemo(() => {
+    const availableProperties = useMemo(() => {
         const occupiedPropertyIds = new Set(
             rentalAgreements
                 .filter(ra => {
@@ -650,7 +650,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                                 <p className="text-xs text-slate-500 mt-0.5">Choose a building and property for the lease</p>
                             </div>
                             <ComboBox label="Building" items={buildings} selectedId={buildingId} onSelect={item => { setBuildingId(item?.id || ''); setPropertyId(''); }} placeholder="Select building" required allowAddNew={false} />
-                            <ComboBox label="Property" items={properties} selectedId={propertyId} onSelect={item => setPropertyId(item?.id || '')} placeholder="Select property" required disabled={!buildingId} />
+                            <ComboBox label="Property" items={availableProperties} selectedId={propertyId} onSelect={item => setPropertyId(item?.id || '')} placeholder="Select property" required disabled={!buildingId} />
                             {autoOwner && (
                                 <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200/60">
                                     <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Owner</span>
@@ -849,7 +849,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                             <ComboBox label="Building" items={buildings} selectedId={buildingId} onSelect={item => { setBuildingId(item?.id || ''); setPropertyId(''); }} placeholder="Select building" allowAddNew={false} disabled />
                         </div>
                         <div className="col-span-2">
-                            <ComboBox label="Property" items={properties} selectedId={propertyId} onSelect={item => setPropertyId(item?.id || '')} placeholder="Select property" required disabled />
+                            <ComboBox label="Property" items={availableProperties} selectedId={propertyId} onSelect={item => setPropertyId(item?.id || '')} placeholder="Select property" required disabled />
                         </div>
                         <DatePicker label="Start Date" value={startDate} onChange={handleStartDateChange} required className="text-sm" />
                         <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(toLocalDateString(d))} required className="text-sm" />
