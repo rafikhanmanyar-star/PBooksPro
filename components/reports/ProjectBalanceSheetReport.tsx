@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useFinancialReportAppState, useProjects } from '../../hooks/useSelectiveState';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -48,7 +48,8 @@ function groupLinesByKey(lines: BalanceSheetLine[]): Map<BsGroupKey, BalanceShee
 }
 
 const ProjectBalanceSheetReport: React.FC = () => {
-  const { state } = useAppContext();
+  const projects = useProjects();
+  const reportState = useFinancialReportAppState();
   const { print: triggerPrint } = usePrintContext();
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');
   const [asOfDate, setAsOfDate] = useState(toLocalDateString(new Date()));
@@ -62,7 +63,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
+  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
   useEffect(() => {
     if (localOnly) {
@@ -89,8 +90,8 @@ const ProjectBalanceSheetReport: React.FC = () => {
 
   const report = useMemo(() => {
     if (!localOnly && serverReport) return serverReport;
-    return computeBalanceSheetReport(state, { asOfDate, selectedProjectId });
-  }, [localOnly, serverReport, state, asOfDate, selectedProjectId]);
+    return computeBalanceSheetReport(reportState, { asOfDate, selectedProjectId });
+  }, [localOnly, serverReport, reportState, asOfDate, selectedProjectId]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -282,7 +283,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
             <p className="text-xs text-app-muted font-medium mt-0.5 leading-tight">
               {selectedProjectId === 'all'
                 ? 'All Projects'
-                : state.projects.find((p) => p.id === selectedProjectId)?.name}
+                : projects.find((p) => p.id === selectedProjectId)?.name}
             </p>
             <p className="text-[11px] text-app-muted/90 leading-tight">As of {formatDate(asOfDate)}</p>
             {!localOnly && loading && (

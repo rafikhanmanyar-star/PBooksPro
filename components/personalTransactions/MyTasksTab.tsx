@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { useAuth } from '../../context/AuthContext';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector } from '../../hooks/useSelectiveState';
 import type { PersonalTaskApi } from '../../services/api/repositories/personalTasksApiRepository';
 import {
   createTask,
@@ -34,11 +34,10 @@ function todayYmd(): string {
 
 const MyTasksTab: React.FC = () => {
   const { user } = useAuth();
-  const { state } = useAppContext();
+  const currentUser = useStateSelector((s) => s.currentUser);
   const currentUserId =
     user?.id ||
-    state.currentUser?.id ||
-    (state as { currentUser?: { id?: string } }).currentUser?.id;
+    currentUser?.id;
 
   const [tasks, setTasks] = useState<PersonalTaskApi[]>([]);
   const [listError, setListError] = useState<string | null>(null);

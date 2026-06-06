@@ -9,7 +9,7 @@
  * selected slice actually changes (by reference).
  */
 
-import { useCallback, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { _getAppState, _getAppDispatch, _getInitialDataLoading, _subscribeAppState } from '../context/appStateStore';
 import { AppState, AppAction } from '../types';
 
@@ -138,4 +138,40 @@ export function useDispatchOnly(): React.Dispatch<AppAction> {
 export function useInitialDataLoading(): boolean {
     const getSnapshot = useCallback(() => _getInitialDataLoading(), []);
     return useSyncExternalStore(_subscribeAppState, getSnapshot);
+}
+
+/**
+ * Subscribe to financial-report slices only (not personal tasks, UI prefs, etc.).
+ * Re-renders when any underlying slice changes; returns full AppState for local compute engines.
+ */
+export function useFinancialReportAppState(): AppState {
+    const accounts = useAccounts();
+    const transactions = useTransactions();
+    const categories = useCategories();
+    const bills = useBills();
+    const invoices = useInvoices();
+    const vendors = useVendors();
+    const contacts = useContacts();
+    const projects = useProjects();
+    const projectAgreements = useStateSelector((s) => s.projectAgreements);
+    const rentalAgreements = useRentalAgreements();
+    const projectReceivedAssets = useStateSelector((s) => s.projectReceivedAssets);
+    const units = useUnits();
+    return useMemo(
+        () => _getAppState(),
+        [
+            accounts,
+            transactions,
+            categories,
+            bills,
+            invoices,
+            vendors,
+            contacts,
+            projects,
+            projectAgreements,
+            rentalAgreements,
+            projectReceivedAssets,
+            units,
+        ]
+    );
 }

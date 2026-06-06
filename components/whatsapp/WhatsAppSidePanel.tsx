@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Contact, Vendor } from '../../types';
 import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useNotification } from '../../context/NotificationContext';
-import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {} });
 import Button from '../ui/Button';
@@ -24,7 +23,6 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
   initialMessage = '',
 }) => {
   const { showAlert, showToast } = useNotification();
-  const { state } = useAppContext();
   const { tenant } = useAuth();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [newMessage, setNewMessage] = useState(initialMessage);

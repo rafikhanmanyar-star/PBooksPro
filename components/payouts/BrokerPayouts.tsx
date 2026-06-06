@@ -1,6 +1,13 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useCategories,
+    useContacts,
+    useProjects,
+    useProperties,
+    useStateSelector,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
 import { ContactType, TransactionType } from '../../types';
 import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
 import { CURRENCY, ICONS } from '../../constants';
@@ -24,14 +31,20 @@ interface BrokerPayoutsProps {
 }
 
 const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
-    const { state } = useAppContext();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const transactions = useTransactions();
+    const properties = useProperties();
+    const projects = useProjects();
+    const rentalAgreements = useStateSelector((s) => s.rentalAgreements);
+    const projectAgreements = useStateSelector((s) => s.projectAgreements);
     const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
     const brokerBalances = useMemo<BrokerBalance[]>(() => {
-        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+        const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
+        const rebateCategory = categories.find(c => c.name === 'Rebate Amount');
         const brokerFeeCategoryId = brokerFeeCategory?.id;
         const rebateCategoryId = rebateCategory?.id;
 
@@ -40,14 +53,14 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
         const attributionOpts = {
             brokerFeeCategoryId,
             rebateCategoryId,
-            projectAgreements: state.projectAgreements,
-            rentalAgreements: state.rentalAgreements,
+            projectAgreements: projectAgreements,
+            rentalAgreements: rentalAgreements,
         };
 
         const brokerData: { [id: string]: { earned: number; paid: number } } = {};
 
         // Initialize with both Brokers and Dealers
-        state.contacts
+        contacts
             .filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER)
             .forEach(broker => {
                 brokerData[broker.id] = { earned: 0, paid: 0 };
@@ -55,7 +68,7 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
 
         // 1. Calculate Earned Fees (from Rental Agreements). Exclude renewed agreements so broker is not charged again on renewal.
         if (!context || context === 'Rental') {
-            state.rentalAgreements.forEach(ra => {
+            rentalAgreements.forEach(ra => {
                 if (ra.previousAgreementId) return;
                 if (ra.brokerId && (ra.brokerFee || 0) > 0) {
                     if (!brokerData[ra.brokerId]) brokerData[ra.brokerId] = { earned: 0, paid: 0 };
@@ -66,7 +79,7 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
 
         // 2. Calculate Earned Fees (from Project Agreements - Rebates)
         if (!context || context === 'Project') {
-            state.projectAgreements.forEach(pa => {
+            projectAgreements.forEach(pa => {
                 if (pa.rebateBrokerId && (pa.rebateAmount || 0) > 0) {
                     if (!brokerData[pa.rebateBrokerId]) brokerData[pa.rebateBrokerId] = { earned: 0, paid: 0 };
                     brokerData[pa.rebateBrokerId].earned += (pa.rebateAmount || 0);
@@ -75,12 +88,12 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
         }
 
         // 3. Calculate Paid Fees (from Expenses). Attribution uses current agreement broker when agreementId is set.
-        const brokerPayments = state.transactions.filter(
+        const brokerPayments = transactions.filter(
             (tx) => tx.type === TransactionType.EXPENSE && tx.categoryId && relevantCategoryIds.includes(tx.categoryId)
         );
         
         brokerPayments.forEach(tx => {
-            const category = state.categories.find(c => c.id === tx.categoryId);
+            const category = categories.find(c => c.id === tx.categoryId);
             const isRebate = category?.name === 'Rebate Amount';
             let shouldInclude = true;
 
@@ -101,7 +114,7 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
         });
 
         return Object.entries(brokerData).map(([brokerId, data]) => {
-            const broker = state.contacts.find(c => c.id === brokerId);
+            const broker = contacts.find(c => c.id === brokerId);
             return {
                 brokerId,
                 brokerName: broker?.name || 'Unknown Broker',
@@ -110,7 +123,7 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
             };
         }).filter(item => Math.abs(item.balance) > 0.01 || item.earned > 0 || item.paid > 0).sort((a,b) => b.balance - a.balance);
 
-    }, [state.rentalAgreements, state.projectAgreements, state.transactions, state.contacts, state.categories, context]);
+    }, [rentalAgreements, projectAgreements, transactions, contacts, categories, context]);
 
     const filteredBrokerBalances = useMemo(() => {
         if (!searchQuery) return brokerBalances;
@@ -121,9 +134,9 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
             
             // Match Related Rental Properties
             if (!context || context === 'Rental') {
-                const hasRentalMatch = state.rentalAgreements.some(ra => {
+                const hasRentalMatch = rentalAgreements.some(ra => {
                     if (ra.brokerId !== b.brokerId) return false;
-                    const property = state.properties.find(p => p.id === ra.propertyId);
+                    const property = properties.find(p => p.id === ra.propertyId);
                     return property?.name.toLowerCase().includes(lower);
                 });
                 if (hasRentalMatch) return true;
@@ -131,9 +144,9 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
 
             // Match Related Projects
             if (!context || context === 'Project') {
-                const hasProjectMatch = state.projectAgreements.some(pa => {
+                const hasProjectMatch = projectAgreements.some(pa => {
                     if (pa.rebateBrokerId !== b.brokerId) return false;
-                    const project = state.projects.find(p => p.id === pa.projectId);
+                    const project = projects.find(p => p.id === pa.projectId);
                     return project?.name.toLowerCase().includes(lower);
                 });
                 if (hasProjectMatch) return true;
@@ -141,13 +154,13 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
 
             return false;
         });
-    }, [brokerBalances, searchQuery, state.rentalAgreements, state.projectAgreements, state.properties, state.projects, context]);
+    }, [brokerBalances, searchQuery, rentalAgreements, projectAgreements, properties, projects, context]);
 
     const selectedBrokerData = useMemo(() => {
         return brokerBalances.find(b => b.brokerId === selectedBrokerId);
     }, [selectedBrokerId, brokerBalances]);
     
-    const selectedBrokerContact = state.contacts.find(c => c.id === selectedBrokerId);
+    const selectedBrokerContact = contacts.find(c => c.id === selectedBrokerId);
 
     return (
         <div className="flex flex-col gap-6 bg-background min-h-0">

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useFinancialReportAppState, useProjects } from '../../hooks/useSelectiveState';
 import { TransactionType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -48,7 +48,8 @@ function MetricBanner({
 }
 
 const ProjectProfitLossReport: React.FC = () => {
-  const { state } = useAppContext();
+  const projects = useProjects();
+  const reportState = useFinancialReportAppState();
   const { print: triggerPrint } = usePrintContext();
 
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');
@@ -64,7 +65,7 @@ const ProjectProfitLossReport: React.FC = () => {
     type: TransactionType;
   } | null>(null);
 
-  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
+  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
   const localOnly = isLocalOnlyMode();
   const [serverReport, setServerReport] = useState<ProfitLossReportResult | null>(null);
@@ -121,8 +122,8 @@ const ProjectProfitLossReport: React.FC = () => {
 
   const report = useMemo(() => {
     if (!localOnly && serverReport) return serverReport;
-    return computeProfitLossReport(state, { startDate, endDate, selectedProjectId });
-  }, [localOnly, serverReport, state, startDate, endDate, selectedProjectId]);
+    return computeProfitLossReport(reportState, { startDate, endDate, selectedProjectId });
+  }, [localOnly, serverReport, reportState, startDate, endDate, selectedProjectId]);
 
   const toggleOpexRoot = useCallback((id: string) => {
     setCollapsedOpexRoots((prev) => {
@@ -212,7 +213,7 @@ const ProjectProfitLossReport: React.FC = () => {
     exportJsonToExcel(data, 'profit-loss-report.xlsx', 'P&L');
   };
 
-  const projectLabel = selectedProjectId === 'all' ? 'All Projects' : state.projects.find((p) => p.id === selectedProjectId)?.name;
+  const projectLabel = selectedProjectId === 'all' ? 'All Projects' : projects.find((p) => p.id === selectedProjectId)?.name;
   const cogsSubtotal = report.cost_of_sales.reduce((s, x) => s + x.amount, 0);
   const opexSubtotal = report.operating_expenses.reduce((s, x) => s + x.amount, 0);
   const otherIncSub = report.other_income.reduce((s, x) => s + x.amount, 0);

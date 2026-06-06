@@ -1,7 +1,17 @@
 
 import React, { useMemo, useState } from 'react';
 import { List, type RowComponentProps } from 'react-window';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBills,
+    useCategories,
+    useContacts,
+    useInvoices,
+    useProperties,
+    useRentalAgreements,
+    useStateSelector,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
+import { _getAppState } from '../../context/appStateStore';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate, toDateOnly } from '../../utils/dateUtils';
@@ -104,7 +114,24 @@ const OwnerLedgerRow = (props: RowComponentProps<OwnerLedgerRowExtra>) => {
 };
 
 const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId, propertyId, onPayoutClick, onRecordClick }) => {
-    const { state } = useAppContext();
+    const transactions = useTransactions();
+    const properties = useProperties();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const bills = useBills();
+    const invoices = useInvoices();
+    const rentalAgreements = useRentalAgreements();
+    const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
+    const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
+    const ownershipCtx = useMemo(
+        () => ({ properties, invoices, rentalAgreements }),
+        [properties, invoices, rentalAgreements]
+    );
+    const ledgerState = useMemo(
+        () => _getAppState(),
+        [transactions, properties, categories, rentalAgreements, bills, invoices, contacts]
+    );
+    const propertyCtx = useMemo(() => ({ properties }), [properties]);
     const { openChat } = useWhatsApp();
     /** Default: chronological ledger — oldest first, newest last (standard running-balance order). */
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
@@ -119,8 +146,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
     const ledgerBase = useMemo(() => {
         if (!ownerId) return { items: [] as LedgerLine[], balanceByLineId: {} as Record<string, number> };
         
-        const ownerScopeIds = getPropertyIdsForOwner(state, ownerId, buildingId);
-        let ownerProperties = state.properties.filter(p => ownerScopeIds.has(String(p.id)));
+        const ownerScopeIds = getPropertyIdsForOwner({ properties }, ownerId, buildingId);
+        let ownerProperties = properties.filter(p => ownerScopeIds.has(String(p.id)));
         if (propertyId) {
             const propertyIdStr = String(propertyId);
             ownerProperties = ownerProperties.filter(p => String(p.id) === propertyIdStr);
@@ -130,13 +157,13 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
         let items: LedgerLine[] = [];
 
         if (ledgerType === 'Rent') {
-            const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+            const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
             if (!rentalIncomeCategory) return { items: [], balanceByLineId: {} };
 
-            const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
-            const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
-            const clearingAllocCat = state.categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
-            const ownerShareCat = state.categories.find(c => c.name === 'Owner Rental Income Share');
+            const ownerPayoutCategory = categories.find(c => c.name === 'Owner Payout');
+            const ownerSvcPayCategory = categories.find(c => c.name === 'Owner Service Charge Payment');
+            const clearingAllocCat = categories.find(c => c.name === 'Owner Rental Allocation (Clearing)');
+            const ownerShareCat = categories.find(c => c.name === 'Owner Rental Income Share');
 
             // 1. Rental Income + per-owner share lines.
             // When explicit "Owner Rental Income Share" split lines exist for a transaction, use those.
@@ -145,13 +172,13 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             // Build a set of gross rent tx IDs that already have explicit share allocation lines
             const txIdsWithShareLines = new Set<string>();
             if (ownerShareCat) {
-                state.transactions.forEach(tx => {
+                transactions.forEach(tx => {
                     if (tx.categoryId === ownerShareCat.id && tx.invoiceId) txIdsWithShareLines.add(tx.invoiceId);
                     if (tx.categoryId === ownerShareCat.id && tx.batchId) txIdsWithShareLines.add(tx.batchId);
                 });
             }
 
-            const income = state.transactions.filter(tx => {
+            const income = transactions.filter(tx => {
                 if (tx.type !== TransactionType.INCOME || !tx.propertyId) return false;
                 if (!ownerPropertyIds.has(String(tx.propertyId))) return false;
 
@@ -161,13 +188,13 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     if (isBillPaymentFromSecurityDepositIncome(tx)) return false;
 
                     const d = (tx.date || '').slice(0, 10);
-                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
+                    if (d && hasMultipleOwnersOnDate(propertyCtx, String(tx.propertyId), d)) {
                         const hasExplicitShares = (tx.invoiceId && txIdsWithShareLines.has(tx.invoiceId))
                             || (tx.batchId && txIdsWithShareLines.has(tx.batchId));
                         if (hasExplicitShares) return false;
                         return true;
                     }
-                    const resolved = resolveOwnerForTransaction(state, tx);
+                    const resolved = resolveOwnerForTransaction(ownershipCtx, tx);
                     if (resolved) return resolved === ownerId;
                     return true;
                 }
@@ -178,7 +205,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             });
 
             income.forEach(tx => {
-                const property = state.properties.find(p => p.id === tx.propertyId);
+                const property = properties.find(p => p.id === tx.propertyId);
                 let amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(amount)) return;
                 const isShareLine = Boolean(ownerShareCat && tx.categoryId === ownerShareCat.id);
@@ -188,8 +215,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 let isComputedShare = false;
                 if (!isShareLine && tx.propertyId) {
                     const d = (tx.date || '').slice(0, 10);
-                    if (d && hasMultipleOwnersOnDate(state, String(tx.propertyId), d)) {
-                        const pct = getOwnerSharePercentageOnDate(state, String(tx.propertyId), ownerId!, d);
+                    if (d && hasMultipleOwnersOnDate(propertyCtx, String(tx.propertyId), d)) {
+                        const pct = getOwnerSharePercentageOnDate(propertyCtx, String(tx.propertyId), ownerId!, d);
                         if (pct <= 0) return;
                         amount = Math.round(amount * pct) / 100;
                         isComputedShare = true;
@@ -208,7 +235,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     });
                 } else {
                     const pctLabel = isComputedShare
-                        ? ` (${getOwnerSharePercentageOnDate(state, String(tx.propertyId!), ownerId!, (tx.date || '').slice(0, 10)).toFixed(0)}%)`
+                        ? ` (${getOwnerSharePercentageOnDate(propertyCtx, String(tx.propertyId!), ownerId!, (tx.date || '').slice(0, 10)).toFixed(0)}%)`
                         : '';
                     items.push({
                         id: `inc-${tx.id}`,
@@ -227,7 +254,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             // 1b. Owner Service Charge Payments (Credit)
             if (ownerSvcPayCategory) {
                 if (!propertyId) {
-                    const ownerPayments = state.transactions.filter(tx =>
+                    const ownerPayments = transactions.filter(tx =>
                         tx.type === TransactionType.INCOME &&
                         tx.categoryId === ownerSvcPayCategory.id &&
                         tx.contactId === ownerId &&
@@ -252,7 +279,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     const propertyIdStr = String(propertyId);
                     let unallocatedSvc = 0;
                     let unallocatedDate = '';
-                    state.transactions
+                    transactions
                         .filter(
                             tx =>
                                 tx.type === TransactionType.INCOME &&
@@ -278,7 +305,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                                 if (!unallocatedDate) unallocatedDate = tx.date;
                             }
                         });
-                    if (unallocatedSvc > 0 && isFirstPropertyForOwnerRentSlice(state, ownerId, propertyIdStr)) {
+                    if (unallocatedSvc > 0 && isFirstPropertyForOwnerRentSlice(ledgerState, ownerId, propertyIdStr)) {
                         items.push({
                             id: `own-svc-unalloc-${ownerId}-${propertyIdStr}`,
                             date: unallocatedDate || new Date().toISOString().slice(0, 10),
@@ -294,7 +321,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             // 2. Expenses (Debit)
             // A. Direct Payouts to Owner — all when no unit filter; when filtered, only payouts posted to this unit
             if (!propertyId) {
-                const payouts = state.transactions.filter(tx => 
+                const payouts = transactions.filter(tx => 
                     tx.type === TransactionType.EXPENSE && 
                     resolveOwnerPayoutPayeeId(tx) === ownerId && 
                     tx.categoryId === ownerPayoutCategory?.id &&
@@ -316,13 +343,13 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 });
             } else {
                 const propertyIdStr = String(propertyId);
-                const payouts = state.transactions.filter((tx) => {
+                const payouts = transactions.filter((tx) => {
                     if (tx.type !== TransactionType.EXPENSE) return false;
                     if (resolveOwnerPayoutPayeeId(tx) !== ownerId) return false;
                     if (tx.categoryId !== ownerPayoutCategory?.id) return false;
                     if (buildingId && tx.buildingId !== buildingId) return false;
                     if (String(tx.propertyId) === propertyIdStr) return true;
-                    return shouldAttributeUnallocatedOwnerPayoutToProperty(state, ownerId, propertyIdStr, tx);
+                    return shouldAttributeUnallocatedOwnerPayoutToProperty(ledgerState, ownerId, propertyIdStr, tx);
                 });
 
                 payouts.forEach(tx => {
@@ -341,26 +368,26 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             }
 
             // B. Property Expenses (Bills, Repairs; Broker Fee from agreements in B2, Bills from state in B3) - Deductible from Owner Income
-            const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+            const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
             const brokerFeeTxIds = new Set<string>();
             if (brokerFeeCategory) {
-                state.transactions.forEach(t => {
+                transactions.forEach(t => {
                     if (t.type === TransactionType.EXPENSE && t.categoryId === brokerFeeCategory.id) brokerFeeTxIds.add(t.id);
                 });
             }
-            const ownerBillIds = new Set((state.bills || []).filter(b => b.propertyId && !b.projectId && ownerPropertyIds.has(String(b.propertyId))).map(b => b.id));
+            const ownerBillIds = new Set((bills || []).filter(b => b.propertyId && !b.projectId && ownerPropertyIds.has(String(b.propertyId))).map(b => b.id));
             const billPaymentTxIds = new Set<string>();
-            state.transactions.forEach(t => {
+            transactions.forEach(t => {
                 if (t.type === TransactionType.EXPENSE && t.billId && ownerBillIds.has(t.billId)) billPaymentTxIds.add(t.id);
             });
 
-            const expenses = state.transactions.filter(tx => {
+            const expenses = transactions.filter(tx => {
                 if (tx.type !== TransactionType.EXPENSE) return false;
                 if (!tx.propertyId || !ownerPropertyIds.has(String(tx.propertyId))) return false;
                 if (brokerFeeTxIds.has(tx.id)) return false;
                 if (billPaymentTxIds.has(tx.id)) return false;
                 if (tx.contactId) {
-                    const contact = state.contacts.find(c => c.id === tx.contactId);
+                    const contact = contacts.find(c => c.id === tx.contactId);
                     if (contact?.type === ContactType.TENANT) return false;
                 }
                 return true;
@@ -369,19 +396,19 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             expenses.forEach(tx => {
                 if (tx.categoryId === ownerPayoutCategory?.id) return;
 
-                const category = state.categories.find(c => c.id === tx.categoryId);
+                const category = categories.find(c => c.id === tx.categoryId);
                 const catName = category?.name || '';
 
                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
 
-                const property = state.properties.find(p => p.id === tx.propertyId);
+                const property = properties.find(p => p.id === tx.propertyId);
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                 if (isNaN(amount) || amount <= 0) return;
 
                 const d = (tx.date || '').slice(0, 10);
                 const pid = String(tx.propertyId!);
-                if (d && hasMultipleOwnersOnDate(state, pid, d)) {
-                    const pct = getOwnerSharePercentageOnDate(state, pid, ownerId!, d);
+                if (d && hasMultipleOwnersOnDate(propertyCtx, pid, d)) {
+                    const pct = getOwnerSharePercentageOnDate(propertyCtx, pid, ownerId!, d);
                     if (pct <= 0) return;
                     const shareAmt = Math.round(amount * pct) / 100;
                     if (shareAmt <= 0) return;
@@ -397,7 +424,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     return;
                 }
 
-                const ownerIdForTx = resolveOwnerForTransaction(state, tx);
+                const ownerIdForTx = resolveOwnerForTransaction(ownershipCtx, tx);
                 if (ownerIdForTx && ownerIdForTx !== ownerId) return;
 
                 items.push({
@@ -412,17 +439,17 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             });
 
             // B2. Broker Fee from rental agreements — attribute to owner at agreement date
-            state.rentalAgreements.forEach(ra => {
+            rentalAgreements.forEach(ra => {
                 if (ra.previousAgreementId) return;
                 if (!ra.brokerId || !ra.brokerFee || !ra.propertyId || !ownerPropertyIds.has(String(ra.propertyId))) return;
                 const fee = typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee ?? 0));
                 if (isNaN(fee) || fee <= 0) return;
                 const raDateStr = (ra.startDate || '').slice(0, 10);
-                const property = state.properties.find(p => p.id === ra.propertyId);
+                const property = properties.find(p => p.id === ra.propertyId);
                 const baseParticulars = `Broker Fee: ${property?.name || 'Unit'} (Agr #${ra.agreementNumber || ra.id})`;
 
-                if (raDateStr && hasMultipleOwnersOnDate(state, String(ra.propertyId), raDateStr)) {
-                    const pct = getOwnerSharePercentageOnDate(state, String(ra.propertyId), ownerId!, raDateStr);
+                if (raDateStr && hasMultipleOwnersOnDate(propertyCtx, String(ra.propertyId), raDateStr)) {
+                    const pct = getOwnerSharePercentageOnDate(propertyCtx, String(ra.propertyId), ownerId!, raDateStr);
                     if (pct <= 0) return;
                     const share = Math.round(fee * pct) / 100;
                     if (share <= 0) return;
@@ -437,7 +464,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     return;
                 }
 
-                const raOwnerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(state, ra.propertyId, raDateStr) : undefined);
+                const raOwnerId = ra.ownerId ?? (raDateStr ? resolveOwnerForPropertyOnDate(propertyCtx, ra.propertyId, raDateStr) : undefined);
                 if (raOwnerId && raOwnerId !== ownerId) return;
 
                 items.push({
@@ -451,17 +478,17 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             });
 
             // B3. Bills with cost center on property — owner/building bearer only (tenant bills are Security / tenant ledger)
-            (state.bills || []).forEach(bill => {
+            (bills || []).forEach(bill => {
                 if (!bill.propertyId || bill.projectId || !ownerPropertyIds.has(String(bill.propertyId))) return;
-                if (!billAffectsOwnerRentalIncomeLedger(bill, state)) return;
+                if (!billAffectsOwnerRentalIncomeLedger(bill, { rentalAgreements })) return;
                 const amount = typeof bill.amount === 'number' ? bill.amount : parseFloat(String(bill.amount ?? 0));
                 if (isNaN(amount) || amount <= 0) return;
                 const billDateStr = (bill.issueDate || '').slice(0, 10);
-                const property = state.properties.find(p => p.id === bill.propertyId);
+                const property = properties.find(p => p.id === bill.propertyId);
                 const baseParticulars = `Bill: ${property?.name || 'Unit'} #${bill.billNumber || bill.id}`;
 
-                if (billDateStr && hasMultipleOwnersOnDate(state, String(bill.propertyId), billDateStr)) {
-                    const pct = getOwnerSharePercentageOnDate(state, String(bill.propertyId), ownerId!, billDateStr);
+                if (billDateStr && hasMultipleOwnersOnDate(propertyCtx, String(bill.propertyId), billDateStr)) {
+                    const pct = getOwnerSharePercentageOnDate(propertyCtx, String(bill.propertyId), ownerId!, billDateStr);
                     if (pct <= 0) return;
                     const share = Math.round(amount * pct) / 100;
                     if (share <= 0) return;
@@ -476,7 +503,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     return;
                 }
 
-                const billOwnerId = billDateStr ? resolveOwnerForPropertyOnDate(state, bill.propertyId, billDateStr) : undefined;
+                const billOwnerId = billDateStr ? resolveOwnerForPropertyOnDate(propertyCtx, bill.propertyId, billDateStr) : undefined;
                 if (billOwnerId && billOwnerId !== ownerId) return;
 
                 items.push({
@@ -491,20 +518,20 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
         } else {
             // Security Logic
-            const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
-            const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
-            const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
+            const secDepCategory = categories.find(c => c.name === 'Security Deposit');
+            const secRefCategory = categories.find(c => c.name === 'Security Deposit Refund');
+            const ownerSecPayoutCategory = categories.find(c => c.name === 'Owner Security Payout');
 
             if (secDepCategory) {
-                const deposits = state.transactions.filter(tx => {
+                const deposits = transactions.filter(tx => {
                     if (tx.type !== TransactionType.INCOME || tx.categoryId !== secDepCategory.id) return false;
                     if (!tx.propertyId || !ownerPropertyIds.has(String(tx.propertyId))) return false;
-                    const resolved = resolveOwnerForTransaction(state, tx);
+                    const resolved = resolveOwnerForTransaction(ownershipCtx, tx);
                     if (resolved && resolved !== ownerId) return false;
                     return true;
                 });
                 deposits.forEach(tx => {
-                    const property = state.properties.find(p => p.id === tx.propertyId);
+                    const property = properties.find(p => p.id === tx.propertyId);
                     items.push({
                         id: `sec-in-${tx.id}`,
                         date: tx.date,
@@ -518,7 +545,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
                 // Debits - Security Payouts (exclude when filtering by single unit)
                 if (!propertyId) {
-                    const payouts = state.transactions.filter(tx => 
+                    const payouts = transactions.filter(tx => 
                         tx.type === TransactionType.EXPENSE && 
                         tx.contactId === ownerId && 
                         ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id &&
@@ -539,17 +566,17 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 }
 
                 // Refunds/Deductions linked to properties — attribute to owner at tx date
-                const refunds = state.transactions.filter(tx => {
+                const refunds = transactions.filter(tx => {
                     if (tx.type !== TransactionType.EXPENSE) return false;
                     if (!tx.propertyId || !ownerPropertyIds.has(String(tx.propertyId))) return false;
-                    const resolved = resolveOwnerForTransaction(state, tx);
+                    const resolved = resolveOwnerForTransaction(ownershipCtx, tx);
                     if (resolved && resolved !== ownerId) return false;
                     return true;
                 });
                 refunds.forEach(tx => {
-                    const category = state.categories.find(c => c.id === tx.categoryId);
+                    const category = categories.find(c => c.id === tx.categoryId);
                     if (category && (category.id === secRefCategory?.id || category.name.includes('(Tenant)'))) {
-                        const property = state.properties.find(p => p.id === tx.propertyId);
+                        const property = properties.find(p => p.id === tx.propertyId);
                          items.push({
                              id: `sec-ref-${tx.id}`,
                              date: tx.date,
@@ -590,7 +617,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             });
 
         return { items, balanceByLineId };
-    }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, state.rentalAgreements, state.bills]);
+    }, [ownerId, ledgerType, buildingId, propertyId, transactions, properties, categories, rentalAgreements, bills, invoices, contacts, ledgerState, ownershipCtx, propertyCtx]);
 
     const ledgerSorted = useMemo(() => {
         const { items, balanceByLineId } = ledgerBase;
@@ -632,7 +659,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
 
     const handleSendWhatsApp = () => {
         if (!ownerId) return;
-        const ownerContact = state.contacts.find(c => c.id === ownerId);
+        const ownerContact = contacts.find(c => c.id === ownerId);
         if (!ownerContact) return;
 
         const totalCollected = ledgerSorted.reduce((sum, item) => sum + item.credit, 0);
@@ -640,13 +667,13 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
         const finalBalance = totalCollected - totalPaid;
         const payoutType = ledgerType === 'Security' ? 'Security Deposit' : 'Rental Income';
 
-        const template = state.whatsAppTemplates.ownerPayoutLedger || 'Dear {contactName}, your {payoutType} balance is {balance}.';
+        const template = whatsAppTemplates.ownerPayoutLedger || 'Dear {contactName}, your {payoutType} balance is {balance}.';
         const message = WhatsAppService.generateOwnerPayoutLedger(
             template, ownerContact, totalCollected, totalPaid, 0, finalBalance, payoutType
         );
         sendOrOpenWhatsApp(
             { contact: ownerContact, message, phoneNumber: ownerContact.contactNo || undefined },
-            () => state.whatsAppMode,
+            () => whatsAppMode,
             openChat
         );
     };
