@@ -1,0 +1,17 @@
+#!/bin/sh
+# Push the current branch to origin after every local commit.
+# Enable once per clone: git config core.hooksPath .githooks
+
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" || exit 0
+[ -n "$branch" ] || exit 0
+
+if git rev-parse --verify "@{u}" >/dev/null 2>&1; then
+  ahead="$(git rev-list --count "@{u}..HEAD" 2>/dev/null || echo 0)"
+  [ "$ahead" -gt 0 ] || exit 0
+fi
+
+git push -u origin "$branch" >/dev/null 2>&1 || {
+  echo "post-commit: push to origin/$branch failed" >&2
+}
+
+exit 0

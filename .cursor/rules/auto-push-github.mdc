@@ -1,0 +1,22 @@
+---
+description: Commit and push code changes to GitHub after editing files
+alwaysApply: true
+---
+
+# Auto-push to GitHub
+
+When you modify project files in a session, keep GitHub in sync before finishing:
+
+1. Stage changes with `git add -A` (`.gitignore` excludes `.env`, secrets, and build artifacts).
+2. If there are staged changes, commit with a clear message describing what changed.
+3. Push the current branch: `git push -u origin HEAD`.
+
+Do this at the end of every task where you changed code. Do not wait for the user to ask.
+
+Safety rules:
+
+- Never commit `.env` or other secret/credential files.
+- Never use `git push --force` on `main` or `master`.
+- If push fails (auth, conflicts, network), tell the user what failed and how to fix it.
+
+The project `stop` hook also auto-commits and pushes when an agent session ends.
