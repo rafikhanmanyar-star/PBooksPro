@@ -39,7 +39,7 @@ export function mergeTenantSettingsFromAction(prev: AppState, action: AppAction)
     }
 }
 
-function mergeInvoicesWithServerBaseline(base: Invoice[], server: Invoice[]): Invoice[] {
+export function mergeInvoicesWithServerBaseline(base: Invoice[], server: Invoice[]): Invoice[] {
     const serverIds = new Set(server.map((i) => i.id).filter(Boolean));
     const out = [...server];
     for (const inv of base) {
@@ -55,7 +55,7 @@ function mergeInvoicesWithServerBaseline(base: Invoice[], server: Invoice[]): In
 }
 
 /** Same merge policy as invoices: keep optimistic bill rows until the server acknowledges them with a version. */
-function mergeBillsWithServerBaseline(base: Bill[], server: Bill[]): Bill[] {
+export function mergeBillsWithServerBaseline(base: Bill[], server: Bill[]): Bill[] {
     const serverIds = new Set(server.map((b) => b.id).filter(Boolean));
     const out = [...server];
     for (const bill of base) {
@@ -67,7 +67,7 @@ function mergeBillsWithServerBaseline(base: Bill[], server: Bill[]): Bill[] {
     return out;
 }
 
-function mergeProjectReceivedAssetsWithServerBaseline(base: ProjectReceivedAsset[], server: ProjectReceivedAsset[]): ProjectReceivedAsset[] {
+export function mergeProjectReceivedAssetsWithServerBaseline(base: ProjectReceivedAsset[], server: ProjectReceivedAsset[]): ProjectReceivedAsset[] {
     const serverIds = new Set(server.map((a) => a.id).filter(Boolean));
     const out = [...server];
     for (const a of base) {
@@ -78,7 +78,7 @@ function mergeProjectReceivedAssetsWithServerBaseline(base: ProjectReceivedAsset
     return out;
 }
 
-function mergeSalesReturnsWithServerBaseline(base: SalesReturn[], server: SalesReturn[]): SalesReturn[] {
+export function mergeSalesReturnsWithServerBaseline(base: SalesReturn[], server: SalesReturn[]): SalesReturn[] {
     const serverIds = new Set(server.map((sr) => sr.id).filter(Boolean));
     const out = [...server];
     for (const sr of base) {

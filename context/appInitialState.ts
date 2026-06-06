@@ -14,7 +14,7 @@ const DEFAULT_ADMIN: User = {
 
 const SYSTEM_CATEGORIES: Category[] = MANDATORY_SYSTEM_CATEGORIES;
 
-const DEFAULT_INVOICE_TEMPLATE = `<!DOCTYPE html>
+export const DEFAULT_INVOICE_TEMPLATE = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -133,7 +133,7 @@ const DEFAULT_INVOICE_TEMPLATE = `<!DOCTYPE html>
 </body>
 </html>`;
 
-const initialState: AppState = {
+export const initialState: AppState = {
     users: [DEFAULT_ADMIN],
     currentUser: null,
     accounts: SYSTEM_ACCOUNTS,

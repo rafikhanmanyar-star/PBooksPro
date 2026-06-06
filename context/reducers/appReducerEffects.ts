@@ -3,9 +3,14 @@ import type {
   Transaction,
   Invoice,
   Bill,
-  ContractStatus,
   User,
   TransactionLogEntry,
+} from '../../types';
+import {
+  ContractStatus,
+  InvoiceStatus,
+  TransactionType,
+  LoanSubtype,
 } from '../../types';
 import { findSalesReturnCategory } from '../../constants/salesReturnSystemCategories';
 import { resolveSystemCategoryId } from '../../services/systemEntityIds';
@@ -115,7 +120,7 @@ export const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: 
 };
 
 /** Same invoice math as applyTransactionEffect (for PostgreSQL sync when LAN has no SQLite). */
-function applyTxToInvoiceCopy(inv: Invoice, tx: Transaction, isAdd: boolean): Invoice {
+export function applyTxToInvoiceCopy(inv: Invoice, tx: Transaction, isAdd: boolean): Invoice {
     const factor = isAdd ? 1 : -1;
     const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
     const newPaid = Math.max(0, (inv.paidAmount || 0) + (amount * factor));
@@ -127,7 +132,7 @@ function applyTxToInvoiceCopy(inv: Invoice, tx: Transaction, isAdd: boolean): In
 }
 
 /** Same bill math as applyTransactionEffect. */
-function applyTxToBillCopy(b: Bill, tx: Transaction, isAdd: boolean): Bill {
+export function applyTxToBillCopy(b: Bill, tx: Transaction, isAdd: boolean): Bill {
     const factor = isAdd ? 1 : -1;
     const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
     const newPaid = Math.max(0, (b.paidAmount || 0) + (amount * factor));
@@ -140,7 +145,7 @@ function applyTxToBillCopy(b: Bill, tx: Transaction, isAdd: boolean): Bill {
 }
 
 /** Identity of transaction fields that must stay aligned between client and API after reducer pairing logic. */
-function txnFinancialSignature(t: Transaction): string {
+export function txnFinancialSignature(t: Transaction): string {
     return JSON.stringify({
         amount: t.amount,
         date: (t.date || '').slice(0, 10),

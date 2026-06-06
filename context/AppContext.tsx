@@ -35,6 +35,13 @@ import {
 } from '../services/propertyOwnershipService';
 import { syncPayslipsAfterTransactionAction, getTenantIdForPayroll, type TransactionPayslipSyncInput } from '../components/payroll/services/payrollRevert';
 import InitializationScreen from '../components/InitializationScreen';
+import { syncQueueStub as getSyncQueue } from '../services/sync/localOnlyStubs';
+import {
+  applyTxToInvoiceCopy,
+  applyTxToBillCopy,
+  txnFinancialSignature,
+  updateContractStatus,
+} from './reducers/appReducerEffects';
 
 import { initialState } from './appInitialState';
 import { getAppStateRepository } from './appRepositoryLoader';
