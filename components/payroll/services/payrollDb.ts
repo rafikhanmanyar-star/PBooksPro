@@ -346,7 +346,7 @@ function rowToEmployee(row: Record<string, unknown>): PayrollEmployee {
         end_date: b.end_date || b.endDate,
       }));
     })(),
-    created_by: row.created_by != null ? String(row.created_by) : undefined,
+    created_by: String(row.created_by ?? ''),
     updated_by: row.updated_by != null ? String(row.updated_by) : undefined,
     created_at: row.created_at != null ? String(row.created_at) : undefined,
     updated_at: row.updated_at != null ? String(row.updated_at) : undefined,

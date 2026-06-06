@@ -1,15 +1,17 @@
 /**
  * Offline Context
- * 
+ *
  * Manages offline state, sync queue status, and provides methods
  * for checking connectivity and triggering sync operations.
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-type ConnectionStatus = 'online' | 'offline' | 'checking';
-const getConnectionMonitor = () => ({ startMonitoring: () => {}, stopMonitoring: () => {}, destroy: () => {}, getStatus: () => 'online' as ConnectionStatus, subscribe: (_l: any) => () => {}, forceCheck: async () => 'online' as ConnectionStatus });
-const getSyncQueue = () => ({ getPendingItems: async () => [] as any[], enqueue: async () => '', clearAll: async () => {}, getPendingCount: async () => 0, getFailedCount: async () => 0, getSyncStats: async () => ({ total: 0, pending: 0, syncing: 0, completed: 0, failed: 0 }) });
-const getSyncEngine = () => ({ start: async () => {}, stop: () => {}, pause: () => {}, resume: () => {}, getIsRunning: () => false, onProgress: (_l: any) => () => {}, onComplete: (_l: any) => () => {} });
+import {
+  connectionMonitorStub,
+  syncEngineStub,
+  syncQueueStub,
+  type ConnectionStatus,
+} from '../services/sync/localOnlyStubs';
 import { SyncProgress } from '../types/sync';
 import { useAuth } from './AuthContext';
 
@@ -32,54 +34,43 @@ interface OfflineContextType {
 const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
 
 export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, tenant, isAuthenticated } = useAuth();
+  const tenantId = tenant?.id ?? user?.tenantId ?? '';
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
   const [pendingCount, setPendingCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
 
-  const monitor = getConnectionMonitor();
-  const syncQueue = getSyncQueue();
-  const syncEngine = getSyncEngine();
+  const monitor = connectionMonitorStub;
+  const syncQueue = syncQueueStub;
+  const syncEngine = syncEngineStub;
 
-  /**
-   * Load queue counts
-   */
   const loadQueueCounts = useCallback(async () => {
-    if (!isAuthenticated || !user?.tenant?.id) {
+    if (!isAuthenticated || !tenantId) {
       setPendingCount(0);
       setFailedCount(0);
       return;
     }
 
     try {
-      const pending = await syncQueue.getPendingCount(user.tenant.id);
-      const failed = await syncQueue.getFailedCount(user.tenant.id);
+      const pending = await syncQueue.getPendingCount(tenantId);
+      const failed = await syncQueue.getFailedCount(tenantId);
       setPendingCount(pending);
       setFailedCount(failed);
     } catch (error) {
       console.error('Failed to load queue counts:', error);
     }
-  }, [isAuthenticated, user?.tenant?.id, syncQueue]);
+  }, [isAuthenticated, tenantId, syncQueue]);
 
-  /**
-   * Force connection check
-   */
   const forceCheck = useCallback(async (): Promise<ConnectionStatus> => {
     const status = await monitor.forceCheck();
     setConnectionStatus(status);
     return status;
   }, [monitor]);
 
-  /**
-   * Start sync process.
-   * Accepts an optional statusOverride so callers from the connection
-   * subscriber can pass the freshly-received status instead of relying
-   * on React state (which may be stale in the same tick).
-   */
   const startSync = useCallback(async (statusOverride?: ConnectionStatus) => {
-    if (!isAuthenticated || !user?.tenant?.id) {
+    if (!isAuthenticated || !tenantId) {
       return;
     }
 
@@ -92,7 +83,7 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
       return;
     }
 
-    const currentPending = await syncQueue.getPendingCount(user.tenant.id);
+    const currentPending = await syncQueue.getPendingCount(tenantId);
     setPendingCount(currentPending);
 
     if (currentPending === 0) {
@@ -101,27 +92,20 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     try {
       setIsSyncing(true);
-      await syncEngine.start(user.tenant.id);
+      await syncEngine.start(tenantId);
     } catch (error) {
       console.error('❌ Sync failed:', error);
       setIsSyncing(false);
       setSyncProgress(null);
     }
-  }, [isAuthenticated, user?.tenant?.id, connectionStatus, isSyncing, syncEngine, syncQueue]);
+  }, [isAuthenticated, tenantId, connectionStatus, isSyncing, syncEngine, syncQueue]);
 
-  /**
-   * Initialize connection monitor
-   */
   useEffect(() => {
-    // Set initial status
     setConnectionStatus(monitor.getStatus());
 
-    // Subscribe to connection changes
-    const unsubscribe = monitor.subscribe((status) => {
+    const unsubscribe = monitor.subscribe((status: ConnectionStatus) => {
       setConnectionStatus(status);
 
-      // Auto-sync when connection is restored — pass status directly
-      // to avoid the stale-closure problem (React state hasn't updated yet)
       if (status === 'online') {
         startSync('online');
       }
@@ -130,26 +114,20 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
     return unsubscribe;
   }, [monitor, startSync]);
 
-  /**
-   * Load queue counts on mount and when authentication changes
-   */
   useEffect(() => {
     loadQueueCounts();
   }, [loadQueueCounts]);
 
-  /**
-   * Subscribe to sync progress
-   */
   useEffect(() => {
-    const unsubscribeProgress = syncEngine.onProgress((progress) => {
+    const unsubscribeProgress = syncEngine.onProgress((progress: SyncProgress) => {
       setSyncProgress(progress);
     });
 
-    const unsubscribeComplete = syncEngine.onComplete((success, progress) => {
+    const unsubscribeComplete = syncEngine.onComplete((success: boolean, progress: SyncProgress) => {
+      void success;
+      void progress;
       setIsSyncing(false);
       setSyncProgress(null);
-      
-      // Reload queue counts
       loadQueueCounts();
     });
 
@@ -159,14 +137,9 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
   }, [syncEngine, loadQueueCounts]);
 
-  /**
-   * Monitor queue changes (but don't auto-sync - sync only on login/reconnection)
-   */
   useEffect(() => {
     const handleQueueChange = () => {
       loadQueueCounts();
-      // Don't auto-sync - just update the UI with queue counts
-      // Sync will happen on login/reconnection only
     };
 
     if (typeof window !== 'undefined') {
@@ -180,73 +153,51 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
   }, [loadQueueCounts]);
 
-  /**
-   * When connection comes online, process any queued operations from the
-   * IndexedDB sync queue (queueOperationForSync in AppContext) in addition
-   * to the SyncManager outbox handled by BidirectionalSyncService.
-   */
   useEffect(() => {
-    if (connectionStatus === 'online' && isAuthenticated && user?.tenant?.id) {
+    if (connectionStatus === 'online' && isAuthenticated && tenantId) {
       loadQueueCounts();
       startSync('online');
     }
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, loadQueueCounts, startSync]);
+  }, [connectionStatus, isAuthenticated, tenantId, loadQueueCounts, startSync]);
 
-  /**
-   * Heartbeat: Update queue counts periodically (but don't sync)
-   * Sync only happens on login/reconnection
-   */
   useEffect(() => {
-    if (connectionStatus !== 'online' || !isAuthenticated || !user?.tenant?.id) {
+    if (connectionStatus !== 'online' || !isAuthenticated || !tenantId) {
       return;
     }
 
-    // Just update queue counts for UI - don't trigger sync
     const interval = window.setInterval(() => {
       loadQueueCounts();
-    }, 60000); // Update counts every minute for UI
+    }, 60000);
 
     return () => clearInterval(interval);
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, loadQueueCounts]);
+  }, [connectionStatus, isAuthenticated, tenantId, loadQueueCounts]);
 
-  /**
-   * Pause sync
-   */
   const pauseSync = useCallback(() => {
     syncEngine.pause();
   }, [syncEngine]);
 
-  /**
-   * Resume sync
-   */
   const resumeSync = useCallback(() => {
     syncEngine.resume();
   }, [syncEngine]);
 
-  /**
-   * Stop sync
-   */
   const stopSync = useCallback(() => {
     syncEngine.stop();
     setIsSyncing(false);
     setSyncProgress(null);
   }, [syncEngine]);
 
-  /**
-   * Clear all completed items from queue
-   */
   const clearQueue = useCallback(async () => {
-    if (!isAuthenticated || !user?.tenant?.id) {
+    if (!isAuthenticated || !tenantId) {
       return;
     }
 
     try {
-      await syncQueue.clearCompleted(user.tenant.id);
+      await syncQueue.clearCompleted(tenantId);
       await loadQueueCounts();
     } catch (error) {
       console.error('Failed to clear queue:', error);
     }
-  }, [isAuthenticated, user?.tenant?.id, syncQueue, loadQueueCounts]);
+  }, [isAuthenticated, tenantId, syncQueue, loadQueueCounts]);
 
   const value = useMemo<OfflineContextType>(() => ({
     isOnline: connectionStatus === 'online',
@@ -257,7 +208,7 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
     isSyncing,
     syncProgress,
     forceCheck,
-    startSync,
+    startSync: () => startSync(),
     pauseSync,
     resumeSync,
     stopSync,

@@ -209,6 +209,8 @@ export interface User {
   name: string;
   role: UserRole;
   password?: string;
+  /** LAN/API session tenant (AuthContext); local-only uses `local`. */
+  tenantId?: string;
 }
 
 export interface Account {
@@ -484,7 +486,8 @@ export interface Transaction {
 export interface Invoice {
   id: string;
   invoiceNumber: string;
-  contactId: string;
+  contactId?: string;
+  vendorId?: string;
   amount: number;
   paidAmount: number;
   status: InvoiceStatus;
@@ -1023,7 +1026,7 @@ export type AppAction =
   | { type: 'ADD_PROJECT_AGREEMENT'; payload: ProjectAgreement }
   | { type: 'UPDATE_PROJECT_AGREEMENT'; payload: ProjectAgreement }
   | { type: 'DELETE_PROJECT_AGREEMENT'; payload: string }
-  | { type: 'CANCEL_PROJECT_AGREEMENT'; payload: { agreementId: string; penaltyPercentage: number; penaltyAmount: number; refundAmount: number; refundAccountId?: string; salesReturnId?: string } }
+  | { type: 'CANCEL_PROJECT_AGREEMENT'; payload: { agreementId: string; penaltyPercentage: number; penaltyAmount: number; refundAmount: number; refundAccountId?: string; penaltyCategoryId?: string; salesReturnId?: string } }
   | { type: 'ADD_SALES_RETURN'; payload: SalesReturn }
   | { type: 'UPDATE_SALES_RETURN'; payload: SalesReturn }
   | { type: 'DELETE_SALES_RETURN'; payload: string }
@@ -1078,6 +1081,10 @@ export type AppAction =
   | { type: 'CLEAR_INITIAL_TABS' }
   | { type: 'SET_UPDATE_AVAILABLE'; payload: boolean }
   | { type: 'BATCH_UPSERT_ENTITIES'; payload: Record<string, any[]> }
+  | { type: 'BATCH_WS_SYNC'; payload: { upserts: Record<string, any[]>; deletes: Record<string, string[]> } }
+  | { type: 'ADD_PM_CYCLE_ALLOCATION'; payload: PMCycleAllocation }
+  | { type: 'UPDATE_PM_CYCLE_ALLOCATION'; payload: PMCycleAllocation }
+  | { type: 'DELETE_PM_CYCLE_ALLOCATION'; payload: string }
 
 
 // ==================== TASK MANAGEMENT TYPES ====================

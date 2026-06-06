@@ -193,7 +193,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   const customStyle = useMemo(() => {
       if (!enableColorCoding) return {};
 
-      let color = null;
+      let color: string | null = null;
       if (projectId) {
           const p = projects.find(proj => proj.id === projectId);
           if (p?.color) color = p.color;

@@ -11,7 +11,7 @@ import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
 import { fetchUpcomingTasks } from '../../components/personalTransactions/personalTasksService';
-const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: () => {}, connect: () => {}, disconnect: () => {} });
+const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {}, connect: () => {}, disconnect: () => {} });
 import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
 import { useTheme } from '../../context/ThemeContext';
 import { scheduleIdleWork, cancelScheduledIdle } from '../../utils/interactionScheduling';
@@ -387,11 +387,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     }
 
     if (notification.action.type === 'whatsapp') {
+      const waAction = notification.action;
       const contact =
-        contacts.find(item => item.id === notification.action.contactId)
-        || findContactByPhone(notification.action.phoneNumber)
+        contacts.find(item => item.id === waAction.contactId)
+        || findContactByPhone(waAction.phoneNumber)
         || null;
-      const phone = notification.action.phoneNumber || contact?.contactNo;
+      const phone = waAction.phoneNumber || contact?.contactNo;
       const contactLike = contact || (phone ? { id: '', name: phone, contactNo: phone } : null);
       if (contactLike && phone) {
         setTimeout(() => {
@@ -402,7 +403,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           );
         }, 0);
       } else {
-        setTimeout(() => openChat(contact, notification.action.phoneNumber), 0);
+        setTimeout(() => openChat(contact, waAction.phoneNumber), 0);
       }
       return;
     }

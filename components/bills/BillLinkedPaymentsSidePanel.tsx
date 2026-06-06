@@ -33,8 +33,6 @@ export interface BillLinkedPaymentsSidePanelProps {
     includeRentalOrphanPayments?: boolean;
 }
 
-import type { Bill } from '../../types';
-
 function prepaidLinesFromDescription(bill: Bill): PrepaidAppliedLine[] {
     const amounts = parsePrepaidAdvanceAmountsFromBillDescription(bill.description);
     return amounts.map((amount, i) => ({

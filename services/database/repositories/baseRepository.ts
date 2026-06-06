@@ -16,7 +16,7 @@ export interface SqlOp {
     params?: unknown[];
 }
 
-export abstract class BaseRepository<T> {
+export abstract class BaseRepository<T extends Record<string, any>> {
     readonly tableName: string;
     protected primaryKey: string;
     private tableColumns: Set<string> | null = null;

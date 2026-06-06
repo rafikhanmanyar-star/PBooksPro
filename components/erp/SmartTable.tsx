@@ -299,7 +299,7 @@ export function SmartTable<T>(props: SmartTableProps<T>) {
     ariaAttributes?: { 'aria-posinset': number; 'aria-setsize': number; role: 'listitem' };
   }) {
     const row = rows[index];
-    if (!row) return null;
+    if (!row) return <div style={style} aria-hidden />;
     return (
       <RowInner row={row} rowIndex={index} style={style} ariaAttributes={ariaAttributes} />
     );
@@ -357,11 +357,7 @@ export function SmartTable<T>(props: SmartTableProps<T>) {
             rowCount={sorted.length}
             rowHeight={rowHeight}
             rowComponent={VirtualRow}
-            rowProps={
-              {
-                rows: sorted,
-              } as { rows: T[] }
-            }
+            rowProps={{ rows: sorted } as React.ComponentProps<typeof List>['rowProps']}
             style={{ height: tableHeight, width: '100%' }}
             overscanCount={6}
           />

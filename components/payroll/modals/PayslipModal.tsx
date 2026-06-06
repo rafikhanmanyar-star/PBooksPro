@@ -10,7 +10,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useAppContext } from '../../../context/AppContext';
 import { Account, Category, Project, Transaction, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
-import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
+import { isAccountingBackedByRemoteApi, isLocalOnlyMode } from '../../../config/apiUrl';
 import { formatDate, formatCurrency, calculateAmount, roundToTwo } from '../utils/formatters';
 import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from '../utils/payslipPaymentState';
 import { resolvePayslipAssignment, formatPayslipAssignmentDisplay } from '../utils/payslipAssignment';
@@ -892,7 +892,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                           setShowPaymentForm(false);
 
                           // Dispatch all transactions to global state (one per project when split by allocation)
-                          const txns = result.transactions || (result.transaction ? [result.transaction] : []);
+                          const txns = (result as { transactions?: any[]; transaction?: any }).transactions || (result.transaction ? [result.transaction] : []);
                           txns.forEach((txn: any) => {
                             dispatch({
                               type: 'ADD_TRANSACTION',

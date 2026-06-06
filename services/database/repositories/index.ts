@@ -6,6 +6,7 @@
 
 import { BaseRepository } from './baseRepository';
 export { BaseRepository } from './baseRepository';
+export { AppStateRepository } from './appStateRepository';
 import { getNativeDatabaseService } from '../nativeDatabaseService';
 import { getDatabaseService } from '../databaseService';
 import { isLocalOnlyMode } from '../../../config/apiUrl';
@@ -133,7 +134,7 @@ export class TransactionsRepository extends BaseRepository<any> {
         }
 
         // Fallback to sql.js with efficient SQL-level pagination
-        let condition = undefined;
+        let condition: string | undefined = undefined;
         let sqlParams: any[] = [];
 
         if (params.projectId && params.vendorId) {

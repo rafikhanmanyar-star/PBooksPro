@@ -29,6 +29,7 @@ interface PMLedgerItem {
     type: 'Allocation' | 'Payment';
     allocationStartDate?: string;
     allocationEndDate?: string;
+    billId?: string;
 }
 
 interface ProjectPMPaymentModalProps {

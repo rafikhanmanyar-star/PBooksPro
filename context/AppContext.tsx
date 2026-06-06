@@ -299,6 +299,8 @@ const initialState: AppState = {
     initialImportType: null,
     quotations: [],
     documents: [],
+    pmCycleAllocations: [],
+    whatsAppMode: 'api',
 }
 
 // Create context - use any temporarily to avoid TDZ issues, then cast to proper type
@@ -1432,7 +1434,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, errorLog: [] };
 
         case 'RESET_TRANSACTIONS': {
-            const logEntry = createLogEntry('CLEAR_ALL', 'Transactions', undefined, 'Cleared all transactions, invoices, bills, contracts, agreements, and sales returns', state.currentUser, undefined);
+            const logEntry = createLogEntry('CLEAR_ALL', 'Transactions', '', 'Cleared all transactions, invoices, bills, contracts, agreements, and sales returns', state.currentUser);
             return {
                 ...state,
                 transactions: [],
@@ -1835,7 +1837,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             let offlineRecurringTemplates: RecurringInvoiceTemplate[] = [];
 
                             try {
-                                const syncQueue = getSyncQueue();
+                                const syncQueue = getSyncQueue;
                                 if (currentTenantId) {
                                     const pendingItems = await syncQueue.getPendingItems(currentTenantId);
                                     logger.logCategory('sync', `📦 Found ${pendingItems.length} pending sync items to restore`);
@@ -2761,7 +2763,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     type: 'UPDATE_PM_CYCLE_ALLOCATION',
                                     payload: { ...alloc, ...saved },
                                     _isRemote: true,
-                                } as AppAction);
+                                } as any);
                             }
                         })
                         .catch((err) => {
@@ -3827,7 +3829,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const missingProjects = (state.projects?.length ?? 0) === 0;
             sessionRestoreRefreshDoneRef.current = true;
             if (!hasData || missingProjects) {
-                refreshFromApiRef.current(undefined);
+                void refreshFromApiRef.current?.();
             }
         }
         if (!isAuthenticated) {

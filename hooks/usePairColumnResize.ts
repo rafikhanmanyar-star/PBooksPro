@@ -1,4 +1,4 @@
-import { useCallback, useRef, type Dispatch, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useRef, type Dispatch, type SetStateAction, type MouseEvent as ReactMouseEvent } from 'react';
 
 /**
  * Drag the right edge of column `leftKey` to widen it and narrow `leftKey`'s right neighbor.

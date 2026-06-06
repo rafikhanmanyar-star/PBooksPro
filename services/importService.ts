@@ -1744,7 +1744,7 @@ export const runImportProcess = async (
 
                     const newProp: Property = {
                         id: generateImportId('prop', index),
-                        name: row.name, ownerId, buildingId,
+                        name: row.name, ownerId: ownerId ?? '', buildingId: buildingId ?? '',
                         description: row.description,
                         monthlyServiceCharge: parseFloat(row.monthlyServiceCharge)
                     };
@@ -2467,7 +2467,7 @@ export const runImportProcess = async (
                         fromAccountId = resolveId(maps.accounts, row, 'fromAccountName', 'FromAccountName');
                         toAccountId = resolveId(maps.accounts, row, 'toAccountName', 'ToAccountName');
                         if (!fromAccountId || !toAccountId) {
-                            const invalidRefs = [];
+                            const invalidRefs: { field: string; value: any; suggestions: string[] }[] = [];
                             if (!fromAccountId) invalidRefs.push({ field: 'FromAccount', value: row.fromAccountName || row.FromAccountName || '', suggestions: findSimilarNames(row.fromAccountName || row.FromAccountName || '', maps.accounts) });
                             if (!toAccountId) invalidRefs.push({ field: 'ToAccount', value: row.toAccountName || row.ToAccountName || '', suggestions: findSimilarNames(row.toAccountName || row.ToAccountName || '', maps.accounts) });
                             const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);

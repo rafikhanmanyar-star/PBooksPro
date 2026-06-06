@@ -586,6 +586,7 @@ export const createLoansInvestorsPMBackup = async (
         progress.updateProgress(85, 'Building backup package...');
 
         // ===== STEP 5: BUILD BACKUP PACKAGE =====
+        const loanAdvanceRecords: { id: string }[] = [];
         const backupData = {
             version: '1.0',
             backupType: 'LoansInvestorsPMConfig',
@@ -683,6 +684,26 @@ export const restoreLoansInvestorsPMBackup = async (
 
         progress.updateProgress(40, 'Merging loan data...');
 
+        type LoansInvestorsBackupSlice = Record<string, unknown> & {
+            loanTransactions?: unknown[];
+            loanAdvanceRecords?: { id: string }[];
+            equityAccounts?: unknown[];
+            investorTransactions?: unknown[];
+            projectsWithPMConfig?: unknown[];
+            contacts?: unknown[];
+            vendors?: unknown[];
+            categories?: unknown[];
+            accounts?: unknown[];
+            projectAgreementSettings?: unknown;
+            projectInvoiceSettings?: unknown;
+            printSettings?: unknown;
+            dashboardConfig?: unknown;
+        };
+
+        const migratedSlice = (migratedBackupData as { data?: LoansInvestorsBackupSlice }).data;
+        const backupSlice: LoansInvestorsBackupSlice =
+            migratedSlice ?? (backupData.data as LoansInvestorsBackupSlice);
+
         // Helper function to merge arrays by ID (backup data takes precedence)
         const mergeById = (current: any[], backup: any[] | undefined): any[] => {
             if (!backup || !Array.isArray(backup)) return current;
@@ -698,18 +719,15 @@ export const restoreLoansInvestorsPMBackup = async (
         };
 
         // ===== STEP 1: MERGE LOAN DATA =====
-        const migratedLoanTransactions = migratedBackupData.data?.loanTransactions 
-            ? migratedBackupData.data.loanTransactions.map((tx: any) => migrateBackupData({ transactions: [tx] }).transactions[0])
-            : backupData.data.loanTransactions || [];
-            
+        const migratedLoanTransactions = backupSlice.loanTransactions
+            ? backupSlice.loanTransactions.map((tx: unknown) =>
+                migrateBackupData({ transactions: [tx] }).transactions[0]
+              )
+            : [];
+
         const mergedLoanTransactions = mergeById(
             currentState.transactions,
             migratedLoanTransactions
-        );
-
-        const mergedLoanAdvanceRecords = mergeById(
-            currentState.loanAdvanceRecords || [],
-            migratedBackupData.data?.loanAdvanceRecords || backupData.data.loanAdvanceRecords
         );
 
         progress.updateProgress(50, 'Merging investor data...');
@@ -718,18 +736,20 @@ export const restoreLoansInvestorsPMBackup = async (
         // Merge equity accounts
         const mergedAccounts = mergeById(
             currentState.accounts,
-            migratedBackupData.data?.equityAccounts || backupData.data.equityAccounts
+            backupSlice.equityAccounts as unknown[] | undefined
         );
 
         // Get all equity account IDs from backup for filtering
         const backupEquityAccountIds = new Set(
-            ((migratedBackupData.data?.equityAccounts || backupData.data.equityAccounts) || []).map((acc: any) => acc.id)
+            ((backupSlice.equityAccounts as { id: string }[] | undefined) ?? []).map((acc) => acc.id)
         );
 
         // Merge investor transactions (normalized)
-        const migratedInvestorTransactions = migratedBackupData.data?.investorTransactions
-            ? migratedBackupData.data.investorTransactions.map((tx: any) => migrateBackupData({ transactions: [tx] }).transactions[0])
-            : backupData.data.investorTransactions || [];
+        const migratedInvestorTransactions = backupSlice.investorTransactions
+            ? backupSlice.investorTransactions.map((tx: unknown) =>
+                migrateBackupData({ transactions: [tx] }).transactions[0]
+              )
+            : [];
             
         const mergedInvestorTransactions = mergeById(
             mergedLoanTransactions, // Already includes loan transactions
@@ -768,11 +788,13 @@ export const restoreLoansInvestorsPMBackup = async (
 
         // ===== STEP 3: MERGE PM CONFIG DATA =====
         const mergedProjects = currentState.projects.map(project => {
-            const backupProject = backupData.data.projectsWithPMConfig?.find((p: any) => p.id === project.id);
+            const backupProject = (backupSlice.projectsWithPMConfig as { id: string; pmConfig?: unknown }[] | undefined)?.find(
+                (p) => p.id === project.id
+            );
             if (backupProject && backupProject.pmConfig) {
                 return {
                     ...project,
-                    pmConfig: backupProject.pmConfig
+                    pmConfig: backupProject.pmConfig,
                 };
             }
             return project;
@@ -780,7 +802,9 @@ export const restoreLoansInvestorsPMBackup = async (
 
         // Add any new projects from backup that don't exist
         const existingProjectIds = new Set(currentState.projects.map(p => p.id));
-        const newProjects = (backupData.data.projectsWithPMConfig || []).filter((p: any) => !existingProjectIds.has(p.id));
+        const newProjects = ((backupSlice.projectsWithPMConfig as { id: string }[] | undefined) ?? []).filter(
+            (p) => !existingProjectIds.has(p.id)
+        );
         const finalProjects = [...mergedProjects, ...newProjects];
 
         progress.updateProgress(70, 'Merging related entities...');
@@ -788,11 +812,11 @@ export const restoreLoansInvestorsPMBackup = async (
         // ===== STEP 4: MERGE RELATED ENTITIES =====
         const mergedContacts = mergeById(
             currentState.contacts,
-            migratedBackupData.data?.contacts || backupData.data.contacts
+            backupSlice.contacts as unknown[] | undefined
         );
 
         // Normalize categories before merging (critical for reports)
-        const normalizedCategories = (migratedBackupData.data?.categories || backupData.data.categories || []).map((cat: any) => 
+        const normalizedCategories = ((backupSlice.categories as unknown[] | undefined) ?? []).map((cat: unknown) =>
             migrateBackupData({ categories: [cat] }).categories[0]
         );
         const mergedCategories = mergeById(
@@ -802,7 +826,7 @@ export const restoreLoansInvestorsPMBackup = async (
 
         const finalAccounts = mergeById(
             mergedAccounts,
-            backupData.data.accounts
+            backupSlice.accounts as unknown[] | undefined
         );
 
         progress.updateProgress(80, 'Merging settings...');
@@ -811,19 +835,19 @@ export const restoreLoansInvestorsPMBackup = async (
         const mergedSettings = {
             projectAgreementSettings: mergeObject(
                 currentState.projectAgreementSettings,
-                backupData.data.projectAgreementSettings
+                backupSlice.projectAgreementSettings
             ),
             projectInvoiceSettings: mergeObject(
                 currentState.projectInvoiceSettings,
-                backupData.data.projectInvoiceSettings
+                backupSlice.projectInvoiceSettings
             ),
             printSettings: mergeObject(
                 currentState.printSettings,
-                backupData.data.printSettings
+                backupSlice.printSettings
             ),
             dashboardConfig: mergeObject(
                 currentState.dashboardConfig,
-                backupData.data.dashboardConfig
+                backupSlice.dashboardConfig
             ),
         };
 
@@ -833,7 +857,6 @@ export const restoreLoansInvestorsPMBackup = async (
         const mergedState: AppState = {
             ...currentState,
             transactions: finalTransactions,
-            loanAdvanceRecords: mergedLoanAdvanceRecords,
             accounts: finalAccounts,
             projects: finalProjects,
             contacts: mergedContacts,

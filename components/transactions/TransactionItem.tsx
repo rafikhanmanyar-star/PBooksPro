@@ -15,7 +15,7 @@ interface TransactionItemProps {
 const getEntityColorStyle = (projectId: string | undefined, buildingId: string | undefined, enableColorCoding: boolean, projects: Project[], buildings: Building[]) => {
     if (!enableColorCoding) return {};
 
-    let color = null;
+    let color: string | null = null;
     if (projectId) {
         const project = projects.find((p) => p.id === projectId);
         if (project?.color) color = project.color;

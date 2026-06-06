@@ -597,19 +597,21 @@ export class AppStateApiService {
     }
 
     if (merged.projectReceivedAssets && Array.isArray(merged.projectReceivedAssets)) {
-      merged.projectReceivedAssets = merged.projectReceivedAssets.map((a: Record<string, unknown>) =>
-        normalizeProjectReceivedAssetFromApi(a)
+      merged.projectReceivedAssets = merged.projectReceivedAssets.map((a) =>
+        normalizeProjectReceivedAssetFromApi(a as unknown as Record<string, unknown>)
       );
     }
 
     if (merged.salesReturns && Array.isArray(merged.salesReturns)) {
-      merged.salesReturns = merged.salesReturns.map((sr: Record<string, unknown>) =>
-        normalizeSalesReturnFromApi(sr)
+      merged.salesReturns = merged.salesReturns.map((sr) =>
+        normalizeSalesReturnFromApi(sr as unknown as Record<string, unknown>)
       );
     }
 
     if (merged.contracts && Array.isArray(merged.contracts)) {
-      merged.contracts = merged.contracts.map((c: Record<string, unknown>) => normalizeContractFromApi(c));
+      merged.contracts = merged.contracts.map((c) =>
+        normalizeContractFromApi(c as unknown as Record<string, unknown>)
+      );
     }
 
     if (merged.budgets && Array.isArray(merged.budgets)) {
@@ -2121,8 +2123,11 @@ export class AppStateApiService {
       ),
       dueDate: (() => {
         const v = (saved as any).due_date ?? saved.dueDate;
-        if (v == null || String(v).trim() === '') return undefined;
-        return parseStoredDateToYyyyMmDdInput(String(v));
+        if (v != null && String(v).trim() !== '') {
+          return parseStoredDateToYyyyMmDdInput(String(v));
+        }
+        const issueFallback = (saved as any).issue_date || saved.issueDate || toLocalDateString(new Date());
+        return parseStoredDateToYyyyMmDdInput(String(issueFallback));
       })(),
       invoiceType: (saved as any).invoice_type || saved.invoiceType || 'Rental',
       description: saved.description || undefined,
@@ -2278,7 +2283,7 @@ export class AppStateApiService {
     const saved = await this.budgetsRepo.create(budgetWithId);
 
     // Normalize the response
-    const sv = saved as Record<string, unknown>;
+    const sv = saved as unknown as Record<string, unknown>;
     return {
       id: saved.id,
       categoryId: (sv.category_id as string) || (saved as { categoryId?: string }).categoryId || '',
@@ -2329,7 +2334,7 @@ export class AppStateApiService {
     const { updated, agreements } = await this.rentalAgreementsRepo.repairMissingContactFromPrevious();
     return {
       updated,
-      agreements: agreements.map((a) => this.normalizeRentalAgreement(a as Record<string, unknown>)),
+      agreements: agreements.map((a) => this.normalizeRentalAgreement(a as unknown as Record<string, unknown>)),
     };
   }
 

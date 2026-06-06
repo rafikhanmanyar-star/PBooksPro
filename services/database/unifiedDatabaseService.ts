@@ -6,7 +6,7 @@
 
 import { getPlatform } from '../../utils/platformDetection';
 import { isLocalOnlyMode } from '../../config/apiUrl';
-import { getDatabaseService, DatabaseService } from './databaseService';
+import DatabaseService, { getDatabaseService } from './databaseService';
 
 export type DatabaseMode = 'local' | 'cloud' | 'hybrid' | 'api';
 

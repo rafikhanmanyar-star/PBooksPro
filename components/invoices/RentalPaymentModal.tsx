@@ -424,7 +424,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                             />
                         )}
 
-                        {(isSecurityOnlyInvoice || (effectiveInvoice.securityDepositCharge || 0) > 0) && (
+                        {(isSecurityOnlyInvoice || (effectiveInvoice?.securityDepositCharge || 0) > 0) && (
                             <Input
                                 label={`Security Deposit Paid (Due: ${CURRENCY} ${securityDepositRemaining.toLocaleString()})`}
                                 type="text"

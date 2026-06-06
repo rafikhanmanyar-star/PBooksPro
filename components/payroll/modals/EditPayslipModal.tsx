@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Trash2 } from 'lucide-react';
 import { Payslip, PayrollEmployee, normalizePayslip } from '../types';
 import { storageService } from '../services/storageService';
-import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
+import { isAccountingBackedByRemoteApi, isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { syncPayrollFromServer } from '../services/payrollSync';
 

@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect, useCallback, memo } from 'react';
 import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
-import { Page, Project, TransactionType, InvoiceStatus, RentalAgreementStatus } from '../../types';
+import { Page, Project, TransactionType, InvoiceStatus, RentalAgreementStatus, AppState } from '../../types';
 import { useKpis } from '../../context/KPIContext';
 import KPICard from './KPI_Card';
 import Button from '../ui/Button';
@@ -92,7 +92,7 @@ const DashboardPage: React.FC = () => {
         return idsToShow.map(id => {
             const kpiDef = allKpis.find(k => k.id === id);
             if (!kpiDef) return null;
-            const amount = kpiDef.getData ? kpiDef.getData(kpiState) : 0;
+            const amount = kpiDef.getData ? kpiDef.getData(kpiState as AppState) : 0;
             return { ...kpiDef, amount, onClick: () => openDrilldown(kpiDef) };
         }).filter((k): k is Exclude<typeof k, null> => k !== null);
     }, [dashboardConfig, kpiState, allKpis, openDrilldown]);

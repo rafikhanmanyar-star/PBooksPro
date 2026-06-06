@@ -8,6 +8,8 @@ import {
     ProjectAgreementStatus,
     normalizeProjectAgreementStatus,
     InvoiceStatus,
+    ProjectAgreement,
+    Contact,
 } from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -23,11 +25,17 @@ import ComboBox from '../ui/ComboBox';
 type SortKey = 'returnNumber' | 'agreementNumber' | 'client' | 'date' | 'status' | 'refundAmount';
 type StatusFilter = 'all' | SalesReturnStatus;
 
+type EnrichedSalesReturn = SalesReturn & {
+    agreement?: ProjectAgreement;
+    client?: Contact;
+    unpaidRefundAmount?: number;
+};
+
 const SalesReturnsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-    const [returnToView, setReturnToView] = useState<SalesReturn | null>(null);
+    const [returnToView, setReturnToView] = useState<EnrichedSalesReturn | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [agreementForReturn, setAgreementForReturn] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });

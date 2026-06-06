@@ -68,7 +68,15 @@ interface AuthContextType extends AuthState {
   unifiedLogin: (organizationEmail: string, username: string, password: string) => Promise<void>;
   registerTenant: (data: TenantRegistrationData) => Promise<{ tenantId: string; trialDaysRemaining: number }>;
   logout: () => void;
-  checkLicenseStatus: () => Promise<{ isValid: boolean; daysRemaining?: number; type?: string; modules?: string[] }>;
+  checkLicenseStatus: () => Promise<{
+    isValid?: boolean;
+    licenseType?: string;
+    licenseStatus?: string;
+    expiryDate?: string | null;
+    daysRemaining?: number;
+    isExpired?: boolean;
+    modules?: string[];
+  }>;
 }
 
 export interface TenantRegistrationData {
@@ -288,7 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         // Use sendBeacon for more reliable delivery during page unload
         const token = apiClient.getToken();
-        if (token && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        if (token && typeof navigator !== 'undefined') {
           // Construct logout URL (same host as app so works when opened from another PC)
           const API_BASE_URL = getApiBaseUrl();
           const logoutUrl = `${API_BASE_URL}/auth/logout`;

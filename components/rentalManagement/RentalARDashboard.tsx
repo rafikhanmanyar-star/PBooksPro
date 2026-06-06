@@ -338,8 +338,9 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
           // Sub-children: Tenants within this property
           const tenantGrouped = new Map<string, Invoice[]>();
           for (const inv of propInvs) {
-            if (!tenantGrouped.has(inv.contactId)) tenantGrouped.set(inv.contactId, []);
-            tenantGrouped.get(inv.contactId)!.push(inv);
+            const contactKey = inv.contactId ?? '';
+            if (!tenantGrouped.has(contactKey)) tenantGrouped.set(contactKey, []);
+            tenantGrouped.get(contactKey)!.push(inv);
           }
 
           const tenantChildren: ARTreeNode[] = Array.from(tenantGrouped.entries()).map(([contactId, tInvs]) => {
@@ -385,8 +386,9 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
 
         const tenantGrouped = new Map<string, Invoice[]>();
         for (const inv of invs) {
-          if (!tenantGrouped.has(inv.contactId)) tenantGrouped.set(inv.contactId, []);
-          tenantGrouped.get(inv.contactId)!.push(inv);
+          const contactKey = inv.contactId ?? '';
+          if (!tenantGrouped.has(contactKey)) tenantGrouped.set(contactKey, []);
+          tenantGrouped.get(contactKey)!.push(inv);
         }
 
         const children: ARTreeNode[] = Array.from(tenantGrouped.entries()).map(([contactId, tInvs]) => {
@@ -412,8 +414,9 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     if (viewBy === 'tenant') {
       const grouped = new Map<string, Invoice[]>();
       for (const inv of filteredInvoices) {
-        if (!grouped.has(inv.contactId)) grouped.set(inv.contactId, []);
-        grouped.get(inv.contactId)!.push(inv);
+        const contactKey = inv.contactId ?? '';
+        if (!grouped.has(contactKey)) grouped.set(contactKey, []);
+        grouped.get(contactKey)!.push(inv);
       }
 
       return Array.from(grouped.entries()).map(([contactId, invs]) => {
@@ -461,8 +464,9 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
 
             const tenantGrouped = new Map<string, Invoice[]>();
             for (const inv of pInvs) {
-              if (!tenantGrouped.has(inv.contactId)) tenantGrouped.set(inv.contactId, []);
-              tenantGrouped.get(inv.contactId)!.push(inv);
+              const contactKey = inv.contactId ?? '';
+              if (!tenantGrouped.has(contactKey)) tenantGrouped.set(contactKey, []);
+              tenantGrouped.get(contactKey)!.push(inv);
             }
 
             const tenantChildren: ARTreeNode[] = Array.from(tenantGrouped.entries()).map(([cId, tInvs]) => {
@@ -611,7 +615,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
         type: 'Invoice',
         reference: inv.invoiceNumber || '',
         date: inv.issueDate,
-        accountName: contactsById.get(inv.contactId)?.name || 'Unknown',
+        accountName: contactsById.get(inv.contactId ?? '')?.name || 'Unknown',
         amount: inv.amount,
         remainingAmount: inv.amount - inv.paidAmount,
         raw: inv,
@@ -820,7 +824,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   const contactPropByInvoiceId = useMemo(() => {
     const map = new Map<string, { contactName: string; propertyName: string }>();
     for (const inv of sortedInvoices) {
-      const contact = contactsById.get(inv.contactId);
+      const contact = contactsById.get(inv.contactId ?? '');
       const prop = inv.propertyId ? propertiesById.get(inv.propertyId) : null;
       map.set(inv.id, {
         contactName: contact?.name || '—',

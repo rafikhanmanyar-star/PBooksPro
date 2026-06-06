@@ -22,7 +22,8 @@ import {
   PayrollStatus,
   normalizeEmployee,
   normalizePayrollRun,
-  normalizePayslip
+  normalizePayslip,
+  normalizeDepartment
 } from '../types';
 
 // Local storage keys for offline/demo mode
@@ -217,7 +218,7 @@ export const storageService = {
     const employees = raw.map(normalizeEmployee);
     // Deduplicate by id (keep last occurrence) so one row per employee
     const byId = new Map<string, PayrollEmployee>();
-    employees.forEach(emp => byId.set(emp.id, emp));
+    employees.forEach((emp: PayrollEmployee) => byId.set(emp.id, emp));
     return Array.from(byId.values());
   },
 
@@ -256,7 +257,7 @@ export const storageService = {
       created_by: userId,
       created_at: new Date().toISOString()
     };
-    const existingIndex = employees.findIndex(e => e.id === newEmployee.id);
+    const existingIndex = employees.findIndex((e: PayrollEmployee) => e.id === newEmployee.id);
     if (existingIndex >= 0) {
       employees[existingIndex] = newEmployee;
     } else {
@@ -271,7 +272,7 @@ export const storageService = {
 
   updateEmployee(tenantId: string, employee: PayrollEmployee, userId: string): void {
     const employees = this.getEmployees(tenantId);
-    const index = employees.findIndex(e => e.id === employee.id);
+    const index = employees.findIndex((e: PayrollEmployee) => e.id === employee.id);
     if (index !== -1) {
       employees[index] = {
         ...employee,
@@ -288,7 +289,7 @@ export const storageService = {
 
   deleteEmployee(tenantId: string, employeeId: string): void {
     const employees = this.getEmployees(tenantId);
-    const filtered = employees.filter(e => e.id !== employeeId);
+    const filtered = employees.filter((e: PayrollEmployee) => e.id !== employeeId);
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(filtered));
 
     // Invalidate cache and persist updated list to DB
@@ -320,7 +321,7 @@ export const storageService = {
 
   updatePayrollRun(tenantId: string, run: PayrollRun, userId: string): void {
     const runs = this.getPayrollRuns(tenantId);
-    const index = runs.findIndex(r => r.id === run.id);
+    const index = runs.findIndex((r: PayrollRun) => r.id === run.id);
     if (index !== -1) {
       runs[index] = {
         ...run,
@@ -335,9 +336,9 @@ export const storageService = {
   /** Delete a payroll run from storage and DB. Use for empty/phantom runs (e.g. 0 employees). */
   deletePayrollRun(tenantId: string, runId: string): boolean {
     const runs = this.getPayrollRuns(tenantId);
-    const index = runs.findIndex(r => r.id === runId);
+    const index = runs.findIndex((r: PayrollRun) => r.id === runId);
     if (index === -1) return false;
-    const next = runs.filter(r => r.id !== runId);
+    const next = runs.filter((r: PayrollRun) => r.id !== runId);
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYROLL_RUNS), JSON.stringify(next));
     persistPayrollRunsToDb(tenantId, next).catch(() => {});
     deletePayrollRunFromDb(tenantId, runId).catch(() => {});
@@ -381,12 +382,12 @@ export const storageService = {
   },
 
   getPayslipsByRunId(tenantId: string, payrollRunId: string): Payslip[] {
-    return this.getPayslips(tenantId).filter(ps => ps.payroll_run_id === payrollRunId);
+    return this.getPayslips(tenantId).filter((ps: Payslip) => ps.payroll_run_id === payrollRunId);
   },
 
   getPayslipByRunAndEmployee(tenantId: string, payrollRunId: string, employeeId: string): Payslip | null {
     const list = this.getPayslips(tenantId);
-    return list.find(ps => ps.payroll_run_id === payrollRunId && ps.employee_id === employeeId) || null;
+    return list.find((ps: Payslip) => ps.payroll_run_id === payrollRunId && ps.employee_id === employeeId) || null;
   },
 
   addPayslip(tenantId: string, payslip: Payslip): void {
@@ -398,7 +399,7 @@ export const storageService = {
 
   updatePayslip(tenantId: string, payslip: Payslip, userId?: string): void {
     const list = this.getPayslips(tenantId);
-    const index = list.findIndex(ps => ps.id === payslip.id);
+    const index = list.findIndex((ps: Payslip) => ps.id === payslip.id);
     if (index !== -1) {
       const next = list.slice();
       next[index] = { ...payslip, updated_at: new Date().toISOString() };
@@ -407,10 +408,10 @@ export const storageService = {
 
       const runId = payslip.payroll_run_id;
       const runs = this.getPayrollRuns(tenantId);
-      const run = runs.find(r => r.id === runId);
+      const run = runs.find((r: PayrollRun) => r.id === runId);
       if (run) {
-        const runPayslips = next.filter(p => p.payroll_run_id === runId);
-        const total_amount = runPayslips.reduce((s, p) => s + p.net_pay, 0);
+        const runPayslips = next.filter((p: Payslip) => p.payroll_run_id === runId);
+        const total_amount = runPayslips.reduce((s: number, p: Payslip) => s + p.net_pay, 0);
         this.updatePayrollRun(tenantId, {
           ...run,
           total_amount,
@@ -424,9 +425,9 @@ export const storageService = {
   /** Delete a payslip (paid or unpaid). Recalculates run total and employee_count. If run has no payslips left, sets run to DRAFT so it no longer appears in Payment History. */
   deletePayslip(tenantId: string, payslipId: string, userId: string): boolean {
     const list = this.getPayslips(tenantId);
-    const ps = list.find(p => p.id === payslipId);
+    const ps = list.find((p: Payslip) => p.id === payslipId);
     if (!ps) return false;
-    const next = list.filter(p => p.id !== payslipId);
+    const next = list.filter((p: Payslip) => p.id !== payslipId);
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PAYSLIPS), JSON.stringify(next));
     persistPayrollToDbInOrder(tenantId, this.getPayrollRuns(tenantId), this.getEmployees(tenantId), next, this.getDepartments(tenantId), this.getGradeLevels(tenantId)).catch(() => {});
 
@@ -434,11 +435,11 @@ export const storageService = {
 
     const runId = ps.payroll_run_id;
     const runs = this.getPayrollRuns(tenantId);
-    const run = runs.find(r => r.id === runId);
+    const run = runs.find((r: PayrollRun) => r.id === runId);
     if (run) {
-      const runPayslips = next.filter(p => p.payroll_run_id === runId);
-      const total_amount = runPayslips.reduce((s, p) => s + p.net_pay, 0);
-      const allRemainingPaid = runPayslips.length > 0 && runPayslips.every(p => p.is_paid);
+      const runPayslips = next.filter((p: Payslip) => p.payroll_run_id === runId);
+      const total_amount = runPayslips.reduce((s: number, p: Payslip) => s + p.net_pay, 0);
+      const allRemainingPaid = runPayslips.length > 0 && runPayslips.every((p: Payslip) => p.is_paid);
       const newStatus = runPayslips.length === 0 ? PayrollStatus.DRAFT : (allRemainingPaid ? PayrollStatus.PAID : PayrollStatus.DRAFT);
       this.updatePayrollRun(tenantId, {
         ...run,
@@ -462,7 +463,7 @@ export const storageService = {
 
   updateEarningType(tenantId: string, type: EarningType, _userId: string): void {
     const types = this.getEarningTypes(tenantId);
-    const index = types.findIndex(t => t.name === type.name);
+    const index = types.findIndex((t: EarningType) => t.name === type.name);
     if (index !== -1) {
       types[index] = type;
     } else {
@@ -491,7 +492,7 @@ export const storageService = {
 
   updateDeductionType(tenantId: string, type: DeductionType, _userId: string): void {
     const types = this.getDeductionTypes(tenantId);
-    const index = types.findIndex(t => t.name === type.name);
+    const index = types.findIndex((t: DeductionType) => t.name === type.name);
     if (index !== -1) {
       types[index] = type;
     } else {
@@ -510,7 +511,7 @@ export const storageService = {
 
   updateGradeLevel(tenantId: string, grade: GradeLevel, userId: string): void {
     const grades = this.getGradeLevels(tenantId);
-    const index = grades.findIndex(g => g.id === grade.id);
+    const index = grades.findIndex((g: GradeLevel) => g.id === grade.id);
     if (index !== -1) {
       grades[index] = { ...grade, updated_by: userId };
     } else {
@@ -530,7 +531,7 @@ export const storageService = {
 
   updateDepartment(tenantId: string, department: Department, userId: string): void {
     const departments = this.getDepartments(tenantId);
-    const index = departments.findIndex(d => d.id === department.id);
+    const index = departments.findIndex((d: Department) => d.id === department.id);
     if (index !== -1) {
       departments[index] = { ...department, updated_by: userId };
     } else {
@@ -542,7 +543,7 @@ export const storageService = {
 
   deleteDepartment(tenantId: string, departmentId: string): void {
     const departments = this.getDepartments(tenantId);
-    const filtered = departments.filter(d => d.id !== departmentId);
+    const filtered = departments.filter((d: Department) => d.id !== departmentId);
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.DEPARTMENTS), JSON.stringify(filtered));
   },
 
@@ -583,7 +584,7 @@ export const storageService = {
 
   updateProject(tenantId: string, project: PayrollProject, userId: string): void {
     const projects = this.getProjects(tenantId);
-    const index = projects.findIndex(p => p.id === project.id);
+    const index = projects.findIndex((p: PayrollProject) => p.id === project.id);
     if (index !== -1) {
       projects[index] = { ...project, updated_by: userId };
       localStorage.setItem(getKey(tenantId, STORAGE_KEYS.PROJECTS), JSON.stringify(projects));
@@ -678,7 +679,7 @@ export const storageService = {
       const payslipLists = await Promise.all(runs.map((r) => payrollApi.getPayslipsByRun(r.id)));
       const serverPayslips = payslipLists.flat().map((p) => normalizePayslip(p));
       const existing = this.getPayslips(tenantId);
-      const keepLocal = existing.filter((p) => !serverRunIds.has(p.payroll_run_id));
+      const keepLocal = existing.filter((p: Payslip) => !serverRunIds.has(p.payroll_run_id));
       const byId = new Map<string, Payslip>();
       for (const p of [...keepLocal, ...serverPayslips]) {
         byId.set(p.id, p);

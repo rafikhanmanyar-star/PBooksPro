@@ -119,7 +119,7 @@ function compareEquityLedgerRows(a: EquityLedgerRow, b: EquityLedgerRow, key: Eq
 const getEntityColorStyle = (projectId: string | undefined, buildingId: string | undefined, state: any) => {
     if (!state.enableColorCoding) return {};
 
-    let color = null;
+    let color: string | null = null;
     if (projectId) {
         const project = state.projects.find((p: any) => p.id === projectId);
         if (project?.color) color = project.color;

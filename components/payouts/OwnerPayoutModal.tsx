@@ -806,12 +806,12 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             }
         }
 
-        const singlePropertyId = propertyBreakdown.length === 1 ? propertyBreakdown[0].propertyId : undefined;
+        const payoutPropertyId = propertyBreakdown.length === 1 ? propertyBreakdown[0].propertyId : undefined;
         const singleProp = propertyBreakdown.length === 1 ? state.properties.find(p => p.id === propertyBreakdown[0].propertyId) : null;
         const payoutTransaction = buildTransaction({
             amount: parseFloat(amount),
             buildingId: buildingId || preSelectedBuildingId || singleProp?.buildingId,
-            propertyId: singlePropertyId,
+            propertyId: payoutPropertyId,
             payeeId: owner.id,
             payeeName: owner.name,
         });

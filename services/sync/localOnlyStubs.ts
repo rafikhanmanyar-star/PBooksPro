@@ -14,8 +14,8 @@ export interface WebSocketDebugState {
   lastError?: string;
 }
 
-const noop = () => {};
-const asyncNoop = async () => {};
+const noop = (..._args: unknown[]) => {};
+const asyncNoop = async (..._args: unknown[]) => {};
 
 export const syncManagerStub = {
   destroy: noop,
@@ -29,8 +29,14 @@ export const syncManagerStub = {
   set isSyncing(_: boolean) {},
 };
 
+export type SyncQueuePendingItem = {
+  type: string;
+  action: string;
+  data: unknown;
+};
+
 export const syncQueueStub = {
-  getPendingItems: async (_tenantId: string) => [],
+  getPendingItems: async (_tenantId: string): Promise<SyncQueuePendingItem[]> => [],
   enqueue: async () => '',
   clearAll: async (_tenantId: string) => {},
   removePendingByEntity: async (_tenantId: string, _type: string, _id: string) => false,
@@ -99,6 +105,7 @@ export const lockManagerStub = {
 
 export const offlineLockManagerStub = {
   setUserContext: noop,
+  destroy: noop,
 };
 
 export const bidirectionalSyncStub = {

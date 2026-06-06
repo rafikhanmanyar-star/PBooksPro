@@ -32,6 +32,7 @@ import {
   offlineLockManagerStub as _offlineLockManager,
   realtimeSyncHandlerStub as _realtimeSyncHandler,
   websocketClientStub as _websocketClient,
+  type ConnectionStatus,
 } from './services/sync/localOnlyStubs';
 const getConnectionMonitor = () => _connectionMonitor;
 const getSyncManager = () => _syncManager;
@@ -308,7 +309,7 @@ const App: React.FC = () => {
           const realtimeSyncHandler = getRealtimeSyncHandler();
 
           connectionMonitor.startMonitoring({
-            onStatusChange: (status) => devLogger.log(`[App] Connection: ${status}`),
+            onStatusChange: (status: ConnectionStatus) => devLogger.log(`[App] Connection: ${status}`),
             onOnline: () => devLogger.log('[App] ✅ Online'),
             onOffline: () => devLogger.log('[App] ⚠️ Offline'),
           });

@@ -151,7 +151,7 @@ const EnhancedLedgerPage: React.FC = () => {
                     const inv = lookupMaps.invoices.get(t.invoiceId);
                     return inv?.invoiceType === InvoiceType.RENTAL;
                 }
-                const cat = lookupMaps.categories.get(t.categoryId);
+                const cat = lookupMaps.categories.get(t.categoryId ?? '');
                 return cat?.isRental;
             });
 
@@ -273,9 +273,9 @@ const EnhancedLedgerPage: React.FC = () => {
             const lowerQuery = searchQuery.toLowerCase();
             filtered = filtered.filter(t => matchCondition(t, tx => {
                 // Use lookup maps for O(1) access instead of O(n) .find()
-                const accountName = lookupMaps.accounts.get(tx.accountId)?.name.toLowerCase() || '';
-                const categoryName = lookupMaps.categories.get(tx.categoryId)?.name.toLowerCase() || '';
-                const contactName = lookupMaps.contacts.get(tx.contactId)?.name.toLowerCase() || '';
+                const accountName = lookupMaps.accounts.get(tx.accountId ?? '')?.name.toLowerCase() || '';
+                const categoryName = lookupMaps.categories.get(tx.categoryId ?? '')?.name.toLowerCase() || '';
+                const contactName = lookupMaps.contacts.get(tx.contactId ?? '')?.name.toLowerCase() || '';
                 const description = tx.description?.toLowerCase() || '';
                 const amount = tx.amount.toString();
 
@@ -314,16 +314,16 @@ const EnhancedLedgerPage: React.FC = () => {
                     valB = (b.description || '').toLowerCase();
                     break;
                 case 'account':
-                    valA = (lookupMaps.accounts.get(a.accountId)?.name || '').toLowerCase();
-                    valB = (lookupMaps.accounts.get(b.accountId)?.name || '').toLowerCase();
+                    valA = (lookupMaps.accounts.get(a.accountId ?? '')?.name || '').toLowerCase();
+                    valB = (lookupMaps.accounts.get(b.accountId ?? '')?.name || '').toLowerCase();
                     break;
                 case 'category':
-                    valA = (lookupMaps.categories.get(a.categoryId)?.name || '').toLowerCase();
-                    valB = (lookupMaps.categories.get(b.categoryId)?.name || '').toLowerCase();
+                    valA = (lookupMaps.categories.get(a.categoryId ?? '')?.name || '').toLowerCase();
+                    valB = (lookupMaps.categories.get(b.categoryId ?? '')?.name || '').toLowerCase();
                     break;
                 case 'contact':
-                    valA = (lookupMaps.contacts.get(a.contactId)?.name || '').toLowerCase();
-                    valB = (lookupMaps.contacts.get(b.contactId)?.name || '').toLowerCase();
+                    valA = (lookupMaps.contacts.get(a.contactId ?? '')?.name || '').toLowerCase();
+                    valB = (lookupMaps.contacts.get(b.contactId ?? '')?.name || '').toLowerCase();
                     break;
                 default:
                     valA = a.date;
@@ -384,15 +384,15 @@ const EnhancedLedgerPage: React.FC = () => {
                     break;
                 case 'account':
                     key = tx.accountId || 'no-account';
-                    title = lookupMaps.accounts.get(tx.accountId)?.name || 'No Account';
+                    title = lookupMaps.accounts.get(tx.accountId ?? '')?.name || 'No Account';
                     break;
                 case 'category':
                     key = tx.categoryId || 'no-category';
-                    title = lookupMaps.categories.get(tx.categoryId)?.name || 'No Category';
+                    title = lookupMaps.categories.get(tx.categoryId ?? '')?.name || 'No Category';
                     break;
                 case 'contact':
                     key = tx.contactId || 'no-contact';
-                    title = lookupMaps.contacts.get(tx.contactId)?.name || 'No Contact';
+                    title = lookupMaps.contacts.get(tx.contactId ?? '')?.name || 'No Contact';
                     break;
             }
 
@@ -419,13 +419,13 @@ const EnhancedLedgerPage: React.FC = () => {
                         title = firstTx.type;
                         break;
                     case 'account':
-                        title = lookupMaps.accounts.get(firstTx.accountId)?.name || 'No Account';
+                        title = lookupMaps.accounts.get(firstTx.accountId ?? '')?.name || 'No Account';
                         break;
                     case 'category':
-                        title = lookupMaps.categories.get(firstTx.categoryId)?.name || 'No Category';
+                        title = lookupMaps.categories.get(firstTx.categoryId ?? '')?.name || 'No Category';
                         break;
                     case 'contact':
-                        title = lookupMaps.contacts.get(firstTx.contactId)?.name || 'No Contact';
+                        title = lookupMaps.contacts.get(firstTx.contactId ?? '')?.name || 'No Contact';
                         break;
                 }
             }
@@ -456,19 +456,19 @@ const EnhancedLedgerPage: React.FC = () => {
         }
         const getAccountDisplay = (tx: Transaction & { balance?: number }) => {
             if (tx.type === TransactionType.TRANSFER) {
-                const fromName = lookupMaps.accounts.get(tx.fromAccountId)?.name ?? '';
-                const toName = lookupMaps.accounts.get(tx.toAccountId)?.name ?? '';
+                const fromName = lookupMaps.accounts.get(tx.fromAccountId ?? '')?.name ?? '';
+                const toName = lookupMaps.accounts.get(tx.toAccountId ?? '')?.name ?? '';
                 return fromName && toName ? `${fromName} → ${toName}` : fromName || toName || '';
             }
-            return lookupMaps.accounts.get(tx.accountId)?.name ?? '';
+            return lookupMaps.accounts.get(tx.accountId ?? '')?.name ?? '';
         };
         const rows = transactionsWithBalance.map(tx => ({
             Date: tx.date,
             Type: tx.type,
             Description: tx.description ?? '',
             Account: getAccountDisplay(tx),
-            Category: lookupMaps.categories.get(tx.categoryId)?.name ?? '',
-            Contact: lookupMaps.contacts.get(tx.contactId)?.name ?? '',
+            Category: lookupMaps.categories.get(tx.categoryId ?? '')?.name ?? '',
+            Contact: lookupMaps.contacts.get(tx.contactId ?? '')?.name ?? '',
             'Amount (IN)': tx.type === TransactionType.INCOME ? tx.amount : '',
             'Amount (OUT)': (tx.type === TransactionType.EXPENSE || tx.type === TransactionType.TRANSFER || tx.type === TransactionType.LOAN) ? tx.amount : '',
             Balance: (tx as Transaction & { balance?: number }).balance ?? 0,

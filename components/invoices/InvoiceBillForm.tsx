@@ -339,7 +339,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   });
 
   const [staffId, setStaffId] = useState((defaults && 'staffId' in defaults ? (defaults as Bill).staffId : ''));
-  const [contractId, setContractId] = useState((defaults && 'contractId' in defaults ? (defaults as Bill).contractId : ''));
+  const [contractId, setContractId] = useState((defaults && 'contractId' in defaults ? (defaults as Bill).contractId : '') ?? '');
 
   const [unitId, setUnitId] = useState(
     defaults && 'unitId' in defaults
@@ -386,9 +386,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const [description, setDescription] = useState(defaults.description || '');
 
   const [agreementId, setAgreementId] = useState(
-    defaults && 'agreementId' in defaults ? defaults.agreementId :
+    (defaults && 'agreementId' in defaults ? defaults.agreementId :
       (defaults && 'projectAgreementId' in defaults ? (defaults as Bill).projectAgreementId :
-        agreementForInvoice?.id || '')
+        agreementForInvoice?.id || '')) ?? ''
   );
 
   const isAgreementCancelled = useMemo(() => {
@@ -804,7 +804,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     const templates = (state.recurringInvoiceTemplates || []).filter(t => !t.deletedAt);
     let resolvedPropId = propertyId;
     if (!resolvedPropId && agreementId) {
-      resolvedPropId = state.rentalAgreements.find(ra => ra.id === agreementId)?.propertyId;
+      resolvedPropId = state.rentalAgreements.find(ra => ra.id === agreementId)?.propertyId ?? '';
     }
     return templates.find(
       t =>
@@ -1215,6 +1215,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           ...(itemToEdit as Invoice),
           ...formData,
           categoryId: resolvedCategoryId,
+          dueDate: formData.dueDate ?? (itemToEdit as Invoice).dueDate,
         };
         const paidAmt = merged.paidAmount || 0;
         const invAmt = merged.amount || 0;
@@ -1252,8 +1253,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       const newData = { ...formData, id: newBillRowId(), paidAmount: 0, status: InvoiceStatus.UNPAID };
       if (type === 'invoice') {
         // Update Settings Next Number if auto-generated
-        let settingsToUpdate = null;
-        let updateType = null;
+        let settingsToUpdate: typeof projectInvoiceSettings | null = null;
+        let updateType: 'UPDATE_PROJECT_INVOICE_SETTINGS' | 'UPDATE_RENTAL_INVOICE_SETTINGS' | null = null;
 
         if (invoiceType === InvoiceType.INSTALLMENT) {
           if (number && number.startsWith(projectInvoiceSettings.prefix)) {
@@ -1300,6 +1301,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           ...newData,
           invoiceType: invoiceType!,
           categoryId: resolvedCategoryId,
+          dueDate: newData.dueDate ?? newData.issueDate,
         };
         dispatch({ type: 'ADD_INVOICE', payload: newInvoice });
         showToast("Invoice created successfully");

@@ -521,7 +521,7 @@ const MarketingPage: React.FC = () => {
 
     // Installment Schedule
     const schedule = useMemo(() => {
-        const items = [];
+        const items: { index: string; dueDate: string; amount: number; balance: number }[] = [];
         const baseDate = new Date();
         
         // Initial Down Payment

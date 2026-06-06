@@ -407,7 +407,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
         const isExpanded = expandedIds.has(record.id);
         const description = record.raw.description || '-';
 
-        let statusBadge = null;
+        let statusBadge: React.ReactNode = null;
         if (record.type === 'Invoice') {
             const inv = record.raw as Invoice;
             // Match Due column: use ledger-based remainingAmount when parent set it (InvoicesPage / effPaid).
@@ -650,7 +650,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
         ></div>
     );
 
-    const toolbarHasContent = !hideTypeDateFiltersInToolbar || (selectedCount > 0 && onBulkPaymentClick) || showButtons;
+    const toolbarHasContent = !hideTypeDateFiltersInToolbar || ((selectedCount ?? 0) > 0 && onBulkPaymentClick) || showButtons;
 
     return (
         <div className="flex flex-col h-full bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden min-w-0 transition-shadow duration-ds">
@@ -681,7 +681,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
                             </Select>
                         </>
                     )}
-                    {selectedCount > 0 && onBulkPaymentClick && (
+                    {(selectedCount ?? 0) > 0 && onBulkPaymentClick && (
                         <div className="flex items-center gap-2 animate-fade-in pl-2 border-l border-app-border">
                             <span className="text-xs font-semibold text-app-muted">{selectedCount} selected</span>
                             <span className="text-xs font-bold text-app-text tabular-nums">{CURRENCY} {selectedTotalAmount.toLocaleString()} total</span>

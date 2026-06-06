@@ -13,7 +13,7 @@ const suppressSqlJsWarnings = () => {
   return {
     name: 'suppress-sqljs-warnings',
     enforce: 'pre' as const,
-    resolveId(id, importer) {
+    resolveId(id: string, importer: string | undefined) {
       // If sql.js is trying to import Node.js modules, provide empty stubs
       if (importer && (importer.includes('sql.js') || importer.includes('sql-wasm.js'))) {
         if (id === 'fs' || id === 'path' || id === 'crypto') {
@@ -23,7 +23,7 @@ const suppressSqlJsWarnings = () => {
       }
       return null;
     },
-    load(id) {
+    load(id: string) {
       // Provide empty stubs for Node.js modules when imported by sql.js
       if (id === '\0fs-stub' || id === '\0path-stub' || id === '\0crypto-stub') {
         return 'export default {};';

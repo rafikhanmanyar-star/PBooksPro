@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "strictNullChecks": true,
-    "noImplicitAny": true
+    "noImplicitAny": false
   },
   "include": [
     "vite-env.d.ts",

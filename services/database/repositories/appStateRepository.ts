@@ -17,6 +17,7 @@ import {
     TransactionType,
     PersonalCategoryEntry,
     PersonalTransactionEntry,
+    InstallmentPlan,
 } from '../../../types';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../../utils/dateUtils';
 import { getDatabaseService } from '../databaseService';
@@ -1328,6 +1329,7 @@ export class AppStateRepository {
                             const contractIds = new Set((state.contracts || []).map(c => c.id));
                             const propertyIds = new Set(state.properties.map(p => p.id));
                             const unitIds = new Set(state.units.map(u => u.id));
+                            const invoiceIds = new Set(state.invoices.map(i => i.id));
 
                             try {
                                 this.usersRepo.saveAll(state.users, skipOrphan);
@@ -1449,7 +1451,6 @@ export class AppStateRepository {
                                         contactId: (cid && contactIds.has(cid)) ? cid : (cid || null),
                                     };
                                 });
-                                const invoiceIds = new Set(validInvoices.map(i => i.id));
                                 this.invoicesRepo.saveAll(validInvoices, skipOrphan);
                                 // Sanitize bills: null contact_id/vendor_id if not in batch (avoids FK constraint failed)
                                 const sanitizedBills = state.bills.map(b => {
@@ -1550,7 +1551,7 @@ export class AppStateRepository {
 
                             try {
                                 const hydratedDocuments = (state.documents || []).map(doc => {
-                                    const raw = doc as Record<string, unknown>;
+                                    const raw = doc as unknown as Record<string, unknown>;
                                     const fileData = raw.fileData ?? raw.file_data ?? documentFileDataById.get(doc.id) ?? '';
                                     return { ...doc, fileData };
                                 });
@@ -1839,8 +1840,8 @@ export class AppStateRepository {
         }
     }
 
-    private getRepoByEntityKey(entityKey: string): BaseRepository<unknown> | null {
-        const map: Record<string, BaseRepository<unknown>> = {
+    private getRepoByEntityKey(entityKey: string): BaseRepository<Record<string, any>> | null {
+        const map: Record<string, BaseRepository<Record<string, any>>> = {
             accounts: this.accountsRepo,
             contacts: this.contactsRepo,
             categories: this.categoriesRepo,
@@ -1903,11 +1904,11 @@ export class AppStateRepository {
     private syncPlCategoryMappings(categories: AppState['categories']): void {
         try {
             const tenantId = getCurrentTenantId() || '';
-            this.db.run(`DELETE FROM pl_category_mapping WHERE tenant_id = ?`, [tenantId]);
+            this.db.execute(`DELETE FROM pl_category_mapping WHERE tenant_id = ?`, [tenantId]);
             for (const c of categories) {
                 if (!c.plSubType) continue;
                 const id = `plmap-${tenantId}-${c.id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-                this.db.run(
+                this.db.execute(
                     `INSERT OR REPLACE INTO pl_category_mapping (id, tenant_id, category_id, pl_type, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
                     [id, tenantId, c.id, c.plSubType]
                 );

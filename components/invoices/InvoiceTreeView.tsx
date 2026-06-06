@@ -131,7 +131,7 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' });
 
     const [colWidths, setColWidths] = useState({ count: 64, balance: 96 });
-    const resizingCol = useRef<SortKey | null>(null);
+    const resizingCol = useRef<'count' | 'balance' | null>(null);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
