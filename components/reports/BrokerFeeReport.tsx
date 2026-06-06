@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useRentalReportAppState, useStateSelector } from '../../hooks/useSelectiveState';
 import { ContactType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -52,7 +52,8 @@ interface PropertyReportRow {
 }
 
 const BrokerFeeReport: React.FC = () => {
-    const { state } = useAppContext();
+    const state = useRentalReportAppState();
+    const appWhatsAppMode = useStateSelector((s) => s.whatsAppMode);
     const { showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();
@@ -281,7 +282,7 @@ const BrokerFeeReport: React.FC = () => {
 
             sendOrOpenWhatsApp(
                 { contact: selectedBroker, message, phoneNumber: selectedBroker.contactNo },
-                () => state.whatsAppMode,
+                () => appWhatsAppMode,
                 openChat
             );
         } catch (error) {

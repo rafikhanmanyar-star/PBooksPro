@@ -1,7 +1,12 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RentalAgreement, RentalAgreementStatus, InvoiceStatus, Invoice } from '../../types';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useContacts,
+    useDispatchOnly,
+    useInvoices,
+    useProperties,
+} from '../../hooks/useSelectiveState';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -19,7 +24,10 @@ interface RentalAgreementTerminationModalProps {
 }
 
 const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalProps> = ({ isOpen, onClose, agreement }) => {
-    const { state, dispatch } = useAppContext();
+    const invoices = useInvoices();
+    const contacts = useContacts();
+    const properties = useProperties();
+    const dispatch = useDispatchOnly();
     const { showToast } = useNotification();
 
     const [endDate, setEndDate] = useState(toLocalDateString(new Date()));
@@ -28,8 +36,8 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
 
     const allInvoicesForAgreement = useMemo(() => {
         if (!agreement) return [];
-        return state.invoices.filter(inv => inv.agreementId === agreement.id);
-    }, [agreement, state.invoices]);
+        return invoices.filter(inv => inv.agreementId === agreement.id);
+    }, [agreement, invoices]);
 
     const openInvoices = useMemo(() => {
         return allInvoicesForAgreement.filter(inv => inv.status !== InvoiceStatus.PAID);
@@ -88,8 +96,8 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
 
     if (!agreement) return null;
 
-    const tenantName = state.contacts.find(c => c.id === agreement.contactId)?.name || 'Unknown';
-    const propertyName = state.properties.find(p => p.id === agreement.propertyId)?.name || 'Unknown';
+    const tenantName = contacts.find(c => c.id === agreement.contactId)?.name || 'Unknown';
+    const propertyName = properties.find(p => p.id === agreement.propertyId)?.name || 'Unknown';
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`End Agreement #${agreement.agreementNumber}`} size="lg">

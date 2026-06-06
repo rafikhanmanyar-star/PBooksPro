@@ -1,6 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBuildings,
+    useContacts,
+    useProperties,
+    useRentalAgreements,
+} from '../../hooks/useSelectiveState';
 import { RentalAgreementStatus } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';

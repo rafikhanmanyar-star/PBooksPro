@@ -1,9 +1,8 @@
 import React from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useStateSelector } from '../../hooks/useSelectiveState';
 
 const ReportHeader: React.FC = () => {
-    const { state } = useAppContext();
-    const { printSettings } = state;
+    const printSettings = useStateSelector((s) => s.printSettings);
 
     if (!printSettings) return null;
 

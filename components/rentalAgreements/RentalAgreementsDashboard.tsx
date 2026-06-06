@@ -1,5 +1,10 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+  useBuildings,
+  useContacts,
+  useProperties,
+  useRentalAgreements,
+} from '../../hooks/useSelectiveState';
 import { RentalAgreement, RentalAgreementStatus } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
@@ -16,7 +21,10 @@ type ViewBy = 'building' | 'property' | 'tenant' | 'owner';
 type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
 
 const RentalAgreementsDashboard: React.FC = () => {
-  const { state } = useAppContext();
+  const contacts = useContacts();
+  const properties = useProperties();
+  const buildings = useBuildings();
+  const rentalAgreements = useRentalAgreements();
 
   const [viewBy, setViewBy] = useLocalStorage<ViewBy>('agreements_dash_viewBy', 'building');
   const [statusFilter, setStatusFilter] = useLocalStorage<StatusFilter>('agreements_dash_status', 'all');
@@ -35,10 +43,10 @@ const RentalAgreementsDashboard: React.FC = () => {
 
   const [sortConfig, setSortConfig] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'startDate', dir: 'desc' });
 
-  const contactMap = useMemo(() => new Map(state.contacts.map(c => [c.id, c])), [state.contacts]);
-  const propertyMap = useMemo(() => new Map(state.properties.map(p => [p.id, p])), [state.properties]);
-  const buildingMap = useMemo(() => new Map(state.buildings.map(b => [b.id, b])), [state.buildings]);
-  const rentalAgreementMap = useMemo(() => new Map(state.rentalAgreements.map(a => [a.id, a])), [state.rentalAgreements]);
+  const contactMap = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
+  const propertyMap = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
+  const buildingMap = useMemo(() => new Map(buildings.map(b => [b.id, b])), [buildings]);
+  const rentalAgreementMap = useMemo(() => new Map(rentalAgreements.map(a => [a.id, a])), [rentalAgreements]);
 
   const today = useMemo(() => new Date(), []);
   const thirtyDaysLater = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; }, []);
@@ -51,7 +59,7 @@ const RentalAgreementsDashboard: React.FC = () => {
   );
 
   const filteredAgreements = useMemo(() => {
-    let result = [...state.rentalAgreements];
+    let result = [...rentalAgreements];
 
     if (statusFilter === 'active') result = result.filter(a => a.status === RentalAgreementStatus.ACTIVE);
     else if (statusFilter === 'expiring') result = result.filter(isExpiringSoon);
@@ -82,7 +90,7 @@ const RentalAgreementsDashboard: React.FC = () => {
     }
 
     return result;
-  }, [state.rentalAgreements, statusFilter, searchQuery, contactMap, propertyMap, buildingMap, isExpiringSoon]);
+  }, [rentalAgreements, statusFilter, searchQuery, contactMap, propertyMap, buildingMap, isExpiringSoon]);
 
   /** Keeps filters/table in sync while letting React yield during huge tree builds after full API merges. */
   const deferredAgreementsForTree = useDeferredValue(filteredAgreements);
@@ -253,12 +261,12 @@ const RentalAgreementsDashboard: React.FC = () => {
   useEffect(() => {
     const agreementId = sessionStorage.getItem('openRentalAgreementId');
     if (!agreementId) return;
-    const agreement = state.rentalAgreements.find(a => a.id === agreementId);
+    const agreement = rentalAgreements.find(a => a.id === agreementId);
     if (agreement) {
       sessionStorage.removeItem('openRentalAgreementId');
       setSelectedAgreement(agreement);
     }
-  }, [state.rentalAgreements]);
+  }, [rentalAgreements]);
 
   const nodeAgreements = useMemo(() => {
     if (!selectedNode) return filteredAgreements;
@@ -372,12 +380,12 @@ const RentalAgreementsDashboard: React.FC = () => {
   };
 
   const statusCounts = useMemo(() => ({
-    all: state.rentalAgreements.length,
-    active: state.rentalAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).length,
-    expiring: state.rentalAgreements.filter(isExpiringSoon).length,
-    renewed: state.rentalAgreements.filter(a => a.status === RentalAgreementStatus.RENEWED).length,
-    terminated: state.rentalAgreements.filter(a => a.status === RentalAgreementStatus.TERMINATED || a.status === RentalAgreementStatus.EXPIRED).length,
-  }), [state.rentalAgreements, isExpiringSoon]);
+    all: rentalAgreements.length,
+    active: rentalAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).length,
+    expiring: rentalAgreements.filter(isExpiringSoon).length,
+    renewed: rentalAgreements.filter(a => a.status === RentalAgreementStatus.RENEWED).length,
+    terminated: rentalAgreements.filter(a => a.status === RentalAgreementStatus.TERMINATED || a.status === RentalAgreementStatus.EXPIRED).length,
+  }), [rentalAgreements, isExpiringSoon]);
 
   const selectClass = 'ds-input-field px-2 py-1 text-xs cursor-pointer min-w-[100px]';
 

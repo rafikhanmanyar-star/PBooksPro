@@ -1,8 +1,18 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBuildings,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useInvoices,
+    useProperties,
+    useRentalAgreements,
+    useProjects,
+    useStateSelector,
+} from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
-import { AppAction, RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType } from '../../types';
+import { AppAction, RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType, type AppState } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
@@ -32,17 +42,29 @@ const STEPS = ['Property', 'Lease Terms', 'Broker & Review'] as const;
 type Step = 0 | 1 | 2;
 
 const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agreementToEdit }) => {
-    const { state, dispatch } = useAppContext();
+    const contacts = useContacts();
+    const properties = useProperties();
+    const allBuildings = useBuildings();
+    const rentalAgreements = useRentalAgreements();
+    const invoices = useInvoices();
+    const categories = useCategories();
+    const projects = useProjects();
+    const enableColorCoding = useStateSelector((s) => s.enableColorCoding);
+    const agreementSettings = useStateSelector((s) => s.agreementSettings);
+    const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
+    const enableDatePreservation = useStateSelector((s) => s.enableDatePreservation);
+    const lastPreservedDate = useStateSelector((s) => s.lastPreservedDate);
+    const currentUser = useStateSelector((s) => s.currentUser);
+    const dispatch = useDispatchOnly();
     const { showConfirm, showToast, showAlert } = useNotification();
-    const { rentalInvoiceSettings } = state;
 
     const recordLock = useRecordLock({
         recordType: 'rental',
         recordId: agreementToEdit?.id,
         enabled: Boolean(agreementToEdit?.id) && !isLocalOnlyMode(),
-        currentUserId: state.currentUser?.id,
-        currentUserName: state.currentUser?.name,
-        userRole: state.currentUser?.role,
+        currentUserId: currentUser?.id,
+        currentUserName: currentUser?.name,
+        userRole: currentUser?.role,
     });
 
     const handleForceRecordLock = async () => {
@@ -58,10 +80,10 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
     // --- Agreement Number ---
     const getNextAgreementNumber = () => {
-        const settings = state.agreementSettings;
+        const settings = agreementSettings;
         const { prefix, padding, nextNumber } = settings;
         let maxNum = nextNumber;
-        state.rentalAgreements.forEach(a => {
+        rentalAgreements.forEach(a => {
             if (a.agreementNumber?.startsWith(prefix)) {
                 const numPart = parseInt(a.agreementNumber.slice(prefix.length), 10);
                 if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
@@ -73,11 +95,11 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     // --- Form State ---
     const initialBuildingId = useMemo(() => {
         if (agreementToEdit?.propertyId) {
-            const prop = state.properties.find(p => p.id === agreementToEdit.propertyId);
+            const prop = properties.find(p => p.id === agreementToEdit.propertyId);
             return prop?.buildingId || '';
         }
         return '';
-    }, [agreementToEdit, state.properties]);
+    }, [agreementToEdit, properties]);
 
     const [buildingId, setBuildingId] = useState(initialBuildingId);
     const [propertyId, setPropertyId] = useState(agreementToEdit?.propertyId || '');
@@ -94,7 +116,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
     const getDefaultStartDate = () => {
         if (agreementToEdit?.startDate) return new Date(agreementToEdit.startDate);
-        if (state.enableDatePreservation && state.lastPreservedDate && !agreementToEdit) return new Date(state.lastPreservedDate);
+        if (enableDatePreservation && lastPreservedDate && !agreementToEdit) return new Date(lastPreservedDate);
         return new Date();
     };
 
@@ -132,22 +154,22 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const [newTenantInitialName, setNewTenantInitialName] = useState('');
 
     // --- Lookups ---
-    const tenants = useMemo(() => state.contacts.filter(c => c.type === ContactType.TENANT), [state.contacts]);
-    const brokers = useMemo(() => state.contacts.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER), [state.contacts]);
-    const buildings = useMemo(() => state.buildings.map(b => ({ id: b.id, name: b.name })), [state.buildings]);
+    const tenants = useMemo(() => contacts.filter(c => c.type === ContactType.TENANT), [contacts]);
+    const brokers = useMemo(() => contacts.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER), [contacts]);
+    const buildings = useMemo(() => allBuildings.map(b => ({ id: b.id, name: b.name })), [allBuildings]);
 
-    const selectedProperty = useMemo(() => state.properties.find(p => p.id === propertyId), [propertyId, state.properties]);
+    const selectedProperty = useMemo(() => properties.find(p => p.id === propertyId), [propertyId, properties]);
 
     /** Prior terms on same property + tenant (e.g. after marking the old lease Renewed) — optional link for the new agreement. */
     const previousAgreementChoices = useMemo(() => {
         if (!propertyId || !contactId || agreementToEdit) return [];
-        return state.rentalAgreements.filter(
+        return rentalAgreements.filter(
             (ra) =>
                 ra.propertyId === propertyId &&
                 ra.contactId === contactId &&
                 ra.status === RentalAgreementStatus.RENEWED
         );
-    }, [state.rentalAgreements, propertyId, contactId, agreementToEdit]);
+    }, [rentalAgreements, propertyId, contactId, agreementToEdit]);
 
     useEffect(() => {
         if (agreementToEdit) return;
@@ -161,23 +183,23 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const autoOwner = useMemo(() => {
         if (!selectedProperty || !propertyId) return null;
         const d = (startDate || '').slice(0, 10);
-        if (!d) return state.contacts.find(c => c.id === selectedProperty.ownerId) ?? null;
-        const shares = getOwnershipSharesForPropertyOnDate(state, propertyId, d);
+        if (!d) return contacts.find(c => c.id === selectedProperty.ownerId) ?? null;
+        const shares = getOwnershipSharesForPropertyOnDate({ properties }, propertyId, d);
         const primary = primaryOwnerIdFromShares(shares);
         const ownerContactId = primary ?? selectedProperty.ownerId;
-        return state.contacts.find(c => c.id === ownerContactId) ?? null;
+        return contacts.find(c => c.id === ownerContactId) ?? null;
     }, [
         selectedProperty,
         propertyId,
         startDate,
-        state.contacts,
-        state.properties,
+        contacts,
+        properties,
     ]);
 
     // Properties filtered by building + occupancy
     const properties = useMemo(() => {
         const occupiedPropertyIds = new Set(
-            state.rentalAgreements
+            rentalAgreements
                 .filter(ra => {
                     if (ra.status !== RentalAgreementStatus.ACTIVE) return false;
                     if (agreementToEdit && ra.id === agreementToEdit.id) return false;
@@ -185,17 +207,17 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 })
                 .map(ra => ra.propertyId)
         );
-        return state.properties
+        return properties
             .filter(p => {
                 if (buildingId && p.buildingId !== buildingId) return false;
                 if (occupiedPropertyIds.has(p.id)) return false;
                 return true;
             })
             .map(p => {
-                const owner = state.contacts.find(c => c.id === p.ownerId);
+                const owner = contacts.find(c => c.id === p.ownerId);
                 return { id: p.id, name: `${p.name}${owner ? ` (${owner.name})` : ''}` };
             });
-    }, [state.properties, state.rentalAgreements, agreementToEdit, state.contacts, buildingId]);
+    }, [properties, rentalAgreements, agreementToEdit, contacts, buildingId]);
 
     // --- Broker Fee Auto-Calculation ---
     useEffect(() => {
@@ -211,7 +233,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const handleStartDateChange = (newDate: Date) => {
         const newStart = toLocalDateString(newDate);
         setStartDate(newStart);
-        if (state.enableDatePreservation && !agreementToEdit) {
+        if (enableDatePreservation && !agreementToEdit) {
             dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: newStart });
         }
         const [y, m, day] = newStart.split('-').map(Number);
@@ -226,7 +248,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     // --- Invoice Generation Helper ---
     const getNextInvNumber = (currentNextNum: number, prefix: string, padding: number) => {
         let maxNum = currentNextNum;
-        state.invoices.forEach(inv => {
+        invoices.forEach(inv => {
             if (inv.invoiceNumber?.startsWith(prefix)) {
                 const numPart = parseInt(inv.invoiceNumber.slice(prefix.length), 10);
                 if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
@@ -237,8 +259,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
     // --- Existing Invoices (for edit mode) ---
     const existingInvoices = useMemo(() =>
-        agreementToEdit ? state.invoices.filter(i => i.agreementId === agreementToEdit.id) : [],
-        [agreementToEdit, state.invoices]
+        agreementToEdit ? invoices.filter(i => i.agreementId === agreementToEdit.id) : [],
+        [agreementToEdit, invoices]
     );
 
     // --- Validation per Step ---
@@ -274,13 +296,13 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         const nextNumSetting = rentalInvoiceSettings?.nextNumber || 1;
         const padding = rentalInvoiceSettings?.padding || 5;
         let currentNextNum = nextNumSetting;
-        const property = state.properties.find(p => p.id === propertyId);
+        const property = properties.find(p => p.id === propertyId);
         const bId = property?.buildingId;
 
         if (secDep > 0) {
             const secInvNum = getNextInvNumber(currentNextNum, prefix, padding);
             currentNextNum = parseInt(secInvNum.slice(prefix.length)) + 1;
-            const secCat = state.categories.find(c => c.name === 'Security Deposit');
+            const secCat = categories.find(c => c.name === 'Security Deposit');
             const secInvoice: Invoice = {
                 id: `inv-sec-man-${Date.now()}`, invoiceNumber: secInvNum, contactId, invoiceType: InvoiceType.RENTAL,
                 amount: secDep, paidAmount: 0, status: InvoiceStatus.UNPAID, issueDate: startDate, dueDate: startDate,
@@ -293,7 +315,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         if (rent > 0) {
             const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
             currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
-            const rentCat = state.categories.find(c => c.name === 'Rental Income');
+            const rentCat = categories.find(c => c.name === 'Rental Income');
             const monthName = new Date(startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
             const rentInvoice: Invoice = {
                 id: `inv-rent-man-${Date.now()}`, invoiceNumber: rentInvNum, contactId, invoiceType: InvoiceType.RENTAL,
@@ -316,7 +338,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             await showAlert("Please fill in all required fields.");
             return;
         }
-        const otherActive = state.rentalAgreements.some(
+        const otherActive = rentalAgreements.some(
             (ra) => ra.propertyId === propertyId && ra.status === RentalAgreementStatus.ACTIVE
         );
         if (otherActive) {
@@ -350,8 +372,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         const padding = rentalInvoiceSettings?.padding || 5;
         let currentNextNum = nextNumSetting;
         const agreementNumber = getNextAgreementNumber();
-        const nextSeq = parseInt(agreementNumber.slice(state.agreementSettings.prefix.length)) + 1;
-        dispatch({ type: 'UPDATE_AGREEMENT_SETTINGS', payload: { ...state.agreementSettings, nextNumber: nextSeq } });
+        const nextSeq = parseInt(agreementNumber.slice(agreementSettings.prefix.length)) + 1;
+        dispatch({ type: 'UPDATE_AGREEMENT_SETTINGS', payload: { ...agreementSettings, nextNumber: nextSeq } });
 
         let agreementIdForInvoices: string;
 
@@ -402,12 +424,12 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         );
 
         if (shouldGenerate) {
-            const property = state.properties.find(p => p.id === propertyId);
+            const property = properties.find(p => p.id === propertyId);
             const bId = property?.buildingId;
             if (agreementData.securityDeposit > 0) {
                 const secInvNum = getNextInvNumber(currentNextNum, prefix, padding);
                 currentNextNum = parseInt(secInvNum.slice(prefix.length)) + 1;
-                const secCat = state.categories.find(c => c.name === 'Security Deposit');
+                const secCat = categories.find(c => c.name === 'Security Deposit');
                 const secInvoice: Invoice = {
                     id: `inv-sec-new-${Date.now()}`, invoiceNumber: secInvNum, contactId: agreementData.contactId,
                     invoiceType: InvoiceType.RENTAL, amount: agreementData.securityDeposit, paidAmount: 0,
@@ -428,7 +450,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 const sdProRatedRent = sdIsProrated ? Math.ceil((agreementData.monthlyRent / sdDaysInMonth) * sdRemainingDays / 100) * 100 : agreementData.monthlyRent;
                 const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
                 currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
-                const rentCat = state.categories.find(c => c.name === 'Rental Income');
+                const rentCat = categories.find(c => c.name === 'Rental Income');
                 const monthName = new Date(agreementData.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
                 const rentInvoice: Invoice = {
                     id: `inv-rent-new-${Date.now()}`, invoiceNumber: rentInvNum, contactId: agreementData.contactId,
@@ -493,7 +515,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         };
 
         if (agreementToEdit) {
-            const hasInvoices = state.invoices.some(inv => inv.agreementId === agreementToEdit.id);
+            const hasInvoices = invoices.some(inv => inv.agreementId === agreementToEdit.id);
             if (hasInvoices && agreementToEdit.status !== RentalAgreementStatus.RENEWED) {
                 const coreLeaseUnchanged =
                     agreementToEdit.contactId === contactId &&
@@ -545,7 +567,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
     const handleDelete = async () => {
         if (!agreementToEdit) return;
-        const linkedInvoices = state.invoices.filter(inv => inv.agreementId === agreementToEdit.id);
+        const linkedInvoices = invoices.filter(inv => inv.agreementId === agreementToEdit.id);
         if (linkedInvoices.length > 0) {
             await showAlert(
                 `This agreement has ${linkedInvoices.length} associated invoice${linkedInvoices.length !== 1 ? 's' : ''}. ` +
@@ -578,7 +600,14 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         }
     };
 
-    const formBackgroundStyle = useMemo(() => getFormBackgroundColorStyle(undefined, buildingId, state), [buildingId, state]);
+    const formColorState = useMemo(
+        () => ({ enableColorCoding, projects, buildings: allBuildings }) as AppState,
+        [enableColorCoding, projects, allBuildings]
+    );
+    const formBackgroundStyle = useMemo(
+        () => getFormBackgroundColorStyle(undefined, buildingId, formColorState),
+        [buildingId, formColorState]
+    );
 
     // === WIZARD VIEW (for new agreements) ===
     if (!isEditMode) {
@@ -713,8 +742,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                             <div className="mt-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
                                 <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">Agreement Summary</h4>
                                 <div className="space-y-2 text-xs">
-                                    <div className="flex justify-between"><span className="text-slate-500">Building</span><span className="font-medium text-slate-800">{state.buildings.find(b => b.id === buildingId)?.name || '-'}</span></div>
-                                    <div className="flex justify-between"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{state.properties.find(p => p.id === propertyId)?.name || '-'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Building</span><span className="font-medium text-slate-800">{allBuildings.find(b => b.id === buildingId)?.name || '-'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{properties.find(p => p.id === propertyId)?.name || '-'}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-500">Owner</span><span className="font-medium text-slate-800">{autoOwner?.name || '-'}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-500">Tenant</span><span className="font-medium text-slate-800">{tenants.find(t => t.id === contactId)?.name || '-'}</span></div>
                                     <div className="border-t border-slate-100 pt-2 flex justify-between"><span className="text-slate-500">Lease Period</span><span className="font-medium text-slate-800">{startDate} to {endDate}</span></div>
@@ -783,7 +812,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                             }
                         }}
                         onCancel={() => { setShowAddTenantModal(false); setNewTenantInitialName(''); }}
-                        existingContacts={state.contacts.filter(c => c.type === ContactType.TENANT)}
+                        existingContacts={contacts.filter(c => c.type === ContactType.TENANT)}
                         initialName={newTenantInitialName}
                         fixedTypeForNew={ContactType.TENANT}
                     />
@@ -798,13 +827,13 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             <RecordLockConflictModal
                 isOpen={recordLock.showConflictModal}
                 lockedByName={recordLock.lockedByName ?? 'Another user'}
-                isAdmin={isAdminRole(state.currentUser?.role)}
+                isAdmin={isAdminRole(currentUser?.role)}
                 onViewOnly={recordLock.chooseViewOnly}
                 onForceEdit={handleForceRecordLock}
                 onDismiss={recordLock.dismissModal}
             />
             {agreementToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && (
-                <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
+                <RecordLockBanner mode="self" currentUserName={currentUser?.name} />
             )}
             {agreementToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
                 <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />

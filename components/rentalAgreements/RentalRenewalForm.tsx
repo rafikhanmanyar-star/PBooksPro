@@ -1,7 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useDispatchOnly,
+    useProperties,
+    useRentalAgreements,
+} from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
-import { RentalAgreement, RentalAgreementStatus } from '../../types';
+import { RentalAgreement, RentalAgreementStatus, type AppState } from '../../types';
 import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import Input from '../ui/Input';
@@ -22,7 +26,13 @@ interface RentalRenewalFormProps {
 }
 
 const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClose }) => {
-  const { state, dispatch } = useAppContext();
+  const properties = useProperties();
+  const rentalAgreements = useRentalAgreements();
+  const dispatch = useDispatchOnly();
+  const engineState = useMemo(
+    () => ({ properties, rentalAgreements }) as AppState,
+    [properties, rentalAgreements]
+  );
   const { showToast, showAlert } = useNotification();
 
   const defaultStart = useMemo(
@@ -47,8 +57,8 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
   const [saving, setSaving] = useState(false);
 
   const buildingId = useMemo(
-    () => state.properties.find((p) => p.id === renewFrom.propertyId)?.buildingId || '',
-    [state.properties, renewFrom.propertyId]
+    () => properties.find((p) => p.id === renewFrom.propertyId)?.buildingId || '',
+    [properties, renewFrom.propertyId]
   );
 
   const formStyle = useMemo(
@@ -81,7 +91,7 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
     }
     setSaving(true);
     try {
-      await executeRentalRenewal(state, dispatch, renewFrom, {
+      await executeRentalRenewal(engineState, dispatch, renewFrom, {
         startDate: toLocalDateString(new Date(startDate)),
         endDate: toLocalDateString(new Date(endDate)),
         monthlyRent: rent,
@@ -106,13 +116,13 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
 
   const otherActive = useMemo(
     () =>
-      state.rentalAgreements.some(
+      rentalAgreements.some(
         (r) =>
           r.propertyId === renewFrom.propertyId &&
           r.id !== renewFrom.id &&
           r.status === RentalAgreementStatus.ACTIVE
       ),
-    [state.rentalAgreements, renewFrom]
+    [rentalAgreements, renewFrom]
   );
 
   if (otherActive) {
