@@ -8,10 +8,10 @@ import {
   createJournalEntry,
   getGeneralLedgerReport,
   getJournalWithLines,
-  getTrialBalanceReport,
   isJournalReversed,
   reverseJournalEntry,
 } from '../services/journalService.js';
+import { getTrialBalanceReportPayload } from '../services/trialBalanceReportService.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
 const lineSchema = z.object({
@@ -73,14 +73,29 @@ journalRouter.get('/transactions/journal/reports/trial-balance', async (req: Aut
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
-  const fromDate = typeof req.query.fromDate === 'string' ? req.query.fromDate : undefined;
-  const toDate = typeof req.query.toDate === 'string' ? req.query.toDate : undefined;
+  const fromDate = typeof req.query.fromDate === 'string' ? req.query.fromDate.slice(0, 10) : '';
+  const toDate = typeof req.query.toDate === 'string' ? req.query.toDate.slice(0, 10) : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+    sendFailure(res, 400, 'BAD_REQUEST', 'Query parameters fromDate and toDate (YYYY-MM-DD) are required.');
+    return;
+  }
   try {
     const { getPool } = await import('../db/pool.js');
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await getTrialBalanceReport(client, tenantId, { fromDate, toDate });
+      const data = await getTrialBalanceReportPayload(client, tenantId, {
+        from: fromDate,
+        to: toDate,
+        basis: 'period',
+      });
+      const rows = data.accounts.map((a) => ({
+        account_id: a.accountId,
+        account_name: a.accountName,
+        account_type: a.accountType,
+        total_debit: a.grossDebit,
+        total_credit: a.grossCredit,
+      }));
       sendSuccess(res, rows);
     } finally {
       client.release();

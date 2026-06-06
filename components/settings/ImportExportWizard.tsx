@@ -591,7 +591,7 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
           if (formattedResult.success && formattedResult.canProceed) {
             progress.updateProgress(99, 'Reloading data from database...');
             try {
-              const { AppStateRepository } = await import('../../services/database/repositories/index');
+              const { AppStateRepository } = await import('../../services/database/repositories/appStateRepository');
               const appStateRepo = new AppStateRepository();
               const reloadedState = await appStateRepo.loadState();
               dispatch({ type: 'SET_STATE', payload: reloadedState });

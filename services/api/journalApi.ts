@@ -60,7 +60,7 @@ export const journalApi = {
     return !!row?.reversed;
   },
 
-  /** PostgreSQL-backed trial balance (LAN/API). Tenant comes from auth headers. */
+  /** @deprecated Prefer getTrialBalanceCanonical — delegates to GET /api/reports/trial-balance */
   async getTrialBalanceReport(options?: { fromDate?: string; toDate?: string }): Promise<
     Array<{
       account_id: string;
@@ -70,13 +70,16 @@ export const journalApi = {
       total_credit: number;
     }>
   > {
-    const q = new URLSearchParams();
-    if (options?.fromDate) q.set('fromDate', options.fromDate);
-    if (options?.toDate) q.set('toDate', options.toDate);
-    const qs = q.toString();
-    return apiClient.get(
-      `/transactions/journal/reports/trial-balance${qs ? `?${qs}` : ''}`
-    );
+    const from = options?.fromDate ?? '1970-01-01';
+    const to = options?.toDate ?? new Date().toISOString().slice(0, 10);
+    const canonical = await this.getTrialBalanceCanonical({ from, to, basis: 'period' });
+    return canonical.accounts.map((a) => ({
+      account_id: a.id,
+      account_name: a.name,
+      account_type: a.type,
+      total_debit: a.gross_debit,
+      total_credit: a.gross_credit,
+    }));
   },
 
   /** Canonical double-entry trial balance: GET /api/reports/trial-balance */

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
 import { List } from 'react-window';
-import { useAppContext } from '../../context/AppContext';
 import { Bill, InvoiceStatus } from '../../types';
+import { useFinanceDomain } from '../../context/domains';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import Input from '../ui/Input';
@@ -109,7 +109,7 @@ const VirtualBillRow = memo(function VirtualBillRow({
 });
 
 const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
-    const { state } = useAppContext();
+    const { bills: allBills, vendors } = useFinanceDomain();
     const [search, setSearch] = useState('');
     const debouncedSearch = useDebounce(search, 300);
     const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -119,20 +119,20 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
     });
 
     const vendorById = useMemo(() => {
-        const m = new Map<string, (typeof state.vendors)[0]>();
-        for (const v of state.vendors ?? []) {
+        const m = new Map<string, (typeof vendors)[0]>();
+        for (const v of vendors ?? []) {
             if (v?.id) m.set(v.id, v);
         }
         return m;
-    }, [state.vendors]);
+    }, [vendors]);
 
     const bills = useMemo(() => {
-        return state.bills.filter((b) => {
+        return allBills.filter((b) => {
             const vendorId = b.vendorId;
             if (!vendorId) return false;
             return vendorById.has(vendorId);
         });
-    }, [state.bills, vendorById]);
+    }, [allBills, vendorById]);
 
     const filteredBills = useMemo(() => {
         let result = bills;

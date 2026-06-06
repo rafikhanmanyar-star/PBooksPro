@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType } from '../../types';
+import { useBills, useTransactions, useVendors, useProjects } from '../../hooks/useSelectiveState';
 import { ICONS, CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -52,7 +52,10 @@ interface LedgerItem {
 const ADVANCE_REFRESH = 'pbooks:supplier-advance-recorded';
 
 const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) => {
-    const { state } = useAppContext();
+    const allBills = useBills();
+    const transactions = useTransactions();
+    const vendors = useVendors();
+    const projects = useProjects();
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
         key: 'date',
@@ -96,7 +99,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         return () => window.removeEventListener(ADVANCE_REFRESH, onRecorded as EventListener);
     }, [vendorId]);
 
-    const projectNameById = useMemo(() => new Map(state.projects.map((p) => [p.id, p.name || p.id])), [state.projects]);
+    const projectNameById = useMemo(() => new Map(projects.map((p) => [p.id, p.name || p.id])), [projects]);
 
     const toggleExpand = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -116,7 +119,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
     const ledgerItems: LedgerItem[] = useMemo(() => {
         if (!vendorId) return [];
 
-        const bills: LedgerItem[] = state.bills
+        const billRows: LedgerItem[] = allBills
             .filter((b) => b.vendorId === vendorId || (!b.vendorId && b.contactId === vendorId))
             .map((b) => ({
                 id: `bill-${b.id}`,
@@ -132,15 +135,15 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
             }));
 
         const prepaidApplyRows: LedgerItem[] = [];
-        for (const b of state.bills) {
+        for (const b of allBills) {
             if (b.vendorId !== vendorId && !(b.vendorId == null && b.contactId === vendorId)) continue;
-            const prepaid = prepaidAppliedToBillNotInTransactions(b, state.transactions);
+            const prepaid = prepaidAppliedToBillNotInTransactions(b, transactions);
             if (prepaid <= VENDOR_LEDGER_MONEY_EPS) continue;
             prepaidApplyRows.push({
                 id: `bill-prepaid-${b.id}`,
                 originalId: b.id,
                 type: 'prepaid_apply',
-                date: prepaidClearingDisplayDateForBill(b, state.transactions),
+                date: prepaidClearingDisplayDateForBill(b, transactions),
                 particulars: `Supplier prepaid applied — Bill #${b.billNumber}`,
                 debit: prepaid,
                 credit: 0,
@@ -150,7 +153,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
             });
         }
 
-        const allPayments = state.transactions.filter(
+        const allPayments = transactions.filter(
             (t) => (t.vendorId === vendorId || (!t.vendorId && t.contactId === vendorId)) && t.type === TransactionType.EXPENSE
         );
         const paymentMap = new Map<string, Omit<LedgerItem, 'balance'>>();
@@ -236,7 +239,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         });
 
         const combined = [
-            ...bills,
+            ...billRows,
             ...prepaidApplyRows,
             ...individualPayments,
             ...batchedPayments,
@@ -280,7 +283,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
             runningBalance += item.credit - item.debit;
             return { ...item, balance: runningBalance };
         });
-    }, [vendorId, state.bills, state.transactions, sortConfig, supplierAdvances, projectNameById]);
+    }, [vendorId, allBills, transactions, sortConfig, supplierAdvances, projectNameById]);
 
     const expandableBatchIds = useMemo(
         () => ledgerItems.filter((item) => (item.children?.length ?? 0) > 0).map((item) => item.id),
@@ -297,7 +300,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
 
     const handleExport = () => {
         if (!vendorId) return;
-        const vendor = state.vendors?.find((v) => v.id === vendorId);
+        const vendor = vendors?.find((v) => v.id === vendorId);
         const data = ledgerItems.map((item) => ({
             Date: formatDate(item.date),
             Particulars: item.particulars,

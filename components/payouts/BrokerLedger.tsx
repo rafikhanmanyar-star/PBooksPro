@@ -1,7 +1,14 @@
 
 import React, { useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
 import { TransactionType } from '../../types';
+import {
+    useTransactions,
+    useProperties,
+    useCategories,
+    useContacts,
+    useProjects,
+    useStateSelector,
+} from '../../hooks/useSelectiveState';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
@@ -18,7 +25,15 @@ interface BrokerLedgerProps {
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
 const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, buildingId, propertyId }) => {
-    const { state } = useAppContext();
+    const transactions = useTransactions();
+    const properties = useProperties();
+    const categories = useCategories();
+    const contacts = useContacts();
+    const projects = useProjects();
+    const rentalAgreements = useStateSelector((s) => s.rentalAgreements);
+    const projectAgreements = useStateSelector((s) => s.projectAgreements);
+    const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
+    const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
     const { openChat } = useWhatsApp();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
@@ -34,23 +49,23 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
         if (context !== 'Rental' || (!buildingId && !propertyId)) return null;
         if (propertyId) return new Set<string>([String(propertyId)]);
         return new Set(
-            state.properties
+            properties
                 .filter(p => p.buildingId === buildingId)
                 .map(p => String(p.id))
         );
-    }, [context, buildingId, propertyId, state.properties]);
+    }, [context, buildingId, propertyId, properties]);
 
     const ledgerItems = useMemo(() => {
         if (!brokerId) return [];
         
-        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
-        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+        const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
+        const rebateCategory = categories.find(c => c.name === 'Rebate Amount');
         const relevantCategoryIds = [brokerFeeCategory?.id, rebateCategory?.id].filter(Boolean) as string[];
         const attributionOpts = {
             brokerFeeCategoryId: brokerFeeCategory?.id,
             rebateCategoryId: rebateCategory?.id,
-            projectAgreements: state.projectAgreements,
-            rentalAgreements: state.rentalAgreements,
+            projectAgreements,
+            rentalAgreements,
         };
 
         const items: any[] = [];
@@ -58,14 +73,14 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
         // 1. Broker Fees from Rental Agreements (Credit). Exclude renewed agreements so broker is not charged again on renewal.
         // When filter is applied, only include agreements for in-scope properties.
         if (!context || context === 'Rental') {
-            state.rentalAgreements
+            rentalAgreements
                 .filter(ra => {
                     if (ra.previousAgreementId || ra.brokerId !== brokerId || !(ra.brokerFee || 0)) return false;
                     if (rentalPropertyIdsInScope && (!ra.propertyId || !rentalPropertyIdsInScope.has(String(ra.propertyId)))) return false;
                     return true;
                 })
                 .forEach(ra => {
-                    const property = state.properties.find(p => p.id === ra.propertyId);
+                    const property = properties.find(p => p.id === ra.propertyId);
                     items.push({
                         id: `fee-rent-${ra.id}`,
                         date: ra.startDate,
@@ -80,10 +95,10 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
         // 2. Broker Fees from Project Agreements (Credit)
         // Include only if context is Project or undefined (All)
         if (!context || context === 'Project') {
-            state.projectAgreements
+            projectAgreements
                 .filter(pa => pa.rebateBrokerId === brokerId && (pa.rebateAmount || 0) > 0)
                 .forEach(pa => {
-                    const project = state.projects.find(p => p.id === pa.projectId);
+                    const project = projects.find(p => p.id === pa.projectId);
                     items.push({
                         id: `fee-proj-${pa.id}`,
                         date: pa.issueDate,
@@ -96,12 +111,12 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
         }
             
         // 3. Payments to Broker (Debit). When Rental filter is applied, only include payments for in-scope properties (tx.propertyId).
-        state.transactions
+        transactions
             .filter(tx => {
                 if (tx.type !== TransactionType.EXPENSE || !tx.categoryId || !relevantCategoryIds.includes(tx.categoryId)) return false;
                 const effectiveId = getEffectiveCommissionBrokerContactId(tx, attributionOpts);
                 if (effectiveId !== brokerId) return false;
-                const category = state.categories.find(c => c.id === tx.categoryId);
+                const category = categories.find(c => c.id === tx.categoryId);
                 const isRebate = category?.name === 'Rebate Amount';
 
                 if (context === 'Project') {
@@ -119,7 +134,7 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
             .forEach(tx => {
                 let desc = tx.description || 'Commission Payment';
                 if (tx.projectId) {
-                    const p = state.projects.find(p => p.id === tx.projectId);
+                    const p = projects.find(p => p.id === tx.projectId);
                     desc += ` (${p?.name})`;
                 }
                 items.push({
@@ -156,7 +171,7 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
             return { ...item, balance: runningBalance };
         });
 
-    }, [brokerId, context, rentalPropertyIdsInScope, state.transactions, state.rentalAgreements, state.projectAgreements, state.properties, state.projects, state.categories, sortConfig]);
+    }, [brokerId, context, rentalPropertyIdsInScope, transactions, rentalAgreements, projectAgreements, properties, projects, categories, sortConfig]);
 
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className={`ml-1 text-[10px] ${sortConfig.key === column ? 'text-primary' : 'text-app-muted'}`}>
@@ -172,20 +187,20 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
 
     const handleSendWhatsApp = () => {
         if (!brokerId) return;
-        const brokerContact = state.contacts.find(c => c.id === brokerId);
+        const brokerContact = contacts.find(c => c.id === brokerId);
         if (!brokerContact) return;
 
         const totalEarned = ledgerItems.reduce((sum, item) => sum + item.credit, 0);
         const totalPaid = ledgerItems.reduce((sum, item) => sum + item.debit, 0);
         const finalBalance = totalEarned - totalPaid;
 
-        const template = state.whatsAppTemplates.brokerPayoutLedger || 'Dear {contactName}, your commission balance is {balance}.';
+        const template = whatsAppTemplates.brokerPayoutLedger || 'Dear {contactName}, your commission balance is {balance}.';
         const message = WhatsAppService.generateBrokerPayoutLedger(
             template, brokerContact, totalEarned, totalPaid, finalBalance
         );
         sendOrOpenWhatsApp(
             { contact: brokerContact, message, phoneNumber: brokerContact.contactNo || undefined },
-            () => state.whatsAppMode,
+            () => whatsAppMode,
             openChat
         );
     };

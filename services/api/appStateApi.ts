@@ -677,20 +677,6 @@ export class AppStateApiService {
   }
 
   /**
-   * Load critical state only (accounts, contacts, categories, projects, buildings, properties, units)
-   * for first paint; then load full state in background.
-   */
-  async loadStateCritical(): Promise<Partial<AppState>> {
-    try {
-      const raw = await apiClient.get<Record<string, any[]>>('/state/critical');
-      return this.normalizeLoadedState(raw);
-    } catch (error) {
-      logger.errorCategory('sync', '❌ Error loading critical state:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Load complete application state from API in one request (fewer round-trips, better LCP/INP).
    * Prefer over loadState() for initial load when the backend supports GET /state/bulk.
    * @param entities Optional comma-separated list of entities to load (e.g., 'accounts,contacts,categories')
