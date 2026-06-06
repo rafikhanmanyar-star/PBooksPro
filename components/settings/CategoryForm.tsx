@@ -42,12 +42,12 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
     }, [categoryToEdit]);
 
     const availableParents = useMemo(() => {
-        return state.categories.filter(cat => 
+        return categories.filter(cat => 
             cat.type === type && 
             cat.id !== categoryToEdit?.id &&
             !cat.parentCategoryId 
         );
-    }, [state.categories, type, categoryToEdit]);
+    }, [categories, type, categoryToEdit]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

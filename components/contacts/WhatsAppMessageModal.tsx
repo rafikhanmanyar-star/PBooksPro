@@ -44,7 +44,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
     if (initialMessage) {
       generatedMessage = initialMessage;
     } else if (templateType && templateType !== 'custom') {
-      const template = state.whatsAppTemplates[templateType];
+      const template = whatsAppTemplates[templateType];
 
       switch (templateType) {
         case 'invoiceReminder':
@@ -72,11 +72,11 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
               totalUnpaidExplicit !== undefined && !Number.isNaN(totalUnpaidExplicit)
                 ? totalUnpaidExplicit
                 : invoiceIdVar
-                  ? sumOutstandingInvoiceBalancesForContact(state.invoices, contact.id, {
+                  ? sumOutstandingInvoiceBalancesForContact(invoices, contact.id, {
                       invoiceId: invoiceIdVar,
                       invoiceBalanceOverride: balanceNum,
                     })
-                  : sumOutstandingInvoiceBalancesForContact(state.invoices, contact.id);
+                  : sumOutstandingInvoiceBalancesForContact(invoices, contact.id);
 
             generatedMessage = WhatsAppService.generateInvoiceReceipt(
               template,
@@ -110,7 +110,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
     }
 
     setMessage(generatedMessage);
-  }, [isOpen, contact, templateType, templateVariables, initialMessage, state.whatsAppTemplates, state.invoices]);
+  }, [isOpen, contact, templateType, templateVariables, initialMessage, whatsAppTemplates, invoices]);
 
   const handleSend = async () => {
     if (!contact) return;
@@ -134,7 +134,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
     try {
       sendOrOpenWhatsApp(
         { contact, message: message.trim(), phoneNumber: contact.contactNo },
-        () => state.whatsAppMode,
+        () => whatsAppMode,
         openChat
       );
       // Small delay to ensure WhatsApp opens before closing modal

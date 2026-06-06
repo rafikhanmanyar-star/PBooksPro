@@ -80,11 +80,11 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
     useEffect(() => {
         if (defaultProjectBootstrapped.current) return;
         defaultProjectBootstrapped.current = true;
-        if (state.defaultProjectId && (!filters.projectId || filters.projectId === 'all')) {
-            setFilter('projectId', state.defaultProjectId);
-            setDrawerProjectId(state.defaultProjectId);
+        if (defaultProjectId && (!filters.projectId || filters.projectId === 'all')) {
+            setFilter('projectId', defaultProjectId);
+            setDrawerProjectId(defaultProjectId);
         }
-    }, [state.defaultProjectId, filters.projectId, setFilter]);
+    }, [defaultProjectId, filters.projectId, setFilter]);
 
     useEffect(() => {
         if (!filters.projectId || filters.projectId === 'all') {
@@ -136,7 +136,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
     }, [focusedProjectId, projectDetailsQuery.data, monthlyQuery.data]);
 
     const selectedProjectName =
-        focusedProjectId != null ? state.projects.find((p) => p.id === focusedProjectId)?.name : null;
+        focusedProjectId != null ? projects.find((p) => p.id === focusedProjectId)?.name : null;
 
     return (
         <div className="flex flex-col h-full min-h-0 space-y-4">

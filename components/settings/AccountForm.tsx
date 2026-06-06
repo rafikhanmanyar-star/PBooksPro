@@ -62,12 +62,12 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
     }, [type, accountToEdit]);
 
     const availableParents = useMemo(() => {
-        return state.accounts.filter(acc =>
+        return accounts.filter(acc =>
             acc.type === type &&
             acc.id !== accountToEdit?.id && // Cannot be parent of itself
             !acc.parentAccountId // Ideally only 1 level deep for simplicity, but we can allow nesting. For now, filter to prevent circular if we implemented checks.
         );
-    }, [state.accounts, type, accountToEdit]);
+    }, [accounts, type, accountToEdit]);
 
     const id = accountToEdit?.id ?? '';
     const isSystemAccountId = id.includes('sys-acc-');

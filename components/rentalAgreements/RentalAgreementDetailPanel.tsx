@@ -19,18 +19,18 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
 }) => {
     const state = useFullAppState();
 
-    const property = useMemo(() => state.properties.find(p => p.id === agreement.propertyId), [agreement.propertyId, state.properties]);
-    const tenant = useMemo(() => state.contacts.find(c => c.id === agreement.contactId), [agreement.contactId, state.contacts]);
+    const property = useMemo(() => properties.find(p => p.id === agreement.propertyId), [agreement.propertyId, properties]);
+    const tenant = useMemo(() => contacts.find(c => c.id === agreement.contactId), [agreement.contactId, contacts]);
     const ownerId = agreement.ownerId || property?.ownerId;
-    const owner = useMemo(() => ownerId ? state.contacts.find(c => c.id === ownerId) : null, [ownerId, state.contacts]);
-    const building = useMemo(() => property ? state.buildings.find(b => b.id === property.buildingId) : null, [property, state.buildings]);
-    const broker = useMemo(() => agreement.brokerId ? state.contacts.find(c => c.id === agreement.brokerId) : null, [agreement.brokerId, state.contacts]);
+    const owner = useMemo(() => ownerId ? contacts.find(c => c.id === ownerId) : null, [ownerId, contacts]);
+    const building = useMemo(() => property ? buildings.find(b => b.id === property.buildingId) : null, [property, buildings]);
+    const broker = useMemo(() => agreement.brokerId ? contacts.find(c => c.id === agreement.brokerId) : null, [agreement.brokerId, contacts]);
 
     const linkedInvoices = useMemo(() =>
-        state.invoices
+        invoices
             .filter(i => i.agreementId === agreement.id)
             .sort((a, b) => new Date(b.dueDate || b.issueDate).getTime() - new Date(a.dueDate || a.issueDate).getTime()),
-        [agreement.id, state.invoices]
+        [agreement.id, invoices]
     );
 
     const openInvoices = useMemo(() => linkedInvoices.filter(i => i.status !== InvoiceStatus.PAID), [linkedInvoices]);
@@ -258,7 +258,7 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
                     <div className="p-3 bg-primary/10 rounded-lg border border-primary/25">
                         <h4 className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">Renewal Chain</h4>
                         <p className="text-xs text-app-text">
-                            Renewed from: {state.rentalAgreements.find(a => a.id === agreement.previousAgreementId)?.agreementNumber || agreement.previousAgreementId}
+                            Renewed from: {rentalAgreements.find(a => a.id === agreement.previousAgreementId)?.agreementNumber || agreement.previousAgreementId}
                         </p>
                     </div>
                 )}

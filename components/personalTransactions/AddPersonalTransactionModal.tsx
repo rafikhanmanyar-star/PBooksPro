@@ -77,27 +77,27 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
       setDescription('');
       setError('');
     }
-  }, [isOpen, editTransaction, state.personalCategories]);
+  }, [isOpen, editTransaction, personalCategories]);
 
   const bankAndCashAccounts = useMemo(
     () =>
-      state.accounts
+      accounts
         .filter(
           (a) =>
             (a.type === AccountType.BANK || a.type === AccountType.CASH) &&
             a.name !== 'Internal Clearing'
         )
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [state.accounts]
+    [accounts]
   );
 
   const incomeCategories = useMemo(
     () => getPersonalIncomeCategories(),
-    [categoryListKey, state.personalCategories]
+    [categoryListKey, personalCategories]
   );
   const expenseCategories = useMemo(
     () => getPersonalExpenseCategories(),
-    [categoryListKey, state.personalCategories]
+    [categoryListKey, personalCategories]
   );
   const categories = type === 'Income' ? incomeCategories : expenseCategories;
 

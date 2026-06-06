@@ -53,17 +53,17 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
   const [amountByPayslipId, setAmountByPayslipId] = useState<Record<string, string>>({});
 
   const bankAccounts = useMemo(() => {
-    return (state.accounts || []).filter(
+    return (accounts || []).filter(
       (a: any) => a.type === 'Bank' || a.type === 'Cash' || a.type === 'bank' || a.type === 'cash'
     );
-  }, [state.accounts]);
+  }, [accounts]);
 
   const salaryCategory = useMemo(() => {
-    const sid = resolveSystemCategoryId(state.categories, 'sys-cat-sal-exp');
-    return (state.categories || []).find(
+    const sid = resolveSystemCategoryId(categories, 'sys-cat-sal-exp');
+    return (categories || []).find(
       (c: { id: string; name: string }) => (sid && c.id === sid) || c.name === 'Salary Expenses'
     );
-  }, [state.categories]);
+  }, [categories]);
 
   // Initialize editable amounts to remaining when modal opens or items change
   useEffect(() => {

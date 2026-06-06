@@ -58,11 +58,11 @@ const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, Messagin
     const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
-    const [templates, setTemplates] = useState<WhatsAppTemplates>(() => ({ ...state.whatsAppTemplates }));
+    const [templates, setTemplates] = useState<WhatsAppTemplates>(() => ({ ...whatsAppTemplates }));
     const templatesRef = useRef(templates);
     templatesRef.current = templates;
 
-    const baselineSnapshotRef = useRef(snapshotTemplates({ ...state.whatsAppTemplates }));
+    const baselineSnapshotRef = useRef(snapshotTemplates({ ...whatsAppTemplates }));
 
     const closeWithDiscardConfirm = useCallback(
       (done: () => void) => {
@@ -94,7 +94,7 @@ const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, Messagin
 
     const handleSave = () => {
       const payload: WhatsAppTemplates = {
-        ...state.whatsAppTemplates,
+        ...whatsAppTemplates,
         ...templatesRef.current,
       };
       dispatch({ type: 'UPDATE_WHATSAPP_TEMPLATES', payload });

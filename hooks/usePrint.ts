@@ -40,7 +40,7 @@ export const usePrint = (options: UsePrintOptions = {}): UsePrintReturn => {
   } = options;
 
   // Use provided print settings or fall back to app context
-  const printSettings = providedPrintSettings || state.printSettings;
+  const printSettings = providedPrintSettings || printSettings;
 
   const handlePrint = useCallback(() => {
     setIsPrinting(true);

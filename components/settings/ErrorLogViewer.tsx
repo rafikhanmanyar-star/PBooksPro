@@ -40,8 +40,8 @@ const ErrorLogViewer: React.FC<ErrorLogViewerProps> = ({ isOpen, onClose }) => {
                 setErrorLogs(logs);
             } catch (error) {
                 console.error('Failed to load error logs:', error);
-                // Fallback to state.errorLog
-                setErrorLogs(state.errorLog.map((log, index): ExtendedErrorLogEntry => ({
+                // Fallback to errorLog
+                setErrorLogs(errorLog.map((log, index): ExtendedErrorLogEntry => ({
                     id: index.toString(),
                     timestamp: log.timestamp,
                     message: log.message,
@@ -53,7 +53,7 @@ const ErrorLogViewer: React.FC<ErrorLogViewerProps> = ({ isOpen, onClose }) => {
                 setIsLoading(false);
             }
         }
-    }, [isOpen, state.errorLog]);
+    }, [isOpen, errorLog]);
 
     const handleClearLog = async () => {
         const confirmed = await showConfirm('Are you sure you want to clear the error log?', { title: 'Clear Log', confirmLabel: 'Clear' });

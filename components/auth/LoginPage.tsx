@@ -48,7 +48,7 @@ const LoginPage: React.FC = () => {
         e.preventDefault();
         setError('');
 
-        const user = state.users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+        const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
 
         if (!user) {
             setError('User not found.');

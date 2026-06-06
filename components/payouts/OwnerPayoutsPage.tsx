@@ -1120,7 +1120,7 @@ const OwnerPayoutsPage: React.FC = () => {
     };
 
     const handleWhatsApp = (row: PayeeRow) => {
-        const templates = state.whatsAppTemplates;
+        const templates = whatsAppTemplates;
         let message = '';
 
         if (row.type === 'Broker') {
@@ -1141,7 +1141,7 @@ const OwnerPayoutsPage: React.FC = () => {
         const phoneNumber = row.contact.contactNo || '';
         sendOrOpenWhatsApp(
             { contact: row.contact, message, phoneNumber: phoneNumber || undefined },
-            () => state.whatsAppMode,
+            () => appWhatsAppMode,
             openChat
         );
     };

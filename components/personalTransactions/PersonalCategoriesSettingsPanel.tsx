@@ -71,7 +71,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
     const inc = getPersonalIncomeCategories().map((c) => ({ ...c, type: 'Income' as const }));
     const exp = getPersonalExpenseCategories().map((c) => ({ ...c, type: 'Expense' as const }));
     return [...inc, ...exp];
-  }, [listVersion, state.personalCategories]);
+  }, [listVersion, personalCategories]);
 
   const filteredSorted = useMemo(() => {
     let data = mergedRows;

@@ -29,12 +29,12 @@ const VendorInfo: React.FC<VendorInfoProps> = ({ vendor, onEdit, onCreateBill, o
 
     try {
       const message = WhatsAppService.generateVendorGreeting(
-        state.whatsAppTemplates.vendorGreeting,
+        whatsAppTemplates.vendorGreeting,
         vendor
       );
       sendOrOpenWhatsApp(
         { contact: vendor, message, phoneNumber: vendor.contactNo },
-        () => state.whatsAppMode,
+        () => whatsAppMode,
         openChat
       );
     } catch (error) {

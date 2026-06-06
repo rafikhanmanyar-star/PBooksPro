@@ -59,7 +59,7 @@ const AddVendorSection: React.FC<{
                 const merged = await getAppStateApiService().saveVendor({
                     ...vendorData,
                     id: localId,
-                    userId: state.currentUser?.id,
+                    userId: currentUser?.id,
                 });
                 payload = { ...payload, ...merged };
             } catch (err: any) {
@@ -134,7 +134,7 @@ const AddVendorSection: React.FC<{
                     onSubmit={handleSubmit}
                     onCancel={() => setIsModalOpen(false)}
                     isVendorForm={true}
-                    existingVendors={state.vendors}
+                    existingVendors={vendors}
                 />
             </Modal>
         </>
@@ -203,7 +203,7 @@ const VendorDirectoryPage: React.FC = () => {
     const [triggerAddVendor, setTriggerAddVendor] = useState(false);
 
     // Safety check: ensure state is initialized
-    if (!state || !state.contacts) {
+    if (!state || !contacts) {
         return (
             <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -215,9 +215,9 @@ const VendorDirectoryPage: React.FC = () => {
     }
 
     const vendors = useMemo(() => {
-        const list = [...(state.vendors || [])];
+        const list = [...(vendors || [])];
         return list.sort((a, b) => a.name.localeCompare(b.name));
-    }, [state.vendors]);
+    }, [vendors]);
 
     const filteredVendors = useMemo(() => {
         if (!vendorSearch) return vendors;
@@ -228,7 +228,7 @@ const VendorDirectoryPage: React.FC = () => {
     // Calculate payable amounts for each vendor
     const vendorsWithPayable = useMemo(() => {
         const vendors = filteredVendors.map(vendor => {
-            const vendorBills = (state.bills || []).filter(b => (b.vendorId || b.contactId) === vendor.id);
+            const vendorBills = (bills || []).filter(b => (b.vendorId || b.contactId) === vendor.id);
 
             // Calculate total payable as sum of unpaid balances for all bills
             const payableAmount = vendorBills.reduce((sum, bill) => {
@@ -257,7 +257,7 @@ const VendorDirectoryPage: React.FC = () => {
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [filteredVendors, state.bills, sortConfig]);
+    }, [filteredVendors, bills, sortConfig]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -301,8 +301,8 @@ const VendorDirectoryPage: React.FC = () => {
 
     const selectedVendor = vendors.find(v => v.id === selectedVendorId) || null;
 
-    const billToEdit = editingItem?.type === 'bill' ? (state.bills || []).find(b => b.id === editingItem.id) : undefined;
-    const transactionToEdit = editingItem?.type === 'transaction' ? (state.transactions || []).find(t => t.id === editingItem.id) : undefined;
+    const billToEdit = editingItem?.type === 'bill' ? (bills || []).find(b => b.id === editingItem.id) : undefined;
+    const transactionToEdit = editingItem?.type === 'transaction' ? (transactions || []).find(t => t.id === editingItem.id) : undefined;
 
 
     const handleUpdateVendor = async (vendorData: Partial<Vendor> | any) => {
@@ -383,7 +383,7 @@ const VendorDirectoryPage: React.FC = () => {
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
         if (tx.billId) {
-            const bill = (state.bills || []).find(b => b.id === tx.billId);
+            const bill = (bills || []).find(b => b.id === tx.billId);
             return `Bill #${bill?.billNumber || 'N/A'}`;
         }
         return 'a linked item';
@@ -400,7 +400,7 @@ const VendorDirectoryPage: React.FC = () => {
     };
 
     const getVendorPayable = (vendorId: string) => {
-        const vendorBills = (state.bills || []).filter(b => (b.vendorId || b.contactId) === vendorId);
+        const vendorBills = (bills || []).filter(b => (b.vendorId || b.contactId) === vendorId);
         return vendorBills.reduce((sum, bill) => {
             const balance = bill.amount - (bill.paidAmount || 0);
             return sum + Math.max(0, balance);
@@ -587,10 +587,10 @@ const VendorDirectoryPage: React.FC = () => {
                                                     <button
                                                         onClick={() => {
                                                             try {
-                                                                const message = WhatsAppService.generateVendorGreeting(state.whatsAppTemplates.vendorGreeting, selectedVendor);
+                                                                const message = WhatsAppService.generateVendorGreeting(whatsAppTemplates.vendorGreeting, selectedVendor);
                                                                 sendOrOpenWhatsApp(
                                                                     { contact: selectedVendor, message, phoneNumber: selectedVendor.contactNo },
-                                                                    () => state.whatsAppMode,
+                                                                    () => whatsAppMode,
                                                                     openChat
                                                                 );
                                                             } catch (error) {
@@ -711,7 +711,7 @@ const VendorDirectoryPage: React.FC = () => {
                                     onSubmit={handleUpdateVendor}
                                     onDelete={handleDeleteVendor}
                                     onCancel={() => setIsEditModalOpen(false)}
-                                    existingVendors={state.vendors}
+                                    existingVendors={vendors}
                                     isVendorForm={true}
                                 />
                             </Modal>
@@ -767,7 +767,7 @@ const VendorDirectoryPage: React.FC = () => {
                                 {optionsView === 'Quotation' ? (
                                     <AllQuotationsTable
                                         onEditQuotation={(quotation) => {
-                                            const vendor = (state.vendors || []).find(v => v.id === quotation.vendorId);
+                                            const vendor = (vendors || []).find(v => v.id === quotation.vendorId);
                                             if (vendor) {
                                                 setSelectedVendorId(vendor.id);
                                                 setActiveTab('Quotations');
@@ -779,7 +779,7 @@ const VendorDirectoryPage: React.FC = () => {
                                 ) : optionsView === 'Bills' ? (
                                     <AllBillsTable
                                         onEditBill={(bill) => {
-                                            const vendor = (state.vendors || []).find(v => v.id === bill.vendorId);
+                                            const vendor = (vendors || []).find(v => v.id === bill.vendorId);
                                             if (vendor) {
                                                 setSelectedVendorId(vendor.id);
                                                 setActiveTab('Bills');

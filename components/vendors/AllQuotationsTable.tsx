@@ -21,8 +21,8 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
     const quotations = useMemo(() => {
-        return state.quotations || [];
-    }, [state.quotations]);
+        return quotations || [];
+    }, [quotations]);
 
     const filteredQuotations = useMemo(() => {
         let result = quotations;
@@ -33,10 +33,10 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
                 quotation.name.toLowerCase().includes(q) ||
                 quotation.date.includes(q) ||
                 quotation.items.some(item => {
-                    const category = state.categories.find(c => c.id === item.categoryId);
+                    const category = categories.find(c => c.id === item.categoryId);
                     return category?.name.toLowerCase().includes(q);
                 }) ||
-                state.vendors?.find(v => v.id === quotation.vendorId)?.name.toLowerCase().includes(q)
+                vendors?.find(v => v.id === quotation.vendorId)?.name.toLowerCase().includes(q)
             );
         }
         
@@ -62,8 +62,8 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
                     bVal = b.items.length;
                     break;
                 case 'vendorName':
-                    const vendorA = state.vendors?.find(v => v.id === a.vendorId);
-                    const vendorB = state.vendors?.find(v => v.id === b.vendorId);
+                    const vendorA = vendors?.find(v => v.id === a.vendorId);
+                    const vendorB = vendors?.find(v => v.id === b.vendorId);
                     aVal = vendorA?.name.toLowerCase() || '';
                     bVal = vendorB?.name.toLowerCase() || '';
                     break;
@@ -75,7 +75,7 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [quotations, search, sortConfig, state.categories, state.vendors]);
+    }, [quotations, search, sortConfig, categories, vendors]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -173,7 +173,7 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
                     </thead>
                     <tbody className="divide-y divide-slate-200 bg-white">
                         {filteredQuotations.length > 0 ? filteredQuotations.map(quotation => {
-                            const vendor = state.vendors?.find(v => v.id === quotation.vendorId);
+                            const vendor = vendors?.find(v => v.id === quotation.vendorId);
                             return (
                                 <tr 
                                     key={quotation.id} 
@@ -187,7 +187,7 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
                                     <td className="px-4 py-3 max-w-md">
                                         <div className="space-y-1">
                                             {quotation.items.slice(0, 2).map((item, idx) => {
-                                                const category = state.categories.find(c => c.id === item.categoryId);
+                                                const category = categories.find(c => c.id === item.categoryId);
                                                 return (
                                                     <div key={idx} className="text-xs text-slate-600">
                                                         {category?.name || 'Unknown'} - {item.quantity} {item.unit || 'units'} @ {item.pricePerQuantity.toLocaleString('en-US', { style: 'currency', currency: 'PKR' })}

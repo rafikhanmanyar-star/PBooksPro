@@ -39,16 +39,16 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
     const balanceDue = useMemo(() => Math.max(0, invoice.amount - (invoice.paidAmount || 0)), [invoice.amount, invoice.paidAmount]);
 
     const receivedAssetsAccountId = useMemo(
-        () => resolveSystemAccountId(state.accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets',
-        [state.accounts]
+        () => resolveSystemAccountId(accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets',
+        [accounts]
     );
     const receivedAssetsAccount = useMemo(
-        () => state.accounts.find(a => a.id === receivedAssetsAccountId),
-        [state.accounts, receivedAssetsAccountId]
+        () => accounts.find(a => a.id === receivedAssetsAccountId),
+        [accounts, receivedAssetsAccountId]
     );
     const assetReceivedCategory = useMemo(
-        () => findProjectAssetCategory(state.categories, 'REVENUE_ASSET_IN_KIND'),
-        [state.categories]
+        () => findProjectAssetCategory(categories, 'REVENUE_ASSET_IN_KIND'),
+        [categories]
     );
 
     const handleSubmit = async () => {

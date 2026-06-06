@@ -43,7 +43,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
     // Sorting State
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'unitName', direction: 'asc' });
 
-    const buildings = useMemo(() => state.buildings, [state.buildings]);
+    const buildings = useMemo(() => allBuildings, [allBuildings]);
     const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...buildings], [buildings]);
 
     const handleSort = (key: SortKey) => {
@@ -57,19 +57,19 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
-        let filteredProperties = state.properties;
+        let filteredProperties = properties;
         if (selectedBuildingId !== 'all') {
-            filteredProperties = state.properties.filter(p => p.buildingId === selectedBuildingId);
+            filteredProperties = properties.filter(p => p.buildingId === selectedBuildingId);
         }
 
         let reportRows = filteredProperties.map(property => {
             // Look for an active agreement for this property
-            const activeAgreement = state.rentalAgreements.find(ra =>
+            const activeAgreement = rentalAgreements.find(ra =>
                 ra.propertyId === property.id && ra.status === RentalAgreementStatus.ACTIVE
             );
 
-            const owner = state.contacts.find(c => c.id === property.ownerId);
-            const building = state.buildings.find(b => b.id === property.buildingId);
+            const owner = contacts.find(c => c.id === property.ownerId);
+            const building = allBuildings.find(b => b.id === property.buildingId);
 
             let status: 'Occupied' | 'Vacant' = 'Vacant';
             let tenantName = '---';
@@ -78,7 +78,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
 
             if (activeAgreement) {
                 status = 'Occupied';
-                const tenant = state.contacts.find(c => c.id === activeAgreement.contactId);
+                const tenant = contacts.find(c => c.id === activeAgreement.contactId);
                 tenantName = tenant?.name || 'Unknown Tenant';
                 
                 if (activeAgreement.endDate) {
@@ -145,7 +145,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [state, selectedBuildingId, searchQuery, groupBy, sortConfig]);
+    }, [properties, rentalAgreements, contacts, allBuildings, selectedBuildingId, searchQuery, groupBy, sortConfig]);
 
 
     const handleExport = () => {
@@ -268,7 +268,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
                         <div className="text-center mb-6">
                             <h3 className="text-2xl font-bold text-app-text">Property Status Report</h3>
                             <p className="text-sm text-app-muted font-semibold">
-                                {selectedBuildingId !== 'all' ? `Building: ${state.buildings.find(b=>b.id===selectedBuildingId)?.name}` : 'All Buildings'}
+                                {selectedBuildingId !== 'all' ? `Building: ${allBuildings.find(b=>b.id===selectedBuildingId)?.name}` : 'All Buildings'}
                             </p>
                         </div>
 

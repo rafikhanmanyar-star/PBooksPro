@@ -69,17 +69,17 @@ const LoanManagementPage: React.FC = () => {
   });
 
   const contactsMap = useMemo(
-    () => new Map(state.contacts.map(c => [c.id, c])),
-    [state.contacts]
+    () => new Map(contacts.map(c => [c.id, c])),
+    [contacts]
   );
   const accountsMap = useMemo(
-    () => new Map(state.accounts.map(a => [a.id, a])),
-    [state.accounts]
+    () => new Map(accounts.map(a => [a.id, a])),
+    [accounts]
   );
 
   const loanSummaries = useMemo(() => {
     const summary: Record<string, LoanSummary> = {};
-    state.transactions
+    transactions
       .filter(tx => tx.type === TransactionType.LOAN)
       .forEach(tx => {
         const contactId = tx.contactId || 'unknown';
@@ -108,10 +108,10 @@ const LoanManagementPage: React.FC = () => {
     return Object.values(summary).filter(
       s => Math.abs(s.netBalance) > 0.01 || s.received > 0 || s.given > 0
     );
-  }, [state.transactions, contactsMap]);
+  }, [transactions, contactsMap]);
 
   const sidebarItems: LoanSummaryItem[] = useMemo(() => {
-    const loanTxs = state.transactions.filter(tx => tx.type === TransactionType.LOAN);
+    const loanTxs = transactions.filter(tx => tx.type === TransactionType.LOAN);
     return loanSummaries.map(s => {
       const contactTxs = loanTxs.filter(tx => tx.contactId === s.contactId);
       const lastDate =
@@ -130,7 +130,7 @@ const LoanManagementPage: React.FC = () => {
         treeGroup,
       };
     });
-  }, [loanSummaries, state.transactions]);
+  }, [loanSummaries, transactions]);
 
   const loanDashboardStats = useMemo(() => {
     let netLoan = 0;
@@ -155,7 +155,7 @@ const LoanManagementPage: React.FC = () => {
 
   const processedTransactions = useMemo((): ProcessedTx[] => {
     if (!selectedContactId) return [];
-    const rawTxs = state.transactions.filter(
+    const rawTxs = transactions.filter(
       tx => tx.type === TransactionType.LOAN && tx.contactId === selectedContactId
     );
     rawTxs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -176,7 +176,7 @@ const LoanManagementPage: React.FC = () => {
         description: tx.description,
       };
     });
-  }, [state.transactions, accountsMap, selectedContactId]);
+  }, [transactions, accountsMap, selectedContactId]);
 
   const transactionTotals = useMemo(() => {
     const totalGive = processedTransactions.reduce((acc, curr) => acc + curr.give, 0);
@@ -227,18 +227,18 @@ const LoanManagementPage: React.FC = () => {
       const balance = selectedSummary.netBalance;
       const status = balance > 0 ? 'To Return' : balance < 0 ? 'To Receive' : 'Settled';
       const message = `*Loan Balance Statement*\nContact: ${selectedSummary.contactName}\nStatus: ${status}\nNet Balance: *₨ ${Math.abs(balance).toLocaleString()}*\n\nThis is an automated message from PBooksPro.`;
-      const contact = state.contacts.find(
+      const contact = contacts.find(
         c => c.name === selectedSummary.contactName && c.contactNo === selectedSummary.contactNo
       );
       const contactLike = contact || {
         id: '',
         name: selectedSummary.contactName,
-        type: (state.contacts.find(c => c.name === selectedSummary.contactName)?.type || 'Friend & Family') as any,
+        type: (contacts.find(c => c.name === selectedSummary.contactName)?.type || 'Friend & Family') as any,
         contactNo: selectedSummary.contactNo,
       };
       sendOrOpenWhatsApp(
         { contact: contactLike, message, phoneNumber: contactLike.contactNo },
-        () => state.whatsAppMode,
+        () => whatsAppMode,
         openChat
       );
     } catch (error) {
@@ -420,7 +420,7 @@ const LoanManagementPage: React.FC = () => {
           onClose={handleEditModalClose}
           transactionTypeForNew={TransactionType.LOAN}
           transactionToEdit={
-            selectedTransactionId ? state.transactions.find(t => t.id === selectedTransactionId) : undefined
+            selectedTransactionId ? transactions.find(t => t.id === selectedTransactionId) : undefined
           }
           onShowDeleteWarning={handleShowDeleteWarning}
         />

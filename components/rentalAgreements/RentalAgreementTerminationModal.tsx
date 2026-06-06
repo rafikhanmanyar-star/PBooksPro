@@ -29,8 +29,8 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
 
     const allInvoicesForAgreement = useMemo(() => {
         if (!agreement) return [];
-        return state.invoices.filter(inv => inv.agreementId === agreement.id);
-    }, [agreement, state.invoices]);
+        return invoices.filter(inv => inv.agreementId === agreement.id);
+    }, [agreement, invoices]);
 
     const openInvoices = useMemo(() => {
         return allInvoicesForAgreement.filter(inv => inv.status !== InvoiceStatus.PAID);
@@ -89,8 +89,8 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
 
     if (!agreement) return null;
 
-    const tenantName = state.contacts.find(c => c.id === agreement.contactId)?.name || 'Unknown';
-    const propertyName = state.properties.find(p => p.id === agreement.propertyId)?.name || 'Unknown';
+    const tenantName = contacts.find(c => c.id === agreement.contactId)?.name || 'Unknown';
+    const propertyName = properties.find(p => p.id === agreement.propertyId)?.name || 'Unknown';
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`End Agreement #${agreement.agreementNumber}`} size="lg">

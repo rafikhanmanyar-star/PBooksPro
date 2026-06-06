@@ -22,8 +22,8 @@ const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId,
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
     const quotations = useMemo(() => {
-        return (state.quotations || []).filter(q => q.vendorId === vendorId);
-    }, [state.quotations, vendorId]);
+        return (quotations || []).filter(q => q.vendorId === vendorId);
+    }, [quotations, vendorId]);
 
     const filteredQuotations = useMemo(() => {
         let result = quotations;
@@ -34,7 +34,7 @@ const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId,
                 quotation.name.toLowerCase().includes(q) ||
                 quotation.date.includes(q) ||
                 quotation.items.some(item => {
-                    const category = state.categories.find(c => c.id === item.categoryId);
+                    const category = categories.find(c => c.id === item.categoryId);
                     return category?.name.toLowerCase().includes(q);
                 })
             );
@@ -69,7 +69,7 @@ const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId,
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [quotations, search, sortConfig, state.categories]);
+    }, [quotations, search, sortConfig, categories]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -177,7 +177,7 @@ const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId,
                                 <td className="px-4 py-3 max-w-md">
                                     <div className="space-y-1">
                                         {quotation.items.slice(0, 2).map((item, idx) => {
-                                            const category = state.categories.find(c => c.id === item.categoryId);
+                                            const category = categories.find(c => c.id === item.categoryId);
                                             return (
                                                 <div key={idx} className="text-xs text-slate-600">
                                                     {category?.name || 'Unknown'} - {item.quantity} {item.unit || 'units'} @ {item.pricePerQuantity.toLocaleString('en-US', { style: 'currency', currency: 'PKR' })}

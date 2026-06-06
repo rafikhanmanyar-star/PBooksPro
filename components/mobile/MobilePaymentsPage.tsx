@@ -16,7 +16,7 @@ const MobilePaymentsPage: React.FC = () => {
     const dispatch = useDispatchOnly();
     const [activeTab, setActiveTab] = useState('Pay Bills');
     const [searchQuery, setSearchQuery] = useState('');
-    const [projectFilter, setProjectFilter] = useState(state.defaultProjectId || 'all');
+    const [projectFilter, setProjectFilter] = useState(defaultProjectId || 'all');
     
     // Default to unpaid/partial for operational view
     const [statusFilter, setStatusFilter] = useState('Unpaid'); 
@@ -25,7 +25,7 @@ const MobilePaymentsPage: React.FC = () => {
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<Invoice | Bill | null>(null);
 
-    const projects = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
+    const projects = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
     const isReceiving = activeTab === 'Receive Payments';
 
@@ -33,9 +33,9 @@ const MobilePaymentsPage: React.FC = () => {
         let data: (Invoice | Bill)[] = [];
         
         if (isReceiving) {
-            data = state.invoices;
+            data = invoices;
         } else {
-            data = state.bills;
+            data = bills;
         }
 
         // 1. Status Filter
@@ -57,7 +57,7 @@ const MobilePaymentsPage: React.FC = () => {
             const q = searchQuery.toLowerCase();
             data = data.filter(item => {
                 const number = 'invoiceNumber' in item ? item.invoiceNumber : item.billNumber;
-                const contact = state.contacts.find(c => c.id === item.contactId);
+                const contact = contacts.find(c => c.id === item.contactId);
                 const description = item.description || '';
                 
                 return (
@@ -71,7 +71,7 @@ const MobilePaymentsPage: React.FC = () => {
         // Sort by Date (desc)
         return data.sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
 
-    }, [activeTab, statusFilter, projectFilter, searchQuery, state.invoices, state.bills, state.contacts]);
+    }, [activeTab, statusFilter, projectFilter, searchQuery, invoices, bills, contacts]);
 
     const handleItemClick = (item: Invoice | Bill) => {
         setSelectedItem(item);

@@ -65,7 +65,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        let logs = state.transactionLog || [];
+        let logs = transactionLog || [];
         
         // RBAC Filter: If not Admin, filter by userId
         if (currentUser?.role !== 'Admin') {
@@ -99,7 +99,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
             return 0;
         });
 
-    }, [state.transactionLog, startDate, endDate, searchQuery, sortConfig, currentUser]);
+    }, [transactionLog, startDate, endDate, searchQuery, sortConfig, currentUser]);
 
     const handleSort = (key: keyof TransactionLogEntry) => {
         setSortConfig(current => ({

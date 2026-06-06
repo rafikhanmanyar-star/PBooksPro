@@ -15,7 +15,7 @@ export function useGenerateDueInvoices() {
   const { showToast, showConfirm } = useNotification();
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const templates = useMemo(() => state.recurringInvoiceTemplates || [], [state.recurringInvoiceTemplates]);
+  const templates = useMemo(() => recurringInvoiceTemplates || [], [recurringInvoiceTemplates]);
   const todayStr = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -42,7 +42,7 @@ export function useGenerateDueInvoices() {
     const { rentalInvoiceSettings } = state;
     const { prefix, nextNumber, padding } = rentalInvoiceSettings || { prefix: 'INV-', nextNumber: 1, padding: 5 };
     let maxNum = nextNumber;
-    state.invoices.forEach(inv => {
+    invoices.forEach(inv => {
       if (inv.invoiceNumber?.startsWith(prefix)) {
         const part = inv.invoiceNumber.substring(prefix.length);
         if (/^\d+$/.test(part)) {
@@ -52,7 +52,7 @@ export function useGenerateDueInvoices() {
       }
     });
     return { maxNum, prefix, padding };
-  }, [state]);
+  }, [recurringInvoiceTemplates, invoices, categories, rentalAgreements, rentalInvoiceSettings]);
 
   const generateSingleInvoice = useCallback(
     (template: RecurringInvoiceTemplate, invoiceNum: number, prefix: string, padding: number): Invoice => {
@@ -65,7 +65,7 @@ export function useGenerateDueInvoices() {
       dueDateObj.setDate(dueDateObj.getDate() + 7);
       const monthYear = parseYyyyMmDdToLocalDate(issueDate).toLocaleString('default', { month: 'long', year: 'numeric' });
       const description = template.descriptionTemplate.replace('{Month}', monthYear);
-      const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+      const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
       return {
         id: `inv-rec-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         invoiceNumber,
@@ -85,7 +85,7 @@ export function useGenerateDueInvoices() {
         securityDepositCharge: 0,
       };
     },
-    [state.categories]
+    [categories]
   );
 
   const handleGenerateAllDue = useCallback(async () => {
@@ -107,7 +107,7 @@ export function useGenerateDueInvoices() {
     let totalCreated = 0;
     let { maxNum, prefix, padding } = getNextInvoiceNumber();
 
-    const rentalAgreements = state.rentalAgreements || [];
+    const rentalAgreements = rentalAgreements || [];
 
     for (const template of dueTemplates) {
       let currentTemplate = { ...template };
@@ -168,15 +168,15 @@ export function useGenerateDueInvoices() {
       dispatch({ type: 'UPDATE_RECURRING_TEMPLATE', payload: currentTemplate });
     }
 
-    if (totalCreated > 0 && state.rentalInvoiceSettings) {
+    if (totalCreated > 0 && rentalInvoiceSettings) {
       dispatch({
         type: 'UPDATE_RENTAL_INVOICE_SETTINGS',
-        payload: { ...state.rentalInvoiceSettings, nextNumber: maxNum },
+        payload: { ...rentalInvoiceSettings, nextNumber: maxNum },
       });
       showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
     }
     setIsGenerating(false);
-  }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, state.rentalInvoiceSettings, state.rentalAgreements, showConfirm, showToast]);
+  }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, rentalInvoiceSettings, rentalAgreements, showConfirm, showToast]);
 
   return { overdueCount: overdueTemplates.length, handleGenerateAllDue, isGenerating };
 }

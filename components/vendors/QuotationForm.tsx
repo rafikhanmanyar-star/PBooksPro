@@ -30,8 +30,8 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
     const [documentId, setDocumentId] = useState<string | undefined>(quotationToEdit?.documentId);
 
     const expenseCategories = useMemo(() => 
-        state.categories.filter(c => c.type === TransactionType.EXPENSE),
-        [state.categories]
+        categories.filter(c => c.type === TransactionType.EXPENSE),
+        [categories]
     );
 
     useEffect(() => {

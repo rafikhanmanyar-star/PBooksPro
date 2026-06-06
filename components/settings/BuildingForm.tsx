@@ -29,13 +29,13 @@ const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelet
             setNameError('Building name is required.');
             return;
         }
-        const duplicate = state.buildings.find(b => b.name.toLowerCase().trim() === name.toLowerCase().trim() && b.id !== buildingToEdit?.id);
+        const duplicate = buildings.find(b => b.name.toLowerCase().trim() === name.toLowerCase().trim() && b.id !== buildingToEdit?.id);
         if (duplicate) {
             setNameError('A building with this name already exists.');
         } else {
             setNameError('');
         }
-    }, [name, state.buildings, buildingToEdit]);
+    }, [name, buildings, buildingToEdit]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

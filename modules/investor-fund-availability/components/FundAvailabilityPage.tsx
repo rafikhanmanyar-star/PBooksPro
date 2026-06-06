@@ -61,7 +61,7 @@ export const FundAvailabilityPage: React.FC = () => {
     const [valAmount, setValAmount] = useState('');
     const [valProjectId, setValProjectId] = useState('');
 
-    const projectItems = useMemo(() => state.projects.map((p) => ({ id: p.id, name: p.name })), [state.projects]);
+    const projectItems = useMemo(() => projects.map((p) => ({ id: p.id, name: p.name })), [projects]);
 
     const onRefresh = () => {
         void qc.invalidateQueries({ queryKey: ['investor-fund-availability'] });

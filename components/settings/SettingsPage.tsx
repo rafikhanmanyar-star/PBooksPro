@@ -159,7 +159,7 @@ const SettingsPage: React.FC = () => {
     }, [ianaTimeZones]);
 
     // Check if user is admin - use AuthContext user (cloud auth), AppContext currentUser (local), or CompanyContext (local-only company login)
-    const isAdmin = authUser?.role === 'Admin' || state.currentUser?.role === 'Admin' || companyCtx?.authenticatedUser?.role === 'SUPER_ADMIN';
+    const isAdmin = authUser?.role === 'Admin' || currentUser?.role === 'Admin' || companyCtx?.authenticatedUser?.role === 'SUPER_ADMIN';
 
     // User Management: visible when admin (cloud/local) OR when in local-only mode with a company open (user created company and is logged in)
     const showUserManagement = isAdmin || (isLocalOnlyMode() && !!companyCtx?.activeCompany);
@@ -277,7 +277,7 @@ const SettingsPage: React.FC = () => {
 
         const balances = new Map<string, number>();
 
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             let amount = tx.amount;
             if (tx.type === TransactionType.EXPENSE) amount = -amount;
             if (tx.categoryId) balances.set(tx.categoryId, (balances.get(tx.categoryId) || 0) + tx.amount);
@@ -288,7 +288,7 @@ const SettingsPage: React.FC = () => {
             if (tx.contactId) balances.set(tx.contactId, (balances.get(tx.contactId) || 0) + amount);
         });
 
-        state.projectAgreements.forEach(pa => {
+        projectAgreements.forEach(pa => {
             if (pa.status === ProjectAgreementStatus.CANCELLED) return;
             const addBalance = (catId: string | undefined, val: number) => {
                 if (catId && val > 0) balances.set(catId, (balances.get(catId) || 0) + val);
@@ -301,8 +301,8 @@ const SettingsPage: React.FC = () => {
 
         if (activeCategory === 'accounts') {
             const accountMap = new Map<string, any>();
-            state.accounts.forEach(acc => accountMap.set(acc.id, { ...acc, children: [], balance: acc.balance }));
-            state.categories.filter(cat => !cat.isHidden).forEach(cat => accountMap.set(cat.id, { ...cat, children: [], balance: balances.get(cat.id) || 0 }));
+            accounts.forEach(acc => accountMap.set(acc.id, { ...acc, children: [], balance: acc.balance }));
+            categories.filter(cat => !cat.isHidden).forEach(cat => accountMap.set(cat.id, { ...cat, children: [], balance: balances.get(cat.id) || 0 }));
             const rootItems: any[] = [];
             accountMap.forEach(item => {
                 const parentId = (item as any).parentAccountId || (item as any).parentCategoryId;
@@ -390,24 +390,24 @@ const SettingsPage: React.FC = () => {
         else {
             let data: TableRowData[] = [];
             if (activeCategory === 'projects') {
-                data = state.projects.map(p => ({
+                data = projects.map(p => ({
                     id: p.id, name: p.name, description: p.description || '-', installmentPlan: p.installmentConfig ? 'Yes' : 'No',
                     balance: balances.get(p.id) || 0, originalItem: p
                 }));
             } else if (activeCategory === 'buildings') {
-                data = state.buildings.map(b => ({
+                data = buildings.map(b => ({
                     id: b.id, name: b.name, description: b.description || '-', balance: balances.get(b.id) || 0, originalItem: b
                 }));
             } else if (activeCategory === 'properties') {
-                data = state.properties.map(p => ({
-                    id: p.id, name: p.name, building: state.buildings.find(b => b.id === p.buildingId)?.name || 'Unknown',
-                    owner: state.contacts.find(c => c.id === p.ownerId)?.name || 'Unknown', serviceCharge: p.monthlyServiceCharge || 0,
+                data = properties.map(p => ({
+                    id: p.id, name: p.name, building: buildings.find(b => b.id === p.buildingId)?.name || 'Unknown',
+                    owner: contacts.find(c => c.id === p.ownerId)?.name || 'Unknown', serviceCharge: p.monthlyServiceCharge || 0,
                     description: p.description || '-', balance: balances.get(p.id) || 0, originalItem: p
                 }));
             } else if (activeCategory === 'units') {
-                data = state.units.map(u => ({
-                    id: u.id, name: u.name, project: state.projects.find(p => p.id === u.projectId)?.name || 'Unknown',
-                    owner: state.contacts.find(c => c.id === u.contactId)?.name || '-', salePrice: u.salePrice || 0,
+                data = units.map(u => ({
+                    id: u.id, name: u.name, project: projects.find(p => p.id === u.projectId)?.name || 'Unknown',
+                    owner: contacts.find(c => c.id === u.contactId)?.name || '-', salePrice: u.salePrice || 0,
                     description: u.description || '-', balance: balances.get(u.id) || 0, originalItem: u
                 }));
             }
@@ -425,7 +425,7 @@ const SettingsPage: React.FC = () => {
                 return 0;
             });
         }
-    }, [state, activeCategory, searchQuery, sortConfig, accountsTypeFilter, isTableViewCategory]);
+    }, [currentUser, transactions, projectAgreements, accounts, categories, projects, buildings, properties, contacts, units, projectInvoiceSettings, showSystemTransactions, enableColorCoding, enableBeepOnSave, enableDatePreservation, whatsAppMode, defaultProjectId, rentalInvoiceSettings, agreementSettings, projectAgreementSettings, editingEntity, activeCategory, searchQuery, sortConfig, accountsTypeFilter, isTableViewCategory]);
 
     const handleSort = (key: string) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
@@ -607,7 +607,7 @@ const SettingsPage: React.FC = () => {
     };
 
     const ProjectInvoiceSettingsBlock: React.FC = () => {
-        const settings = state.projectInvoiceSettings || {
+        const settings = projectInvoiceSettings || {
             prefix: 'P-INV-',
             nextNumber: 1,
             padding: 5,
@@ -765,10 +765,10 @@ const SettingsPage: React.FC = () => {
                     </div>
                 </div>
             )}
-            {renderToggle('Show System Transactions', 'Display automated system entries (like service charge deductions) in the main ledger.', state.showSystemTransactions, (val) => dispatch({ type: 'TOGGLE_SYSTEM_TRANSACTIONS', payload: val }))}
-            {renderToggle('Enable Color Coding', 'Use project/building specific colors in lists and forms for better visual distinction.', state.enableColorCoding, (val) => dispatch({ type: 'TOGGLE_COLOR_CODING', payload: val }))}
-            {renderToggle('Enable Beep on Save', 'Play a sound notification when transactions or records are saved successfully.', state.enableBeepOnSave, (val) => dispatch({ type: 'TOGGLE_BEEP_ON_SAVE', payload: val }))}
-            {renderToggle('Date Preservation', 'Remember the last used date in forms to speed up data entry for past records.', state.enableDatePreservation, (val) => dispatch({ type: 'TOGGLE_DATE_PRESERVATION', payload: val }))}
+            {renderToggle('Show System Transactions', 'Display automated system entries (like service charge deductions) in the main ledger.', showSystemTransactions, (val) => dispatch({ type: 'TOGGLE_SYSTEM_TRANSACTIONS', payload: val }))}
+            {renderToggle('Enable Color Coding', 'Use project/building specific colors in lists and forms for better visual distinction.', enableColorCoding, (val) => dispatch({ type: 'TOGGLE_COLOR_CODING', payload: val }))}
+            {renderToggle('Enable Beep on Save', 'Play a sound notification when transactions or records are saved successfully.', enableBeepOnSave, (val) => dispatch({ type: 'TOGGLE_BEEP_ON_SAVE', payload: val }))}
+            {renderToggle('Date Preservation', 'Remember the last used date in forms to speed up data entry for past records.', enableDatePreservation, (val) => dispatch({ type: 'TOGGLE_DATE_PRESERVATION', payload: val }))}
 
             <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
                 <h4 className="font-semibold text-slate-800 mb-1">Date display time zone</h4>
@@ -825,7 +825,7 @@ const SettingsPage: React.FC = () => {
                             type="radio"
                             name="whatsapp-mode"
                             value="api"
-                            checked={state.whatsAppMode === 'api'}
+                            checked={whatsAppMode === 'api'}
                             onChange={() => dispatch({ type: 'SET_WHATSAPP_MODE', payload: 'api' })}
                             className="mt-1 rounded-full text-indigo-600 focus:ring-indigo-500 h-4 w-4"
                         />
@@ -839,7 +839,7 @@ const SettingsPage: React.FC = () => {
                             type="radio"
                             name="whatsapp-mode"
                             value="manual"
-                            checked={state.whatsAppMode === 'manual'}
+                            checked={whatsAppMode === 'manual'}
                             onChange={() => dispatch({ type: 'SET_WHATSAPP_MODE', payload: 'manual' })}
                             className="mt-1 rounded-full text-indigo-600 focus:ring-indigo-500 h-4 w-4"
                         />
@@ -856,8 +856,8 @@ const SettingsPage: React.FC = () => {
                 <p className="text-sm text-slate-500 mb-4">Set a default project that will be automatically selected in all forms.</p>
                 <ComboBox
                     label=""
-                    items={[{ id: '', name: 'None (No Default)' }, ...state.projects]}
-                    selectedId={state.defaultProjectId || ''}
+                    items={[{ id: '', name: 'None (No Default)' }, ...projects]}
+                    selectedId={defaultProjectId || ''}
                     onSelect={(item) => dispatch({ type: 'UPDATE_DEFAULT_PROJECT', payload: item?.id || undefined })}
                     placeholder="Select default project..."
                     allowAddNew={false}
@@ -867,7 +867,7 @@ const SettingsPage: React.FC = () => {
     );
 
     const RentalInvoiceSettingsBlock: React.FC = () => {
-        const settings = state.rentalInvoiceSettings || { prefix: 'INV-', nextNumber: 1, padding: 5, autoSendInvoiceWhatsApp: false };
+        const settings = rentalInvoiceSettings || { prefix: 'INV-', nextNumber: 1, padding: 5, autoSendInvoiceWhatsApp: false };
         const [localSettings, setLocalSettings] = useState(settings);
         const handleChange = (field: string, val: string | number | boolean) => setLocalSettings(prev => ({ ...prev, [field]: val }));
         const handleSave = () => {
@@ -907,9 +907,9 @@ const SettingsPage: React.FC = () => {
 
     const renderIDSequences = () => (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <IDSequenceSettingsBlock title="Rental Agreements" settings={state.agreementSettings} type="UPDATE_AGREEMENT_SETTINGS" />
+            <IDSequenceSettingsBlock title="Rental Agreements" settings={agreementSettings} type="UPDATE_AGREEMENT_SETTINGS" />
             <RentalInvoiceSettingsBlock />
-            <IDSequenceSettingsBlock title="Project Agreements" settings={state.projectAgreementSettings} type="UPDATE_PROJECT_AGREEMENT_SETTINGS" />
+            <IDSequenceSettingsBlock title="Project Agreements" settings={projectAgreementSettings} type="UPDATE_PROJECT_AGREEMENT_SETTINGS" />
             <ProjectInvoiceSettingsBlock />
         </div>
     );
@@ -999,7 +999,7 @@ const SettingsPage: React.FC = () => {
         </div>
     );
 
-    const showDetail = !!state.editingEntity;
+    const showDetail = !!editingEntity;
 
     if (showDetail) {
         return (

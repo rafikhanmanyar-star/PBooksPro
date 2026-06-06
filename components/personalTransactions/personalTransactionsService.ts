@@ -3,6 +3,7 @@
  * Local SQLite (Electron) or PostgreSQL API (LAN) via AppState + REST.
  */
 
+import { usePersonalTransactions } from '../../hooks/useSelectiveState';
 import { PersonalTransactionsRepository, PersonalTransactionRow } from '../../services/database/repositories';
 import { getDatabaseService } from '../../services/database/databaseService';
 import { isLocalOnlyMode } from '../../config/apiUrl';

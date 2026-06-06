@@ -46,7 +46,7 @@ export interface UsePrintFormReturn {
  *   <>
  *     <button onClick={handlePrint} disabled={isPrinting}>Print</button>
  *     <div ref={printRef} style={{ position: 'absolute', left: -9999 }}>
- *       <POPrintTemplate printSettings={state.printSettings} data={selectedPO} />
+ *       <POPrintTemplate printSettings={printSettings} data={selectedPO} />
  *     </div>
  *   </>
  * );

@@ -27,9 +27,9 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
 
     // Filter out Internal Clearing account from combo box - with defensive check
     const selectableAccounts = useMemo(() => {
-        if (!state?.accounts) return [];
-        return state.accounts.filter(a => a.name !== 'Internal Clearing');
-    }, [state?.accounts]);
+        if (!accounts) return [];
+        return accounts.filter(a => a.name !== 'Internal Clearing');
+    }, [accounts]);
 
     const handleApply = () => {
         onFiltersChange(tempFilters);
@@ -42,15 +42,15 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
     };
 
     const availableCategories = useMemo(() => {
-        if (!state?.categories) return [];
+        if (!categories) return [];
         return tempFilters.type
-            ? state.categories.filter(c =>
+            ? categories.filter(c =>
                 tempFilters.type === 'Income' ? c.type === TransactionType.INCOME :
                     tempFilters.type === 'Expense' ? c.type === TransactionType.EXPENSE :
                         true
             )
-            : state.categories;
-    }, [state?.categories, tempFilters.type]);
+            : categories;
+    }, [categories, tempFilters.type]);
 
     return (
         <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-5 border-t-4 border-t-primary overflow-hidden relative">

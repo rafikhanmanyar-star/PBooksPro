@@ -49,7 +49,7 @@ const ManualJournalEntrySection: React.FC = () => {
   const state = useFullAppState();
   const { showToast, showAlert } = useNotification();
 
-  const flatAccounts = useMemo(() => flattenAccounts(state.accounts), [state.accounts]);
+  const flatAccounts = useMemo(() => flattenAccounts(accounts), [accounts]);
   const accountNameById = useMemo(() => {
     const m: Record<string, string> = {};
     flatAccounts.forEach((a) => {
@@ -100,7 +100,7 @@ const ManualJournalEntrySection: React.FC = () => {
         description: description.trim() || undefined,
         sourceModule: 'settings_manual',
         sourceId: undefined,
-        createdBy: state.currentUser?.id ?? null,
+        createdBy: currentUser?.id ?? null,
         lines: journalLines,
       });
       showToast(`Journal posted: ${journalEntryId}`, 'success');

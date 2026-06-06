@@ -45,19 +45,19 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
     // Resolve invoice: use prop or from transaction when in edit mode
     const effectiveInvoice = useMemo(() => {
         if (invoice) return invoice;
-        if (transactionToEdit?.invoiceId) return state.invoices.find(i => i.id === transactionToEdit.invoiceId) || null;
+        if (transactionToEdit?.invoiceId) return invoices.find(i => i.id === transactionToEdit.invoiceId) || null;
         return null;
-    }, [invoice, transactionToEdit?.invoiceId, state.invoices]);
+    }, [invoice, transactionToEdit?.invoiceId, invoices]);
 
     // Bank + Cash are valid deposit targets for rental receipts (Cash was wrongly excluded before, leaving the list empty when only the default Cash account exists).
     const depositAccounts = useMemo(
         () =>
-            state.accounts.filter(
+            accounts.filter(
                 a =>
                     (a.type === AccountType.BANK || a.type === AccountType.CASH) &&
                     a.name !== 'Internal Clearing'
             ),
-        [state.accounts]
+        [accounts]
     );
 
     const isSecurityOnlyInvoice = effectiveInvoice?.invoiceType === InvoiceType.SECURITY_DEPOSIT;
@@ -72,10 +72,10 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         const rentDue = effectiveInvoice.amount - effectiveSecurityCharge;
         const securityDepositDue = effectiveSecurityCharge;
 
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
+        const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
+        const securityDepositCategory = categories.find(c => c.name === 'Security Deposit');
 
-        const payments = state.transactions.filter(tx => tx.invoiceId === effectiveInvoice.id && tx.type === TransactionType.INCOME);
+        const payments = transactions.filter(tx => tx.invoiceId === effectiveInvoice.id && tx.type === TransactionType.INCOME);
 
         const rentPaid = payments.filter(p => p.categoryId === rentalIncomeCategory?.id).reduce((sum, tx) => sum + tx.amount, 0);
         const securityDepositPaid = payments.filter(p => p.categoryId === securityDepositCategory?.id).reduce((sum, tx) => sum + tx.amount, 0);
@@ -85,7 +85,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         const totalRemaining = rentRemaining + securityDepositRemaining;
 
         return { rentRemaining, securityDepositRemaining, totalRemaining };
-    }, [effectiveInvoice, isSecurityOnlyInvoice, state.transactions, state.categories]);
+    }, [effectiveInvoice, isSecurityOnlyInvoice, transactions, categories]);
 
     useEffect(() => {
         if (isEditMode && transactionToEdit && isOpen) {
@@ -178,11 +178,11 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             return;
         }
 
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
+        const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
+        const securityDepositCategory = categories.find(c => c.name === 'Security Deposit');
 
         const property = effectiveInvoice.propertyId
-            ? state.properties.find(p => p.id === effectiveInvoice.propertyId)
+            ? properties.find(p => p.id === effectiveInvoice.propertyId)
             : null;
 
         // Resolve owner from the agreement that generated this invoice.
@@ -191,7 +191,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         // is attributed to whoever owned the property when the agreement was active
         // — not whoever owns it on the day the tenant happens to pay.
         const linkedAgreement = effectiveInvoice.agreementId
-            ? state.rentalAgreements.find(a => a.id === effectiveInvoice.agreementId)
+            ? rentalAgreements.find(a => a.id === effectiveInvoice.agreementId)
             : null;
         const ownerFromAgreement = linkedAgreement?.ownerId;
 
@@ -231,7 +231,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                 } else if (effectiveInvoice.invoiceType === InvoiceType.SECURITY_DEPOSIT) {
                     categoryId = securityDepositCategory?.id;
                 } else if (effectiveInvoice.invoiceType === InvoiceType.SERVICE_CHARGE) {
-                    const serviceChargeCategory = state.categories.find(c => c.name === 'Service Charge Income');
+                    const serviceChargeCategory = categories.find(c => c.name === 'Service Charge Income');
                     categoryId = serviceChargeCategory?.id;
                 }
             }
@@ -271,7 +271,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         // Security deposits are liabilities (money held on behalf of tenant), not income.
         // We use TRANSFER type: Bank receives money (toAccountId), Security Liability increases (tracked via category).
         if (securityPayment > 0) {
-            const securityLiabilityAccount = state.accounts.find(a => accountIdMatchesLogical(a.id, 'sys-acc-sec-liability'));
+            const securityLiabilityAccount = accounts.find(a => accountIdMatchesLogical(a.id, 'sys-acc-sec-liability'));
             if (!securityLiabilityAccount) {
                 await showAlert("Critical Error: 'Security Liability' account not found. Please check system accounts.");
                 return;
@@ -293,7 +293,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         }
 
         // --- WhatsApp Confirmation Logic ---
-        const contact = state.contacts.find(c => c.id === effectiveInvoice.contactId);
+        const contact = contacts.find(c => c.id === effectiveInvoice.contactId);
         if (contact && contact.contactNo) {
             const shouldSendWhatsapp = await showConfirm(
                 "Payment recorded successfully. Do you want to send the receipt on WhatsApp?",
@@ -301,14 +301,14 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             );
 
             if (shouldSendWhatsapp) {
-                const property = state.properties.find(p => p.id === effectiveInvoice.propertyId);
-                const building = property ? state.buildings.find(b => b.id === property.buildingId) : null;
+                const property = properties.find(p => p.id === effectiveInvoice.propertyId);
+                const building = property ? buildings.find(b => b.id === property.buildingId) : null;
 
                 let subject = property?.name || 'your unit';
                 if (building) subject += ` (${building.name})`;
 
                 const newBalance = Math.max(0, totalRemaining - totalPaidNow);
-                const totalUnpaid = sumOutstandingInvoiceBalancesForContact(state.invoices, contact.id, {
+                const totalUnpaid = sumOutstandingInvoiceBalancesForContact(invoices, contact.id, {
                     invoiceId: effectiveInvoice.id,
                     invoiceBalanceOverride: newBalance,
                 });
@@ -328,7 +328,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
 
                     sendOrOpenWhatsApp(
                         { contact, message, phoneNumber: contact.contactNo },
-                        () => state.whatsAppMode,
+                        () => whatsAppMode,
                         openChat
                     );
                 } catch (error) {

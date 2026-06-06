@@ -1,7 +1,7 @@
 import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { useNotification } from '../../context/NotificationContext';
-import { RentalAgreement, RentalAgreementStatus } from '../../types';
+import { RentalAgreement, RentalAgreementStatus, type AppState } from '../../types';
 import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import Input from '../ui/Input';
@@ -48,13 +48,13 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
   const [saving, setSaving] = useState(false);
 
   const buildingId = useMemo(
-    () => state.properties.find((p) => p.id === renewFrom.propertyId)?.buildingId || '',
-    [state.properties, renewFrom.propertyId]
+    () => properties.find((p) => p.id === renewFrom.propertyId)?.buildingId || '',
+    [properties, renewFrom.propertyId]
   );
 
   const formStyle = useMemo(
-    () => getFormBackgroundColorStyle(undefined, buildingId, state),
-    [buildingId, state]
+    () => getFormBackgroundColorStyle(undefined, buildingId, formColorState),
+    [buildingId, formColorState]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,7 +82,7 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
     }
     setSaving(true);
     try {
-      await executeRentalRenewal(state, dispatch, renewFrom, {
+      await executeRentalRenewal(engineState, dispatch, renewFrom, {
         startDate: toLocalDateString(new Date(startDate)),
         endDate: toLocalDateString(new Date(endDate)),
         monthlyRent: rent,
@@ -107,13 +107,13 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
 
   const otherActive = useMemo(
     () =>
-      state.rentalAgreements.some(
+      rentalAgreements.some(
         (r) =>
           r.propertyId === renewFrom.propertyId &&
           r.id !== renewFrom.id &&
           r.status === RentalAgreementStatus.ACTIVE
       ),
-    [state.rentalAgreements, renewFrom]
+    [rentalAgreements, renewFrom]
   );
 
   if (otherActive) {

@@ -1,4 +1,5 @@
 
+import { useBuildings, useContacts, useDispatchOnly, useProperties } from '../hooks/useSelectiveState';
 import React, { useState, useCallback } from 'react';
 import { useDispatchOnly, useFullAppState } from '../hooks/useSelectiveState';
 import { ContactType, TransactionType, AccountType } from '../types';
@@ -162,7 +163,7 @@ export const EntityFormModal: React.FC<{
         <ContactForm
           onSubmit={onSubmit}
           onCancel={onClose}
-          existingContacts={state.contacts}
+          existingContacts={contacts}
           fixedTypeForNew={contactType}
           initialName={initialName}
         />
@@ -200,9 +201,9 @@ export const EntityFormModal: React.FC<{
         <PropertyForm
           onSubmit={onSubmit}
           onCancel={onClose}
-          contacts={state.contacts}
-          buildings={state.buildings}
-          properties={state.properties}
+          contacts={contacts}
+          buildings={buildings}
+          properties={properties}
         />
       )}
       {formType === 'unit' && (

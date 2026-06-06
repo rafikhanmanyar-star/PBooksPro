@@ -281,7 +281,7 @@ const BrokerFeeReport: React.FC = () => {
 
             sendOrOpenWhatsApp(
                 { contact: selectedBroker, message, phoneNumber: selectedBroker.contactNo },
-                () => state.whatsAppMode,
+                () => appWhatsAppMode,
                 openChat
             );
         } catch (error) {
