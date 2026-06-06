@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lock, AlertCircle, Eye, EyeOff, Server, Building2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getApiRootUrl, getAppDisplayName, isStagingEnvironment } from '../../config/apiUrl';
+import { getApiRootUrl, getAppDisplayName, isStagingEnvironment, getDefaultApiRootUrl } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
 import { requestElectronWebContentsFocus } from '../../utils/electronFocusRecovery';
 import { useNotification } from '../../context/NotificationContext';
@@ -137,7 +137,15 @@ const ApiLoginScreen: React.FC = () => {
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setServerUrl(getApiRootUrl());
+    const root = getApiRootUrl();
+    setServerUrl(root);
+    try {
+      apiClient.setBaseUrl(root);
+    } catch {
+      const fallback = getDefaultApiRootUrl();
+      setServerUrl(fallback);
+      apiClient.setBaseUrl(fallback);
+    }
   }, []);
 
   /** Defensive: full-screen notification progress can outlive logout and block this screen. */
@@ -197,7 +205,7 @@ const ApiLoginScreen: React.FC = () => {
     return () => clearTimeout(id);
   }, [view, password]);
 
-  const rootUrl = () => (serverUrl.trim() || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+  const rootUrl = () => (serverUrl.trim() || getDefaultApiRootUrl()).replace(/\/+$/, '');
 
   /** Load organizations from GET /api/auth/tenants when API URL or login view changes. */
   useEffect(() => {
@@ -397,12 +405,16 @@ const ApiLoginScreen: React.FC = () => {
                 type="url"
                 value={serverUrl}
                 onChange={e => setServerUrl(e.target.value)}
-                placeholder="http://192.168.1.10:3000"
+                placeholder={isStagingEnvironment() ? 'http://127.0.0.1:3001' : 'http://192.168.1.10:3000'}
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-gray-900"
                 disabled={isLoading}
                 autoComplete="off"
               />
-              <p className="text-xs text-gray-500 mt-1">Use your PBooks API server URL (port is usually 3000). Saved on this device.</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {isStagingEnvironment()
+                  ? 'Staging API server — use port 3001 (PBooks Pro Staging API Server). Saved on this device.'
+                  : 'Production API server — use port 3000. Saved on this device.'}
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -556,7 +568,7 @@ const ApiLoginScreen: React.FC = () => {
                 type="url"
                 value={serverUrl}
                 onChange={e => setServerUrl(e.target.value)}
-                placeholder="http://127.0.0.1:3000"
+                placeholder={isStagingEnvironment() ? 'http://127.0.0.1:3001' : 'http://127.0.0.1:3000'}
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-gray-900"
                 disabled={isLoading}
                 autoComplete="off"
