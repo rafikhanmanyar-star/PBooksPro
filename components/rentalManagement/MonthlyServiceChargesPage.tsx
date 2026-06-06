@@ -1,7 +1,18 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef, startTransition, useDeferredValue } from 'react';
-import { useAppContext } from '../../context/AppContext';
-import { TransactionType, Transaction, Category, RentalAgreementStatus, ContactType } from '../../types';
+import {
+    useAccounts,
+    useBuildings,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useInvoices,
+    useProperties,
+    useRentalAgreements,
+    useStateSelector,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
+import { TransactionType, Transaction, Category, RentalAgreementStatus, ContactType, type AppState } from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -99,7 +110,30 @@ const MonthlyServiceChargesBodySkeleton: React.FC = () => (
 );
 
 const MonthlyServiceChargesPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const properties = useProperties();
+    const buildings = useBuildings();
+    const contacts = useContacts();
+    const categories = useCategories();
+    const transactions = useTransactions();
+    const invoices = useInvoices();
+    const rentalAgreements = useRentalAgreements();
+    const accounts = useAccounts();
+    const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
+    const dispatch = useDispatchOnly();
+    const engineState = useMemo(
+        () =>
+            ({
+                properties,
+                buildings,
+                contacts,
+                categories,
+                transactions,
+                invoices,
+                rentalAgreements,
+                accounts,
+            }) as AppState,
+        [properties, buildings, contacts, categories, transactions, invoices, rentalAgreements, accounts]
+    );
     const { showConfirm, showToast, showAlert } = useNotification();
     const { openChat } = useWhatsApp();
 
@@ -137,31 +171,31 @@ const MonthlyServiceChargesPage: React.FC = () => {
     const [bodyReady, setBodyReady] = useState(false);
 
     const propertyById = useMemo(
-        () => new Map(state.properties.map((p) => [p.id, p])),
-        [state.properties]
+        () => new Map(properties.map((p) => [p.id, p])),
+        [properties]
     );
     const buildingById = useMemo(
-        () => new Map(state.buildings.map((b) => [b.id, b])),
-        [state.buildings]
+        () => new Map(buildings.map((b) => [b.id, b])),
+        [buildings]
     );
     const contactById = useMemo(
-        () => new Map(state.contacts.map((c) => [c.id, c])),
-        [state.contacts]
+        () => new Map(contacts.map((c) => [c.id, c])),
+        [contacts]
     );
     const categoryById = useMemo(
-        () => new Map(state.categories.map((c) => [c.id, c])),
-        [state.categories]
+        () => new Map(categories.map((c) => [c.id, c])),
+        [categories]
     );
     const activeTenantByPropertyId = useMemo(() => {
         const map = new Map<string, string>();
-        for (const ag of state.rentalAgreements) {
+        for (const ag of rentalAgreements) {
             if (ag.status !== RentalAgreementStatus.ACTIVE) continue;
             if (!map.has(ag.propertyId) && ag.contactId) {
                 map.set(ag.propertyId, ag.contactId);
             }
         }
         return map;
-    }, [state.rentalAgreements]);
+    }, [rentalAgreements]);
 
     const getPropertyStatus = useCallback((propertyId: string): 'Rented' | 'Vacant' => {
         return activeTenantByPropertyId.has(propertyId) ? 'Rented' : 'Vacant';
@@ -172,18 +206,18 @@ const MonthlyServiceChargesPage: React.FC = () => {
     }, [activeTenantByPropertyId]);
 
     const ownerBalances = useMemo(() => {
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
-        const ownerSvcPayCategory = state.categories.find(c => c.id === 'sys-cat-own-svc-pay' || c.name === 'Owner Service Charge Payment');
+        const rentalIncomeCategory = categories.find(c => c.name === 'Rental Income');
+        const ownerPayoutCategory = categories.find(c => c.name === 'Owner Payout');
+        const ownerSvcPayCategory = categories.find(c => c.id === 'sys-cat-own-svc-pay' || c.name === 'Owner Service Charge Payment');
 
         const balances: Record<string, number> = {};
 
-        state.contacts.filter(c => c.type === ContactType.OWNER).forEach(owner => {
+        contacts.filter(c => c.type === ContactType.OWNER).forEach(owner => {
             balances[owner.id] = 0;
         });
 
         if (rentalIncomeCategory) {
-            state.transactions
+            transactions
                 .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id)
                 .forEach(tx => {
                     if (tx.propertyId) {
@@ -197,7 +231,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
         }
 
         if (ownerSvcPayCategory) {
-            state.transactions
+            transactions
                 .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === ownerSvcPayCategory.id)
                 .forEach(tx => {
                     if (tx.contactId && balances[tx.contactId] !== undefined) {
@@ -207,7 +241,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                 });
         }
 
-        state.transactions
+        transactions
             .filter(tx => tx.type === TransactionType.EXPENSE)
             .forEach(tx => {
                 if (tx.categoryId === ownerPayoutCategory?.id && tx.contactId && balances[tx.contactId] !== undefined) {
@@ -229,33 +263,33 @@ const MonthlyServiceChargesPage: React.FC = () => {
             });
 
         return balances;
-    }, [state.transactions, state.contacts, categoryById, propertyById]);
+    }, [transactions, contacts, categoryById, propertyById]);
 
     /** Used for "Run Monthly Deduction" only — properties with an amount configured on the asset. */
     const propertiesWithPredefinedCharge = useMemo(() => {
-        return state.properties.filter(p => (p.monthlyServiceCharge || 0) > 0);
-    }, [state.properties]);
+        return properties.filter(p => (p.monthlyServiceCharge || 0) > 0);
+    }, [properties]);
 
     const svcIncomeCategory = useMemo(() => {
-        return state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
-    }, [state.categories]);
+        return categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
+    }, [categories]);
 
     const rentalIncomeCategory = useMemo(() => {
-        return state.categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
-    }, [state.categories]);
+        return categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
+    }, [categories]);
 
     const scIndexState = useMemo(
         () => ({
-            properties: state.properties,
-            invoices: state.invoices,
-            rentalAgreements: state.rentalAgreements,
+            properties: properties,
+            invoices: invoices,
+            rentalAgreements: rentalAgreements,
         }),
-        [state.properties, state.invoices, state.rentalAgreements]
+        [properties, invoices, rentalAgreements]
     );
 
     const scIndexes = useMemo(
-        () => buildServiceChargeIndexes(state.transactions, svcIncomeCategory?.id ?? null, scIndexState),
-        [state.transactions, svcIncomeCategory?.id, scIndexState]
+        () => buildServiceChargeIndexes(transactions, svcIncomeCategory?.id ?? null, scIndexState),
+        [transactions, svcIncomeCategory?.id, scIndexState]
     );
 
     /**
@@ -264,14 +298,14 @@ const MonthlyServiceChargesPage: React.FC = () => {
      */
     const propertiesWithCharges = useMemo(() => {
         const ids = new Set<string>();
-        for (const p of state.properties) {
+        for (const p of properties) {
             if ((p.monthlyServiceCharge || 0) > 0) ids.add(p.id);
         }
         for (const pid of scIndexes.propertyHasScIncome) {
             ids.add(pid);
         }
-        return state.properties.filter(p => ids.has(p.id));
-    }, [state.properties, scIndexes]);
+        return properties.filter(p => ids.has(p.id));
+    }, [properties, scIndexes]);
 
     /** Ids of this credit tx + paired rental-income deduction (single deduction record). */
     const getPairIdsForServiceChargeCreditTx = useCallback((creditTx: Transaction): string[] => {
@@ -284,9 +318,9 @@ const MonthlyServiceChargesPage: React.FC = () => {
         let pairId = '';
         if (creditTx.id.includes('bm-credit')) pairId = creditTx.id.replace('bm-credit', 'bm-debit');
         else if (creditTx.id.includes('bm-debit')) pairId = creditTx.id.replace('bm-debit', 'bm-credit');
-        let pair = state.transactions.find(t => t.id === pairId);
+        let pair = transactions.find(t => t.id === pairId);
         if (!pair) {
-            pair = state.transactions.find(t =>
+            pair = transactions.find(t =>
                 t.id !== creditTx.id &&
                 t.propertyId === propertyId &&
                 t.date === creditTx.date &&
@@ -297,7 +331,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
         }
         if (pair) ids.push(pair.id);
         return ids;
-    }, [state.transactions, svcIncomeCategory, rentalIncomeCategory]);
+    }, [transactions, svcIncomeCategory, rentalIncomeCategory]);
 
     const monthOptions = useMemo(() => {
         if (!svcIncomeCategory) return [{ value: 'all', label: 'All' }];
@@ -309,8 +343,8 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
     const rawPropertyRows = useMemo((): PropertyRow[] => {
         return propertiesWithCharges.map(property => {
-            const building = state.buildings.find(b => b.id === property.buildingId);
-            const owner = state.contacts.find(c => c.id === property.ownerId);
+            const building = buildings.find(b => b.id === property.buildingId);
+            const owner = contacts.find(c => c.id === property.ownerId);
             const status = getPropertyStatus(property.id);
 
             const deductedEver = svcIncomeCategory ? scIndexes.propertyHasScIncome.has(property.id) : false;
@@ -344,20 +378,20 @@ const MonthlyServiceChargesPage: React.FC = () => {
             const tid = getActiveTenantId(p.id);
             if (tid) ids.add(tid);
         }
-        return state.contacts.filter(c => ids.has(c.id));
-    }, [propertiesWithCharges, state.contacts, getActiveTenantId]);
+        return contacts.filter(c => ids.has(c.id));
+    }, [propertiesWithCharges, contacts, getActiveTenantId]);
 
     const ownersWithSvc = useMemo(() => {
         const ids = new Set(propertiesWithCharges.map(p => p.ownerId).filter(Boolean) as string[]);
-        return state.contacts.filter(c => ids.has(c.id));
-    }, [propertiesWithCharges, state.contacts]);
+        return contacts.filter(c => ids.has(c.id));
+    }, [propertiesWithCharges, contacts]);
 
     const buildingsWithSvc = useMemo(() => {
         const ids = new Set(propertiesWithCharges.map(p => p.buildingId).filter(Boolean) as string[]);
-        return state.buildings
+        return buildings
             .filter(b => ids.has(b.id))
             .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-    }, [propertiesWithCharges, state.buildings]);
+    }, [propertiesWithCharges, buildings]);
 
     /** Same order as sidebar / tree: building name, then unit. */
     const propertiesWithChargesSorted = useMemo(() => {
@@ -709,7 +743,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
 
         type Cand = { tx: Transaction; mk: string; propRow: PropertyRow };
         const candidates: Cand[] = [];
-        for (const tx of state.transactions) {
+        for (const tx of transactions) {
             if (tx.type !== TransactionType.INCOME || tx.categoryId !== svcIncomeCategory.id) continue;
             if (!tx.propertyId || !propIds.has(tx.propertyId)) continue;
             const mk = tx.date?.slice(0, 7);
@@ -731,7 +765,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
         }
 
         const { runningBalanceByOwnerMonth, rentalIncomeByOwnerMonth } = buildLedgerMetricMaps(
-            state,
+            engineState,
             uniqueOwnerMonths,
             rid
         );
@@ -776,11 +810,11 @@ const MonthlyServiceChargesPage: React.FC = () => {
     }, [
         svcIncomeCategory,
         rentalIncomeCategory,
-        state.transactions,
-        state.categories,
-        state.properties,
-        state.contacts,
-        state.rentalAgreements,
+        transactions,
+        categories,
+        properties,
+        contacts,
+        rentalAgreements,
         scIndexes,
         selectedPropertyRowsForLedger,
         selectedMonth,
@@ -791,8 +825,8 @@ const MonthlyServiceChargesPage: React.FC = () => {
     const gridData = filteredPropertyRows;
 
     const transactionsById = useMemo(
-        () => new Map(state.transactions.map(t => [t.id, t])),
-        [state.transactions]
+        () => new Map(transactions.map(t => [t.id, t])),
+        [transactions]
     );
 
     const deferredLedgerRows = useDeferredValue(ledgerRows);
@@ -860,7 +894,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
         Object.entries(ownerBalances).forEach(([ownerId, balance]) => {
             if (balance < -0.01) {
                 const owner = contactById.get(ownerId);
-                const vacantProps = state.properties
+                const vacantProps = properties
                     .filter(p => p.ownerId === ownerId && getPropertyStatus(p.id) === 'Vacant')
                     .map(p => p.name);
 
@@ -874,10 +908,10 @@ const MonthlyServiceChargesPage: React.FC = () => {
         });
 
         return negativeOwners.sort((a, b) => a.totalOwed - b.totalOwed);
-    }, [ownerBalances, contactById, state.properties, getPropertyStatus]);
+    }, [ownerBalances, contactById, properties, getPropertyStatus]);
 
     const handleDeleteLedgerRow = async (row: LedgerRow) => {
-        const creditTx = state.transactions.find(t => t.id === row.id);
+        const creditTx = transactions.find(t => t.id === row.id);
         if (!creditTx) {
             showToast('Transaction not found.', 'info');
             return;
@@ -902,7 +936,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
     };
 
     const handleWhatsAppServiceChargeOwner = useCallback(async (row: LedgerRow) => {
-        const contact = state.contacts.find(c => c.id === row.ownerId);
+        const contact = contacts.find(c => c.id === row.ownerId);
         if (!contact) {
             await showAlert('Owner contact not found.');
             return;
@@ -933,18 +967,18 @@ const MonthlyServiceChargesPage: React.FC = () => {
         try {
             sendOrOpenWhatsApp(
                 { contact, message, phoneNumber: contact.contactNo || undefined },
-                () => state.whatsAppMode,
+                () => whatsAppMode,
                 openChat
             );
         } catch (e) {
             await showAlert(e instanceof Error ? e.message : 'Could not open WhatsApp.');
         }
-    }, [state.contacts, state.whatsAppMode, openChat, showAlert]);
+    }, [contacts, whatsAppMode, openChat, showAlert]);
 
     const handleBulkRun = async () => {
-        let rentalIncomeCategory = state.categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
-        let svcCat = state.categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
-        let cashAccount = state.accounts.find(a => a.name === 'Cash') || state.accounts[0];
+        let rentalIncomeCategory = categories.find(c => c.id === 'sys-cat-rent-inc' || c.name === 'Rental Income');
+        let svcCat = categories.find(c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income');
+        let cashAccount = accounts.find(a => a.name === 'Cash') || accounts[0];
 
         const catsToCreate: Category[] = [];
 
@@ -1000,7 +1034,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     const property = propertiesWithPredefinedCharge[i];
                     if (!property.ownerId) continue;
 
-                    const alreadyApplied = state.transactions.some(tx =>
+                    const alreadyApplied = transactions.some(tx =>
                         tx.propertyId === property.id &&
                         tx.categoryId === svcCat!.id &&
                         tx.date.startsWith(runMonth)
@@ -1014,7 +1048,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     const amount = property.monthlyServiceCharge || 0;
                     const isRented = getPropertyStatus(property.id) === 'Rented';
                     const ownerId =
-                        resolveOwnerForPropertyOnDate(state, property.id, dateStr) ?? property.ownerId ?? undefined;
+                        resolveOwnerForPropertyOnDate(engineState, property.id, dateStr) ?? property.ownerId ?? undefined;
                     const debitTx: Transaction = {
                         id: `bm-debit-${baseTimestamp}-${i}`,
                         type: TransactionType.INCOME,

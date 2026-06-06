@@ -1,6 +1,14 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBills,
+    useCategories,
+    useContacts,
+    useDispatchOnly,
+    useInvoices,
+    useStateSelector,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
 import { ContactType, InvoiceType, InvoiceStatus, TransactionType, Transaction, Invoice } from '../../types';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
@@ -43,7 +51,13 @@ const formatLongDate = (dateStr: string): string => {
 };
 
 const TenantLedgerReport: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const contacts = useContacts();
+    const invoices = useInvoices();
+    const transactions = useTransactions();
+    const categories = useCategories();
+    const bills = useBills();
+    const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
+    const dispatch = useDispatchOnly();
     const { showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
 
@@ -90,7 +104,7 @@ const TenantLedgerReport: React.FC = () => {
         if (dateRangeType !== 'custom') setDateRangeType('custom');
     };
 
-    const tenants = useMemo(() => state.contacts.filter(c => c.type === ContactType.TENANT), [state.contacts]);
+    const tenants = useMemo(() => contacts.filter(c => c.type === ContactType.TENANT), [contacts]);
 
     const tenantsSortedForTree = useMemo(() => {
         const q = treeSearchQuery.trim().toLowerCase();
@@ -154,14 +168,14 @@ const TenantLedgerReport: React.FC = () => {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        let tenantInvoices = state.invoices.filter(inv =>
+        let tenantInvoices = invoices.filter(inv =>
             inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE
         );
         if (selectedTenantId !== 'all') {
             tenantInvoices = tenantInvoices.filter(inv => inv.contactId === selectedTenantId);
         }
 
-        let tenantTransactions = state.transactions.filter(tx =>
+        let tenantTransactions = transactions.filter(tx =>
             (tx.type === TransactionType.INCOME || tx.type === TransactionType.EXPENSE) && tx.contactId
         );
         if (selectedTenantId !== 'all') {
@@ -171,7 +185,7 @@ const TenantLedgerReport: React.FC = () => {
             tenantTransactions = tenantTransactions.filter(tx => {
                 if (tenantIds.has(tx.contactId!)) return true;
                 if (tx.invoiceId) {
-                    const inv = state.invoices.find(i => i.id === tx.invoiceId);
+                    const inv = invoices.find(i => i.id === tx.invoiceId);
                     return inv && (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE);
                 }
                 return false;
@@ -183,7 +197,7 @@ const TenantLedgerReport: React.FC = () => {
         tenantInvoices.forEach(inv => {
             const invDate = new Date(inv.issueDate);
             if (invDate >= start && invDate <= end) {
-                const tenant = state.contacts.find(c => c.id === inv.contactId);
+                const tenant = contacts.find(c => c.id === inv.contactId);
                 ledgerItems.push({
                     date: inv.issueDate,
                     tenantName: tenant?.name || 'Unknown/Deleted Tenant',
@@ -199,14 +213,14 @@ const TenantLedgerReport: React.FC = () => {
         const secRefundCategoryNames = ['Security Deposit Refund', 'Owner Security Payout'];
         const isSecRefundCategory = (categoryId: string | undefined) => {
             if (!categoryId) return false;
-            const cat = state.categories.find(c => c.id === categoryId);
+            const cat = categories.find(c => c.id === categoryId);
             return cat ? secRefundCategoryNames.includes(cat.name) : false;
         };
 
         tenantTransactions.forEach(tx => {
             const txDate = new Date(tx.date);
             if (txDate >= start && txDate <= end) {
-                const tenant = state.contacts.find(c => c.id === tx.contactId);
+                const tenant = contacts.find(c => c.id === tx.contactId);
                 const tenantName = tenant?.name || 'Unknown/Deleted Tenant';
                 const isExpense = tx.type === TransactionType.EXPENSE;
                 const isSecRefund = isExpense && isSecRefundCategory(tx.categoryId);
@@ -267,7 +281,7 @@ const TenantLedgerReport: React.FC = () => {
         }
 
         return finalItems;
-    }, [state, startDate, endDate, selectedTenantId, searchQuery, tenants, groupBy, sortConfig]);
+    }, [contacts, invoices, transactions, categories, startDate, endDate, selectedTenantId, searchQuery, tenants, groupBy, sortConfig]);
 
     const requestSort = (key: keyof LedgerItem) => {
         if (key !== 'date') return;
@@ -287,7 +301,7 @@ const TenantLedgerReport: React.FC = () => {
         const tenantName =
             selectedTenantId === 'all'
                 ? 'All tenants'
-                : state.contacts.find(c => c.id === selectedTenantId)?.name ?? 'Selected tenant';
+                : contacts.find(c => c.id === selectedTenantId)?.name ?? 'Selected tenant';
         const closing = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
         return {
             tenantName,
@@ -296,28 +310,28 @@ const TenantLedgerReport: React.FC = () => {
             totalCredit: totals.credit,
             closing,
         };
-    }, [reportData, selectedTenantId, state.contacts, totals.debit, totals.credit]);
+    }, [reportData, selectedTenantId, contacts, totals.debit, totals.credit]);
 
     const alertsCount = useMemo(() => {
-        const overdueInvoices = state.invoices.filter(inv => {
+        const overdueInvoices = invoices.filter(inv => {
             if (inv.invoiceType !== InvoiceType.RENTAL && inv.invoiceType !== InvoiceType.SERVICE_CHARGE) return false;
             if (!inv.dueDate) return false;
             const due = new Date(inv.dueDate);
             return due < new Date() && inv.status !== InvoiceStatus.PAID;
         });
         return overdueInvoices.length;
-    }, [state.invoices]);
+    }, [invoices]);
 
     const { print: triggerPrint } = usePrintContext();
 
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
         if (tx.invoiceId) {
-            const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+            const invoice = invoices.find(i => i.id === tx.invoiceId);
             return invoice ? `Invoice #${invoice.invoiceNumber}` : 'an Invoice';
         }
         if (tx.billId) {
-            const bill = state.bills.find(b => b.id === tx.billId);
+            const bill = bills.find(b => b.id === tx.billId);
             return bill ? `Bill #${bill.billNumber}` : 'a Bill';
         }
         return 'a linked item';
@@ -372,7 +386,7 @@ const TenantLedgerReport: React.FC = () => {
             message += `This is an automated summary from PBooksPro.`;
             sendOrOpenWhatsApp(
                 { contact: selectedTenant, message, phoneNumber: selectedTenant.contactNo },
-                () => state.whatsAppMode, openChat
+                () => whatsAppMode, openChat
             );
         } catch (error) {
             await showAlert(error instanceof Error ? error.message : 'Failed to send WhatsApp message');
@@ -700,7 +714,7 @@ const TenantLedgerReport: React.FC = () => {
                                     <p className="text-sm text-app-muted">{formatLongDate(startDate)} – {formatLongDate(endDate)}</p>
                                     {selectedTenantId !== 'all' && (
                                         <p className="text-sm text-app-muted font-semibold">
-                                            Tenant: {state.contacts.find(c => c.id === selectedTenantId)?.name}
+                                            Tenant: {contacts.find(c => c.id === selectedTenantId)?.name}
                                         </p>
                                     )}
                                 </div>
@@ -723,8 +737,8 @@ const TenantLedgerReport: React.FC = () => {
                                             </thead>
                                             <tbody>
                                                 {reportData.map((item, idx) => {
-                                                    const transaction = item.entityType === 'transaction' ? state.transactions.find(t => t.id === item.entityId) : null;
-                                                    const invoice = item.entityType === 'invoice' ? state.invoices.find(i => i.id === item.entityId) : null;
+                                                    const transaction = item.entityType === 'transaction' ? transactions.find(t => t.id === item.entityId) : null;
+                                                    const invoice = item.entityType === 'invoice' ? invoices.find(i => i.id === item.entityId) : null;
                                                     return (
                                                         <tr
                                                             key={item.id}

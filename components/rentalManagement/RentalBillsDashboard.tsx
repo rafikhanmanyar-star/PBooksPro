@@ -1,5 +1,17 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+  useAccounts,
+  useBills,
+  useBuildings,
+  useCategories,
+  useContacts,
+  useDispatchOnly,
+  useProperties,
+  useRentalAgreements,
+  useStateSelector,
+  useTransactions,
+  useVendors,
+} from '../../hooks/useSelectiveState';
 import { Bill, TransactionType, Transaction, Contact, Vendor } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate, parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
@@ -61,7 +73,18 @@ const VendorAvatar: React.FC<{ name: string }> = ({ name }) => {
 };
 
 const RentalBillsDashboard: React.FC = () => {
-  const { state, dispatch } = useAppContext();
+  const bills = useBills();
+  const transactions = useTransactions();
+  const properties = useProperties();
+  const buildings = useBuildings();
+  const vendors = useVendors();
+  const categories = useCategories();
+  const rentalAgreements = useRentalAgreements();
+  const contacts = useContacts();
+  const accounts = useAccounts();
+  const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
+  const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
+  const dispatch = useDispatchOnly();
   const { showToast, showAlert, showConfirm } = useNotification();
   const { openChat } = useWhatsApp();
   const [whatsAppMenuBillId, setWhatsAppMenuBillId] = useState<string | null>(null);
@@ -126,17 +149,17 @@ const RentalBillsDashboard: React.FC = () => {
     () =>
       computeRentalBillsDashboard(
         {
-          bills: state.bills,
-          transactions: state.transactions,
-          properties: state.properties,
-          buildings: state.buildings,
-          vendors: state.vendors ?? [],
-          categories: state.categories,
-          rentalAgreements: state.rentalAgreements,
+          bills: bills,
+          transactions: transactions,
+          properties: properties,
+          buildings: buildings,
+          vendors: vendors ?? [],
+          categories: categories,
+          rentalAgreements: rentalAgreements,
         },
         dashFilters
       ),
-    [state.bills, state.transactions, state.properties, state.buildings, state.vendors, state.categories, state.rentalAgreements, dashFilters]
+    [bills, transactions, properties, buildings, vendors, categories, rentalAgreements, dashFilters]
   );
 
   useEffect(() => {
@@ -199,8 +222,8 @@ const RentalBillsDashboard: React.FC = () => {
         .map((r) => ({ payment: r.payment as Transaction, bill: r.bill as Bill }));
   const unpaidBillsForBulk = localOnly
     ? localDash.unpaidBills
-    : state.bills.filter(
-        (b) => !b.projectId && getEffectiveBillPaymentDisplay(b, state.transactions).balance > 0.01
+    : bills.filter(
+        (b) => !b.projectId && getEffectiveBillPaymentDisplay(b, transactions).balance > 0.01
       );
   const totalEntries = activeDash?.totalRows ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE));
@@ -208,7 +231,7 @@ const RentalBillsDashboard: React.FC = () => {
   const paginatedStart = (safeCurrentPage - 1) * PAGE_SIZE;
   const paginatedEnd = Math.min(paginatedStart + PAGE_SIZE, totalEntries);
 
-  const accountMap = useMemo(() => new Map(state.accounts.map(a => [a.id, a])), [state.accounts]);
+  const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts]);
 
   useEffect(() => { setSelectedNode(null); }, [viewBy, statusFilter]);
   useEffect(() => { setCurrentPage(1); }, [tabFilter, searchQuery, selectedNode, statusFilter, typeFilter]);
@@ -257,7 +280,7 @@ const RentalBillsDashboard: React.FC = () => {
   };
 
   const bearerBadge = (bill: Bill) => {
-    const b = getExpenseBearerType(bill, state);
+    const b = getExpenseBearerType(bill, { rentalAgreements });
     const styles: Record<string, string> = {
       owner: 'border-primary/30 bg-app-toolbar text-primary',
       building: 'border-ds-success/35 bg-[color:var(--badge-paid-bg)] text-ds-success',
@@ -289,14 +312,14 @@ const RentalBillsDashboard: React.FC = () => {
 
   const getWhatsAppOptions = (bill: Bill) => {
     const opts: { id: 'vendor' | 'owner' | 'tenant'; label: string }[] = [];
-    const vendor = state.vendors?.find(v => v.id === bill.vendorId);
+    const vendor = vendors?.find(v => v.id === bill.vendorId);
     if (vendor?.contactNo) opts.push({ id: 'vendor', label: 'Send to Vendor' });
-    const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
-    const owner = prop?.ownerId ? state.contacts.find(c => c.id === prop.ownerId) : null;
-    if (owner?.contactNo && getExpenseBearerType(bill, state) === 'owner') opts.push({ id: 'owner', label: 'Send to Owner' });
-    const ra = bill.projectAgreementId ? state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId) : null;
-    const tenant = ra?.contactId ? state.contacts.find(c => c.id === ra.contactId) : null;
-    if (tenant?.contactNo && getExpenseBearerType(bill, state) === 'tenant') opts.push({ id: 'tenant', label: 'Send to Tenant' });
+    const prop = bill.propertyId ? properties.find(p => p.id === bill.propertyId) : null;
+    const owner = prop?.ownerId ? contacts.find(c => c.id === prop.ownerId) : null;
+    if (owner?.contactNo && getExpenseBearerType(bill, { rentalAgreements }) === 'owner') opts.push({ id: 'owner', label: 'Send to Owner' });
+    const ra = bill.projectAgreementId ? rentalAgreements.find(ra => ra.id === bill.projectAgreementId) : null;
+    const tenant = ra?.contactId ? contacts.find(c => c.id === ra.contactId) : null;
+    if (tenant?.contactNo && getExpenseBearerType(bill, { rentalAgreements }) === 'tenant') opts.push({ id: 'tenant', label: 'Send to Tenant' });
     return opts;
   };
 
@@ -307,29 +330,29 @@ const RentalBillsDashboard: React.FC = () => {
     let message = '';
 
     if (recipient === 'vendor') {
-      const vendor = state.vendors?.find(v => v.id === bill.vendorId);
+      const vendor = vendors?.find(v => v.id === bill.vendorId);
       if (!vendor?.contactNo) { showAlert('Vendor does not have a phone number saved.'); return; }
       contact = vendor;
-      message = WhatsAppService.generateBillPayment((state.whatsAppTemplates as any)?.billPayment, vendor, bill.billNumber, bill.paidAmount);
+      message = WhatsAppService.generateBillPayment((whatsAppTemplates as Record<string, string | undefined>)?.billPayment, vendor, bill.billNumber, bill.paidAmount);
     } else if (recipient === 'owner') {
-      const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
-      const owner = prop?.ownerId ? state.contacts.find(c => c.id === prop.ownerId) : null;
+      const prop = bill.propertyId ? properties.find(p => p.id === bill.propertyId) : null;
+      const owner = prop?.ownerId ? contacts.find(c => c.id === prop.ownerId) : null;
       if (!owner?.contactNo) { showAlert('Owner does not have a phone number saved.'); return; }
       contact = owner;
-      const billToOwner = (state.whatsAppTemplates as any)?.billToOwner || (state.whatsAppTemplates as any)?.billPayment;
+      const billToOwner = (whatsAppTemplates as Record<string, string | undefined>)?.billToOwner || (whatsAppTemplates as Record<string, string | undefined>)?.billPayment;
       message = WhatsAppService.replaceTemplateVariables(billToOwner, { contactName: owner.name, billNumber: bill.billNumber, amount: `${CURRENCY} ${bill.amount.toLocaleString()}` });
     } else if (recipient === 'tenant') {
-      const ra = bill.projectAgreementId ? state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId) : null;
-      const tenant = ra?.contactId ? state.contacts.find(c => c.id === ra.contactId) : null;
+      const ra = bill.projectAgreementId ? rentalAgreements.find(ra => ra.id === bill.projectAgreementId) : null;
+      const tenant = ra?.contactId ? contacts.find(c => c.id === ra.contactId) : null;
       if (!tenant?.contactNo) { showAlert('Tenant does not have a phone number saved.'); return; }
       contact = tenant;
-      const billToTenant = (state.whatsAppTemplates as any)?.billToTenant || (state.whatsAppTemplates as any)?.billPayment;
+      const billToTenant = (whatsAppTemplates as Record<string, string | undefined>)?.billToTenant || (whatsAppTemplates as Record<string, string | undefined>)?.billPayment;
       message = WhatsAppService.replaceTemplateVariables(billToTenant, { contactName: tenant.name, billNumber: bill.billNumber, amount: `${CURRENCY} ${bill.amount.toLocaleString()}`, note: 'This amount will be deducted from your security deposit.' });
     }
     if (contact && message) {
       sendOrOpenWhatsApp(
         { contact, message, phoneNumber: contact.contactNo ?? undefined },
-        () => (state as any).whatsAppMode,
+        () => whatsAppMode,
         openChat
       );
     }
@@ -339,11 +362,11 @@ const RentalBillsDashboard: React.FC = () => {
     if (!paymentBill) return { id: '', type: TransactionType.EXPENSE, amount: 0, date: toLocalDateString(new Date()), accountId: '' } as any;
     let tenantId: string | undefined;
     if (paymentBill.projectAgreementId) {
-      const ra = state.rentalAgreements.find(ra => ra.id === paymentBill.projectAgreementId);
+      const ra = rentalAgreements.find(ra => ra.id === paymentBill.projectAgreementId);
       if (ra) tenantId = ra.contactId;
     }
-    const categoryId = resolveExpenseCategoryForBillPayment(paymentBill, state.categories, state.rentalAgreements);
-    const due = getEffectiveBillPaymentDisplay(paymentBill, state.transactions).balance;
+    const categoryId = resolveExpenseCategoryForBillPayment(paymentBill, categories, rentalAgreements);
+    const due = getEffectiveBillPaymentDisplay(paymentBill, transactions).balance;
     return {
       id: '', type: TransactionType.EXPENSE,
       amount: due,
@@ -356,9 +379,9 @@ const RentalBillsDashboard: React.FC = () => {
       categoryId,
       description: paymentBill.description || `Payment for Bill #${paymentBill.billNumber}`,
     } as any;
-  }, [paymentBill, state.rentalAgreements, state.categories, state.transactions]);
+  }, [paymentBill, rentalAgreements, categories, transactions]);
 
-  const selectedBillsList = useMemo(() => state.bills.filter(b => selectedBillIds.has(b.id)), [state.bills, selectedBillIds]);
+  const selectedBillsList = useMemo(() => bills.filter(b => selectedBillIds.has(b.id)), [bills, selectedBillIds]);
   const toggleSelection = useCallback((id: string) => {
     setSelectedBillIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }, []);
@@ -419,10 +442,10 @@ const RentalBillsDashboard: React.FC = () => {
   };
 
   const renderBillRow = (bill: Bill) => {
-    const vendor = state.vendors?.find(v => v.id === bill.vendorId);
-    const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
-    const bld = prop ? state.buildings.find(bl => bl.id === prop.buildingId) : bill.buildingId ? state.buildings.find(bl => bl.id === bill.buildingId) : null;
-    const { balance, status: effStatus } = getEffectiveBillPaymentDisplay(bill, state.transactions);
+    const vendor = vendors?.find(v => v.id === bill.vendorId);
+    const prop = bill.propertyId ? properties.find(p => p.id === bill.propertyId) : null;
+    const bld = prop ? buildings.find(bl => bl.id === prop.buildingId) : bill.buildingId ? buildings.find(bl => bl.id === bill.buildingId) : null;
+    const { balance, status: effStatus } = getEffectiveBillPaymentDisplay(bill, transactions);
     const isChecked = selectedBillIds.has(bill.id);
     const whatsAppOpts = getWhatsAppOptions(bill);
 
@@ -494,9 +517,9 @@ const RentalBillsDashboard: React.FC = () => {
   };
 
   const renderPaymentRow = (payment: Transaction, bill: Bill, menuKeyPrefix: string) => {
-    const vendor = state.vendors?.find(v => v.id === bill.vendorId);
-    const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
-    const bld = prop ? state.buildings.find(bl => bl.id === prop.buildingId) : bill.buildingId ? state.buildings.find(bl => bl.id === bill.buildingId) : null;
+    const vendor = vendors?.find(v => v.id === bill.vendorId);
+    const prop = bill.propertyId ? properties.find(p => p.id === bill.propertyId) : null;
+    const bld = prop ? buildings.find(bl => bl.id === prop.buildingId) : bill.buildingId ? buildings.find(bl => bl.id === bill.buildingId) : null;
     const payAccount = payment.accountId ? accountMap.get(payment.accountId) : undefined;
     const whatsAppOpts = getWhatsAppOptions(bill);
     const menuKey = `${menuKeyPrefix}-${payment.id}`;
@@ -820,10 +843,10 @@ const RentalBillsDashboard: React.FC = () => {
                 ) : paginatedRows.map(row => {
                   if (row.kind === 'bill') {
                     const bill = row.bill;
-                    const vendor = state.vendors?.find(v => v.id === bill.vendorId);
-                    const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
-                    const bld = prop ? state.buildings.find(bl => bl.id === prop.buildingId) : bill.buildingId ? state.buildings.find(bl => bl.id === bill.buildingId) : null;
-                    const { balance, status: effStatus } = getEffectiveBillPaymentDisplay(bill, state.transactions);
+                    const vendor = vendors?.find(v => v.id === bill.vendorId);
+                    const prop = bill.propertyId ? properties.find(p => p.id === bill.propertyId) : null;
+                    const bld = prop ? buildings.find(bl => bl.id === prop.buildingId) : bill.buildingId ? buildings.find(bl => bl.id === bill.buildingId) : null;
+                    const { balance, status: effStatus } = getEffectiveBillPaymentDisplay(bill, transactions);
                     const isChecked = selectedBillIds.has(bill.id);
                     const whatsAppOpts = getWhatsAppOptions(bill);
                     return (
@@ -937,10 +960,10 @@ const RentalBillsDashboard: React.FC = () => {
                   </td></tr>
                 ) : paymentRows.map(row => {
                   const { payment, bill } = row;
-                  const vendor = state.vendors?.find(v => v.id === bill.vendorId);
-                  const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
-                  const bld = prop ? state.buildings.find(bl => bl.id === prop.buildingId) : bill.buildingId ? state.buildings.find(bl => bl.id === bill.buildingId) : null;
-                  const { balance: billBal, status: billEffStatus } = getEffectiveBillPaymentDisplay(bill, state.transactions);
+                  const vendor = vendors?.find(v => v.id === bill.vendorId);
+                  const prop = bill.propertyId ? properties.find(p => p.id === bill.propertyId) : null;
+                  const bld = prop ? buildings.find(bl => bl.id === prop.buildingId) : bill.buildingId ? buildings.find(bl => bl.id === bill.buildingId) : null;
+                  const { balance: billBal, status: billEffStatus } = getEffectiveBillPaymentDisplay(bill, transactions);
                   const account = payment.accountId ? accountMap.get(payment.accountId) : undefined;
                   const whatsAppOpts = getWhatsAppOptions(bill);
                   const menuKey = `dash-pay-${payment.id}`;
@@ -1064,9 +1087,9 @@ const RentalBillsDashboard: React.FC = () => {
           if (tx) {
             const ids = [tx.id];
             if (tx.type === TransactionType.INCOME && tx.billId && isBillPaymentFromSecurityDepositIncome(tx)) {
-              const bill = state.bills.find(b => b.id === tx.billId);
+              const bill = bills.find(b => b.id === tx.billId);
               if (bill) {
-                const companion = findSecurityDepositAppliedExpenseForBillPayment(tx, bill, state.transactions);
+                const companion = findSecurityDepositAppliedExpenseForBillPayment(tx, bill, transactions);
                 if (companion) ids.push(companion.id);
               }
             }

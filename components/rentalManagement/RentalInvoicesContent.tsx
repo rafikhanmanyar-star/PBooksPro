@@ -1,5 +1,14 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+  useAccounts,
+  useBuildings,
+  useContacts,
+  useDispatchOnly,
+  useInvoices,
+  useProperties,
+  useRentalAgreements,
+  useTransactions,
+} from '../../hooks/useSelectiveState';
 import { Invoice, InvoiceStatus, InvoiceType, Transaction, TransactionType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import RentalFinancialGrid, { FinancialRecord } from '../invoices/RentalFinancialGrid';
@@ -28,7 +37,14 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   onCreateSecurityClick,
   onSchedulesClick,
 }) => {
-  const { state, dispatch } = useAppContext();
+  const contacts = useContacts();
+  const properties = useProperties();
+  const buildings = useBuildings();
+  const accounts = useAccounts();
+  const invoices = useInvoices();
+  const transactions = useTransactions();
+  const rentalAgreements = useRentalAgreements();
+  const dispatch = useDispatchOnly();
   const { showConfirm, showToast, showAlert } = useNotification();
 
   const [statusFilter, setStatusFilter] = useLocalStorage<string>('rental_invoices_statusFilter', 'All');
@@ -58,44 +74,44 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   const [paymentDeleteModal, setPaymentDeleteModal] = useState<{ isOpen: boolean; transaction: Transaction | null }>({ isOpen: false, transaction: null });
 
   // Shared lookup Maps — O(1) lookups replace repeated .find() calls across all memos
-  const contactsById = useMemo(() => new Map(state.contacts.map(c => [c.id, c])), [state.contacts]);
-  const propertiesById = useMemo(() => new Map(state.properties.map(p => [p.id, p])), [state.properties]);
-  const buildingsById = useMemo(() => new Map(state.buildings.map(b => [b.id, b])), [state.buildings]);
-  const accountsById = useMemo(() => new Map(state.accounts.map(a => [a.id, a])), [state.accounts]);
-  const invoicesById = useMemo(() => new Map(state.invoices.map(i => [i.id, i])), [state.invoices]);
+  const contactsById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
+  const propertiesById = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
+  const buildingsById = useMemo(() => new Map(buildings.map(b => [b.id, b])), [buildings]);
+  const accountsById = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts]);
+  const invoicesById = useMemo(() => new Map(invoices.map(i => [i.id, i])), [invoices]);
 
   const tenantsWithInvoices = useMemo(() => {
     const contactIds = new Set(
-      state.invoices
+      invoices
         .filter(inv => RENTAL_INVOICE_TYPES.includes(inv.invoiceType))
         .map(inv => inv.contactId)
     );
-    return state.contacts.filter(c => contactIds.has(c.id));
-  }, [state.invoices, state.contacts]);
+    return contacts.filter(c => contactIds.has(c.id));
+  }, [invoices, contacts]);
 
   const ownersWithInvoices = useMemo(() => {
     const ownerIds = new Set<string>();
-    for (const inv of state.invoices) {
+    for (const inv of invoices) {
       if (!RENTAL_INVOICE_TYPES.includes(inv.invoiceType) || !inv.propertyId) continue;
       const pid = inv.propertyId;
       const primary = propertiesById.get(pid)?.ownerId;
       if (primary) ownerIds.add(primary);
     }
-    return state.contacts.filter(c => ownerIds.has(c.id));
-  }, [state.invoices, propertiesById, state.contacts]);
+    return contacts.filter(c => ownerIds.has(c.id));
+  }, [invoices, propertiesById, contacts]);
 
   const propertiesWithInvoices = useMemo(() => {
     const propIds = new Set(
-      state.invoices
+      invoices
         .filter(inv => RENTAL_INVOICE_TYPES.includes(inv.invoiceType))
         .map(inv => inv.propertyId)
         .filter(Boolean) as string[]
     );
-    return state.properties.filter(p => propIds.has(p.id));
-  }, [state.invoices, state.properties]);
+    return properties.filter(p => propIds.has(p.id));
+  }, [invoices, properties]);
 
   const baseInvoices = useMemo(() => {
-    let invoices = state.invoices.filter(inv =>
+    let invoices = invoices.filter(inv =>
       RENTAL_INVOICE_TYPES.includes(inv.invoiceType)
     );
 
@@ -136,7 +152,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       } else if (groupBy === 'owner') {
         invoices = invoices.filter(inv => {
           const pid = inv.propertyId!;
-          const ra = inv.agreementId ? state.rentalAgreements.find(a => a.id === inv.agreementId) : undefined;
+          const ra = inv.agreementId ? rentalAgreements.find(a => a.id === inv.agreementId) : undefined;
           if (propertiesById.get(pid)?.ownerId === entityFilterId) return true;
           if (ra?.ownerId === entityFilterId) return true;
           return false;
@@ -148,7 +164,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
 
     return invoices;
   }, [
-    state.invoices,
+    invoices,
     contactsById,
     propertiesById,
     buildingsById,
@@ -156,11 +172,11 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     statusFilter,
     groupBy,
     entityFilterId,
-    state.rentalAgreements,
+    rentalAgreements,
   ]);
 
   const invoicesWithoutStatusFilter = useMemo(() => {
-    let invoices = state.invoices.filter(inv =>
+    let invoices = invoices.filter(inv =>
       RENTAL_INVOICE_TYPES.includes(inv.invoiceType)
     );
     if (entityFilterId && entityFilterId !== 'all' && groupBy === 'building') {
@@ -189,7 +205,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       else if (groupBy === 'owner')
         invoices = invoices.filter(inv => {
           const pid = inv.propertyId!;
-          const ra = inv.agreementId ? state.rentalAgreements.find(a => a.id === inv.agreementId) : undefined;
+          const ra = inv.agreementId ? rentalAgreements.find(a => a.id === inv.agreementId) : undefined;
           if (propertiesById.get(pid)?.ownerId === entityFilterId) return true;
           if (ra?.ownerId === entityFilterId) return true;
           return false;
@@ -203,7 +219,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       }
     }
     return invoices;
-  }, [state.invoices, contactsById, propertiesById, debouncedSearch, groupBy, entityFilterId, state.rentalAgreements]);
+  }, [invoices, contactsById, propertiesById, debouncedSearch, groupBy, entityFilterId, rentalAgreements]);
 
   const financialRecords = useMemo<FinancialRecord[]>(() => {
     const records: FinancialRecord[] = [];
@@ -226,7 +242,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     // Precompute batch groups in a single pass: O(M) instead of O(M^2)
     const batchGroups = new Map<string, Transaction[]>();
     const unbatchedTxs: Transaction[] = [];
-    for (const tx of state.transactions) {
+    for (const tx of transactions) {
       if (tx.type !== TransactionType.INCOME) continue;
       if (!tx.invoiceId || !invoiceIdSet.has(tx.invoiceId)) continue;
       if (tx.batchId) {
@@ -269,7 +285,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     }
 
     return records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [baseInvoices, invoicesWithoutStatusFilter, state.transactions, accountsById, contactsById, invoicesById]);
+  }, [baseInvoices, invoicesWithoutStatusFilter, transactions, accountsById, contactsById, invoicesById]);
 
   const summaryStats = useMemo(() => {
     const effectiveStatus = (inv: Invoice) => {
@@ -298,7 +314,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   }, [baseInvoices]);
 
   const toggleSelection = useCallback((id: string) => {
-    const inv = state.invoices.find(i => i.id === id);
+    const inv = invoices.find(i => i.id === id);
     if (!inv || !RENTAL_INVOICE_TYPES.includes(inv.invoiceType)) return;
     setSelectedInvoiceIds(prev => {
       const next = new Set(prev);
@@ -306,7 +322,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       else next.add(id);
       return next;
     });
-  }, [state.invoices]);
+  }, [invoices]);
 
   const handleRecordPayment = useCallback((item: Invoice) => {
     setViewInvoice(null);
@@ -390,8 +406,8 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   }, [dispatch, showAlert, showConfirm, showToast]);
 
   const selectedInvoicesList = useMemo(
-    () => state.invoices.filter(inv => selectedInvoiceIds.has(inv.id)),
-    [state.invoices, selectedInvoiceIds]
+    () => invoices.filter(inv => selectedInvoiceIds.has(inv.id)),
+    [invoices, selectedInvoiceIds]
   );
 
   const availableTypeOptions = useMemo(() => {
@@ -496,7 +512,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           {groupBy === 'building' &&
-            state.buildings.map(b => (
+            buildings.map(b => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
         </select>

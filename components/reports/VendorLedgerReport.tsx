@@ -1,6 +1,12 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useBills,
+    useBuildings,
+    useProperties,
+    useTransactions,
+    useVendors,
+} from '../../hooks/useSelectiveState';
 import { Bill, Transaction, TransactionType, Vendor } from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -59,7 +65,11 @@ const formatLongDate = (dateStr: string): string => {
 };
 
 const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
-    const { state } = useAppContext();
+    const allVendors = useVendors();
+    const allBuildings = useBuildings();
+    const properties = useProperties();
+    const bills = useBills();
+    const transactions = useTransactions();
     const { print: triggerPrint } = usePrintContext();
 
     // Filters
@@ -80,8 +90,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
 
     // Select Lists
-    const vendors = useMemo(() => state.vendors || [], [state.vendors]);
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
+    const vendors = useMemo(() => allVendors || [], [allVendors]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
 
     const vendorsSortedForTree = useMemo(() => {
         const q = treeSearchQuery.trim().toLowerCase();
@@ -185,10 +195,10 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
         // Helper to resolve building
         const getBuildingName = (buildingId?: string, propertyId?: string) => {
-            if (buildingId) return state.buildings.find(b => b.id === buildingId)?.name || '';
+            if (buildingId) return allBuildings.find(b => b.id === buildingId)?.name || '';
             if (propertyId) {
-                const prop = state.properties.find(p => p.id === propertyId);
-                return state.buildings.find(b => b.id === prop?.buildingId)?.name || '';
+                const prop = properties.find(p => p.id === propertyId);
+                return allBuildings.find(b => b.id === prop?.buildingId)?.name || '';
             }
             return '';
         };
@@ -196,7 +206,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         const getBuildingId = (buildingId?: string, propertyId?: string) => {
             if (buildingId) return buildingId;
             if (propertyId) {
-                const prop = state.properties.find(p => p.id === propertyId);
+                const prop = properties.find(p => p.id === propertyId);
                 return prop?.buildingId;
             }
             return undefined;
@@ -205,8 +215,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         // 1. Bills (Credit - Liability Increases)
         // First, create a map of bills by ID to ensure we only process the latest version of each bill
         // This prevents duplicates when bills are edited (updated bills should replace old entries, not create new ones)
-        const billsMap = new Map<string, typeof state.bills[0]>();
-        state.bills.forEach(bill => {
+        const billsMap = new Map<string, typeof bills[0]>();
+        bills.forEach(bill => {
             // If bill ID already exists, keep the latest one (assuming later in array = more recent)
             // In practice, UPDATE_BILL should replace the old bill, but this ensures we handle edge cases
             if (!billsMap.has(bill.id)) {
@@ -258,10 +268,10 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             const bId = getBuildingId(bill.buildingId, bill.propertyId);
             if (selectedBuildingId !== 'all' && bId !== selectedBuildingId) return;
 
-            const prepaid = prepaidAppliedToBillNotInTransactions(bill, state.transactions);
+            const prepaid = prepaidAppliedToBillNotInTransactions(bill, transactions);
             if (prepaid <= VENDOR_LEDGER_MONEY_EPS) return;
 
-            const rowDate = prepaidClearingDisplayDateForBill(bill, state.transactions);
+            const rowDate = prepaidClearingDisplayDateForBill(bill, transactions);
             const d = new Date(rowDate);
             if (d < start || d > end) return;
 
@@ -278,13 +288,13 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         });
 
         // 2. Payments (Debit - Liability Decreases)
-        state.transactions.forEach(tx => {
+        transactions.forEach(tx => {
             if (tx.type === TransactionType.EXPENSE) {
                 // Determine the actual vendor ID for this transaction
                 // For tenant-allocated bills, contactId is set to the tenant, so we look up the bill
                 let vendorId: string | undefined = tx.vendorId;
                 if (tx.billId) {
-                    const bill = state.bills.find(b => b.id === tx.billId);
+                    const bill = bills.find(b => b.id === tx.billId);
                     if (bill) {
                         vendorId = bill.vendorId;
                     }
@@ -391,7 +401,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
         return rows;
 
-    }, [state, startDate, endDate, selectedVendorId, selectedBuildingId, searchQuery, context, vendors, dateSort]);
+    }, [bills, transactions, allBuildings, properties, startDate, endDate, selectedVendorId, selectedBuildingId, searchQuery, context, vendors, dateSort]);
 
     const totals = useMemo(() => {
         return reportData.reduce((acc, curr) => ({
@@ -751,10 +761,10 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                                         }`}
                                                         onClick={() => {
                                                             if (item.billId) {
-                                                                const bill = state.bills.find(b => b.id === item.billId);
+                                                                const bill = bills.find(b => b.id === item.billId);
                                                                 if (bill) setBillToEdit(bill);
                                                             } else if (item.transactionId) {
-                                                                const transaction = state.transactions.find(t => t.id === item.transactionId);
+                                                                const transaction = transactions.find(t => t.id === item.transactionId);
                                                                 if (transaction) setTransactionToEdit(transaction);
                                                             }
                                                         }}
