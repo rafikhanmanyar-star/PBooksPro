@@ -58,6 +58,7 @@ import {
 } from './middleware/introspectionGuard.js';
 import { seedDevIfEnabled } from './seed.js';
 import { sendFailure, sendSuccess } from './utils/apiResponse.js';
+import { applyTrustProxyAndSecurity } from './middleware/trustProxyAndSecurity.js';
 
 function getMonorepoPackageVersion(): string {
   try {
@@ -72,6 +73,8 @@ function getMonorepoPackageVersion(): string {
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+applyTrustProxyAndSecurity(app);
 
 /** LAN + browser clients: allow any origin (JWT in header, not cookies). */
 app.use(

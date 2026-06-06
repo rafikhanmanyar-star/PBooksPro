@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useRef, useSyncExternalStore } from 'react';
-import { _getAppState, _getAppDispatch, _getInitialDataLoading, _subscribeAppState } from '../context/AppContext';
+import { _getAppState, _getAppDispatch, _getInitialDataLoading, _subscribeAppState } from '../context/appStateStore';
 import { AppState, AppAction } from '../types';
 
 /**
