@@ -88,3 +88,27 @@ export function mergeSalesReturnsWithServerBaseline(base: SalesReturn[], server:
     }
     return out;
 }
+
+/** Merge a server partial snapshot into a client baseline (preserves optimistic rows). */
+export function mergePartialStateIntoBaseline(
+    base: AppState,
+    partial: Partial<AppState>,
+    tenantSettings: Partial<AppState> = {}
+): AppState {
+    return {
+        ...base,
+        ...partial,
+        invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
+        bills: mergeBillsWithServerBaseline(base.bills || [], partial.bills || []),
+        projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
+            base.projectReceivedAssets || [],
+            partial.projectReceivedAssets || []
+        ),
+        salesReturns: mergeSalesReturnsWithServerBaseline(
+            base.salesReturns || [],
+            partial.salesReturns || []
+        ),
+        contracts: partial.contracts ?? base.contracts,
+        ...tenantSettings,
+    } as AppState;
+}

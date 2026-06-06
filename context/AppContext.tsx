@@ -62,10 +62,7 @@ import {
 import { appReducer } from './reducers/appReducer';
 import {
   mergeTenantSettingsFromAction,
-  mergeInvoicesWithServerBaseline,
-  mergeBillsWithServerBaseline,
-  mergeProjectReceivedAssetsWithServerBaseline,
-  mergeSalesReturnsWithServerBaseline,
+  mergePartialStateIntoBaseline,
 } from './reducers/appStateMerge';
 
 // Re-export store accessors for backward compatibility (useSelectiveState, personalFinanceSync, etc.)
@@ -1784,48 +1781,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     merged = { ...base, ...inc, ...pickTenantSettingsPartial(inc) } as AppState;
                     nextSyncCursor = serverCursor;
                 } catch {
-                    const partial = await getAppStateApiService().loadState();
-                    const partialSettings = pickTenantSettingsPartial(partial);
-                    merged = {
-                        ...base,
-                        ...partial,
-                        invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
-                        bills: mergeBillsWithServerBaseline(base.bills || [], partial.bills || []),
-                        projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
-                            base.projectReceivedAssets || [],
-                            partial.projectReceivedAssets || []
-                        ),
-                        salesReturns: mergeSalesReturnsWithServerBaseline(
-                            base.salesReturns || [],
-                            partial.salesReturns || []
-                        ),
-                        contracts: partial.contracts ?? base.contracts,
-                        ...partialSettings,
-                    } as AppState;
+                    const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                    merged = mergePartialStateIntoBaseline(
+                        base,
+                        partial,
+                        pickTenantSettingsPartial(partial)
+                    );
                     nextSyncCursor = await getServerTimeIso();
                 }
             } else {
-                const partial = await getAppStateApiService().loadState();
-                const partialSettings = pickTenantSettingsPartial(partial);
+                const partial = await getAppStateApiService().loadStateForSyncRefresh();
                 // When the sync cursor doesn't match the current tenant (or is missing),
                 // use initialState as the baseline to avoid mixing old tenant data.
                 const safeBase = cursorMatchesTenant ? base : initialState;
-                merged = {
-                    ...safeBase,
-                    ...partial,
-                    invoices: mergeInvoicesWithServerBaseline(safeBase.invoices || [], partial.invoices || []),
-                    bills: mergeBillsWithServerBaseline(safeBase.bills || [], partial.bills || []),
-                    projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
-                        safeBase.projectReceivedAssets || [],
-                        partial.projectReceivedAssets || []
-                    ),
-                    salesReturns: mergeSalesReturnsWithServerBaseline(
-                        safeBase.salesReturns || [],
-                        partial.salesReturns || []
-                    ),
-                    contracts: partial.contracts ?? safeBase.contracts,
-                    ...partialSettings,
-                } as AppState;
+                merged = mergePartialStateIntoBaseline(
+                    safeBase,
+                    partial,
+                    pickTenantSettingsPartial(partial)
+                );
                 nextSyncCursor = await getServerTimeIso();
             }
 
@@ -2030,8 +2003,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 if (!isLocalOnlyMode() && isAuthenticated) {
                     try {
                         const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
-                        const partial = await getAppStateApiService().loadState();
-                        const loadedState = { ...initialState, ...partial, ...pickTenantSettingsPartial(partial) };
+                        const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                        const loadedState = mergePartialStateIntoBaseline(
+                            initialState,
+                            partial,
+                            pickTenantSettingsPartial(partial)
+                        );
                         if (
                             loadedState &&
                             (loadedState.transactions?.length > 0 ||

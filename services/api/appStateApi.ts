@@ -798,6 +798,25 @@ export class AppStateApiService {
   }
 
   /**
+   * Preferred path for full refresh / fallback sync: chunked bulk load, then bulk, then parallel loadState().
+   */
+  async loadStateForSyncRefresh(
+    onProgress?: (loaded: number, total: number) => void
+  ): Promise<Partial<AppState>> {
+    try {
+      return await this.loadStateBulkChunked(onProgress);
+    } catch (chunkErr) {
+      logger.warnCategory('sync', 'Chunked state load failed; trying GET /state/bulk:', chunkErr);
+      try {
+        return await this.loadStateBulk();
+      } catch (bulkErr) {
+        logger.warnCategory('sync', 'Bulk state load failed; falling back to parallel loadState():', bulkErr);
+        return this.loadState();
+      }
+    }
+  }
+
+  /**
    * Normalize loaded state with background processing to avoid blocking UI.
    * Uses requestIdleCallback when available for better performance.
    */
