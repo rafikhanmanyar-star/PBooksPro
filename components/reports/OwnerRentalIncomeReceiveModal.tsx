@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useAccounts,
+    useCategories,
+    useDispatchOnly,
+    useRentalReportAppState,
+} from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { AccountType, Contact, Property, Transaction, TransactionType, Bill, AppState } from '../../types';
 import Modal from '../ui/Modal';
@@ -126,7 +131,10 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
     selectedUnitId,
     reportClosingBalance,
 }) => {
-    const { state, dispatch } = useAppContext();
+    const rentalState = useRentalReportAppState();
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 
     const [date, setDate] = useState(() => toLocalDateString(new Date()));
@@ -135,26 +143,26 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
     const [amounts, setAmounts] = useState<Record<string, string>>({});
 
     const rentalIncomeCategory = useMemo(
-        () => state.categories.find((c) => c.name === 'Rental Income'),
-        [state.categories]
+        () => categories.find((c) => c.name === 'Rental Income'),
+        [categories]
     );
 
     const ownerSvcPayCategory = useMemo(() => {
-        const rid = resolveSystemCategoryId(state.categories, 'sys-cat-own-svc-pay');
+        const rid = resolveSystemCategoryId(categories, 'sys-cat-own-svc-pay');
         return (
-            (rid ? state.categories.find((c) => c.id === rid) : undefined) ??
-            state.categories.find((c) => c.name === 'Owner Service Charge Payment')
+            (rid ? categories.find((c) => c.id === rid) : undefined) ??
+            categories.find((c) => c.name === 'Owner Service Charge Payment')
         );
-    }, [state.categories]);
+    }, [categories]);
 
     const svcIncomeCategory = useMemo(
-        () => state.categories.find((c) => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income'),
-        [state.categories]
+        () => categories.find((c) => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income'),
+        [categories]
     );
 
     const userSelectableAccounts = useMemo(
-        () => state.accounts.filter((a) => a.type === AccountType.BANK && a.name !== 'Internal Clearing'),
-        [state.accounts]
+        () => accounts.filter((a) => a.type === AccountType.BANK && a.name !== 'Internal Clearing'),
+        [accounts]
     );
 
     const accountsWithBalance = useMemo(
@@ -169,23 +177,23 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
     const lines = useMemo((): OwnerRentalIncomeReceiveLine[] => {
         const rows: OwnerRentalIncomeReceiveLine[] = [];
 
-        for (const bill of state.bills || []) {
+        for (const bill of rentalState.bills || []) {
             const ledgerDebit = computeOwnerRentalBillLedgerDebitForReceive(
                 bill,
                 owner,
-                state,
+                rentalState,
                 selectedBuildingId,
                 selectedUnitId,
                 selectedOwnerId
             );
             if (ledgerDebit <= 0.01) continue;
 
-            const prop = state.properties.find((p) => p.id === bill.propertyId);
+            const prop = rentalState.properties.find((p) => p.id === bill.propertyId);
             if (!prop) continue;
 
             const rentalIncId = rentalIncomeCategory?.id;
             const reimbursed = rentalIncId
-                ? sumOwnerBillReimbursementIncome(state.transactions, rentalIncId, owner.id, bill.id)
+                ? sumOwnerBillReimbursementIncome(rentalState.transactions, rentalIncId, owner.id, bill.id)
                 : 0;
             const maxAmount = Math.max(0, Math.round((ledgerDebit - reimbursed) * 100) / 100);
             if (maxAmount <= 0.01) continue;
@@ -204,15 +212,15 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
 
         if (ownerSvcPayCategory && svcIncomeCategory) {
             const scByPropMonth = new Map<string, number>();
-            for (const tx of state.transactions) {
+            for (const tx of rentalState.transactions) {
                 if (tx.type !== TransactionType.INCOME || tx.categoryId !== svcIncomeCategory.id) continue;
                 if (!tx.propertyId || !tx.date) continue;
-                const prop = state.properties.find((p) => p.id === tx.propertyId);
+                const prop = rentalState.properties.find((p) => p.id === tx.propertyId);
                 if (!prop) continue;
                 if (selectedBuildingId !== 'all' && prop.buildingId !== selectedBuildingId) continue;
                 if (selectedUnitId !== 'all' && tx.propertyId !== selectedUnitId) continue;
 
-                const rowOwner = resolveOwnerForTransaction(state, tx) ?? prop.ownerId;
+                const rowOwner = resolveOwnerForTransaction(rentalState, tx) ?? prop.ownerId;
                 if (rowOwner !== owner.id) continue;
 
                 const mk = tx.date.slice(0, 7);
@@ -225,11 +233,11 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
             for (const [k, scTotal] of scByPropMonth) {
                 const [propertyId, monthKey] = k.split('|');
                 if (!propertyId || !monthKey) continue;
-                const prop = state.properties.find((p) => p.id === propertyId);
+                const prop = rentalState.properties.find((p) => p.id === propertyId);
                 if (!prop) continue;
 
                 const paid = sumOwnerSvcPayForPropertyMonth(
-                    state.transactions,
+                    rentalState.transactions,
                     ownerSvcPayCategory.id,
                     owner.id,
                     propertyId,
@@ -258,10 +266,10 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
         });
         return rows;
     }, [
-        state.bills,
-        state.transactions,
-        state.properties,
-        state.categories,
+        rentalState.bills,
+        rentalState.transactions,
+        rentalState.properties,
+        rentalState.categories,
         selectedBuildingId,
         selectedOwnerId,
         selectedUnitId,
@@ -269,6 +277,7 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
         ownerSvcPayCategory,
         svcIncomeCategory,
         rentalIncomeCategory,
+        rentalState,
     ]);
 
     useEffect(() => {
@@ -317,7 +326,7 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
             await showAlert("Missing 'Owner Service Charge Payment' category.");
             return;
         }
-        const acc = state.accounts.find((a) => a.id === accountId);
+        const acc = accounts.find((a) => a.id === accountId);
         if (!acc) {
             await showAlert('Select an account to receive into.');
             return;

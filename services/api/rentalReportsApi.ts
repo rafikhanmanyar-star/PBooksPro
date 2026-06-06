@@ -118,3 +118,20 @@ export async function fetchRentalBillsDashboard(options: {
     pageSize: Number(raw.pageSize ?? 20),
   };
 }
+
+export type RentalReceivableReportApiResult = {
+  propertyReceivables: import('../../components/reports/rentalReceivableReportEngine').PropertyReceivable[];
+};
+
+export async function fetchRentalReceivableReport(options: {
+  buildingId?: string;
+}): Promise<RentalReceivableReportApiResult> {
+  const q = new URLSearchParams();
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/rental-receivable${suffix}`);
+  return {
+    propertyReceivables:
+      (raw.propertyReceivables as RentalReceivableReportApiResult['propertyReceivables']) ?? [],
+  };
+}

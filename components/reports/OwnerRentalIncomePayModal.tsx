@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useAccounts,
+    useBuildings,
+    useCategories,
+    useDispatchOnly,
+    useProperties,
+} from '../../hooks/useSelectiveState';
 import { useNotification } from '../../context/NotificationContext';
 import { AccountType, Contact, Property, Transaction, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
@@ -30,7 +36,11 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
     reportPayableBalance,
     preSelectedBuildingId,
 }) => {
-    const { state, dispatch } = useAppContext();
+    const accounts = useAccounts();
+    const properties = useProperties();
+    const buildings = useBuildings();
+    const categories = useCategories();
+    const dispatch = useDispatchOnly();
     const { showAlert, showToast } = useNotification();
 
     const [date, setDate] = useState(() => toLocalDateString(new Date()));
@@ -42,17 +52,17 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
     const [error, setError] = useState('');
 
     const userSelectableAccounts = useMemo(
-        () => state.accounts.filter((a) => a.type === AccountType.BANK && a.name !== 'Internal Clearing'),
-        [state.accounts]
+        () => accounts.filter((a) => a.type === AccountType.BANK && a.name !== 'Internal Clearing'),
+        [accounts]
     );
 
     const buildingsForOwner = useMemo(() => {
         if (!owner) return [];
         const ownerPropertyBuildingIds = new Set(
-            state.properties.filter((p) => p.ownerId === owner.id).map((p) => p.buildingId)
+            properties.filter((p) => p.ownerId === owner.id).map((p) => p.buildingId)
         );
-        return state.buildings.filter((b) => ownerPropertyBuildingIds.has(b.id));
-    }, [owner, state.properties, state.buildings]);
+        return buildings.filter((b) => ownerPropertyBuildingIds.has(b.id));
+    }, [owner, properties, buildings]);
 
     useEffect(() => {
         if (!isOpen || !owner) return;
@@ -83,12 +93,12 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
 
     const handleSubmit = async () => {
         if (!owner || error) return;
-        const payoutAccount = state.accounts.find((a) => a.id === accountId);
+        const payoutAccount = accounts.find((a) => a.id === accountId);
         if (!payoutAccount) {
             await showAlert('Please select a valid account to pay from.');
             return;
         }
-        const payoutCategory = state.categories.find((c) => c.name === 'Owner Payout');
+        const payoutCategory = categories.find((c) => c.name === 'Owner Payout');
         if (!payoutCategory) {
             await showAlert("Critical: 'Owner Payout' category not found. Please check Rental Settings.");
             return;
@@ -109,7 +119,7 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
         if (property) {
             description += ` [${property.name}]`;
         } else {
-            const bName = state.buildings.find((b) => b.id === effectiveBuildingId)?.name;
+            const bName = buildings.find((b) => b.id === effectiveBuildingId)?.name;
             if (bName) description += ` [${bName}]`;
         }
 
@@ -200,7 +210,7 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
                 {property ? (
                     <Input
                         label="Building"
-                        value={state.buildings.find((b) => b.id === property.buildingId)?.name || '—'}
+                        value={buildings.find((b) => b.id === property.buildingId)?.name || '—'}
                         disabled
                     />
                 ) : (

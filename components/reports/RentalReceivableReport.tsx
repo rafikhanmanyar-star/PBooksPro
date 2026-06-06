@@ -1,12 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     useBuildings,
     useContacts,
     useInvoices,
     useProperties,
 } from '../../hooks/useSelectiveState';
-import { InvoiceType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
@@ -18,28 +17,14 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import {
+    computeRentalReceivableReport,
+    type PropertyReceivable,
+} from './rentalReceivableReportEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchRentalReceivableReport } from '../../services/api/rentalReportsApi';
 
-export interface DueLine {
-    invoiceId: string;
-    invoiceNumber: string;
-    period: string;       // e.g. "Jan 2025"
-    dueDate: string;
-    type: 'Rent' | 'Security';
-    amount: number;
-    paidAmount: number;
-    balance: number;
-    runningBalance: number;
-}
-
-export interface PropertyReceivable {
-    propertyId: string;
-    propertyName: string;
-    buildingId: string;
-    buildingName: string;
-    tenantName: string;
-    lines: DueLine[];
-    totalDue: number;
-}
+export type { DueLine, PropertyReceivable } from './rentalReceivableReportEngine';
 
 const RentalReceivableReport: React.FC = () => {
     const allBuildings = useBuildings();
@@ -49,92 +34,49 @@ const RentalReceivableReport: React.FC = () => {
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
 
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
-    const propertiesById = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
-    const buildingsById = useMemo(() => new Map(allBuildings.map(b => [b.id, b])), [allBuildings]);
-    const contactsById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
+    const localOnly = isLocalOnlyMode();
+    const [serverReceivables, setServerReceivables] = useState<PropertyReceivable[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
-    // Due invoices: RENTAL or SECURITY_DEPOSIT with balance > 0
-    const dueInvoices = useMemo(() => {
-        return invoices.filter(inv =>
-            (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) &&
-            (inv.amount - inv.paidAmount) > 0
-        );
-    }, [invoices]);
-
-    // Group by property, then sort lines by date and compute running balance
-    const propertyReceivables = useMemo<PropertyReceivable[]>(() => {
-        const byProperty = new Map<string, { inv: typeof dueInvoices[0]; balance: number }[]>();
-
-        for (const inv of dueInvoices) {
-            const propId = inv.propertyId;
-            if (!propId) continue;
-
-            const buildingId = inv.buildingId || propertiesById.get(propId)?.buildingId;
-            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) continue;
-
-            const balance = inv.amount - inv.paidAmount;
-            if (!byProperty.has(propId)) byProperty.set(propId, []);
-            byProperty.get(propId)!.push({ inv, balance });
+    useEffect(() => {
+        if (localOnly) {
+            setServerReceivables(null);
+            setFetchError(null);
+            return;
         }
-
-        const result: PropertyReceivable[] = [];
-
-        byProperty.forEach((items, propertyId) => {
-            const prop = propertiesById.get(propertyId);
-            const buildingId = prop?.buildingId || items[0]?.inv.buildingId || '';
-            const building = buildingsById.get(buildingId);
-            const buildingName = building?.name || 'Unassigned';
-            const propertyName = prop?.name || 'Unknown';
-
-            // Sort by issue date then by type (Security first if same month, then Rent)
-            items.sort((a, b) => {
-                const dA = new Date(a.inv.issueDate).getTime();
-                const dB = new Date(b.inv.issueDate).getTime();
-                if (dA !== dB) return dA - dB;
-                return (a.inv.invoiceType === InvoiceType.SECURITY_DEPOSIT ? 0 : 1) - (b.inv.invoiceType === InvoiceType.SECURITY_DEPOSIT ? 0 : 1);
+        let cancelled = false;
+        setLoading(true);
+        setFetchError(null);
+        void fetchRentalReceivableReport({ buildingId: selectedBuildingId })
+            .then((r) => {
+                if (!cancelled) setServerReceivables(r.propertyReceivables);
+            })
+            .catch((e) => {
+                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
             });
+        return () => {
+            cancelled = true;
+        };
+    }, [localOnly, selectedBuildingId]);
 
-            let runningBalance = 0;
-            const lines: DueLine[] = items.map(({ inv, balance }) => {
-                runningBalance += balance;
-                const d = new Date(inv.issueDate);
-                const period = `${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()}`;
-                return {
-                    invoiceId: inv.id,
-                    invoiceNumber: inv.invoiceNumber,
-                    period,
-                    dueDate: inv.dueDate || inv.issueDate,
-                    type: inv.invoiceType === InvoiceType.SECURITY_DEPOSIT ? 'Security' : 'Rent',
-                    amount: inv.amount,
-                    paidAmount: inv.paidAmount,
-                    balance,
-                    runningBalance,
-                };
-            });
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
 
-            const tenantId = items[0]?.inv.contactId;
-            const tenantName = tenantId ? (contactsById.get(tenantId)?.name || 'Unknown') : '—';
+    const localPropertyReceivables = useMemo(
+        () =>
+            computeRentalReceivableReport(
+                { invoices, properties, buildings: allBuildings, contacts },
+                { buildingId: selectedBuildingId }
+            ),
+        [invoices, properties, allBuildings, contacts, selectedBuildingId]
+    );
 
-            result.push({
-                propertyId,
-                propertyName,
-                buildingId,
-                buildingName,
-                tenantName,
-                lines,
-                totalDue: lines.reduce((sum, l) => sum + l.balance, 0),
-            });
-        });
-
-        // Sort by building name then property name
-        result.sort((a, b) => {
-            if (a.buildingName !== b.buildingName) return a.buildingName.localeCompare(b.buildingName);
-            return a.propertyName.localeCompare(b.propertyName);
-        });
-
-        return result;
-    }, [dueInvoices, propertiesById, buildingsById, contactsById, selectedBuildingId]);
+    const propertyReceivables = localOnly
+        ? localPropertyReceivables
+        : (serverReceivables ?? localPropertyReceivables);
 
     const filteredData = useMemo(() => {
         if (!searchQuery.trim()) return propertyReceivables;
@@ -216,6 +158,12 @@ const RentalReceivableReport: React.FC = () => {
                         />
                     </div>
                 </div>
+                {!localOnly && loading && (
+                    <p className="text-sm text-app-muted mt-2">Loading receivables from server…</p>
+                )}
+                {!localOnly && fetchError && (
+                    <p className="text-sm text-danger mt-2">Failed to load report: {fetchError}</p>
+                )}
             </div>
 
             <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-receivable">
@@ -229,15 +177,15 @@ const RentalReceivableReport: React.FC = () => {
                     </div>
 
                     <div className="overflow-x-auto">
-                        {Array.from(byBuilding.entries()).map(([buildingId, properties]) => {
-                            const buildingName = properties[0]?.buildingName ?? 'Unassigned';
-                            const buildingTotal = properties.reduce((s, p) => s + p.totalDue, 0);
+                        {Array.from(byBuilding.entries()).map(([buildingId, propertiesInBuilding]) => {
+                            const buildingName = propertiesInBuilding[0]?.buildingName ?? 'Unassigned';
+                            const buildingTotal = propertiesInBuilding.reduce((s, p) => s + p.totalDue, 0);
                             return (
                                 <div key={buildingId} className="mb-8">
                                     <h4 className="text-lg font-semibold text-app-text border-b border-app-border pb-2 mb-3">
                                         {buildingName}
                                     </h4>
-                                    {properties.map((prop) => (
+                                    {propertiesInBuilding.map((prop) => (
                                         <div key={prop.propertyId} className="mb-6">
                                             <div className="flex justify-between items-baseline mb-2">
                                                 <span className="font-medium text-app-text">{prop.propertyName}</span>
