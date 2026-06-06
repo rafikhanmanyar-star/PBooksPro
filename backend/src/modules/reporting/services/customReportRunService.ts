@@ -5,7 +5,10 @@ import type { RegisteredField } from '../metadata/fieldRegistryTypes.js';
 import { isCalculatedField } from '../metadata/fieldRegistryTypes.js';
 import { getRegistryForModule } from '../metadata/moduleRegistries.js';
 import { PROJECT_SELLING_MODULE_KEY } from '../metadata/projectSellingFields.js';
+import { RENTAL_AGREEMENTS_MODULE_KEY } from '../metadata/rentalAgreementsFields.js';
 import { compileProjectSellingReport } from '../query-builder/projectSellingSqlCompiler.js';
+import { compileRentalAgreementsReport } from '../query-builder/rentalAgreementsSqlCompiler.js';
+import type { CompiledReportQuery } from '../query-builder/reportSqlHelpers.js';
 import type { CustomReportGeneratePayload } from '../validators/reportConfigurationSchema.js';
 
 import {
@@ -148,9 +151,11 @@ export async function runCustomReport(
 ): Promise<GeneratedReportResult> {
   const registryPack = getRegistryForModule(payload.module);
   const rmap = fieldMap(registryPack.fields);
-  let compiled;
+  let compiled: CompiledReportQuery;
   if (payload.module === PROJECT_SELLING_MODULE_KEY) {
     compiled = compileProjectSellingReport(registryPack, tenantId, payload, mode);
+  } else if (payload.module === RENTAL_AGREEMENTS_MODULE_KEY) {
+    compiled = compileRentalAgreementsReport(registryPack, tenantId, payload, mode);
   } else {
     throw new Error(`UNSUPPORTED_MODULE:${payload.module}`);
   }
@@ -182,16 +187,29 @@ export async function runCustomReport(
   const rowsIn = listRes.rows.map((r) =>
     augmentCaseInsensitiveAliases(normalizePgRow(r as Record<string, unknown>))
   );
-  const rows = rowsIn.map((full) =>
-    applyComputedExpressions(rmap, compiled.projectedKeys, payload, full)
-  );
+  const rows = rowsIn.map((full) => {
+    if (compiled.isGrouped) {
+      const out: Record<string, unknown> = {};
+      for (const k of compiled.projectedKeys) {
+        out[k] = rawGet(full, k);
+      }
+      return out;
+    }
+    return applyComputedExpressions(rmap, compiled.projectedKeys, payload, full);
+  });
 
-  const { metas } = deriveColumnLabels(
-    registryPack.fields,
-    compiled.projectedKeys,
-    payload,
-    payload.formulas
-  );
+  const metas: GeneratedColumnMeta[] = compiled.isGrouped && compiled.columnLabels
+    ? compiled.projectedKeys.map((k) => ({
+        key: k,
+        label: compiled.columnLabels![k] ?? k,
+        type: k.startsWith('agg_') ? 'number' : 'string',
+      }))
+    : deriveColumnLabels(
+        registryPack.fields,
+        compiled.projectedKeys,
+        payload,
+        payload.formulas
+      ).metas;
 
   const result: GeneratedReportResult = {
     columns: metas,

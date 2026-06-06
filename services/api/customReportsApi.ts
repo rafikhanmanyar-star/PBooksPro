@@ -5,6 +5,15 @@
 import { apiClient } from './client';
 
 export const CUSTOM_REPORT_MODULE_PROJECT_SELLING = 'project_selling';
+export const CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS = 'rental_agreements';
+
+export const CUSTOM_REPORT_MODULES = [
+  { key: CUSTOM_REPORT_MODULE_PROJECT_SELLING, label: 'Project selling' },
+  { key: CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS, label: 'Rental agreements' },
+] as const;
+
+export type CustomReportModuleKey =
+  (typeof CUSTOM_REPORT_MODULES)[number]['key'];
 
 export type CustomReportFieldMeta = {
   key: string;
@@ -21,6 +30,7 @@ export type CustomReportFieldMeta = {
 
 export type CustomReportMetadataResponse = {
   module: string;
+  modules?: { key: string; label: string }[];
   fields: CustomReportFieldMeta[];
   groupDimensions: string[];
   filterOperators: string[];

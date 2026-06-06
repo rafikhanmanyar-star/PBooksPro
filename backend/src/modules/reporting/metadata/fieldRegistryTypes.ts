@@ -21,7 +21,10 @@ export type ReportFieldEntityGroup =
   | 'Possession & assets'
   | 'Categories'
   | 'Chart of accounts (reference)'
-  | 'Investor / installment reference';
+  | 'Investor / installment reference'
+  | 'Rental agreements'
+  | 'Rental properties'
+  | 'Rental tenants';
 
 /** DB-level SQL snippet; must reference only compiler-controlled aliases */
 export interface ReportFieldDefinition {

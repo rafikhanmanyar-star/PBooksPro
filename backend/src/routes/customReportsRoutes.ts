@@ -7,12 +7,11 @@ import { handleRouteError, sendFailure, sendSuccess } from '../utils/apiResponse
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { memoryCacheDeletePrefix } from '../utils/memoryCache.js';
 
-import { getRegistryForModule } from '../modules/reporting/metadata/moduleRegistries.js';
+import { getRegistryForModule, REPORT_MODULE_CATALOG } from '../modules/reporting/metadata/moduleRegistries.js';
 import type { RegisteredField } from '../modules/reporting/metadata/fieldRegistryTypes.js';
 import { isCalculatedField } from '../modules/reporting/metadata/fieldRegistryTypes.js';
 import {
   PROJECT_SELLING_MODULE_KEY,
-  getProjectSellingFieldRegistry,
 } from '../modules/reporting/metadata/projectSellingFields.js';
 import * as templateRepo from '../modules/reporting/repositories/customReportTemplateRepository.js';
 import { appendReportAudit } from '../modules/reporting/repositories/reportAuditRepository.js';
@@ -23,7 +22,7 @@ import {
   saveTemplateSchema,
   updateTemplateBodySchema,
 } from '../modules/reporting/validators/reportConfigurationSchema.js';
-import { runCustomReport, deriveColumnLabels } from '../modules/reporting/services/customReportRunService.js';
+import { runCustomReport } from '../modules/reporting/services/customReportRunService.js';
 import { buildCsvBuffer, buildPdfGridBuffer, buildXlsxBuffer } from '../modules/reporting/exports/renderFormats.js';
 
 export const customReportsRouter = Router();
@@ -78,22 +77,20 @@ customReportsRouter.get('/reports/custom/metadata', reportLimiter, async (req: A
   }
   const mod = typeof req.query.module === 'string' ? req.query.module.trim() : PROJECT_SELLING_MODULE_KEY;
   try {
-    if (mod === PROJECT_SELLING_MODULE_KEY) {
-      const fields = getProjectSellingFieldRegistry().map(publicFieldMeta);
-      const groupDimensions = Object.keys(
-        getRegistryForModule(PROJECT_SELLING_MODULE_KEY).groupDimensions
-      );
-      sendSuccess(res, {
-        module: mod,
-        fields,
-        groupDimensions,
-        filterOperators: ['=', '!=', '>', '<', '>=', '<=', 'BETWEEN', 'IN', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL'],
-        aggregateOperations: ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX'],
-      });
+    const pack = getRegistryForModule(mod);
+    sendSuccess(res, {
+      module: mod,
+      modules: REPORT_MODULE_CATALOG,
+      fields: pack.fields.map(publicFieldMeta),
+      groupDimensions: Object.keys(pack.groupDimensions),
+      filterOperators: ['=', '!=', '>', '<', '>=', '<=', 'BETWEEN', 'IN', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL'],
+      aggregateOperations: ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX'],
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith('UNKNOWN_REPORT_MODULE:')) {
+      sendFailure(res, 400, 'BAD_REQUEST', e.message);
       return;
     }
-    sendFailure(res, 400, 'BAD_REQUEST', `UNKNOWN_REPORT_MODULE:${mod}`);
-  } catch (e) {
     handleRouteError(res, e);
   }
 });
@@ -159,11 +156,9 @@ customReportsRouter.post('/reports/custom/export', reportLimiter, async (req: Au
   try {
     const exportPayload = { ...parsed.data, page: 1, pageSize: 5000 };
     const data = await runCustomReport(client, tenantId, exportPayload, 'export');
-    const registry = getRegistryForModule(parsed.data.module);
-    const projKeys =
-      parsed.data.columns?.map((c) => c.key) ?? parsed.data.fields ?? [];
-    const { labels } = deriveColumnLabels(registry.fields, projKeys, exportPayload, exportPayload.formulas);
     const colOrder = data.columns.map((c) => c.key);
+    const labels: Record<string, string> = {};
+    for (const c of data.columns) labels[c.key] = c.label;
     const title = parsed.data.reportName?.trim() || 'Custom report';
     let buf: Buffer;
     let contentType: string;

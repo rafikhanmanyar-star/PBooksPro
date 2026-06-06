@@ -14,6 +14,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { isLocalOnlyMode } from '../../../config/apiUrl';
 import {
   CUSTOM_REPORT_MODULE_PROJECT_SELLING,
+  CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS,
+  CUSTOM_REPORT_MODULES,
   fetchCustomReportMetadata,
   generateCustomReport,
   fetchCustomReportTemplates,
@@ -21,9 +23,36 @@ import {
   deleteCustomReportTemplate,
   downloadCustomReportExport,
   type CustomReportFieldMeta,
+  type CustomReportModuleKey,
   type GeneratedReportResponse,
   type CustomReportTemplateApiRow,
 } from '../../../services/api/customReportsApi';
+
+const PROJECT_SELLING_DEFAULT_KEYS = [
+  'booking_no',
+  'customer_name',
+  'project_name',
+  'selling_price',
+  'invoice_paid_total',
+  'outstanding_vs_invoices',
+];
+
+const RENTAL_DEFAULT_KEYS = [
+  'agreement_number',
+  'tenant_name',
+  'property_name',
+  'building_name',
+  'monthly_rent',
+  'status',
+  'start_date',
+  'end_date',
+];
+
+export type BuilderAggregateRow = {
+  id: string;
+  field: string;
+  operation: string;
+};
 
 const columnHelper = createColumnHelper<Record<string, unknown>>();
 
@@ -68,17 +97,13 @@ export const CustomReportBuilderPage: React.FC = () => {
   const { user } = useAuth();
   const cap = backendReportCapability(user?.role);
 
-  const [selectedKeys, setSelectedKeys] = useState<string[]>([
-    'booking_no',
-    'customer_name',
-    'project_name',
-    'selling_price',
-    'invoice_paid_total',
-    'outstanding_vs_invoices',
-  ]);
+  const [moduleKey, setModuleKey] = useState<CustomReportModuleKey>(
+    CUSTOM_REPORT_MODULE_PROJECT_SELLING
+  );
+  const [selectedKeys, setSelectedKeys] = useState<string[]>(PROJECT_SELLING_DEFAULT_KEYS);
   const [filters, setFilters] = useState<BuilderFilterRow[]>([]);
   const [groupBy, setGroupBy] = useState<string[]>([]);
-  const [aggregates] = useState<{ field: string; operation: string }[]>([]);
+  const [aggregates, setAggregates] = useState<BuilderAggregateRow[]>([]);
   const [sortField, setSortField] = useState('booking_date');
   const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('DESC');
   const [search, setSearch] = useState('');
@@ -97,14 +122,14 @@ export const CustomReportBuilderPage: React.FC = () => {
   const localOnly = isLocalOnlyMode();
 
   const metaQuery = useQuery({
-    queryKey: ['customReportMetadata', CUSTOM_REPORT_MODULE_PROJECT_SELLING],
-    queryFn: () => fetchCustomReportMetadata(),
+    queryKey: ['customReportMetadata', moduleKey],
+    queryFn: () => fetchCustomReportMetadata(moduleKey),
     enabled: !localOnly,
   });
 
   const templatesQuery = useQuery({
-    queryKey: ['customReportTemplates', CUSTOM_REPORT_MODULE_PROJECT_SELLING],
-    queryFn: () => fetchCustomReportTemplates(CUSTOM_REPORT_MODULE_PROJECT_SELLING),
+    queryKey: ['customReportTemplates', moduleKey],
+    queryFn: () => fetchCustomReportTemplates(moduleKey),
     enabled: !localOnly,
   });
 
@@ -117,7 +142,7 @@ export const CustomReportBuilderPage: React.FC = () => {
 
   const buildPayload = useCallback(() => {
     const base: Record<string, unknown> = {
-      module: CUSTOM_REPORT_MODULE_PROJECT_SELLING,
+      module: moduleKey,
       fields: selectedKeys,
       filters: filters.map((f) => {
         const row: Record<string, unknown> = {
@@ -143,12 +168,13 @@ export const CustomReportBuilderPage: React.FC = () => {
     if (groupBy.length) {
       base.groupBy = groupBy;
       base.aggregates = aggregates.length
-        ? aggregates
+        ? aggregates.map(({ field, operation }) => ({ field, operation }))
         : [{ field: selectedKeys[0] || 'booking_no', operation: 'COUNT' }];
     }
     if (userFormulas.length) base.formulas = userFormulas;
     return base;
   }, [
+    moduleKey,
     selectedKeys,
     filters,
     groupBy,
@@ -213,6 +239,41 @@ export const CustomReportBuilderPage: React.FC = () => {
     ? `${preview.columns.map((c) => c.key).join('|')}::${preview.rows.length}::p${page}`
     : 'empty';
 
+  const switchModule = (next: CustomReportModuleKey) => {
+    if (next === moduleKey) return;
+    setModuleKey(next);
+    setSelectedKeys(
+      next === CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS
+        ? RENTAL_DEFAULT_KEYS
+        : PROJECT_SELLING_DEFAULT_KEYS
+    );
+    setSortField(next === CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS ? 'start_date' : 'booking_date');
+    setGroupBy([]);
+    setAggregates([]);
+    setFilters([]);
+    setUserFormulas([]);
+    setPreview(null);
+    setPreviewError(null);
+    setPage(1);
+    setTemplateName('');
+  };
+
+  const addAggregateRow = () => {
+    const firstAgg =
+      metaQuery.data?.fields.find((f) => f.aggregatable)?.key ??
+      selectedKeys[0] ??
+      'booking_no';
+    setAggregates((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), field: firstAgg, operation: 'SUM' },
+    ]);
+  };
+
+  const moduleLabel =
+    CUSTOM_REPORT_MODULES.find((m) => m.key === moduleKey)?.label ??
+    metaQuery.data?.modules?.find((m) => m.key === moduleKey)?.label ??
+    'Custom report';
+
   const toggleField = (key: string) => {
     setSelectedKeys((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
@@ -229,10 +290,24 @@ export const CustomReportBuilderPage: React.FC = () => {
 
   const loadTemplateRow = async (row: CustomReportTemplateApiRow) => {
     const cfg = row.configuration_json ?? {};
+    if (row.module) {
+      setModuleKey(row.module as CustomReportModuleKey);
+    }
     if (typeof cfg.fields === 'object' && Array.isArray(cfg.fields)) {
       setSelectedKeys(cfg.fields as string[]);
     }
     if (cfg.groupBy) setGroupBy(cfg.groupBy as string[]);
+    if (cfg.aggregates && Array.isArray(cfg.aggregates)) {
+      setAggregates(
+        (cfg.aggregates as { field?: string; operation?: string }[]).map((a, i) => ({
+          id: `agg${i}`,
+          field: String(a.field ?? ''),
+          operation: String(a.operation ?? 'COUNT'),
+        }))
+      );
+    } else {
+      setAggregates([]);
+    }
     if (cfg.filters) {
       const arr = (cfg.filters as Record<string, unknown>[]).map((f, i) => ({
         id: `r${i}`,
@@ -256,7 +331,7 @@ export const CustomReportBuilderPage: React.FC = () => {
     const name = templateName.trim() || 'Untitled report';
     await saveCustomReportTemplate({
       name,
-      module: CUSTOM_REPORT_MODULE_PROJECT_SELLING,
+      module: moduleKey,
       configuration_json: {
         fields: selectedKeys,
         filters: filters.map(({ field, operator, value, valueTo }) => {
@@ -271,6 +346,7 @@ export const CustomReportBuilderPage: React.FC = () => {
           return o;
         }),
         groupBy,
+        aggregates: aggregates.map(({ field, operation }) => ({ field, operation })),
         sortBy: [{ field: sortField, direction: sortDir }],
         formulas: userFormulas,
       },
@@ -304,7 +380,7 @@ export const CustomReportBuilderPage: React.FC = () => {
           This feature runs on the{' '}
           <strong className="text-slate-800 dark:text-slate-100">PostgreSQL API</strong>{' '}
           back end. Switch to LAN / PostgreSQL login (not offline SQLite) to build and run
-          custom reports for project selling.
+          custom reports for project selling and rental agreements.
         </p>
       </div>
     );
@@ -316,8 +392,24 @@ export const CustomReportBuilderPage: React.FC = () => {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Custom Report Builder</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Project selling — agreements, invoices, ledger rollups — metadata-driven queries (no raw SQL).
+            {moduleLabel} — metadata-driven queries (no raw SQL).
           </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(metaQuery.data?.modules ?? CUSTOM_REPORT_MODULES).map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                  moduleKey === m.key
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'
+                }`}
+                onClick={() => switchModule(m.key as CustomReportModuleKey)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -477,7 +569,7 @@ export const CustomReportBuilderPage: React.FC = () => {
               >
                 {(metaQuery.data?.groupDimensions ?? []).map((g) => (
                   <option key={g} value={g}>
-                    {g}
+                    {g.replace(/_/g, ' ')}
                   </option>
                 ))}
               </select>
@@ -488,13 +580,19 @@ export const CustomReportBuilderPage: React.FC = () => {
                   value={sortField}
                   onChange={(e) => setSortField(e.target.value)}
                 >
-                  {(metaQuery.data?.fields ?? [])
-                    .filter((f) => f.sortable)
-                    .map((f) => (
-                      <option key={f.key} value={f.key}>
-                        {f.label}
-                      </option>
-                    ))}
+                  {groupBy.length > 0
+                    ? (metaQuery.data?.groupDimensions ?? []).map((g) => (
+                        <option key={g} value={g}>
+                          {g.replace(/_/g, ' ')}
+                        </option>
+                      ))
+                    : (metaQuery.data?.fields ?? [])
+                        .filter((f) => f.sortable)
+                        .map((f) => (
+                          <option key={f.key} value={f.key}>
+                            {f.label}
+                          </option>
+                        ))}
                 </select>
                 <select
                   aria-label="Sort direction"
@@ -507,6 +605,77 @@ export const CustomReportBuilderPage: React.FC = () => {
                 </select>
               </div>
             </div>
+            {groupBy.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-slate-500">Aggregates</p>
+                  <button
+                    type="button"
+                    className="text-xs text-indigo-600"
+                    onClick={addAggregateRow}
+                  >
+                    + Add
+                  </button>
+                </div>
+                {aggregates.length === 0 && (
+                  <p className="text-[11px] text-slate-500 italic">
+                    No aggregates — preview uses COUNT by default.
+                  </p>
+                )}
+                {aggregates.map((agg) => (
+                  <div
+                    key={agg.id}
+                    className="grid grid-cols-12 gap-1 text-[11px] border border-slate-100 dark:border-slate-800 rounded-lg p-1"
+                  >
+                    <select
+                      aria-label={`Aggregate field ${agg.id.slice(0, 8)}`}
+                      className="col-span-5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                      value={agg.field}
+                      onChange={(e) =>
+                        setAggregates((prev) =>
+                          prev.map((x) =>
+                            x.id === agg.id ? { ...x, field: e.target.value } : x
+                          )
+                        )
+                      }
+                    >
+                      {(metaQuery.data?.fields ?? []).map((f) => (
+                        <option key={f.key} value={f.key}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label={`Aggregate operation ${agg.id.slice(0, 8)}`}
+                      className="col-span-5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                      value={agg.operation}
+                      onChange={(e) =>
+                        setAggregates((prev) =>
+                          prev.map((x) =>
+                            x.id === agg.id ? { ...x, operation: e.target.value } : x
+                          )
+                        )
+                      }
+                    >
+                      {(metaQuery.data?.aggregateOperations ?? ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']).map(
+                        (op) => (
+                          <option key={op} value={op}>
+                            {op}
+                          </option>
+                        )
+                      )}
+                    </select>
+                    <button
+                      type="button"
+                      className="col-span-2 text-red-600 text-center"
+                      onClick={() => setAggregates((prev) => prev.filter((x) => x.id !== agg.id))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="border-t border-slate-200 dark:border-slate-700 p-2 space-y-2">
             <p className="text-xs font-semibold text-slate-500">Ad-hoc formula</p>
