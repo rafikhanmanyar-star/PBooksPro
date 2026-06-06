@@ -1,6 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import {
+    useContacts,
+    useInvoices,
+    useProperties,
+    useTransactions,
+} from '../../hooks/useSelectiveState';
 import { InvoiceType, TransactionType } from '../../types';
 import Select from '../ui/Select';
 import { ICONS, CURRENCY } from '../../constants';
@@ -13,7 +18,10 @@ import { format } from 'date-fns';
 const COLORS = ['#00C49F', '#FFBB28', '#FF8042', '#0088FE'];
 
 const InvoicePaymentAnalysisReport: React.FC = () => {
-    const { state } = useAppContext();
+    const invoices = useInvoices();
+    const contacts = useContacts();
+    const properties = useProperties();
+    const transactions = useTransactions();
     const [groupBy, setGroupBy] = useState<'tenant' | 'owner' | 'property'>('tenant');
     const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
     const [dateRange, setDateRange] = useState<'all' | 'this_year' | 'last_year'>('this_year');
@@ -23,15 +31,15 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
         if (groupBy === 'tenant') {
             // Filter contacts that have at least one rental invoice
             const tenantIds = new Set(state.invoices.filter(i => i.invoiceType === InvoiceType.RENTAL).map(i => i.contactId));
-            return state.contacts.filter(c => tenantIds.has(c.id)).map(c => ({ id: c.id, name: c.name }));
+            return contacts.filter(c => tenantIds.has(c.id)).map(c => ({ id: c.id, name: c.name }));
         } else if (groupBy === 'owner') {
             // Owners are linked to properties
-            const ownerIds = new Set(state.properties.map(p => p.ownerId).filter(Boolean));
-            return state.contacts.filter(c => ownerIds.has(c.id)).map(c => ({ id: c.id, name: c.name }));
+            const ownerIds = new Set(properties.map(p => p.ownerId).filter(Boolean));
+            return contacts.filter(c => ownerIds.has(c.id)).map(c => ({ id: c.id, name: c.name }));
         } else {
-            return state.properties.map(p => ({ id: p.id, name: p.name }));
+            return properties.map(p => ({ id: p.id, name: p.name }));
         }
-    }, [groupBy, state.contacts, state.properties, state.invoices]);
+    }, [groupBy, contacts, properties, state.invoices]);
 
     // 2. Filter Data
     const { filteredInvoices, filteredPayments } = useMemo(() => {
@@ -58,7 +66,7 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
                 invoices = invoices.filter(i => i.contactId === selectedEntityId);
             } else if (groupBy === 'owner') {
                 // Invoices -> Property -> Owner
-                const propertiesOwned = new Set(state.properties.filter(p => p.ownerId === selectedEntityId).map(p => p.id));
+                const propertiesOwned = new Set(properties.filter(p => p.ownerId === selectedEntityId).map(p => p.id));
                 invoices = invoices.filter(i => i.propertyId && propertiesOwned.has(i.propertyId));
             } else { // Property
                 invoices = invoices.filter(i => i.propertyId === selectedEntityId);
@@ -68,14 +76,14 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
         // Get related payments (transactions)
         // We filter transactions that are linked to these specific invoices
         const invoiceIds = new Set(invoices.map(i => i.id));
-        const payments = state.transactions.filter(t =>
+        const payments = transactions.filter(t =>
             t.type === TransactionType.INCOME &&
             t.invoiceId &&
             invoiceIds.has(t.invoiceId)
         );
 
         return { filteredInvoices: invoices, filteredPayments: payments };
-    }, [state.invoices, state.transactions, state.properties, groupBy, selectedEntityId, dateRange]);
+    }, [state.invoices, transactions, properties, groupBy, selectedEntityId, dateRange]);
 
     // 3. Analytics Data Preparation
     const summary = useMemo(() => {
@@ -279,9 +287,9 @@ const InvoicePaymentAnalysisReport: React.FC = () => {
                                         <td className="p-3 text-app-muted">{format(new Date(inv.issueDate), 'dd MMM yyyy')}</td>
                                         <td className="p-3 font-medium text-app-text">#{inv.invoiceNumber}</td>
                                         <td className="p-3 text-app-muted">
-                                            {groupBy === 'tenant' ? state.contacts.find(c => c.id === inv.contactId)?.name
-                                                : groupBy === 'owner' ? state.properties.find(p => p.id === inv.propertyId)?.name
-                                                    : state.contacts.find(c => c.id === inv.contactId)?.name}
+                                            {groupBy === 'tenant' ? contacts.find(c => c.id === inv.contactId)?.name
+                                                : groupBy === 'owner' ? properties.find(p => p.id === inv.propertyId)?.name
+                                                    : contacts.find(c => c.id === inv.contactId)?.name}
                                         </td>
                                         <td className="p-3 text-app-text text-right font-medium">{CURRENCY} {inv.amount.toLocaleString()}</td>
                                         <td className="p-3 text-ds-success text-right">{CURRENCY} {inv.paidAmount.toLocaleString()}</td>

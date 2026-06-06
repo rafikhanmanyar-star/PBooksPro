@@ -36,7 +36,10 @@ interface AgreementExpiryRow {
 type SortKey = 'propertyName' | 'tenantName' | 'monthlyRent' | 'endDate' | 'daysUntilExpiry';
 
 const AgreementExpiryReport: React.FC = () => {
-    const { state } = useAppContext();
+    const allBuildings = useBuildings();
+    const properties = useProperties();
+    const contacts = useContacts();
+    const rentalAgreements = useRentalAgreements();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 
@@ -44,7 +47,7 @@ const AgreementExpiryReport: React.FC = () => {
         direction: 'asc' 
     });
 
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -68,7 +71,7 @@ const AgreementExpiryReport: React.FC = () => {
         threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3);
 
         // Filter active agreements expiring in next 3 months
-        const expiringAgreements = state.rentalAgreements
+        const expiringAgreements = rentalAgreements
             .filter(agreement => {
                 if (agreement.status !== RentalAgreementStatus.ACTIVE) return false;
                 
@@ -79,9 +82,9 @@ const AgreementExpiryReport: React.FC = () => {
             });
 
         let result: AgreementExpiryRow[] = expiringAgreements.map(agreement => {
-            const property = state.properties.find(p => p.id === agreement.propertyId);
-            const building = property ? state.buildings.find(b => b.id === property.buildingId) : null;
-            const tenant = state.contacts.find(c => c.id === agreement.contactId);
+            const property = properties.find(p => p.id === agreement.propertyId);
+            const building = property ? allBuildings.find(b => b.id === property.buildingId) : null;
+            const tenant = contacts.find(c => c.id === agreement.contactId);
             
             const endDate = new Date(agreement.endDate);
             endDate.setHours(23, 59, 59, 999);
@@ -115,7 +118,7 @@ const AgreementExpiryReport: React.FC = () => {
         // Apply building filter
         if (selectedBuildingId !== 'all') {
             result = result.filter(row => {
-                const property = state.properties.find(p => p.name === row.propertyName);
+                const property = properties.find(p => p.name === row.propertyName);
                 return property?.buildingId === selectedBuildingId;
             });
         }
