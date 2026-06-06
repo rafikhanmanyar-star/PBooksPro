@@ -31,9 +31,9 @@ import { unitsRouter } from './routes/unitsRoutes.js';
 import { vendorsRouter } from './routes/vendorsRoutes.js';
 import { quotationsRouter } from './routes/quotationsRoutes.js';
 import { documentsRouter } from './routes/documentsRoutes.js';
+import { transactionAuditRouter } from './routes/transactionAuditRoutes.js';
 import { appSettingsRouter } from './routes/appSettingsRoutes.js';
 import { stateRouter } from './routes/stateRoutes.js';
-import { entityListStubsRouter } from './routes/entityListStubsRoutes.js';
 import { recurringInvoiceTemplatesRouter } from './routes/recurringInvoiceTemplatesRoutes.js';
 import { payrollRouter } from './routes/payrollRoutes.js';
 import { contractorRouter } from './routes/contractorRoutes.js';
@@ -184,6 +184,8 @@ app.use('/api', authMiddleware, requireFinancialWriteOnMutations, quotationsRout
 
 app.use('/api', authMiddleware, requireFinancialWriteOnMutations, documentsRouter);
 
+app.use('/api', authMiddleware, transactionAuditRouter);
+
 app.use('/api', authMiddleware, requireFinancialWriteOnMutations, appSettingsRouter);
 
 app.use('/api', authMiddleware, stateRouter);
@@ -230,9 +232,6 @@ app.use('/api', authMiddleware, requireFinancialWriteOnMutations, contractorRout
 app.use('/api', authMiddleware, requireFinancialWriteOnMutations, personalFinanceRouter);
 
 app.use('/api', authMiddleware, tasksRouter);
-
-/** Empty list stubs for entities not yet ported to this API (avoids HTML 404 on loadState). */
-app.use('/api', authMiddleware, entityListStubsRouter);
 
 app.use('/api', authMiddleware, customReportsRouter);
 

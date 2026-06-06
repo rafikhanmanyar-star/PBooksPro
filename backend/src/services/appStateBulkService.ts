@@ -38,6 +38,7 @@ import {
 import { listVendors, rowToVendorApi } from './vendorsService.js';
 import { listQuotations, rowToQuotationApi } from './quotationsService.js';
 import { listDocuments, rowToDocumentApi } from './documentsService.js';
+import { listTransactionLogs, rowToTransactionLogApi } from './transactionLogService.js';
 import {
   listPersonalCategories,
   rowToPersonalCategoryApi,
@@ -138,6 +139,7 @@ export async function getBulkAppState(
     vendorRows,
     quotationRows,
     documentRows,
+    transactionLogRows,
     personalCategoryRows,
     personalTransactionRows,
     appSettingsFlat,
@@ -179,6 +181,9 @@ export async function getBulkAppState(
     wantEntity('vendors', filter) ? listVendors(client, tenantId) : Promise.resolve([]),
     wantEntity('quotations', filter) ? listQuotations(client, tenantId) : Promise.resolve([]),
     wantEntity('documents', filter) ? listDocuments(client, tenantId) : Promise.resolve([]),
+    wantEntity('transactionLog', filter)
+      ? listTransactionLogs(client, tenantId, { limit: 500 })
+      : Promise.resolve([]),
     wantEntity('personalCategories', filter)
       ? listPersonalCategories(client, tenantId)
       : Promise.resolve([]),
@@ -267,7 +272,7 @@ export async function getBulkAppState(
     out.pmCycleAllocations = pmCycleAllocationRows.map((r) => rowToPmCycleAllocationApi(r));
   }
   if (wantEntity('transactionLog', filter)) {
-    out.transactionLog = [];
+    out.transactionLog = transactionLogRows.map((r) => rowToTransactionLogApi(r));
   }
   if (wantEntity('vendors', filter)) {
     out.vendors = vendorRows.map((r) => rowToVendorApi(r));

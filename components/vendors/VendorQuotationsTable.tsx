@@ -1,91 +1,52 @@
 import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Quotation } from '../../types';
 import { ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { documentService } from '../../services/documentService';
 import { useNotification } from '../../context/NotificationContext';
-import Input from '../ui/Input';
+import { SmartTable, type SmartColumnDef } from '../erp/SmartTable';
 
 interface VendorQuotationsTableProps {
     vendorId: string;
     onEditQuotation?: (quotation: Quotation) => void;
 }
 
-type SortKey = 'date' | 'name' | 'totalAmount' | 'itemsCount';
+type QuotationRow = Quotation & {
+    itemsCount: number;
+    itemsDetail: string;
+};
+
+const formatCurrency = (amount: number) =>
+    amount.toLocaleString('en-US', { style: 'currency', currency: 'PKR' });
 
 const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId, onEditQuotation }) => {
     const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
-    const [search, setSearch] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
-    const quotations = useMemo(() => {
-        return (quotations || []).filter(q => q.vendorId === vendorId);
-    }, [quotations, vendorId]);
-
-    const filteredQuotations = useMemo(() => {
-        let result = quotations;
-        
-        if (search) {
-            const q = search.toLowerCase();
-            result = result.filter(quotation => 
-                quotation.name.toLowerCase().includes(q) ||
-                quotation.date.includes(q) ||
-                quotation.items.some(item => {
-                    const category = categories.find(c => c.id === item.categoryId);
-                    return category?.name.toLowerCase().includes(q);
-                })
-            );
-        }
-        
-        return result.sort((a, b) => {
-            let aVal: any;
-            let bVal: any;
-            
-            switch (sortConfig.key) {
-                case 'date':
-                    aVal = new Date(a.date).getTime();
-                    bVal = new Date(b.date).getTime();
-                    break;
-                case 'name':
-                    aVal = a.name.toLowerCase();
-                    bVal = b.name.toLowerCase();
-                    break;
-                case 'totalAmount':
-                    aVal = a.totalAmount;
-                    bVal = b.totalAmount;
-                    break;
-                case 'itemsCount':
-                    aVal = a.items.length;
-                    bVal = b.items.length;
-                    break;
-                default:
-                    return 0;
-            }
-
-            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
+    const rows = useMemo((): QuotationRow[] => {
+        const quotations = (state.quotations || []).filter((q) => q.vendorId === vendorId);
+        return quotations.map((quotation) => {
+            const itemLines = quotation.items.map((item) => {
+                const category = state.categories.find((c) => c.id === item.categoryId);
+                return `${category?.name || 'Unknown'} - ${item.quantity} ${item.unit || 'units'} @ ${formatCurrency(item.pricePerQuantity)}`;
+            });
+            return {
+                ...quotation,
+                itemsCount: quotation.items.length,
+                itemsDetail: itemLines.slice(0, 2).join('; '),
+            };
         });
-    }, [quotations, search, sortConfig, categories]);
-
-    const handleSort = (key: SortKey) => {
-        setSortConfig(current => ({
-            key,
-            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
-        }));
-    };
+    }, [state.quotations, state.categories, vendorId]);
 
     const handleDelete = async (quotation: Quotation) => {
         const confirmed = await showConfirm(
             `Are you sure you want to delete the quotation dated ${formatDate(quotation.date)}?`,
             { title: 'Delete Quotation', confirmLabel: 'Delete', cancelLabel: 'Cancel' }
         );
-        
+
         if (confirmed) {
-            // Delete associated document if exists
             if (quotation.documentId) {
                 try {
                     await documentService.deleteDocument(quotation.documentId);
@@ -121,144 +82,154 @@ const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId,
         }
 
         try {
-            await documentService.downloadDocument(quotation.documentId, `Quotation-${quotation.name}-${quotation.date}.pdf`);
+            await documentService.downloadDocument(
+                quotation.documentId,
+                `Quotation-${quotation.name}-${quotation.date}.pdf`
+            );
         } catch (error) {
             showAlert('Failed to download document');
             console.error('Document download error:', error);
         }
     };
 
-    const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
-        return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
-    };
+    const columns: SmartColumnDef<QuotationRow>[] = useMemo(
+        () => [
+            {
+                id: 'date',
+                header: 'Date',
+                width: 110,
+                sortable: true,
+                accessor: (r) => r.date,
+                format: (v) => formatDate(String(v)),
+            },
+            {
+                id: 'name',
+                header: 'Quotation Name',
+                width: 180,
+                sortable: true,
+                accessor: (r) => r.name,
+            },
+            {
+                id: 'itemsCount',
+                header: 'Items',
+                width: 72,
+                sortable: true,
+                numeric: true,
+                accessor: (r) => r.itemsCount,
+            },
+            {
+                id: 'itemsDetail',
+                header: 'Items Detail',
+                width: 280,
+                accessor: (r) => r.itemsDetail,
+                render: (r) => (
+                    <div className="px-2 py-1 text-xs text-slate-600 truncate" title={r.itemsDetail}>
+                        {r.itemsDetail}
+                        {r.items.length > 2 && (
+                            <span className="text-slate-400 italic"> (+{r.items.length - 2} more)</span>
+                        )}
+                    </div>
+                ),
+            },
+            {
+                id: 'totalAmount',
+                header: 'Total Amount',
+                width: 130,
+                sortable: true,
+                numeric: true,
+                sum: true,
+                accessor: (r) => r.totalAmount,
+                format: (v) => formatCurrency(Number(v)),
+            },
+            {
+                id: 'document',
+                header: 'Document',
+                width: 100,
+                align: 'center',
+                accessor: (r) => (r.documentId ? 'yes' : ''),
+                render: (r) => (
+                    <div className="flex items-center justify-center gap-2 px-1">
+                        {r.documentId ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleViewDocument(e, r.documentId!)}
+                                    className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-50 transition-colors"
+                                    title="View Document"
+                                >
+                                    <div className="w-4 h-4">{ICONS.fileText}</div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleDownloadDocument(e, r)}
+                                    className="text-emerald-600 hover:text-emerald-800 p-1 rounded-full hover:bg-emerald-50 transition-colors"
+                                    title="Download Document"
+                                >
+                                    <div className="w-4 h-4">{ICONS.download}</div>
+                                </button>
+                            </>
+                        ) : (
+                            <span className="text-slate-400 text-xs">-</span>
+                        )}
+                    </div>
+                ),
+            },
+            {
+                id: 'actions',
+                header: 'Actions',
+                width: 96,
+                align: 'center',
+                accessor: () => '',
+                render: (r) => (
+                    <div className="flex items-center justify-center gap-2 px-1">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEditQuotation?.(r);
+                            }}
+                            className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-50 transition-colors"
+                            title="Edit Quotation"
+                        >
+                            <div className="w-4 h-4">{ICONS.edit}</div>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDelete(r);
+                            }}
+                            className="text-rose-600 hover:text-rose-800 p-1 rounded-full hover:bg-rose-50 transition-colors"
+                            title="Delete Quotation"
+                        >
+                            <div className="w-4 h-4">{ICONS.trash}</div>
+                        </button>
+                    </div>
+                ),
+            },
+        ],
+        [onEditQuotation, showAlert, showConfirm, dispatch]
+    );
 
     return (
-        <div className="space-y-4 h-full flex flex-col min-h-0">
-            <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
-                <div className="flex-grow relative">
-                    <Input 
-                        id="quotation-search"
-                        name="quotation-search"
-                        placeholder="Search quotations by name, date, or category..." 
-                        value={search} 
-                        onChange={e => setSearch(e.target.value)}
-                        className="pl-9 py-2 text-sm"
-                    />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                        <div className="w-4 h-4">{ICONS.search}</div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-auto border rounded-lg bg-white shadow-sm">
-                <table className="min-w-full divide-y divide-slate-200 text-sm relative">
-                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-                        <tr>
-                            <th onClick={() => handleSort('date')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date"/></th>
-                            <th onClick={() => handleSort('name')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Vendor Name <SortIcon column="name"/></th>
-                            <th onClick={() => handleSort('itemsCount')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Items <SortIcon column="itemsCount"/></th>
-                            <th className="px-4 py-3 text-left font-semibold text-slate-600 select-none">Items Detail</th>
-                            <th onClick={() => handleSort('totalAmount')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Total Amount <SortIcon column="totalAmount"/></th>
-                            <th className="px-4 py-3 text-center font-semibold text-slate-600 select-none whitespace-nowrap">Document</th>
-                            <th className="px-4 py-3 text-center font-semibold text-slate-600 select-none whitespace-nowrap">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                        {filteredQuotations.length > 0 ? filteredQuotations.map(quotation => (
-                            <tr 
-                                key={quotation.id} 
-                                onClick={() => onEditQuotation?.(quotation)} 
-                                className="hover:bg-slate-50 cursor-pointer transition-colors group"
-                            >
-                                <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatDate(quotation.date)}</td>
-                                <td className="px-4 py-3 font-medium text-slate-800 group-hover:text-accent">{quotation.name}</td>
-                                <td className="px-4 py-3 text-slate-700">{quotation.items.length}</td>
-                                <td className="px-4 py-3 max-w-md">
-                                    <div className="space-y-1">
-                                        {quotation.items.slice(0, 2).map((item, idx) => {
-                                            const category = categories.find(c => c.id === item.categoryId);
-                                            return (
-                                                <div key={idx} className="text-xs text-slate-600">
-                                                    {category?.name || 'Unknown'} - {item.quantity} {item.unit || 'units'} @ {item.pricePerQuantity.toLocaleString('en-US', { style: 'currency', currency: 'PKR' })}
-                                                </div>
-                                            );
-                                        })}
-                                        {quotation.items.length > 2 && (
-                                            <div className="text-xs text-slate-400 italic">
-                                                +{quotation.items.length - 2} more
-                                            </div>
-                                        )}
-                                    </div>
-                                </td>
-                                <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">
-                                    {quotation.totalAmount.toLocaleString('en-US', {
-                                        style: 'currency',
-                                        currency: 'PKR'
-                                    })}
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                    {quotation.documentId ? (
-                                        <div className="flex items-center justify-center gap-2">
-                                            <button
-                                                onClick={(e) => handleViewDocument(e, quotation.documentId!)}
-                                                className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-50 transition-colors"
-                                                title="View Document"
-                                            >
-                                                <div className="w-4 h-4">{ICONS.fileText}</div>
-                                            </button>
-                                            <button
-                                                onClick={(e) => handleDownloadDocument(e, quotation)}
-                                                className="text-emerald-600 hover:text-emerald-800 p-1 rounded-full hover:bg-emerald-50 transition-colors"
-                                                title="Download Document"
-                                            >
-                                                <div className="w-4 h-4">{ICONS.download}</div>
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <span className="text-slate-400 text-xs">-</span>
-                                    )}
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                    <div className="flex items-center justify-center gap-2">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onEditQuotation?.(quotation);
-                                            }}
-                                            className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-50 transition-colors"
-                                            title="Edit Quotation"
-                                        >
-                                            <div className="w-4 h-4">{ICONS.edit}</div>
-                                        </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDelete(quotation);
-                                            }}
-                                            className="text-rose-600 hover:text-rose-800 p-1 rounded-full hover:bg-rose-50 transition-colors"
-                                            title="Delete Quotation"
-                                        >
-                                            <div className="w-4 h-4">{ICONS.trash}</div>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        )) : (
-                            <tr>
-                                <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
-                                    {quotations.length === 0 
-                                        ? 'No quotations found. Create your first quotation to get started.'
-                                        : 'No quotations found matching your search.'}
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+        <div className="h-full flex flex-col min-h-0">
+            {rows.length === 0 ? (
+                <p className="text-center text-slate-500 py-12">
+                    No quotations found. Create your first quotation to get started.
+                </p>
+            ) : (
+                <SmartTable
+                    className="flex-1 min-h-0"
+                    columns={columns}
+                    data={rows}
+                    getRowId={(r) => r.id}
+                    tableHeight={480}
+                    searchPlaceholder="Search quotations by name, date, or category…"
+                    showFooterSum
+                />
+            )}
         </div>
     );
 };
 
 export default VendorQuotationsTable;
-
