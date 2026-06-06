@@ -20,7 +20,7 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 type SortKey = 'contractNumber' | 'name' | 'totalAmount' | 'paid' | 'balance' | 'status' | 'startDate';
 
 const ProjectContractsPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { openChat } = useWhatsApp();

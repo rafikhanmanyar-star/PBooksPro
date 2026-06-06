@@ -20,7 +20,7 @@ const generateBillNumber = (bills: ShopPurchaseBill[]): string => {
 };
 
 const PurchasesTab: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
 
     // Local state for shop data (persisted to localStorage)

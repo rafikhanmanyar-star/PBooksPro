@@ -17,7 +17,7 @@ interface ProjectCategoryDetailModalProps {
 }
 
 const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({ isOpen, onClose, data }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
 
   const categorySummary = useMemo(() => {
     if (!data) return [];

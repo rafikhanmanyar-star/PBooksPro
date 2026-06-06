@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { Contact, TransactionType, Transaction, SalesReturnStatus, ProjectAgreement } from '../../types';
 import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
+import { _getAppState } from '../../context/appStateStore';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import Modal from '../ui/Modal';
@@ -24,7 +25,7 @@ interface ProjectOwnerPayoutModalProps {
 }
 
 const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpen, onClose, client, balanceDue }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
 

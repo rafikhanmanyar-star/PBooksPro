@@ -46,7 +46,7 @@ const PRINT_DELAY_MS = 350;
 
 function usePrintContent(): React.ReactNode {
   const { activeDocument, layoutType } = usePrintContext();
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const printSettings = state.printSettings;
 
   if (activeDocument == null || !layoutType) return null;

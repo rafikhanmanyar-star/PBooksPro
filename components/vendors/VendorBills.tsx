@@ -18,7 +18,7 @@ interface VendorBillsProps {
 type SortKey = 'issueDate' | 'billNumber' | 'amount' | 'paidAmount' | 'status' | 'balance' | 'description';
 
 const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
     const [search, setSearch] = useState('');

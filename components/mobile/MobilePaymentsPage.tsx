@@ -12,7 +12,7 @@ import { ICONS } from '../../constants';
 import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 
 const MobilePaymentsPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const [activeTab, setActiveTab] = useState('Pay Bills');
     const [searchQuery, setSearchQuery] = useState('');

@@ -1,7 +1,7 @@
 import { useFullAppState } from '../../hooks/useSelectiveState';
 import React from 'react';
 const ReportHeader: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { printSettings } = state;
 
     if (!printSettings) return null;

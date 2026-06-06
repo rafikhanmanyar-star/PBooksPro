@@ -131,7 +131,7 @@ interface ProjectAgreementFormProps {
 }
 
 const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, agreementToEdit, onCancelRequest }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showToast, showAlert, showProgress, hideProgress } = useNotification();
     const { print: triggerPrint } = usePrintContext();

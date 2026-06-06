@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { ICONS } from '../constants';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
-import { useAppContext } from './AppContext';
+import { useStateSelector } from '../hooks/useSelectiveState';
 import { useAuth } from './AuthContext';
 import { PBOOKS_DB_ERROR_EVENT, type DbErrorNotificationDetail } from '../services/dbErrorNotification';
 
@@ -66,7 +66,7 @@ const playSuccessSound = () => {
 };
 
 export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { state } = useAppContext();
+  const enableBeepOnSave = useStateSelector((s) => s.enableBeepOnSave);
   const { isAuthenticated } = useAuth();
   // --- Toast State ---
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -90,7 +90,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const retryLabel = actionOptions?.retryLabel ?? 'Retry';
     setToasts((prev) => [...prev, { id, message, type, onRetry, retryLabel }]);
 
-    if (type === 'success' && state.enableBeepOnSave) {
+    if (type === 'success' && enableBeepOnSave) {
       playSuccessSound();
     }
 
@@ -98,7 +98,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, dismissMs);
-  }, [state.enableBeepOnSave]);
+  }, [enableBeepOnSave]);
 
   // Listen for sync warning events
   useEffect(() => {

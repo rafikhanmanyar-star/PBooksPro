@@ -27,7 +27,7 @@ interface AssetPaymentModalProps {
 }
 
 const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, invoice, onSuccess, renderInline }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 

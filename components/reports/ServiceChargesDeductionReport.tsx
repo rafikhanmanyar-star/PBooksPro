@@ -37,7 +37,7 @@ interface ReportRow {
 type SortKey = 'date' | 'buildingName' | 'propertyName' | 'ownerName' | 'particulars' | 'amount';
 
 const ServiceChargesDeductionReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();

@@ -33,7 +33,7 @@ interface PayslipModalProps {
 
 const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete, initialAction }) => {
   const { tenant } = useAuth();
-  const const state = useFullAppState();
+  const state = useFullAppState();
     const dispatch = useDispatchOnly();
   const { print: triggerPrint } = usePrintContext();
   const companyName = tenant?.companyName || tenant?.name || 'Organization';

@@ -17,7 +17,7 @@ interface VendorInfoProps {
 }
 
 const VendorInfo: React.FC<VendorInfoProps> = ({ vendor, onEdit, onCreateBill, onRecordPayment, onCreateQuotation }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const { showAlert } = useNotification();
   const { openChat } = useWhatsApp();
 

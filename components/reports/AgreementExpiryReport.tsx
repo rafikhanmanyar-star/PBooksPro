@@ -31,7 +31,7 @@ interface AgreementExpiryRow {
 type SortKey = 'propertyName' | 'tenantName' | 'monthlyRent' | 'endDate' | 'daysUntilExpiry';
 
 const AgreementExpiryReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 

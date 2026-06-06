@@ -16,7 +16,7 @@ interface InvestorHistoryModalProps {
 }
 
 const InvestorHistoryModal: React.FC<InvestorHistoryModalProps> = ({ isOpen, onClose, investorId, investorName, initialProjectId }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const [showAllProjects, setShowAllProjects] = useState(initialProjectId === 'all' || !initialProjectId);
 
     const transactions = useMemo(() => {

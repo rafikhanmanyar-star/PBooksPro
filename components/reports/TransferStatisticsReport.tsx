@@ -32,7 +32,7 @@ interface TransferItem {
 type SortKey = 'date' | 'fromAccountName' | 'toAccountName' | 'amount' | 'description';
 
 const TransferStatisticsReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(() => startOfMonthYyyyMmDd());

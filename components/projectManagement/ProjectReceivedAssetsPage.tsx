@@ -9,7 +9,7 @@ import RecordSaleModal from './RecordSaleModal';
 import { useNotification } from '../../context/NotificationContext';
 
 const ProjectReceivedAssetsPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
     const [projectFilterId, setProjectFilterId] = useState<string>('');

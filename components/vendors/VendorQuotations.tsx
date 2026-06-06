@@ -14,7 +14,7 @@ interface VendorQuotationsProps {
 }
 
 const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuotation, onViewDocument }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
     const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');

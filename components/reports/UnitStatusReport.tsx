@@ -34,7 +34,7 @@ interface UnitStatusReportProps {
 }
 
 const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, activeReport }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');

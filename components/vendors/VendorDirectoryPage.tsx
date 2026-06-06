@@ -38,7 +38,7 @@ const AddVendorSection: React.FC<{
     triggerAddVendor?: boolean;
     onModalOpenHandled?: () => void;
 }> = ({ optionsView, setOptionsView, setSelectedVendorId, triggerAddVendor, onModalOpenHandled }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const { showToast } = useNotification();
@@ -145,7 +145,7 @@ type SortKey = 'name' | 'payable';
 type SortDirection = 'asc' | 'desc';
 
 const VendorDirectoryPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const { showConfirm, showAlert, showToast } = useNotification();

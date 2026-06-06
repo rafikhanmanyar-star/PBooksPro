@@ -43,7 +43,7 @@ import { syncPayrollFromServer } from './services/payrollSync';
 import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { Contact, ContactType, Transaction } from '../../types';
@@ -123,7 +123,8 @@ type TableRecordFilter = 'payslips' | 'payments' | 'all' | 'ledger';
 
 const PayrollHub: React.FC = () => {
   const { user, tenant } = useAuth();
-  const { state: appState, dispatch } = useAppContext();
+  const appState = useFullAppState();
+  const dispatch = useDispatchOnly();
   const { openChat } = useWhatsApp();
   const { showToast, showAlert, showConfirm } = useNotification();
   const { print: triggerPrint } = usePrintContext();

@@ -69,7 +69,7 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
   data,
   listMode = 'profitLoss',
 }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
 
   const processedBillsForPl = useMemo(() => {
     if (!data || listMode === 'categoryReport') return new Set<string>();

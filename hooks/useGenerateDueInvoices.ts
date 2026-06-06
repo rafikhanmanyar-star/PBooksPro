@@ -10,7 +10,7 @@ import {
 } from '../utils/dateUtils';
 
 export function useGenerateDueInvoices() {
-  const const state = useFullAppState();
+  const state = useFullAppState();
     const dispatch = useDispatchOnly();
   const { showToast, showConfirm } = useNotification();
   const [isGenerating, setIsGenerating] = useState(false);

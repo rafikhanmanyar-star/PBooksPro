@@ -52,7 +52,7 @@ import { payrollApi } from '../../services/api/payrollApi';
 import PayslipModal from './modals/PayslipModal';
 import AdjustmentModal from './modals/AdjustmentModal';
 import { useAuth } from '../../context/AuthContext';
-import { useAppContext } from '../../context/AppContext';
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import { usePrintContext } from '../../context/PrintContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
@@ -76,7 +76,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
   payrollStorageRevision = 0,
 }) => {
   const { user, tenant } = useAuth();
-  const { state: appState } = useAppContext();
+  const appState = useFullAppState();
   const { print: triggerPrint } = usePrintContext();
   const { openChat } = useWhatsApp();
   const tenantId = tenant?.id || '';

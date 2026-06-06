@@ -17,7 +17,7 @@ interface SettingsLedgerModalProps {
 }
 
 const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClose, entityId, entityType, entityName }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
 
     const [contractorLedger, setContractorLedger] = useState<{

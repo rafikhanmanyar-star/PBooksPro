@@ -55,7 +55,7 @@ const TemplateField: React.FC<{
 
 const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, MessagingTemplatesFormProps>(
   ({ onClose }, ref) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
     const [templates, setTemplates] = useState<WhatsAppTemplates>(() => ({ ...state.whatsAppTemplates }));

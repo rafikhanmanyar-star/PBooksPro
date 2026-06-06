@@ -28,7 +28,7 @@ export interface UsePrintReturn {
  * @returns Print handler, loading state, and error state
  */
 export const usePrint = (options: UsePrintOptions = {}): UsePrintReturn => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const [isPrinting, setIsPrinting] = useState(false);
   const [printError, setPrintError] = useState<Error | null>(null);
 

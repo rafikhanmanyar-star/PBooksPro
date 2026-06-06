@@ -45,7 +45,7 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
 }
 
 const AccountConsistencyReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const tenantId =
         state.currentUser?.tenantId?.trim() ||

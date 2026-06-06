@@ -22,7 +22,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
     onClear,
     onClose
 }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const [tempFilters, setTempFilters] = useState<FilterCriteria>(filters);
 
     // Filter out Internal Clearing account from combo box - with defensive check

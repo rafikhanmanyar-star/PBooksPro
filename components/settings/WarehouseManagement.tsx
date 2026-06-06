@@ -14,7 +14,7 @@ interface WarehouseManagementProps {
 }
 
 const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormRequest }) => {
-    const const appState = useFullAppState();
+    const appState = useFullAppState();
     const appDispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
     

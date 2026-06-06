@@ -25,7 +25,7 @@ const LogEntryView: React.FC<{ entry: ExtendedErrorLogEntry }> = ({ entry }) => 
 
 
 const ErrorLogViewer: React.FC<ErrorLogViewerProps> = ({ isOpen, onClose }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm } = useNotification();
     const [errorLogs, setErrorLogs] = useState<ExtendedErrorLogEntry[]>([]);

@@ -42,7 +42,7 @@ interface ProjectLayoutData {
 }
 
 const ProjectLayoutReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const themeCtx = useThemeOptional();
     const isDark = themeCtx?.theme === 'dark';
     const { print: triggerPrint } = usePrintContext();

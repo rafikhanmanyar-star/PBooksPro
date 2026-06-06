@@ -28,7 +28,7 @@ interface RevenueRow {
 type SortKey = 'agreementNumber' | 'projectName' | 'ownerName' | 'listPrice' | 'customerDiscount' | 'floorDiscount' | 'lumpSumDiscount' | 'miscDiscount' | 'sellingPrice' | 'brokerFee';
 
 const RevenueAnalysisReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     
     // Filter State

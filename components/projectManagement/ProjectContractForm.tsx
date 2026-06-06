@@ -21,7 +21,7 @@ interface ProjectContractFormProps {
 }
 
 const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, contractToEdit }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();

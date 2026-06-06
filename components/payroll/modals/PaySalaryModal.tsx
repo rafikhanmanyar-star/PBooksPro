@@ -82,7 +82,7 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
   tenantId,
   userId,
 }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
     const dispatch = useDispatchOnly();
   const [advanceApplyStr, setAdvanceApplyStr] = useState('');
   const [cashAmountStr, setCashAmountStr] = useState('');

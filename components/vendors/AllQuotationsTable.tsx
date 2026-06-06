@@ -14,7 +14,7 @@ interface AllQuotationsTableProps {
 type SortKey = 'date' | 'name' | 'totalAmount' | 'itemsCount' | 'vendorName';
 
 const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
     const [search, setSearch] = useState('');

@@ -46,7 +46,7 @@ function toJournalLines(drafts: LineDraft[]): JournalLineInput[] {
  * Local-only: posts immutable double-entry journals via the financial engine.
  */
 const ManualJournalEntrySection: React.FC = () => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const { showToast, showAlert } = useNotification();
 
   const flatAccounts = useMemo(() => flattenAccounts(state.accounts), [state.accounts]);

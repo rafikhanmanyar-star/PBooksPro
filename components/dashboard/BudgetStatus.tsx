@@ -6,7 +6,7 @@ import Card from '../ui/Card';
 import { formatCurrency } from '../../utils/numberUtils';
 
 const BudgetProgress: React.FC<{ budget: Budget; spent: number }> = ({ budget, spent }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const category = state.categories.find(c => c.id === budget.categoryId);
     const project = budget.projectId ? state.projects.find(p => p.id === budget.projectId) : null;
     
@@ -45,7 +45,7 @@ const BudgetProgress: React.FC<{ budget: Budget; spent: number }> = ({ budget, s
 
 
 const BudgetStatus: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
 
     // Get all budgets with amount > 0
     const activeBudgets = useMemo(() => {

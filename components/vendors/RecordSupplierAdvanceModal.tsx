@@ -70,7 +70,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     vendor,
     defaultProjectId,
 }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { showToast, showAlert } = useNotification();
 
     const [advanceDate, setAdvanceDate] = useState(toLocalDateString(new Date()));

@@ -122,7 +122,7 @@ const AgreementTreeSidebar: React.FC<{
 };
 
 const ProjectAgreementsPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

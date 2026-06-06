@@ -31,7 +31,7 @@ interface VendorComparisonReportProps {
 }
 
 const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
 

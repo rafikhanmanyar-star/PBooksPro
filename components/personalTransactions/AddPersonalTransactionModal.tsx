@@ -34,7 +34,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
   onSaved,
   editTransaction = null,
 }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const [step, setStep] = useState(1);
   const [type, setType] = useState<'Income' | 'Expense'>('Expense');
   const [accountId, setAccountId] = useState('');

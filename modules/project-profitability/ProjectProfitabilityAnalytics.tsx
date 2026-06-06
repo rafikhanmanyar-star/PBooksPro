@@ -58,7 +58,7 @@ const COLUMN_PRESETS: { id: string; label: string }[] = [
  * Inv. Mgmt → Reports: enterprise project profitability analytics (Vite + React; data from synced AppState).
  */
 const ProjectProfitabilityAnalytics: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { user } = useAuth();
     const perm = useProfitabilityPermissions(user?.role);
     const { print: triggerPrint } = usePrintContext();

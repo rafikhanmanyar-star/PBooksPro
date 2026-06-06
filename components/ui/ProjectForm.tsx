@@ -18,7 +18,7 @@ interface ProjectFormProps {
 }
 
 const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete, projectToEdit, initialName }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { showAlert } = useNotification();
     const [name, setName] = useState(projectToEdit?.name || initialName || '');
     const [description, setDescription] = useState(projectToEdit?.description || '');

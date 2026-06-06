@@ -27,7 +27,7 @@ interface ReportRow {
 type SortKey = 'date' | 'brokerName' | 'projectName' | 'particulars' | 'accrued' | 'paid' | 'balance';
 
 const ProjectBrokerReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));

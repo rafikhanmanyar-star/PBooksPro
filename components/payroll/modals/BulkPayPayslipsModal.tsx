@@ -42,7 +42,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
   tenantId,
   userId
 }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
     const dispatch = useDispatchOnly();
   const [accountId, setAccountId] = useState('');
   const [note, setNote] = useState('');

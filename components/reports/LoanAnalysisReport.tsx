@@ -22,7 +22,7 @@ interface LoanReportRow {
 }
 
 const LoanAnalysisReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
 
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');

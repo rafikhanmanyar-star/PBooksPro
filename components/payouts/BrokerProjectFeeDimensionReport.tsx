@@ -60,7 +60,7 @@ function compareCell(a: string | number, b: string | number, kind: 'text' | 'num
 }
 
 const BrokerProjectFeeDimensionReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const [groupBy, setGroupBy] = useState<BrokerFeeGroupBy>('project');
     const [sortKey, setSortKey] = useState<string>('group');
     const [sortDir, setSortDir] = useState<SortDirection>('asc');

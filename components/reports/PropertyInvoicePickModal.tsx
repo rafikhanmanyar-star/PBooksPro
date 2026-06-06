@@ -45,7 +45,7 @@ const PropertyInvoicePickModal: React.FC<PropertyInvoicePickModalProps> = ({
     invoiceType = 'ALL',
     onSelectInvoice,
 }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
 
     const isUnpaid = (inv: Invoice) =>
         inv.status !== InvoiceStatus.PAID &&

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback } from 'react';
-import { useAppContext } from '../context/AppContext';
+import { useDispatchOnly, useFullAppState } from '../hooks/useSelectiveState';
 import { ContactType, TransactionType, AccountType } from '../types';
 import Modal from '../components/ui/Modal';
 import ContactForm from '../components/settings/ContactForm';
@@ -26,7 +26,8 @@ interface UseEntityFormModalReturn {
 }
 
 export const useEntityFormModal = (): UseEntityFormModalReturn => {
-  const { state, dispatch } = useAppContext();
+  const state = useFullAppState();
+  const dispatch = useDispatchOnly();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formType, setFormType] = useState<EntityType | null>(null);
   const [initialName, setInitialName] = useState<string>('');
@@ -137,7 +138,7 @@ export const EntityFormModal: React.FC<{
   onClose: () => void;
   onSubmit: (data: any) => void;
 }> = ({ isOpen, formType, initialName, contactType, categoryType, onClose, onSubmit }) => {
-  const { state } = useAppContext();
+  const state = useFullAppState();
 
   const getFormTitle = () => {
     if (!formType) return 'Add New';

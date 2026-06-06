@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 const COLORS = ['#00C49F', '#FFBB28', '#FF8042', '#0088FE'];
 
 const InvoicePaymentAnalysisReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const [groupBy, setGroupBy] = useState<'tenant' | 'owner' | 'property'>('tenant');
     const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
     const [dateRange, setDateRange] = useState<'all' | 'this_year' | 'last_year'>('this_year');

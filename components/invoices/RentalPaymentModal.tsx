@@ -27,7 +27,7 @@ interface RentalPaymentModalProps {
 }
 
 const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose, invoice, transactionToEdit, onShowDeleteWarning }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();

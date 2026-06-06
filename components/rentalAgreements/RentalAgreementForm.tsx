@@ -32,7 +32,7 @@ const STEPS = ['Property', 'Lease Terms', 'Broker & Review'] as const;
 type Step = 0 | 1 | 2;
 
 const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agreementToEdit }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showToast, showAlert } = useNotification();
     const { rentalInvoiceSettings } = state;

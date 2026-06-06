@@ -46,7 +46,7 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
     onClose,
     unitId,
 }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const [filterType, setFilterType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
         key: 'date',

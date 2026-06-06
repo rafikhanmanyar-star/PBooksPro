@@ -10,7 +10,7 @@ import Button from '../ui/Button';
 type SortKey = 'categoryName' | 'budgeted' | 'totalSpent' | 'variance' | 'percentUsed';
 
 const ProjectBudgetReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || '');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'budgeted', direction: 'desc' });

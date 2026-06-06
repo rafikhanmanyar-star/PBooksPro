@@ -25,7 +25,7 @@ interface TransactionLogViewerProps {
 type DateRangeType = 'today' | 'thisMonth' | 'lastMonth' | 'custom';
 
 const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onClose }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
     const { currentUser } = state;

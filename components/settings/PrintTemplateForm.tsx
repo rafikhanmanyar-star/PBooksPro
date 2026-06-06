@@ -9,7 +9,7 @@ import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 
 const PrintTemplateForm: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
     const [settings, setSettings] = useState<PrintSettings>(state.printSettings);

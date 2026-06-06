@@ -68,7 +68,7 @@ type SortKey = 'name' | 'category' | 'collected' | 'paid' | 'balance';
 // --- Component ---
 
 const OwnerPayoutsPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { openChat } = useWhatsApp();
     const { showToast } = useNotification();

@@ -49,7 +49,7 @@ interface LoanSummary {
 }
 
 const LoanManagementPage: React.FC = () => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
     const dispatch = useDispatchOnly();
   const { showAlert } = useNotification();
   const { print: triggerPrint } = usePrintContext();

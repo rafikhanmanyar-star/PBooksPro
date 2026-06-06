@@ -14,7 +14,7 @@ type SortConfig = {
 
 const KPIDrilldown: React.FC = () => {
     const { activeDrilldownKpi, closeDrilldown } = useKpis();
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
 

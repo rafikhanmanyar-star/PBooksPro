@@ -4,7 +4,7 @@ import useLocalStorage from '../hooks/useLocalStorage';
 import { ALL_KPIS } from '../components/dashboard/kpiDefinitions.ts';
 import { reportDefinitions, ReportDefinition } from '../components/reports/reportDefinitions';
 import { KpiDefinition, TransactionType, AccountType } from '../types';
-import { useAppContext } from './AppContext';
+import { useAccounts, useCategories } from '../hooks/useSelectiveState';
 import { ICONS } from '../constants';
 
 const DEFAULT_VISIBLE_KPIS = [
@@ -49,7 +49,8 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [visibleKpiIds, setVisibleKpiIds] = useLocalStorage<string[]>('kpiPanelVisibleIds_v5', DEFAULT_VISIBLE_KPIS);
   const [favoriteReportIds, setFavoriteReportIds] = useLocalStorage<string[]>('kpiPanelFavoriteReports_v1', DEFAULT_FAVORITE_REPORTS);
 
-  const { state } = useAppContext();
+  const accounts = useAccounts();
+  const categories = useCategories();
 
   const allReports = useMemo(() => reportDefinitions, []);
 
@@ -69,7 +70,7 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const dynamicKpis: KpiDefinition[] = [];
     
     // Account Balances - Only BANK accounts (as per request for Total Balance group)
-    const bankAccounts = state.accounts.filter(acc => acc.type === AccountType.BANK);
+    const bankAccounts = accounts.filter(acc => acc.type === AccountType.BANK);
 
     for (const account of bankAccounts) {
         dynamicKpis.push({
@@ -82,7 +83,7 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     // Category KPIs (Income & Expense) - Including Discounts logic
-    for (const category of state.categories) {
+    for (const category of categories) {
         const isIncome = category.type === TransactionType.INCOME;
         
         const isDiscountCategory = !isIncome && [
@@ -119,7 +120,7 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return [...ALL_KPIS, ...dynamicKpis];
     // getData closures receive appState at call time — only accounts/categories are needed
     // to build the KPI *definitions*; transactions/projectAgreements are read inside getData.
-  }, [state.accounts, state.categories]);
+  }, [accounts, categories]);
 
   const contextValue = useMemo(() => ({
     isPanelOpen,

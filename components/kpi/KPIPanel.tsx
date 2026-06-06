@@ -90,7 +90,7 @@ const KPIPanel: React.FC = () => {
         allReports, 
         favoriteReportIds 
     } = useKpis();
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [selectorInitialTab, setSelectorInitialTab] = useState<'KPIs' | 'Reports'>('KPIs');

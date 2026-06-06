@@ -23,7 +23,7 @@ interface RecordSaleModalProps {
 }
 
 const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asset, onSuccess, mode = 'record' }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 

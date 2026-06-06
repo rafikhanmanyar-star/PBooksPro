@@ -32,7 +32,7 @@ interface HistoryItem {
 type SortKey = 'date' | 'type' | 'reference' | 'description' | 'contactName' | 'amount' | 'status';
 
 const PropertyHistoryModal: React.FC<PropertyHistoryModalProps> = ({ isOpen, onClose, propertyId, propertyName }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const [filterType, setFilterType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 

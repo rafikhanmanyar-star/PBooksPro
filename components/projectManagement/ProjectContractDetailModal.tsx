@@ -21,7 +21,7 @@ interface ProjectContractDetailModalProps {
 }
 
 const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({ contract, onClose, onEdit }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { handlePrint } = usePrint();
     const { openChat } = useWhatsApp();
     const { showAlert } = useNotification();

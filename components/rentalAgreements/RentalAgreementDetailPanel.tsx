@@ -17,7 +17,7 @@ interface RentalAgreementDetailPanelProps {
 const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
     agreement, onClose, onEdit, onRenew, onTerminate
 }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
 
     const property = useMemo(() => state.properties.find(p => p.id === agreement.propertyId), [agreement.propertyId, state.properties]);
     const tenant = useMemo(() => state.contacts.find(c => c.id === agreement.contactId), [agreement.contactId, state.contacts]);

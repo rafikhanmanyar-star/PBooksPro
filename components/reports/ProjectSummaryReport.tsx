@@ -92,7 +92,7 @@ const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: strin
 });
 
 const ProjectSummaryReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     
     // Filters

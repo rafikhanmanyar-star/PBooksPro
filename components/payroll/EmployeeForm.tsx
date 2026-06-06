@@ -36,7 +36,7 @@ import { storageService } from './services/storageService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
-import { useAppContext } from '../../context/AppContext';
+import { useFullAppState } from '../../hooks/useSelectiveState';
 import { formatCurrency } from './utils/formatters';
 import {
   allocationChanged,
@@ -51,7 +51,7 @@ import DatePicker from '../ui/DatePicker';
 
 const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee }) => {
   const { user, tenant } = useAuth();
-  const { state: appState } = useAppContext();
+  const appState = useFullAppState();
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
 

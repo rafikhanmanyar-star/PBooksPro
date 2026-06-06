@@ -52,7 +52,7 @@ export interface UsePrintFormReturn {
  * );
  */
 export function usePrintForm(options: UsePrintFormOptions = {}): UsePrintFormReturn {
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const printRef = useRef<HTMLDivElement | null>(null);
   const { documentTitle = 'Print', onAfterPrint, onBeforePrint } = options;
 

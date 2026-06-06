@@ -16,7 +16,7 @@ interface ProjectCategoryDetailModalProps {
 }
 
 const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({ isOpen, onClose, project, startDate, endDate }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const [activeTab, setActiveTab] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
 
   const categorySummary = useMemo(() => {

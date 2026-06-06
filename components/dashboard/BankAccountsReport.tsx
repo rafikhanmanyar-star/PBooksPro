@@ -19,7 +19,7 @@ interface BankAccountsReportProps {
 }
 
 const BankAccountsReport: React.FC<BankAccountsReportProps> = ({ hideZeroNetBalance = false }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
 
     const bankAccounts = useMemo(() => {
         return state.accounts.filter(acc =>

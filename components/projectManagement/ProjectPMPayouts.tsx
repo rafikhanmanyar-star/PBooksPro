@@ -21,7 +21,7 @@ interface PMProjectBalance {
 }
 
 const ProjectPMPayouts: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showAlert, showToast } = useNotification();
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(state.defaultProjectId || null);

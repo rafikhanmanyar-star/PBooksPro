@@ -28,7 +28,7 @@ interface ProjectBuildingFundsReportProps {
 }
 
 const ProjectBuildingFundsReport: React.FC<ProjectBuildingFundsReportProps> = ({ hideZeroNetBalance = false }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'netBalance', direction: 'desc' });
 
     const handleSort = (key: SortKey) => {

@@ -22,7 +22,7 @@ interface RentalRenewalFormProps {
 }
 
 const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClose }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
     const dispatch = useDispatchOnly();
   const { showToast, showAlert } = useNotification();
 

@@ -69,7 +69,7 @@ function mapEntryToInvestorRow(
 }
 
 const ProjectInvestorReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();

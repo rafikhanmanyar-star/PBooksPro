@@ -16,7 +16,7 @@ function fmtWhole(n: number): string {
 }
 
 const UndistributedFundsReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [endDate, setEndDate] = useState(toLocalDateString(new Date()));

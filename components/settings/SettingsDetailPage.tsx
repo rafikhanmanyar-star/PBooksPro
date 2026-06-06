@@ -17,7 +17,7 @@ interface SettingsDetailPageProps {
 }
 
 const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoBack }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm } = useNotification();
     const { editingEntity } = state;

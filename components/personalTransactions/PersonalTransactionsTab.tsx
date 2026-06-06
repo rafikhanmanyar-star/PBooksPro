@@ -171,7 +171,7 @@ function compareTxTableRows(a: TxTableRow, b: TxTableRow, col: SortableCol, dir:
 }
 
 const PersonalTransactionsTab: React.FC = () => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const [search, setSearch] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PersonalTxPeriodFilter>('thisMonth');
   const [categoryFilterId, setCategoryFilterId] = useState('');

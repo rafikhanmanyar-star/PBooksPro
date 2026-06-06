@@ -45,7 +45,7 @@ type EditorState =
  * Chart-of-accounts-style management for personal income/expense categories only (no bank accounts).
  */
 const PersonalCategoriesSettingsPanel: React.FC = () => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const { isOffline } = useOffline();
   const { showConfirm, showToast } = useNotification();
 

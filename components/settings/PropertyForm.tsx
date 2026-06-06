@@ -26,7 +26,7 @@ interface PropertyFormProps {
 }
 
 const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelete, propertyToEdit, contacts, buildings, properties }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
     const { isAuthenticated } = useAuth();

@@ -18,7 +18,7 @@ interface ProjectPMConfigFormProps {
 }
 
 const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClose, project, onSave }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { showConfirm, showToast } = useNotification();
     const [rate, setRate] = useState(project.pmConfig?.rate?.toString() || '0');
     const [frequency, setFrequency] = useState<'Monthly' | 'Weekly' | 'Yearly'>(project.pmConfig?.frequency || 'Monthly');

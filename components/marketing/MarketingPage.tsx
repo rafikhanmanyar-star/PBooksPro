@@ -256,7 +256,7 @@ const ApprovalRequestModal: React.FC<{
 };
 
 const MarketingPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();

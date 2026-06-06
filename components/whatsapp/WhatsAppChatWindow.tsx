@@ -23,7 +23,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
   phoneNumber: propPhoneNumber,
 }) => {
   const { showAlert, showToast } = useNotification();
-  const const state = useFullAppState();
+  const state = useFullAppState();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);

@@ -16,7 +16,7 @@ interface CancelAgreementModalProps {
 }
 
 const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onClose, agreement }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const [penaltyPercentage, setPenaltyPercentage] = useState('0');
 

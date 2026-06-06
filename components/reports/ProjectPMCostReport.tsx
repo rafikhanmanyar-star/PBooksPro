@@ -28,7 +28,7 @@ interface PMCostRow {
 type SortKey = 'month' | 'projectName' | 'totalExpense' | 'excludedCosts' | 'netCostBase' | 'accruedFee' | 'paidFee' | 'balance';
 
 const ProjectPMCostReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');

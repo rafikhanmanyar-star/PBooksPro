@@ -15,7 +15,7 @@ interface VendorQuotationsTableProps {
 type SortKey = 'date' | 'name' | 'totalAmount' | 'itemsCount';
 
 const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId, onEditQuotation }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
     const [search, setSearch] = useState('');

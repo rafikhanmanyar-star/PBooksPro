@@ -23,7 +23,7 @@ function invNavLabelShort(label: string): string {
 }
 
 const InvestmentManagementPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { user } = useAuth();
     const { currentUser } = state;
 

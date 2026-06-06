@@ -13,7 +13,7 @@ interface ExportDataModalProps {
 }
 
 const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { startProgress, updateProgress, finishProgress, errorProgress } = useProgress();
     const { showToast, showAlert } = useNotification();
     

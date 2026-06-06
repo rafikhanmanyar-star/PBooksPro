@@ -184,7 +184,7 @@ export interface ImportExportWizardProps {
 }
 
 const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, startAtImport, onBack }) => {
-  const const state = useFullAppState();
+  const state = useFullAppState();
     const dispatch = useDispatchOnly();
   const progress = useProgress();
   const [currentStep, setCurrentStep] = useState<WizardStep>(embedded && startAtImport ? 'import' : 'choose');

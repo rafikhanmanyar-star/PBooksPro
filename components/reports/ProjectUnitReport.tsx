@@ -24,7 +24,7 @@ interface ReportRow {
 }
 
 const ProjectUnitReport: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');

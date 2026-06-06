@@ -32,7 +32,7 @@ interface ContactTypeOption {
 }
 
 const ContactsManagement: React.FC = () => {
-    const const appState = useFullAppState();
+    const appState = useFullAppState();
     const appDispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
 

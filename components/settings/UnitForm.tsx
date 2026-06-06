@@ -18,7 +18,7 @@ interface UnitFormProps {
 }
 
 const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitToEdit }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
     const [name, setName] = useState(unitToEdit?.name || '');

@@ -23,7 +23,7 @@ interface SalesReturnModalProps {
 }
 
 const SalesReturnModal: React.FC<SalesReturnModalProps> = ({ isOpen, onClose, agreementId }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const [selectedAgreementId, setSelectedAgreementId] = useState<string>(agreementId || '');
     const [returnReason, setReturnReason] = useState<SalesReturnReason>(SalesReturnReason.CUSTOMER_REQUEST);

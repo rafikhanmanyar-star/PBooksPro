@@ -33,7 +33,7 @@ type AssetEntity = Project | Building | Property | Unit;
 type AssetType = 'project' | 'building' | 'property' | 'unit';
 
 const AssetsManagement: React.FC = () => {
-    const const appState = useFullAppState();
+    const appState = useFullAppState();
     const appDispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     /** Match delete flow / header: persist when JWT exists even if AuthContext lags behind the token. */

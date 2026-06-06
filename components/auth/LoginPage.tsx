@@ -36,7 +36,7 @@ function clearSavedLocalLogin() {
 }
 
 const LoginPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const initialSaved = readSavedLocalLogin();
     const [username, setUsername] = useState(initialSaved?.username ?? '');

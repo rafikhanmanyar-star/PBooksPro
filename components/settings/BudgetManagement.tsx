@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import { Category, TransactionType, Budget } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -12,7 +12,7 @@ const BudgetRow: React.FC<{
     totalSpent: number;
     projectId?: string;
 }> = ({ category, budget, totalSpent, projectId }) => {
-    const { dispatch } = useAppContext();
+    const dispatch = useDispatchOnly();
     const [amount, setAmount] = useState(budget?.amount?.toString() || '');
 
     useEffect(() => {
@@ -122,7 +122,7 @@ type SortField = 'category' | 'budget' | 'spent' | 'remaining' | 'progress';
 type SortDirection = 'asc' | 'desc';
 
 const BudgetManagement: React.FC = () => {
-    const { state } = useAppContext();
+    const state = useFullAppState();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || '');
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [sortField, setSortField] = useState<SortField>('category');

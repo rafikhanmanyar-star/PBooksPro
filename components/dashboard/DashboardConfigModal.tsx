@@ -39,7 +39,7 @@ const DraggableKpiItem: React.FC<{
 };
 
 const DashboardConfigModal: React.FC<DashboardConfigModalProps> = ({ isOpen, onClose }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { allKpis } = useKpis();
     const [visibleKpis, setVisibleKpis] = useState<string[]>(Array.isArray(state.dashboardConfig?.visibleKpis) ? state.dashboardConfig.visibleKpis : []);

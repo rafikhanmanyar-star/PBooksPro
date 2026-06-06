@@ -18,7 +18,7 @@ interface QuotationFormProps {
 }
 
 const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit, vendorId, vendorName }) => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const fileInputRef = useRef<HTMLInputElement>(null);

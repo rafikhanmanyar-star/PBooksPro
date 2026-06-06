@@ -32,7 +32,7 @@ type EnrichedSalesReturn = SalesReturn & {
 };
 
 const SalesReturnsPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');

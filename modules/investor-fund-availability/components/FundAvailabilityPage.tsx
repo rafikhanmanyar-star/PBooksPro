@@ -37,7 +37,7 @@ import type { WithdrawalValidationResult } from '../types/fundAvailability.types
 import { WithdrawalValidationModal } from './WithdrawalValidationModal';
 
 export const FundAvailabilityPage: React.FC = () => {
-    const const state = useFullAppState();
+    const state = useFullAppState();
     const { user } = useAuth();
     const qc = useQueryClient();
     const [endDate, setEndDate] = useState(() => toLocalDateString(new Date()));
