@@ -49,6 +49,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
   dataRevision,
 }) => {
   const state = useFullAppState();
+    const { accounts, categories, personalCategories, personalTransactions } = state;
   const [pasteText, setPasteText] = useState('');
   const [parsedLines, setParsedLines] = useState<ParsedPasteLine[]>([]);
   const [hasHeader, setHasHeader] = useState(false);

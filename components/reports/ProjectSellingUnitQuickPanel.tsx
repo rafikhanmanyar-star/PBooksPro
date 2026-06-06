@@ -47,6 +47,7 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
     unitId,
 }) => {
     const state = useFullAppState();
+    const { invoices: appInvoices } = state;
     const [filterType, setFilterType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
         key: 'date',
@@ -89,7 +90,7 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
             ? state.invoices.filter(inv => inv.agreementId === activeAgreement.id)
             : [];
         const invoices = unitInvoices.length > 0 ? unitInvoices : agreementInvoices;
-        const invoiceIds = new Set(invoices.map(inv => inv.id));
+        const invoiceIds = new Set(appInvoices.map(inv => inv.id));
 
         const incomePayments = state.transactions.filter(
             tx =>
@@ -197,9 +198,9 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
             ? state.invoices.filter(inv => inv.agreementId === activeAgreement.id)
             : [];
         const invoices = unitInvoices.length > 0 ? unitInvoices : agreementInvoices;
-        const invoiceIds = new Set(invoices.map(inv => inv.id));
+        const invoiceIds = new Set(appInvoices.map(inv => inv.id));
 
-        invoices.forEach(inv => {
+        appInvoices.forEach(inv => {
             const contact = state.contacts.find(c => c.id === inv.contactId);
             items.push({
                 id: inv.id,

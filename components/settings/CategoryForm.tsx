@@ -18,6 +18,7 @@ interface CategoryFormProps {
 
 const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelete, categoryToEdit, fixedTypeForNew, initialName }) => {
     const state = useFullAppState();
+    const { categories, bills } = state;
     const [name, setName] = useState(categoryToEdit?.name || initialName || '');
     const [description, setDescription] = useState(categoryToEdit?.description || '');
     const [type, setType] = useState<TransactionType>(categoryToEdit?.type || fixedTypeForNew || TransactionType.EXPENSE);

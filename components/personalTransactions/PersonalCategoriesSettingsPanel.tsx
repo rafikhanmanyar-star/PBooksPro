@@ -46,6 +46,7 @@ type EditorState =
  */
 const PersonalCategoriesSettingsPanel: React.FC = () => {
   const state = useFullAppState();
+    const { accounts, categories, transactions, personalCategories } = state;
   const { isOffline } = useOffline();
   const { showConfirm, showToast } = useNotification();
 

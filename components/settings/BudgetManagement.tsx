@@ -124,6 +124,7 @@ type SortDirection = 'asc' | 'desc';
 
 const BudgetManagement: React.FC = () => {
     const state = useFullAppState();
+    const { categories, projects, transactions, invoices, bills, budgets } = state;
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || '');
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [sortField, setSortField] = useState<SortField>('category');

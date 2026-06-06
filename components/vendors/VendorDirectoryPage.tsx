@@ -39,6 +39,7 @@ const AddVendorSection: React.FC<{
     onModalOpenHandled?: () => void;
 }> = ({ optionsView, setOptionsView, setSelectedVendorId, triggerAddVendor, onModalOpenHandled }) => {
     const state = useFullAppState();
+    const { contacts, vendors: appVendors, transactions, invoices, bills, whatsAppTemplates, whatsAppMode, currentUser } = state;
     const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const { showToast } = useNotification();
@@ -222,8 +223,8 @@ const VendorDirectoryPage: React.FC = () => {
     const filteredVendors = useMemo(() => {
         if (!vendorSearch) return vendors;
         const q = vendorSearch.toLowerCase();
-        return vendors.filter(v => v.name.toLowerCase().includes(q) || (v.companyName && v.companyName.toLowerCase().includes(q)));
-    }, [vendors, vendorSearch]);
+        return appVendors.filter(v => v.name.toLowerCase().includes(q) || (v.companyName && v.companyName.toLowerCase().includes(q)));
+    }, [appVendors, vendorSearch]);
 
     // Calculate payable amounts for each vendor
     const vendorsWithPayable = useMemo(() => {
@@ -299,7 +300,7 @@ const VendorDirectoryPage: React.FC = () => {
         document.body.style.userSelect = 'none';
     }, [sidebarWidth, handleResize, stopResize]);
 
-    const selectedVendor = vendors.find(v => v.id === selectedVendorId) || null;
+    const selectedVendor = appVendors.find(v => v.id === selectedVendorId) || null;
 
     const billToEdit = editingItem?.type === 'bill' ? (bills || []).find(b => b.id === editingItem.id) : undefined;
     const transactionToEdit = editingItem?.type === 'transaction' ? (transactions || []).find(t => t.id === editingItem.id) : undefined;

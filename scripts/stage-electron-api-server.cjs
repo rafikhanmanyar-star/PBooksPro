@@ -58,6 +58,7 @@ DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pBookspro_Staging
 JWT_SECRET=change-me-staging-secret-at-least-16-chars
 PORT=3001
 NODE_ENV=production
+SEED_STAGING=1
 `
   : `# PBooks Pro API Server — copy to AppData backend/.env as .env (Open config folder in the app).
 # Production database pbookspro on port 3000.

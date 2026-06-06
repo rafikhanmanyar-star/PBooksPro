@@ -47,6 +47,7 @@ function toJournalLines(drafts: LineDraft[]): JournalLineInput[] {
  */
 const ManualJournalEntrySection: React.FC = () => {
   const state = useFullAppState();
+  const { accounts } = state;
   const { showToast, showAlert } = useNotification();
 
   const flatAccounts = useMemo(() => flattenAccounts(accounts), [accounts]);

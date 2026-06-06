@@ -74,6 +74,30 @@ function ianaTimeZoneCityLabel(iana: string): string {
 
 const SettingsPage: React.FC = () => {
     const state = useFullAppState();
+    const {
+        accounts,
+        categories,
+        projects,
+        buildings,
+        properties,
+        contacts,
+        units,
+        transactions,
+        projectAgreements,
+        currentUser,
+        users,
+        projectInvoiceSettings,
+        showSystemTransactions,
+        enableColorCoding,
+        enableBeepOnSave,
+        enableDatePreservation,
+        whatsAppMode,
+        defaultProjectId,
+        rentalInvoiceSettings,
+        agreementSettings,
+        projectAgreementSettings,
+        editingEntity,
+    } = state;
     const dispatch = useDispatchOnly();
     const { user: authUser } = useAuth();
     const { showConfirm, showToast, showAlert } = useNotification();

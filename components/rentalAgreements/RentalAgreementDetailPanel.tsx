@@ -18,6 +18,7 @@ const RentalAgreementDetailPanel: React.FC<RentalAgreementDetailPanelProps> = ({
     agreement, onClose, onEdit, onRenew, onTerminate
 }) => {
     const state = useFullAppState();
+    const { contacts, buildings, properties, invoices, rentalAgreements } = state;
 
     const property = useMemo(() => properties.find(p => p.id === agreement.propertyId), [agreement.propertyId, properties]);
     const tenant = useMemo(() => contacts.find(c => c.id === agreement.contactId), [agreement.contactId, contacts]);

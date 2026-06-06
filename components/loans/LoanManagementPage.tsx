@@ -50,6 +50,7 @@ interface LoanSummary {
 
 const LoanManagementPage: React.FC = () => {
   const state = useFullAppState();
+    const { accounts, contacts, transactions, whatsAppMode } = state;
     const dispatch = useDispatchOnly();
   const { showAlert } = useNotification();
   const { print: triggerPrint } = usePrintContext();

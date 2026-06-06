@@ -33,6 +33,7 @@ type Step = 0 | 1 | 2;
 
 const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agreementToEdit }) => {
     const state = useFullAppState();
+    const { contacts, categories, projects, buildings: appBuildings, properties, invoices, rentalAgreements, agreementSettings, rentalInvoiceSettings, enableColorCoding, enableDatePreservation, currentUser } = state;
     const dispatch = useDispatchOnly();
     const { showConfirm, showToast, showAlert } = useNotification();
 
@@ -134,7 +135,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     // --- Lookups ---
     const tenants = useMemo(() => contacts.filter(c => c.type === ContactType.TENANT), [contacts]);
     const brokers = useMemo(() => contacts.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER), [contacts]);
-    const buildings = useMemo(() => allBuildings.map(b => ({ id: b.id, name: b.name })), [allBuildings]);
+    const buildings = useMemo(() => appBuildings.map(b => ({ id: b.id, name: b.name })), [appBuildings]);
 
     const selectedProperty = useMemo(() => properties.find(p => p.id === propertyId), [propertyId, properties]);
 
@@ -579,8 +580,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     };
 
     const formColorState = useMemo(
-        () => ({ enableColorCoding, projects, buildings: allBuildings }) as AppState,
-        [enableColorCoding, projects, allBuildings]
+        () => ({ enableColorCoding, projects, buildings: appBuildings }) as AppState,
+        [enableColorCoding, projects, appBuildings]
     );
     const formBackgroundStyle = useMemo(
         () => getFormBackgroundColorStyle(undefined, buildingId, formColorState),
@@ -720,7 +721,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                             <div className="mt-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
                                 <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">Agreement Summary</h4>
                                 <div className="space-y-2 text-xs">
-                                    <div className="flex justify-between"><span className="text-slate-500">Building</span><span className="font-medium text-slate-800">{allBuildings.find(b => b.id === buildingId)?.name || '-'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Building</span><span className="font-medium text-slate-800">{appBuildings.find(b => b.id === buildingId)?.name || '-'}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{properties.find(p => p.id === propertyId)?.name || '-'}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-500">Owner</span><span className="font-medium text-slate-800">{autoOwner?.name || '-'}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-500">Tenant</span><span className="font-medium text-slate-800">{tenants.find(t => t.id === contactId)?.name || '-'}</span></div>

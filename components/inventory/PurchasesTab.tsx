@@ -21,6 +21,7 @@ const generateBillNumber = (bills: ShopPurchaseBill[]): string => {
 
 const PurchasesTab: React.FC = () => {
     const state = useFullAppState();
+    const { accounts, vendors: appVendors, categories, bills } = state;
     const dispatch = useDispatchOnly();
 
     // Local state for shop data (persisted to localStorage)
@@ -342,7 +343,7 @@ const PurchasesTab: React.FC = () => {
                                 aria-label="Vendor"
                             >
                                 <option value="">Select Vendor</option>
-                                {vendors.map(v => (
+                                {appVendors.map(v => (
                                     <option key={v.id} value={v.id}>{v.name}</option>
                                 ))}
                             </select>

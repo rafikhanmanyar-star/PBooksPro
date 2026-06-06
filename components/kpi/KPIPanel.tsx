@@ -91,6 +91,16 @@ const KPIPanel: React.FC = () => {
         favoriteReportIds 
     } = useKpis();
     const state = useFullAppState();
+    const {
+        accounts,
+        categories,
+        projects,
+        transactions,
+        bills,
+        invoices,
+        buildings,
+        properties,
+    } = state;
     const dispatch = useDispatchOnly();
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [selectorInitialTab, setSelectorInitialTab] = useState<'KPIs' | 'Reports'>('KPIs');

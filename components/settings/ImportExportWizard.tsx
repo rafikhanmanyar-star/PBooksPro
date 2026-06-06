@@ -185,6 +185,7 @@ export interface ImportExportWizardProps {
 
 const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, startAtImport, onBack }) => {
   const state = useFullAppState();
+    const { accounts, contacts, vendors, categories, projects, buildings, properties, units, transactions, invoices, bills, budgets, contracts } = state;
     const dispatch = useDispatchOnly();
   const progress = useProgress();
   const [currentStep, setCurrentStep] = useState<WizardStep>(embedded && startAtImport ? 'import' : 'choose');

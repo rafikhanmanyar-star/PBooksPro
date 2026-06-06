@@ -12,6 +12,7 @@ function formatAmount(amount: number): string {
 
 const MyWalletsTab: React.FC = () => {
   const state = useFullAppState();
+    const { accounts, transactions, personalTransactions } = state;
 
   const accountIdToName = useMemo(() => {
     const map = new Map<string, string>();

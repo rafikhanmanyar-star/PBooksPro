@@ -17,6 +17,7 @@ type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
 
 const RentalAgreementsDashboard: React.FC = () => {
   const state = useFullAppState();
+    const { contacts, buildings, properties, rentalAgreements } = state;
 
   const [viewBy, setViewBy] = useLocalStorage<ViewBy>('agreements_dash_viewBy', 'building');
   const [statusFilter, setStatusFilter] = useLocalStorage<StatusFilter>('agreements_dash_status', 'all');

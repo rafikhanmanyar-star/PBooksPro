@@ -20,6 +20,7 @@ interface RentalAgreementTerminationModalProps {
 
 const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalProps> = ({ isOpen, onClose, agreement }) => {
     const state = useFullAppState();
+    const { contacts, properties, invoices } = state;
     const dispatch = useDispatchOnly();
     const { showToast } = useNotification();
 

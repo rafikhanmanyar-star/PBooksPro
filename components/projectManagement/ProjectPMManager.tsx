@@ -37,6 +37,7 @@ interface PMLedgerItem {
 
 const ProjectPMManager: React.FC = () => {
     const state = useFullAppState();
+    const { accounts } = state;
     const dispatch = useDispatchOnly();
     const { showAlert, showConfirm, showToast } = useNotification();
 

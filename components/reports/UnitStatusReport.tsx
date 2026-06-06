@@ -35,6 +35,7 @@ interface UnitStatusReportProps {
 
 const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, activeReport }) => {
     const state = useFullAppState();
+    const { contacts, buildings: appBuildings, properties, rentalAgreements } = state;
     const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -43,7 +44,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
     // Sorting State
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'unitName', direction: 'asc' });
 
-    const buildings = useMemo(() => allBuildings, [allBuildings]);
+    const buildings = useMemo(() => appBuildings, [appBuildings]);
     const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...buildings], [buildings]);
 
     const handleSort = (key: SortKey) => {
@@ -69,7 +70,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
             );
 
             const owner = contacts.find(c => c.id === property.ownerId);
-            const building = allBuildings.find(b => b.id === property.buildingId);
+            const building = appBuildings.find(b => b.id === property.buildingId);
 
             let status: 'Occupied' | 'Vacant' = 'Vacant';
             let tenantName = '---';
@@ -145,7 +146,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [properties, rentalAgreements, contacts, allBuildings, selectedBuildingId, searchQuery, groupBy, sortConfig]);
+    }, [properties, rentalAgreements, contacts, appBuildings, selectedBuildingId, searchQuery, groupBy, sortConfig]);
 
 
     const handleExport = () => {
@@ -268,7 +269,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
                         <div className="text-center mb-6">
                             <h3 className="text-2xl font-bold text-app-text">Property Status Report</h3>
                             <p className="text-sm text-app-muted font-semibold">
-                                {selectedBuildingId !== 'all' ? `Building: ${allBuildings.find(b=>b.id===selectedBuildingId)?.name}` : 'All Buildings'}
+                                {selectedBuildingId !== 'all' ? `Building: ${appBuildings.find(b=>b.id===selectedBuildingId)?.name}` : 'All Buildings'}
                             </p>
                         </div>
 

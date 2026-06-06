@@ -250,6 +250,7 @@ async function start() {
     console.warn('Warning: DATABASE_URL not set — API will fail on first DB access');
   }
   await seedDevIfEnabled();
+  await seedStagingIfEnabled();
   const httpServer = createServer(app);
   initRealtime(httpServer);
   httpServer.listen(PORT, '0.0.0.0', () => {

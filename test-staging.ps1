@@ -1,10 +1,16 @@
-# PBooks Pro — Staging full stack test (pbooks_staging + API port 3001 + Electron client)
+# PBooks Pro — Staging full stack local test (pBookspro_Staging + API port 3001 + Electron client)
 #
-# Requires: PostgreSQL with database pbooks_staging; copy .env.staging.example to .env.staging
+# Run from repo root:
+#   npm run test:staging
+#
+# Production-like local test (pbookspro + API port 3000) — unchanged:
+#   npm run test:local-only
+#
+# Requires: PostgreSQL with database pBookspro_Staging; copy .env.staging.example to .env.staging
 #
 # Optional live backend reload:
-#   $env:PBooks_BACKEND_WATCH = "1"
-#   npm run test:staging
+#   npm run test:staging:watch
+#   # or: $env:PBooks_BACKEND_WATCH = "1"; npm run test:staging
 
 param(
     [switch]$BackendWatch
@@ -21,7 +27,7 @@ $HealthUrl = "http://127.0.0.1:3001/health"
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host '   PBooks Pro - Staging PostgreSQL + API + Client' -ForegroundColor Cyan
-Write-Host '   (pbooks_staging on port 3001)                  ' -ForegroundColor Cyan
+Write-Host '   (pBookspro_Staging on port 3001)                  ' -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -44,7 +50,7 @@ Get-Content $EnvFile | ForEach-Object {
 Write-Host "  Loaded $EnvFile" -ForegroundColor DarkGray
 
 Write-Host ""
-Write-Host "  [1/7] Rebuilding native modules..." -ForegroundColor Yellow
+Write-Host "  [1/8] Rebuilding native modules..." -ForegroundColor Yellow
 & npm run rebuild:native
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Native rebuild failed, continuing anyway..." -ForegroundColor Yellow
@@ -52,7 +58,7 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not $BackendWatch -and -not ($env:PBooks_BACKEND_WATCH -eq "1")) {
     Write-Host ""
-    Write-Host '  [2/7] Building backend: tsc to dist...' -ForegroundColor Yellow
+    Write-Host '  [2/8] Building backend: tsc to dist...' -ForegroundColor Yellow
     & npm run build:backend
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  Backend build failed!" -ForegroundColor Red
@@ -60,11 +66,11 @@ if (-not $BackendWatch -and -not ($env:PBooks_BACKEND_WATCH -eq "1")) {
     }
 } else {
     Write-Host ""
-    Write-Host '  [2/7] Skipping build:backend (tsx watch)' -ForegroundColor Yellow
+    Write-Host '  [2/8] Skipping build:backend (tsx watch)' -ForegroundColor Yellow
 }
 
 Write-Host ""
-Write-Host "  [3/7] Running staging database migrations (pbooks_staging)..." -ForegroundColor Yellow
+Write-Host "  [3/8] Running staging database migrations (pBookspro_Staging)..." -ForegroundColor Yellow
 & npm run db:migrate:staging
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Migration failed! Check DATABASE_URL in $EnvFile" -ForegroundColor Red
@@ -72,7 +78,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "  [4/7] Starting staging backend API (PORT=3001)..." -ForegroundColor Yellow
+Write-Host "  [4/8] Seeding staging defaults (test company / Rafi — idempotent)..." -ForegroundColor Yellow
+& npm run db:seed:staging
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Staging seed failed! Check $EnvFile and DATABASE_URL." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
+Write-Host "  [5/8] Starting staging backend API (PORT=3001)..." -ForegroundColor Yellow
 $env:NODE_ENV = "production"
 if (-not $env:PORT) { $env:PORT = "3001" }
 
@@ -109,7 +123,7 @@ if (-not $ready) {
 Write-Host "  Staging API is up." -ForegroundColor Green
 
 Write-Host ""
-Write-Host '  [5/7] Building Electron staging client...' -ForegroundColor Yellow
+Write-Host '  [6/8] Building Electron staging client...' -ForegroundColor Yellow
 & npm run electron:extract-schema
 
 $env:VITE_LOCAL_ONLY = "false"
@@ -130,12 +144,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "  [6/7] Launching Electron client..." -ForegroundColor Green
+Write-Host "  [7/8] Launching Electron client..." -ForegroundColor Green
 Write-Host ""
 & npx electron . --enable-logging
 
 Write-Host ""
-Write-Host "  [7/7] Stopping staging backend..." -ForegroundColor Yellow
+Write-Host "  [8/8] Stopping staging backend..." -ForegroundColor Yellow
 try {
     if ($useWatch) {
         taskkill /PID $backendJob.Id /T /F 2>$null | Out-Null

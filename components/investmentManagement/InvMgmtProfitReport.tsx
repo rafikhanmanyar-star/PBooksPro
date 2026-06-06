@@ -16,6 +16,7 @@ function fmtMoney(n: number): string {
 
 const InvMgmtProfitReport: React.FC = () => {
     const state = useFullAppState();
+    const { projects, invoices, bills } = state;
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [endDate, setEndDate] = useState(toLocalDateString(new Date()));

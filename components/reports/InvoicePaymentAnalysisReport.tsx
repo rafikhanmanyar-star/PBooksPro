@@ -14,6 +14,7 @@ const COLORS = ['#00C49F', '#FFBB28', '#FF8042', '#0088FE'];
 
 const InvoicePaymentAnalysisReport: React.FC = () => {
     const state = useFullAppState();
+    const { contacts, properties, transactions, invoices } = state;
     const [groupBy, setGroupBy] = useState<'tenant' | 'owner' | 'property'>('tenant');
     const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
     const [dateRange, setDateRange] = useState<'all' | 'this_year' | 'last_year'>('this_year');

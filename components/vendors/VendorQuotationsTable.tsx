@@ -22,12 +22,13 @@ const formatCurrency = (amount: number) =>
 
 const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId, onEditQuotation }) => {
     const state = useFullAppState();
+    const { units, quotations: appQuotations } = state;
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
 
     const rows = useMemo((): QuotationRow[] => {
         const quotations = (state.quotations || []).filter((q) => q.vendorId === vendorId);
-        return quotations.map((quotation) => {
+        return appQuotations.map((quotation) => {
             const itemLines = quotation.items.map((item) => {
                 const category = state.categories.find((c) => c.id === item.categoryId);
                 return `${category?.name || 'Unknown'} - ${item.quantity} ${item.unit || 'units'} @ ${formatCurrency(item.pricePerQuantity)}`;

@@ -26,6 +26,7 @@ interface AccountFormProps {
 
 const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete, accountToEdit, initialName }) => {
     const state = useFullAppState();
+    const { accounts } = state;
     const [name, setName] = useState(accountToEdit?.name || initialName || '');
     const [description, setDescription] = useState(accountToEdit?.description || '');
     const [type, setType] = useState<AccountType>(accountToEdit?.type || AccountType.BANK);

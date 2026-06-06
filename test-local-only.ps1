@@ -1,6 +1,10 @@
-# PBooks Pro — Local full stack test (PostgreSQL + API + Electron, production-like client)
+# PBooks Pro — Production-like full stack local test (PostgreSQL + API :3000 + Electron client)
 #
-# Same data path as production / LAN client: VITE_LOCAL_ONLY=false, REST + Socket.IO to this machine.
+# Run from repo root:
+#   npm run test:local-only
+#
+# Staging local test (pBookspro_Staging + API :3001 + staging Electron client):
+#   npm run test:staging
 # Forces local API/WebSocket URLs into the Vite build so a remote VITE_API_URL in .env cannot break the test.
 #
 # Real-time: the client uses Socket.IO (entity_created / entity_updated / entity_deleted) to refresh from

@@ -21,6 +21,7 @@ type SortKey = 'contractNumber' | 'name' | 'totalAmount' | 'paid' | 'balance' | 
 
 const ProjectContractsPage: React.FC = () => {
     const state = useFullAppState();
+    const { bills, contracts } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { openChat } = useWhatsApp();
@@ -68,7 +69,7 @@ const ProjectContractsPage: React.FC = () => {
             }
         });
 
-        contracts.forEach(contract => {
+        allContracts.forEach(contract => {
             const groupId = contract.projectId;
             const group = groupMap.get(groupId);
             const paid = contractPayments.get(contract.id) || 0;
@@ -114,17 +115,17 @@ const ProjectContractsPage: React.FC = () => {
         // 1. Tree Filter
         if (selectedNode) {
             if (selectedNode.type === 'group') {
-                contracts = contracts.filter(c => c.projectId === selectedNode.id);
+                contracts = allContracts.filter(c => c.projectId === selectedNode.id);
             } else if (selectedNode.type === 'vendor') {
                 const projectId = selectedNode.parentId;
-                contracts = contracts.filter(c => c.vendorId === selectedNode.id && c.projectId === projectId);
+                contracts = allContracts.filter(c => c.vendorId === selectedNode.id && c.projectId === projectId);
             }
         }
 
         // 2. Search Filter
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            contracts = contracts.filter(c =>
+            contracts = allContracts.filter(c =>
                 c.contractNumber.toLowerCase().includes(q) ||
                 c.name.toLowerCase().includes(q) ||
                 state.projects.find(p => p.id === c.projectId)?.name.toLowerCase().includes(q) ||
@@ -133,7 +134,7 @@ const ProjectContractsPage: React.FC = () => {
         }
 
         // 3. Sort
-        return contracts.sort((a, b) => {
+        return allContracts.sort((a, b) => {
             let valA: any = '';
             let valB: any = '';
 

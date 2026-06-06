@@ -26,6 +26,7 @@ interface ProjectOwnerPayoutModalProps {
 
 const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpen, onClose, client, balanceDue }) => {
     const state = useFullAppState();
+    const { bills } = state;
     const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
 

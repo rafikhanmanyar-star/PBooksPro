@@ -18,6 +18,15 @@ interface SettingsDetailPageProps {
 
 const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoBack }) => {
     const state = useFullAppState();
+    const {
+        accounts,
+        contacts,
+        projects,
+        buildings,
+        properties,
+        units,
+        categories,
+    } = state;
     const dispatch = useDispatchOnly();
     const { showConfirm } = useNotification();
     const { editingEntity } = state;

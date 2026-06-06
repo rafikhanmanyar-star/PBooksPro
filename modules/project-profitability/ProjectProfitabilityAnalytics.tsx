@@ -59,6 +59,7 @@ const COLUMN_PRESETS: { id: string; label: string }[] = [
  */
 const ProjectProfitabilityAnalytics: React.FC = () => {
     const state = useFullAppState();
+    const { projects, defaultProjectId } = state;
     const { user } = useAuth();
     const perm = useProfitabilityPermissions(user?.role);
     const { print: triggerPrint } = usePrintContext();

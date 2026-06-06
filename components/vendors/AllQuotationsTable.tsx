@@ -22,12 +22,13 @@ const formatCurrency = (amount: number) =>
 
 const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation }) => {
     const state = useFullAppState();
+    const { units, quotations: appQuotations } = state;
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
 
     const rows = useMemo((): QuotationRow[] => {
         const quotations = state.quotations || [];
-        return quotations.map((quotation) => {
+        return appQuotations.map((quotation) => {
             const vendor = state.vendors?.find((v) => v.id === quotation.vendorId);
             const vendorName = vendor?.name || 'Unknown';
             const itemLines = quotation.items.map((item) => {

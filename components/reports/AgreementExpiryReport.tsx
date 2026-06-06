@@ -32,6 +32,7 @@ type SortKey = 'propertyName' | 'tenantName' | 'monthlyRent' | 'endDate' | 'days
 
 const AgreementExpiryReport: React.FC = () => {
     const state = useFullAppState();
+    const { contacts, buildings: appBuildings, properties, rentalAgreements } = state;
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 
@@ -39,7 +40,7 @@ const AgreementExpiryReport: React.FC = () => {
         direction: 'asc' 
     });
 
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...appBuildings], [appBuildings]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -75,7 +76,7 @@ const AgreementExpiryReport: React.FC = () => {
 
         let result: AgreementExpiryRow[] = expiringAgreements.map(agreement => {
             const property = properties.find(p => p.id === agreement.propertyId);
-            const building = property ? allBuildings.find(b => b.id === property.buildingId) : null;
+            const building = property ? appBuildings.find(b => b.id === property.buildingId) : null;
             const tenant = contacts.find(c => c.id === agreement.contactId);
             
             const endDate = new Date(agreement.endDate);
@@ -141,7 +142,7 @@ const AgreementExpiryReport: React.FC = () => {
         });
 
         return result;
-    }, [rentalAgreements, properties, contacts, allBuildings, selectedBuildingId, searchQuery, sortConfig]);
+    }, [rentalAgreements, properties, contacts, appBuildings, selectedBuildingId, searchQuery, sortConfig]);
 
     // Chart data
     const chartData = useMemo(() => {

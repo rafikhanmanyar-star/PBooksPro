@@ -35,6 +35,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
   editTransaction = null,
 }) => {
   const state = useFullAppState();
+    const { accounts, personalCategories } = state;
   const [step, setStep] = useState(1);
   const [type, setType] = useState<'Income' | 'Expense'>('Expense');
   const [accountId, setAccountId] = useState('');
@@ -118,8 +119,8 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
     [bankAndCashAccounts, accountId]
   );
   const categoryName = useMemo(
-    () => categories.find((c) => c.id === categoryId)?.name ?? '',
-    [categories, categoryId]
+    () => allCategories.find((c) => c.id === categoryId)?.name ?? '',
+    [allCategories, categoryId]
   );
 
   const transactionLineParts = useMemo(() => {
@@ -139,10 +140,10 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
 
   useEffect(() => {
     if (step === 2 && categoryId) {
-      const name = categories.find((c) => c.id === categoryId)?.name ?? '';
+      const name = allCategories.find((c) => c.id === categoryId)?.name ?? '';
       setCategorySearch(name);
     }
-  }, [step, categoryId, categories]);
+  }, [step, categoryId, allCategories]);
 
   useEffect(() => {
     if (categoryDropdownOpen) {

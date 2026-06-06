@@ -26,6 +26,7 @@ interface BillBulkPaymentModalProps {
 
 const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onClose, selectedBills, onPaymentComplete }) => {
     const state = useFullAppState();
+    const { accounts, categories, transactions, bills, rentalAgreements } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();

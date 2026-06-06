@@ -10,6 +10,7 @@ import { useNotification } from '../../context/NotificationContext';
 
 const PrintTemplateForm: React.FC = () => {
     const state = useFullAppState();
+    const { transactions, invoices, printSettings } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
     const [settings, setSettings] = useState<PrintSettings>(printSettings);

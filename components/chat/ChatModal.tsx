@@ -43,6 +43,7 @@ interface ChatModalProps {
 const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) => {
     const { user } = useAuth();
     const state = useFullAppState();
+    const { users } = state;
     const currentUser = user || state.currentUser;
     const currentUserId = currentUser?.id || '';
     const currentUserName = currentUser?.name || 'User';

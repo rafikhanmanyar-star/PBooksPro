@@ -48,6 +48,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
     unpaidAllocations 
 }) => {
     const state = useFullAppState();
+    const { transactions } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();

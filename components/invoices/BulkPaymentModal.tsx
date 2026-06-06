@@ -30,6 +30,7 @@ interface BulkPaymentModalProps {
 
 const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, selectedInvoices, onPaymentComplete }) => {
     const state = useFullAppState();
+    const { accounts, categories, properties, transactions, invoices, rentalAgreements, projectAgreements } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const totalAmountInputRef = useRef<HTMLInputElement>(null);

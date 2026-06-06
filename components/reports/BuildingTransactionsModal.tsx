@@ -21,6 +21,7 @@ type SortKey = 'date' | 'property' | 'description' | 'amount';
 
 const BuildingTransactionsModal: React.FC<BuildingTransactionsModalProps> = ({ isOpen, onClose, building, accountType, transactions }) => {
     const state = useFullAppState();
+    const { transactions } = state;
     const dispatch = useDispatchOnly();
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'edit' | 'delete' | null; }>({ isOpen: false, transaction: null, action: null });

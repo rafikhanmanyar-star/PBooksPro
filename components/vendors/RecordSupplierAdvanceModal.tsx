@@ -71,6 +71,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     defaultProjectId,
 }) => {
     const state = useFullAppState();
+    const { accounts, projects, bills, defaultProjectId: savedDefaultProjectId } = state;
     const { showToast, showAlert } = useNotification();
 
     const [advanceDate, setAdvanceDate] = useState(toLocalDateString(new Date()));

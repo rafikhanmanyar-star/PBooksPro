@@ -38,6 +38,7 @@ type SortKey = 'date' | 'buildingName' | 'propertyName' | 'ownerName' | 'particu
 
 const ServiceChargesDeductionReport: React.FC = () => {
     const state = useFullAppState();
+    const { contacts, categories, buildings: appBuildings, properties, transactions, invoices, bills } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
@@ -64,7 +65,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
     });
 
     // Dropdown Items
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...appBuildings], [appBuildings]);
     const owners = useMemo(() => {
         const ownerContacts = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
         return [{ id: 'all', name: 'All Owners' }, ...ownerContacts];
@@ -135,7 +136,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
 
             if (isDeduction) {
                 const property = properties.find(p => p.id === tx.propertyId);
-                const building = allBuildings.find(b => b.id === (tx.buildingId || property?.buildingId));
+                const building = appBuildings.find(b => b.id === (tx.buildingId || property?.buildingId));
                 const owner = contacts.find(c => c.id === (tx.contactId || property?.ownerId));
 
                 // Apply Filters
@@ -191,7 +192,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
         }
 
         return rows;
-    }, [categories, transactions, properties, contacts, allBuildings, invoices, bills, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, sortConfig]);
+    }, [categories, transactions, properties, contacts, appBuildings, invoices, bills, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, sortConfig]);
 
     const totalAmount = useMemo(() => reportData.reduce((sum, r) => sum + r.amount, 0), [reportData]);
 
@@ -359,7 +360,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
                         {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all') && (
                             <p className="text-xs text-app-muted mt-1">
                                 Filters: 
-                                {selectedBuildingId !== 'all' && ` Building: ${allBuildings.find(b=>b.id===selectedBuildingId)?.name} `}
+                                {selectedBuildingId !== 'all' && ` Building: ${appBuildings.find(b=>b.id===selectedBuildingId)?.name} `}
                                 {selectedOwnerId !== 'all' && ` Owner: ${contacts.find(c=>c.id===selectedOwnerId)?.name}`}
                             </p>
                         )}

@@ -15,6 +15,7 @@ interface VendorQuotationsProps {
 
 const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuotation, onViewDocument }) => {
     const state = useFullAppState();
+    const { categories, units, quotations: appQuotations } = state;
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
     const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
@@ -34,7 +35,7 @@ const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuo
                         : b.totalAmount - a.totalAmount;
                 }
             });
-    }, [quotations, vendorId, sortBy, sortOrder]);
+    }, [appQuotations, vendorId, sortBy, sortOrder]);
 
     const handleDelete = async (quotation: Quotation) => {
         const confirmed = await showConfirm(
@@ -126,7 +127,7 @@ const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuo
 
             {/* Quotations List */}
             <div className="space-y-3">
-                {quotations.map(quotation => (
+                {appQuotations.map(quotation => (
                     <div
                         key={quotation.id}
                         className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow"

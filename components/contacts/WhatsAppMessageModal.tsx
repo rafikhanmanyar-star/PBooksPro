@@ -28,6 +28,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
   initialMessage
 }) => {
   const state = useFullAppState();
+    const { invoices, whatsAppTemplates, whatsAppMode } = state;
   const { showAlert } = useNotification();
   const { openChat } = useWhatsApp();
   const [message, setMessage] = useState('');

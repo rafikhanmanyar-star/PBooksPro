@@ -48,6 +48,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     editSettlement,
 }) => {
     const state = useFullAppState();
+    const { accounts, contacts, categories, transactions, bills } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();

@@ -18,6 +18,7 @@ interface SettingsLedgerModalProps {
 
 const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClose, entityId, entityType, entityName }) => {
     const state = useFullAppState();
+    const { accounts, transactions: allTransactions } = state;
     const dispatch = useDispatchOnly();
 
     const [contractorLedger, setContractorLedger] = useState<{
@@ -81,7 +82,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
     const transactions = useMemo(() => {
         if (!entityId) return [];
 
-        return transactions.filter(tx => {
+        return allTransactions.filter(tx => {
             if (entityType === 'account') {
                 return tx.accountId === entityId || tx.fromAccountId === entityId || tx.toAccountId === entityId;
             }
@@ -105,7 +106,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
             }
             return false;
         }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [transactions, entityId, entityType]);
+    }, [allTransactions, entityId, entityType]);
 
     const totalBalance = useMemo(() => {
         if (entityType === 'account') {

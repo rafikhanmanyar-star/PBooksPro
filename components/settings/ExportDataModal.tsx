@@ -14,6 +14,7 @@ interface ExportDataModalProps {
 
 const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) => {
     const state = useFullAppState();
+    const { projects } = state;
     const { startProgress, updateProgress, finishProgress, errorProgress } = useProgress();
     const { showToast, showAlert } = useNotification();
     

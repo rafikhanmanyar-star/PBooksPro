@@ -17,6 +17,7 @@ interface BuildingFormProps {
 
 const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelete, buildingToEdit, initialName }) => {
     const state = useFullAppState();
+    const { buildings } = state;
     const { showAlert } = useNotification();
     const [name, setName] = useState(buildingToEdit?.name || initialName || '');
     const [description, setDescription] = useState(buildingToEdit?.description || '');

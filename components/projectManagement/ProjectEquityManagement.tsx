@@ -157,6 +157,7 @@ export interface ProjectEquityManagementProps {
 
 const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equityTab, onEquityTabChange }) => {
     const state = useFullAppState();
+    const { printSettings } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     

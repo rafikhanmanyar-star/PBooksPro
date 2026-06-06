@@ -33,6 +33,7 @@ type SortKey = 'date' | 'type' | 'reference' | 'description' | 'contactName' | '
 
 const PropertyHistoryModal: React.FC<PropertyHistoryModalProps> = ({ isOpen, onClose, propertyId, propertyName }) => {
     const state = useFullAppState();
+    const { users } = state;
     const [filterType, setFilterType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 

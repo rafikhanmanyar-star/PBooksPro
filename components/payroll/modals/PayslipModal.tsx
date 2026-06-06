@@ -34,6 +34,7 @@ interface PayslipModalProps {
 const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete, initialAction }) => {
   const { tenant } = useAuth();
   const state = useFullAppState();
+    const { accounts, categories, projects: appProjects, transactions } = state;
     const dispatch = useDispatchOnly();
   const { print: triggerPrint } = usePrintContext();
   const companyName = tenant?.companyName || tenant?.name || 'Organization';
@@ -704,7 +705,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                 <div>
                   <ComboBox
                     label="Charge to Project"
-                    items={projects.map(proj => ({
+                    items={appProjects.map(proj => ({
                       id: proj.id,
                       name: proj.name
                     }))}
