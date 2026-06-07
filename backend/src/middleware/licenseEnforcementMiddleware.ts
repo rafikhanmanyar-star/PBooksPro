@@ -33,6 +33,8 @@ const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 export function isSubscriptionEnforcementEnabled(): boolean {
   if (process.env.DISABLE_SUBSCRIPTION_ENFORCEMENT === 'true') return false;
   if (process.env.ENABLE_SUBSCRIPTION_ENFORCEMENT === 'false') return false;
+  /** Packaged PBooks Pro Staging API Server (Electron) — LAN test orgs skip Paddle gates. */
+  if (process.env.PBOOKS_API_SERVER_STAGING === '1') return false;
   return process.env.ENABLE_SUBSCRIPTION_ENFORCEMENT === 'true' || process.env.NODE_ENV === 'production';
 }
 

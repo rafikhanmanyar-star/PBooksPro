@@ -19,7 +19,7 @@ export function usePermissions() {
     if (isLocalOnlyMode() && companyCtx?.authenticatedUser?.role) {
       return companyCtx.authenticatedUser.role;
     }
-    return 'Admin';
+    return 'Read Only User';
   }, [user?.role, companyCtx?.authenticatedUser?.role]);
 
   return useMemo(() => {
@@ -40,6 +40,8 @@ export function usePermissions() {
       canWritePayroll: has('payroll.write'),
       canReadUsers: has('users.read'),
       canManageUsers: has('users.manage'),
+      canReadBilling: has('billing.read'),
+      canManageBilling: has('billing.manage'),
       canReadAuditLogs: has('audit_logs.read'),
       canWriteFinancial: has('financial.write'),
       canReadPermissions: has('permissions.read'),

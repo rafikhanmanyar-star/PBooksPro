@@ -2,6 +2,7 @@ import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Response } from 'express';
 import {
+  requireCompanyAdmin,
   requireFinancialWriteOnMutations,
   requireFinancialWriteRole,
   requirePermission,
@@ -124,5 +125,27 @@ describe('rbacMiddleware', () => {
       called = true;
     });
     assert.equal(called, true);
+  });
+
+  it('requireCompanyAdmin allows Admin and blocks Sales User', () => {
+    {
+      const req = mockReq('POST', 'Admin');
+      const res = mockRes();
+      let called = false;
+      requireCompanyAdmin()(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, true);
+    }
+    {
+      const req = mockReq('POST', 'Sales User');
+      const res = mockRes();
+      let called = false;
+      requireCompanyAdmin()(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, false);
+      assert.equal(res.statusCode, 403);
+    }
   });
 });

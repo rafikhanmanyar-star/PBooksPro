@@ -109,6 +109,7 @@ import { monitoringPublicRouter, monitoringIngestRouter } from './routes/monitor
 import { adminMonitoringRouter } from './routes/adminMonitoringRoutes.js';
 import { startMonitoringScheduler } from './services/monitoring/monitoringScheduler.js';
 import { initObservabilityProviders } from './services/monitoring/observabilityProvider.js';
+import { adminPortalRouter } from './routes/adminPortalRoutes.js';
 
 function getMonorepoPackageVersion(): string {
   try {
@@ -191,6 +192,9 @@ app.get('/api/server/connected-clients', authMiddleware, requireConnectedClients
     handleRouteError(res, e, { route: '/api/server/connected-clients' });
   }
 });
+
+/** Standalone admin portal (separate admin_users JWT, not tenant-scoped). */
+app.use('/api/admin', adminPortalRouter);
 
 app.use('/api', authRouter);
 app.use('/api', demoRouter);

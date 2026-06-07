@@ -13,6 +13,8 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "cross-env VITE_LOCAL_ONLY=false vite",
+    "dev:admin": "npm run dev --prefix admin",
+    "build:admin": "npm run build --prefix admin",
     "build": "vite build",
     "preview": "vite preview",
     "electron:extract-schema": "node scripts/extract-schema.cjs",

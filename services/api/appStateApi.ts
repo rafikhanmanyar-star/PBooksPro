@@ -748,12 +748,16 @@ export class AppStateApiService {
           next_offset: number | null;
         }>(endpoint);
 
-        // Merge chunk into accumulated state
-        for (const [key, records] of Object.entries(chunk.entities)) {
-          if (!accumulated[key]) {
-            accumulated[key] = [];
+        // Merge chunk into accumulated state (appSettings is an object, not an array)
+        for (const [key, records] of Object.entries(chunk.entities ?? {})) {
+          if (Array.isArray(records)) {
+            if (!accumulated[key]) {
+              accumulated[key] = [];
+            }
+            accumulated[key].push(...records);
+          } else if (records !== null && records !== undefined) {
+            accumulated[key] = records;
           }
-          accumulated[key].push(...records);
         }
 
         hasMore = chunk.has_more;

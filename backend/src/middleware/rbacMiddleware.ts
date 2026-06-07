@@ -62,6 +62,28 @@ export function requireRole(...roles: EnterpriseRole[]): RequestHandler {
   };
 }
 
+/** Tenant onboarding wizard — company administrators only (legacy Admin → company_admin). */
+export function requireCompanyAdmin(): RequestHandler {
+  return (req, res, next) => {
+    const enterprise = resolveEnterpriseRole((req as AuthedRequest).role);
+    if (enterprise === 'company_admin' || enterprise === 'super_admin') {
+      next();
+      return;
+    }
+    sendFailure(res, 403, 'FORBIDDEN', 'Company administrator access required');
+  };
+}
+
+/** Billing portal: company admins (legacy users.read) and roles with billing.read. */
+export function requireBillingRead(): RequestHandler {
+  return requireAnyPermission('billing.read', 'users.read');
+}
+
+/** Billing mutations: company admins (legacy users.manage) and roles with billing.manage. */
+export function requireBillingManage(): RequestHandler {
+  return requireAnyPermission('billing.manage', 'users.manage');
+}
+
 /** @deprecated Use requirePermission('financial.write') */
 export const requireFinancialWriteRole: RequestHandler = requirePermission('financial.write');
 

@@ -58,6 +58,10 @@ DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pBookspro_Staging
 JWT_SECRET=change-me-staging-secret-at-least-16-chars
 PORT=3001
 NODE_ENV=production
+# Staging test logins skip MFA (production keeps MFA enforced)
+DISABLE_MFA_ENFORCEMENT=true
+# LAN staging: skip Paddle/subscription gates on POST (onboarding, etc.)
+DISABLE_SUBSCRIPTION_ENFORCEMENT=true
 SEED_STAGING=1
 `
   : `# PBooks Pro API Server — copy to AppData backend/.env as .env (Open config folder in the app).

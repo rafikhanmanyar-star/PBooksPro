@@ -488,12 +488,14 @@ const ApiLoginScreen: React.FC = () => {
       apiClient.setBaseUrl(rootUrl());
       const result = await login(user, password, tid);
       if (result.status === 'mfa_required') {
+        setError(null);
         setMfaPhase('challenge');
         setMfaToken(result.mfaToken);
         setMfaSetupToken(null);
         return;
       }
       if (result.status === 'mfa_setup_required') {
+        setError(null);
         setMfaPhase('setup');
         setMfaSetupToken(result.mfaSetupToken);
         setMfaToken(null);

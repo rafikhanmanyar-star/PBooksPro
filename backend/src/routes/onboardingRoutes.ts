@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
-import { requirePermission } from '../middleware/rbacMiddleware.js';
+import { requireCompanyAdmin } from '../middleware/rbacMiddleware.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { getPool } from '../db/pool.js';
 import {
@@ -19,7 +19,7 @@ import { isValidOnboardingStep } from '../constants/onboardingSteps.js';
 
 export const onboardingRouter = Router();
 
-onboardingRouter.get('/onboarding', requirePermission('users.read'), async (req: AuthedRequest, res) => {
+onboardingRouter.get('/onboarding', requireCompanyAdmin(), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -43,7 +43,7 @@ const patchSchema = z.object({
   stepData: z.record(z.unknown()).optional(),
 });
 
-onboardingRouter.put('/onboarding', requirePermission('users.manage'), async (req: AuthedRequest, res) => {
+onboardingRouter.put('/onboarding', requireCompanyAdmin(), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -81,7 +81,7 @@ const completeStepSchema = z.object({
   stepData: z.record(z.unknown()).optional(),
 });
 
-onboardingRouter.post('/onboarding/complete-step', requirePermission('users.manage'), async (req: AuthedRequest, res) => {
+onboardingRouter.post('/onboarding/complete-step', requireCompanyAdmin(), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -110,7 +110,7 @@ onboardingRouter.post('/onboarding/complete-step', requirePermission('users.mana
   }
 });
 
-onboardingRouter.post('/onboarding/skip', requirePermission('users.manage'), async (req: AuthedRequest, res) => {
+onboardingRouter.post('/onboarding/skip', requireCompanyAdmin(), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -128,7 +128,7 @@ onboardingRouter.post('/onboarding/skip', requirePermission('users.manage'), asy
   }
 });
 
-onboardingRouter.post('/onboarding/restart', requirePermission('users.manage'), async (req: AuthedRequest, res) => {
+onboardingRouter.post('/onboarding/restart', requireCompanyAdmin(), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');

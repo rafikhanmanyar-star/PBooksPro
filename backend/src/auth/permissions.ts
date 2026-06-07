@@ -25,6 +25,8 @@ export type Permission =
   | 'payroll.write'
   | 'users.read'
   | 'users.manage'
+  | 'billing.read'
+  | 'billing.manage'
   | 'audit_logs.read'
   | 'financial.write'
   | 'permissions.read'
@@ -41,6 +43,8 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'payroll.write',
   'users.read',
   'users.manage',
+  'billing.read',
+  'billing.manage',
   'audit_logs.read',
   'financial.write',
   'permissions.read',
@@ -67,6 +71,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'payroll.write': 'Payroll (write)',
   'users.read': 'Users (read)',
   'users.manage': 'Users (manage)',
+  'billing.read': 'Billing & subscription (read)',
+  'billing.manage': 'Billing & subscription (manage)',
   'audit_logs.read': 'Audit logs (read)',
   'financial.write': 'Financial data (write)',
   'permissions.read': 'Permission matrix (read)',
@@ -90,6 +96,8 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'payroll.write',
     'users.read',
     'users.manage',
+    'billing.read',
+    'billing.manage',
     'audit_logs.read',
     'financial.write',
     'permissions.read',
@@ -100,6 +108,7 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...REPORTS_READ,
     'payroll.read',
     'payroll.write',
+    'billing.read',
     'audit_logs.read',
     'financial.write',
     'permissions.read',

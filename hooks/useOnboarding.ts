@@ -14,6 +14,51 @@ import { usePermissions } from './usePermissions';
 
 const SESSION_DISMISS_KEY = 'pbooks_onboarding_dismissed_session';
 
+const ONBOARDING_STEP_ORDER: OnboardingStepId[] = [
+  'welcome',
+  'business_setup',
+  'company_info',
+  'fiscal_year',
+  'chart_of_accounts',
+  'property_setup',
+  'user_setup',
+  'first_transaction',
+  'completion',
+];
+
+function advanceOnboardingStepLocally(
+  state: OnboardingState,
+  stepId: OnboardingStepId,
+  stepData?: Record<string, unknown>
+): OnboardingState {
+  const completed = new Set(state.completedSteps);
+  completed.add(stepId);
+  const stepIdx = ONBOARDING_STEP_ORDER.indexOf(stepId);
+  const nextStep =
+    stepIdx >= 0 && stepIdx < ONBOARDING_STEP_ORDER.length - 1
+      ? ONBOARDING_STEP_ORDER[stepIdx + 1]
+      : 'completion';
+  const merged = stepData ? { ...state.stepData, [stepId]: stepData } : state.stepData;
+  const actionable = ONBOARDING_STEP_ORDER.filter((id) => id !== 'completion');
+  const done = actionable.filter((id) => completed.has(id)).length;
+  return {
+    ...state,
+    currentStep: nextStep,
+    completedSteps: [...completed],
+    stepData: merged,
+    updatedAt: new Date().toISOString(),
+    progressPercent: Math.round((done / actionable.length) * 100),
+    status: done >= actionable.length ? 'completed' : state.status,
+    completedAt: done >= actionable.length ? new Date().toISOString() : state.completedAt,
+  };
+}
+
+function isOnboardingApiFallbackError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const status = (err as { status?: number }).status;
+  return status === 403 || status === 402;
+}
+
 function defaultState(tenantId: string): OnboardingState {
   return {
     tenantId,
@@ -104,43 +149,25 @@ export function useOnboarding() {
     async (stepId: OnboardingStepId, stepData?: Record<string, unknown>) => {
       if (!state) return;
       if (isLocalOnlyMode() || !isAuthenticated) {
-        const completed = new Set(state.completedSteps);
-        completed.add(stepId);
-        const stepOrder = [
-          'welcome',
-          'business_setup',
-          'company_info',
-          'fiscal_year',
-          'chart_of_accounts',
-          'property_setup',
-          'user_setup',
-          'first_transaction',
-          'completion',
-        ] as OnboardingStepId[];
-        const stepIdx = stepOrder.indexOf(stepId);
-        const nextStep = stepIdx >= 0 && stepIdx < stepOrder.length - 1 ? stepOrder[stepIdx + 1] : 'completion';
-        const merged = stepData ? { ...state.stepData, [stepId]: stepData } : state.stepData;
-        const actionable = stepOrder.filter((id) => id !== 'completion');
-        const done = actionable.filter((id) => completed.has(id)).length;
-        const next: OnboardingState = {
-          ...state,
-          currentStep: nextStep,
-          completedSteps: [...completed],
-          stepData: merged,
-          updatedAt: new Date().toISOString(),
-          progressPercent: Math.round((done / actionable.length) * 100),
-          status: done >= actionable.length ? 'completed' : state.status,
-          completedAt: done >= actionable.length ? new Date().toISOString() : state.completedAt,
-        };
+        const next = advanceOnboardingStepLocally(state, stepId, stepData);
         await persist(next);
         return next;
       }
-      const remote = await onboardingApi.completeStep(stepId, stepData);
-      setState(remote);
-      if (storageId) saveLocalOnboarding(storageId, remote);
-      return remote;
+      try {
+        const remote = await onboardingApi.completeStep(stepId, stepData);
+        setState(remote);
+        if (storageId) saveLocalOnboarding(storageId, remote);
+        return remote;
+      } catch (err: unknown) {
+        if (canManage && isOnboardingApiFallbackError(err)) {
+          const next = advanceOnboardingStepLocally(state, stepId, stepData);
+          await persist(next);
+          return next;
+        }
+        throw err;
+      }
     },
-    [state, isAuthenticated, persist, storageId]
+    [state, isAuthenticated, canManage, persist, storageId]
   );
 
   const skipAll = useCallback(async () => {

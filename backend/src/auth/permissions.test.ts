@@ -46,6 +46,7 @@ describe('permissions matrix', () => {
   it('company admin can manage users', () => {
     assert.equal(roleHasPermission('Admin', 'users.manage'), true);
     assert.equal(roleHasPermission('Admin', 'users.read'), true);
+    assert.equal(roleHasPermission('Admin', 'payroll.read'), true);
   });
 
   it('buildPermissionMatrix covers six enterprise roles', () => {

@@ -141,6 +141,13 @@ function resolvePort(merged) {
 function getMergedEnvForApi() {
   const merged = getMergedEnv();
   merged.PORT = String(resolvePort(merged));
+  if (isStagingApiServer()) {
+    merged.PBOOKS_API_SERVER_STAGING = '1';
+    if (merged.DISABLE_MFA_ENFORCEMENT !== 'true') merged.DISABLE_MFA_ENFORCEMENT = 'true';
+    if (merged.DISABLE_SUBSCRIPTION_ENFORCEMENT !== 'true') merged.DISABLE_SUBSCRIPTION_ENFORCEMENT = 'true';
+    if (merged.SEED_STAGING !== '1') merged.SEED_STAGING = '1';
+    if (merged.ALLOW_STAGING_SEED_IN_PRODUCTION !== 'true') merged.ALLOW_STAGING_SEED_IN_PRODUCTION = 'true';
+  }
   return merged;
 }
 
@@ -174,16 +181,67 @@ function ensureUserBackendEnv() {
   }
 
   const parsed = parseEnvFile(envPath);
+  let text = fs.readFileSync(envPath, 'utf8');
+  let envUpdated = false;
+
   if (Number(parsed.PORT) === 3000) {
     try {
-      let text = fs.readFileSync(envPath, 'utf8');
       if (/^PORT\s*=\s*3000\s*$/m.test(text)) {
         text = text.replace(/^PORT\s*=\s*3000\s*$/m, 'PORT=3001');
+        envUpdated = true;
       } else if (!/^PORT\s*=/m.test(text)) {
         text = text.trimEnd() + '\nPORT=3001\n';
+        envUpdated = true;
       }
+      if (envUpdated) {
+        pushLog('[hint] Staging API uses port 3001 — updated PORT in ' + envPath);
+      }
+    } catch (_) {}
+  }
+
+  if (parsed.DISABLE_MFA_ENFORCEMENT !== 'true') {
+    try {
+      if (!/^DISABLE_MFA_ENFORCEMENT\s*=/m.test(text)) {
+        text = text.trimEnd() + '\nDISABLE_MFA_ENFORCEMENT=true\n';
+        envUpdated = true;
+        pushLog('[hint] Staging test environment — added DISABLE_MFA_ENFORCEMENT=true to ' + envPath);
+      }
+    } catch (_) {}
+  }
+
+  if (parsed.DISABLE_SUBSCRIPTION_ENFORCEMENT !== 'true') {
+    try {
+      if (!/^DISABLE_SUBSCRIPTION_ENFORCEMENT\s*=/m.test(text)) {
+        text = text.trimEnd() + '\nDISABLE_SUBSCRIPTION_ENFORCEMENT=true\n';
+        envUpdated = true;
+        pushLog('[hint] Staging test environment — added DISABLE_SUBSCRIPTION_ENFORCEMENT=true to ' + envPath);
+      }
+    } catch (_) {}
+  }
+
+  if (parsed.SEED_STAGING !== '1') {
+    try {
+      if (!/^SEED_STAGING\s*=/m.test(text)) {
+        text = text.trimEnd() + '\nSEED_STAGING=1\n';
+        envUpdated = true;
+        pushLog('[hint] Staging test environment — added SEED_STAGING=1 to ' + envPath);
+      }
+    } catch (_) {}
+  }
+
+  if (parsed.ALLOW_STAGING_SEED_IN_PRODUCTION !== 'true') {
+    try {
+      if (!/^ALLOW_STAGING_SEED_IN_PRODUCTION\s*=/m.test(text)) {
+        text = text.trimEnd() + '\nALLOW_STAGING_SEED_IN_PRODUCTION=true\n';
+        envUpdated = true;
+        pushLog('[hint] Staging test environment — added ALLOW_STAGING_SEED_IN_PRODUCTION=true to ' + envPath);
+      }
+    } catch (_) {}
+  }
+
+  if (envUpdated) {
+    try {
       fs.writeFileSync(envPath, text, 'utf8');
-      pushLog('[hint] Staging API uses port 3001 — updated PORT in ' + envPath);
     } catch (_) {}
   }
 }

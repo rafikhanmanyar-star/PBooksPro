@@ -195,6 +195,8 @@ const SettingsPage: React.FC = () => {
     const showUserManagement =
         perms.canManageUsers || perms.canReadUsers || (isLocalOnlyMode() && !!companyCtx?.activeCompany);
     const showPermissionManagement = perms.canReadPermissions || isLocalOnlyMode();
+    const showBillingPortal =
+        !isLocalOnlyMode() && (perms.canReadBilling || perms.canManageBilling || perms.canReadUsers || perms.canManageUsers);
 
     // Grouped Categories for Sidebar
     const categoryGroups = [
@@ -209,7 +211,9 @@ const SettingsPage: React.FC = () => {
             title: 'General',
             items: [
                 { id: 'preferences', label: 'Preferences', icon: ICONS.settings },
-                { id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' },
+                ...(showBillingPortal
+                  ? [{ id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' }]
+                  : []),
                 ...(onboarding?.canManage
                   ? [{ id: 'setup-wizard', label: 'Setup Wizard', icon: ICONS.fileText || '📋' }]
                   : []),
@@ -266,7 +270,7 @@ const SettingsPage: React.FC = () => {
 
     const settingCategories = useMemo(() => {
         return flatCategories;
-    }, [showUserManagement, showPermissionManagement, perms.canReadAuditLogs, flatCategories]);
+    }, [showUserManagement, showPermissionManagement, showBillingPortal, perms.canReadAuditLogs, flatCategories]);
 
     // --- Data Preparation Logic (Preserved) ---
     const columnConfig: Record<string, ColumnDef[]> = {

@@ -21,9 +21,9 @@ import BillingCheckoutPage from './components/billing/BillingCheckoutPage';
 import LegalDocumentPage from './components/legal/LegalDocumentPage';
 import { useAuth } from './context/AuthContext';
 import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode, getAppDisplayName } from './config/apiUrl';
-import { verifyServerReachable } from './services/lanDiscovery';
-import { useCompanyOptional } from './context/CompanyContext';
 import { apiClient } from './services/api/client';
+import { resolveReachableApiBaseUrl } from './services/lanDiscovery';
+import { useCompanyOptional } from './context/CompanyContext';
 // Initialize Sync Service removed
 import UpdateNotification from './components/ui/UpdateNotification';
 import { getUnifiedDatabaseService } from './services/database/unifiedDatabaseService';
@@ -135,9 +135,13 @@ const App: React.FC = () => {
     if (isLocalOnlyMode() || !isLanBackendApi()) return;
     let cancelled = false;
     void (async () => {
-      const ok = await verifyServerReachable(getApiBaseUrl());
+      const configured = getApiBaseUrl();
+      const resolved = await resolveReachableApiBaseUrl(configured);
       if (cancelled) return;
-      setLanServerPhase(ok ? 'ready' : 'need-server');
+      if (resolved && resolved !== configured) {
+        apiClient.setBaseUrl(resolved.replace(/\/api\/?$/i, ''));
+      }
+      setLanServerPhase(resolved ? 'ready' : 'need-server');
     })();
     return () => {
       cancelled = true;

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { getPool } from './db/pool.js';
 import { bootstrapTenantChart } from './services/tenantBootstrap.js';
+import { startTrialSubscription } from './services/billing/subscriptionService.js';
 import { logger } from './utils/logger.js';
 import { validatePassword } from './utils/passwordPolicy.js';
 import { isDemoEnvironmentEnabled } from './constants/demoEnvironment.js';
@@ -30,8 +31,8 @@ export async function seedStagingDefaults(): Promise<void> {
   const userId = (process.env.STAGING_ADMIN_USER_ID || 'user_rafi_test_company').trim();
 
   await pool.query(
-    `INSERT INTO tenants (id, name) VALUES ($1, $2)
-     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()`,
+    `INSERT INTO tenants (id, name, is_active) VALUES ($1, $2, TRUE)
+     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = TRUE, updated_at = NOW()`,
     [tenantId, tenantName]
   );
 
@@ -49,6 +50,19 @@ export async function seedStagingDefaults(): Promise<void> {
   );
 
   await bootstrapTenantChart(pool, tenantId, { legacyIds: false });
+
+  const client = await pool.connect();
+  try {
+    await startTrialSubscription(client, tenantId);
+  } catch (e) {
+    logger.warn(
+      `Staging trial subscription not created for ${tenantId} (billing plans may be missing): ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  } finally {
+    client.release();
+  }
 
   logger.info(`Staging seed complete — org "${tenantName}" (${tenantId}) | user "${username}"`);
   if (process.env.NODE_ENV !== 'production') {

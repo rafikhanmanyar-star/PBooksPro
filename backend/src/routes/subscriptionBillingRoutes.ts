@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
-import { requirePermission } from '../middleware/rbacMiddleware.js';
+import { requireBillingRead, requireBillingManage } from '../middleware/rbacMiddleware.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { getPool } from '../db/pool.js';
 import { listBillingPlans } from '../services/billing/billingPlanService.js';
@@ -38,7 +38,7 @@ import { requireLegalAcceptances } from '../services/legal/legalAcceptanceServic
 
 export const subscriptionBillingRouter = Router();
 
-subscriptionBillingRouter.get('/billing/plans', requirePermission('users.read'), async (_req, res) => {
+subscriptionBillingRouter.get('/billing/plans', requireBillingRead(), async (_req, res) => {
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -53,7 +53,7 @@ subscriptionBillingRouter.get('/billing/plans', requirePermission('users.read'),
 
 subscriptionBillingRouter.get(
   '/billing/enforcement',
-  requirePermission('users.read'),
+  requireBillingRead(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -76,7 +76,7 @@ subscriptionBillingRouter.get(
 
 subscriptionBillingRouter.get(
   '/billing/portal',
-  requirePermission('users.read'),
+  requireBillingRead(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -98,7 +98,7 @@ subscriptionBillingRouter.get(
 
 subscriptionBillingRouter.post(
   '/billing/portal/session',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -120,7 +120,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.get(
   '/billing/information',
-  requirePermission('users.read'),
+  requireBillingRead(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -142,7 +142,7 @@ subscriptionBillingRouter.get(
 
 subscriptionBillingRouter.put(
   '/billing/information',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -176,7 +176,7 @@ subscriptionBillingRouter.put(
 
 subscriptionBillingRouter.get(
   '/billing/usage/dashboard',
-  requirePermission('users.read'),
+  requireBillingRead(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -198,7 +198,7 @@ subscriptionBillingRouter.get(
 
 subscriptionBillingRouter.get(
   '/billing/subscription',
-  requirePermission('users.read'),
+  requireBillingRead(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -223,7 +223,7 @@ subscriptionBillingRouter.get(
 
 subscriptionBillingRouter.post(
   '/billing/customer/create',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -258,7 +258,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.post(
   '/billing/checkout',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -330,7 +330,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.post(
   '/billing/subscription/change-plan',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -371,7 +371,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.post(
   '/billing/subscription/checkout',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -432,7 +432,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.post(
   '/billing/subscription/upgrade',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -461,7 +461,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.post(
   '/billing/subscription/downgrade',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -490,7 +490,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.post(
   '/billing/subscription/cancel',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -517,7 +517,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.post(
   '/billing/subscription/reactivate',
-  requirePermission('users.manage'),
+  requireBillingManage(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -542,7 +542,7 @@ subscriptionBillingRouter.post(
 
 subscriptionBillingRouter.get(
   '/billing/invoices',
-  requirePermission('users.read'),
+  requireBillingRead(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -564,7 +564,7 @@ subscriptionBillingRouter.get(
 
 subscriptionBillingRouter.get(
   '/billing/usage',
-  requirePermission('users.read'),
+  requireBillingRead(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -590,7 +590,7 @@ subscriptionBillingRouter.get(
 
 subscriptionBillingRouter.get(
   '/billing/events',
-  requirePermission('users.read'),
+  requireBillingRead(),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) {
