@@ -4,9 +4,11 @@ import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
-import { requireOrgUserAdmin } from '../middleware/authMiddleware.js';
-import { getPool } from '../db/pool.js';
+import { requirePermission } from '../middleware/rbacMiddleware.js';
+import { getPool, withTransaction } from '../db/pool.js';
+import { appendAuditEvent } from '../services/enterpriseAuditService.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
+import { requireResourceQuota } from '../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
 export const usersRouter = Router();
@@ -78,7 +80,7 @@ usersRouter.patch('/users/me', async (req: AuthedRequest, res) => {
   }
 });
 
-usersRouter.get('/users', async (req: AuthedRequest, res) => {
+usersRouter.get('/users', requirePermission('users.read'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -100,7 +102,7 @@ usersRouter.get('/users', async (req: AuthedRequest, res) => {
   }
 });
 
-usersRouter.post('/users', requireOrgUserAdmin, async (req: AuthedRequest, res) => {
+usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuota('users'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -122,14 +124,27 @@ usersRouter.post('/users', requireOrgUserAdmin, async (req: AuthedRequest, res) 
   const emailVal = email && email.length > 0 ? email : null;
 
   try {
-    const pool = getPool();
-    const r = await pool.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
-      `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
-       RETURNING id, username, name, role, email, is_active`,
-      [id, tenantId, username.trim(), name.trim(), role, passwordHash, emailVal]
-    );
-    const created = rowToApi(r.rows[0]);
+    const created = await withTransaction(async (client) => {
+      const r = await client.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
+        `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+         RETURNING id, username, name, role, email, is_active`,
+        [id, tenantId, username.trim(), name.trim(), role, passwordHash, emailVal]
+      );
+      const row = rowToApi(r.rows[0]);
+      await appendAuditEvent(client, {
+        tenantId,
+        userId: req.userId ?? null,
+        email: emailVal ?? undefined,
+        module: 'users',
+        action: 'create',
+        entityType: 'user',
+        entityId: row.id,
+        summary: `User created: ${row.username}`,
+        newValue: row,
+      });
+      return row;
+    });
     emitEntityEvent(tenantId, 'created', 'user', { data: created, sourceUserId: req.userId });
     sendSuccess(res, created, 201);
   } catch (e: unknown) {
@@ -142,7 +157,7 @@ usersRouter.post('/users', requireOrgUserAdmin, async (req: AuthedRequest, res) 
   }
 });
 
-usersRouter.put('/users/:id', requireOrgUserAdmin, async (req: AuthedRequest, res) => {
+usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   const { id } = req.params;
   if (!tenantId || !id) {
@@ -158,42 +173,69 @@ usersRouter.put('/users/:id', requireOrgUserAdmin, async (req: AuthedRequest, re
   const emailVal = email && email.length > 0 ? email : null;
 
   try {
-    const pool = getPool();
-    const exists = await pool.query(`SELECT 1 FROM users WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
-    if (exists.rows.length === 0) {
+    const updated = await withTransaction(async (client) => {
+      const prev = await client.query<{ role: string; username: string; email: string | null }>(
+        `SELECT role, username, email FROM users WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId]
+      );
+      if (prev.rows.length === 0) {
+        return null;
+      }
+      const before = prev.rows[0];
+
+      let row: { id: string; username: string; name: string; role: string; email: string | null; is_active: boolean };
+      if (password && password.length > 0) {
+        const passwordError = validatePassword(password);
+        if (passwordError) throw new Error(passwordError);
+        const passwordHash = await bcrypt.hash(password, 10);
+        const r = await client.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
+          `UPDATE users SET username = $1, name = $2, email = $3, role = $4, password_hash = $5, updated_at = NOW()
+           WHERE id = $6 AND tenant_id = $7
+           RETURNING id, username, name, role, email, is_active`,
+          [username.trim(), name.trim(), emailVal, role, passwordHash, id, tenantId]
+        );
+        row = r.rows[0];
+      } else {
+        const r = await client.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
+          `UPDATE users SET username = $1, name = $2, email = $3, role = $4, updated_at = NOW()
+           WHERE id = $5 AND tenant_id = $6
+           RETURNING id, username, name, role, email, is_active`,
+          [username.trim(), name.trim(), emailVal, role, id, tenantId]
+        );
+        row = r.rows[0];
+      }
+
+      const apiRow = rowToApi(row);
+      const roleChanged = before.role !== role;
+      await appendAuditEvent(client, {
+        tenantId,
+        userId: req.userId ?? null,
+        email: emailVal ?? before.email ?? undefined,
+        module: 'users',
+        action: roleChanged ? 'role_change' : 'edit',
+        entityType: 'user',
+        entityId: apiRow.id,
+        summary: roleChanged
+          ? `Role changed for ${apiRow.username}: ${before.role} → ${role}`
+          : `User updated: ${apiRow.username}`,
+        oldValue: roleChanged ? { role: before.role } : { username: before.username, role: before.role },
+        newValue: roleChanged ? { role } : apiRow,
+      });
+      return apiRow;
+    });
+
+    if (!updated) {
       sendFailure(res, 404, 'NOT_FOUND', 'User not found');
       return;
     }
-
-    if (password && password.length > 0) {
-      const passwordError = validatePassword(password);
-      if (passwordError) {
-        sendFailure(res, 400, 'VALIDATION_ERROR', passwordError);
-        return;
-      }
-      const passwordHash = await bcrypt.hash(password, 10);
-      const r = await pool.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
-        `UPDATE users SET username = $1, name = $2, email = $3, role = $4, password_hash = $5, updated_at = NOW()
-         WHERE id = $6 AND tenant_id = $7
-         RETURNING id, username, name, role, email, is_active`,
-        [username.trim(), name.trim(), emailVal, role, passwordHash, id, tenantId]
-      );
-      const updated = rowToApi(r.rows[0]);
-      emitEntityEvent(tenantId, 'updated', 'user', { data: updated, sourceUserId: req.userId });
-      sendSuccess(res, updated);
-    } else {
-      const r = await pool.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
-        `UPDATE users SET username = $1, name = $2, email = $3, role = $4, updated_at = NOW()
-         WHERE id = $5 AND tenant_id = $6
-         RETURNING id, username, name, role, email, is_active`,
-        [username.trim(), name.trim(), emailVal, role, id, tenantId]
-      );
-      const updated = rowToApi(r.rows[0]);
-      emitEntityEvent(tenantId, 'updated', 'user', { data: updated, sourceUserId: req.userId });
-      sendSuccess(res, updated);
-    }
+    emitEntityEvent(tenantId, 'updated', 'user', { data: updated, sourceUserId: req.userId });
+    sendSuccess(res, updated);
   } catch (e: unknown) {
-    const err = e as { code?: string };
+    const err = e as { code?: string; message?: string };
+    if (err.message && err.message.includes('Password')) {
+      sendFailure(res, 400, 'VALIDATION_ERROR', err.message);
+      return;
+    }
     if (err.code === '23505') {
       sendFailure(res, 409, 'DUPLICATE', 'Username already exists for this organization');
       return;
@@ -202,7 +244,7 @@ usersRouter.put('/users/:id', requireOrgUserAdmin, async (req: AuthedRequest, re
   }
 });
 
-usersRouter.delete('/users/:id', requireOrgUserAdmin, async (req: AuthedRequest, res) => {
+usersRouter.delete('/users/:id', requirePermission('users.manage'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   const { id } = req.params;
   if (!tenantId || !id) {
@@ -214,14 +256,34 @@ usersRouter.delete('/users/:id', requireOrgUserAdmin, async (req: AuthedRequest,
     return;
   }
   try {
-    const pool = getPool();
-    const r = await pool.query(`DELETE FROM users WHERE id = $1 AND tenant_id = $2 RETURNING id`, [id, tenantId]);
-    if (r.rows.length === 0) {
+    const deletedId = await withTransaction(async (client) => {
+      const prev = await client.query<{ username: string; role: string; email: string | null }>(
+        `SELECT username, role, email FROM users WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId]
+      );
+      const r = await client.query(`DELETE FROM users WHERE id = $1 AND tenant_id = $2 RETURNING id`, [id, tenantId]);
+      if (r.rows.length === 0) return null;
+      const before = prev.rows[0];
+      if (before) {
+        await appendAuditEvent(client, {
+          tenantId,
+          userId: req.userId ?? null,
+          module: 'users',
+          action: 'delete',
+          entityType: 'user',
+          entityId: id,
+          summary: `User deleted: ${before.username}`,
+          oldValue: before,
+        });
+      }
+      return id;
+    });
+    if (!deletedId) {
       sendFailure(res, 404, 'NOT_FOUND', 'User not found');
       return;
     }
-    emitEntityEvent(tenantId, 'deleted', 'user', { id, sourceUserId: req.userId });
-    sendSuccess(res, { id });
+    emitEntityEvent(tenantId, 'deleted', 'user', { id: deletedId, sourceUserId: req.userId });
+    sendSuccess(res, { id: deletedId });
   } catch (e) {
     handleRouteError(res, e);
   }

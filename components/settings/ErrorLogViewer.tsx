@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useErrorLog } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -25,8 +25,7 @@ const LogEntryView: React.FC<{ entry: ExtendedErrorLogEntry }> = ({ entry }) => 
 
 
 const ErrorLogViewer: React.FC<ErrorLogViewerProps> = ({ isOpen, onClose }) => {
-    const state = useFullAppState();
-    const { errorLog } = state;
+    const errorLog = useErrorLog();
     const dispatch = useDispatchOnly();
     const { showConfirm } = useNotification();
     const [errorLogs, setErrorLogs] = useState<ExtendedErrorLogEntry[]>([]);

@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { useNotification } from '../../context/NotificationContext';
 import { RentalAgreement, RentalAgreementStatus, type AppState } from '../../types';
@@ -22,7 +22,7 @@ interface RentalRenewalFormProps {
 }
 
 const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClose }) => {
-  const state = useFullAppState();
+  const state = useRentalReportAppState();
     const { properties, rentalAgreements } = state;
     const dispatch = useDispatchOnly();
   const { showToast, showAlert } = useNotification();

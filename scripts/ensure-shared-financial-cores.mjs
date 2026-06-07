@@ -26,6 +26,13 @@ syncFile(
   (s) => s.replace("from './validation'", "from './validation.js'")
 );
 
+// journalLedgerCore: client financialEngine → backend financial/
+syncFile(
+  'services/financialEngine/journalLedgerCore.ts',
+  'backend/src/financial/journalLedgerCore.ts',
+  (s) => s.replace("from './validation'", "from './validation.js'").replace("from './trialBalanceCore'", "from './trialBalanceCore.js'")
+);
+
 // payrollLedgerCore: shared → backend services (+ ledger type constants used by DB layer)
 syncFile('shared/payrollLedgerCore.ts', 'backend/src/services/payrollLedgerCore.ts', (s) => {
   const header = `export const PAYROLL_LEDGER_TYPES = [
@@ -41,5 +48,20 @@ export type PayrollLedgerType = (typeof PAYROLL_LEDGER_TYPES)[number];
 `;
   return header + s.replace(/^\/\*\*[\s\S]*?\*\/\s*\n/, '');
 });
+
+syncFile('shared/rbac/permissions.ts', 'backend/src/auth/permissions.ts');
+
+syncFile('shared/rbac/mfaPolicy.ts', 'backend/src/auth/mfaPolicy.ts', (s) =>
+  s.replace("from './permissions'", "from './permissions.js'")
+);
+
+syncFile(
+  'services/financialEngine/financialReconciliationEngine.ts',
+  'backend/src/financial/financialReconciliationEngine.ts',
+  (s) =>
+    s
+      .replace("from './validation'", "from './validation.js'")
+      .replace("from './journalLedgerCore'", "from './journalLedgerCore.js'")
+);
 
 console.log('[ensure-shared-financial-cores] OK');

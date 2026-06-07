@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useBills, useCategories } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Category, TransactionType, ProfitLossSubType } from '../../types';
 import Input from '../ui/Input';
@@ -17,8 +17,8 @@ interface CategoryFormProps {
 }
 
 const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelete, categoryToEdit, fixedTypeForNew, initialName }) => {
-    const state = useFullAppState();
-    const { categories, bills } = state;
+    const categories = useCategories();
+    const bills = useBills();
     const [name, setName] = useState(categoryToEdit?.name || initialName || '');
     const [description, setDescription] = useState(categoryToEdit?.description || '');
     const [type, setType] = useState<TransactionType>(categoryToEdit?.type || fixedTypeForNew || TransactionType.EXPENSE);
@@ -59,8 +59,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
                 type: categoryToEdit.type,
                 description: categoryToEdit.description,
                 parentCategoryId: categoryToEdit.parentCategoryId,
-                plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null,
-            } as Omit<Category, 'id'>);
+                plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null } as Omit<Category, 'id'>);
             return;
         }
         onSubmit({
@@ -68,8 +67,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
             type,
             description,
             parentCategoryId: parentCategoryId || undefined,
-            plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null,
-        } as Omit<Category, 'id'>);
+            plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null } as Omit<Category, 'id'>);
     };
     
     return (

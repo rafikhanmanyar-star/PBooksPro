@@ -10,6 +10,7 @@ import {
   CheckCircle,
   AlertCircle,
   AlertTriangle,
+  Lock,
 } from 'lucide-react';
 import {
   fetchDatabaseBackupCapabilities,
@@ -18,20 +19,32 @@ import {
   restorePostgresBackup,
   type DatabaseBackupCapabilities,
 } from '../../services/databaseBackupService';
+import {
+  backupSecurityApi,
+  type RestorePolicy,
+} from '../../services/api/backupSecurityApi';
 
 const PostgresBackupRestore: React.FC = () => {
   const [caps, setCaps] = useState<DatabaseBackupCapabilities | null>(null);
+  const [restorePolicy, setRestorePolicy] = useState<RestorePolicy | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
   const [backingUpTenant, setBackingUpTenant] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [backupPassword, setBackupPassword] = useState('');
+  const [restorePassword, setRestorePassword] = useState('');
+  const [useBackupPassword, setUseBackupPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
   const loadCaps = useCallback(async () => {
     setLoadError(null);
     try {
-      const c = await fetchDatabaseBackupCapabilities();
+      const [c, pol] = await Promise.all([
+        fetchDatabaseBackupCapabilities(),
+        backupSecurityApi.getRestorePolicy().catch(() => null),
+      ]);
       setCaps(c);
+      setRestorePolicy(pol);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
       setCaps(null);
@@ -46,8 +59,15 @@ const PostgresBackupRestore: React.FC = () => {
     setBackingUp(true);
     setMessage(null);
     try {
-      await downloadPostgresBackup();
-      setMessage({ type: 'success', text: 'Backup downloaded. Store this file in a safe place.' });
+      await downloadPostgresBackup({
+        password: useBackupPassword ? backupPassword : undefined,
+      });
+      setMessage({
+        type: 'success',
+        text: useBackupPassword
+          ? 'Password-protected encrypted backup downloaded. Store the password securely.'
+          : 'AES-256 encrypted backup downloaded. Store this file in a safe place.',
+      });
     } catch (e) {
       setMessage({
         type: 'error',
@@ -63,7 +83,7 @@ const PostgresBackupRestore: React.FC = () => {
     setMessage(null);
     try {
       await downloadTenantBackup();
-      setMessage({ type: 'success', text: 'Organization backup downloaded (JSON, gzip).' });
+      setMessage({ type: 'success', text: 'Organization backup downloaded (JSON, gzip). Use Tenant Restore to import.' });
     } catch (e) {
       setMessage({
         type: 'error',
@@ -78,13 +98,29 @@ const PostgresBackupRestore: React.FC = () => {
     const file = ev.target.files?.[0];
     ev.target.value = '';
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.dump') && !file.name.toLowerCase().endsWith('.backup')) {
+
+    const lower = file.name.toLowerCase();
+    const validExt =
+      lower.endsWith('.dump') ||
+      lower.endsWith('.backup') ||
+      lower.endsWith('.pbkenc') ||
+      lower.endsWith('.pbkenc2');
+    if (!validExt) {
       setMessage({
         type: 'warning',
-        text: 'Select a PostgreSQL custom-format backup (.dump) created by PBooks or pg_dump -Fc.',
+        text: 'Select a PBooks backup (.pbkenc, .pbkenc2) or PostgreSQL custom-format (.dump) file.',
       });
       return;
     }
+
+    if (!restorePolicy?.canRestore) {
+      setMessage({
+        type: 'error',
+        text: 'Only Super Admin and Company Admin can restore backups.',
+      });
+      return;
+    }
+
     if (
       !confirm(
         'Restore will replace the entire PostgreSQL database used by this API server (all organizations on this server). All connected users should save work and reconnect after reload. Continue?'
@@ -92,10 +128,28 @@ const PostgresBackupRestore: React.FC = () => {
     ) {
       return;
     }
+
     setRestoring(true);
     setMessage(null);
     try {
-      const msg = await restorePostgresBackup(file);
+      let restoreToken: string | undefined;
+      if (restorePolicy.requireRestoreAuthorization) {
+        const phrase = prompt(
+          `Type "${restorePolicy.confirmPhrase}" to authorize restore:`,
+          ''
+        );
+        if (!phrase) {
+          setRestoring(false);
+          return;
+        }
+        const auth = await backupSecurityApi.authorizeRestore(phrase);
+        restoreToken = auth.restoreToken;
+      }
+
+      const msg = await restorePostgresBackup(file, {
+        restoreToken,
+        backupPassword: restorePassword || undefined,
+      });
       setMessage({ type: 'success', text: msg });
       setTimeout(() => {
         window.location.reload();
@@ -151,9 +205,28 @@ const PostgresBackupRestore: React.FC = () => {
           PostgreSQL backup
         </h3>
         <p className="text-sm text-gray-500 mt-0.5">
-          Download a full snapshot of the database used by this API server, export this organization only, or restore from a previous <code className="text-xs bg-gray-100 px-1 rounded">.dump</code> file.
+          Downloads are AES-256 encrypted ({caps.encryptedFormat ?? 'PBKENC'}). Optional backup password
+          adds an extra layer for offline storage. Restore requires Super Admin or Company Admin
+          authorization.
         </p>
       </div>
+
+      {restorePolicy && (
+        <div
+          className={`rounded-lg border p-3 text-sm flex items-start gap-2 ${
+            restorePolicy.canRestore
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : 'border-amber-200 bg-amber-50 text-amber-900'
+          }`}
+        >
+          <Lock className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>
+            {restorePolicy.canRestore
+              ? 'You are authorized to restore (Super Admin / Company Admin).'
+              : 'Restore is disabled for your role. Contact an administrator.'}
+          </div>
+        </div>
+      )}
 
       {message && (
         <div
@@ -186,8 +259,35 @@ const PostgresBackupRestore: React.FC = () => {
         </div>
       )}
 
-      <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-3 text-xs text-blue-900">
-        The API server must have <strong>pg_dump</strong> and <strong>pg_restore</strong> (PostgreSQL client tools) installed and on <strong>PATH</strong>. Restore replaces the <strong>entire</strong> database for this server.
+      <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-3 text-xs text-blue-900 space-y-1">
+        <p>
+          The API server must have <strong>pg_dump</strong> and <strong>pg_restore</strong> on{' '}
+          <strong>PATH</strong>.
+        </p>
+        <p>
+          Backups are encrypted with AES-256-GCM before download and local storage. Set{' '}
+          <code className="bg-white/80 px-1 rounded">BACKUP_ENCRYPTION_KEY</code> on the server.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={useBackupPassword}
+            onChange={(e) => setUseBackupPassword(e.target.checked)}
+          />
+          Protect download with backup password (PBKENC2)
+        </label>
+        {useBackupPassword && (
+          <input
+            type="password"
+            className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            placeholder="Backup password (min 8 characters)"
+            value={backupPassword}
+            onChange={(e) => setBackupPassword(e.target.value)}
+          />
+        )}
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -205,7 +305,7 @@ const PostgresBackupRestore: React.FC = () => {
           ) : (
             <>
               <Download className="w-4 h-4" />
-              Download backup (.dump)
+              Download encrypted backup
             </>
           )}
         </button>
@@ -231,15 +331,32 @@ const PostgresBackupRestore: React.FC = () => {
           </button>
         )}
 
-        <label
-          className={`flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium transition-colors ${
-            busy ? 'opacity-50 pointer-events-none' : 'hover:bg-gray-50 cursor-pointer'
-          }`}
-        >
-          <Upload className="w-4 h-4" />
-          {restoring ? 'Restoring…' : 'Restore from file'}
-          <input type="file" accept=".dump,.backup,application/octet-stream" className="hidden" onChange={handleFileChange} disabled={busy} />
-        </label>
+        {restorePolicy?.canRestore && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="password"
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              placeholder="Backup file password (if any)"
+              value={restorePassword}
+              onChange={(e) => setRestorePassword(e.target.value)}
+            />
+            <label
+              className={`flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium transition-colors ${
+                busy ? 'opacity-50 pointer-events-none' : 'hover:bg-gray-50 cursor-pointer'
+              }`}
+            >
+              <Upload className="w-4 h-4" />
+              {restoring ? 'Restoring…' : 'Secure restore'}
+              <input
+                type="file"
+                accept=".dump,.backup,.pbkenc,.pbkenc2,application/octet-stream"
+                className="hidden"
+                onChange={handleFileChange}
+                disabled={busy}
+              />
+            </label>
+          </div>
+        )}
       </div>
     </div>
   );

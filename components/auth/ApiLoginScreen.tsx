@@ -23,14 +23,19 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import LegalAcceptanceCheckbox from '../legal/LegalAcceptanceCheckbox';
+import MfaLoginPanel from './MfaLoginPanel';
+import type { LegalAcceptanceInput } from '../../services/api/legalApi';
 import { getApiRootUrl, getAppDisplayName, isStagingEnvironment, getDefaultApiRootUrl } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
+import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import { requestElectronWebContentsFocus } from '../../utils/electronFocusRecovery';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
 
 const DEFAULT_TENANT =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEFAULT_TENANT_ID) || 'default';
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEFAULT_TENANT_ID) ||
+  (isStagingEnvironment() ? 'test-company' : 'default');
 
 /** Same keys as AuthContext login — survive logout so the next visit can prefill org and username. */
 const LAST_TENANT_STORAGE_KEY = 'last_tenant_id';
@@ -102,7 +107,7 @@ function persistSavedApiLogin(tenantId: string, username: string, password: stri
     localStorage.setItem(
       API_SAVED_LOGIN_KEY,
       JSON.stringify({
-        tenantId: tenantId.trim() || 'default',
+        tenantId: tenantId.trim() || DEFAULT_TENANT,
         username: username.trim(),
         password,
       })
@@ -308,7 +313,8 @@ function AuthCardHeader({
 }
 
 const ApiLoginScreen: React.FC = () => {
-  const { login, registerTenant, error: authError, isLoading } = useAuth();
+  const { login, registerTenant, enterDemoSession, error: authError, isLoading } = useAuth();
+  const [demoEntering, setDemoEntering] = useState(false);
   const { hideProgress } = useNotification();
   const [serverUrl, setServerUrl] = useState('');
   const [tenantId, setTenantId] = useState(() => readStoredLastTenant());
@@ -337,6 +343,11 @@ const ApiLoginScreen: React.FC = () => {
   const [tenantDirectory, setTenantDirectory] = useState<{ id: string; name: string }[]>([]);
   const [tenantListLoading, setTenantListLoading] = useState(false);
   const [tenantListHint, setTenantListHint] = useState<string | null>(null);
+  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [legalAcceptances, setLegalAcceptances] = useState<LegalAcceptanceInput[]>([]);
+  const [mfaPhase, setMfaPhase] = useState<'challenge' | 'setup' | null>(null);
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaSetupToken, setMfaSetupToken] = useState<string | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const tenantHintId = useId();
 
@@ -443,10 +454,27 @@ const ApiLoginScreen: React.FC = () => {
     };
   }, [view, serverUrl]);
 
+  /** Prefill org ID from server directory when saved/default ID is wrong (common on staging). */
+  useEffect(() => {
+    if (view !== 'login' || tenantListLoading || tenantDirectory.length === 0) return;
+    const ids = tenantDirectory.map((t) => t.id);
+    if (ids.includes(tenantId.trim())) return;
+    if (tenantDirectory.length === 1) {
+      const only = tenantDirectory[0]!.id;
+      setTenantId(only);
+      persistLastTenant(only);
+      return;
+    }
+    if (tenantId.trim() === 'default' && ids.includes('test-company')) {
+      setTenantId('test-company');
+      persistLastTenant('test-company');
+    }
+  }, [view, tenantListLoading, tenantDirectory, tenantId]);
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const tid = tenantId.trim() || 'default';
+    const tid = tenantId.trim() || DEFAULT_TENANT;
     const user = username.trim();
     if (!user) {
       setError('Username is required.');
@@ -458,19 +486,36 @@ const ApiLoginScreen: React.FC = () => {
     }
     try {
       apiClient.setBaseUrl(rootUrl());
-      await login(user, password, tid);
-      if (savePassword) {
-        persistSavedApiLogin(tid, user, password);
-      } else {
-        clearSavedApiLogin();
+      const result = await login(user, password, tid);
+      if (result.status === 'mfa_required') {
+        setMfaPhase('challenge');
+        setMfaToken(result.mfaToken);
+        setMfaSetupToken(null);
+        return;
       }
+      if (result.status === 'mfa_setup_required') {
+        setMfaPhase('setup');
+        setMfaSetupToken(result.mfaSetupToken);
+        setMfaToken(null);
+        return;
+      }
+      if (result.status === 'authenticated') {
+        persistLastTenant(tid);
+        persistLastUsername(user);
+        if (savePassword) {
+          persistSavedApiLogin(tid, user, password);
+        } else {
+          clearSavedApiLogin();
+        }
+        return;
+      }
+      setError('Sign-in did not complete. Please try again.');
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'error' in err
-          ? String((err as { error?: string }).error)
-          : err instanceof Error
-            ? err.message
-            : 'Login failed.';
+      const apiErr = err as { code?: string; error?: string; message?: string };
+      let msg = formatApiErrorMessage(err);
+      if (apiErr.code === 'AUTH_FAILED' || msg === 'Invalid credentials') {
+        msg = `Invalid credentials for organization "${tid}". Choose the correct organization (staging: test-company) or check username and password.`;
+      }
       setError(msg);
     }
   };
@@ -494,6 +539,10 @@ const ApiLoginScreen: React.FC = () => {
       setError('Password must be at least 6 characters.');
       return;
     }
+    if (!legalAccepted || legalAcceptances.length === 0) {
+      setError('You must accept the Terms of Service and Privacy Policy.');
+      return;
+    }
     try {
       apiClient.setBaseUrl(rootUrl());
       const result = await registerTenant({
@@ -505,6 +554,7 @@ const ApiLoginScreen: React.FC = () => {
         adminUsername: adminUsername.trim(),
         adminPassword,
         requestedTenantId: requestedTenantId.trim() || undefined,
+        legalAcceptances,
       });
       setRegisteredTenantId(result.tenantId);
       setTenantId(result.tenantId);
@@ -534,7 +584,23 @@ const ApiLoginScreen: React.FC = () => {
 
   const goToLogin = () => {
     setError(null);
+    setMfaPhase(null);
+    setMfaToken(null);
+    setMfaSetupToken(null);
     setView('login');
+  };
+
+  const finishMfaLogin = () => {
+    const tid = tenantId.trim() || DEFAULT_TENANT;
+    const user = username.trim();
+    if (savePassword) {
+      persistSavedApiLogin(tid, user, password);
+    } else {
+      clearSavedApiLogin();
+    }
+    setMfaPhase(null);
+    setMfaToken(null);
+    setMfaSetupToken(null);
   };
 
   const continueAfterRegister = () => {
@@ -585,7 +651,24 @@ const ApiLoginScreen: React.FC = () => {
             </AuthCard>
           )}
 
-          {view === 'login' && (
+          {view === 'login' && mfaPhase && (
+            <AuthCard>
+              <MfaLoginPanel
+                mode={mfaPhase}
+                mfaToken={mfaToken ?? undefined}
+                mfaSetupToken={mfaSetupToken ?? undefined}
+                usernameForStorage={username.trim()}
+                onBack={() => {
+                  setMfaPhase(null);
+                  setMfaToken(null);
+                  setMfaSetupToken(null);
+                }}
+                onComplete={finishMfaLogin}
+              />
+            </AuthCard>
+          )}
+
+          {view === 'login' && !mfaPhase && (
             <AuthCard>
               <AuthCardHeader
                 icon={headerIcon}
@@ -685,7 +768,7 @@ const ApiLoginScreen: React.FC = () => {
                       onBlur={() => persistLastTenant(tenantId)}
                       className={`${FIELD_INPUT} font-mono text-ds-small`}
                       disabled={isLoading}
-                      placeholder="default"
+                      placeholder={DEFAULT_TENANT}
                       autoComplete="organization"
                     />
                   </IconField>
@@ -777,6 +860,42 @@ const ApiLoginScreen: React.FC = () => {
                     </>
                   ) : (
                     'Sign in'
+                  )}
+                </Button>
+
+                <div className="relative my-3 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-app-border/70" aria-hidden />
+                  <span className="text-ds-small text-app-muted">or</span>
+                  <div className="h-px flex-1 bg-app-border/70" aria-hidden />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isLoading || demoEntering}
+                  className="w-full"
+                  onClick={async () => {
+                    setError(null);
+                    setDemoEntering(true);
+                    try {
+                      await enterDemoSession();
+                    } catch (e) {
+                      setError(formatApiErrorMessage(e));
+                    } finally {
+                      setDemoEntering(false);
+                    }
+                  }}
+                >
+                  {demoEntering ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Opening live demo…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" aria-hidden />
+                      Try Live Demo
+                    </>
                   )}
                 </Button>
 
@@ -985,9 +1104,19 @@ const ApiLoginScreen: React.FC = () => {
                   </div>
                 </div>
 
+                <LegalAcceptanceCheckbox
+                  context="registration"
+                  checked={legalAccepted}
+                  disabled={isLoading}
+                  onChange={(checked, acceptances) => {
+                    setLegalAccepted(checked);
+                    setLegalAcceptances(acceptances);
+                  }}
+                />
+
                 <Button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || !legalAccepted}
                   className="w-full !bg-emerald-600 hover:!bg-emerald-700 focus-visible:!ring-emerald-500"
                   aria-busy={isLoading}
                 >

@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useBuildings } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { Building } from '../../types';
 import Input from '../ui/Input';
@@ -16,8 +16,7 @@ interface BuildingFormProps {
 }
 
 const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelete, buildingToEdit, initialName }) => {
-    const state = useFullAppState();
-    const { buildings } = state;
+    const buildings = useBuildings();
     const { showAlert } = useNotification();
     const [name, setName] = useState(buildingToEdit?.name || initialName || '');
     const [description, setDescription] = useState(buildingToEdit?.description || '');

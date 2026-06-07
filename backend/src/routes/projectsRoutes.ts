@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../db/pool.js';
+import { requireResourceQuota } from '../middleware/licenseEnforcementMiddleware.js';
 import {
   createProject,
   getProjectById,
@@ -59,7 +60,7 @@ projectsRouter.get('/projects/:id', async (req: AuthedRequest, res) => {
   }
 });
 
-projectsRouter.post('/projects', async (req: AuthedRequest, res) => {
+projectsRouter.post('/projects', requireResourceQuota('projects'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');

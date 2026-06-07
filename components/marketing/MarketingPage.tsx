@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useMarketingPageState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -256,8 +256,8 @@ const ApprovalRequestModal: React.FC<{
 };
 
 const MarketingPage: React.FC = () => {
-    const state = useFullAppState();
-    const { contacts, categories, projects, units: appUnits, invoices, documents, projectAgreements, agreementSettings, projectAgreementSettings, projectInvoiceSettings, installmentPlans, planAmenities, currentUser: appCurrentUser, users, editingEntity } = state;
+        const state = useMarketingPageState();
+    const { contacts, categories, projects, units: appUnits, invoices, documents, projectAgreements, agreementSettings, projectAgreementSettings, projectInvoiceSettings, installmentPlans, planAmenities, currentUser, users, editingEntity } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();
@@ -399,7 +399,7 @@ const MarketingPage: React.FC = () => {
             });
             return filtered;
         },
-        [usersForApproval, appCurrentUser]
+        [usersForApproval, currentUser]
     );
     
     // Units for selected project
@@ -423,7 +423,6 @@ const MarketingPage: React.FC = () => {
     const effectiveApprovalRequestedById = activePlan?.approvalRequestedById || approvalRequestedById;
     const effectiveApprovalReviewedById = activePlan?.approvalReviewedById || approvalReviewedById;
     const isMatchingUser = useMemo(() => {
-        const currentUser = currentUser;
         if (!currentUser) return () => false;
         const candidates = [
             currentUser.id,
@@ -461,7 +460,7 @@ const MarketingPage: React.FC = () => {
                 isApproverForSelectedPlan
             });
         }
-    }, [selectedPlanId, activePlan, isPendingApproval, isApproverForSelectedPlan, appCurrentUser]);
+    }, [selectedPlanId, activePlan, isPendingApproval, isApproverForSelectedPlan, currentUser]);
 
     const isReadOnly = isPendingApproval || isApprovedStatus || isLockedStatus;
     const approvalRequestedToName = effectiveApprovalRequestedToId
@@ -1380,7 +1379,7 @@ const MarketingPage: React.FC = () => {
                 unit?.name.toLowerCase().includes(q)
             );
         });
-    }, [installmentPlans, contacts, projects, appUnits, appCurrentUser, searchQuery]);
+    }, [installmentPlans, contacts, projects, appUnits, currentUser, searchQuery]);
 
     const approvalTasks = useMemo(() => {
         const currentUserId = currentUser?.id;
@@ -1390,7 +1389,7 @@ const MarketingPage: React.FC = () => {
                 plan.status === 'Pending Approval'
             )
             .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-    }, [installmentPlans, appCurrentUser]);
+    }, [installmentPlans, currentUser]);
 
     const activityFeed = useMemo(() => {
         const currentUserId = currentUser?.id;
@@ -1459,7 +1458,7 @@ const MarketingPage: React.FC = () => {
         });
 
         return feed.sort((a, b) => b.time.localeCompare(a.time));
-    }, [installmentPlans, contacts, projects, appUnits, appCurrentUser, usersForApproval]);
+    }, [installmentPlans, contacts, projects, appUnits, currentUser, usersForApproval]);
 
     const planHistoryItems = useMemo(() => {
         if (!historyRootId) return [];

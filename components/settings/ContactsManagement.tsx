@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useEntityCatalogState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { Contact, ContactType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
@@ -19,8 +19,7 @@ function normalizeContactFromApi(api: any): Contact {
         description: api.description ?? undefined,
         contactNo: api.contact_no ?? api.contactNo ?? undefined,
         companyName: api.company_name ?? api.companyName ?? undefined,
-        address: api.address ?? undefined,
-    };
+        address: api.address ?? undefined };
 }
 
 interface ContactTypeOption {
@@ -32,7 +31,7 @@ interface ContactTypeOption {
 }
 
 const ContactsManagement: React.FC = () => {
-    const appState = useFullAppState();
+        const appState = useEntityCatalogState();
     const appDispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
 
@@ -197,15 +196,13 @@ const ContactsManagement: React.FC = () => {
                 if (editingContact) {
                     appDispatch({
                         type: 'UPDATE_CONTACT',
-                        payload: { ...contactData, id: editingContact.id } as Contact,
-                    });
+                        payload: { ...contactData, id: editingContact.id } as Contact });
                     showToast('Contact updated successfully', 'success');
                 } else {
                     const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                     appDispatch({
                         type: 'ADD_CONTACT',
-                        payload: { ...contactData, id: contactId } as Contact,
-                    });
+                        payload: { ...contactData, id: contactId } as Contact });
                     showToast('Contact created successfully', 'success');
                 }
                 handleResetForm(true);

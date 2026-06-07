@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjects } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -13,8 +13,7 @@ interface ExportDataModalProps {
 }
 
 const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) => {
-    const state = useFullAppState();
-    const { projects } = state;
+            const projects = useProjects();
     const { startProgress, updateProgress, finishProgress, errorProgress } = useProgress();
     const { showToast, showAlert } = useNotification();
     
@@ -30,8 +29,7 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
         projects: 'Projects & Properties',
         agreements: 'Agreements & Contracts',
         pm: 'PM Management',
-        other: 'Other',
-    };
+        other: 'Other' };
     
     const toggleType = (typeKey: string) => {
         const newSelected = new Set(selectedTypes);
@@ -66,8 +64,7 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
                 state,
                 {
                     selectedTypes: Array.from(selectedTypes),
-                    format,
-                },
+                    format },
                 (progress, message) => {
                     updateProgress(progress, message);
                 }

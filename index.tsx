@@ -120,6 +120,8 @@ const initApp = async () => {
       { PayrollProvider },
       { PrintProvider },
       { SpellCheckerProvider },
+      { OnboardingProvider },
+      { ProductTourProvider },
     ] = await Promise.all([
       import('./App'),
       import('./context/ThemeContext'),
@@ -139,6 +141,8 @@ const initApp = async () => {
       import('./context/PayrollContext'),
       import('./context/PrintContext'),
       import('./context/SpellCheckerContext'),
+      import('./context/OnboardingContext'),
+      import('./context/ProductTourContext'),
     ]);
 
     const { getQueryClient } = await import('./config/queryClient');
@@ -158,6 +162,7 @@ const initApp = async () => {
           <ViewportProvider>
           <CompanyGate>
           <AuthProvider>
+            <OnboardingProvider>
             <AppProvider>
               <PrintProvider>
                 <PWAProvider>
@@ -166,6 +171,7 @@ const initApp = async () => {
                       <ProgressProvider>
                         <KeyboardProvider>
                           <KPIProvider>
+                            <ProductTourProvider>
                             <NotificationProvider>
                               <WhatsAppProvider>
                                 <PayrollProvider>
@@ -175,6 +181,7 @@ const initApp = async () => {
                                 </PayrollProvider>
                               </WhatsAppProvider>
                             </NotificationProvider>
+                            </ProductTourProvider>
                           </KPIProvider>
                         </KeyboardProvider>
                       </ProgressProvider>
@@ -183,6 +190,7 @@ const initApp = async () => {
                 </PWAProvider>
               </PrintProvider>
             </AppProvider>
+            </OnboardingProvider>
           </AuthProvider>
           </CompanyGate>
           </ViewportProvider>

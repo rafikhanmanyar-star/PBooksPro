@@ -17,6 +17,15 @@ import {
   type PayslipRow,
 } from './payrollTypes.js';
 
+async function enforcePayrollRunLock(
+  client: pg.PoolClient,
+  tenantId: string,
+  runId: string,
+  actorUserId?: string | null
+): Promise<void> {
+  await enforceLockForSave(client, tenantId, 'payroll', runId, actorUserId);
+}
+
 export async function listPayrollRuns(client: pg.PoolClient, tenantId: string): Promise<PayrollRunRow[]> {
   const r = await client.query<PayrollRunRow>(
     `SELECT id, tenant_id, month, year, period_start, period_end, status, total_amount::text, employee_count,
@@ -180,7 +189,13 @@ export async function updatePayrollRun(
   return u.rows[0] ?? null;
 }
 
-export async function deletePayrollRun(client: pg.PoolClient, tenantId: string, id: string): Promise<boolean> {
+export async function deletePayrollRun(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string,
+  actorUserId?: string | null
+): Promise<boolean> {
+  await enforcePayrollRunLock(client, tenantId, id, actorUserId);
   await client.query(
     `UPDATE payslips SET deleted_at = NOW(), updated_at = NOW() WHERE payroll_run_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
@@ -288,7 +303,8 @@ export async function processPayrollRun(
   client: pg.PoolClient,
   tenantId: string,
   runId: string,
-  onlyEmployeeId?: string | null
+  onlyEmployeeId?: string | null,
+  actorUserId?: string | null
 ): Promise<{
   run: PayrollRunRow;
   processing_summary: {
@@ -302,6 +318,7 @@ export async function processPayrollRun(
 }> {
   const run = await getPayrollRun(client, tenantId, runId);
   if (!run) throw new Error('Payroll run not found.');
+  await enforcePayrollRunLock(client, tenantId, runId, actorUserId);
 
   const monthNum = [
     'January',
@@ -462,10 +479,12 @@ export async function updatePayslipAmounts(
   client: pg.PoolClient,
   tenantId: string,
   payslipId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  actorUserId?: string | null
 ): Promise<PayslipRow | null> {
   const ps = await getPayslip(client, tenantId, payslipId);
   if (!ps) return null;
+  await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, actorUserId);
   const basic_pay = Number(body.basic_pay ?? body.basicPay ?? numStr(ps.basic_pay));
   const total_allowances = Number(body.total_allowances ?? body.totalAllowances ?? numStr(ps.total_allowances));
   const total_deductions = Number(body.total_deductions ?? body.totalDeductions ?? numStr(ps.total_deductions));
@@ -505,9 +524,15 @@ export async function updatePayslipAmounts(
   return updated;
 }
 
-export async function softDeletePayslip(client: pg.PoolClient, tenantId: string, payslipId: string): Promise<boolean> {
+export async function softDeletePayslip(
+  client: pg.PoolClient,
+  tenantId: string,
+  payslipId: string,
+  actorUserId?: string | null
+): Promise<boolean> {
   const ps = await getPayslip(client, tenantId, payslipId);
   if (!ps) return false;
+  await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, actorUserId);
   const runId = ps.payroll_run_id;
   const u = await client.query(
     `UPDATE payslips SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
@@ -533,6 +558,7 @@ export async function payPayslip(
 ): Promise<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }> {
   const ps = await getPayslip(client, tenantId, payslipId);
   if (!ps) throw new Error('Payslip not found.');
+  await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, userId);
   const payAmt = Number(body.amount) || numStr(ps.net_pay);
   if (!(payAmt > 0) || Number.isNaN(payAmt)) throw new Error('Payment amount must be greater than zero.');
   const accountId = String(body.accountId ?? body.account_id ?? '').trim();
@@ -588,6 +614,13 @@ export async function payBulkPayslips(
   const expenseCtx = new ExpenseCashValidationBatchContext(client, tenantId);
   const results: Array<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }> = [];
   const runIds = new Set<string>();
+  for (const line of lines) {
+    const ps = await getPayslip(client, tenantId, line.payslipId);
+    if (ps) runIds.add(ps.payroll_run_id);
+  }
+  for (const rid of runIds) {
+    await enforcePayrollRunLock(client, tenantId, rid, userId);
+  }
   for (const line of lines) {
     const body: Record<string, unknown> = {
       accountId: line.accountId,

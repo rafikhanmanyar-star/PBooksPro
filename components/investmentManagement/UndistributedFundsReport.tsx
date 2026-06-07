@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -16,7 +16,7 @@ function fmtWhole(n: number): string {
 }
 
 const UndistributedFundsReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { projects, transactions, bills } = state;
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');

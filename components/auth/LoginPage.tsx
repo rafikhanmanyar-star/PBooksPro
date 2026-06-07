@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useUsers } from '../../hooks/useSelectiveState';
 import React, { useState } from 'react';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -36,8 +36,7 @@ function clearSavedLocalLogin() {
 }
 
 const LoginPage: React.FC = () => {
-    const state = useFullAppState();
-    const { users } = state;
+    const users = useUsers();
     const dispatch = useDispatchOnly();
     const initialSaved = readSavedLocalLogin();
     const [username, setUsername] = useState(initialSaved?.username ?? '');

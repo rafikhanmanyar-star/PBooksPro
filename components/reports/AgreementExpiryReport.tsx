@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { RentalAgreementStatus } from '../../types';
 import Card from '../ui/Card';
@@ -31,7 +31,7 @@ interface AgreementExpiryRow {
 type SortKey = 'propertyName' | 'tenantName' | 'monthlyRent' | 'endDate' | 'daysUntilExpiry';
 
 const AgreementExpiryReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
     const { contacts, buildings: appBuildings, properties, rentalAgreements } = state;
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     useBills,
     useBuildings,
@@ -7,7 +7,7 @@ import {
     useTransactions,
     useVendors,
 } from '../../hooks/useSelectiveState';
-import { Bill, Transaction, TransactionType, Vendor } from '../../types';
+import { Bill, Transaction, Vendor } from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
@@ -20,36 +20,22 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
-import {
-    prepaidAppliedToBillNotInTransactions,
-    prepaidClearingDisplayDateForBill,
-    VENDOR_LEDGER_MONEY_EPS,
-} from '../../utils/vendorLedgerPrepaid';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import PrintButton from '../ui/PrintButton';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import {
+    computeVendorLedgerReport,
+    type VendorLedgerRow,
+    type VendorLedgerContext,
+} from './vendorLedgerReportEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchVendorLedgerReport } from '../../services/api/financialReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
-interface VendorLedgerRow {
-    id: string;
-    date: string;
-    vendorName: string;
-    particulars: string;
-    buildingName?: string;
-    billAmount: number; // Credit (Payable increases)
-    paidAmount: number; // Debit (Payable decreases)
-    balance: number;
-    billId?: string; // Bill ID if this row represents a bill
-    transactionId?: string; // Transaction ID if this row represents a payment
-    vendorId?: string; // Vendor ID for grouping
-    /** Same-day ordering: bill (0), prepaid clearing (1), bank payment (2). */
-    sortTie?: number;
-}
-
 interface VendorLedgerReportProps {
-    context?: 'Rental' | 'Project'; // Optional filtering context
+    context?: VendorLedgerContext;
 }
 
 type LedgerSort = { key: 'date'; direction: 'desc' } | null;
@@ -71,6 +57,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const bills = useBills();
     const transactions = useTransactions();
     const { print: triggerPrint } = usePrintContext();
+    const localOnly = isLocalOnlyMode();
 
     // Filters
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
@@ -175,255 +162,96 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         setDateSort(current => (current?.direction === 'desc' ? null : { key: 'date', direction: 'desc' }));
     };
 
-    const reportData = useMemo<VendorLedgerRow[]>(() => {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+    const ledgerEngineState = useMemo(
+        () => ({ vendors, buildings: allBuildings, properties, bills, transactions }),
+        [vendors, allBuildings, properties, bills, transactions]
+    );
 
-        const items: {
-            date: string;
-            vendorId: string;
-            particulars: string;
-            bill: number;
-            paid: number;
-            buildingName: string;
-            billId?: string;
-            transactionId?: string;
-            sortTie: number;
-        }[] = [];
+    const [serverPayload, setServerPayload] = useState<Awaited<ReturnType<typeof fetchVendorLedgerReport>> | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
-        // Helper to resolve building
-        const getBuildingName = (buildingId?: string, propertyId?: string) => {
-            if (buildingId) return allBuildings.find(b => b.id === buildingId)?.name || '';
-            if (propertyId) {
-                const prop = properties.find(p => p.id === propertyId);
-                return allBuildings.find(b => b.id === prop?.buildingId)?.name || '';
-            }
-            return '';
-        };
-
-        const getBuildingId = (buildingId?: string, propertyId?: string) => {
-            if (buildingId) return buildingId;
-            if (propertyId) {
-                const prop = properties.find(p => p.id === propertyId);
-                return prop?.buildingId;
-            }
-            return undefined;
-        };
-
-        // 1. Bills (Credit - Liability Increases)
-        // First, create a map of bills by ID to ensure we only process the latest version of each bill
-        // This prevents duplicates when bills are edited (updated bills should replace old entries, not create new ones)
-        const billsMap = new Map<string, typeof bills[0]>();
-        bills.forEach(bill => {
-            // If bill ID already exists, keep the latest one (assuming later in array = more recent)
-            // In practice, UPDATE_BILL should replace the old bill, but this ensures we handle edge cases
-            if (!billsMap.has(bill.id)) {
-                billsMap.set(bill.id, bill);
-            } else {
-                // If duplicate exists, use the one that appears later (more recent)
-                billsMap.set(bill.id, bill);
-            }
-        });
-
-        // Process unique bills only
-        billsMap.forEach(bill => {
-            const date = new Date(bill.issueDate);
-            if (date >= start && date <= end) {
-                // Filter by vendor FIRST (at source)
-                const vendorId = bill.vendorId;
-                if (!vendorId) return;
-
-                if (selectedVendorId !== 'all' && vendorId !== selectedVendorId) return;
-
-                // Filter by context
-                if (context === 'Project' && !bill.projectId) return;
-                if (context === 'Rental' && (bill.projectId || (!bill.buildingId && !bill.propertyId))) return;
-
-                // Filter by Building
-                const bId = getBuildingId(bill.buildingId, bill.propertyId);
-                if (selectedBuildingId !== 'all' && bId !== selectedBuildingId) return;
-
-                items.push({
-                    date: bill.issueDate,
-                    vendorId: vendorId,
-                    particulars: `Bill #${bill.billNumber} (${bill.description || '-'})`,
-                    bill: bill.amount,
-                    paid: 0,
-                    buildingName: getBuildingName(bill.buildingId, bill.propertyId),
-                    billId: bill.id // Store bill ID for reference
-                    ,
-                    sortTie: 0,
-                });
-            }
-        });
-
-        billsMap.forEach((bill) => {
-            const vendorId = bill.vendorId;
-            if (!vendorId) return;
-            if (selectedVendorId !== 'all' && vendorId !== selectedVendorId) return;
-            if (context === 'Project' && !bill.projectId) return;
-            if (context === 'Rental' && (bill.projectId || (!bill.buildingId && !bill.propertyId))) return;
-            const bId = getBuildingId(bill.buildingId, bill.propertyId);
-            if (selectedBuildingId !== 'all' && bId !== selectedBuildingId) return;
-
-            const prepaid = prepaidAppliedToBillNotInTransactions(bill, transactions);
-            if (prepaid <= VENDOR_LEDGER_MONEY_EPS) return;
-
-            const rowDate = prepaidClearingDisplayDateForBill(bill, transactions);
-            const d = new Date(rowDate);
-            if (d < start || d > end) return;
-
-            items.push({
-                date: rowDate,
-                vendorId,
-                particulars: `Supplier prepaid applied — Bill #${bill.billNumber}`,
-                bill: 0,
-                paid: prepaid,
-                buildingName: getBuildingName(bill.buildingId, bill.propertyId),
-                billId: bill.id,
-                sortTie: 1,
-            });
-        });
-
-        // 2. Payments (Debit - Liability Decreases)
-        transactions.forEach(tx => {
-            if (tx.type === TransactionType.EXPENSE) {
-                // Determine the actual vendor ID for this transaction
-                // For tenant-allocated bills, contactId is set to the tenant, so we look up the bill
-                let vendorId: string | undefined = tx.vendorId;
-                if (tx.billId) {
-                    const bill = bills.find(b => b.id === tx.billId);
-                    if (bill) {
-                        vendorId = bill.vendorId;
-                    }
-                }
-
-                // Skip if no vendor ID found
-                if (!vendorId) return;
-
-                // Filter by vendor FIRST (at source)
-                if (selectedVendorId !== 'all' && vendorId !== selectedVendorId) return;
-
-                const vendor = vendors.find(v => v.id === vendorId);
-                if (vendor) {
-                    const date = new Date(tx.date);
-                    if (date >= start && date <= end) {
-                        // Context filter logic
-                        if (context === 'Project' && !tx.projectId) return;
-                        if (context === 'Rental' && tx.projectId) return;
-
-                        // Filter by Building
-                        const bId = getBuildingId(tx.buildingId, tx.propertyId);
-                        if (selectedBuildingId !== 'all' && bId !== selectedBuildingId) return;
-
-                        items.push({
-                            date: tx.date,
-                            vendorId: vendorId,
-                            particulars: tx.description || 'Payment',
-                            bill: 0,
-                            paid: tx.amount,
-                            buildingName: getBuildingName(tx.buildingId, tx.propertyId),
-                            transactionId: tx.id // Store transaction ID for reference
-                            ,
-                            sortTie: 2,
-                        });
-                    }
-                }
-            }
-        });
-
-        // First, create rows with basic data (no balance yet)
-        // Note: Vendor filtering is already done at source above, so all items here are for the selected vendor
-        let rows: VendorLedgerRow[] = [];
-
-        items.forEach((item, index) => {
-            const vendorName = vendors.find(v => v.id === item.vendorId)?.name || 'Unknown';
-
-            rows.push({
-                id: `${item.vendorId}-${index}`,
-                date: item.date,
-                vendorName,
-                particulars: item.particulars,
-                billAmount: item.bill,
-                paidAmount: item.paid,
-                balance: 0, // Will be calculated after sorting
-                buildingName: item.buildingName,
-                billId: item.billId,
-                transactionId: item.transactionId,
-                vendorId: item.vendorId, // Store for grouping
-                sortTie: item.sortTie,
-            });
-        });
-
-        // Canonical sort: date ascending within vendor (when showing all vendors, group by vendor name)
-        rows.sort((a, b) => {
-            if (selectedVendorId === 'all') {
-                const vendorCompare = a.vendorName.localeCompare(b.vendorName);
-                if (vendorCompare !== 0) return vendorCompare;
-            }
-
-            const tA = new Date(a.date).getTime();
-            const tB = new Date(b.date).getTime();
-            if (tA !== tB) return tA - tB;
-            const ta = a.sortTie ?? 0;
-            const tb = b.sortTie ?? 0;
-            if (ta !== tb) return ta - tb;
-            return String(a.particulars).localeCompare(String(b.particulars));
-        });
-
-        let runningBalance = 0;
-        let currentVendor = '';
-
-        rows.forEach(row => {
-            if (selectedVendorId === 'all' && row.vendorId !== currentVendor) {
-                currentVendor = row.vendorId!;
-                runningBalance = 0;
-            }
-
-            runningBalance += row.billAmount - row.paidAmount;
-            row.balance = runningBalance;
-        });
-
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            rows = rows.filter(r =>
-                r.vendorName.toLowerCase().includes(q) ||
-                r.particulars.toLowerCase().includes(q) ||
-                (r.buildingName && r.buildingName.toLowerCase().includes(q))
-            );
+    useEffect(() => {
+        if (localOnly) {
+            setServerPayload(null);
+            setFetchError(null);
+            return;
         }
+        let cancelled = false;
+        setLoading(true);
+        setFetchError(null);
+        void fetchVendorLedgerReport({
+            startDate,
+            endDate,
+            vendorId: selectedVendorId,
+            buildingId: selectedBuildingId,
+            search: searchQuery,
+            context,
+            sortDirection: dateSort?.direction === 'desc' ? 'desc' : 'asc',
+        })
+            .then((r) => {
+                if (!cancelled) setServerPayload(r);
+            })
+            .catch((e) => {
+                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        localOnly,
+        startDate,
+        endDate,
+        selectedVendorId,
+        selectedBuildingId,
+        searchQuery,
+        context,
+        dateSort,
+    ]);
 
-        if (dateSort?.key === 'date' && dateSort.direction === 'desc') {
-            rows = [...rows].reverse();
-        }
+    const localResult = useMemo(
+        () =>
+            computeVendorLedgerReport(ledgerEngineState, {
+                startDate,
+                endDate,
+                selectedVendorId,
+                selectedBuildingId,
+                searchQuery,
+                context,
+                dateSortDesc: dateSort?.direction === 'desc',
+            }),
+        [ledgerEngineState, startDate, endDate, selectedVendorId, selectedBuildingId, searchQuery, context, dateSort]
+    );
 
-        return rows;
-
-    }, [bills, transactions, allBuildings, properties, startDate, endDate, selectedVendorId, selectedBuildingId, searchQuery, context, vendors, dateSort]);
+    const reportData = localOnly ? localResult.rows : (serverPayload?.rows ?? localResult.rows);
 
     const totals = useMemo(() => {
-        return reportData.reduce((acc, curr) => ({
-            bill: acc.bill + curr.billAmount,
-            paid: acc.paid + curr.paidAmount
-        }), { bill: 0, paid: 0 });
-    }, [reportData]);
+        if (!localOnly && serverPayload?.totals) return serverPayload.totals;
+        return localResult.totals;
+    }, [localOnly, serverPayload, localResult.totals]);
+
+    const closingBalance = useMemo(() => {
+        if (selectedVendorId === 'all') return 0;
+        if (!localOnly && serverPayload) return serverPayload.closingBalance;
+        return localResult.closingBalance;
+    }, [selectedVendorId, localOnly, serverPayload, localResult.closingBalance]);
 
     const selectionSummary = useMemo(() => {
         const vendorLabel =
             selectedVendorId === 'all'
                 ? 'All vendors'
                 : vendors.find(v => v.id === selectedVendorId)?.name ?? 'Selected vendor';
-        const closing = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
         return {
             vendorLabel,
             lineCount: reportData.length,
             totalBill: totals.bill,
             totalPaid: totals.paid,
-            closing,
+            closing: closingBalance,
         };
-    }, [reportData, selectedVendorId, vendors, totals.bill, totals.paid]);
+    }, [reportData, selectedVendorId, vendors, totals.bill, totals.paid, closingBalance]);
 
     const finalBalance = selectionSummary.closing;
 
@@ -538,6 +366,13 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                         </div>
                     </div>
                 </div>
+
+                {!localOnly && loading && (
+                    <p className="text-sm text-app-muted px-6 no-print">Loading report from server…</p>
+                )}
+                {!localOnly && fetchError && (
+                    <p className="text-sm text-rose-600 px-6 no-print">Server report failed: {fetchError}. Showing local data.</p>
+                )}
 
                 <div className="flex-1 flex min-h-0 mx-6 mb-6 gap-4">
                     <aside className="no-print w-72 shrink-0 flex flex-col rounded-xl border border-app-border bg-app-card shadow-ds-card overflow-hidden min-h-0">

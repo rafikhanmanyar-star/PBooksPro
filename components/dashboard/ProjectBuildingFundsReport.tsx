@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { TransactionType, AccountType, ContactType, LoanSubtype } from '../../types';
 import Card from '../ui/Card';
@@ -28,7 +28,7 @@ interface ProjectBuildingFundsReportProps {
 }
 
 const ProjectBuildingFundsReport: React.FC<ProjectBuildingFundsReportProps> = ({ hideZeroNetBalance = false }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'netBalance', direction: 'desc' });
 
     const handleSort = (key: SortKey) => {

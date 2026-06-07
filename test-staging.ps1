@@ -1,9 +1,9 @@
-# PBooks Pro — Staging full stack local test (pBookspro_Staging + API port 3001 + Electron client)
+# PBooks Pro - Staging full stack local test (pBookspro_Staging + API port 3001 + Electron client)
 #
 # Run from repo root:
 #   npm run test:staging
 #
-# Production-like local test (pbookspro + API port 3000) — unchanged:
+# Production-like local test (pbookspro + API port 3000) - unchanged:
 #   npm run test:local-only
 #
 # Requires: PostgreSQL with database pBookspro_Staging; copy .env.staging.example to .env.staging
@@ -34,7 +34,7 @@ Write-Host ""
 Set-Location $ProjectRoot
 
 if (-not (Test-Path $EnvFile)) {
-    Write-Host "  Missing $EnvFile — copy from .env.staging.example and set DATABASE_URL." -ForegroundColor Red
+    Write-Host "  Missing $EnvFile - copy from .env.staging.example and set DATABASE_URL." -ForegroundColor Red
     exit 1
 }
 
@@ -78,7 +78,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "  [4/8] Seeding staging defaults (test company / Rafi — idempotent)..." -ForegroundColor Yellow
+Write-Host "  [4/8] Seeding staging defaults (test company / Rafi - idempotent)..." -ForegroundColor Yellow
 & npm run db:seed:staging
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Staging seed failed! Check $EnvFile and DATABASE_URL." -ForegroundColor Red

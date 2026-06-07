@@ -3,6 +3,8 @@ import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool } from '../db/pool.js';
 import { getOnlineUserIds, recordPresence } from '../services/presenceService.js';
+import { getLicenseStatusForTenant, validateTenantLicense } from '../services/billing/licenseEnforcementService.js';
+import { runSubscriptionMaintenance } from '../services/billing/subscriptionLifecycleService.js';
 
 /**
  * Stubs + LAN presence: heartbeat + online user counts (in-memory per process).
@@ -16,16 +18,42 @@ optionalFeatureRouter.post('/auth/heartbeat', (req: AuthedRequest, res) => {
   sendSuccess(res, { ok: true });
 });
 
-optionalFeatureRouter.get('/tenants/license-status', (_req: AuthedRequest, res) => {
-  res.json({
-    isValid: true,
-    daysRemaining: 999,
-    licenseType: 'development',
-    licenseStatus: 'active',
-    isExpired: false,
-    expiryDate: null,
-    modules: ['real_estate', 'rental', 'shop'],
-  });
+optionalFeatureRouter.get('/tenants/enforcement', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await runSubscriptionMaintenance(client);
+    const status = await validateTenantLicense(client, tenantId);
+    sendSuccess(res, status);
+  } catch (e) {
+    handleRouteError(res, e, { route: 'GET /tenants/enforcement' });
+  } finally {
+    client.release();
+  }
+});
+
+optionalFeatureRouter.get('/tenants/license-status', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await runSubscriptionMaintenance(client);
+    const status = await getLicenseStatusForTenant(client, tenantId);
+    res.json(status);
+  } catch (e) {
+    handleRouteError(res, e, { route: 'GET /tenants/license-status' });
+  } finally {
+    client.release();
+  }
 });
 
 optionalFeatureRouter.get('/tenants/online-users-count', (req: AuthedRequest, res) => {

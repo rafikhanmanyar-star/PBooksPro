@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { usePrintContext } from '../../context/PrintContext';
 import { TransactionType } from '../../types';
@@ -10,7 +10,7 @@ import Button from '../ui/Button';
 type SortKey = 'categoryName' | 'budgeted' | 'totalSpent' | 'variance' | 'percentUsed';
 
 const ProjectBudgetReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || '');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'budgeted', direction: 'desc' });

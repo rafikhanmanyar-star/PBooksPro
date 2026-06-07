@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useContacts, useDispatchOnly, useProjects, useStateSelector, useUnits } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { Unit, Project, Contact, ContactType, UnitOccupancyStatus } from '../../types';
 import Input from '../ui/Input';
@@ -18,8 +18,10 @@ interface UnitFormProps {
 }
 
 const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitToEdit }) => {
-    const state = useFullAppState();
-    const { contacts, projects, units, defaultProjectId } = state;
+    const units = useUnits();
+    const contacts = useContacts();
+    const projects = useProjects();
+    const defaultProjectId = useStateSelector((s) => s.defaultProjectId);
     const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
     const [name, setName] = useState(unitToEdit?.name || '');

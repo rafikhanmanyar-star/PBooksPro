@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { Quotation, TransactionType } from '../../types';
 import Card from '../ui/Card';
@@ -31,7 +31,7 @@ interface VendorComparisonReportProps {
 }
 
 const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
     const { vendors: appVendors, quotations: appQuotations } = state;
     const { print: triggerPrint } = usePrintContext();
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');

@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, AccountType, AppState } from '../../types';
 import Card from '../ui/Card';
@@ -69,7 +69,7 @@ function mapEntryToInvestorRow(
 }
 
 const ProjectInvestorReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { transactions } = state;
     const { showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();

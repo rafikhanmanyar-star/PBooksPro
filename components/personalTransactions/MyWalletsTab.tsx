@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { usePersonalFinanceState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import { getPersonalBalancesByAccount } from './personalTransactionsService';
 import { CURRENCY } from '../../constants';
@@ -11,8 +11,7 @@ function formatAmount(amount: number): string {
 }
 
 const MyWalletsTab: React.FC = () => {
-  const state = useFullAppState();
-    const { accounts, transactions, personalTransactions } = state;
+  const { accounts, transactions, personalTransactions } = usePersonalFinanceState();
 
   const accountIdToName = useMemo(() => {
     const map = new Map<string, string>();
@@ -29,8 +28,7 @@ const MyWalletsTab: React.FC = () => {
       balancesByAccount.map(({ accountId, balance }) => ({
         accountId,
         accountName: accountIdToName.get(accountId) || accountId,
-        balance,
-      })),
+        balance })),
     [balancesByAccount, accountIdToName]
   );
 

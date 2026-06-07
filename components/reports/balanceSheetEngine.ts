@@ -1,10 +1,14 @@
 /**
  * Balance sheet calculation engine (IFRS/GAAP-oriented layout).
- * Single source for ProjectBalanceSheet UI and validation; keep formulas aligned with Project P&L (computeProjectProfitLossTotals).
- * Trial Balance (journal) is the double-entry check for posted GL activity; this report uses transactions until migration is complete.
+ * When `journalLedger` is provided, account balances derive from journal_lines (unified GL).
+ * Otherwise falls back to transaction roll-forward (legacy).
  */
 
 import type { AppState, Account } from '../../types';
+import {
+  computeAccountBalancesFromJournal,
+  type JournalLedgerInput,
+} from '../../services/financialEngine/journalLedgerCore';
 
 /** Minimal state required for balance sheet + cumulative P&L (retained earnings). */
 export type BalanceSheetStateInput = Pick<
@@ -17,7 +21,7 @@ export type BalanceSheetStateInput = Pick<
   | 'projectAgreements'
   | 'projectReceivedAssets'
   | 'units'
->;
+> & { journalLedger?: JournalLedgerInput };
 import { TransactionType, InvoiceType, AccountType, LoanSubtype } from '../../types';
 import { resolveProjectIdForTransaction } from './reportUtils';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
@@ -54,6 +58,7 @@ export const BS_GROUP_LABELS: Record<BsGroupKey, string> = {
   other_non_current_liabilities: 'Other Non-current Liabilities',
   owner_capital: 'Owner / Shareholder Capital',
   retained_earnings: 'Retained Earnings',
+  current_year_earnings: 'Current Year Earnings',
   drawings: 'Drawings / Withdrawals',
   revaluation_surplus: 'Revaluation Surplus',
   other_equity: 'Other Equity Adjustments',
@@ -83,6 +88,7 @@ export type BsGroupKey =
   | 'other_non_current_liabilities'
   | 'owner_capital'
   | 'retained_earnings'
+  | 'current_year_earnings'
   | 'drawings'
   | 'revaluation_surplus'
   | 'other_equity'
@@ -245,9 +251,10 @@ function lineFromAccount(
  */
 export function computeBalanceSheetReport(
   state: BalanceSheetStateInput,
-  options: { asOfDate: string; selectedProjectId: string }
+  options: { asOfDate: string; selectedProjectId: string; useJournalLedger?: boolean }
 ): BalanceSheetReportResult {
   const { asOfDate, selectedProjectId } = options;
+  const useJournal = options.useJournalLedger !== false && !!state.journalLedger?.journalLines?.length;
   const dateLimit = new Date(asOfDate);
   dateLimit.setHours(23, 59, 59, 999);
 
@@ -262,6 +269,21 @@ export function computeBalanceSheetReport(
   });
 
   const accountsWithTransactions = new Set<string>();
+
+  /** Journal-unified path: balances from journal_lines + opening_balance. */
+  if (useJournal && state.journalLedger) {
+    const jl = state.journalLedger;
+    const journalAccounts = jl.accounts.length ? jl.accounts : state.accounts;
+    const balMap = computeAccountBalancesFromJournal(
+      { ...jl, accounts: journalAccounts },
+      asOfDate,
+      { projectId: selectedProjectId === 'all' ? undefined : selectedProjectId }
+    );
+    for (const [accountId, bal] of balMap) {
+      accountBalances[accountId] = bal.signedBalance;
+      if (Math.abs(bal.signedBalance) > 0.01) accountsWithTransactions.add(accountId);
+    }
+  }
 
   let securityDepositsHeld = 0;
   let ownerFundsHeld = 0;
@@ -281,6 +303,7 @@ export function computeBalanceSheetReport(
   const rentalOut = new Set(categories.filter((c) => c.name === 'Owner Payout').map((c) => c.id));
 
   (state.transactions || []).forEach((tx) => {
+    if (useJournal) return;
     const txDate = new Date(tx.date);
     if (txDate > dateLimit) return;
 
@@ -361,33 +384,38 @@ export function computeBalanceSheetReport(
   });
 
   let accountsReceivable = 0;
-  const installmentInvoices = (state.invoices || []).filter((inv) => inv.invoiceType === InvoiceType.INSTALLMENT);
-  installmentInvoices.forEach((inv) => {
-    if (selectedProjectId !== 'all') {
-      if (inv.projectId !== selectedProjectId) return;
-    }
-    if (inv.agreementId) {
-      const agreement = state.projectAgreements.find((pa) => pa.id === inv.agreementId);
-      if (agreement && agreement.status === 'Cancelled') return;
-    }
-    if (inv.description?.includes('VOIDED')) return;
-    const paidAmount = inv.paidAmount || 0;
-    const due = Math.max(0, inv.amount - paidAmount);
-    accountsReceivable += due;
-  });
-
   let accountsPayable = 0;
-  (state.bills || []).forEach((bill) => {
-    if (bill.propertyId) return;
-    if (selectedProjectId !== 'all') {
-      if (bill.projectId !== selectedProjectId) return;
-    }
-    if (new Date(bill.issueDate) <= dateLimit) {
-      const paidAmount = bill.paidAmount || 0;
-      const due = Math.max(0, bill.amount - paidAmount);
-      accountsPayable += due;
-    }
-  });
+  if (!useJournal) {
+    const installmentInvoices = (state.invoices || []).filter((inv) => inv.invoiceType === InvoiceType.INSTALLMENT);
+    installmentInvoices.forEach((inv) => {
+      if (selectedProjectId !== 'all') {
+        if (inv.projectId !== selectedProjectId) return;
+      }
+      if (inv.agreementId) {
+        const agreement = state.projectAgreements.find((pa) => pa.id === inv.agreementId);
+        if (agreement && agreement.status === 'Cancelled') return;
+      }
+      if (inv.description?.includes('VOIDED')) return;
+      const paidAmount = inv.paidAmount || 0;
+      const due = Math.max(0, inv.amount - paidAmount);
+      accountsReceivable += due;
+    });
+
+    (state.bills || []).forEach((bill) => {
+      if (bill.propertyId) return;
+      if (selectedProjectId !== 'all') {
+        if (bill.projectId !== selectedProjectId) return;
+      }
+      if (new Date(bill.issueDate) <= dateLimit) {
+        const paidAmount = bill.paidAmount || 0;
+        const due = Math.max(0, bill.amount - paidAmount);
+        accountsPayable += due;
+      }
+    });
+  } else {
+    accountsReceivable = accountBalances[sysArId] ?? 0;
+    accountsPayable = -(accountBalances[sysApId] ?? 0);
+  }
 
   const receivedAssetsAccountId =
     resolveSystemAccountId(state.accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets';
@@ -436,15 +464,33 @@ export function computeBalanceSheetReport(
     const hasBalance = Math.abs(balance) > 0.01;
 
     if (acc.type === AccountType.EQUITY) {
-      if (!hasTransactions || !hasBalance) return;
+      if (acc.id === 'sys-acc-income-summary' || acc.id === 'sys-acc-expense-summary') return;
+      const isRetained = acc.id === 'sys-acc-retained-earnings';
+      const isCye = acc.id === 'sys-acc-current-year-earnings';
+      if ((!hasTransactions && !hasBalance) && !isRetained && !isCye) return;
       const display = -balance;
-      const li = lineFromAccount(acc, display, { ...cls, position: 'equity', groupKey: 'owner_capital' }, 'derived');
+      const groupKey: BsGroupKey = isRetained
+        ? 'retained_earnings'
+        : isCye
+          ? 'current_year_earnings'
+          : 'owner_capital';
+      const li = lineFromAccount(acc, display, { ...cls, position: 'equity', groupKey }, 'derived');
       equityLines.push(li);
       debugLines.push(li);
       return;
     }
 
     if (acc.type === AccountType.LIABILITY) {
+      if (isSysAp && useJournal) {
+        /** Journal mode: A/P from GL control account balance */
+        if (Math.abs(balance) > 0.01) {
+          const display = -balance;
+          const li = lineFromAccount(acc, display, cls, 'derived');
+          liabilityLines.push(li);
+          debugLines.push(li);
+        }
+        return;
+      }
       if (isSysAp) {
         /** A/P from bills replaces ledger A/P control account to avoid double count */
         return;
@@ -461,11 +507,23 @@ export function computeBalanceSheetReport(
 
     /** Assets: Bank/Cash/Asset types */
     if (acc.type === AccountType.BANK || acc.type === AccountType.CASH || acc.type === AccountType.ASSET) {
+      if (isSysAr && useJournal) {
+        if (Math.abs(balance) > 0.01) {
+          const li = lineFromAccount(acc, balance, cls, 'derived');
+          assetLines.push(li);
+          debugLines.push(li);
+        }
+        return;
+      }
       if (isSysAr) {
         /** A/R from invoices replaces control account */
         return;
       }
       if (isClearing) {
+        if (useJournal) {
+          /** Journal mode: clearing is P&L pass-through; effect is in retained earnings, not BS */
+          return;
+        }
         if (!hasBalance && !hasTransactions) return;
         /** Credit balance on clearing = liability; debit = asset — inter-account transfers should net to zero */
         const b = balance;
@@ -521,7 +579,7 @@ export function computeBalanceSheetReport(
   const finalOwnerFundsHeld = rentalLiabilityAccountFound ? 0 : Math.abs(ownerFundsHeld) > 0.01 ? ownerFundsHeld : 0;
   const finalOutstandingLoans = Math.abs(outstandingLoans) > 0.01 ? outstandingLoans : 0;
 
-  if (Math.abs(accountsReceivable) > 0.01) {
+  if (Math.abs(accountsReceivable) > 0.01 && !useJournal) {
     const arLine: BalanceSheetLine = {
       id: 'computed-ar-installments',
       name: 'Accounts Receivable (from installment invoices)',
@@ -535,7 +593,7 @@ export function computeBalanceSheetReport(
     debugLines.push(arLine);
   }
 
-  if (Math.abs(accountsPayable) > 0.01) {
+  if (Math.abs(accountsPayable) > 0.01 && !useJournal) {
     const apLine: BalanceSheetLine = {
       id: 'computed-ap-bills',
       name: 'Accounts Payable (from unpaid bills)',
@@ -643,41 +701,18 @@ export function computeBalanceSheetReport(
 
   const sumAssets = assetLines.reduce((s, l) => s + l.amount, 0);
   const sumLiab = liabilityLines.reduce((s, l) => s + l.amount, 0);
-  /** Equity before retained earnings — owner capital, in-kind, contributions, etc. */
-  const sumEqBeforeRe = equityLines.reduce((s, l) => s + l.amount, 0);
-
-  /**
-   * Closing retained earnings as the accounting residual so A = L + E always holds.
-   * P&L excludes Internal Clearing (and other) legs that still move the GL; using P&L net alone
-   * for RE breaks the balance sheet equation when clearing has a non-zero balance.
-   */
-  const retainedEarningsClosing = sumAssets - sumLiab - sumEqBeforeRe;
-  const finalRetainedEarnings = Math.abs(retainedEarningsClosing) > 0.01 ? retainedEarningsClosing : 0;
-
-  if (Math.abs(finalRetainedEarnings) > 0.01) {
-    const reLine: BalanceSheetLine = {
-      id: 'computed-retained-earnings',
-      name: 'Retained earnings (closing balance)',
-      amount: finalRetainedEarnings,
-      groupKey: 'retained_earnings',
-      position: 'equity',
-      term: 'non_current',
-      source: 'computed',
-    };
-    equityLines.push(reLine);
-    debugLines.push(reLine);
-  }
-
   const sumEq = equityLines.reduce((s, l) => s + l.amount, 0);
 
   const difference = sumAssets - (sumLiab + sumEq);
   const isBalanced = Math.abs(difference) < 1;
 
-  const retainedEarningsVsPlDelta = retainedEarningsClosing - retainedEarningsFromPL;
-  if (Math.abs(retainedEarningsVsPlDelta) > 1) {
+  const glRetainedEarnings =
+    -(accountBalances['sys-acc-retained-earnings'] ?? 0) +
+    -(accountBalances['sys-acc-current-year-earnings'] ?? 0);
+  if (useJournal && Math.abs(glRetainedEarnings - retainedEarningsFromPL) > 1) {
     validation.push({
       code: 'RE_DIFFERS_FROM_PL',
-      message: `Closing retained earnings differ from cumulative P&L net profit by ${retainedEarningsVsPlDelta.toFixed(2)}. Common causes: bill payments via Internal Clearing, profit distribution, or other P&L-excluded clearing legs — see Project P&L for activity-based net profit.`,
+      message: `GL retained earnings + current year earnings (${glRetainedEarnings.toFixed(2)}) differ from cumulative P&L net (${retainedEarningsFromPL.toFixed(2)}). Run fiscal period close or review uncategorized activity.`,
       severity: 'warning',
     });
   }

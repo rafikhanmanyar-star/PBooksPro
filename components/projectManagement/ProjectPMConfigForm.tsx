@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Project, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
@@ -18,7 +18,7 @@ interface ProjectPMConfigFormProps {
 }
 
 const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClose, project, onSave }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { bills } = state;
     const { showConfirm, showToast } = useNotification();
     const [rate, setRate] = useState(project.pmConfig?.rate?.toString() || '0');

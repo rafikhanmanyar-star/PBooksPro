@@ -34,6 +34,7 @@ import {
     resolveOwnerForPropertyOnDate,
 } from '../services/propertyOwnershipService';
 import { syncPayslipsAfterTransactionAction, getTenantIdForPayroll, type TransactionPayslipSyncInput } from '../components/payroll/services/payrollRevert';
+import { maybeQueueTransactionLogSync } from './syncTransactionLogToApi';
 import InitializationScreen from '../components/InitializationScreen';
 import { syncQueueStub as getSyncQueue } from '../services/sync/localOnlyStubs';
 import {
@@ -566,6 +567,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 a.payload,
                 state.transactions as unknown as TransactionPayslipSyncInput[],
                 newState.transactions as unknown as TransactionPayslipSyncInput[]
+            );
+        }
+
+        if (!(action as { _isRemote?: boolean })._isRemote) {
+            maybeQueueTransactionLogSync(
+                a.type,
+                !!(action as { _isRemote?: boolean })._isRemote,
+                state.transactionLog,
+                newState.transactionLog
             );
         }
 

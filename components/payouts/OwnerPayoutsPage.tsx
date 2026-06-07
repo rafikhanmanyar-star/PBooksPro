@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue } from 'react';
 import { ContactType, TransactionType, Transaction, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
@@ -68,7 +68,7 @@ type SortKey = 'name' | 'category' | 'collected' | 'paid' | 'balance';
 // --- Component ---
 
 const OwnerPayoutsPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
     const { buildings: appBuildings, whatsAppTemplates } = state;
     const dispatch = useDispatchOnly();
     const { openChat } = useWhatsApp();

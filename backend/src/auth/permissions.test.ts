@@ -1,0 +1,56 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  resolveEnterpriseRole,
+  roleHasPermission,
+  permissionsForRole,
+  buildPermissionMatrix,
+} from './permissions.js';
+
+describe('permissions matrix', () => {
+  it('maps legacy Admin to company_admin', () => {
+    assert.equal(resolveEnterpriseRole('Admin'), 'company_admin');
+  });
+
+  it('super admin has all permissions including permissions.manage', () => {
+    assert.equal(roleHasPermission('SUPER_ADMIN', 'permissions.manage'), true);
+    assert.equal(roleHasPermission('SUPER_ADMIN', 'reports.trial_balance.read'), true);
+  });
+
+  it('sales user cannot read financial reports', () => {
+    assert.equal(roleHasPermission('Sales User', 'reports.trial_balance.read'), false);
+    assert.equal(roleHasPermission('Sales User', 'reports.balance_sheet.read'), false);
+    assert.equal(roleHasPermission('Sales User', 'reports.profit_loss.read'), false);
+    assert.equal(roleHasPermission('Sales User', 'financial.write'), true);
+  });
+
+  it('read only user can read reports but not write', () => {
+    assert.equal(roleHasPermission('Read Only User', 'reports.profit_loss.read'), true);
+    assert.equal(roleHasPermission('Read Only User', 'financial.write'), false);
+    assert.equal(roleHasPermission('Read Only User', 'payroll.read'), true);
+    assert.equal(roleHasPermission('Read Only User', 'payroll.write'), false);
+  });
+
+  it('accountant can read audit logs but not manage users', () => {
+    assert.equal(roleHasPermission('Accountant', 'audit_logs.read'), true);
+    assert.equal(roleHasPermission('Accountant', 'users.manage'), false);
+    assert.equal(roleHasPermission('Accounts', 'users.manage'), false);
+  });
+
+  it('project manager can read P&L only among financial statements', () => {
+    assert.equal(roleHasPermission('Project Manager', 'reports.profit_loss.read'), true);
+    assert.equal(roleHasPermission('Project Manager', 'reports.trial_balance.read'), false);
+    assert.equal(roleHasPermission('Project Manager', 'reports.balance_sheet.read'), false);
+  });
+
+  it('company admin can manage users', () => {
+    assert.equal(roleHasPermission('Admin', 'users.manage'), true);
+    assert.equal(roleHasPermission('Admin', 'users.read'), true);
+  });
+
+  it('buildPermissionMatrix covers six enterprise roles', () => {
+    const matrix = buildPermissionMatrix();
+    assert.equal(matrix.length, 6);
+    assert.ok(permissionsForRole('Admin').includes('reports.trial_balance.read'));
+  });
+});

@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -18,7 +18,7 @@ import InstallmentConfigForm, { type InstallmentConfig } from '../settings/Insta
 import { ImportType } from '../../services/importService';
 
 const ProjectSettingsPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const hasAuthToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');

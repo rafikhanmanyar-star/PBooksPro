@@ -62,7 +62,7 @@ const LicenseManagement: React.FC = () => {
           expiryDate: null,
           daysRemaining: 999,
           isExpired: false,
-          modules: ['real_estate', 'rental', 'shop'],
+          modules: ['real_estate', 'rental'],
         });
         return;
       }

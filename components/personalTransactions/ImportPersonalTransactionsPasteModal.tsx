@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { usePersonalFinanceState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -7,20 +7,17 @@ import { CURRENCY } from '../../constants';
 import {
   addPersonalCategory,
   getPersonalIncomeCategories,
-  getPersonalExpenseCategories,
-} from './personalCategoriesService';
+  getPersonalExpenseCategories } from './personalCategoriesService';
 import { bulkImportPersonalTransactions, listPersonalTransactions } from './personalTransactionsService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
   parseExcelPaste,
-  type ParsedPasteLine,
-} from './importPaste/personalTransactionImportPaste';
+  type ParsedPasteLine } from './importPaste/personalTransactionImportPaste';
 import {
   validateImportRows,
   rowImportable,
   type ImportPreviewRow,
-  type ValidateImportContext,
-} from './importPaste/personalTransactionImportValidate';
+  type ValidateImportContext } from './importPaste/personalTransactionImportValidate';
 
 const PREVIEW_LIMIT = 500;
 const PLACEHOLDER = `Date | Account | Category | Note | PKR | Type
@@ -46,10 +43,8 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
   isOpen,
   onClose,
   onImported,
-  dataRevision,
-}) => {
-  const state = useFullAppState();
-    const { accounts, categories, personalCategories, personalTransactions } = state;
+  dataRevision }) => {
+  const { accounts, categories, personalCategories, personalTransactions } = usePersonalFinanceState();
   const [pasteText, setPasteText] = useState('');
   const [parsedLines, setParsedLines] = useState<ParsedPasteLine[]>([]);
   const [hasHeader, setHasHeader] = useState(false);
@@ -95,8 +90,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
     return rows.map((t) => ({
       transactionDate: t.transactionDate,
       amount: t.amount,
-      description: t.description ?? undefined,
-    }));
+      description: t.description ?? undefined }));
   }, [personalTransactions, dataRevision]);
 
   const validateCtx: ValidateImportContext = useMemo(
@@ -104,8 +98,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
       bankCashAccounts,
       incomeCategories: getPersonalIncomeCategories().map((c) => ({ id: c.id, name: c.name })),
       expenseCategories: getPersonalExpenseCategories().map((c) => ({ id: c.id, name: c.name })),
-      existingTransactions,
-    }),
+      existingTransactions }),
     [bankCashAccounts, existingTransactions, dataRevision, localCategoryRevision, personalCategories]
   );
 
@@ -120,8 +113,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
         .filter((r) => r.status === 'error')
         .map((r) => ({
           line: r.lineIndex + 1,
-          msgs: r.messages.filter((m) => m.level === 'error').map((m) => m.text),
-        })),
+          msgs: r.messages.filter((m) => m.level === 'error').map((m) => m.text) })),
     [previewRows]
   );
 
@@ -199,8 +191,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
         type: r.typeNormalized!,
         amount: r.amountParsed!,
         transactionDate: r.normalizedDate!,
-        description: r.note || undefined,
-      }));
+        description: r.note || undefined }));
       const { imported } = await bulkImportPersonalTransactions(payload);
       const skippedErrors = previewRows.filter((r) => r.status === 'error').length;
       const warningsInImported = toSave.filter((r) => r.status === 'warning' || r.duplicateOfExisting).length;
@@ -208,8 +199,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
         totalRows: previewRows.length,
         imported,
         skippedErrors,
-        warningsInImported,
-      };
+        warningsInImported };
       setLastSummary(summary);
       onImported(summary);
     } catch (e) {

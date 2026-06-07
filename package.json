@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.296",
+  "version": "1.2.297",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -69,6 +69,9 @@
     "test:date-only": "tsx tests/dateOnlySerialization.test.ts",
     "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",
     "test:cash-flow": "tsx tests/cashFlowEngine.test.ts",
+    "test:trial-balance": "tsx tests/trialBalanceCore.test.ts",
+    "test:ledger-reconciliation": "tsx tests/ledgerReconciliation.test.ts",
+    "test:financial-reconciliation": "tsx tests/financialReconciliationEngine.test.ts",
     "dev:backend": "npm run dev --prefix backend",
     "start:backend": "npm run start --prefix backend",
     "build:backend": "npm run build --prefix backend",

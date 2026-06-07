@@ -4,19 +4,30 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { getPool, withTransaction } from '../db/pool.js';
-import { signAccessToken } from '../auth/jwt.js';
+import { signAccessToken, signMfaToken } from '../auth/jwt.js';
+import { getMfaStatus, isMfaEnforcementEnabled, userRoleRequiresMfa } from '../services/auth/mfaService.js';
 import { bootstrapTenantChart } from '../services/tenantBootstrap.js';
+import { startTrialSubscription } from '../services/billing/subscriptionService.js';
+import { getOrCreateOnboarding } from '../services/onboarding/onboardingService.js';
+import { requireLegalAcceptances } from '../services/legal/legalAcceptanceService.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import {
   optionalAuthMiddleware,
 } from '../middleware/authMiddleware.js';
 import {
+  auditContextFromRequest,
+  recordLoginEvent,
+  recordLogoutEvent,
+} from '../services/enterpriseAuditService.js';
+import {
   publicIntrospectionLimiter,
   requireDiscoveryToken,
   requireTenantDirectoryAccess,
   tenantDirectoryLimiter,
 } from '../middleware/introspectionGuard.js';
+import { isInternalDemoTenantId } from '../middleware/demoEnvironmentMiddleware.js';
+import { attributeReferralSignup } from '../services/referrals/referralTrackingService.js';
 
 export const authRouter = Router();
 
@@ -44,6 +55,16 @@ const registerTenantSchema = z.object({
       .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Organization ID must be lowercase letters, numbers, and hyphens')
       .optional()
   ),
+  legalAcceptances: z
+    .array(
+      z.object({
+        documentType: z.string().min(1),
+        documentVersion: z.string().min(1),
+      })
+    )
+    .min(1, 'Legal document acceptance is required.'),
+  referralCode: z.string().max(32).optional(),
+  inviteToken: z.string().max(128).optional(),
 });
 
 const registerLimiter = rateLimit({
@@ -101,7 +122,9 @@ authRouter.get(
   try {
     const pool = getPool();
     const r = await pool.query<{ id: string; name: string }>(
-      `SELECT id, name FROM tenants ORDER BY LOWER(name) ASC, id ASC`
+      `SELECT id, name FROM tenants
+       WHERE id !~ '^__'
+       ORDER BY LOWER(name) ASC, id ASC`
     );
     sendSuccess(res, r.rows);
   } catch (e) {
@@ -110,9 +133,37 @@ authRouter.get(
 });
 
 /**
- * Stateless JWT clients: no server session to destroy. Return 200 so the client can clear tokens without a 404.
+ * Stateless JWT clients: record logout audit and close login session when authenticated.
  */
-authRouter.post('/auth/logout', async (_req, res) => {
+authRouter.post('/auth/logout', optionalAuthMiddleware, async (req, res) => {
+  const authed = req as import('../middleware/authMiddleware.js').AuthedRequest;
+  const ctx = auditContextFromRequest(req);
+  const loginEventId =
+    typeof req.body?.loginEventId === 'string' ? req.body.loginEventId : undefined;
+
+  if (authed.userId && authed.tenantId) {
+    try {
+      const pool = getPool();
+      const client = await pool.connect();
+      try {
+        const emailRow = await client.query<{ email: string | null }>(
+          `SELECT email FROM users WHERE id = $1 AND tenant_id = $2`,
+          [authed.userId, authed.tenantId]
+        );
+        await recordLogoutEvent(client, {
+          tenantId: authed.tenantId,
+          userId: authed.userId,
+          email: emailRow.rows[0]?.email ?? authed.userId,
+          loginEventId: loginEventId ?? null,
+          ctx,
+        });
+      } finally {
+        client.release();
+      }
+    } catch {
+      /* best-effort audit on logout */
+    }
+  }
   sendSuccess(res, { ok: true });
 });
 
@@ -125,6 +176,11 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
   const { username, password, tenantId: bodyTenant } = parsed.data;
   const tenantId = bodyTenant || 'default';
 
+  if (isInternalDemoTenantId(tenantId)) {
+    sendFailure(res, 403, 'DEMO_MASTER_PROTECTED', 'This organization is not available for login.');
+    return;
+  }
+
   try {
     const pool = getPool();
     const r = await pool.query<{
@@ -136,8 +192,9 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
       username: string;
       tenant_name: string;
       display_timezone: string | null;
+      email: string | null;
     }>(
-      `SELECT u.id, u.password_hash, u.name, u.role, u.tenant_id, u.username, t.name AS tenant_name,
+      `SELECT u.id, u.password_hash, u.name, u.role, u.tenant_id, u.username, u.email, t.name AS tenant_name,
               u.display_timezone
        FROM users u
        JOIN tenants t ON t.id = u.tenant_id
@@ -145,31 +202,109 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
       [tenantId, username]
     );
     if (r.rows.length === 0) {
+      const failClient = await pool.connect();
+      try {
+        await recordLoginEvent(failClient, {
+          tenantId,
+          email: username,
+          status: 'failed',
+          ctx: auditContextFromRequest(req),
+        });
+      } finally {
+        failClient.release();
+      }
       sendFailure(res, 401, 'AUTH_FAILED', 'Invalid credentials');
       return;
     }
     const user = r.rows[0];
     const ok = await bcrypt.compare(password, user.password_hash);
+    const ctx = auditContextFromRequest(req);
+    const auditClient = await pool.connect();
     if (!ok) {
+      try {
+        await recordLoginEvent(auditClient, {
+          tenantId,
+          userId: user.id,
+          email: user.email ?? user.username,
+          status: 'failed',
+          ctx,
+        });
+      } finally {
+        auditClient.release();
+      }
       sendFailure(res, 401, 'AUTH_FAILED', 'Invalid credentials');
       return;
     }
+    let loginEventId: string;
+    try {
+      loginEventId = await recordLoginEvent(auditClient, {
+        tenantId,
+        userId: user.id,
+        email: user.email ?? user.username,
+        status: 'success',
+        ctx,
+      });
+      const { captureMonitoringEvent } = await import('../services/monitoring/monitoringCapture.js');
+      captureMonitoringEvent({
+        category: 'user_activity',
+        severity: 'info',
+        message: `User login: ${user.username}`,
+        code: 'LOGIN_SUCCESS',
+        tenantId,
+        userId: user.id,
+        metadata: { loginEventId },
+      });
+    } finally {
+      auditClient.release();
+    }
+
+    const userPayload = {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+      tenantId: user.tenant_id,
+      displayTimezone: user.display_timezone ?? null,
+    };
+    const tenantPayload = {
+      id: user.tenant_id,
+      name: user.tenant_name,
+      companyName: user.tenant_name,
+    };
+
+    if (isMfaEnforcementEnabled() && userRoleRequiresMfa(user.role)) {
+      const mfaClient = await pool.connect();
+      try {
+        const mfaStatus = await getMfaStatus(mfaClient, user.id, user.role);
+        if (mfaStatus.enabled) {
+          sendSuccess(res, {
+            mfaRequired: true,
+            mfaToken: signMfaToken(user.id, user.tenant_id, user.role, 'mfa_challenge', loginEventId),
+            loginEventId,
+            user: userPayload,
+            tenant: tenantPayload,
+          });
+          return;
+        }
+        sendSuccess(res, {
+          mfaSetupRequired: true,
+          mfaSetupToken: signMfaToken(user.id, user.tenant_id, user.role, 'mfa_setup', loginEventId),
+          loginEventId,
+          user: userPayload,
+          tenant: tenantPayload,
+        });
+        return;
+      } finally {
+        mfaClient.release();
+      }
+    }
+
     const token = signAccessToken(user.id, user.tenant_id, user.role);
     sendSuccess(res, {
       token,
-      user: {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        role: user.role,
-        tenantId: user.tenant_id,
-        displayTimezone: user.display_timezone ?? null,
-      },
-      tenant: {
-        id: user.tenant_id,
-        name: user.tenant_name,
-        companyName: user.tenant_name,
-      },
+      loginEventId,
+      user: userPayload,
+      tenant: tenantPayload,
     });
   } catch (e) {
     handleRouteError(res, e);
@@ -196,7 +331,17 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
     return;
   }
 
-  const { companyName, email, adminUsername, adminPassword, adminName, requestedTenantId } = parsed.data;
+  const {
+    companyName,
+    email,
+    adminUsername,
+    adminPassword,
+    adminName,
+    requestedTenantId,
+    legalAcceptances,
+    referralCode,
+    inviteToken,
+  } = parsed.data;
 
   const passwordError = validatePassword(adminPassword);
   if (passwordError) {
@@ -250,6 +395,29 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
       );
 
       await bootstrapTenantChart(client, tenantId, { legacyIds: false });
+      await startTrialSubscription(client, tenantId);
+      await getOrCreateOnboarding(client, tenantId);
+      await requireLegalAcceptances(client, {
+        acceptances: legalAcceptances,
+        context: 'registration',
+        tenantId,
+        userId,
+        req,
+      });
+
+      if (referralCode?.trim()) {
+        const signupIp =
+          (typeof req.headers['x-forwarded-for'] === 'string'
+            ? req.headers['x-forwarded-for'].split(',')[0]?.trim()
+            : undefined) || req.socket.remoteAddress;
+        await attributeReferralSignup(client, {
+          refereeTenantId: tenantId,
+          refereeEmail: emailVal,
+          referralCode: referralCode.trim(),
+          inviteToken: inviteToken?.trim(),
+          signupIp,
+        });
+      }
     });
 
     const trialDaysRemaining = 30;

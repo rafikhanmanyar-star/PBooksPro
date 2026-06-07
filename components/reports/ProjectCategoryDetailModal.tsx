@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { TransactionType, Project } from '../../types';
@@ -16,7 +16,7 @@ interface ProjectCategoryDetailModalProps {
 }
 
 const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({ isOpen, onClose, project, startDate, endDate }) => {
-  const state = useFullAppState();
+  const state = useProjectReportAppState();
   const [activeTab, setActiveTab] = useState<TransactionType.INCOME | TransactionType.EXPENSE>(TransactionType.EXPENSE);
 
   const categorySummary = useMemo(() => {

@@ -111,3 +111,65 @@ export async function listTransactionLogs(
   const r = await client.query<TransactionLogRow>(q, params);
   return r.rows;
 }
+
+function pickAppendBody(body: Record<string, unknown>, actorUserId: string | null) {
+  const timestampRaw = body.timestamp ?? body.created_at ?? body.createdAt;
+  const timestamp =
+    timestampRaw != null && String(timestampRaw).trim()
+      ? String(timestampRaw)
+      : new Date().toISOString();
+
+  return {
+    timestamp,
+    action: String(body.action ?? '').trim(),
+    entity_type: String(body.entityType ?? body.entity_type ?? 'Transaction').trim(),
+    entity_id:
+      body.entityId === undefined && body.entity_id === undefined
+        ? null
+        : body.entityId === null || body.entity_id === null
+          ? null
+          : String(body.entityId ?? body.entity_id),
+    description: String(body.description ?? '').trim(),
+    user_id: (body.userId ?? body.user_id ?? actorUserId) as string | null | undefined,
+    user_label: (body.userLabel ?? body.user_label ?? body.user_name) as string | null | undefined,
+    data: body.data ?? null,
+  };
+}
+
+export async function appendTransactionLog(
+  client: pg.PoolClient,
+  tenantId: string,
+  body: Record<string, unknown>,
+  actorUserId: string | null
+): Promise<TransactionLogRow | null> {
+  const p = pickAppendBody(body, actorUserId);
+  if (!p.action) throw new Error('action is required.');
+  if (!p.description) throw new Error('description is required.');
+
+  const id =
+    typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `log_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  const dataJson =
+    p.data == null ? null : typeof p.data === 'string' ? p.data : JSON.stringify(p.data);
+
+  const r = await client.query<TransactionLogRow>(
+    `INSERT INTO transaction_log (
+       id, tenant_id, timestamp, action, entity_type, entity_id, description, user_id, user_label, data, version, created_at, updated_at
+     ) VALUES ($1, $2, $3::timestamptz, $4, $5, $6, $7, $8, $9, $10::jsonb, 1, NOW(), NOW())
+     ON CONFLICT (id) DO NOTHING
+     RETURNING ${SELECT_COLS}`,
+    [
+      id,
+      tenantId,
+      p.timestamp,
+      p.action,
+      p.entity_type,
+      p.entity_id,
+      p.description,
+      p.user_id ?? actorUserId,
+      p.user_label ?? null,
+      dataJson,
+    ]
+  );
+  return r.rows[0] ?? null;
+}

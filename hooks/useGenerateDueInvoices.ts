@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../hooks/useSelectiveState';
+import { useDispatchOnly, useInvoices, useCategories, useRentalAgreements, useStateSelector } from '../hooks/useSelectiveState';
 import { useMemo, useCallback, useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
 import { RecurringInvoiceTemplate, Invoice, InvoiceType, InvoiceStatus } from '../types';
@@ -6,12 +6,15 @@ import {
   fixRecurringNextDueWhenDayOneIsLastDayOfMonth,
   getNextRecurringDueDate,
   parseYyyyMmDdToLocalDate,
-  toLocalDateString,
-} from '../utils/dateUtils';
+  toLocalDateString } from '../utils/dateUtils';
 
 export function useGenerateDueInvoices() {
-  const state = useFullAppState();
-    const dispatch = useDispatchOnly();
+  const recurringInvoiceTemplates = useStateSelector((s) => s.recurringInvoiceTemplates);
+  const invoices = useInvoices();
+  const categories = useCategories();
+  const rentalAgreements = useRentalAgreements();
+  const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
+  const dispatch = useDispatchOnly();
   const { showToast, showConfirm } = useNotification();
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -39,7 +42,7 @@ export function useGenerateDueInvoices() {
   );
 
   const getNextInvoiceNumber = useCallback(() => {
-    const { rentalInvoiceSettings } = state;
+    // rentalInvoiceSettings from hook
     const { prefix, nextNumber, padding } = rentalInvoiceSettings || { prefix: 'INV-', nextNumber: 1, padding: 5 };
     let maxNum = nextNumber;
     invoices.forEach(inv => {
@@ -82,8 +85,7 @@ export function useGenerateDueInvoices() {
         categoryId: rentalIncomeCategory?.id,
         agreementId: template.agreementId,
         rentalMonth: issueDate.slice(0, 7),
-        securityDepositCharge: 0,
-      };
+        securityDepositCharge: 0 };
     },
     [categories]
   );
@@ -107,7 +109,7 @@ export function useGenerateDueInvoices() {
     let totalCreated = 0;
     let { maxNum, prefix, padding } = getNextInvoiceNumber();
 
-    const rentalAgreements = rentalAgreements || [];
+    const rentalAgreementsList = rentalAgreements || [];
 
     for (const template of dueTemplates) {
       let currentTemplate = { ...template };
@@ -122,7 +124,7 @@ export function useGenerateDueInvoices() {
 
       // Get agreement end date when template is linked to a rental agreement
       const agreement = currentTemplate.agreementId
-        ? rentalAgreements.find((ra) => ra.id === currentTemplate.agreementId)
+        ? rentalAgreementsList.find((ra) => ra.id === currentTemplate.agreementId)
         : undefined;
       const agreementEndDate = agreement?.endDate
         ? (() => {
@@ -171,8 +173,7 @@ export function useGenerateDueInvoices() {
     if (totalCreated > 0 && rentalInvoiceSettings) {
       dispatch({
         type: 'UPDATE_RENTAL_INVOICE_SETTINGS',
-        payload: { ...rentalInvoiceSettings, nextNumber: maxNum },
-      });
+        payload: { ...rentalInvoiceSettings, nextNumber: maxNum } });
       showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
     }
     setIsGenerating(false);

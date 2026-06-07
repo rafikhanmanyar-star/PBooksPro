@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { ProjectReceivedAsset, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
@@ -23,7 +23,7 @@ interface RecordSaleModalProps {
 }
 
 const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asset, onSuccess, mode = 'record' }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
 

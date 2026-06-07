@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { usePersonalFinanceState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   BarChart,
@@ -7,20 +7,17 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+  ResponsiveContainer } from 'recharts';
 import Button from '../ui/Button';
 import { CURRENCY, ICONS } from '../../constants';
 import {
   listPersonalTransactions,
   deletePersonalTransaction,
-  type PersonalTransactionRow,
-} from './personalTransactionsService';
+  type PersonalTransactionRow } from './personalTransactionsService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
   getPersonalIncomeCategories,
-  getPersonalExpenseCategories,
-} from './personalCategoriesService';
+  getPersonalExpenseCategories } from './personalCategoriesService';
 import AddPersonalTransactionModal from './AddPersonalTransactionModal';
 import ImportPersonalTransactionsPasteModal from './ImportPersonalTransactionsPasteModal';
 
@@ -52,8 +49,7 @@ const DEFAULT_WIDTHS: Record<Exclude<ColId, 'actions'>, number> = {
   notes: 200,
   income: 108,
   expense: 108,
-  net: 128,
-};
+  net: 128 };
 
 /** First day of the month, 12 months ago through today (rolling window for header chart). */
 function getRolling12MonthsDateFrom(): string {
@@ -94,16 +90,14 @@ function getDateRangeForPeriod(period: PersonalTxPeriodFilter): { dateFrom?: str
     case 'thisMonth':
       return {
         dateFrom: `${y}-${m}-01`,
-        dateTo: `${y}-${m}-${String(now.getDate()).padStart(2, '0')}`,
-      };
+        dateTo: `${y}-${m}-${String(now.getDate()).padStart(2, '0')}` };
     case 'lastMonth': {
       const last = new Date(y, now.getMonth() - 1, 1);
       const lastM = String(last.getMonth() + 1).padStart(2, '0');
       const lastLast = new Date(y, last.getMonth() + 1, 0);
       return {
         dateFrom: `${last.getFullYear()}-${lastM}-01`,
-        dateTo: `${last.getFullYear()}-${lastM}-${String(lastLast.getDate()).padStart(2, '0')}`,
-      };
+        dateTo: `${last.getFullYear()}-${lastM}-${String(lastLast.getDate()).padStart(2, '0')}` };
     }
     default:
       return {};
@@ -171,8 +165,7 @@ function compareTxTableRows(a: TxTableRow, b: TxTableRow, col: SortableCol, dir:
 }
 
 const PersonalTransactionsTab: React.FC = () => {
-  const state = useFullAppState();
-    const { categories, transactions, personalCategories, personalTransactions } = state;
+  const { categories, transactions, personalCategories, personalTransactions } = usePersonalFinanceState();
   const [search, setSearch] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PersonalTxPeriodFilter>('thisMonth');
   const [categoryFilterId, setCategoryFilterId] = useState('');
@@ -201,8 +194,7 @@ const PersonalTransactionsTab: React.FC = () => {
       listPersonalTransactions(
         {
           dateFrom: getRolling12MonthsDateFrom(),
-          limit: 10000,
-        },
+          limit: 10000 },
         !isLocalOnlyMode() ? personalTransactions : undefined
       ),
     [refreshKey, personalTransactions]
@@ -225,8 +217,7 @@ const PersonalTransactionsTab: React.FC = () => {
       return {
         label: monthKeyToShortLabel(k),
         income: t.income,
-        expense: t.expense,
-      };
+        expense: t.expense };
     });
   }, [chartTransactions]);
 
@@ -243,8 +234,7 @@ const PersonalTransactionsTab: React.FC = () => {
         {
           ...dateRange,
           categoryId: categoryFilterId || undefined,
-          limit: 5000,
-        },
+          limit: 5000 },
         !isLocalOnlyMode() ? personalTransactions : undefined
       ),
     [dateRange.dateFrom, dateRange.dateTo, categoryFilterId, refreshKey, personalTransactions]
@@ -263,8 +253,7 @@ const PersonalTransactionsTab: React.FC = () => {
         category: categoryIdToName.get(tx.personalCategoryId) || '—',
         notes: desc || '—',
         income: amt > 0 ? amt : 0,
-        expense: amt < 0 ? Math.abs(amt) : 0,
-      };
+        expense: amt < 0 ? Math.abs(amt) : 0 };
     });
   }, [allTransactions, categoryIdToName]);
 
@@ -303,8 +292,7 @@ const PersonalTransactionsTab: React.FC = () => {
     () =>
       searchFiltered.map((r) => ({
         ...r,
-        runningBalance: balanceById.get(r.id) ?? 0,
-      })),
+        runningBalance: balanceById.get(r.id) ?? 0 })),
     [searchFiltered, balanceById]
   );
 
@@ -321,8 +309,7 @@ const PersonalTransactionsTab: React.FC = () => {
       totalCount: allTransactions.length,
       income,
       expenses,
-      net: income - expenses,
-    };
+      net: income - expenses };
   }, [allTransactions]);
 
   const totalItems = sortedRows.length;

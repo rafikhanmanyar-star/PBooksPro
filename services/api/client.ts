@@ -259,6 +259,7 @@ export class ApiClient {
     // Auth endpoints (login, register, lookup) don't require a token.
     const isPublicEndpoint = endpoint.includes('/auth/') ||
                              endpoint.includes('/register-tenant') ||
+                             endpoint.includes('/legal/') ||
                              endpoint.includes('/health') ||
                              endpoint.includes('/schema/version') ||
                              endpoint.includes('/app-info/version') ||
@@ -278,8 +279,8 @@ export class ApiClient {
       ...(fetchOpts.headers as Record<string, string> | undefined),
     };
 
-    // Add auth token if available
-    if (this.token) {
+    // Add auth token if available (custom Authorization header takes precedence)
+    if (this.token && !headers['Authorization']) {
       // Validate token format before sending
       const tokenParts = this.token.split('.');
       if (tokenParts.length !== 3) {

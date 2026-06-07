@@ -48,6 +48,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       errorType: 'react_error_boundary'
     });
 
+    void import('../services/api/adminMonitoringApi').then(({ monitoringIngestApi }) =>
+      monitoringIngestApi.reportClientError({
+        message: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack ?? undefined,
+        url: typeof window !== 'undefined' ? window.location.href : undefined,
+        metadata: { errorType: 'react_error_boundary' },
+      }).catch(() => {})
+    );
+
     // Dispatch to app context if available
     if (this.props.dispatch) {
       try {

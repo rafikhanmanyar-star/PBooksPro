@@ -4,7 +4,7 @@
  * confirms, triggers window.print() and resets on afterprint.
  */
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { usePrintSettings } from '../../hooks/useSelectiveState';
 import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePrintContext } from '../../context/PrintContext';
@@ -46,8 +46,7 @@ const PRINT_DELAY_MS = 350;
 
 function usePrintContent(): React.ReactNode {
   const { activeDocument, layoutType } = usePrintContext();
-  const state = useFullAppState();
-  const printSettings = state.printSettings;
+  const printSettings = usePrintSettings();
 
   if (activeDocument == null || !layoutType) return null;
 

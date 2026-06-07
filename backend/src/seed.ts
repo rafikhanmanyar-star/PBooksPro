@@ -2,12 +2,17 @@ import bcrypt from 'bcryptjs';
 import { getPool } from './db/pool.js';
 import { bootstrapTenantChart } from './services/tenantBootstrap.js';
 import { logger } from './utils/logger.js';
+import { validatePassword } from './utils/passwordPolicy.js';
+import { isDemoEnvironmentEnabled } from './constants/demoEnvironment.js';
+import { provisionDemoEnvironment } from './services/demo/demoResetService.js';
 
 export const STAGING_TENANT_ID = 'test-company';
 export const STAGING_TENANT_NAME = 'test company';
+/** Default staging login when STAGING_ADMIN_PASSWORD is unset (min 8 chars per password policy). */
+export const STAGING_DEFAULT_ADMIN_PASSWORD = 'Rafi1234';
 
 /**
- * Idempotent staging defaults: organization "test company", admin Rafi / Rafi123.
+ * Idempotent staging defaults: organization "test company", admin Rafi / Rafi1234.
  * Safe to run on every deploy; upserts tenant, user password, and system chart.
  */
 export async function seedStagingDefaults(): Promise<void> {
@@ -15,7 +20,13 @@ export async function seedStagingDefaults(): Promise<void> {
   const tenantId = (process.env.STAGING_TENANT_ID || STAGING_TENANT_ID).trim();
   const tenantName = (process.env.STAGING_TENANT_NAME || STAGING_TENANT_NAME).trim();
   const username = (process.env.STAGING_ADMIN_USERNAME || 'Rafi').trim();
-  const password = process.env.STAGING_ADMIN_PASSWORD || 'Rafi123';
+  const password = process.env.STAGING_ADMIN_PASSWORD || STAGING_DEFAULT_ADMIN_PASSWORD;
+  if (process.env.NODE_ENV === 'production' || process.env.STAGING_ADMIN_PASSWORD) {
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      throw new Error(`Staging admin password rejected: ${passwordError}`);
+    }
+  }
   const userId = (process.env.STAGING_ADMIN_USER_ID || 'user_rafi_test_company').trim();
 
   await pool.query(
@@ -39,14 +50,19 @@ export async function seedStagingDefaults(): Promise<void> {
 
   await bootstrapTenantChart(pool, tenantId, { legacyIds: false });
 
-  logger.info(
-    `Staging seed complete — org "${tenantName}" (${tenantId}) | ${username} / ${password}`
-  );
+  logger.info(`Staging seed complete — org "${tenantName}" (${tenantId}) | user "${username}"`);
+  if (process.env.NODE_ENV !== 'production') {
+    logger.debug('Staging admin credentials applied from environment');
+  }
 }
 
-/** Runs seedStagingDefaults when SEED_STAGING=1 (including NODE_ENV=production staging API). */
+/** Runs seedStagingDefaults when SEED_STAGING=1 (requires ALLOW_STAGING_SEED_IN_PRODUCTION=true in production). */
 export async function seedStagingIfEnabled(): Promise<void> {
   if (process.env.SEED_STAGING !== '1') return;
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_STAGING_SEED_IN_PRODUCTION !== 'true') {
+    logger.warn('Refusing staging seed in production (set ALLOW_STAGING_SEED_IN_PRODUCTION=true to override)');
+    return;
+  }
   await seedStagingDefaults();
 }
 
@@ -81,7 +97,7 @@ export async function seedDevIfEnabled(): Promise<void> {
     );
   }
 
-  const rafiPassword = process.env.DEV_RAFI_PASSWORD ?? 'Rafi123';
+  const rafiPassword = process.env.DEV_RAFI_PASSWORD ?? STAGING_DEFAULT_ADMIN_PASSWORD;
   const rafiHash = await bcrypt.hash(rafiPassword, 10);
   const rafiCount = await pool.query(`SELECT 1 FROM users WHERE tenant_id = 'default' AND LOWER(username) = LOWER('Rafi') LIMIT 1`);
   if (rafiCount.rows.length === 0) {
@@ -94,5 +110,17 @@ export async function seedDevIfEnabled(): Promise<void> {
 
   await bootstrapTenantChart(pool, 'default', { legacyIds: true });
 
-  logger.info('Dev seed complete — tenant=default | admin / (DEV_ADMIN_PASSWORD or "admin") | Rafi / (DEV_RAFI_PASSWORD or "Rafi123")');
+  logger.info(
+    `Dev seed complete — tenant=default | admin / (DEV_ADMIN_PASSWORD or "admin") | Rafi / (DEV_RAFI_PASSWORD or "${STAGING_DEFAULT_ADMIN_PASSWORD}")`
+  );
+}
+
+/** Public demo sandbox + optional internal master template. */
+export async function seedDemoIfEnabled(): Promise<void> {
+  if (!isDemoEnvironmentEnabled()) return;
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED_IN_PRODUCTION !== 'true') {
+    logger.warn('Refusing demo seed in production (set ALLOW_DEMO_SEED_IN_PRODUCTION=true to override)');
+    return;
+  }
+  await provisionDemoEnvironment();
 }

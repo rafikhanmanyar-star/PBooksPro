@@ -17,6 +17,8 @@ import { useLicense } from './context/LicenseContext';
 import LicenseLockScreen from './components/license/LicenseLockScreen';
 import PaymentSuccessPage from './components/license/PaymentSuccessPage';
 import PaddleCheckoutPage from './components/license/PaddleCheckoutPage';
+import BillingCheckoutPage from './components/billing/BillingCheckoutPage';
+import LegalDocumentPage from './components/legal/LegalDocumentPage';
 import { useAuth } from './context/AuthContext';
 import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode, getAppDisplayName } from './config/apiUrl';
 import { verifyServerReachable } from './services/lanDiscovery';
@@ -59,6 +61,9 @@ import SchemaBlockedScreen from './components/diagnostics/SchemaBlockedScreen';
 import StabilityBanner from './components/stability/StabilityBanner';
 import ApiLoginScreen from './components/auth/ApiLoginScreen';
 import ConnectServerScreen from './components/auth/ConnectServerScreen';
+import DemoProductTour from './components/onboarding/DemoProductTour';
+import OnboardingGate from './components/onboarding/OnboardingGate';
+import { isDemoModeActive } from './config/demoEnvironment';
 
 
 // Lazy Load Components
@@ -192,6 +197,8 @@ const App: React.FC = () => {
   // Check for payment success page URL - MUST be before any early returns
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [showPaddleCheckout, setShowPaddleCheckout] = useState(false);
+  const [showBillingCheckout, setShowBillingCheckout] = useState(false);
+  const [legalPageSlug, setLegalPageSlug] = useState<string | null>(null);
 
   // Clear any stuck body styles from previous session (e.g. resize drag that never got mouseup)
   useEffect(() => {
@@ -217,8 +224,28 @@ const App: React.FC = () => {
       searchParams.has('status') ||
       searchParams.has('_ptxn');
 
+    if (pathname === '/billing/checkout' || pathname.endsWith('/billing/checkout')) {
+      setShowBillingCheckout(true);
+      setShowPaddleCheckout(false);
+      setShowPaymentSuccess(false);
+      setLegalPageSlug(null);
+      return;
+    }
+
+    const legalMatch = pathname.match(/\/legal\/([^/]+)\/?$/);
+    if (legalMatch) {
+      setLegalPageSlug(legalMatch[1]);
+      setShowBillingCheckout(false);
+      setShowPaddleCheckout(false);
+      setShowPaymentSuccess(false);
+      return;
+    }
+
+    setLegalPageSlug(null);
+
     if (pathname === '/license/paddle-checkout' || pathname.endsWith('/license/paddle-checkout')) {
       setShowPaddleCheckout(true);
+      setShowBillingCheckout(false);
       setShowPaymentSuccess(false);
       return;
     }
@@ -228,9 +255,11 @@ const App: React.FC = () => {
       (pathname === '/' && hasPaymentParams)) {
       setShowPaymentSuccess(true);
       setShowPaddleCheckout(false);
+      setShowBillingCheckout(false);
     } else {
       setShowPaymentSuccess(false);
       setShowPaddleCheckout(false);
+      setShowBillingCheckout(false);
     }
   }, []);
 
@@ -646,6 +675,11 @@ const App: React.FC = () => {
   // Company selection flow (loading/select/create/login) is rendered by CompanyGate
   // outside AppProvider so the Create Company form is not affected by DB load errors.
 
+  // Public legal pages (no authentication required)
+  if (legalPageSlug) {
+    return <LegalDocumentPage slug={legalPageSlug} />;
+  }
+
   // Show loading while checking authentication
   if (authLoading) {
     return <Loading message="Checking authentication..." />;
@@ -675,6 +709,10 @@ const App: React.FC = () => {
   }
 
   // Show Paddle checkout page if URL matches
+  if (showBillingCheckout) {
+    return <BillingCheckoutPage />;
+  }
+
   if (showPaddleCheckout) {
     return <PaddleCheckoutPage />;
   }
@@ -714,6 +752,8 @@ const App: React.FC = () => {
 
   return (
     <OfflineProvider>
+      {isDemoModeActive() && <DemoProductTour />}
+      <OnboardingGate />
       <PrintController />
       {/* Force password change modal for new company admin */}
       {isLocalOnlyMode() && companyCtx?.forcePasswordChange && (

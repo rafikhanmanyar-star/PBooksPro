@@ -52,7 +52,7 @@ import { payrollApi } from '../../services/api/payrollApi';
 import PayslipModal from './modals/PayslipModal';
 import AdjustmentModal from './modals/AdjustmentModal';
 import { useAuth } from '../../context/AuthContext';
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjects, useBuildings, useWhatsAppMode } from '../../hooks/useSelectiveState';
 import { usePrintContext } from '../../context/PrintContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
@@ -66,17 +66,18 @@ import {
   allocationChangeOnlyAffectsFutureAllocations,
   getLatestPayslipPeriodEndYyyyMmDd,
   normalizeAllocationsTotal,
-  redistributeProjectBuildingShares,
-} from './utils/allocationPercentages';
+  redistributeProjectBuildingShares } from './utils/allocationPercentages';
 
 const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
   employee: initialEmployee,
   onBack,
   onUpdate,
-  payrollStorageRevision = 0,
-}) => {
-  const { user, tenant } = useAuth();
-  const appState = useFullAppState();
+  payrollStorageRevision = 0 }) => {
+  const { user, tenant } = useAuth()
+  const projects = useProjects();
+  const buildings = useBuildings();
+  const whatsAppMode = useWhatsAppMode();;
+  
   const { print: triggerPrint } = usePrintContext();
   const { openChat } = useWhatsApp();
   const tenantId = tenant?.id || '';
@@ -113,7 +114,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
     return storageService.getDepartments(tenantId).filter(d => d.is_active);
   }, [tenantId]);
 
-  const globalBuildings = useMemo(() => (appState.buildings || []).map(b => ({ id: b.id, name: b.name })), [appState.buildings]);
+  const globalBuildings = useMemo(() => (buildings || []).map(b => ({ id: b.id, name: b.name })), [buildings]);
 
   const MONTH_ORDER: Record<string, number> = { January: 1, February: 2, March: 3, April: 4, May: 5, June: 6, July: 7, August: 8, September: 9, October: 10, November: 11, December: 12 };
   const employeePayslips = useMemo((): { run: PayrollRun; payslip: Payslip }[] => {
@@ -134,14 +135,14 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
 
   // In local-only mode, use projects from AppContext (Settings → Assets → Projects)
   useEffect(() => {
-    if (!isLocalOnlyMode() || !appState.projects) return;
-    const payrollProjects = mapAppProjectsToPayroll(appState.projects, tenantId);
+    if (!isLocalOnlyMode() || !projects) return;
+    const payrollProjects = mapAppProjectsToPayroll(projects, tenantId);
     const activeProjects = payrollProjects.filter(p => p.status === 'ACTIVE');
     setGlobalProjects(activeProjects);
     if (payrollProjects.length > 0) {
       storageService.setProjectsCache(payrollProjects);
     }
-  }, [tenantId, appState.projects]);
+  }, [tenantId, projects]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -490,8 +491,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
       project_id: first.id,
       project_name: first.name,
       percentage: editProjects.length === 0 ? 100 : 0,
-      start_date: defaultStart,
-    };
+      start_date: defaultStart };
     setEditFormData({ ...editFormData, projects: [...editProjects, newP] });
   };
 
@@ -533,8 +533,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
       building_id: first.id,
       building_name: first.name,
       percentage: editBuildings.length === 0 ? (editProjects.length > 0 ? 0 : 100) : 0,
-      start_date: defaultStart,
-    };
+      start_date: defaultStart };
     setEditFormData({ ...editFormData, buildings: [...editBuildings, newB] });
   };
 
@@ -1402,7 +1401,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
                         try {
                           sendOrOpenWhatsApp(
                             { contact: contactLike, message, phoneNumber: contactLike.contactNo || undefined },
-                            () => appState.whatsAppMode,
+                            () => whatsAppMode,
                             openChat
                           );
                         } catch (err) {

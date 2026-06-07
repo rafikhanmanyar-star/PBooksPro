@@ -7,7 +7,6 @@ import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
 import {
   insertJournalEntry,
-  isJournalReversed,
   reverseJournalEntry,
   type CreateJournalBody,
 } from './journalService.js';
@@ -47,16 +46,17 @@ async function findActiveJournalEntryIdForTransaction(
   transactionId: string
 ): Promise<string | null> {
   const r = await client.query<{ id: string }>(
-    `SELECT id FROM journal_entries
-     WHERE tenant_id = $1 AND source_module = $2 AND source_id = $3
-     ORDER BY created_at DESC
+    `SELECT je.id FROM journal_entries je
+     WHERE je.tenant_id = $1 AND je.source_module = $2 AND je.source_id = $3
+       AND NOT EXISTS (
+         SELECT 1 FROM journal_reversals jr
+         WHERE jr.original_journal_entry_id = je.id AND jr.tenant_id = $1
+       )
+     ORDER BY je.created_at DESC, je.id DESC
      LIMIT 1`,
     [tenantId, TRANSACTION_JOURNAL_SOURCE_MODULE, transactionId]
   );
-  const id = r.rows[0]?.id;
-  if (!id) return null;
-  if (await isJournalReversed(client, id, tenantId)) return null;
-  return id;
+  return r.rows[0]?.id ?? null;
 }
 
 export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLineInput[] | null {

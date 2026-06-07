@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useTransactionLog, useCurrentUser } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionLogEntry, Transaction } from '../../types';
 import Modal from '../ui/Modal';
@@ -11,8 +11,7 @@ import {
     formatDate,
     fromPickerDateToYyyyMmDd,
     startOfMonthYyyyMmDd,
-    todayLocalYyyyMmDd,
-} from '../../utils/dateUtils';
+    todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import DatePicker from '../ui/DatePicker';
 import { exportJsonToExcel } from '../../services/exportService';
 import { useNotification } from '../../context/NotificationContext';
@@ -25,10 +24,10 @@ interface TransactionLogViewerProps {
 type DateRangeType = 'today' | 'thisMonth' | 'lastMonth' | 'custom';
 
 const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onClose }) => {
-    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
-    const { currentUser } = state;
+    const currentUser = useCurrentUser();
+    const transactionLog = useTransactionLog();
     
     const [dateRange, setDateRange] = useState<DateRangeType>('today');
     const [startDate, setStartDate] = useState(todayLocalYyyyMmDd());

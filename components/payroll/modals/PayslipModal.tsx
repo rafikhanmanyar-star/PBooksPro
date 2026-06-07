@@ -2,7 +2,7 @@
  * PayslipModal - View employee payslip for a specific payroll run
  */
 
-import { useDispatchOnly, useFullAppState } from '../../../hooks/useSelectiveState';
+import { useDispatchOnly, usePayrollPaymentState } from '../../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { X, Download, Printer, ShieldCheck, Building2, Plus, TrendingDown, Wallet, CheckCircle2, Loader2, AlertCircle, MessageCircle } from 'lucide-react';
 import { PayrollEmployee, PayrollRun, Payslip } from '../types';
@@ -33,8 +33,7 @@ interface PayslipModalProps {
 
 const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete, initialAction }) => {
   const { tenant } = useAuth();
-  const state = useFullAppState();
-    const { accounts, categories, projects: appProjects, transactions } = state;
+  const { accounts, categories, projects: appProjects, transactions } = usePayrollPaymentState();
     const dispatch = useDispatchOnly();
   const { print: triggerPrint } = usePrintContext();
   const companyName = tenant?.companyName || tenant?.name || 'Organization';

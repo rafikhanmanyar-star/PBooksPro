@@ -48,6 +48,25 @@ const RENTAL_DEFAULT_KEYS = [
   'end_date',
 ];
 
+function defaultCountFieldKey(
+  fields: CustomReportFieldMeta[],
+  moduleKey: CustomReportModuleKey
+): string {
+  const nonCalculated = fields.filter((f) => f.kind !== 'calculated');
+  const fallback =
+    moduleKey === CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS ? 'agreement_number' : 'booking_no';
+  return nonCalculated.find((f) => f.aggregatable)?.key ?? nonCalculated[0]?.key ?? fallback;
+}
+
+function detailKeysForPayload(
+  selectedKeys: string[],
+  fields: CustomReportFieldMeta[],
+  grouped: boolean
+): string[] {
+  if (!grouped) return selectedKeys;
+  return selectedKeys.filter((k) => fields.find((f) => f.key === k)?.kind !== 'calculated');
+}
+
 export type BuilderAggregateRow = {
   id: string;
   field: string;
@@ -141,9 +160,11 @@ export const CustomReportBuilderPage: React.FC = () => {
   );
 
   const buildPayload = useCallback(() => {
+    const fieldMeta = metaQuery.data?.fields ?? [];
+    const isGroupedMode = groupBy.length > 0;
     const base: Record<string, unknown> = {
       module: moduleKey,
-      fields: selectedKeys,
+      fields: detailKeysForPayload(selectedKeys, fieldMeta, isGroupedMode),
       filters: filters.map((f) => {
         const row: Record<string, unknown> = {
           field: f.field,
@@ -165,13 +186,13 @@ export const CustomReportBuilderPage: React.FC = () => {
       page,
       pageSize,
     };
-    if (groupBy.length) {
+    if (isGroupedMode) {
       base.groupBy = groupBy;
       base.aggregates = aggregates.length
         ? aggregates.map(({ field, operation }) => ({ field, operation }))
-        : [{ field: selectedKeys[0] || 'booking_no', operation: 'COUNT' }];
+        : [{ field: defaultCountFieldKey(fieldMeta, moduleKey), operation: 'COUNT' }];
     }
-    if (userFormulas.length) base.formulas = userFormulas;
+    if (userFormulas.length && !isGroupedMode) base.formulas = userFormulas;
     return base;
   }, [
     moduleKey,
@@ -185,6 +206,7 @@ export const CustomReportBuilderPage: React.FC = () => {
     page,
     pageSize,
     userFormulas,
+    metaQuery.data?.fields,
   ]);
 
   const runMutation = useMutation({
@@ -506,7 +528,9 @@ export const CustomReportBuilderPage: React.FC = () => {
 
         <section className="lg:col-span-4 flex flex-col min-h-0 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900/40">
           <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-bold uppercase tracking-wide text-slate-500">
-            Selected columns ({selectedKeys.length})
+            {groupBy.length > 0
+              ? `Group dimensions preview (${groupBy.length} selected)`
+              : `Selected columns (${selectedKeys.length})`}
           </div>
           <ul className="flex-1 overflow-auto p-2 space-y-1">
             {selectedKeys.map((k, idx) => {
@@ -581,11 +605,20 @@ export const CustomReportBuilderPage: React.FC = () => {
                   onChange={(e) => setSortField(e.target.value)}
                 >
                   {groupBy.length > 0
-                    ? (metaQuery.data?.groupDimensions ?? []).map((g) => (
-                        <option key={g} value={g}>
-                          {g.replace(/_/g, ' ')}
-                        </option>
-                      ))
+                    ? [
+                        ...(metaQuery.data?.groupDimensions ?? []).map((g) => (
+                          <option key={g} value={g}>
+                            {g.replace(/_/g, ' ')}
+                          </option>
+                        )),
+                        ...(preview?.columns ?? [])
+                          .filter((c) => c.key.startsWith('agg_'))
+                          .map((c) => (
+                            <option key={c.key} value={c.key}>
+                              {c.label ?? c.key}
+                            </option>
+                          )),
+                      ]
                     : (metaQuery.data?.fields ?? [])
                         .filter((f) => f.sortable)
                         .map((f) => (
@@ -639,7 +672,13 @@ export const CustomReportBuilderPage: React.FC = () => {
                         )
                       }
                     >
-                      {(metaQuery.data?.fields ?? []).map((f) => (
+                      {(metaQuery.data?.fields ?? [])
+                        .filter((f) => {
+                          if (f.kind === 'calculated') return false;
+                          if (agg.operation === 'COUNT') return true;
+                          return f.aggregatable;
+                        })
+                        .map((f) => (
                         <option key={f.key} value={f.key}>
                           {f.label}
                         </option>
@@ -677,6 +716,7 @@ export const CustomReportBuilderPage: React.FC = () => {
               </div>
             )}
           </div>
+          {groupBy.length === 0 && (
           <div className="border-t border-slate-200 dark:border-slate-700 p-2 space-y-2">
             <p className="text-xs font-semibold text-slate-500">Ad-hoc formula</p>
             <input
@@ -718,6 +758,7 @@ export const CustomReportBuilderPage: React.FC = () => {
               </ul>
             )}
           </div>
+          )}
         </section>
 
         <section className="lg:col-span-5 flex flex-col min-h-0 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900/40">

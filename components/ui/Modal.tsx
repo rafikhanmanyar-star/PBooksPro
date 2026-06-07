@@ -182,7 +182,8 @@ const Modal: React.FC<ModalProps> = ({
         style={maxHeightStyle}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={hideHeader ? undefined : 'modal-title'}
+        aria-label={hideHeader ? title : undefined}
       >
         {!hideHeader && (
           <div className="flex justify-between items-center p-3 sm:p-4 border-b border-app-border flex-shrink-0 bg-app-modal">

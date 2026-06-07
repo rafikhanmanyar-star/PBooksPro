@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Property, Contact, ContactType, Building, InvoiceType } from '../../types';
 import Input from '../ui/Input';
@@ -26,7 +26,6 @@ interface PropertyFormProps {
 }
 
 const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelete, propertyToEdit, contacts, buildings, properties }) => {
-    const state = useFullAppState();
     const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();
     const { isAuthenticated } = useAuth();

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     useBills,
     useCategories,
@@ -9,7 +9,7 @@ import {
     useStateSelector,
     useTransactions,
 } from '../../hooks/useSelectiveState';
-import { ContactType, InvoiceType, InvoiceStatus, TransactionType, Transaction, Invoice } from '../../types';
+import { ContactType, InvoiceType, InvoiceStatus, Transaction, Invoice } from '../../types';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
@@ -25,24 +25,18 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
+import {
+    computeTenantLedgerReport,
+    type TenantLedgerItem,
+} from './tenantLedgerReportEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchTenantLedgerReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'custom';
 
 const LEDGER_TREE_FOLDER_ID = 'ledger-tree-folder';
 
 const ledgerLetterNodeId = (letter: string) => `ledger-letter-${letter}`;
-
-interface LedgerItem {
-    id: string;
-    date: string;
-    tenantName: string;
-    particulars: string;
-    debit: number;
-    credit: number;
-    balance: number;
-    entityType: 'invoice' | 'transaction';
-    entityId: string;
-}
 
 const formatLongDate = (dateStr: string): string => {
     const d = new Date(dateStr + 'T00:00:00');
@@ -60,6 +54,7 @@ const TenantLedgerReport: React.FC = () => {
     const dispatch = useDispatchOnly();
     const { showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
+    const localOnly = isLocalOnlyMode();
 
     const now = new Date();
     const [dateRangeType, setDateRangeType] = useState<DateRangeOption>('thisYear');
@@ -71,7 +66,7 @@ const TenantLedgerReport: React.FC = () => {
     const [treeSearchQuery, setTreeSearchQuery] = useState('');
     const [groupBy, setGroupBy] = useState('');
     /** Default: date ascending (chronological ledger). Other columns re-sort display only. */
-    const [sortConfig, setSortConfig] = useState<{ key: keyof LedgerItem; direction: 'asc' | 'desc' } | null>(null);
+    const [sortConfig, setSortConfig] = useState<{ key: keyof TenantLedgerItem; direction: 'asc' | 'desc' } | null>(null);
     const [tenantsFolderExpanded, setTenantsFolderExpanded] = useState(true);
 
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
@@ -162,147 +157,83 @@ const TenantLedgerReport: React.FC = () => {
         setLetterExpanded(next);
     }, [tenantsByLetter]);
 
-    const reportData = useMemo<LedgerItem[]>(() => {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+    const [serverPayload, setServerPayload] = useState<Awaited<ReturnType<typeof fetchTenantLedgerReport>> | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
-        let tenantInvoices = invoices.filter(inv =>
-            inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE
-        );
-        if (selectedTenantId !== 'all') {
-            tenantInvoices = tenantInvoices.filter(inv => inv.contactId === selectedTenantId);
+    useEffect(() => {
+        if (localOnly) {
+            setServerPayload(null);
+            setFetchError(null);
+            return;
         }
-
-        let tenantTransactions = transactions.filter(tx =>
-            (tx.type === TransactionType.INCOME || tx.type === TransactionType.EXPENSE) && tx.contactId
-        );
-        if (selectedTenantId !== 'all') {
-            tenantTransactions = tenantTransactions.filter(tx => tx.contactId === selectedTenantId);
-        } else {
-            const tenantIds = new Set(tenants.map(t => t.id));
-            tenantTransactions = tenantTransactions.filter(tx => {
-                if (tenantIds.has(tx.contactId!)) return true;
-                if (tx.invoiceId) {
-                    const inv = invoices.find(i => i.id === tx.invoiceId);
-                    return inv && (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE);
-                }
-                return false;
+        let cancelled = false;
+        setLoading(true);
+        setFetchError(null);
+        void fetchTenantLedgerReport({
+            startDate,
+            endDate,
+            tenantId: selectedTenantId,
+            search: searchQuery,
+            groupBy: groupBy === 'tenant' ? 'tenant' : '',
+            sortKey: sortConfig?.key === 'date' ? 'date' : undefined,
+            sortDirection: sortConfig?.direction,
+        })
+            .then((r) => {
+                if (!cancelled) setServerPayload(r);
+            })
+            .catch((e) => {
+                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
             });
-        }
-
-        const ledgerItems: { date: string, tenantName: string, particulars: string, debit: number, credit: number, entityType: 'invoice' | 'transaction', entityId: string }[] = [];
-
-        tenantInvoices.forEach(inv => {
-            const invDate = new Date(inv.issueDate);
-            if (invDate >= start && invDate <= end) {
-                const tenant = contacts.find(c => c.id === inv.contactId);
-                ledgerItems.push({
-                    date: inv.issueDate,
-                    tenantName: tenant?.name || 'Unknown/Deleted Tenant',
-                    particulars: `${inv.description || 'Monthly Rent'} – Unit ${inv.invoiceNumber}`,
-                    debit: inv.amount,
-                    credit: 0,
-                    entityType: 'invoice' as const,
-                    entityId: inv.id
-                });
-            }
-        });
-
-        const secRefundCategoryNames = ['Security Deposit Refund', 'Owner Security Payout'];
-        const isSecRefundCategory = (categoryId: string | undefined) => {
-            if (!categoryId) return false;
-            const cat = categories.find(c => c.id === categoryId);
-            return cat ? secRefundCategoryNames.includes(cat.name) : false;
+        return () => {
+            cancelled = true;
         };
+    }, [localOnly, startDate, endDate, selectedTenantId, searchQuery, groupBy, sortConfig]);
 
-        tenantTransactions.forEach(tx => {
-            const txDate = new Date(tx.date);
-            if (txDate >= start && txDate <= end) {
-                const tenant = contacts.find(c => c.id === tx.contactId);
-                const tenantName = tenant?.name || 'Unknown/Deleted Tenant';
-                const isExpense = tx.type === TransactionType.EXPENSE;
-                const isSecRefund = isExpense && isSecRefundCategory(tx.categoryId);
-
-                if (isSecRefund) {
-                    ledgerItems.push({
-                        date: tx.date, tenantName, particulars: 'Owner security debit',
-                        debit: tx.amount, credit: 0, entityType: 'transaction' as const, entityId: `${tx.id}-release`
-                    });
-                    ledgerItems.push({
-                        date: tx.date, tenantName, particulars: tx.description || 'Security Deposit Refund',
-                        debit: 0, credit: tx.amount, entityType: 'transaction' as const, entityId: tx.id
-                    });
-                } else {
-                    ledgerItems.push({
-                        date: tx.date, tenantName,
-                        particulars: tx.description || (isExpense ? 'Charge Paid by Owner' : `Rent Payment – Ref #${tx.id.slice(-5)}`),
-                        debit: isExpense ? tx.amount : 0,
-                        credit: !isExpense ? tx.amount : 0,
-                        entityType: 'transaction' as const, entityId: tx.id
-                    });
+    const localResult = useMemo(
+        () =>
+            computeTenantLedgerReport(
+                { contacts, invoices, transactions, categories },
+                {
+                    startDate,
+                    endDate,
+                    selectedTenantId,
+                    searchQuery,
+                    groupBy: groupBy === 'tenant' ? 'tenant' : '',
+                    sortKey: sortConfig?.key === 'date' ? 'date' : null,
+                    sortDirection: sortConfig?.direction ?? null,
                 }
-            }
-        });
+            ),
+        [contacts, invoices, transactions, categories, startDate, endDate, selectedTenantId, searchQuery, groupBy, sortConfig]
+    );
 
-        ledgerItems.sort((a, b) => {
-            if (groupBy === 'tenant') {
-                if (a.tenantName < b.tenantName) return -1;
-                if (a.tenantName > b.tenantName) return 1;
-            }
-            const tA = new Date(a.date).getTime();
-            const tB = new Date(b.date).getTime();
-            if (tA !== tB) return tA - tB;
-            return (b.debit - b.credit) - (a.debit - a.credit);
-        });
+    const reportData = localOnly ? localResult.rows : (serverPayload?.rows ?? localResult.rows);
 
-        let runningBalance = 0;
-        let currentTenantName = '';
-        let finalItems: LedgerItem[] = ledgerItems.map((item, index) => {
-            if (groupBy === 'tenant' && item.tenantName !== currentTenantName) {
-                currentTenantName = item.tenantName;
-                runningBalance = 0;
-            }
-            runningBalance += item.debit - item.credit;
-            return { ...item, id: `${item.date}-${index}`, balance: runningBalance };
-        });
-
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            finalItems = finalItems.filter(item =>
-                item.particulars.toLowerCase().includes(q) || item.tenantName.toLowerCase().includes(q)
-            );
-        }
-
-        // Date descending only: reverse chronological rows; per-row balance stays correct for that line.
-        if (sortConfig?.key === 'date' && sortConfig.direction === 'desc') {
-            finalItems = [...finalItems].reverse();
-        }
-
-        return finalItems;
-    }, [contacts, invoices, transactions, categories, startDate, endDate, selectedTenantId, searchQuery, tenants, groupBy, sortConfig]);
-
-    const requestSort = (key: keyof LedgerItem) => {
+    const requestSort = (key: keyof TenantLedgerItem) => {
         if (key !== 'date') return;
         if (sortConfig?.key === 'date' && sortConfig.direction === 'desc') setSortConfig(null);
         else setSortConfig({ key: 'date', direction: 'desc' });
     };
 
     const totals = useMemo(() => {
-        return reportData.reduce((acc, item) => {
-            acc.debit += item.debit;
-            acc.credit += item.credit;
-            return acc;
-        }, { debit: 0, credit: 0 });
-    }, [reportData]);
+        if (!localOnly && serverPayload?.totals) return serverPayload.totals;
+        return localResult.totals;
+    }, [localOnly, serverPayload, localResult.totals]);
 
     const selectionSummary = useMemo(() => {
         const tenantName =
             selectedTenantId === 'all'
                 ? 'All tenants'
                 : contacts.find(c => c.id === selectedTenantId)?.name ?? 'Selected tenant';
-        const closing = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
+        const closing =
+            selectedTenantId !== 'all'
+                ? !localOnly && serverPayload
+                    ? serverPayload.closingBalance
+                    : localResult.closingBalance
+                : 0;
         return {
             tenantName,
             lineCount: reportData.length,
@@ -310,7 +241,7 @@ const TenantLedgerReport: React.FC = () => {
             totalCredit: totals.credit,
             closing,
         };
-    }, [reportData, selectedTenantId, contacts, totals.debit, totals.credit]);
+    }, [reportData, selectedTenantId, contacts, totals.debit, totals.credit, localOnly, serverPayload, localResult.closingBalance]);
 
     const alertsCount = useMemo(() => {
         const overdueInvoices = invoices.filter(inv => {
@@ -395,7 +326,7 @@ const TenantLedgerReport: React.FC = () => {
 
     const finalBalance = selectionSummary.closing;
 
-    const SortHeader: React.FC<{ label: string; sortKey: keyof LedgerItem; align?: 'left' | 'right' }> = ({ label, sortKey, align = 'left' }) => {
+    const SortHeader: React.FC<{ label: string; sortKey: keyof TenantLedgerItem; align?: 'left' | 'right' }> = ({ label, sortKey, align = 'left' }) => {
         const isDate = sortKey === 'date';
         return (
             <th
@@ -543,6 +474,13 @@ const TenantLedgerReport: React.FC = () => {
                         )}
                     </div>
                 </div>
+
+                {!localOnly && loading && (
+                    <p className="text-sm text-app-muted px-6 no-print">Loading report from server…</p>
+                )}
+                {!localOnly && fetchError && (
+                    <p className="text-sm text-rose-600 px-6 no-print">Server report failed: {fetchError}. Showing local data.</p>
+                )}
 
                 {/* Tree + ledger */}
                 <div className="flex-1 flex min-h-0 mx-6 mb-6 gap-4">

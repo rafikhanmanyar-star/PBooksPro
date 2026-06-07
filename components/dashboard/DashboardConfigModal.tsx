@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -39,7 +39,7 @@ const DraggableKpiItem: React.FC<{
 };
 
 const DashboardConfigModal: React.FC<DashboardConfigModalProps> = ({ isOpen, onClose }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
     const dispatch = useDispatchOnly();
     const { allKpis } = useKpis();
     const [visibleKpis, setVisibleKpis] = useState<string[]>(Array.isArray(state.dashboardConfig?.visibleKpis) ? state.dashboardConfig.visibleKpis : []);

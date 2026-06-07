@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { Quotation, Contact } from '../../types';
 import { ICONS } from '../../constants';
@@ -14,7 +14,7 @@ interface VendorQuotationsProps {
 }
 
 const VendorQuotations: React.FC<VendorQuotationsProps> = ({ vendorId, onEditQuotation, onViewDocument }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
     const { categories, units, quotations: appQuotations } = state;
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();

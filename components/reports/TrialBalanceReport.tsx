@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjects, useAccounts, useTransactions, useInvoices, useBills, useProjectAgreements } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../ui/Card';
@@ -16,15 +16,21 @@ import {
   type TrialBalanceReportResult,
 } from '../../services/financialEngine/ledgerReports';
 import type { TrialBalanceBasis } from '../../services/financialEngine/trialBalanceCore';
-import { compareTrialBalanceType } from '../../services/financialEngine/trialBalanceCore';
+import { compareTrialBalanceType, OPENING_BALANCE_EQUITY_ID } from '../../services/financialEngine/trialBalanceCore';
 import { exportJsonToExcel } from '../../services/exportService';
+import AccountGeneralLedgerModal from './AccountGeneralLedgerModal';
 
 function money(n: number): string {
   return `${CURRENCY} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 const TrialBalanceReport: React.FC = () => {
-  const state = useFullAppState();
+  const projects = useProjects();
+  const accounts = useAccounts();
+  const transactions = useTransactions();
+  const invoices = useInvoices();
+  const bills = useBills();
+  const projectAgreements = useProjectAgreements();
   const { user } = useAuth();
   const { print: triggerPrint } = usePrintContext();
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');
@@ -35,6 +41,7 @@ const TrialBalanceReport: React.FC = () => {
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+  const [ledgerAccount, setLedgerAccount] = useState<{ id: string; name: string } | null>(null);
 
   const [data, setData] = useState<TrialBalanceReportResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,19 +49,19 @@ const TrialBalanceReport: React.FC = () => {
 
   const tenantId = user?.tenantId?.trim() || (typeof window !== 'undefined' ? localStorage.getItem('tenant_id')?.trim() : null) || 'local';
 
-  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
+  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
   const accountItems = useMemo(
-    () => [{ id: 'all', name: 'All accounts' }, ...state.accounts.map((a) => ({ id: a.id, name: a.name }))],
-    [state.accounts]
+    () => [{ id: 'all', name: 'All accounts' }, ...accounts.map((a) => ({ id: a.id, name: a.name }))],
+    [accounts]
   );
 
   const projectScopeState = useMemo(
     () => ({
-      invoices: state.invoices,
-      bills: state.bills,
-      projectAgreements: state.projectAgreements,
+      invoices,
+      bills,
+      projectAgreements,
     }),
-    [state.invoices, state.bills, state.projectAgreements]
+    [invoices, bills, projectAgreements]
   );
 
   useEffect(() => {
@@ -70,8 +77,8 @@ const TrialBalanceReport: React.FC = () => {
           projectScopeId: selectedProjectId,
           projectScopeState,
           ledgerFallback: {
-            transactions: state.transactions,
-            accounts: state.accounts,
+            transactions,
+            accounts,
           },
         });
         if (!cancelled) setData(r);
@@ -87,7 +94,7 @@ const TrialBalanceReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, startDate, endDate, basis, selectedProjectId, projectScopeState, state.transactions, state.accounts]);
+  }, [tenantId, startDate, endDate, basis, selectedProjectId, projectScopeState, transactions, accounts]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -159,6 +166,21 @@ const TrialBalanceReport: React.FC = () => {
     return { totalDebit, totalCredit, grossDebit, grossCredit };
   }, [data, hideZeros, selectedAccountId]);
 
+  const balanceDifference = useMemo(() => {
+    if (!displayTotals) return 0;
+    return Math.abs(displayTotals.totalDebit - displayTotals.totalCredit);
+  }, [displayTotals]);
+
+  const canDrillDown = data?.dataSource === 'journal';
+
+  const handleAccountClick = useCallback(
+    (accountId: string, accountName: string) => {
+      if (!canDrillDown || accountId === OPENING_BALANCE_EQUITY_ID) return;
+      setLedgerAccount({ id: accountId, name: accountName });
+    },
+    [canDrillDown]
+  );
+
   const toggleType = useCallback((t: string) => {
     setCollapsedTypes((prev) => {
       const next = new Set(prev);
@@ -195,7 +217,7 @@ const TrialBalanceReport: React.FC = () => {
   };
 
   const projectLabel =
-    selectedProjectId === 'all' ? 'All projects' : state.projects.find((p) => p.id === selectedProjectId)?.name ?? 'Project';
+    selectedProjectId === 'all' ? 'All projects' : projects.find((p) => p.id === selectedProjectId)?.name ?? 'Project';
   const subtitle =
     basis === 'cumulative'
       ? `${projectLabel} · Cumulative through ${formatDate(endDate)} (activity on or before end date)`
@@ -299,9 +321,25 @@ const TrialBalanceReport: React.FC = () => {
               className="rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-950/50 px-4 py-3 text-red-800 dark:text-red-100 font-semibold"
               role="alert"
             >
-              UNBALANCED BOOKS — total debits and credits do not match. Review journal entries for the selected
-              range.
+              UNBALANCED BOOKS — total debits ({money(displayTotals?.totalDebit ?? 0)}) and credits (
+              {money(displayTotals?.totalCredit ?? 0)}) differ by {money(balanceDifference)}. Review journal entries
+              for the selected range.
             </div>
+          )}
+
+          {data && data.isBalanced && selectedAccountId === 'all' && grouped.length > 0 && (
+            <div
+              className="rounded-lg border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-700 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-100"
+              role="status"
+            >
+              Balanced — total debits equal total credits ({money(displayTotals?.totalDebit ?? 0)}).
+            </div>
+          )}
+
+          {canDrillDown && grouped.length > 0 && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Click an account name to open its general ledger with running balance.
+            </p>
           )}
 
           {data && grouped.length === 0 && !loading && (
@@ -344,7 +382,20 @@ const TrialBalanceReport: React.FC = () => {
                             className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                           >
                             <td className="px-3 py-2 pl-8">
-                              {a.parentAccountId ? (
+                              {canDrillDown && a.accountId !== OPENING_BALANCE_EQUITY_ID ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAccountClick(a.accountId, a.accountName)}
+                                  className="text-left text-indigo-700 dark:text-indigo-300 hover:underline font-medium"
+                                  title="View general ledger"
+                                >
+                                  {a.parentAccountId ? (
+                                    <span className="text-slate-600 dark:text-slate-400">↳ {a.accountName}</span>
+                                  ) : (
+                                    a.accountName
+                                  )}
+                                </button>
+                              ) : a.parentAccountId ? (
                                 <span className="text-slate-600 dark:text-slate-400">↳ {a.accountName}</span>
                               ) : (
                                 a.accountName
@@ -390,6 +441,18 @@ const TrialBalanceReport: React.FC = () => {
       </Card>
 
       <ReportFooter />
+
+      {ledgerAccount && (
+        <AccountGeneralLedgerModal
+          isOpen={!!ledgerAccount}
+          onClose={() => setLedgerAccount(null)}
+          accountId={ledgerAccount.id}
+          accountName={ledgerAccount.name}
+          tenantId={tenantId}
+          fromDate={startDate}
+          toDate={endDate}
+        />
+      )}
     </div>
   );
 };

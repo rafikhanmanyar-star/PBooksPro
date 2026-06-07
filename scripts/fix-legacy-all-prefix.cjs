@@ -15,7 +15,6 @@ const FIXES = [
   { file: 'components/reports/VendorComparisonReport.tsx', key: 'vendors', legacy: 'allVendors', extraLegacy: ['allQuotations'] },
   { file: 'components/projectManagement/SalesReturnsPage.tsx', key: 'salesReturns', legacy: 'allSalesReturns' },
   { file: 'components/marketing/MarketingPage.tsx', key: 'units', legacy: 'allUnits', extraLegacy: ['allCurrentUser'] },
-  { file: 'components/inventory/PurchasesTab.tsx', key: 'vendors', legacy: 'allVendors' },
   { file: 'components/projectManagement/ProjectAgreementsPage.tsx', key: 'units', legacy: 'allUnits' },
 ];
 

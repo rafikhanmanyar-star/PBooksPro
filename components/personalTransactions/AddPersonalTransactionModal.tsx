@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { usePersonalFinanceState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -32,10 +32,8 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
   isOpen,
   onClose,
   onSaved,
-  editTransaction = null,
-}) => {
-  const state = useFullAppState();
-    const { accounts, personalCategories } = state;
+  editTransaction = null }) => {
+  const { accounts, personalCategories } = usePersonalFinanceState();
   const [step, setStep] = useState(1);
   const [type, setType] = useState<'Income' | 'Expense'>('Expense');
   const [accountId, setAccountId] = useState('');
@@ -119,8 +117,8 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
     [bankAndCashAccounts, accountId]
   );
   const categoryName = useMemo(
-    () => allCategories.find((c) => c.id === categoryId)?.name ?? '',
-    [allCategories, categoryId]
+    () => categories.find((c) => c.id === categoryId)?.name ?? '',
+    [categories, categoryId]
   );
 
   const transactionLineParts = useMemo(() => {
@@ -140,10 +138,10 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
 
   useEffect(() => {
     if (step === 2 && categoryId) {
-      const name = allCategories.find((c) => c.id === categoryId)?.name ?? '';
+      const name = categories.find((c) => c.id === categoryId)?.name ?? '';
       setCategorySearch(name);
     }
-  }, [step, categoryId, allCategories]);
+  }, [step, categoryId, categories]);
 
   useEffect(() => {
     if (categoryDropdownOpen) {
@@ -251,8 +249,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
             type,
             amount: numAmount,
             transactionDate,
-            description: description.trim() || undefined,
-          },
+            description: description.trim() || undefined },
           editTransaction.version
         );
       } else {
@@ -262,8 +259,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
           type,
           amount: numAmount,
           transactionDate,
-          description: description.trim() || undefined,
-        });
+          description: description.trim() || undefined });
       }
       onSaved();
       handleClose();

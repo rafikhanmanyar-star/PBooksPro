@@ -28,8 +28,7 @@ import {
   TrendingUp,
   ChevronLeft,
   ChevronRight,
-  Trash2,
-} from 'lucide-react';
+  Trash2 } from 'lucide-react';
 import EmployeeList from './EmployeeList';
 import EmployeeProfile from './EmployeeProfile';
 import EmployeeForm from './EmployeeForm';
@@ -43,7 +42,7 @@ import { syncPayrollFromServer } from './services/payrollSync';
 import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, usePayrollHubState } from '../../hooks/useSelectiveState';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { Contact, ContactType, Transaction } from '../../types';
@@ -57,8 +56,7 @@ import {
   employeePayrollNetBalanceFromTotals,
   sortLedgerRowsChronological,
   type BuiltPayrollLedgerRow,
-  type LedgerRowFilter,
-} from './utils/payrollLedgerCore';
+  type LedgerRowFilter } from './utils/payrollLedgerCore';
 import { payrollApi } from '../../services/api/payrollApi';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
@@ -123,7 +121,7 @@ type TableRecordFilter = 'payslips' | 'payments' | 'all' | 'ledger';
 
 const PayrollHub: React.FC = () => {
   const { user, tenant } = useAuth();
-  const appState = useFullAppState();
+  const { accounts, transactions, whatsAppMode } = usePayrollHubState();
   const dispatch = useDispatchOnly();
   const { openChat } = useWhatsApp();
   const { showToast, showAlert, showConfirm } = useNotification();
@@ -136,8 +134,7 @@ const PayrollHub: React.FC = () => {
     selectedEmployee,
     setSelectedEmployee,
     isAddingEmployee,
-    setIsAddingEmployee,
-  } = usePayrollContext();
+    setIsAddingEmployee } = usePayrollContext();
 
   // Get tenant ID from auth context
   const tenantId = tenant?.id || '';
@@ -251,7 +248,7 @@ const PayrollHub: React.FC = () => {
   useEffect(() => {
     if (!tenantId || !selectedRunId) return;
     setCyclePayslips(storageService.getPayslipsByRunId(tenantId, selectedRunId));
-  }, [tenantId, selectedRunId, appState.transactions]);
+  }, [tenantId, selectedRunId, transactions]);
 
   // When an employee is selected, get all their payslips from storage (all runs) for the data table
   const payslipsForSelectedEmployee = useMemo(() => {
@@ -268,7 +265,7 @@ const PayrollHub: React.FC = () => {
         const keyB = runB ? `${runB.year}-${String(runB.month).padStart(2, '0')}` : '';
         return keyB.localeCompare(keyA);
       });
-  }, [tenantId, selectedCycleEmployeeId, cyclePayslips, payslipsRefreshKey, payrollStorageRevision, appState.transactions]);
+  }, [tenantId, selectedCycleEmployeeId, cyclePayslips, payslipsRefreshKey, payrollStorageRevision, transactions]);
 
   const runsMap = useMemo(() => {
     if (!tenantId) return new Map<string, PayrollRun>();
@@ -329,16 +326,16 @@ const PayrollHub: React.FC = () => {
   const allPayslips = storageService.getPayslips(tenantId);
   const payslipIdsByTenant = useMemo(() => new Set(allPayslips.map((p) => p.id)), [allPayslips]);
   const paymentRecords = useMemo(() => {
-    const txs = (appState.transactions || []).filter(
+    const txs = (transactions || []).filter(
       (t: { payslipId?: string }) => t.payslipId && payslipIdsByTenant.has(t.payslipId)
     );
     const employees = storageService.getEmployees(tenantId);
-    const accounts = (appState.accounts || []) as { id: string; name: string }[];
+    const accountList = (accounts || []) as { id: string; name: string }[];
     return txs.map((tx: any) => {
       const ps = allPayslips.find((p) => p.id === tx.payslipId);
       const emp = ps ? employees.find((e) => e.id === ps.employee_id) : null;
       const run = ps ? runsMap.get(ps.payroll_run_id) : null;
-      const account = accounts.find((a) => a.id === tx.accountId);
+      const account = accountList.find((a) => a.id === tx.accountId);
       return {
         id: tx.id,
         type: 'payment' as const,
@@ -352,10 +349,9 @@ const PayrollHub: React.FC = () => {
         paymentAmount: tx.amount,
         paymentDate: tx.date,
         accountName: account?.name ?? '—',
-        description: tx.description ?? '—',
-      };
+        description: tx.description ?? '—' };
     });
-  }, [appState.transactions, appState.accounts, payslipIdsByTenant, allPayslips, tenantId, runsMap]);
+  }, [transactions, accounts, payslipIdsByTenant, allPayslips, tenantId, runsMap]);
   const yearMonthOptions = useMemo(() => {
     const years = new Set<number>();
     const monthsByYear = new Map<number, Set<number>>();
@@ -410,15 +406,14 @@ const PayrollHub: React.FC = () => {
       id: ps.id,
       payroll_run_id: ps.payroll_run_id,
       net_pay: typeof ps.net_pay === 'number' ? ps.net_pay : Number(ps.net_pay) || 0,
-      created_at: ps.created_at ?? '',
-    }));
+      created_at: ps.created_at ?? '' }));
     const slipIds = new Set(slips.map((s) => s.id));
     const runsByLedger = new Map<string, { id: string; period_end: string | null; month?: string; year?: number }>();
     slips.forEach((ps) => {
       const run = runsMap.get(ps.payroll_run_id);
       if (run) runsByLedger.set(run.id, { id: run.id, period_end: run.period_end ?? null, month: run.month, year: run.year });
     });
-    const txs = (appState.transactions || []).filter(
+    const txs = (transactions || []).filter(
       (t: { payslipId?: string }) => t.payslipId && slipIds.has(t.payslipId as string)
     );
     const txInput = txs.map((t: any) => ({
@@ -428,10 +423,9 @@ const PayrollHub: React.FC = () => {
       date: t.date,
       description: t.description ?? null,
       created_at: t.created_at ?? undefined,
-      type: String(t.type ?? ''),
-    }));
+      type: String(t.type ?? '') }));
     return buildPayrollLedgerRowsFromSource(slipsInput, runsByLedger, txInput);
-  }, [tenantId, selectedCycleEmployeeId, runsMap, appState.transactions]);
+  }, [tenantId, selectedCycleEmployeeId, runsMap, transactions]);
 
   const localEmployeeLedgerPeriodRows = useMemo(() => {
     return localEmployeeLedgerAllTypes.filter((r) =>
@@ -475,13 +469,11 @@ const PayrollHub: React.FC = () => {
           credit: Number(t.credit) || 0,
           balance_after: Number(t.balance_after) || 0,
           source_transaction_id: t.source_transaction_id ? String(t.source_transaction_id) : null,
-          ledger_sort_ts: 0,
-        }));
+          ledger_sort_ts: 0 }));
         setEmployeeLedgerRemote({
           summary: res.summary,
           transactions: mapped,
-          pagination: res.pagination,
-        });
+          pagination: res.pagination });
       })
       .catch(() => {
         if (!cancelled) setEmployeeLedgerErr('Could not load ledger');
@@ -492,7 +484,7 @@ const PayrollHub: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedCycleEmployeeId, ledgerRowFilter, payrollStorageRevision, appState.transactions?.length]);
+  }, [selectedCycleEmployeeId, ledgerRowFilter, payrollStorageRevision, transactions?.length]);
 
   useEffect(() => {
     setLedgerRowFilter('all');
@@ -552,7 +544,7 @@ const PayrollHub: React.FC = () => {
         if (rem >= 5000) highPriorityCount += 1;
       }
     }
-    const txs = (appState.transactions || []).filter(
+    const txs = (transactions || []).filter(
       (t: { payslipId?: string }) => t.payslipId && payslipIdsByTenant.has(t.payslipId as string)
     );
     const sumForMonth = (y: number, m0: number) =>
@@ -568,7 +560,7 @@ const PayrollHub: React.FC = () => {
     const prev = sumForMonth(prevAnchor.getFullYear(), prevAnchor.getMonth());
     const trendPct = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : null;
     return { totalDisbursed, pendingCount, unpaidTotal, trendPct, highPriorityCount };
-  }, [tenantId, payrollStorageRevision, appState.transactions, payslipIdsByTenant]);
+  }, [tenantId, payrollStorageRevision, transactions, payslipIdsByTenant]);
 
   type PayslipTableRowModel = {
     ps: Payslip;
@@ -618,8 +610,7 @@ const PayrollHub: React.FC = () => {
         remaining: remainingAmt,
         gross_pay: ps.gross_pay,
         isFullyPaid,
-        isPartiallyPaid,
-      };
+        isPartiallyPaid };
     });
     if (!payslipSortColumn) return rows;
     const mul = payslipSortDir === 'asc' ? 1 : -1;
@@ -654,13 +645,11 @@ const PayrollHub: React.FC = () => {
     const ps = sortedPayslipTableRows.map((row) => ({
       kind: 'ps' as const,
       row,
-      t: row.ps.created_at ? new Date(row.ps.created_at).getTime() : 0,
-    }));
+      t: row.ps.created_at ? new Date(row.ps.created_at).getTime() : 0 }));
     const pr = filteredPaymentRecords.map((p) => ({
       kind: 'pay' as const,
       pr: p,
-      t: p.paymentDate ? new Date(p.paymentDate).getTime() : 0,
-    }));
+      t: p.paymentDate ? new Date(p.paymentDate).getTime() : 0 }));
     return [...ps, ...pr].sort((a, b) => b.t - a.t);
   }, [tableRecordFilter, sortedPayslipTableRows, filteredPaymentRecords]);
 
@@ -1019,7 +1008,7 @@ const PayrollHub: React.FC = () => {
       if (!slipsByEmp.has(empId)) slipsByEmp.set(empId, []);
       slipsByEmp.get(empId)!.push(ps);
     }
-    const txs = appState.transactions || [];
+    const txs = transactions || [];
     const employees = storageService.getEmployees(tenantId);
     const map = new Map<string, { treeValue: string; valueColor: string }>();
     for (const emp of employees) {
@@ -1035,19 +1024,17 @@ const PayrollHub: React.FC = () => {
       if (advanceAmount > 0.01) {
         map.set(emp.id, {
           treeValue: `Adv ${formatCurrency(advanceAmount)}`,
-          valueColor: 'text-amber-700 dark:text-amber-400 font-semibold',
-        });
+          valueColor: 'text-amber-700 dark:text-amber-400 font-semibold' });
       } else if (payableAmount > 0.01) {
         map.set(emp.id, {
           treeValue: formatCurrency(payableAmount),
-          valueColor: 'text-red-600 dark:text-red-400 font-semibold',
-        });
+          valueColor: 'text-red-600 dark:text-red-400 font-semibold' });
       } else {
         map.set(emp.id, { treeValue: '—', valueColor: 'text-app-muted font-medium' });
       }
     }
     return map;
-  }, [tenantId, activeSubTab, payrollStorageRevision, appState.transactions]);
+  }, [tenantId, activeSubTab, payrollStorageRevision, transactions]);
 
   // Employee tree for Payroll Cycle tab: group by department, show name + total unpaid
   const employeeTree = useMemo((): TreeNode[] => {
@@ -1087,10 +1074,8 @@ const PayrollHub: React.FC = () => {
                 <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
                   {initials}
                 </span>
-              ),
-            };
-          }),
-      }));
+              ) };
+          }) }));
   }, [tenantId, activeSubTab, employeePayrollStandingById, payrollStorageRevision, cycleEmployeeQuery]);
 
   // If no tenant, show loading or error
@@ -1792,7 +1777,7 @@ const PayrollHub: React.FC = () => {
                                       try {
                                         sendOrOpenWhatsApp(
                                           { contact: contactLike, message, phoneNumber: contactLike.contactNo || undefined },
-                                          () => appState.whatsAppMode ?? 'manual',
+                                          () => whatsAppMode ?? 'manual',
                                           openChat
                                         );
                                       } catch {

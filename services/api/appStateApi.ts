@@ -23,6 +23,7 @@ import {
   TransactionType,
   PersonalCategoryEntry,
   PersonalTransactionEntry,
+  TransactionLogEntry,
 } from '../../types';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { parseApiEntityVersion } from '../../utils/parseApiVersion';
@@ -2517,6 +2518,13 @@ export class AppStateApiService {
    */
   async deleteDocument(id: string): Promise<void> {
     return this.documentsRepo.delete(id);
+  }
+
+  /**
+   * Append transaction audit log entry to API (idempotent by id).
+   */
+  async appendTransactionLog(entry: TransactionLogEntry): Promise<void> {
+    await this.transactionLogRepo.append(entry);
   }
 
   /**

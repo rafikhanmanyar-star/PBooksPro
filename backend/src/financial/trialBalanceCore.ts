@@ -12,6 +12,9 @@ import { MONEY_EPSILON, roundMoney } from './validation.js';
 
 export type TrialBalanceBasis = 'period' | 'cumulative';
 
+/** Synthetic equity line balancing account opening_balance fields in trial balance. */
+export const OPENING_BALANCE_EQUITY_ID = '__opening_balance_equity__';
+
 export interface TrialBalanceRawRow {
   accountId: string;
   accountName: string;
@@ -22,6 +25,19 @@ export interface TrialBalanceRawRow {
   isActive: boolean;
   grossDebit: number;
   grossCredit: number;
+  /** True for the system equity offset row from opening balances. */
+  isSystemRow?: boolean;
+}
+
+export interface AccountOpeningInput {
+  accountId: string;
+  accountName: string;
+  accountType: string;
+  parentAccountId?: string | null;
+  accountCode?: string | null;
+  subType?: string | null;
+  isActive?: boolean;
+  openingBalance: number;
 }
 
 export interface TrialBalanceAccountLine extends TrialBalanceRawRow {
@@ -101,6 +117,134 @@ export function buildTrialBalanceReport(rows: TrialBalanceRawRow[]): TrialBalanc
     accounts,
     totals,
     isBalanced: isTrialBalanceBalanced(totals),
+  };
+}
+
+/** Debit-normal: asset, expense, bank, cash. Credit-normal: liability, equity, revenue. */
+export function normalBalanceDirection(accountType: string): 1 | -1 {
+  const t = (accountType || '').toLowerCase();
+  if (t === 'asset' || t === 'expense' || t === 'bank' || t === 'cash') return 1;
+  return -1;
+}
+
+/** Convert stored opening_balance into gross debit/credit for trial balance presentation. */
+export function openingAmountToGross(
+  amount: number,
+  accountType: string
+): { grossDebit: number; grossCredit: number } {
+  const ob = roundMoney(amount);
+  if (Math.abs(ob) < MONEY_EPSILON) return { grossDebit: 0, grossCredit: 0 };
+  const signed = normalBalanceDirection(accountType) * ob;
+  if (signed > MONEY_EPSILON) return { grossDebit: roundMoney(signed), grossCredit: 0 };
+  if (signed < -MONEY_EPSILON) return { grossDebit: 0, grossCredit: roundMoney(Math.abs(signed)) };
+  return { grossDebit: 0, grossCredit: 0 };
+}
+
+/** Sum journal activity rows by account (used when merging period + prior-period aggregates). */
+export function mergeRawRowsByAccount(rows: TrialBalanceRawRow[]): TrialBalanceRawRow[] {
+  const map = new Map<string, TrialBalanceRawRow>();
+  for (const r of rows) {
+    const ex = map.get(r.accountId);
+    if (!ex) {
+      map.set(r.accountId, { ...r });
+      continue;
+    }
+    ex.grossDebit = roundMoney(ex.grossDebit + r.grossDebit);
+    ex.grossCredit = roundMoney(ex.grossCredit + r.grossCredit);
+  }
+  return [...map.values()];
+}
+
+/**
+ * Add account opening_balance amounts and a balancing equity line so double-entry holds.
+ * Call after merging journal activity (and prior-period activity for period basis).
+ */
+export function applyOpeningBalances(
+  activityRows: TrialBalanceRawRow[],
+  accounts: AccountOpeningInput[]
+): TrialBalanceRawRow[] {
+  const merged = mergeRawRowsByAccount(activityRows);
+  let openingNetDebit = 0;
+
+  for (const acc of accounts) {
+    const { grossDebit, grossCredit } = openingAmountToGross(acc.openingBalance, acc.accountType);
+    if (grossDebit < MONEY_EPSILON && grossCredit < MONEY_EPSILON) continue;
+
+    openingNetDebit = roundMoney(openingNetDebit + grossDebit - grossCredit);
+
+    const existing = merged.find((r) => r.accountId === acc.accountId);
+    if (existing) {
+      existing.grossDebit = roundMoney(existing.grossDebit + grossDebit);
+      existing.grossCredit = roundMoney(existing.grossCredit + grossCredit);
+    } else {
+      merged.push({
+        accountId: acc.accountId,
+        accountName: acc.accountName,
+        accountType: acc.accountType,
+        parentAccountId: acc.parentAccountId ?? null,
+        accountCode: acc.accountCode ?? null,
+        subType: acc.subType ?? null,
+        isActive: acc.isActive ?? true,
+        grossDebit,
+        grossCredit,
+      });
+    }
+  }
+
+  if (Math.abs(openingNetDebit) >= MONEY_EPSILON) {
+    const equityRow = merged.find((r) => r.accountId === OPENING_BALANCE_EQUITY_ID);
+    if (openingNetDebit > MONEY_EPSILON) {
+      const grossCredit = roundMoney(openingNetDebit);
+      if (equityRow) {
+        equityRow.grossCredit = roundMoney(equityRow.grossCredit + grossCredit);
+      } else {
+        merged.push({
+          accountId: OPENING_BALANCE_EQUITY_ID,
+          accountName: 'Opening Balance Equity',
+          accountType: 'Equity',
+          parentAccountId: null,
+          accountCode: 'OB-EQ',
+          subType: 'system_opening',
+          isActive: true,
+          grossDebit: 0,
+          grossCredit,
+          isSystemRow: true,
+        });
+      }
+    } else {
+      const grossDebit = roundMoney(Math.abs(openingNetDebit));
+      if (equityRow) {
+        equityRow.grossDebit = roundMoney(equityRow.grossDebit + grossDebit);
+      } else {
+        merged.push({
+          accountId: OPENING_BALANCE_EQUITY_ID,
+          accountName: 'Opening Balance Equity',
+          accountType: 'Equity',
+          parentAccountId: null,
+          accountCode: 'OB-EQ',
+          subType: 'system_opening',
+          isActive: true,
+          grossDebit,
+          grossCredit: 0,
+          isSystemRow: true,
+        });
+      }
+    }
+  }
+
+  return merged.filter(
+    (r) => Math.abs(r.grossDebit) >= MONEY_EPSILON || Math.abs(r.grossCredit) >= MONEY_EPSILON
+  );
+}
+
+/** Reversal pair: original + swapped lines net to zero when both fall in the same range. */
+export function netReversalPair(
+  original: { grossDebit: number; grossCredit: number },
+  reversal: { grossDebit: number; grossCredit: number }
+): { grossDebit: number; grossCredit: number } {
+  return {
+    grossDebit: roundMoney(original.grossDebit + reversal.grossDebit),
+    grossCredit: roundMoney(original.grossCredit + reversal.grossCredit),
   };
 }
 

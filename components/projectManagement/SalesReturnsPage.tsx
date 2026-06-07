@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     SalesReturn,
@@ -32,7 +32,7 @@ type EnrichedSalesReturn = SalesReturn & {
 };
 
 const SalesReturnsPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { salesReturns: appSalesReturns } = state;
     const dispatch = useDispatchOnly();
     const [searchQuery, setSearchQuery] = useState('');

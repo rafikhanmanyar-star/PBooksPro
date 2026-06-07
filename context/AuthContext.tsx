@@ -7,6 +7,12 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { getApiBaseUrl, isLocalOnlyMode, setSessionDataSource, clearSessionDataSource } from '../config/apiUrl';
+import {
+  clearDemoSessionFlags,
+  markDemoSessionActive,
+  DEMO_PUBLIC_TENANT_ID,
+} from '../config/demoEnvironment';
+import { trackEvent } from '../services/analytics/trackEvent';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
 import { useCompanyOptional } from './CompanyContext';
@@ -62,11 +68,23 @@ export interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  login: (username: string, password: string, tenantId: string) => Promise<void>;
+  login: (username: string, password: string, tenantId: string) => Promise<LoginResult>;
+  verifyMfaLogin: (input: {
+    mfaToken: string;
+    totpCode?: string;
+    recoveryCode?: string;
+    usernameForStorage?: string;
+  }) => Promise<void>;
+  completeMfaSetupLogin: (input: {
+    mfaSetupToken: string;
+    code: string;
+    usernameForStorage?: string;
+  }) => Promise<{ backupCodes: string[] }>;
   lookupTenants: (organizationEmail: string) => Promise<Array<{ id: string; name: string; company_name: string; email: string }>>;
   smartLogin: (username: string, password: string, tenantId: string) => Promise<void>;
   unifiedLogin: (organizationEmail: string, username: string, password: string) => Promise<void>;
   registerTenant: (data: TenantRegistrationData) => Promise<{ tenantId: string; trialDaysRemaining: number }>;
+  enterDemoSession: () => Promise<void>;
   logout: () => void;
   checkLicenseStatus: () => Promise<{
     isValid?: boolean;
@@ -90,7 +108,37 @@ export interface TenantRegistrationData {
   isSupplier?: boolean;
   /** Optional; server validates uniqueness and format. */
   requestedTenantId?: string;
+  /** Referral code from invite link (?ref=). */
+  referralCode?: string;
+  /** Invitation token from email link (?invite=). */
+  inviteToken?: string;
+  legalAcceptances: Array<{ documentType: string; documentVersion: string }>;
 }
+
+export type LoginResult =
+  | { status: 'authenticated' }
+  | {
+      status: 'mfa_required';
+      mfaToken: string;
+      loginEventId?: string;
+      user: User;
+      tenant: Tenant;
+    }
+  | {
+      status: 'mfa_setup_required';
+      mfaSetupToken: string;
+      loginEventId?: string;
+      user: User;
+      tenant: Tenant;
+    };
+
+type AuthSessionPayload = {
+  token: string;
+  loginEventId?: string;
+  user: User;
+  tenant: Tenant;
+  usernameForStorage?: string;
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -118,7 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         licenseType: 'perpetual',
         licenseStatus: 'active',
         isExpired: false,
-        modules: ['real_estate', 'rental', 'shop'],
+        modules: ['real_estate', 'rental'],
       };
     }
     const response = await apiClient.get<{
@@ -184,6 +232,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    clearDemoSessionFlags();
+
     // Set flag FIRST to prevent heartbeat from re-creating sessions
     loggingOutRef.current = true;
     apiClient.setLoggingOut(true);
@@ -221,7 +271,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await savePromise;
         logger.logCategory('auth', '✅ Data saved, proceeding with logout');
 
-        await apiClient.post('/auth/logout', {});
+        await apiClient.post('/auth/logout', {
+          loginEventId:
+            typeof window !== 'undefined'
+              ? sessionStorage.getItem('pbooks_login_event_id') ?? undefined
+              : undefined,
+        });
         logger.logCategory('auth', '✅ Logout API call completed, user status updated in cloud DB');
       } catch (error) {
         logger.errorCategory('auth', 'Logout API error:', error);
@@ -231,6 +286,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('pbooks_api_last_sync_at');
           sessionStorage.removeItem('pbooks_api_sync_tenant_id');
+          sessionStorage.removeItem('pbooks_login_event_id');
         }
         apiClient.setLoggingOut(false);
       }
@@ -781,14 +837,92 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany, checkLicenseStatus]);
 
   /**
+   * Apply a successful auth session (JWT + user + tenant) after login or MFA.
+   */
+  const applyAuthSession = useCallback((payload: AuthSessionPayload) => {
+    const { token, loginEventId, user, tenant, usernameForStorage } = payload;
+    localStorage.setItem('last_tenant_id', tenant.id);
+    if (usernameForStorage) {
+      localStorage.setItem('last_identifier', usernameForStorage);
+    }
+    if (user?.id) {
+      localStorage.setItem('user_id', user.id);
+    }
+    if (loginEventId && typeof window !== 'undefined') {
+      sessionStorage.setItem('pbooks_login_event_id', loginEventId);
+    }
+    apiClient.setAuth(token, tenant.id);
+    setSessionDataSource('postgres_api');
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('pbooks_api_last_sync_at');
+      sessionStorage.removeItem('pbooks_api_sync_tenant_id');
+    }
+    setState({
+      isAuthenticated: true,
+      user,
+      tenant,
+      isLoading: false,
+      error: null,
+    });
+    syncDisplayTimezoneFromUser(user);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:login-success'));
+    }
+    checkLicenseStatus()
+      .then((licenseStatus) => {
+        if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
+          const dispatch = () => window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+          if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(dispatch);
+          else setTimeout(dispatch, 0);
+        }
+      })
+      .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
+  }, [checkLicenseStatus]);
+
+  useEffect(() => {
+    if (isLocalOnlyMode() || state.isAuthenticated) return;
+    const demoBootstrap = typeof window !== 'undefined'
+      ? sessionStorage.getItem('pbooks_demo_auth')
+      : null;
+    if (!demoBootstrap) return;
+
+    try {
+      const payload = JSON.parse(demoBootstrap) as {
+        token: string;
+        loginEventId?: string;
+        user: User;
+        tenant: Tenant;
+      };
+      sessionStorage.removeItem('pbooks_demo_auth');
+      applyAuthSession({
+        token: payload.token,
+        loginEventId: payload.loginEventId,
+        user: payload.user,
+        tenant: payload.tenant,
+        usernameForStorage: payload.user.username,
+      });
+      markDemoSessionActive();
+      trackEvent('demo_session_started', { source: 'bootstrap' });
+    } catch (e) {
+      logger.warnCategory('auth', 'Invalid demo bootstrap payload', e);
+      sessionStorage.removeItem('pbooks_demo_auth');
+    }
+  }, [state.isAuthenticated, applyAuthSession]);
+
+  /**
    * Login with username, password, and tenant ID (legacy - kept for backward compatibility)
    */
-  const login = useCallback(async (username: string, password: string, tenantId: string) => {
+  const login = useCallback(async (username: string, password: string, tenantId: string): Promise<LoginResult> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
       const response = await apiClient.post<{
-        token: string;
+        token?: string;
+        mfaRequired?: boolean;
+        mfaToken?: string;
+        mfaSetupRequired?: boolean;
+        mfaSetupToken?: string;
+        loginEventId?: string;
         user: User;
         tenant: Tenant;
       }>('/auth/login', {
@@ -797,46 +931,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tenantId,
       });
 
-      // Store last used tenant in localStorage
-      localStorage.setItem('last_tenant_id', response.tenant.id);
-      localStorage.setItem('last_identifier', username);
-      if (response.user?.id) {
-        localStorage.setItem('user_id', response.user.id); // Store user_id for local database tracking
+      if (response.mfaRequired && response.mfaToken) {
+        setState(prev => ({ ...prev, isLoading: false, error: null }));
+        return {
+          status: 'mfa_required',
+          mfaToken: response.mfaToken,
+          loginEventId: response.loginEventId,
+          user: response.user,
+          tenant: response.tenant,
+        };
       }
 
-      // Set authentication
-      apiClient.setAuth(response.token, response.tenant.id);
-      setSessionDataSource('postgres_api');
-
-      // Force a full API load on next sync (fresh baseline after login; incremental sync covers ongoing changes)
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('pbooks_api_last_sync_at');
-        sessionStorage.removeItem('pbooks_api_sync_tenant_id');
+      if (response.mfaSetupRequired && response.mfaSetupToken) {
+        setState(prev => ({ ...prev, isLoading: false, error: null }));
+        return {
+          status: 'mfa_setup_required',
+          mfaSetupToken: response.mfaSetupToken,
+          loginEventId: response.loginEventId,
+          user: response.user,
+          tenant: response.tenant,
+        };
       }
 
-      setState({
-        isAuthenticated: true,
+      if (!response.token) {
+        throw new Error('Login failed: no token returned');
+      }
+
+      applyAuthSession({
+        token: response.token,
+        loginEventId: response.loginEventId,
         user: response.user,
         tenant: response.tenant,
-        isLoading: false,
-        error: null,
+        usernameForStorage: username,
       });
-      syncDisplayTimezoneFromUser(response.user);
-
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:login-success'));
-      }
-
-      // Load license immediately so features enable without waiting for LicenseContext effect
-      checkLicenseStatus()
-        .then((licenseStatus) => {
-          if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
-            const dispatch = () => window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
-            if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(dispatch);
-            else setTimeout(dispatch, 0);
-          }
-        })
-        .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
+      return { status: 'authenticated' };
     } catch (error: any) {
       const errorMessage = error.error || error.message || 'Login failed';
       setState({
@@ -848,7 +976,99 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       throw error;
     }
-  }, [checkLicenseStatus]);
+  }, [applyAuthSession]);
+
+  const verifyMfaLogin = useCallback(async (input: {
+    mfaToken: string;
+    totpCode?: string;
+    recoveryCode?: string;
+    usernameForStorage?: string;
+  }) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const { mfaApi } = await import('../services/api/mfaApi');
+      const response = await mfaApi.verify({
+        mfaToken: input.mfaToken,
+        totpCode: input.totpCode,
+        recoveryCode: input.recoveryCode,
+      });
+      applyAuthSession({
+        token: response.token,
+        loginEventId: response.loginEventId,
+        user: response.user,
+        tenant: response.tenant,
+        usernameForStorage: input.usernameForStorage,
+      });
+    } catch (error: any) {
+      const errorMessage = error.error || error.message || 'MFA verification failed';
+      setState(prev => ({ ...prev, isLoading: false, error: errorMessage }));
+      throw error;
+    }
+  }, [applyAuthSession]);
+
+  const completeMfaSetupLogin = useCallback(async (input: {
+    mfaSetupToken: string;
+    code: string;
+    usernameForStorage?: string;
+  }): Promise<{ backupCodes: string[] }> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const { mfaApi } = await import('../services/api/mfaApi');
+      const response = await mfaApi.enable(input.code, input.mfaSetupToken);
+      if (!response.token || !response.user || !response.tenant) {
+        throw new Error('MFA setup did not return a session token');
+      }
+      applyAuthSession({
+        token: response.token,
+        loginEventId: response.loginEventId,
+        user: response.user,
+        tenant: response.tenant,
+        usernameForStorage: input.usernameForStorage,
+      });
+      return { backupCodes: response.backupCodes };
+    } catch (error: any) {
+      const errorMessage = error.error || error.message || 'MFA setup failed';
+      setState(prev => ({ ...prev, isLoading: false, error: errorMessage }));
+      throw error;
+    }
+  }, [applyAuthSession]);
+
+  const enterDemoSession = useCallback(async () => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const response = await apiClient.post<{
+        token: string;
+        loginEventId?: string;
+        user: User;
+        tenant: Tenant;
+      }>('/demo/enter', {});
+
+      if (!response.token) {
+        throw new Error('Demo session unavailable');
+      }
+
+      applyAuthSession({
+        token: response.token,
+        loginEventId: response.loginEventId,
+        user: response.user,
+        tenant: response.tenant,
+        usernameForStorage: response.user.username,
+      });
+      markDemoSessionActive();
+      trackEvent('demo_session_started', { source: 'in_app', tenantId: DEMO_PUBLIC_TENANT_ID });
+    } catch (error: unknown) {
+      const err = error as { error?: string; message?: string };
+      const errorMessage = err.error || err.message || 'Could not start live demo';
+      setState({
+        isAuthenticated: false,
+        user: null,
+        tenant: null,
+        isLoading: false,
+        error: errorMessage,
+      });
+      throw error;
+    }
+  }, [applyAuthSession]);
 
   /**
    * Register a new tenant (self-signup with free trial)
@@ -906,14 +1126,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const contextValue = useMemo(() => ({
     ...state,
     login,
+    verifyMfaLogin,
+    completeMfaSetupLogin,
     lookupTenants,
     smartLogin,
     unifiedLogin,
     registerTenant,
+    enterDemoSession,
     logout,
     checkLicenseStatus,
   }), [state.isAuthenticated, state.user, state.tenant, state.isLoading, state.error,
-       login, lookupTenants, smartLogin, unifiedLogin, registerTenant, logout, checkLicenseStatus]);
+       login, verifyMfaLogin, completeMfaSetupLogin, lookupTenants, smartLogin, unifiedLogin, registerTenant, enterDemoSession, logout, checkLicenseStatus]);
 
   return (
     <AuthContext.Provider value={contextValue}>
@@ -942,6 +1165,7 @@ export const useAuth = (): AuthContextType => {
       smartLogin: async () => { },
       unifiedLogin: async () => { },
       registerTenant: async () => ({ tenantId: '', trialDaysRemaining: 0 }),
+      enterDemoSession: async () => { },
       logout: () => { },
       checkLicenseStatus: async () => ({ isValid: false }),
     };

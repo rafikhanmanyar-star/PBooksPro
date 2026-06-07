@@ -1,4 +1,7 @@
-/** Fine-grained report builder ACL (role-based today; maps to JWT `role`). Extensible via `feature_permissions` DB column later. */
+/**
+ * Fine-grained report builder ACL — delegates to enterprise permission matrix.
+ */
+import { roleHasPermission } from '../../../auth/permissions.js';
 
 export type ReportCapability = {
   canCreateTemplates: boolean;
@@ -7,12 +10,12 @@ export type ReportCapability = {
 };
 
 export function getReportCapability(role: string | undefined): ReportCapability {
-  const r = (role ?? '').toLowerCase();
-  const adminLike = r === 'admin' || r === 'super_admin';
-  const finance = adminLike || r === 'accountant' || r === 'accounts';
+  const financeRead = roleHasPermission(role, 'reports.profit_loss.read');
+  const adminLike =
+    roleHasPermission(role, 'users.manage') || roleHasPermission(role, 'permissions.manage');
   return {
-    canCreateTemplates: finance,
-    canExportFiles: finance,
+    canCreateTemplates: financeRead && roleHasPermission(role, 'financial.write'),
+    canExportFiles: financeRead,
     canPublishPublicTemplates: adminLike,
   };
 }

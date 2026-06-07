@@ -1,4 +1,4 @@
-# PBooks Pro — Production-like full stack local test (PostgreSQL + API :3000 + Electron client)
+# PBooks Pro - Production-like full stack local test (PostgreSQL + API :3000 + Electron client)
 #
 # Run from repo root:
 #   npm run test:local-only

@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { X, HandCoins } from 'lucide-react';
 import {
@@ -46,7 +46,7 @@ const ProjectSellingUnitQuickPanel: React.FC<ProjectSellingUnitQuickPanelProps> 
     onClose,
     unitId,
 }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { invoices: appInvoices } = state;
     const [filterType, setFilterType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({

@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useInvoices, usePrintSettings, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
 import React, { useState, useRef, useEffect } from 'react';
 import { PrintSettings } from '../../types';
 import Input from '../ui/Input';
@@ -9,8 +9,10 @@ import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 
 const PrintTemplateForm: React.FC = () => {
-    const state = useFullAppState();
-    const { transactions, invoices, printSettings } = state;
+    const printSettings = usePrintSettings();
+    const transactions = useTransactions();
+    const invoices = useInvoices();
+    const invoiceHtmlTemplate = useStateSelector((s) => s.invoiceHtmlTemplate);
     const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
     const [settings, setSettings] = useState<PrintSettings>(printSettings);
@@ -602,64 +604,9 @@ const PrintTemplateForm: React.FC = () => {
             </div>
 
             <div className="space-y-4 border-t pt-4">
-                <h3 className="text-lg font-semibold text-slate-800">POS Receipt Template</h3>
-                <p className="text-sm text-slate-500">Configure the thermal receipt format for Point of Sale transactions. These settings will be used when printing receipts from the POS system.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
-                        label="Shop Name"
-                        value={settings.posShopName ?? ''}
-                        onChange={e => handleChange('posShopName', e.target.value)}
-                        placeholder="e.g., PBooks Pro Store"
-                    />
-                    <Input
-                        label="Shop Phone"
-                        value={settings.posShopPhone ?? ''}
-                        onChange={e => handleChange('posShopPhone', e.target.value)}
-                        placeholder="e.g., +92-XXX-XXXXXXX"
-                    />
-                    <div className="md:col-span-2">
-                        <Textarea
-                            label="Shop Address"
-                            value={settings.posShopAddress ?? ''}
-                            onChange={e => handleChange('posShopAddress', e.target.value)}
-                            placeholder="e.g., 123 Main Street, Karachi, Pakistan"
-                            rows={2}
-                        />
-                    </div>
-                    <Input
-                        label="Terminal ID (Optional)"
-                        value={settings.posTerminalId ?? ''}
-                        onChange={e => handleChange('posTerminalId', e.target.value)}
-                        placeholder="e.g., TERMINAL-01"
-                    />
-                    <Input
-                        label="Receipt Footer Text"
-                        value={settings.posReceiptFooter ?? ''}
-                        onChange={e => handleChange('posReceiptFooter', e.target.value)}
-                        placeholder="e.g., Thank you for your business!"
-                    />
-                    <div className="md:col-span-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={settings.posShowBarcode ?? true}
-                                onChange={e => handleChange('posShowBarcode', e.target.checked)}
-                                className="rounded text-accent focus:ring-accent"
-                            />
-                            <span className="text-sm text-slate-700">Show barcode on receipts (for transaction lookup)</span>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div className="space-y-4 border-t pt-4">
                 <h3 className="text-lg font-semibold text-slate-800">Print templates</h3>
                 <p className="text-sm text-slate-500">Data-driven templates used when you click Print on a form. Layout and branding come from the settings above.</p>
                 <ul className="space-y-2 text-sm text-slate-700">
-                    <li className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-indigo-600">POSReceiptTemplate</span>
-                        <span>— POS sale receipts (configured above, used in POS sales)</span>
-                    </li>
                     <li className="flex items-center gap-2">
                         <span className="font-mono font-semibold text-indigo-600">POPrintTemplate</span>
                         <span>— Purchase orders (Buyer Dashboard: open a PO, then Print)</span>

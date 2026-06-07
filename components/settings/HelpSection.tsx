@@ -4,6 +4,7 @@ import { ICONS } from '../../constants';
 import Input from '../ui/Input';
 import packageJson from '../../package.json';
 import { useUpdate } from '../../context/UpdateContext';
+import ProductTourLauncher from '../tours/ProductTourLauncher';
 
 // --- MOCK UI ENGINE (For Generating "Screenshots") ---
 
@@ -786,6 +787,13 @@ const HelpSection: React.FC = () => {
     };
 
     return (
+        <div className="space-y-8">
+            <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 sm:p-6">
+                <h3 className="text-lg font-bold text-slate-800 mb-1">Guided product tours</h3>
+                <p className="text-sm text-slate-600 mb-4">Walk through each module with step-by-step highlights. Progress saves automatically.</p>
+                <ProductTourLauncher />
+            </section>
+
         <div className="flex flex-col lg:flex-row gap-6 min-h-[600px]">
             {/* Sidebar Navigation */}
             <div className="lg:w-64 flex-shrink-0 space-y-2">
@@ -884,6 +892,7 @@ const HelpSection: React.FC = () => {
                     )}
                 </div>
             </div>
+        </div>
         </div>
     );
 };

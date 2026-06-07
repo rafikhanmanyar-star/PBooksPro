@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { memo, useEffect, useMemo } from 'react';
 import ProjectEquityManagement, {
     EQUITY_LEDGER_TABS,
@@ -23,7 +23,7 @@ function invNavLabelShort(label: string): string {
 }
 
 const InvestmentManagementPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { user } = useAuth();
     const { currentUser } = state;
 

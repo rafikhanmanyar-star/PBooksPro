@@ -1,12 +1,17 @@
 import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
-import { getPool } from '../db/pool.js';
-import { listTransactionLogs, rowToTransactionLogApi } from '../services/transactionLogService.js';
+import { getPool, withTransaction } from '../db/pool.js';
+import {
+  appendTransactionLog,
+  listTransactionLogs,
+  rowToTransactionLogApi,
+} from '../services/transactionLogService.js';
+import { requireFinancialWriteRole, requirePermission } from '../middleware/rbacMiddleware.js';
 
 export const transactionAuditRouter = Router();
 
-transactionAuditRouter.get('/transaction-audit', async (req: AuthedRequest, res) => {
+transactionAuditRouter.get('/transaction-audit', requirePermission('audit_logs.read'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -50,4 +55,25 @@ transactionAuditRouter.get('/transaction-audit/:id', async (req: AuthedRequest, 
     return;
   }
   sendFailure(res, 404, 'NOT_FOUND', 'Not found');
+});
+
+transactionAuditRouter.post('/transaction-audit', requireFinancialWriteRole, async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  try {
+    const row = await withTransaction((client) =>
+      appendTransactionLog(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
+    );
+    if (!row) {
+      sendSuccess(res, { id: (req.body as { id?: string }).id, skipped: true });
+      return;
+    }
+    sendSuccess(res, rowToTransactionLogApi(row), 201);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
 });

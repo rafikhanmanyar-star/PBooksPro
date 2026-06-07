@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Contract, ContactType, ContractStatus } from '../../types';
 import Button from '../ui/Button';
@@ -20,7 +20,7 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 type SortKey = 'contractNumber' | 'name' | 'totalAmount' | 'paid' | 'balance' | 'status' | 'startDate';
 
 const ProjectContractsPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { bills, contracts } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
@@ -69,7 +69,7 @@ const ProjectContractsPage: React.FC = () => {
             }
         });
 
-        allContracts.forEach(contract => {
+        contracts.forEach(contract => {
             const groupId = contract.projectId;
             const group = groupMap.get(groupId);
             const paid = contractPayments.get(contract.id) || 0;
@@ -115,17 +115,17 @@ const ProjectContractsPage: React.FC = () => {
         // 1. Tree Filter
         if (selectedNode) {
             if (selectedNode.type === 'group') {
-                contracts = allContracts.filter(c => c.projectId === selectedNode.id);
+                contracts = contracts.filter(c => c.projectId === selectedNode.id);
             } else if (selectedNode.type === 'vendor') {
                 const projectId = selectedNode.parentId;
-                contracts = allContracts.filter(c => c.vendorId === selectedNode.id && c.projectId === projectId);
+                contracts = contracts.filter(c => c.vendorId === selectedNode.id && c.projectId === projectId);
             }
         }
 
         // 2. Search Filter
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            contracts = allContracts.filter(c =>
+            contracts = contracts.filter(c =>
                 c.contractNumber.toLowerCase().includes(q) ||
                 c.name.toLowerCase().includes(q) ||
                 state.projects.find(p => p.id === c.projectId)?.name.toLowerCase().includes(q) ||
@@ -134,7 +134,7 @@ const ProjectContractsPage: React.FC = () => {
         }
 
         // 3. Sort
-        return allContracts.sort((a, b) => {
+        return contracts.sort((a, b) => {
             let valA: any = '';
             let valB: any = '';
 

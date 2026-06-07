@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { RentalAgreementStatus, Property, InvoiceType } from '../../types';
 import Card from '../ui/Card';
@@ -34,7 +34,7 @@ interface UnitStatusReportProps {
 }
 
 const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, activeReport }) => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
     const { contacts, buildings: appBuildings, properties, rentalAgreements } = state;
     const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');

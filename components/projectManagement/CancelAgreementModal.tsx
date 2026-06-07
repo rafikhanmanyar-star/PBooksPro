@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { ProjectAgreement, AccountType, InvoiceStatus, ProjectAgreementStatus } from '../../types';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -16,7 +16,7 @@ interface CancelAgreementModalProps {
 }
 
 const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onClose, agreement }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const dispatch = useDispatchOnly();
     const [penaltyPercentage, setPenaltyPercentage] = useState('0');
 

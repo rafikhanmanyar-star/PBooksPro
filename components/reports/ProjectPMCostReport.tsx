@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType } from '../../types';
 import Card from '../ui/Card';
@@ -28,7 +28,7 @@ interface PMCostRow {
 type SortKey = 'month' | 'projectName' | 'totalExpense' | 'excludedCosts' | 'netCostBase' | 'accruedFee' | 'paidFee' | 'balance';
 
 const ProjectPMCostReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { print: triggerPrint } = usePrintContext();
     
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');

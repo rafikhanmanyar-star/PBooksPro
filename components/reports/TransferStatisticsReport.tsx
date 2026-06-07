@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, AccountType } from '../../types';
 import Card from '../ui/Card';
@@ -32,7 +32,7 @@ interface TransferItem {
 type SortKey = 'date' | 'fromAccountName' | 'toAccountName' | 'amount' | 'description';
 
 const TransferStatisticsReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(() => startOfMonthYyyyMmDd());

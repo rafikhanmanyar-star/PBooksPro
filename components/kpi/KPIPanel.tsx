@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useKPIAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useKpis } from '../../context/KPIContext';
 import KPICard from './KPICard';
@@ -90,7 +90,7 @@ const KPIPanel: React.FC = () => {
         allReports, 
         favoriteReportIds 
     } = useKpis();
-    const state = useFullAppState();
+        const state = useKPIAppState();
     const {
         accounts,
         categories,
@@ -99,8 +99,7 @@ const KPIPanel: React.FC = () => {
         bills,
         invoices,
         buildings,
-        properties,
-    } = state;
+        properties } = state;
     const dispatch = useDispatchOnly();
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [selectorInitialTab, setSelectorInitialTab] = useState<'KPIs' | 'Reports'>('KPIs');
@@ -442,7 +441,7 @@ const KPIPanel: React.FC = () => {
                         <div className="w-5 h-5 mb-1">{ICONS.barChart}</div>
                         <span className="text-[10px] font-medium">KPIs</span>
                     </button>
-                    <button onClick={() => setActivePanelTab('reports')} className={`flex flex-col items-center justify-center p-2 rounded hover:bg-white/5 ${activePanelTab === 'reports' ? 'text-sky-400' : 'text-slate-400'}`}>
+                    <button type="button" data-tour="kpi-reports-tab" onClick={() => setActivePanelTab('reports')} className={`flex flex-col items-center justify-center p-2 rounded hover:bg-white/5 ${activePanelTab === 'reports' ? 'text-sky-400' : 'text-slate-400'}`}>
                         <div className="w-5 h-5 mb-1">{ICONS.clipboard}</div>
                         <span className="text-[10px] font-medium">Reports</span>
                     </button>
@@ -456,6 +455,8 @@ const KPIPanel: React.FC = () => {
             {/* Show Button (When panel is hidden) - Fixed to right edge vertically centered */}
             {!isPanelOpen && (
                 <button
+                    type="button"
+                    data-tour="kpi-panel-toggle"
                     onClick={togglePanel}
                     className="fixed right-0 top-1/2 transform -translate-y-1/2 bg-slate-800 text-white py-6 px-1 rounded-l-md shadow-lg hover:bg-slate-700 hover:pr-2 transition-all z-30 group border-l border-t border-b border-slate-600"
                     title="Show Dashboard"

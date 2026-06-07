@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     useCategories,
     useContacts,
@@ -9,7 +9,7 @@ import {
     useTransactions,
     useUnits,
 } from '../../hooks/useSelectiveState';
-import { ContactType, InvoiceType, TransactionType, ProjectAgreementStatus, Transaction } from '../../types';
+import { ContactType, InvoiceType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -21,66 +21,17 @@ import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { OWNER_LEDGER_PRINT_CSS } from './ownerLedgerPrint.css';
+import {
+    computeClientLedgerReport,
+    type ClientLedgerItem,
+    type ClientLedgerTreeSelection,
+    type ClientAgreementSummary,
+} from './clientLedgerReportEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchClientLedgerReport } from '../../services/api/financialReportsApi';
 
-interface LedgerItem {
-    id: string;
-    date: string;
-    ownerName: string;
-    unitName: string;
-    projectName: string;
-    particulars: string;
-    debit: number; // Invoice amount, Refund Given, or Penalty
-    credit: number; // Payment Received
-    balance: number;
-}
-
-interface AgreementSummary {
-    id: string;
-    ownerName: string;
-    projectName: string;
-    unitNames: string;
-    listPrice: number;
-    discounts: { label: string; amount: number }[];
-    sellingPrice: number;
-    totalReceived: number;
-    remainingAmount: number;
-}
-
-/** Tree + filters: all owners, one owner, or one unit (under an owner). */
-export type LedgerTreeSelection =
-    | { kind: 'all' }
-    | { kind: 'owner'; ownerId: string }
-    | { kind: 'unit'; unitId: string };
-
-function invoiceMatchesUnit(
-    inv: { id: string; unitId?: string | null; agreementId?: string | null },
-    unitId: string,
-    agreementUnitMap: Map<string, Set<string>>
-): boolean {
-    if (inv.unitId === unitId) return true;
-    if (inv.agreementId) {
-        const set = agreementUnitMap.get(inv.agreementId);
-        return set?.has(unitId) ?? false;
-    }
-    return false;
-}
-
-function transactionMatchesUnit(
-    tx: Transaction,
-    unitId: string,
-    agreementUnitMap: Map<string, Set<string>>,
-    invoices: { id: string; unitId?: string | null; agreementId?: string | null }[]
-): boolean {
-    if (tx.unitId === unitId) return true;
-    if (tx.invoiceId) {
-        const inv = invoices.find(i => i.id === tx.invoiceId);
-        if (inv) return invoiceMatchesUnit(inv, unitId, agreementUnitMap);
-    }
-    if (tx.agreementId) {
-        return agreementUnitMap.get(tx.agreementId)?.has(unitId) ?? false;
-    }
-    return false;
-}
+/** @deprecated Use ClientLedgerTreeSelection from clientLedgerReportEngine */
+export type LedgerTreeSelection = ClientLedgerTreeSelection;
 
 const ClientLedgerReport: React.FC = () => {
     const contacts = useContacts();
@@ -93,6 +44,7 @@ const ClientLedgerReport: React.FC = () => {
     const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
+    const localOnly = isLocalOnlyMode();
 
     const handlePrint = () => {
         window.print();
@@ -103,11 +55,11 @@ const ClientLedgerReport: React.FC = () => {
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState('2100-12-31');
     
-    const [ledgerSelection, setLedgerSelection] = useState<LedgerTreeSelection>({ kind: 'all' });
+    const [ledgerSelection, setLedgerSelection] = useState<ClientLedgerTreeSelection>({ kind: 'all' });
     const [treeSearch, setTreeSearch] = useState('');
 
     // Sorting
-    const [sortConfig, setSortConfig] = useState<{ key: keyof LedgerItem; direction: 'asc' | 'desc' } | null>(null);
+    const [sortConfig, setSortConfig] = useState<{ key: keyof ClientLedgerItem; direction: 'asc' | 'desc' } | null>(null);
 
     const handleRangeChange = (type: 'total' | 'thisMonth' | 'lastMonth' | 'custom') => {
         setDateRangeType(type);
@@ -134,14 +86,6 @@ const ClientLedgerReport: React.FC = () => {
 
     // Include both CLIENT and OWNER types
     const owners = useMemo(() => contacts.filter(c => c.type === ContactType.CLIENT || c.type === ContactType.OWNER), [contacts]);
-
-    const agreementUnitMap = useMemo(() => {
-        const m = new Map<string, Set<string>>();
-        projectAgreements.forEach(pa => {
-            m.set(pa.id, new Set(pa.unitIds || []));
-        });
-        return m;
-    }, [projectAgreements]);
 
     /** Owners with units for sidebar tree (agreements + installment invoices). */
     const ledgerTreeOwners = useMemo(() => {
@@ -220,283 +164,69 @@ const ClientLedgerReport: React.FC = () => {
         return u ? `Unit: ${u.name}${on ? ` (${on})` : ''}` : 'Unit';
     }, [ledgerSelection, contacts, units, resolvedWhatsappOwnerId]);
 
-    // --- Summary Data Calculation ---
-    const agreementSummaries = useMemo<AgreementSummary[]>(() => {
-        const agreements = projectAgreements.filter(pa => {
-            if (ledgerSelection.kind === 'all') return true;
-            if (ledgerSelection.kind === 'owner') return pa.clientId === ledgerSelection.ownerId;
-            return pa.unitIds?.includes(ledgerSelection.unitId) ?? false;
-        });
+    const ledgerEngineState = useMemo(
+        () => ({ contacts, projects, units, invoices, transactions, categories, projectAgreements }),
+        [contacts, projects, units, invoices, transactions, categories, projectAgreements]
+    );
 
-        return agreements.map(pa => {
-            const owner = contacts.find(c => c.id === pa.clientId);
-            const project = projects.find(p => p.id === pa.projectId);
-            const agreementUnits = units.filter(u => pa.unitIds?.includes(u.id) ?? false);
-            const unitLabel =
-                ledgerSelection.kind === 'unit'
-                    ? agreementUnits.find(u => u.id === ledgerSelection.unitId)?.name ||
-                      units.find(u => u.id === ledgerSelection.unitId)?.name ||
-                      agreementUnits.map(u => u.name).join(', ')
-                    : agreementUnits.map(u => u.name).join(', ');
+    const [serverPayload, setServerPayload] = useState<Awaited<ReturnType<typeof fetchClientLedgerReport>> | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
-            let agreementInvoices = invoices.filter(
-                inv =>
-                    inv.agreementId === pa.id &&
-                    inv.invoiceType === InvoiceType.INSTALLMENT &&
-                    (ledgerSelection.kind === 'all' || inv.contactId === pa.clientId)
-            );
-            if (ledgerSelection.kind === 'owner') {
-                agreementInvoices = agreementInvoices.filter(inv => inv.contactId === ledgerSelection.ownerId);
-            } else if (ledgerSelection.kind === 'unit') {
-                agreementInvoices = agreementInvoices.filter(inv =>
-                    invoiceMatchesUnit(inv, ledgerSelection.unitId, agreementUnitMap)
-                );
-            }
-
-            const agreementInvoiceIds = new Set(agreementInvoices.map(inv => inv.id));
-
-            const totalReceived = transactions
-                .filter(tx => {
-                    if (tx.type !== TransactionType.INCOME) return false;
-                    if (!tx.invoiceId) return false;
-                    if (!agreementInvoiceIds.has(tx.invoiceId)) return false;
-                    const inv = invoices.find(i => i.id === tx.invoiceId);
-                    if (!inv || inv.invoiceType !== InvoiceType.INSTALLMENT) return false;
-                    if (ledgerSelection.kind === 'owner' && tx.contactId !== ledgerSelection.ownerId) return false;
-                    if (ledgerSelection.kind === 'unit' && tx.invoiceId) {
-                        const inv2 = invoices.find(i => i.id === tx.invoiceId);
-                        if (inv2 && !invoiceMatchesUnit(inv2, ledgerSelection.unitId, agreementUnitMap)) return false;
-                    }
-                    return true;
-                })
-                .reduce((sum, tx) => sum + tx.amount, 0);
-
-            const discounts = [
-                { label: 'Customer Discount', amount: pa.customerDiscount },
-                { label: 'Floor Discount', amount: pa.floorDiscount },
-                { label: 'Lump Sum Discount', amount: pa.lumpSumDiscount },
-                { label: 'Misc Discount', amount: pa.miscDiscount },
-            ].filter(d => d.amount > 0);
-
-            return {
-                id: pa.id,
-                ownerName: owner?.name || 'Unknown',
-                projectName: project?.name || 'Unknown',
-                unitNames: unitLabel,
-                listPrice: pa.listPrice,
-                discounts,
-                sellingPrice: pa.sellingPrice,
-                totalReceived,
-                remainingAmount: pa.sellingPrice - totalReceived
-            };
-        });
-    }, [
-        projectAgreements,
-        contacts,
-        projects,
-        units,
-        invoices,
-        transactions,
-        ledgerSelection,
-        agreementUnitMap
-    ]);
-
-
-    const reportData = useMemo<LedgerItem[]>(() => {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-
-        // Rental Category Set for exclusion
-        const rentalCategoryIds = new Set(categories.filter(c => c.isRental).map(c => c.id));
-        // Broker commission / project rebate payouts are project expenses (Broker Report), not owner balance items
-        const brokerCommissionExpenseCategoryIds = new Set(
-            ['Broker Fee', 'Rebate Amount']
-                .map(n => categories.find(c => c.name === n)?.id)
-                .filter((id): id is string => Boolean(id))
-        );
-
-        // 1. Invoices (Debit - They owe us) - Only Project Installments
-        let ownerInvoices = invoices.filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT);
-
-        if (ledgerSelection.kind === 'owner') {
-            ownerInvoices = ownerInvoices.filter(inv => inv.contactId === ledgerSelection.ownerId);
-        } else if (ledgerSelection.kind === 'unit') {
-            ownerInvoices = ownerInvoices.filter(inv =>
-                invoiceMatchesUnit(inv, ledgerSelection.unitId, agreementUnitMap)
-            );
+    useEffect(() => {
+        if (localOnly) {
+            setServerPayload(null);
+            setFetchError(null);
+            return;
         }
-
-        // 2. Payments Received (Credit - They paid us) - INCOME
-        let ownerPayments = transactions.filter(tx => 
-            tx.type === TransactionType.INCOME &&
-            tx.invoiceId // Must be linked to an invoice
-        );
-        
-        // STRICTER FILTER: Ensure linked invoice is INSTALLMENT type (not Rental)
-        ownerPayments = ownerPayments.filter(tx => {
-             const inv = invoices.find(i => i.id === tx.invoiceId);
-             return inv && inv.invoiceType === InvoiceType.INSTALLMENT;
-        });
-
-        // 3. Refunds/Payouts Given (Debit - We paid them back) - EXPENSE
-        let ownerRefunds = transactions.filter(tx => 
-            tx.type === TransactionType.EXPENSE &&
-            tx.contactId 
-        );
-        
-        // STRICTER FILTER: Exclude Rental Categories and ensure it's likely project related
-        ownerRefunds = ownerRefunds.filter(tx => !tx.categoryId || !rentalCategoryIds.has(tx.categoryId));
-        ownerRefunds = ownerRefunds.filter(
-            tx => !tx.categoryId || !brokerCommissionExpenseCategoryIds.has(tx.categoryId)
-        );
-
-        if (ledgerSelection.kind === 'all') {
-            const ownerIds = new Set(owners.map(c => c.id));
-            ownerPayments = ownerPayments.filter(tx => tx.contactId && ownerIds.has(tx.contactId));
-            ownerRefunds = ownerRefunds.filter(tx => tx.contactId && ownerIds.has(tx.contactId));
-        } else if (ledgerSelection.kind === 'owner') {
-            ownerPayments = ownerPayments.filter(tx => tx.contactId === ledgerSelection.ownerId);
-            ownerRefunds = ownerRefunds.filter(tx => tx.contactId === ledgerSelection.ownerId);
-        } else {
-            ownerPayments = ownerPayments.filter(tx =>
-                transactionMatchesUnit(tx, ledgerSelection.unitId, agreementUnitMap, invoices)
-            );
-            ownerRefunds = ownerRefunds.filter(tx =>
-                transactionMatchesUnit(tx, ledgerSelection.unitId, agreementUnitMap, invoices)
-            );
-        }
-
-        const rawItems: { date: string, ownerName: string, unitName: string, projectName: string, particulars: string, debit: number, credit: number }[] = [];
-        
-        // Helper to get Unit/Project Name
-        const getContext = (invoiceId?: string, projectId?: string, agreementId?: string) => {
-            let unitName = '-';
-            let projectName = '-';
-            
-            if (projectId) {
-                projectName = projects.find(p => p.id === projectId)?.name || '-';
-            }
-
-            if (invoiceId) {
-                const inv = invoices.find(i => i.id === invoiceId);
-                if (inv) {
-                    if (inv.unitId) unitName = units.find(u => u.id === inv.unitId)?.name || '-';
-                    if (!projectName && inv.projectId) projectName = projects.find(p => p.id === inv.projectId)?.name || '-';
-                }
-            }
-            
-            return { unitName, projectName };
-        };
-
-        // Add Invoices
-        ownerInvoices.forEach(inv => {
-            const invDate = new Date(inv.issueDate);
-            if(invDate >= start && invDate <= end) {
-                const owner = contacts.find(c => c.id === inv.contactId);
-                const { unitName, projectName } = getContext(inv.id, inv.projectId);
-                rawItems.push({ 
-                    date: inv.issueDate, 
-                    ownerName: owner?.name || 'Unknown',
-                    unitName,
-                    projectName,
-                    particulars: `Invoice #${inv.invoiceNumber}`, 
-                    debit: inv.amount, 
-                    credit: 0 
-                });
-            }
-        });
-
-        // Add Payments (Income)
-        ownerPayments.forEach(tx => {
-            const txDate = new Date(tx.date);
-            if(txDate >= start && txDate <= end) {
-                const owner = contacts.find(c => c.id === tx.contactId);
-                const { unitName, projectName } = getContext(tx.invoiceId, tx.projectId);
-                rawItems.push({ 
-                    date: tx.date, 
-                    ownerName: owner?.name || 'Unknown',
-                    unitName,
-                    projectName,
-                    particulars: tx.description || 'Payment Received', 
-                    debit: 0, 
-                    credit: tx.amount 
-                });
-            }
-        });
-
-        // Add Refunds (Expense)
-        ownerRefunds.forEach(tx => {
-            const txDate = new Date(tx.date);
-            if(txDate >= start && txDate <= end) {
-                const owner = contacts.find(c => c.id === tx.contactId);
-                const { unitName, projectName } = getContext(tx.invoiceId, tx.projectId);
-                rawItems.push({ 
-                    date: tx.date, 
-                    ownerName: owner?.name || 'Unknown',
-                    unitName,
-                    projectName,
-                    particulars: tx.description || 'Refund/Payout Given', 
-                    debit: tx.amount, 
-                    credit: 0 
-                });
-            }
-        });
-
-        // 4. Synthetic Penalties (Debit)
-        projectAgreements.forEach(pa => {
-            if (pa.status === ProjectAgreementStatus.CANCELLED && pa.cancellationDetails && pa.cancellationDetails.penaltyAmount > 0) {
-                const paMatches =
-                    ledgerSelection.kind === 'all' ||
-                    (ledgerSelection.kind === 'owner' && pa.clientId === ledgerSelection.ownerId) ||
-                    (ledgerSelection.kind === 'unit' && (pa.unitIds?.includes(ledgerSelection.unitId) ?? false));
-                if (paMatches) {
-                    const cancelDate = new Date(pa.cancellationDetails.date);
-                    if (cancelDate >= start && cancelDate <= end) {
-                        const owner = contacts.find(c => c.id === pa.clientId);
-                        const project = projects.find(p => p.id === pa.projectId);
-                        const unitNamesStr =
-                            ledgerSelection.kind === 'unit'
-                                ? units.find(u => u.id === ledgerSelection.unitId)?.name || '-'
-                                : units.filter(u => pa.unitIds?.includes(u.id) ?? false).map(u => u.name).join(', ');
-                        
-                        rawItems.push({
-                            date: pa.cancellationDetails.date,
-                            ownerName: owner?.name || 'Unknown',
-                            unitName: unitNamesStr || '-',
-                            projectName: project?.name || '-',
-                            particulars: `Cancellation Penalty - Agreement #${pa.agreementNumber}`,
-                            debit: pa.cancellationDetails.penaltyAmount,
-                            credit: 0
-                        });
-                    }
-                }
-            }
-        });
-        
-        // Sort Chronologically
-        rawItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-        if (sortConfig) {
-            rawItems.sort((a, b) => {
-                if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
-                return 0;
+        let cancelled = false;
+        setLoading(true);
+        setFetchError(null);
+        void fetchClientLedgerReport({
+            startDate,
+            endDate,
+            selection: ledgerSelection,
+            sortKey: sortConfig?.key,
+            sortDirection: sortConfig?.direction,
+        })
+            .then((r) => {
+                if (!cancelled) setServerPayload(r);
+            })
+            .catch((e) => {
+                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
             });
-        }
+        return () => {
+            cancelled = true;
+        };
+    }, [localOnly, startDate, endDate, ledgerSelection, sortConfig]);
 
-        let runningBalance = 0;
-        const finalItems: LedgerItem[] = rawItems.map((item, index) => {
-            runningBalance += item.debit - item.credit;
-            return { ...item, id: `${item.date}-${index}`, balance: runningBalance };
-        });
+    const localResult = useMemo(
+        () =>
+            computeClientLedgerReport(ledgerEngineState, {
+                startDate,
+                endDate,
+                selection: ledgerSelection,
+                sortKey: sortConfig?.key,
+                sortDirection: sortConfig?.direction,
+            }),
+        [ledgerEngineState, startDate, endDate, ledgerSelection, sortConfig]
+    );
 
-        return finalItems;
+    const reportData = localOnly ? localResult.rows : (serverPayload?.rows ?? localResult.rows);
+    const agreementSummaries: ClientAgreementSummary[] = localOnly
+        ? localResult.agreementSummaries
+        : (serverPayload?.agreementSummaries ?? localResult.agreementSummaries);
 
-    }, [projectAgreements, contacts, projects, units, invoices, transactions, categories, startDate, endDate, ledgerSelection, agreementUnitMap, owners, sortConfig]);
-    
-    const requestSort = (key: keyof LedgerItem) => {
+    const closingBalance = useMemo(() => {
+        if (ledgerSelection.kind === 'all') return 0;
+        if (!localOnly && serverPayload) return serverPayload.closingBalance;
+        return localResult.closingBalance;
+    }, [ledgerSelection.kind, localOnly, serverPayload, localResult.closingBalance]);
+
+    const requestSort = (key: keyof ClientLedgerItem) => {
         let direction: 'asc' | 'desc' = 'asc';
         if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
             direction = 'desc';
@@ -505,12 +235,9 @@ const ClientLedgerReport: React.FC = () => {
     };
 
     const totals = useMemo(() => {
-        return reportData.reduce((acc, item) => {
-            acc.debit += item.debit;
-            acc.credit += item.credit;
-            return acc;
-        }, { debit: 0, credit: 0 });
-    }, [reportData]);
+        if (!localOnly && serverPayload?.totals) return serverPayload.totals;
+        return localResult.totals;
+    }, [localOnly, serverPayload, localResult.totals]);
 
 
     const handleExport = () => {
@@ -536,7 +263,7 @@ const ClientLedgerReport: React.FC = () => {
         }
 
         try {
-            const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
+            const balanceDue = closingBalance;
 
             let message = `*Statement for ${selectedOwner.name}*\n`;
 
@@ -570,7 +297,7 @@ const ClientLedgerReport: React.FC = () => {
                 }
             }
 
-            message += `\nFinal Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
+            message += `\nFinal Balance Due: *${CURRENCY} ${balanceDue.toLocaleString()}*\n\n`;
             message += `This is an automated summary from PBooksPro.`;
 
             sendOrOpenWhatsApp(
@@ -583,9 +310,7 @@ const ClientLedgerReport: React.FC = () => {
         }
     };
     
-    const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
-
-    const SortHeader: React.FC<{ label: string; sortKey: keyof LedgerItem; align?: 'left' | 'right' }> = ({
+    const SortHeader: React.FC<{ label: string; sortKey: keyof ClientLedgerItem; align?: 'left' | 'right' }> = ({
         label,
         sortKey,
         align = 'left'
@@ -656,6 +381,13 @@ const ClientLedgerReport: React.FC = () => {
                         </div>
                     </ReportToolbar>
                 </div>
+
+                {!localOnly && loading && (
+                    <p className="text-sm text-app-muted px-6 no-print">Loading report from server…</p>
+                )}
+                {!localOnly && fetchError && (
+                    <p className="text-sm text-rose-600 px-6 no-print">Server report failed: {fetchError}. Showing local data.</p>
+                )}
 
                 <div className="flex-grow flex flex-row min-h-0 gap-3 overflow-hidden bg-background">
                     <aside className="no-print print:hidden flex flex-col w-64 min-w-[200px] max-w-[300px] flex-shrink-0 border border-app-border rounded-lg bg-app-card shadow-ds-card p-3">
@@ -822,7 +554,7 @@ const ClientLedgerReport: React.FC = () => {
                                             <td className="px-3 py-2 text-right text-sm text-ds-danger tabular-nums whitespace-nowrap num">{CURRENCY} {totals.debit.toLocaleString()}</td>
                                             <td className="px-3 py-2 text-right text-sm text-ds-success tabular-nums whitespace-nowrap num">{CURRENCY} {totals.credit.toLocaleString()}</td>
                                             <td className="px-3 py-2 text-right text-sm text-app-text tabular-nums whitespace-nowrap num">
-                                                {ledgerSelection.kind !== 'all' ? `${CURRENCY} ${finalBalance.toLocaleString()}` : '-'}
+                                                {ledgerSelection.kind !== 'all' ? `${CURRENCY} ${closingBalance.toLocaleString()}` : '-'}
                                             </td>
                                         </tr>
                                     </tfoot>

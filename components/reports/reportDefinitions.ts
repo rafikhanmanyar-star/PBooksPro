@@ -45,6 +45,7 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'project-profit-loss', title: 'Profit & Loss Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Profit & Loss' },
     { id: 'project-balance-sheet', title: 'Balance Sheet Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Balance Sheet' },
     { id: 'project-trial-balance', title: 'Trial Balance Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Trial Balance' },
+    { id: 'project-reconciliation', title: 'Financial Reconciliation', group: 'Project', path: 'projectManagement', subPath: 'Reports:Reconciliation' },
     { id: 'project-cash-flows', title: 'Cash Flow Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Cash Flows' },
     { id: 'project-investor-distribution', title: 'Investor Distribution Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Investor Distribution' },
 

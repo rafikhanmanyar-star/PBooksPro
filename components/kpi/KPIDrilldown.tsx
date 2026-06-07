@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useKPIAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { useKpis } from '../../context/KPIContext';
 import { ICONS, CURRENCY } from '../../constants';
@@ -14,7 +14,7 @@ type SortConfig = {
 
 const KPIDrilldown: React.FC = () => {
     const { activeDrilldownKpi, closeDrilldown } = useKpis();
-    const state = useFullAppState();
+        const state = useKPIAppState();
     const {
         accounts,
         categories,
@@ -25,8 +25,7 @@ const KPIDrilldown: React.FC = () => {
         buildings,
         properties,
         contacts,
-        rentalAgreements,
-    } = state;
+        rentalAgreements } = state;
     const dispatch = useDispatchOnly();
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
 

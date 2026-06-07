@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useWarehouses } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Warehouse } from '../../types';
 import { ICONS } from '../../constants';
@@ -14,7 +14,7 @@ interface WarehouseManagementProps {
 }
 
 const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormRequest }) => {
-    const appState = useFullAppState();
+        const warehouses = useWarehouses();
     const appDispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
     
@@ -48,7 +48,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormReq
 
     // Get all warehouses for grid, filtered and sorted
     const gridWarehouses = useMemo(() => {
-        let warehouses = [...appState.warehouses || []];
+        let warehouses = [...warehouses || []];
 
         // Apply search filter
         if (gridSearchQuery) {
@@ -83,7 +83,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormReq
         }
 
         return warehouses;
-    }, [appState.warehouses, gridSearchQuery, sortConfig]);
+    }, [warehouses, gridSearchQuery, sortConfig]);
 
     const handleSort = (key: string) => {
         setSortConfig(prev => {
@@ -103,7 +103,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormReq
         }
 
         // Check for duplicate name
-        const duplicate = appState.warehouses?.find(w => 
+        const duplicate = warehouses?.find(w => 
             w.name.trim().toLowerCase() === name.trim().toLowerCase() && 
             (!editingWarehouse || w.id !== editingWarehouse.id)
         );

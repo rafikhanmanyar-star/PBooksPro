@@ -10,6 +10,7 @@ import BrokerPayouts from '../payouts/BrokerPayouts';
 import { Page, InvoiceType, TransactionType } from '../../types';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import useLocalStorage from '../../hooks/useLocalStorage';
 // Non-report page imports (not lazy since they're operational)
 import ProjectPMPayouts from './ProjectPMPayouts';
@@ -35,6 +36,7 @@ const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetRep
 const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
 const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
 const TrialBalanceReport = React.lazy(() => import('../reports/TrialBalanceReport'));
+const ReconciliationDashboard = React.lazy(() => import('../reports/ReconciliationDashboard'));
 const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
 const CustomReportBuilderPage = React.lazy(() => import('../reports/customReportBuilder/CustomReportBuilderPage'));
 const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
@@ -51,13 +53,13 @@ type ProjectView =
     | 'Visual Layout' | 'Tabular View'
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
-    | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Trial Balance' | 'Investor Distribution' | 'Contract Report'
+    | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Trial Balance' | 'Reconciliation' | 'Investor Distribution' | 'Contract Report'
     | 'Budget vs Actual' | 'Cash Flows' | 'Marketing Activity' | 'Custom Report Builder';
 
 /** Project selling — operational tabs (persistent mount) */
 const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Assets', 'Sales Returns'];
 
-const SELLING_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'];
+const SELLING_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Reconciliation', 'Cash Flows', 'Investor Distribution'];
 
 const SELLING_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -73,7 +75,7 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
 /** Project construction */
 const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Contracts', 'Bills'];
 
-const CONSTRUCTION_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'];
+const CONSTRUCTION_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Reconciliation', 'Cash Flows', 'Investor Distribution'];
 
 const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -100,7 +102,19 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const currentUser = useStateSelector(s => s.currentUser);
     const dispatch = useDispatchOnly();
     const { user } = useAuth();
-    const isAdmin = user?.role === 'Admin' || currentUser?.role === 'Admin';
+    const perms = usePermissions();
+
+    const canFinancialReport = (name: ProjectView): boolean => {
+        switch (name) {
+            case 'Profit & Loss': return perms.canReadProfitLoss;
+            case 'Balance Sheet': return perms.canReadBalanceSheet;
+            case 'Trial Balance': return perms.canReadTrialBalance;
+            case 'Reconciliation': return perms.canReadTrialBalance;
+            case 'Cash Flows': return perms.canReadCashFlow;
+            case 'Investor Distribution': return perms.canReadProfitLoss;
+            default: return true;
+        }
+    };
 
     const [constructionView, setConstructionView] = useLocalStorage<ProjectView>('projectManagement_activeView', 'Contracts');
     const [sellingView, setSellingView] = useLocalStorage<ProjectView>('projectSelling_activeView', 'Marketing');
@@ -183,11 +197,12 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Budget vs Actual': return <ProjectBudgetReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
             case 'Custom Report Builder': return <CustomReportBuilderPage />;
-            case 'Profit & Loss': return isAdmin ? <ProjectProfitLossReport /> : null;
-            case 'Balance Sheet': return isAdmin ? <ProjectBalanceSheetReport /> : null;
-            case 'Trial Balance': return isAdmin ? <TrialBalanceReport /> : null;
-            case 'Cash Flows': return isAdmin ? <ProjectCashFlowReport /> : null;
-            case 'Investor Distribution': return isAdmin ? <ProjectInvestorReport /> : null;
+            case 'Profit & Loss': return perms.canReadProfitLoss ? <ProjectProfitLossReport /> : null;
+            case 'Balance Sheet': return perms.canReadBalanceSheet ? <ProjectBalanceSheetReport /> : null;
+            case 'Trial Balance': return perms.canReadTrialBalance ? <TrialBalanceReport /> : null;
+            case 'Reconciliation': return perms.canReadTrialBalance ? <ReconciliationDashboard /> : null;
+            case 'Cash Flows': return perms.canReadCashFlow ? <ProjectCashFlowReport /> : null;
+            case 'Investor Distribution': return perms.canReadProfitLoss ? <ProjectInvestorReport /> : null;
             default: return null;
         }
     };
@@ -243,8 +258,11 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         );
     };
 
-    const sellingReportKeys = [...(isAdmin ? SELLING_FINANCIAL_REPORTS : []), ...SELLING_OTHER_REPORTS];
-    const constructionReportKeys = [...(isAdmin ? CONSTRUCTION_FINANCIAL_REPORTS : []), ...CONSTRUCTION_OTHER_REPORTS];
+    const visibleFinancialReports = (reports: ProjectView[]) =>
+        reports.filter((name) => canFinancialReport(name));
+
+    const sellingReportKeys = [...visibleFinancialReports(SELLING_FINANCIAL_REPORTS), ...SELLING_OTHER_REPORTS];
+    const constructionReportKeys = [...visibleFinancialReports(CONSTRUCTION_FINANCIAL_REPORTS), ...CONSTRUCTION_OTHER_REPORTS];
 
     const isSellingReportActive = sellingReportKeys.includes(activeView);
     const isConstructionReportActive = constructionReportKeys.includes(activeView);
@@ -254,16 +272,16 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         if (sellingReportKeys.includes(activeView)) {
             setSellingReportsExpanded(true);
         }
-    }, [isSellingMode, activeView, isAdmin]);
+    }, [isSellingMode, activeView, sellingReportKeys]);
 
     useEffect(() => {
         if (isSellingMode) return;
         if (constructionReportKeys.includes(activeView)) {
             setConstructionReportsExpanded(true);
         }
-    }, [isSellingMode, activeView, isAdmin]);
+    }, [isSellingMode, activeView, constructionReportKeys]);
 
-    const ModuleNavItem = ({ view, label, collapsed }: { view: ProjectView; label: string; collapsed: boolean }) => {
+    const ModuleNavItem = ({ view, label, collapsed, dataTour }: { view: ProjectView; label: string; collapsed: boolean; dataTour?: string }) => {
         const on = activeView === view;
         const short = projectNavLabelShort(label);
         if (collapsed) {
@@ -271,6 +289,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 <button
                     type="button"
                     title={label}
+                    data-tour={dataTour}
                     onClick={() => setActiveView(view)}
                     className={`w-full flex justify-center px-1 py-1.5 rounded-md text-[10px] font-bold leading-tight transition-colors ${on
                         ? 'bg-indigo-600 text-white shadow-sm'
@@ -284,6 +303,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         return (
             <button
                 type="button"
+                data-tour={dataTour}
                 onClick={() => setActiveView(view)}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${on
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/20'
@@ -352,13 +372,13 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     </button>
                     {sellingReportsExpanded && (
                         <div className="mt-1 space-y-2">
-                            {isAdmin && (
+                            {visibleFinancialReports(SELLING_FINANCIAL_REPORTS).length > 0 && (
                                 <div>
                                     {!subCollapsed && (
                                         <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Financial statements</p>
                                     )}
                                     <div className="space-y-0.5">
-                                        {SELLING_FINANCIAL_REPORTS.map((name) => (
+                                        {visibleFinancialReports(SELLING_FINANCIAL_REPORTS).map((name) => (
                                             <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
                                         ))}
                                     </div>
@@ -396,10 +416,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     compact
                 />
             </div>
-            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project construction navigation">
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project construction navigation" data-tour="project-subnav">
                 <div className="space-y-0.5">
                     <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} dataTour="project-bills" />
                 </div>
 
                 <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
@@ -412,6 +432,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700">
                     <button
                         type="button"
+                        data-tour="project-reports"
                         onClick={() => setConstructionReportsExpanded((e) => !e)}
                         className={`w-full flex items-center ${subCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2 rounded-md text-sm font-medium transition-colors ${isConstructionReportActive || constructionReportsExpanded
                             ? 'bg-indigo-50 dark:bg-indigo-950/50 text-accent'
@@ -427,14 +448,20 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     </button>
                     {constructionReportsExpanded && (
                         <div className="mt-1 space-y-2">
-                            {isAdmin && (
+                            {visibleFinancialReports(CONSTRUCTION_FINANCIAL_REPORTS).length > 0 && (
                                 <div>
                                     {!subCollapsed && (
                                         <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Financial statements</p>
                                     )}
                                     <div className="space-y-0.5">
-                                        {CONSTRUCTION_FINANCIAL_REPORTS.map((name) => (
-                                            <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
+                                        {visibleFinancialReports(CONSTRUCTION_FINANCIAL_REPORTS).map((name) => (
+                                            <ModuleNavItem
+                                                key={name}
+                                                view={name}
+                                                label={name}
+                                                collapsed={subCollapsed}
+                                                dataTour={name === 'Trial Balance' ? 'report-trial-balance' : undefined}
+                                            />
                                         ))}
                                     </div>
                                 </div>
@@ -461,14 +488,14 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         { value: 'Broker Payouts', label: 'Brokers', group: 'Payouts' },
         { value: 'Visual Layout', label: 'Visual', group: 'Project views' },
         { value: 'Tabular View', label: 'Units', group: 'Project views' },
-        ...(isAdmin ? SELLING_FINANCIAL_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Financial' })) : []),
+        ...visibleFinancialReports(SELLING_FINANCIAL_REPORTS).map((v) => ({ value: v, label: v, group: 'Reports — Financial' })),
         ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v === 'Custom Report Builder' ? 'Custom builder' : v, group: 'Reports — Operational' })),
     ];
 
     const allConstructionMobileOptions: { value: ProjectView; label: string; group: string }[] = [
         ...CONSTRUCTION_OPERATIONAL_VIEWS.map((v) => ({ value: v, label: v, group: 'Operations' })),
         { value: 'PM Payouts', label: 'PM Fee Log', group: 'Payouts' },
-        ...(isAdmin ? CONSTRUCTION_FINANCIAL_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Financial' })) : []),
+        ...visibleFinancialReports(CONSTRUCTION_FINANCIAL_REPORTS).map((v) => ({ value: v, label: v, group: 'Reports — Financial' })),
         ...CONSTRUCTION_OTHER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Operational' })),
     ];
 

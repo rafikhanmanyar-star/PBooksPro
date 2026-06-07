@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useSettingsPageState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useEffect } from 'react';
 import { TransactionType, ContactType, AccountType, Account } from '../../types';
 import { ICONS } from '../../constants';
@@ -17,7 +17,7 @@ interface SettingsDetailPageProps {
 }
 
 const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoBack }) => {
-    const state = useFullAppState();
+        const state = useSettingsPageState();
     const {
         accounts,
         contacts,
@@ -25,8 +25,7 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
         buildings,
         properties,
         units,
-        categories,
-    } = state;
+        categories } = state;
     const dispatch = useDispatchOnly();
     const { showConfirm } = useNotification();
     const { editingEntity } = state;
@@ -149,8 +148,7 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
                     'CLIENT': ContactType.CLIENT,
                     'BROKER': ContactType.BROKER,
                     'FRIEND': ContactType.FRIEND_FAMILY,
-                    'LEAD': ContactType.LEAD,
-                };
+                    'LEAD': ContactType.LEAD };
                 return <ContactForm onCancel={goBack} onSubmit={handleFormSubmit} contactToEdit={itemToEdit} onDelete={handleDelete} existingContacts={contacts} fixedTypeForNew={contactTypeMap[subType as keyof typeof contactTypeMap]} />;
             case 'PROJECT':
                 return <ProjectForm onCancel={goBack} onSubmit={handleFormSubmit} projectToEdit={itemToEdit} onDelete={handleDelete} />;
@@ -163,8 +161,7 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
             case 'CATEGORY':
                 const categoryTypeMap: { [key: string]: TransactionType.INCOME | TransactionType.EXPENSE } = {
                     'INCOME': TransactionType.INCOME,
-                    'EXPENSE': TransactionType.EXPENSE,
-                };
+                    'EXPENSE': TransactionType.EXPENSE };
                 return <CategoryForm onCancel={goBack} onSubmit={handleFormSubmit} categoryToEdit={itemToEdit} onDelete={handleDelete} fixedTypeForNew={categoryTypeMap[subType as keyof typeof categoryTypeMap]} />;
             default:
                 return <p>Unknown setting type.</p>;

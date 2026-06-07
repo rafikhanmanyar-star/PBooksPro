@@ -30,28 +30,28 @@ import {
   ProjectAllocation, 
   BuildingAllocation,
   PayrollProject,
-  EmployeeFormProps,
-} from './types';
+  EmployeeFormProps } from './types';
 import { storageService } from './services/storageService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjects, useBuildings } from '../../hooks/useSelectiveState';
 import { formatCurrency } from './utils/formatters';
 import {
   allocationChanged,
   allocationChangeOnlyAffectsFutureAllocations,
   getLatestPayslipPeriodEndYyyyMmDd,
   normalizeAllocationsTotal,
-  redistributeProjectBuildingShares,
-} from './utils/allocationPercentages';
+  redistributeProjectBuildingShares } from './utils/allocationPercentages';
 import { mapAppProjectsToPayroll } from './utils/projectUtils';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import DatePicker from '../ui/DatePicker';
 
 const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee }) => {
   const { user, tenant } = useAuth();
-  const appState = useFullAppState();
+  const projects = useProjects();
+  const buildings = useBuildings();
+  
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
 
@@ -93,14 +93,14 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
 
   // In local-only mode, use projects from AppContext (same as Settings → Assets → Projects)
   useEffect(() => {
-    if (!isLocalOnlyMode() || !appState.projects) return;
-    const payrollProjects = mapAppProjectsToPayroll(appState.projects, tenantId);
+    if (!isLocalOnlyMode() || !projects) return;
+    const payrollProjects = mapAppProjectsToPayroll(projects, tenantId);
     const activeProjects = payrollProjects.filter(p => p.status === 'ACTIVE');
     setGlobalProjects(activeProjects);
     if (payrollProjects.length > 0) {
       storageService.setProjectsCache(payrollProjects);
     }
-  }, [tenantId, appState.projects]);
+  }, [tenantId, projects]);
 
   // When not local-only, fetch projects from main application API
   useEffect(() => {
@@ -141,8 +141,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     department: employee?.department || 'General',
     grade: employee?.grade || '',
     joiningDate: employee?.joining_date || toLocalDateString(new Date()),
-    basicSalary: employee?.salary?.basic || 0,
-  });
+    basicSalary: employee?.salary?.basic || 0 });
 
   const [assignedProjects, setAssignedProjects] = useState<ProjectAllocation[]>(
     employee?.projects || []
@@ -214,7 +213,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
   const totalBuildingAllocation = assignedBuildings.reduce((sum, b) => sum + b.percentage, 0);
   const totalAllocation = totalProjectAllocation + totalBuildingAllocation;
 
-  const globalBuildings = useMemo(() => (appState.buildings || []).map(b => ({ id: b.id, name: b.name })), [appState.buildings]);
+  const globalBuildings = useMemo(() => (buildings || []).map(b => ({ id: b.id, name: b.name })), [buildings]);
 
   const addBuildingAssignment = () => {
     if (globalBuildings.length === 0) return;
@@ -223,8 +222,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
       building_id: building.id,
       building_name: building.name,
       percentage: assignedBuildings.length === 0 ? (assignedProjects.length > 0 ? 0 : 100) : 0,
-      start_date: formData.joiningDate,
-    };
+      start_date: formData.joiningDate };
     setAssignedBuildings([...assignedBuildings, newAlloc]);
   };
 

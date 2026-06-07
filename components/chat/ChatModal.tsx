@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useUsers, useCurrentUser } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from '../ui/Modal';
 import { ChatMessagesRepository } from '../../services/database/repositories';
@@ -11,8 +11,7 @@ import {
     getInMemoryConversation,
     getInMemoryConversationsForUser,
     markInMemoryChatRead,
-    type InMemoryChatMessage,
-} from '../../services/chat/inMemoryChatStore';
+    type InMemoryChatMessage } from '../../services/chat/inMemoryChatStore';
 import { connectRealtimeSocket } from '../../core/socket';
 
 interface OnlineUser {
@@ -42,9 +41,9 @@ interface ChatModalProps {
 
 const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) => {
     const { user } = useAuth();
-    const state = useFullAppState();
-    const { users } = state;
-    const currentUser = user || state.currentUser;
+    const users = useUsers();
+    const stateCurrentUser = useCurrentUser();
+    const currentUser = user || stateCurrentUser;
     const currentUserId = currentUser?.id || '';
     const currentUserName = currentUser?.name || 'User';
     

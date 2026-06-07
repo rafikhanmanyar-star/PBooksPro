@@ -16,6 +16,8 @@ import {
   reverseTransactionJournalMirror,
   syncTransactionJournalMirror,
 } from './transactionJournalPostingService.js';
+import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
+import { appendAuditEvent } from './enterpriseAuditService.js';
 
 /**
  * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
@@ -474,6 +476,8 @@ export async function createTransaction(
     expenseCashBatchCtx ?? undefined
   );
 
+  await assertAccountingPeriodOpen(client, tenantId, p.date);
+
   const r = await client.query<TransactionRow>(
     `INSERT INTO transactions (
        id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
@@ -525,6 +529,22 @@ export async function createTransaction(
   if (!skipJournalMirror) {
     await syncTransactionJournalMirror(client, tenantId, row, actorUserId);
   }
+  await appendAuditEvent(client, {
+    tenantId,
+    userId: actorUserId,
+    module: 'transactions',
+    action: 'create',
+    entityType: 'transaction',
+    entityId: row.id,
+    summary: `${row.type} transaction posted (${row.amount})`,
+    newValue: {
+      id: row.id,
+      type: row.type,
+      amount: row.amount,
+      date: formatPgDateToYyyyMmDd(row.date as Date | string),
+      accountId: row.account_id,
+    },
+  });
   return row;
 }
 
@@ -587,6 +607,14 @@ export async function updateTransaction(
     p.date,
     p.invoice_id
   );
+
+  await assertAccountingPeriodOpen(client, tenantId, p.date);
+  if (before?.date) {
+    const prevDate = formatPgDateToYyyyMmDd(before.date as Date | string);
+    if (prevDate !== p.date) {
+      await assertAccountingPeriodOpen(client, tenantId, prevDate);
+    }
+  }
 
   await assertExpenseProjectCashAvailable(client, tenantId, {
     type: p.type,
@@ -657,6 +685,17 @@ export async function updateTransaction(
     }
     const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
     const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
+    await appendAuditEvent(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'transactions',
+      action: 'edit',
+      entityType: 'transaction',
+      entityId: row.id,
+      summary: `${row.type} transaction updated (${row.amount})`,
+      oldValue: before ? { id: before.id, type: before.type, amount: before.amount } : null,
+      newValue: { id: row.id, type: row.type, amount: row.amount },
+    });
     return { row, conflict: false, affectedInvoiceIds, affectedBillIds };
   }
 
@@ -687,6 +726,17 @@ export async function updateTransaction(
   }
   const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
+  await appendAuditEvent(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'transactions',
+    action: 'edit',
+    entityType: 'transaction',
+    entityId: row.id,
+    summary: `${row.type} transaction updated (${row.amount})`,
+    oldValue: before ? { id: before.id, type: before.type, amount: before.amount } : null,
+    newValue: { id: row.id, type: row.type, amount: row.amount },
+  });
   return { row, conflict: false, affectedInvoiceIds, affectedBillIds };
 }
 
@@ -875,6 +925,17 @@ export async function softDeleteTransaction(
   if (payslipId) {
     await recalculatePayslipPaymentFromLedger(client, tenantId, payslipId);
   }
+
+  await appendAuditEvent(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'transactions',
+    action: 'delete',
+    entityType: 'transaction',
+    entityId: row.id,
+    summary: `${row.type} transaction deleted (${row.amount})`,
+    oldValue: { id: row.id, type: row.type, amount: row.amount },
+  });
 
   return { ok: true, conflict: false, recalculatedInvoiceId, recalculatedBillId };
 }

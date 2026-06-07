@@ -1,7 +1,6 @@
 
 import { useBuildings, useContacts, useDispatchOnly, useProperties } from '../hooks/useSelectiveState';
 import React, { useState, useCallback } from 'react';
-import { useDispatchOnly, useFullAppState } from '../hooks/useSelectiveState';
 import { ContactType, TransactionType, AccountType } from '../types';
 import Modal from '../components/ui/Modal';
 import ContactForm from '../components/settings/ContactForm';
@@ -27,7 +26,6 @@ interface UseEntityFormModalReturn {
 }
 
 export const useEntityFormModal = (): UseEntityFormModalReturn => {
-  const state = useFullAppState();
   const dispatch = useDispatchOnly();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formType, setFormType] = useState<EntityType | null>(null);
@@ -125,8 +123,7 @@ export const useEntityFormModal = (): UseEntityFormModalReturn => {
     contactType,
     categoryType,
     handleSubmit,
-    onCreatedCallback,
-  };
+    onCreatedCallback };
 };
 
 // Helper component to render the form modal
@@ -139,7 +136,9 @@ export const EntityFormModal: React.FC<{
   onClose: () => void;
   onSubmit: (data: any) => void;
 }> = ({ isOpen, formType, initialName, contactType, categoryType, onClose, onSubmit }) => {
-  const state = useFullAppState();
+  const contacts = useContacts();
+  const buildings = useBuildings();
+  const properties = useProperties();
 
   const getFormTitle = () => {
     if (!formType) return 'Add New';
@@ -150,8 +149,7 @@ export const EntityFormModal: React.FC<{
       category: 'Add New Category',
       account: 'Add New Account',
       property: 'Add New Property',
-      unit: 'Add New Unit',
-    };
+      unit: 'Add New Unit' };
     return titles[formType];
   };
 

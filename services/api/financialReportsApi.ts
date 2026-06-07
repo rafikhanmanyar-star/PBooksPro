@@ -81,3 +81,96 @@ export async function fetchCashFlowReport(options: {
   const raw = await apiClient.get<Record<string, unknown>>(`/reports/cash-flow?${q.toString()}`);
   return raw as unknown as CashFlowReportResult;
 }
+
+export type ClientLedgerReportApiResult = {
+  startDate: string;
+  endDate: string;
+  selectionKind: 'all' | 'owner' | 'unit';
+  ownerId?: string;
+  unitId?: string;
+  rows: import('../../components/reports/clientLedgerReportEngine').ClientLedgerItem[];
+  agreementSummaries: import('../../components/reports/clientLedgerReportEngine').ClientAgreementSummary[];
+  totals: { debit: number; credit: number };
+  closingBalance: number;
+};
+
+export async function fetchClientLedgerReport(options: {
+  startDate: string;
+  endDate: string;
+  selection: import('../../components/reports/clientLedgerReportEngine').ClientLedgerTreeSelection;
+  sortKey?: string;
+  sortDirection?: 'asc' | 'desc';
+}): Promise<ClientLedgerReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+    selectionKind: options.selection.kind,
+  });
+  if (options.selection.kind === 'owner') q.set('ownerId', options.selection.ownerId);
+  if (options.selection.kind === 'unit') q.set('unitId', options.selection.unitId);
+  if (options.sortKey) q.set('sortKey', options.sortKey);
+  if (options.sortDirection) q.set('sortDirection', options.sortDirection);
+
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/client-ledger?${q.toString()}`);
+  return {
+    startDate: String(raw.startDate ?? options.startDate),
+    endDate: String(raw.endDate ?? options.endDate),
+    selectionKind: (raw.selectionKind as ClientLedgerReportApiResult['selectionKind']) ?? options.selection.kind,
+    ownerId: typeof raw.ownerId === 'string' ? raw.ownerId : undefined,
+    unitId: typeof raw.unitId === 'string' ? raw.unitId : undefined,
+    rows: (raw.rows as ClientLedgerReportApiResult['rows']) ?? [],
+    agreementSummaries: (raw.agreementSummaries as ClientLedgerReportApiResult['agreementSummaries']) ?? [],
+    totals: {
+      debit: Number((raw.totals as Record<string, unknown>)?.debit ?? 0),
+      credit: Number((raw.totals as Record<string, unknown>)?.credit ?? 0),
+    },
+    closingBalance: Number(raw.closingBalance ?? 0),
+  };
+}
+
+export type VendorLedgerReportApiResult = {
+  startDate: string;
+  endDate: string;
+  vendorId: string;
+  buildingId: string;
+  context: 'Rental' | 'Project' | null;
+  rows: import('../../components/reports/vendorLedgerReportEngine').VendorLedgerRow[];
+  totals: { bill: number; paid: number };
+  closingBalance: number;
+};
+
+export async function fetchVendorLedgerReport(options: {
+  startDate: string;
+  endDate: string;
+  vendorId?: string;
+  buildingId?: string;
+  search?: string;
+  context?: 'Rental' | 'Project';
+  sortDirection?: 'asc' | 'desc';
+}): Promise<VendorLedgerReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+  });
+  if (options.vendorId && options.vendorId !== 'all') q.set('vendorId', options.vendorId);
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
+  if (options.search?.trim()) q.set('search', options.search.trim());
+  if (options.context) q.set('context', options.context);
+  if (options.sortDirection) q.set('sortDirection', options.sortDirection);
+
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/vendor-ledger?${q.toString()}`);
+  const ctxRaw = raw.context;
+  return {
+    startDate: String(raw.startDate ?? options.startDate),
+    endDate: String(raw.endDate ?? options.endDate),
+    vendorId: String(raw.vendorId ?? 'all'),
+    buildingId: String(raw.buildingId ?? 'all'),
+    context: ctxRaw === 'Rental' || ctxRaw === 'Project' ? ctxRaw : null,
+    rows: (raw.rows as VendorLedgerReportApiResult['rows']) ?? [],
+    totals: {
+      bill: Number((raw.totals as Record<string, unknown>)?.bill ?? 0),
+      paid: Number((raw.totals as Record<string, unknown>)?.paid ?? 0),
+    },
+    closingBalance: Number(raw.closingBalance ?? 0),
+  };
+}

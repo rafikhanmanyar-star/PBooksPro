@@ -36,7 +36,6 @@
     "backend",
     "dist",
     "release-server",
-    "components/inventory/**",
     "components/license/**",
     "components/settings/WarehouseManagement.tsx"
   ]

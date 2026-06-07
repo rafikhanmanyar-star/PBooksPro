@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { ContactType, ProjectAgreementStatus } from '../../types';
 import Card from '../ui/Card';
@@ -23,7 +23,7 @@ interface UserStats {
 }
 
 const MarketingActivityReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));

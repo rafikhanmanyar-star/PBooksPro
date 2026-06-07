@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { Contact, TransactionType, Transaction, SalesReturnStatus, ProjectAgreement } from '../../types';
@@ -25,7 +25,7 @@ interface ProjectOwnerPayoutModalProps {
 }
 
 const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpen, onClose, client, balanceDue }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { bills } = state;
     const dispatch = useDispatchOnly();
     const { showAlert } = useNotification();

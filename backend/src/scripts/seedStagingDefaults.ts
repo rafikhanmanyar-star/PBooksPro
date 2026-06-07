@@ -1,5 +1,5 @@
 /**
- * Seed staging defaults (test company + Rafi / Rafi123).
+ * Seed staging defaults (test company + Rafi / Rafi1234).
  * Run: npm run db:seed:staging  (from repo root, loads .env.staging)
  */
 import { seedStagingDefaults } from '../seed.js';
