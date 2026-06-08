@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState, Suspense, lazy, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, Suspense, lazy, useEffect, useCallback, useDeferredValue } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { _getAppState } from '../../context/AppContext';
 import { queryKeys } from '../../hooks/queries/queryKeys';
@@ -30,12 +30,25 @@ import { buildActiveAgreementByPropertyId } from '../../utils/rentalActiveAgreem
 import RentalPropertySummaryCard from './RentalPropertySummaryCard';
 import {
     buildOwnerPropertyBreakdown,
+    buildOwnerPropertyBreakdownFromApiBalances,
     getOwnerPayoutModalPropertyBreakdownForProperty,
     getOwnerRentalPayoutDueForProperty,
     getOwnerRentalPayoutDueForOwnerOnProperty,
     type OwnerPropertyBreakdownMap,
 } from '../payouts/ownerPayoutBreakdown';
 import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
+import { useAuth } from '../../context/AuthContext';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
+
+/** Keep Electron watchdog alive during long synchronous layout passes. */
+function pulseStabilityHeartbeat(): void {
+    try {
+        (window as unknown as { electronAPI?: { sendStabilityHeartbeat?: () => void } }).electronAPI?.sendStabilityHeartbeat?.();
+    } catch {
+        /* ignore */
+    }
+}
 
 const PropertyInvoicePickModal = lazy(() => import('./PropertyInvoicePickModal'));
 const RentalPaymentModal = lazy(() => import('../invoices/RentalPaymentModal'));
@@ -175,6 +188,13 @@ const PropertyLayoutReport: React.FC = () => {
     const units = useUnits();
     const projectAgreements = useStateSelector((s) => s.projectAgreements);
     const queryClient = useQueryClient();
+    const { isAuthenticated } = useAuth();
+    const useApiRollup = !isLocalOnlyMode() && isAuthenticated;
+    const {
+        data: apiOwnerBalanceRows,
+        isSuccess: apiRollupSuccess,
+        isPending: apiRollupPending,
+    } = useAllOwnerBalancesRollupQuery(useApiRollup);
     const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [invoicePick, setInvoicePick] = useState<{
@@ -224,17 +244,76 @@ const PropertyLayoutReport: React.FC = () => {
 
     const buildingItems = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...buildings], [buildings]);
 
-    /** Full ledger rules — same source as Visual Layout cards and Owner Ledger (not PostgreSQL owner_balances). */
+    /**
+     * Rent payout due on unit cards. API mode uses PostgreSQL owner_balances (O(rows));
+     * local-only uses full client ledger rules (expensive on large tenants).
+     */
     const clientOwnerPropertyBreakdown = useMemo((): OwnerPropertyBreakdownMap => {
         if (properties.length === 0) return {};
-        return buildOwnerPropertyBreakdown(_getAppState());
-    }, [transactions, properties, categories, rentalAgreements, bills]);
+        const state = _getAppState();
+        if (useApiRollup && apiRollupSuccess && apiOwnerBalanceRows?.length) {
+            return buildOwnerPropertyBreakdownFromApiBalances(state, apiOwnerBalanceRows);
+        }
+        if (useApiRollup && apiRollupPending) return {};
+        return buildOwnerPropertyBreakdown(state);
+    }, [
+        properties.length,
+        useApiRollup,
+        apiRollupSuccess,
+        apiRollupPending,
+        apiOwnerBalanceRows,
+        transactions,
+        categories,
+        rentalAgreements,
+        bills,
+    ]);
 
-    /** Owner payout modal must use client breakdown so "Due" matches the card summary and ledger. */
+    /** Security payout modal still needs full client rules; build only when that modal opens. */
+    const securityOwnerBreakdown = useMemo((): OwnerPropertyBreakdownMap | null => {
+        if (!ownerPayoutState || ownerPayoutState.payoutType !== 'Security') return null;
+        return buildOwnerPropertyBreakdown(_getAppState());
+    }, [ownerPayoutState, transactions, properties, categories, rentalAgreements, bills]);
+
     const ownerPropertyBreakdownLayout = useMemo((): OwnerPropertyBreakdownMap | null => {
         if (!ownerPayoutState) return null;
+        if (ownerPayoutState.payoutType === 'Security') return securityOwnerBreakdown;
         return clientOwnerPropertyBreakdown;
-    }, [ownerPayoutState, clientOwnerPropertyBreakdown]);
+    }, [ownerPayoutState, securityOwnerBreakdown, clientOwnerPropertyBreakdown]);
+
+    const layoutInputs = useMemo(
+        () => ({
+            properties,
+            selectedBuildingId,
+            invoices,
+            transactions,
+            categories,
+            rentalAgreements,
+            contacts,
+            projects,
+            units,
+            projectAgreements,
+            clientOwnerPropertyBreakdown,
+            bills,
+        }),
+        [
+            properties,
+            selectedBuildingId,
+            invoices,
+            transactions,
+            categories,
+            rentalAgreements,
+            contacts,
+            projects,
+            units,
+            projectAgreements,
+            clientOwnerPropertyBreakdown,
+            bills,
+        ]
+    );
+    const deferredLayoutInputs = useDeferredValue(layoutInputs);
+    const isLayoutComputing = deferredLayoutInputs !== layoutInputs;
+    const showLayoutLoading =
+        (useApiRollup && apiRollupPending && !apiRollupSuccess) || isLayoutComputing;
 
     const layoutOwnerPayoutModalRows = useMemo(() => {
         if (!ownerPayoutState?.owner || !ownerPropertyBreakdownLayout) return [];
@@ -388,12 +467,27 @@ const PropertyLayoutReport: React.FC = () => {
     };
 
     const data = useMemo(() => {
+        const {
+            properties: layoutProperties,
+            selectedBuildingId: layoutBuildingId,
+            invoices: layoutInvoices,
+            transactions: layoutTransactions,
+            categories: layoutCategories,
+            rentalAgreements: layoutAgreements,
+            contacts: layoutContacts,
+            projects: layoutProjects,
+            units: layoutUnits,
+            projectAgreements: layoutProjectAgreements,
+            clientOwnerPropertyBreakdown: ownerRentalPayoutBreakdown,
+            bills: layoutBills,
+        } = deferredLayoutInputs;
+
         const tLayout0 = typeof performance !== 'undefined' ? performance.now() : 0;
 
         // --- RENTAL MODE ---
         // If properties exist, prioritize Rental View.
 
-        if (properties.length > 0) {
+        if (layoutProperties.length > 0) {
             const buildingsMap: { [code: string]: BuildingData } = {};
             const floorGroupsByBuilding = new Map<string, Map<number, BuildingData['floors'][number]>>();
             const today = new Date();
@@ -401,35 +495,34 @@ const PropertyLayoutReport: React.FC = () => {
 
             // Use local time for current month string to align with user expectation
             const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-            const svcIncomeCategory = categories.find(
+            const svcIncomeCategory = layoutCategories.find(
                 c => c.id === 'sys-cat-svc-inc' || c.name === 'Service Charge Income'
             );
             const monthPrefix = currentMonthYyyyMm(today);
             const todayYmd = todayLocalYyyyMmDd();
-            const invoicesByProperty = indexInvoicesByPropertyId(invoices);
-            const transactionsByProperty = indexTransactionsByPropertyId(transactions);
-            const contactById = new Map(contacts.map((c) => [c.id, c]));
-            const activeAgreementByPropertyId = buildActiveAgreementByPropertyId(rentalAgreements);
+            const invoicesByProperty = indexInvoicesByPropertyId(layoutInvoices);
+            const transactionsByProperty = indexTransactionsByPropertyId(layoutTransactions);
+            const contactById = new Map(layoutContacts.map((c) => [c.id, c]));
+            const activeAgreementByPropertyId = buildActiveAgreementByPropertyId(layoutAgreements);
 
-            let propertiesToProcess = properties;
-            if (selectedBuildingId !== 'all') {
-                propertiesToProcess = properties.filter(p => p.buildingId === selectedBuildingId);
+            let propertiesToProcess = layoutProperties;
+            if (layoutBuildingId !== 'all') {
+                propertiesToProcess = layoutProperties.filter(p => p.buildingId === layoutBuildingId);
             }
 
-            const ownerRentalPayoutBreakdown = clientOwnerPropertyBreakdown;
-
-            const brokerFeeCategory = categories.find((c) => c.name === 'Broker Fee');
-            const rebateCategory = categories.find((c) => c.name === 'Rebate Amount');
+            const brokerFeeCategory = layoutCategories.find((c) => c.name === 'Broker Fee');
+            const rebateCategory = layoutCategories.find((c) => c.name === 'Rebate Amount');
             const feeCatId = brokerFeeCategory?.id;
             const rebateCatId = rebateCategory?.id;
             const brokerAttributionOpts = {
                 brokerFeeCategoryId: feeCatId,
                 rebateCategoryId: rebateCatId,
-                projectAgreements,
-                rentalAgreements,
+                projectAgreements: layoutProjectAgreements,
+                rentalAgreements: layoutAgreements,
             };
 
-            propertiesToProcess.forEach(prop => {
+            propertiesToProcess.forEach((prop, propIndex) => {
+                if (propIndex % 12 === 0) pulseStabilityHeartbeat();
                 const parsed = parseProperty(prop.name, prop.id);
                 const propIdStr = String(prop.id);
                 const propertyInvoices = invoicesByProperty.get(propIdStr) ?? [];
@@ -635,8 +728,8 @@ const PropertyLayoutReport: React.FC = () => {
                     console.warn('[PBooksPerf][VisualLayout] layoutMemo ms=', Math.round(ms), {
                         ownerDueSource: 'ledger-aligned-breakdown',
                         props: propertiesToProcess.length,
-                        inv: invoices.length,
-                        tx: transactions.length,
+                        inv: layoutInvoices.length,
+                        tx: layoutTransactions.length,
                     });
                 }
             }
@@ -647,13 +740,13 @@ const PropertyLayoutReport: React.FC = () => {
         // --- PROJECT MODE ---
         else {
             const projectsMap: { [id: string]: ProjectLayoutData } = {};
-            const invoicesByUnit = indexInvoicesByUnitId(invoices);
+            const invoicesByUnit = indexInvoicesByUnitId(layoutInvoices);
 
-            projects.forEach(project => {
+            layoutProjects.forEach(project => {
                 projectsMap[project.id] = { id: project.id, name: project.name, floors: [], unconventional: [] };
             });
 
-            units.forEach(unit => {
+            layoutUnits.forEach(unit => {
                 if (!projectsMap[unit.projectId] && unit.projectId) return;
                 const projectId = unit.projectId || 'unknown';
                 if (!projectsMap[projectId]) {
@@ -661,10 +754,10 @@ const PropertyLayoutReport: React.FC = () => {
                 }
 
                 const parsed = parseUnit(unit.name);
-                const activeAgreement = projectAgreements.find(pa =>
+                const activeAgreement = layoutProjectAgreements.find(pa =>
                     pa.unitIds?.includes(unit.id) && pa.status === 'Active'
                 );
-                const client = activeAgreement ? contacts.find(c => c.id === activeAgreement.clientId) : null;
+                const client = activeAgreement ? layoutContacts.find(c => c.id === activeAgreement.clientId) : null;
 
                 const unitInvoices = invoicesByUnit.get(String(unit.id)) ?? [];
                 const receivable = unitInvoices
@@ -708,8 +801,8 @@ const PropertyLayoutReport: React.FC = () => {
                 const ms = performance.now() - tLayout0;
                 if (ms > 200) {
                     console.warn('[PBooksPerf][VisualLayout] layoutMemo(project) ms=', Math.round(ms), {
-                        units: units.length,
-                        inv: invoices.length,
+                        units: layoutUnits.length,
+                        inv: layoutInvoices.length,
                     });
                 }
             }
@@ -719,20 +812,7 @@ const PropertyLayoutReport: React.FC = () => {
                 data: Object.values(projectsMap).filter(p => p.floors.length > 0 || p.unconventional.length > 0).sort((a, b) => a.name.localeCompare(b.name))
             };
         }
-    }, [
-        properties,
-        selectedBuildingId,
-        invoices,
-        transactions,
-        categories,
-        rentalAgreements,
-        contacts,
-        projects,
-        units,
-        projectAgreements,
-        clientOwnerPropertyBreakdown,
-        bills,
-    ]);
+    }, [deferredLayoutInputs]);
 
 
     /** Light red (unpaid) → light green (paid) from account receivable vs max receivable on the layout. */
@@ -937,8 +1017,16 @@ const PropertyLayoutReport: React.FC = () => {
             </div>
 
             <div
-                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-2 pb-4 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 print:overflow-visible print:h-auto print:max-h-none print:flex-none"
+                className="relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-2 pb-4 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 print:overflow-visible print:h-auto print:max-h-none print:flex-none"
             >
+                {showLayoutLoading && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-app-card/80 backdrop-blur-[1px] no-print">
+                        <div className="text-center text-app-muted text-sm">
+                            <div className="inline-block w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
+                            <p>Building visual layout…</p>
+                        </div>
+                    </div>
+                )}
                 <div className="printable-area" id="printable-area">
                     <ReportHeader />
 
