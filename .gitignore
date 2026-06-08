@@ -68,6 +68,8 @@ build/*.pem
 *.sqlite
 *.sqlite3
 *.dump
+*.pbkenc
+backend/backups/
 
 *.js.map
 
