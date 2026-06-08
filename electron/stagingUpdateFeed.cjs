@@ -4,7 +4,31 @@
  */
 const fs = require('fs');
 const path = require('path');
-const semver = require('semver');
+
+/** @returns {[number, number, number] | null} */
+function parseVersion(version) {
+  const m = String(version).replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function isValidVersion(version) {
+  return parseVersion(version) !== null;
+}
+
+function compareVersions(a, b) {
+  const left = parseVersion(a);
+  const right = parseVersion(b);
+  if (!left || !right) return 0;
+  for (let i = 0; i < 3; i += 1) {
+    if (left[i] !== right[i]) return left[i] < right[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+function isNewerVersion(candidate, current) {
+  return compareVersions(candidate, current) > 0;
+}
 
 function isStagingClient(app) {
   if (process.env.PBOOKS_CLIENT_STAGING === '1') return true;
@@ -43,13 +67,13 @@ async function listPrereleaseTags(owner, repo) {
   return releases
     .filter((r) => r.prerelease && !r.draft)
     .map((r) => r.tag_name)
-    .filter((tag) => semver.valid(String(tag).replace(/^v/i, '')))
-    .sort((a, b) => semver.rcompare(a.replace(/^v/i, ''), b.replace(/^v/i, '')));
+    .filter((tag) => isValidVersion(tag))
+    .sort((a, b) => compareVersions(b, a));
 }
 
 async function resolveLatestPrereleaseTag(owner, repo, currentVersion) {
   const tags = await listPrereleaseTags(owner, repo);
-  return tags.find((tag) => semver.gt(tag.replace(/^v/i, ''), currentVersion)) || null;
+  return tags.find((tag) => isNewerVersion(tag, currentVersion)) || null;
 }
 
 async function resolveStagingFeedTag(owner, repo, currentVersion) {
