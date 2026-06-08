@@ -61,7 +61,6 @@ const ProjectBalanceSheetReport: React.FC = () => {
   const localOnly = isLocalOnlyMode();
   const [serverReport, setServerReport] = useState<BalanceSheetReportResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
@@ -72,13 +71,12 @@ const ProjectBalanceSheetReport: React.FC = () => {
     }
     let cancelled = false;
     setLoading(true);
-    setFetchError(null);
     void fetchBalanceSheetReport({ asOfDate, projectId: selectedProjectId, debug: debugOpen })
       .then((r) => {
         if (!cancelled) setServerReport(r);
       })
-      .catch((e) => {
-        if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+      .catch(() => {
+        if (!cancelled) setServerReport(null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -288,9 +286,6 @@ const ProjectBalanceSheetReport: React.FC = () => {
             <p className="text-[11px] text-app-muted/90 leading-tight">As of {formatDate(asOfDate)}</p>
             {!localOnly && loading && (
               <p className="text-xs text-app-muted mt-1">Loading from server…</p>
-            )}
-            {!localOnly && fetchError && (
-              <p className="text-xs text-ds-danger mt-1">{fetchError}</p>
             )}
           </div>
 

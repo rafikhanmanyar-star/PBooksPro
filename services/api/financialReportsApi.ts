@@ -4,9 +4,64 @@
  */
 
 import { apiClient } from './client';
-import type { BalanceSheetReportResult } from '../../components/reports/balanceSheetEngine';
-import type { ProfitLossReportResult } from '../../components/reports/profitLossEngine';
+import type { BalanceSheetReportResult, BalanceSheetValidationIssue } from '../../components/reports/balanceSheetEngine';
+import type { ProfitLossReportResult, ProfitLossValidationIssue } from '../../components/reports/profitLossEngine';
 import type { CashFlowLine, CashFlowReportResult } from '../../components/reports/cashFlowEngine';
+
+function formatValidationMessage(raw: unknown): string {
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    if (typeof o.message === 'string' && o.message.trim()) return o.message.trim();
+  }
+  return '';
+}
+
+function normalizeBalanceSheetValidation(raw: unknown): BalanceSheetValidationIssue[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BalanceSheetValidationIssue[] = [];
+  for (const item of raw) {
+    const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    const message = formatValidationMessage(row.message ?? item);
+    if (!message) continue;
+    out.push({
+      code: String(row.code ?? 'VALIDATION'),
+      message,
+      severity: row.severity === 'error' ? 'error' : 'warning',
+    });
+  }
+  return out;
+}
+
+function normalizeProfitLossValidation(raw: unknown): ProfitLossReportResult['validation'] {
+  const empty = {
+    issues: [] as ProfitLossValidationIssue[],
+    legacyNetProfit: 0,
+    structuredNetProfit: 0,
+    ledgerMatch: true,
+  };
+  if (!raw || typeof raw !== 'object') return empty;
+  const v = raw as Record<string, unknown>;
+  const issuesRaw = Array.isArray(v.issues) ? v.issues : [];
+  const issues: ProfitLossValidationIssue[] = [];
+  for (const item of issuesRaw) {
+    const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    const message = formatValidationMessage(row.message ?? item);
+    if (!message) continue;
+    issues.push({
+      code: String(row.code ?? 'VALIDATION'),
+      message,
+      severity: row.severity === 'error' ? 'error' : 'warning',
+      categoryId: typeof row.categoryId === 'string' ? row.categoryId : undefined,
+    });
+  }
+  return {
+    issues,
+    legacyNetProfit: Number(v.legacyNetProfit ?? 0),
+    structuredNetProfit: Number(v.structuredNetProfit ?? 0),
+    ledgerMatch: v.ledgerMatch !== false,
+  };
+}
 
 export async function fetchBalanceSheetReport(options: {
   asOfDate: string;
@@ -28,7 +83,7 @@ export async function fetchBalanceSheetReport(options: {
     retainedEarningsFromPL: Number(raw.retainedEarningsFromPL ?? 0),
     isBalanced: Boolean(raw.isBalanced),
     discrepancy: Number(raw.discrepancy ?? 0),
-    validation: (raw.validation as BalanceSheetReportResult['validation']) ?? [],
+    validation: normalizeBalanceSheetValidation(raw.validation),
     debugLines: (raw.debugLines as BalanceSheetReportResult['debugLines']) ?? [],
   };
 }
@@ -56,18 +111,6 @@ export async function fetchProfitLossReport(options: {
     tax: Number(raw.tax ?? 0),
     net_profit: Number(raw.net_profit ?? 0),
     validation: normalizeProfitLossValidation(raw.validation),
-  };
-}
-
-function normalizeProfitLossValidation(raw: unknown): ProfitLossReportResult['validation'] {
-  if (raw && typeof raw === 'object' && 'issues' in raw) {
-    return raw as ProfitLossReportResult['validation'];
-  }
-  return {
-    issues: [],
-    legacyNetProfit: 0,
-    structuredNetProfit: 0,
-    ledgerMatch: true,
   };
 }
 

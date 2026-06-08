@@ -5,6 +5,7 @@ import {
   type FinancialReconciliationCertification,
   type CertificationStatus,
 } from '../../services/api/financialReconciliationApi';
+import { formatApiErrorMessage } from '../../services/api/client';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 
 function statusColor(status: CertificationStatus): string {
@@ -51,7 +52,7 @@ const ReconciliationDashboard: React.FC = () => {
     try {
       setData(await financialReconciliationApi.getCertification({ from, to }));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load reconciliation certification');
+      setError(formatApiErrorMessage(e) || 'Failed to load reconciliation certification');
       setData(null);
     } finally {
       setLoading(false);

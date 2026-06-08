@@ -1,5 +1,5 @@
 /**
- * Staging desktop clients should update from GitHub prereleases only (e.g. v1.2.299),
+ * Staging desktop apps (client + API server) should update from GitHub prereleases only (e.g. v1.2.303),
  * not from the latest production full release (e.g. v1.2.290).
  */
 const fs = require('fs');

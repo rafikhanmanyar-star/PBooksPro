@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils.cjs');
+const { applyStagingPrereleaseFeed } = require('./stagingUpdateFeed.cjs');
 
 let mainWindow = null;
 let tray = null;
@@ -54,6 +55,9 @@ if (app.isPackaged) {
     // NSIS full installer (not web installer): required for reliable blockmap / differential downloads.
     autoUpdater.disableWebInstaller = true;
     autoUpdater.disableDifferentialDownload = false;
+    if (isStagingApiServer()) {
+      autoUpdater.allowPrerelease = true;
+    }
   } catch (err) {
     console.error('[API Server AutoUpdater] Failed to load electron-updater:', err && err.message ? err.message : err);
   }
@@ -471,6 +475,11 @@ ipcMain.handle('server:open-env-folder', () => {
   return { ok: true };
 });
 
+async function prepareUpdaterFeed() {
+  if (!autoUpdater || !isStagingApiServer()) return;
+  await applyStagingPrereleaseFeed(autoUpdater, app);
+}
+
 ipcMain.handle('server:check-update', async () => {
   const currentVersion = app.getVersion();
   if (!app.isPackaged || !autoUpdater) {
@@ -480,6 +489,7 @@ ipcMain.handle('server:check-update', async () => {
     };
   }
   try {
+    await prepareUpdaterFeed();
     const result = await autoUpdater.checkForUpdates();
     if (!result) {
       return { ok: true, upToDate: true, currentVersion };
@@ -519,6 +529,7 @@ ipcMain.handle('server:download-and-install', async () => {
   // Refresh update metadata right before downloading so `updateInfoAndProvider` is set; otherwise
   // electron-updater can fall back to a full installer GET instead of blockmap + differential download.
   try {
+    await prepareUpdaterFeed();
     const check = await autoUpdater.checkForUpdates();
     if (!check || !check.isUpdateAvailable) {
       return {
