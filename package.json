@@ -161,6 +161,7 @@
       "electron/companyManager.cjs",
       "electron/spellChecker.cjs",
       "electron/updaterErrorUtils.cjs",
+      "electron/githubReleaseUtils.cjs",
       "electron/stagingUpdateFeed.cjs",
       "electron/schema.sql",
       "electron/assets/**/*",
