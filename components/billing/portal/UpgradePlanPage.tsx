@@ -7,6 +7,7 @@ import {
 import { PortalSpinner } from './BillingPortalShared';
 import LegalAcceptanceCheckbox from '../../legal/LegalAcceptanceCheckbox';
 import type { LegalAcceptanceInput } from '../../../services/api/legalApi';
+import { navigateToAppPath } from '../../../utils/appNavigation';
 
 type BillingCycle = 'monthly' | 'annual';
 
@@ -63,7 +64,12 @@ const UpgradePlanPage: React.FC = () => {
           const { checkout } = await subscriptionBillingApi.checkout(planCode, cycle, {
             legalAcceptances,
           });
-          window.location.href = checkout.checkoutUrl;
+          const url = checkout.checkoutUrl;
+          if (url.startsWith('http://') || url.startsWith('https://')) {
+            window.location.href = url;
+          } else {
+            navigateToAppPath(url);
+          }
         }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Upgrade failed');

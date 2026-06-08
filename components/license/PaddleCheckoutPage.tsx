@@ -1,6 +1,7 @@
 // Paddle Checkout Page - Opens Paddle hosted checkout using _ptxn
 import React, { useEffect, useState } from 'react';
 import Button from '../ui/Button';
+import { navigateToAppPath } from '../../utils/appNavigation';
 
 declare global {
   interface Window {
@@ -75,7 +76,7 @@ const PaddleCheckoutPage: React.FC = () => {
   }, []);
 
   const handleGoBack = () => {
-    window.location.href = '/';
+    navigateToAppPath('/');
   };
 
   return (

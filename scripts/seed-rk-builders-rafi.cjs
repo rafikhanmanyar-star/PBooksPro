@@ -87,6 +87,37 @@ async function main() {
 
     const row = r.rows[0];
     console.log(`OK: user "${row.username}" (id ${row.id})`);
+
+    const activeSub = await client.query(
+      `SELECT id FROM subscriptions
+       WHERE tenant_id = $1 AND status = ANY($2::text[])
+       LIMIT 1`,
+      [tenantId, ['trialing', 'active', 'past_due', 'paused', 'pending']]
+    );
+    if (!activeSub.rows.length) {
+      const plan = await client.query(
+        `SELECT id FROM billing_plans WHERE plan_code = 'trial' LIMIT 1`
+      );
+      if (!plan.rows.length) {
+        console.warn('WARN: No trial billing plan found — run API migrations/seed first.');
+      } else {
+        const { randomUUID } = require('crypto');
+        const subId = randomUUID();
+        const now = new Date();
+        const trialEnd = new Date(now);
+        trialEnd.setDate(trialEnd.getDate() + 30);
+        await client.query(
+          `INSERT INTO subscriptions (
+             id, tenant_id, plan_id, status, billing_cycle, start_date, trial_end_date, renewal_date
+           ) VALUES ($1, $2, $3, 'trialing', 'trial', $4, $5, $5)`,
+          [subId, tenantId, plan.rows[0].id, now.toISOString(), trialEnd.toISOString()]
+        );
+        console.log(`OK: 30-day trial subscription created (ends ${trialEnd.toISOString().slice(0, 10)})`);
+      }
+    } else {
+      console.log('Trial/subscription already active — skipped trial creation.');
+    }
+
     console.log(`Login: username ${username} / password ${password}`);
     console.log(`Select this organization (tenant id ${tenantId}) in the app when signing in.`);
   } finally {

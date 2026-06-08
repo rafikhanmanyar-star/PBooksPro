@@ -5,6 +5,7 @@ import Button from '../ui/Button';
 import { paymentsApi } from '../../services/api/payments';
 
 import { subscriptionBillingApi } from '../../services/api/subscriptionBillingApi';
+import { getAppSearchParams, navigateToAppPath } from '../../utils/appNavigation';
 
 
 
@@ -90,7 +91,7 @@ const BillingCheckoutPage: React.FC = () => {
 
             setCheckoutComplete(true);
 
-            window.location.href = '/license/payment-success';
+            navigateToAppPath('/license/payment-success');
 
           } else if (attempts >= POLL_MAX_ATTEMPTS) {
 
@@ -120,7 +121,7 @@ const BillingCheckoutPage: React.FC = () => {
 
   useEffect(() => {
 
-    const params = new URLSearchParams(window.location.search);
+    const params = getAppSearchParams();
 
     const transactionId = params.get('_ptxn') || params.get('transaction_id');
 
@@ -256,7 +257,7 @@ const BillingCheckoutPage: React.FC = () => {
 
   const handleMockConfirm = async () => {
 
-    const params = new URLSearchParams(window.location.search);
+    const params = getAppSearchParams();
 
     const transactionId = params.get('_ptxn')!;
 
@@ -264,7 +265,7 @@ const BillingCheckoutPage: React.FC = () => {
 
       await paymentsApi.confirmPayment(transactionId, transactionId);
 
-      window.location.href = '/license/payment-success';
+      navigateToAppPath('/license/payment-success');
 
     } catch (err: unknown) {
 
@@ -314,7 +315,7 @@ const BillingCheckoutPage: React.FC = () => {
 
         {error && <p className="text-rose-600 text-sm mt-4">{error}</p>}
 
-        <Button variant="secondary" className="mt-6" onClick={() => (window.location.href = '/')}>
+        <Button variant="secondary" className="mt-6" onClick={() => navigateToAppPath('/')}>
 
           Return to app
 

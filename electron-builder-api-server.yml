@@ -19,6 +19,8 @@ directories:
 files:
   - electron/server-main.cjs
   - electron/stagingUpdateFeed.cjs
+  - electron/productionUpdateFeed.cjs
+  - electron/githubReleaseUtils.cjs
   - electron/updaterErrorUtils.cjs
   - electron/server-preload.cjs
   - electron/server-ui.html

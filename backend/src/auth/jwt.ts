@@ -54,7 +54,7 @@ export function signMfaToken(
   return jwt.sign(
     { sub: userId, tenantId, role, purpose, loginEventId },
     getJwtSecret(),
-    { expiresIn: '10m' }
+    { expiresIn: '60m' }
   );
 }
 

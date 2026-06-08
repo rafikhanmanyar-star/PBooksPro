@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { paymentsApi, PaymentSession } from '../../services/api/payments';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
+import { navigateToAppPath } from '../../utils/appNavigation';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -78,12 +79,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         setIsProcessing(true);
 
         // Check if it's a mock gateway URL (starts with /mock-payment)
-        if (session.checkoutUrl.startsWith('/mock-payment')) {
-          // For mock gateway, navigate to mock payment page
+        if (session.checkoutUrl.startsWith('http://') || session.checkoutUrl.startsWith('https://')) {
           window.location.href = session.checkoutUrl;
         } else {
-          // For real gateways (PayFast, Paymob), redirect to gateway
-          window.location.href = session.checkoutUrl;
+          navigateToAppPath(session.checkoutUrl);
         }
         // Note: User will be redirected back after payment
       } else if (session.clientSecret) {
@@ -285,12 +284,20 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     You will be redirected to complete your payment. Please do not close this window.
                   </p>
                   <div className="mt-4">
-                    <a
-                      href={paymentSession.checkoutUrl}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = paymentSession.checkoutUrl!;
+                        if (url.startsWith('http://') || url.startsWith('https://')) {
+                          window.location.href = url;
+                        } else {
+                          navigateToAppPath(url);
+                        }
+                      }}
                       className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     >
                       Continue to Payment →
-                    </a>
+                    </button>
                   </div>
                 </>
               ) : (
@@ -305,7 +312,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   {paymentSession.checkoutUrl && (
                     <Button
                       onClick={() => {
-                        window.location.href = paymentSession.checkoutUrl!;
+                        const url = paymentSession.checkoutUrl!;
+                        if (url.startsWith('http://') || url.startsWith('https://')) {
+                          window.location.href = url;
+                        } else {
+                          navigateToAppPath(url);
+                        }
                       }}
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                     >

@@ -19,6 +19,7 @@ import PaymentSuccessPage from './components/license/PaymentSuccessPage';
 import PaddleCheckoutPage from './components/license/PaddleCheckoutPage';
 import BillingCheckoutPage from './components/billing/BillingCheckoutPage';
 import LegalDocumentPage from './components/legal/LegalDocumentPage';
+import { parseAppSpecialRoute } from './utils/appNavigation';
 import { useAuth } from './context/AuthContext';
 import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode, getAppDisplayName } from './config/apiUrl';
 import { apiClient } from './services/api/client';
@@ -221,52 +222,49 @@ const App: React.FC = () => {
   // Electron window close is handled in CompanyContext (always mounted) so File → Exit and X work on company select screen too.
 
   useEffect(() => {
-    // Check if current URL path matches payment success route
-    const pathname = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-    const hasPaymentParams =
-      searchParams.has('payment_intent') ||
-      searchParams.has('payment_status') ||
-      searchParams.has('status') ||
-      searchParams.has('_ptxn');
+    const applyRoute = () => {
+      const route = parseAppSpecialRoute();
+      switch (route.kind) {
+        case 'billing-checkout':
+          setShowBillingCheckout(true);
+          setShowPaddleCheckout(false);
+          setShowPaymentSuccess(false);
+          setLegalPageSlug(null);
+          break;
+        case 'legal':
+          setLegalPageSlug(route.slug);
+          setShowBillingCheckout(false);
+          setShowPaddleCheckout(false);
+          setShowPaymentSuccess(false);
+          break;
+        case 'paddle-checkout':
+          setShowPaddleCheckout(true);
+          setShowBillingCheckout(false);
+          setShowPaymentSuccess(false);
+          setLegalPageSlug(null);
+          break;
+        case 'payment-success':
+          setShowPaymentSuccess(true);
+          setShowPaddleCheckout(false);
+          setShowBillingCheckout(false);
+          setLegalPageSlug(null);
+          break;
+        default:
+          setShowPaymentSuccess(false);
+          setShowPaddleCheckout(false);
+          setShowBillingCheckout(false);
+          setLegalPageSlug(null);
+          break;
+      }
+    };
 
-    if (pathname === '/billing/checkout' || pathname.endsWith('/billing/checkout')) {
-      setShowBillingCheckout(true);
-      setShowPaddleCheckout(false);
-      setShowPaymentSuccess(false);
-      setLegalPageSlug(null);
-      return;
-    }
-
-    const legalMatch = pathname.match(/\/legal\/([^/]+)\/?$/);
-    if (legalMatch) {
-      setLegalPageSlug(legalMatch[1]);
-      setShowBillingCheckout(false);
-      setShowPaddleCheckout(false);
-      setShowPaymentSuccess(false);
-      return;
-    }
-
-    setLegalPageSlug(null);
-
-    if (pathname === '/license/paddle-checkout' || pathname.endsWith('/license/paddle-checkout')) {
-      setShowPaddleCheckout(true);
-      setShowBillingCheckout(false);
-      setShowPaymentSuccess(false);
-      return;
-    }
-
-    if (pathname === '/license/payment-success' ||
-      pathname.endsWith('/license/payment-success') ||
-      (pathname === '/' && hasPaymentParams)) {
-      setShowPaymentSuccess(true);
-      setShowPaddleCheckout(false);
-      setShowBillingCheckout(false);
-    } else {
-      setShowPaymentSuccess(false);
-      setShowPaddleCheckout(false);
-      setShowBillingCheckout(false);
-    }
+    applyRoute();
+    window.addEventListener('hashchange', applyRoute);
+    window.addEventListener('popstate', applyRoute);
+    return () => {
+      window.removeEventListener('hashchange', applyRoute);
+      window.removeEventListener('popstate', applyRoute);
+    };
   }, []);
 
   // Delay showing loading overlay for quick navigations, but ensure minimum display time

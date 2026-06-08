@@ -279,8 +279,25 @@ export class ApiClient {
       ...(fetchOpts.headers as Record<string, string> | undefined),
     };
 
+    const isMfaEnrollmentRequest =
+      endpoint.includes('/auth/mfa/setup') || endpoint.includes('/auth/mfa/enable');
+    let skipStoredTokenForMfaLogin = false;
+    if (isMfaEnrollmentRequest && fetchOpts.body && typeof fetchOpts.body === 'string') {
+      try {
+        const parsed = JSON.parse(fetchOpts.body) as { mfaSetupToken?: unknown };
+        if (typeof parsed.mfaSetupToken === 'string' && parsed.mfaSetupToken.trim()) {
+          skipStoredTokenForMfaLogin = true;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (headers['Authorization']) {
+      skipStoredTokenForMfaLogin = true;
+    }
+
     // Add auth token if available (custom Authorization header takes precedence)
-    if (this.token && !headers['Authorization']) {
+    if (this.token && !headers['Authorization'] && !skipStoredTokenForMfaLogin) {
       // Validate token format before sending
       const tokenParts = this.token.split('.');
       if (tokenParts.length !== 3) {

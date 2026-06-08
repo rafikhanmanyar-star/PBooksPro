@@ -7,9 +7,17 @@
 const RELEASE_PENDING_USER =
   'A new version is still being published on GitHub. Please try “Check for updates” again in a few minutes.';
 
+const GITHUB_TRANSIENT_USER =
+  'GitHub is temporarily unavailable (gateway timeout). Wait a minute and try “Check for updates” again.';
+
+function getHttpStatus(err) {
+  if (!err) return undefined;
+  return err.statusCode ?? err.status ?? err.response?.statusCode;
+}
+
 function isReleaseMetadataPendingError(err) {
   if (!err) return false;
-  const status = err.statusCode ?? err.status ?? err.response?.statusCode;
+  const status = getHttpStatus(err);
   if (status === 404) return true;
   const msg = String(err.message || err);
   const lower = msg.toLowerCase();
@@ -20,6 +28,11 @@ function isReleaseMetadataPendingError(err) {
     return true;
   }
   return false;
+}
+
+function isTransientGithubError(err) {
+  const status = getHttpStatus(err);
+  return status === 502 || status === 503 || status === 504;
 }
 
 /** First line only; drop stack trace that electron sometimes concatenates into message. */
@@ -42,6 +55,13 @@ function formatUpdaterError(err) {
       userMessage: RELEASE_PENDING_USER,
       isReleasePending: true,
       logLine: '[Updater] Release metadata not ready yet (GitHub upload in progress).',
+    };
+  }
+  if (isTransientGithubError(err)) {
+    return {
+      userMessage: GITHUB_TRANSIENT_USER,
+      isReleasePending: false,
+      logLine: '[Updater] GitHub gateway timeout while checking for updates.',
     };
   }
   const line = primaryErrorLine(err);
@@ -74,6 +94,8 @@ function createUpdaterLogger() {
 module.exports = {
   formatUpdaterError,
   isReleaseMetadataPendingError,
+  isTransientGithubError,
   createUpdaterLogger,
   RELEASE_PENDING_USER,
+  GITHUB_TRANSIENT_USER,
 };

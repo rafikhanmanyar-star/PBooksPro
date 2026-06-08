@@ -4,6 +4,7 @@ import { useLicense } from '../../context/LicenseContext';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
+import { getAppSearchParams, isFileProtocol, navigateToAppPath } from '../../utils/appNavigation';
 
 const PaymentSuccessPage: React.FC = () => {
   const [paymentIntent, setPaymentIntent] = useState<string | null>(null);
@@ -15,7 +16,7 @@ const PaymentSuccessPage: React.FC = () => {
 
   useEffect(() => {
     // Parse URL parameters
-    const params = new URLSearchParams(window.location.search);
+    const params = getAppSearchParams();
     const intent = params.get('payment_intent') || params.get('_ptxn');
     const paymentStatus = params.get('status') || params.get('payment_status');
     const inferredStatus = paymentStatus || (intent ? 'success' : null);
@@ -50,13 +51,17 @@ const PaymentSuccessPage: React.FC = () => {
 
     // Clean up URL after a delay
     setTimeout(() => {
-      window.history.replaceState({}, '', window.location.pathname);
+      if (isFileProtocol()) {
+        window.location.hash = '';
+      } else {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     }, 2000);
   }, [checkCloudLicense]);
 
   const handleGoToDashboard = () => {
     // Navigate to dashboard by reloading the app
-    window.location.href = '/';
+    navigateToAppPath('/');
   };
 
   if (status === 'success') {

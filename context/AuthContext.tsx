@@ -947,6 +947,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (response.mfaRequired && response.mfaToken) {
+        apiClient.clearAuth();
         setState(prev => ({ ...prev, isLoading: false, error: null }));
         return {
           status: 'mfa_required',
@@ -958,6 +959,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (response.mfaSetupRequired && response.mfaSetupToken) {
+        apiClient.clearAuth();
         setState(prev => ({ ...prev, isLoading: false, error: null }));
         return {
           status: 'mfa_setup_required',

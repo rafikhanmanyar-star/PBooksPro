@@ -99,27 +99,30 @@ function formatAuthPayload(
   };
 }
 
-/** Accepts Bearer access JWT or MFA setup JWT for setup/enable during forced enrollment. */
+function readMfaSetupAuthToken(req: MfaAuthedRequest): string | null {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) {
+    const headerToken = auth.slice(7).trim();
+    if (headerToken) return headerToken;
+  }
+  const body = req.body as { mfaSetupToken?: unknown } | undefined;
+  if (typeof body?.mfaSetupToken === 'string') {
+    const bodyToken = body.mfaSetupToken.trim();
+    if (bodyToken) return bodyToken;
+  }
+  return null;
+}
+
+/** Accepts MFA setup JWT (preferred) or Bearer access JWT for setup/enable during forced enrollment. */
 async function mfaSetupAuthMiddleware(
   req: MfaAuthedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith('Bearer ')) {
-    sendFailure(res, 401, 'UNAUTHORIZED', 'Missing or invalid Authorization header');
+  const token = readMfaSetupAuthToken(req);
+  if (!token) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Missing or invalid MFA setup token');
     return;
-  }
-  const token = auth.slice(7);
-  try {
-    const access = verifyAccessToken(token);
-    req.userId = access.sub;
-    req.tenantId = access.tenantId;
-    req.role = access.role;
-    next();
-    return;
-  } catch {
-    /* try setup token */
   }
   try {
     const setup = verifyMfaToken(token, 'mfa_setup');
@@ -128,6 +131,16 @@ async function mfaSetupAuthMiddleware(
     req.role = setup.role;
     req.mfaSetupToken = token;
     req.loginEventId = setup.loginEventId;
+    next();
+    return;
+  } catch {
+    /* fall through — optional access JWT for Settings MFA enrollment */
+  }
+  try {
+    const access = verifyAccessToken(token);
+    req.userId = access.sub;
+    req.tenantId = access.tenantId;
+    req.role = access.role;
     next();
   } catch {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Invalid or expired token');

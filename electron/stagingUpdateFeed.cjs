@@ -4,31 +4,15 @@
  */
 const fs = require('fs');
 const path = require('path');
-
-/** @returns {[number, number, number] | null} */
-function parseVersion(version) {
-  const m = String(version).replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)/);
-  if (!m) return null;
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
-}
-
-function isValidVersion(version) {
-  return parseVersion(version) !== null;
-}
-
-function compareVersions(a, b) {
-  const left = parseVersion(a);
-  const right = parseVersion(b);
-  if (!left || !right) return 0;
-  for (let i = 0; i < 3; i += 1) {
-    if (left[i] !== right[i]) return left[i] < right[i] ? -1 : 1;
-  }
-  return 0;
-}
-
-function isNewerVersion(candidate, current) {
-  return compareVersions(candidate, current) > 0;
-}
+const {
+  parseVersion,
+  isValidVersion,
+  compareVersions,
+  isNewerVersion,
+  parseGithubRepo,
+  readPackageJson,
+  withGithubRetries,
+} = require('./githubReleaseUtils.cjs');
 
 function isStagingClient(app) {
   if (process.env.PBOOKS_CLIENT_STAGING === '1') return true;
@@ -46,15 +30,6 @@ function isStagingClient(app) {
     }
   }
   return false;
-}
-
-function parseGithubRepo(packageJson) {
-  const url = packageJson.repository && (packageJson.repository.url || packageJson.repository);
-  if (typeof url !== 'string') return null;
-  const normalized = url.replace(/\.git$/i, '').trim();
-  const m = normalized.match(/github\.com[/:]([^/]+)\/([^/]+)/i);
-  if (!m) return null;
-  return { owner: m[1], repo: m[2] };
 }
 
 async function listPrereleaseTags(owner, repo) {
@@ -87,26 +62,48 @@ async function resolveStagingFeedTag(owner, repo, currentVersion) {
  * Point electron-updater at the newest GitHub prerelease's latest.yml (generic provider).
  * @returns {Promise<string|null>} tag applied, or null when no newer prerelease exists
  */
-async function applyStagingPrereleaseFeed(autoUpdater, app) {
-  const pkgPath = path.join(app.getAppPath(), 'package.json');
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+async function applyStagingPrereleaseFeed(autoUpdater, app, tag) {
+  const pkg = readPackageJson(app);
   const slug = parseGithubRepo(pkg);
   if (!slug) {
     throw new Error('Could not parse GitHub repository from package.json');
   }
 
-  const tag = await resolveStagingFeedTag(slug.owner, slug.repo, app.getVersion());
-  if (!tag) return null;
+  const feedTag =
+    tag || (await resolveStagingFeedTag(slug.owner, slug.repo, app.getVersion()));
+  if (!feedTag) return null;
 
   autoUpdater.allowPrerelease = true;
   autoUpdater.setFeedURL({
     provider: 'generic',
-    url: `https://github.com/${slug.owner}/${slug.repo}/releases/download/${tag}/`,
+    url: `https://github.com/${slug.owner}/${slug.repo}/releases/download/${feedTag}/`,
   });
-  return tag;
+  return feedTag;
+}
+
+async function inspectStagingReleases(app) {
+  const pkg = readPackageJson(app);
+  const slug = parseGithubRepo(pkg);
+  if (!slug) {
+    throw new Error('Could not parse GitHub repository from package.json');
+  }
+  const currentVersion = app.getVersion();
+  const tags = await withGithubRetries(() => listPrereleaseTags(slug.owner, slug.repo));
+  const latestTag = tags[0] || null;
+  const newerTag = tags.find((t) => isNewerVersion(String(t).replace(/^v/i, ''), currentVersion)) || null;
+  return {
+    latest: latestTag
+      ? { tag: latestTag, version: String(latestTag).replace(/^v/i, '') }
+      : null,
+    newer: newerTag
+      ? { tag: newerTag, version: String(newerTag).replace(/^v/i, '') }
+      : null,
+    slug,
+  };
 }
 
 module.exports = {
   isStagingClient,
   applyStagingPrereleaseFeed,
+  inspectStagingReleases,
 };

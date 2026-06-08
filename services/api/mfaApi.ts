@@ -43,12 +43,20 @@ export const mfaApi = {
 
   async setup(accessOrSetupToken?: string): Promise<MfaSetupResponse> {
     const options = accessOrSetupToken ? { headers: mfaAuthHeaders(accessOrSetupToken) } : undefined;
-    return apiClient.post<MfaSetupResponse>('/auth/mfa/setup', {}, options);
+    return apiClient.post<MfaSetupResponse>(
+      '/auth/mfa/setup',
+      accessOrSetupToken ? { mfaSetupToken: accessOrSetupToken } : {},
+      options
+    );
   },
 
   async enable(code: string, accessOrSetupToken?: string): Promise<MfaEnableResponse> {
     const options = accessOrSetupToken ? { headers: mfaAuthHeaders(accessOrSetupToken) } : undefined;
-    return apiClient.post<MfaEnableResponse>('/auth/mfa/enable', { code }, options);
+    return apiClient.post<MfaEnableResponse>(
+      '/auth/mfa/enable',
+      accessOrSetupToken ? { code, mfaSetupToken: accessOrSetupToken } : { code },
+      options
+    );
   },
 
   async verify(input: {
