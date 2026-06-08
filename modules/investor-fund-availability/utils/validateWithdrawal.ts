@@ -1,8 +1,14 @@
 import type { AppState } from '../../../types';
 import type { ReservePolicy, WithdrawalValidationResult } from '../types/fundAvailability.types';
 import { getDistributableFundsBreakdown } from '../services/investorFundAvailability.service';
+import { computeProjectScopedBankCashBalance } from '../../../services/accounting/accountingLedgerCore';
 
 const EPS = 0.005;
+
+interface WithdrawalValidationOptions {
+    ignorePendingPayables?: boolean;
+    excludeTransactionId?: string;
+}
 
 /**
  * Validates an investor cash withdrawal against **distributable funds** for a project
@@ -14,10 +20,12 @@ export function validateWithdrawal(
     amount: number,
     asOfYmd: string,
     reservePolicy: ReservePolicy,
-    options?: { ignorePendingPayables?: boolean }
+    options?: WithdrawalValidationOptions
 ): WithdrawalValidationResult {
     const requestedAmount = Math.round(amount * 100) / 100;
-    const b = getDistributableFundsBreakdown(state, projectId, asOfYmd, reservePolicy);
+    const b = getDistributableFundsBreakdown(state, projectId, asOfYmd, reservePolicy, {
+        excludeTransactionId: options?.excludeTransactionId,
+    });
     const distributableFunds = options?.ignorePendingPayables
         ? Math.max(0, b.availableCash - b.reservedFunds)
         : b.distributableFunds;
@@ -55,5 +63,38 @@ export function validateWithdrawal(
         shortfall,
         messages,
         reservePolicy,
+    };
+}
+
+export function validateWithdrawalFromAccount(
+    state: AppState,
+    projectId: string,
+    sourceAccountId: string,
+    amount: number,
+    asOfYmd: string,
+    reservePolicy: ReservePolicy,
+    options?: WithdrawalValidationOptions
+): WithdrawalValidationResult {
+    const result = validateWithdrawal(state, projectId, amount, asOfYmd, reservePolicy, options);
+    const requestedAmount = Math.round(amount * 100) / 100;
+    const sourceAccountAvailable = computeProjectScopedBankCashBalance(
+        state,
+        sourceAccountId,
+        projectId,
+        asOfYmd,
+        { excludeTransactionId: options?.excludeTransactionId }
+    );
+    const accountShortfall = Math.max(0, requestedAmount - sourceAccountAvailable);
+
+    if (accountShortfall <= EPS) {
+        return { ...result, sourceAccountAvailable };
+    }
+
+    return {
+        ...result,
+        ok: false,
+        sourceAccountAvailable,
+        shortfall: Math.max(result.shortfall, accountShortfall),
+        messages: [...result.messages, 'Withdrawal exceeds available cash in the selected payout account.'],
     };
 }

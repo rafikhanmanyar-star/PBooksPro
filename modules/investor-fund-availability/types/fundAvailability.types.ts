@@ -133,6 +133,7 @@ export interface FundAvailabilityDetails {
 export interface WithdrawalValidationResult {
     ok: boolean;
     distributableFunds: number;
+    sourceAccountAvailable?: number;
     requestedAmount: number;
     shortfall: number;
     messages: string[];
