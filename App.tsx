@@ -117,7 +117,7 @@ const App: React.FC = () => {
   const { isPanelOpen } = useKpis();
   const { isExpired } = useLicense(); // License Check
   const progress = useProgress();
-  const { isAuthenticated, isLoading: authLoading, user, tenant } = useAuth(); // Cloud authentication
+  const { isAuthenticated, isInitializing: authInitializing, user, tenant } = useAuth(); // Cloud authentication
   const companyCtx = useCompanyOptional();
 
   // Ref tracks currentPage without causing callback identity changes on navigation
@@ -214,9 +214,9 @@ const App: React.FC = () => {
 
   // API mode: closing the custom numpad avoids stray state; pair with login-screen focus recovery after logout
   useEffect(() => {
-    if (isLocalOnlyMode() || authLoading) return;
+    if (isLocalOnlyMode() || authInitializing) return;
     if (!isAuthenticated) closeKeyboard();
-  }, [isAuthenticated, authLoading, closeKeyboard]);
+  }, [isAuthenticated, authInitializing, closeKeyboard]);
 
   // Electron window close is handled in CompanyContext (always mounted) so File → Exit and X work on company select screen too.
 
@@ -687,8 +687,8 @@ const App: React.FC = () => {
     return <LegalDocumentPage slug={legalPageSlug} />;
   }
 
-  // Show loading while checking authentication
-  if (authLoading) {
+  // Startup only — do not use login isLoading here or ApiLoginScreen unmounts during sign-in/MFA.
+  if (authInitializing) {
     return <Loading message="Checking authentication..." />;
   }
 

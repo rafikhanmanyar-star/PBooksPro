@@ -63,7 +63,10 @@ export interface AuthState {
   isAuthenticated: boolean;
   user: User | null;
   tenant: Tenant | null;
+  /** Login / register / MFA in progress (forms only — must not unmount ApiLoginScreen). */
   isLoading: boolean;
+  /** One-time startup auth check (App shell may show a full-page loader). */
+  isInitializing: boolean;
   error: string | null;
 }
 
@@ -147,7 +150,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAuthenticated: false,
     user: null,
     tenant: null,
-    isLoading: true,
+    isLoading: false,
+    isInitializing: true,
     error: null,
   });
 
@@ -222,6 +226,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: null,
         tenant: null,
         isLoading: false,
+        isInitializing: false,
         error: null,
       });
       syncDisplayTimezoneFromUser(null);
@@ -247,6 +252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user: null,
       tenant: null,
       isLoading: false,
+      isInitializing: false,
       error: null,
     });
     syncDisplayTimezoneFromUser(null);
@@ -463,6 +469,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               user,
               tenant,
               isLoading: false,
+              isInitializing: false,
               error: null,
             });
           }
@@ -487,6 +494,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               user: null,
               tenant: null,
               isLoading: false,
+              isInitializing: false,
               error: null,
             });
           }
@@ -494,12 +502,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (isMounted) {
-          setState(prev => ({ ...prev, isLoading: false }));
+          setState(prev => ({ ...prev, isLoading: false, isInitializing: false }));
         }
       } catch (error) {
         if (isMounted) {
           logger.errorCategory('auth', 'Auth check error:', error);
-          setState(prev => ({ ...prev, isLoading: false }));
+          setState(prev => ({ ...prev, isLoading: false, isInitializing: false }));
         }
       }
     };
@@ -568,13 +576,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('tenant_id', 'local');
         localStorage.setItem('user_id', user.id);
       }
-      setState({
+      setState(prev => ({
+        ...prev,
         isAuthenticated: true,
         user,
         tenant,
         isLoading: false,
         error: null,
-      });
+      }));
       syncDisplayTimezoneFromUser(user);
       setSessionDataSource('sqlite');
       if (typeof window !== 'undefined') {
@@ -637,13 +646,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('Invalid token received from server');
         }
 
-        setState({
+        setState(prev => ({
+          ...prev,
           isAuthenticated: true,
           user: response.user,
           tenant: response.tenant,
           isLoading: false,
           error: null,
-        });
+        }));
         syncDisplayTimezoneFromUser(response.user);
 
         logger.logCategory('auth', '✅ Login completed successfully');
@@ -663,13 +673,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         errorProperty: error?.error
       });
       const errorMessage = error?.error || error?.message || 'Login failed';
-      setState({
+      setState(prev => ({
+        ...prev,
         isAuthenticated: false,
         user: null,
         tenant: null,
         isLoading: false,
         error: errorMessage,
-      });
+      }));
       throw error;
     }
   }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany]);
@@ -698,13 +709,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('tenant_id', 'local');
         localStorage.setItem('user_id', user.id);
       }
-      setState({
+      setState(prev => ({
+        ...prev,
         isAuthenticated: true,
         user,
         tenant,
         isLoading: false,
         error: null,
-      });
+      }));
       syncDisplayTimezoneFromUser(user);
       setSessionDataSource('sqlite');
       if (typeof window !== 'undefined') {
@@ -772,13 +784,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('Invalid token received from server');
         }
 
-        setState({
+        setState(prev => ({
+          ...prev,
           isAuthenticated: true,
           user: response.user,
           tenant: response.tenant,
           isLoading: false,
           error: null,
-        });
+        }));
         syncDisplayTimezoneFromUser(response.user);
 
         logger.logCategory('auth', '✅ Unified login completed successfully');
@@ -825,13 +838,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         errorProperty: error?.error
       });
       const errorMessage = error?.error || error?.message || 'Login failed';
-      setState({
+      setState(prev => ({
+        ...prev,
         isAuthenticated: false,
         user: null,
         tenant: null,
         isLoading: false,
         error: errorMessage,
-      });
+      }));
       throw error;
     }
   }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany, checkLicenseStatus]);
@@ -857,13 +871,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.removeItem('pbooks_api_last_sync_at');
       sessionStorage.removeItem('pbooks_api_sync_tenant_id');
     }
-    setState({
+    setState(prev => ({
+      ...prev,
       isAuthenticated: true,
       user,
       tenant,
       isLoading: false,
       error: null,
-    });
+    }));
     syncDisplayTimezoneFromUser(user);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:login-success'));
@@ -967,13 +982,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { status: 'authenticated' };
     } catch (error: any) {
       const errorMessage = error.error || error.message || 'Login failed';
-      setState({
+      setState(prev => ({
+        ...prev,
         isAuthenticated: false,
         user: null,
         tenant: null,
         isLoading: false,
         error: errorMessage,
-      });
+      }));
       throw error;
     }
   }, [applyAuthSession]);
@@ -1059,13 +1075,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: unknown) {
       const err = error as { error?: string; message?: string };
       const errorMessage = err.error || err.message || 'Could not start live demo';
-      setState({
+      setState(prev => ({
+        ...prev,
         isAuthenticated: false,
         user: null,
         tenant: null,
         isLoading: false,
         error: errorMessage,
-      });
+      }));
       throw error;
     }
   }, [applyAuthSession]);
@@ -1135,7 +1152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     enterDemoSession,
     logout,
     checkLicenseStatus,
-  }), [state.isAuthenticated, state.user, state.tenant, state.isLoading, state.error,
+  }), [state.isAuthenticated, state.user, state.tenant, state.isLoading, state.isInitializing, state.error,
        login, verifyMfaLogin, completeMfaSetupLogin, lookupTenants, smartLogin, unifiedLogin, registerTenant, enterDemoSession, logout, checkLicenseStatus]);
 
   return (
@@ -1159,8 +1176,11 @@ export const useAuth = (): AuthContextType => {
       user: null,
       tenant: null,
       isLoading: false,
+      isInitializing: false,
       error: null,
-      login: async () => { },
+      login: async () => { throw new Error('AuthProvider not mounted'); },
+      verifyMfaLogin: async () => { throw new Error('AuthProvider not mounted'); },
+      completeMfaSetupLogin: async () => { throw new Error('AuthProvider not mounted'); },
       lookupTenants: async () => [],
       smartLogin: async () => { },
       unifiedLogin: async () => { },
