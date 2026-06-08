@@ -40,7 +40,10 @@ function hasUncommittedChanges() {
 function commitPendingChanges(message) {
   if (!hasUncommittedChanges()) return false;
   run('git add -A');
-  run(`git commit -m "${message.replace(/"/g, '\\"')}"`);
+  if (!tryRun(`git commit -m "${message.replace(/"/g, '\\"')}"`)) {
+    console.warn('[release] git commit skipped (no committable changes or commit rejected).');
+    return false;
+  }
   return true;
 }
 
