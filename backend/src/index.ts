@@ -185,7 +185,6 @@ app.get('/api/app-info/version', publicIntrospectionLimiter, (_req, res) => {
 /** Loopback API Server tray + optional authenticated admins (see requireConnectedClientsAccess). */
 app.get(
   '/api/server/connected-clients',
-  publicIntrospectionLimiter,
   optionalAuthMiddleware,
   requireConnectedClientsAccess,
   async (_req, res) => {

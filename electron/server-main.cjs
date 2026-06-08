@@ -138,9 +138,24 @@ function resolvePort(merged) {
   return p;
 }
 
+function ensureWritableBackendDirs() {
+  const userBackend = getUserBackendConfigDir();
+  for (const dir of [userBackend, path.join(userBackend, 'backups', 'pg')]) {
+    try {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    } catch (e) {
+      pushLog('[warn] Could not create directory ' + dir + ': ' + (e && e.message ? e.message : String(e)));
+    }
+  }
+}
+
 function getMergedEnvForApi() {
   const merged = getMergedEnv();
   merged.PORT = String(resolvePort(merged));
+  merged.PBOOKS_USER_DATA_DIR = app.getPath('userData');
+  if (!merged.BACKUP_STORAGE_PATH?.trim()) {
+    merged.BACKUP_STORAGE_PATH = path.join(getUserBackendConfigDir(), 'backups', 'pg');
+  }
   if (isStagingApiServer()) {
     merged.PBOOKS_API_SERVER_STAGING = '1';
     if (merged.DISABLE_MFA_ENFORCEMENT !== 'true') merged.DISABLE_MFA_ENFORCEMENT = 'true';
@@ -296,6 +311,8 @@ function startApiServer() {
     return { ok: false, message: msg };
   }
 
+  ensureWritableBackendDirs();
+  ensureUserBackendEnv();
   const env = getMergedEnvForApi();
   if (!env.DATABASE_URL) {
     const target = path.join(getUserBackendConfigDir(), '.env');

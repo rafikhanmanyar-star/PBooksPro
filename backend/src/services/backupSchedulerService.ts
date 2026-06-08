@@ -80,7 +80,14 @@ let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 export function getBackupStorageRoot(): string {
   const configured = process.env.BACKUP_STORAGE_PATH?.trim();
   if (configured) return path.resolve(configured);
-  return path.resolve(process.cwd(), 'backups', 'pg');
+  const userData = process.env.PBOOKS_USER_DATA_DIR?.trim();
+  if (userData) return path.resolve(userData, 'backend', 'backups', 'pg');
+  const cwd = process.cwd();
+  if (/program files/i.test(cwd)) {
+    const appData = process.env.APPDATA?.trim() || process.env.HOME?.trim();
+    if (appData) return path.resolve(appData, 'PBooksPro', 'backups', 'pg');
+  }
+  return path.resolve(cwd, 'backups', 'pg');
 }
 
 /** Compute next scheduled run in server local time. */

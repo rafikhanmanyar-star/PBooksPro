@@ -123,11 +123,16 @@
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        summary.textContent = json.message || 'Could not load connection list.';
+        const apiMsg =
+          (json.error && json.error.message) || json.message || 'Could not load connection list.';
+        summary.textContent = apiMsg;
         list.textContent = '';
         const err = document.createElement('p');
         err.className = 'clients-err';
-        err.textContent = 'Ensure the API is running and DATABASE_URL is set.';
+        err.textContent =
+          res.status === 429
+            ? 'Too many requests — wait a moment and click Stop API then Start API.'
+            : 'Ensure the API is running and DATABASE_URL is set in the config folder (.env).';
         list.appendChild(err);
         return;
       }
@@ -173,7 +178,14 @@
     }
   }
 
-  async function refresh() {
+  async function refreshLogsOnly() {
+    const logs = $('logs');
+    if (logs) logs.textContent = (await ui.getLogs()) || '';
+  }
+
+  /** @param {{ clients?: boolean }} [opts] */
+  async function refresh(opts) {
+    const includeClients = !opts || opts.clients !== false;
     const st = await ui.getState();
     const appName = st.appName || 'PBooks Pro API Server';
     document.title = appName;
@@ -196,12 +208,14 @@
     const hl = $('healthLink');
     hl.href = healthUrl;
     hl.textContent = healthUrl;
-    $('logs').textContent = (await ui.getLogs()) || '';
+    await refreshLogsOnly();
     if (st.userEnvDir) {
       $('envPathHint').textContent =
         'Config folder (copy your repo backend/.env here as .env): ' + st.userEnvDir;
     }
-    await updateClientsPanel(port, running);
+    if (includeClients) {
+      await updateClientsPanel(port, running);
+    }
   }
 
   $('btnStart').onclick = () => ui.startServer().then(refresh);
@@ -238,15 +252,16 @@
   };
 
   setupDownloadProgress();
-  let refreshTimer = null;
-  function scheduleRefresh() {
-    if (refreshTimer) clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => {
-      refreshTimer = null;
-      void refresh();
-    }, 300);
+  let logRefreshTimer = null;
+  function scheduleLogRefresh() {
+    if (logRefreshTimer) clearTimeout(logRefreshTimer);
+    logRefreshTimer = setTimeout(() => {
+      logRefreshTimer = null;
+      void refreshLogsOnly();
+    }, 400);
   }
-  ui.onServerEvent(() => scheduleRefresh());
+  ui.onServerEvent(() => scheduleLogRefresh());
   void refresh();
-  setInterval(() => void refresh(), 4000);
+  setInterval(() => void refresh({ clients: false }), 3000);
+  setInterval(() => void refresh({ clients: true }), 15000);
 })();

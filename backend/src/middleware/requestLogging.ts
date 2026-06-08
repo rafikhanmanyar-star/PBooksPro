@@ -6,6 +6,16 @@ import type { AuthedRequest } from './authMiddleware.js';
 
 export type RequestWithId = Request & { requestId?: string };
 
+/** Tray UI / health probes — skip access logs to avoid log↔poll feedback loops. */
+function isQuietAccessLog(path: string): boolean {
+  const p = path.split('?')[0];
+  return (
+    p === '/health' ||
+    p.startsWith('/api/health') ||
+    p === '/api/server/connected-clients'
+  );
+}
+
 /** Assigns X-Request-Id and logs structured access lines on response finish. */
 export function requestLoggingMiddleware(req: RequestWithId, res: Response, next: NextFunction): void {
   const requestId = randomUUID();
@@ -13,8 +23,10 @@ export function requestLoggingMiddleware(req: RequestWithId, res: Response, next
   res.setHeader('X-Request-Id', requestId);
   const start = Date.now();
   const path = req.originalUrl ?? req.url;
+  const quiet = isQuietAccessLog(path);
   res.on('finish', () => {
     const durationMs = Date.now() - start;
+    if (quiet) return;
     logger.info('HTTP request', {
       requestId,
       method: req.method,

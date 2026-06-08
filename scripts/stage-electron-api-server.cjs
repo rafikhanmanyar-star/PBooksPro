@@ -118,6 +118,8 @@ DISABLE_MFA_ENFORCEMENT=true
 # LAN staging: skip Paddle/subscription gates on POST (onboarding, etc.)
 DISABLE_SUBSCRIPTION_ENFORCEMENT=true
 SEED_STAGING=1
+# Backups are stored under AppData (set automatically by the API Server app if omitted)
+# BACKUP_STORAGE_PATH=
 `
   : `# PBooks Pro API Server — copy to AppData backend/.env as .env (Open config folder in the app).
 # Production database pbookspro on port 3000.
@@ -126,6 +128,8 @@ DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pbookspro
 JWT_SECRET=change-me-to-a-long-random-string
 PORT=3000
 NODE_ENV=production
+# Backups are stored under AppData (set automatically by the API Server app if omitted)
+# BACKUP_STORAGE_PATH=
 `;
 fs.writeFileSync(path.join(backendOut, '.env.example'), envExample, 'utf8');
 
