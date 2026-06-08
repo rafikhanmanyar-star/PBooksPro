@@ -145,6 +145,8 @@ export default defineConfig({
           );
       },
     },
+    {
+      name: 'write-env-config',
       closeBundle() {
         const distDir = join(process.cwd(), 'dist');
         if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });

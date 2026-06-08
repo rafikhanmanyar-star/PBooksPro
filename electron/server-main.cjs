@@ -21,7 +21,10 @@ const MAX_LOG = 500;
 if (app.isPackaged) {
   try {
     autoUpdater = require('electron-updater').autoUpdater;
-    autoUpdater.channel = 'api-server';
+    if (app.getName().toLowerCase().includes('staging')) {
+      autoUpdater.allowPrerelease = true;
+    }
+    // Update channel (api-server vs api-server-staging) comes from app-update.yml — do not override here.
     autoUpdater.autoDownload = false;
     autoUpdater.logger = createUpdaterLogger();
     // NSIS full installer (not web installer): required for reliable blockmap / differential downloads.
