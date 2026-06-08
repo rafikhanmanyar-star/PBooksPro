@@ -6,6 +6,11 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Server, Radio, Wifi, AlertCircle, Loader2 } from 'lucide-react';
 import { apiClient } from '../../services/api/client';
 import {
+  getLanApiPort,
+  getAppDisplayName,
+  isStagingEnvironment,
+} from '../../config/apiUrl';
+import {
   scanLanSubnet,
   resolveSubnetBaseForScan,
   probeDiscoverRoot,
@@ -63,6 +68,7 @@ const ConnectServerScreen: React.FC<Props> = ({ onConnected, variant = 'initial'
       }
       setStatusLine(`Scanning ${base}.x …`);
       const res = await scanLanSubnet(base, {
+        port: getLanApiPort(),
         stopAfterFirst: true,
         tryStoredFirst: true,
         timeoutMs: 500,
@@ -70,8 +76,11 @@ const ConnectServerScreen: React.FC<Props> = ({ onConnected, variant = 'initial'
       });
       setDiscovered(res);
       if (res.length === 0) {
+        const port = getLanApiPort();
         setError(
-          'No PBooks server found. Try a full scan, manual IP, or confirm the PBooks API is running on this LAN.'
+          isStagingEnvironment()
+            ? `No PBooks staging server found on port ${port}. Start PBooks Pro Staging API Server, then scan again.`
+            : `No PBooks production server found on port ${port}. Start PBooks Pro API Server (production uses port 3000, not 3001), then scan again.`
         );
       }
     } catch (e) {
@@ -94,6 +103,7 @@ const ConnectServerScreen: React.FC<Props> = ({ onConnected, variant = 'initial'
         return;
       }
       const res = await scanLanSubnet(base, {
+        port: getLanApiPort(),
         stopAfterFirst: false,
         tryStoredFirst: true,
         timeoutMs: 450,
@@ -101,7 +111,11 @@ const ConnectServerScreen: React.FC<Props> = ({ onConnected, variant = 'initial'
       });
       setDiscovered(res);
       if (res.length === 0) {
-        setError('No PBooks server found on this subnet.');
+        setError(
+          isStagingEnvironment()
+            ? `No PBooks staging server found on port ${getLanApiPort()} on this subnet.`
+            : `No PBooks production server found on port 3000 on this subnet.`
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Scan failed');
@@ -126,7 +140,7 @@ const ConnectServerScreen: React.FC<Props> = ({ onConnected, variant = 'initial'
     setError(null);
     const parsed = parseManualConnection(manualIp);
     if (!parsed) {
-      setError('Enter a valid IP or hostname (optional :port, default 3000).');
+      setError(`Enter a valid IP or hostname (optional :port, default ${getLanApiPort()}).`);
       return;
     }
     const root = rootUrlFromParts(parsed.host, parsed.port);
@@ -149,7 +163,7 @@ const ConnectServerScreen: React.FC<Props> = ({ onConnected, variant = 'initial'
           <p className="text-gray-500 mt-1 text-sm">
             {variant === 'lost'
               ? 'The connection to your PBooks server was lost. Choose the server again or enter its address.'
-              : 'Find the PBooks API on your network, or connect manually.'}
+              : `Find ${getAppDisplayName()} on your network (port ${getLanApiPort()}), or connect manually.`}
           </p>
         </div>
 
@@ -248,7 +262,11 @@ const ConnectServerScreen: React.FC<Props> = ({ onConnected, variant = 'initial'
               type="text"
               value={manualIp}
               onChange={(e) => setManualIp(e.target.value)}
-              placeholder="e.g. 192.168.1.10 or 192.168.1.10:3000"
+              placeholder={
+                isStagingEnvironment()
+                  ? 'e.g. 192.168.1.10:3001'
+                  : 'e.g. 192.168.1.10:3000'
+              }
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-gray-900 font-mono text-sm"
               disabled={scanning || scanningFull}
             />

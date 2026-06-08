@@ -2,6 +2,7 @@
  * Periodic subscription maintenance (trials, grace period, pending downgrades, webhook retries).
  */
 
+import type { PoolClient } from 'pg';
 import { getPool } from '../../db/pool.js';
 import { logger } from '../../utils/logger.js';
 import { runSubscriptionMaintenance } from './subscriptionLifecycleService.js';
@@ -20,8 +21,9 @@ export function startBillingScheduler(): void {
   const intervalMs = Number(process.env.BILLING_SCHEDULER_INTERVAL_MS ?? String(15 * 60 * 1000));
 
   const tick = async () => {
-    const client = await getPool().connect();
+    let client: PoolClient | null = null;
     try {
+      client = await getPool().connect();
       const result = await runSubscriptionMaintenance(client);
       const total =
         result.lifecycleExpired +
@@ -34,12 +36,14 @@ export function startBillingScheduler(): void {
     } catch (err) {
       logger.error('[billing] Scheduler tick failed', { err });
     } finally {
-      client.release();
+      client?.release();
     }
   };
 
-  void tick();
-  timer = setInterval(() => void tick(), intervalMs);
+  void tick().catch((err) => logger.error('[billing] Scheduler tick failed', { err }));
+  timer = setInterval(() => {
+    void tick().catch((err) => logger.error('[billing] Scheduler tick failed', { err }));
+  }, intervalMs);
   logger.info('[billing] Subscription scheduler started', { intervalMs });
 }
 

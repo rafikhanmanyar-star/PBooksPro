@@ -18,6 +18,7 @@ directories:
   output: release-api-server
 files:
   - electron/server-main.cjs
+  - electron/stagingUpdateFeed.cjs
   - electron/updaterErrorUtils.cjs
   - electron/server-preload.cjs
   - electron/server-ui.html

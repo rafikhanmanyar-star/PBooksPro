@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { getPool } from '../../db/pool.js';
 import { processDueMarketingEmails } from './emailSequenceService.js';
 import { logger } from '../../utils/logger.js';
@@ -11,19 +12,22 @@ export function startMarketingEmailScheduler(): void {
   const intervalMs = Number(process.env.MARKETING_EMAIL_INTERVAL_MS ?? String(5 * 60 * 1000));
 
   const tick = async () => {
-    const client = await getPool().connect();
+    let client: PoolClient | null = null;
     try {
+      client = await getPool().connect();
       const sent = await processDueMarketingEmails(client);
       if (sent > 0) logger.info('[marketing] Processed email queue', { sent });
     } catch (err) {
       logger.error('[marketing] Email scheduler tick failed', { err });
     } finally {
-      client.release();
+      client?.release();
     }
   };
 
-  void tick();
-  timer = setInterval(() => void tick(), intervalMs);
+  void tick().catch((err) => logger.error('[marketing] Email scheduler tick failed', { err }));
+  timer = setInterval(() => {
+    void tick().catch((err) => logger.error('[marketing] Email scheduler tick failed', { err }));
+  }, intervalMs);
   logger.info('[marketing] Email scheduler started', { intervalMs });
 }
 
