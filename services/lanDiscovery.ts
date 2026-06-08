@@ -3,10 +3,11 @@
  */
 
 import {
-  DEFAULT_LAN_API_PORT,
   getApiBaseUrl,
   getDefaultApiRootUrl,
-  PBOOKS_API_BASE_STORAGE_KEY,
+  getLanApiPort,
+  getStoredLanApiRootUrl,
+  isAllowedLanApiPort,
 } from '../config/apiUrl';
 
 export const PBOOKS_DISCOVER_PATH = '/api/discover';
@@ -57,7 +58,7 @@ export function discoverUrlForRoot(rootUrl: string): string {
 /** GET /api/discover on a server root (no /api suffix). */
 export async function probeDiscover(
   host: string,
-  port: number = DEFAULT_LAN_API_PORT,
+  port: number = getLanApiPort(),
   timeoutMs = 500
 ): Promise<DiscoverPayload | null> {
   const url = discoverUrlForRoot(rootUrlFromParts(host, port));
@@ -65,7 +66,8 @@ export async function probeDiscover(
     const res = await fetchWithTimeout(url, timeoutMs);
     if (!res.ok) return null;
     const j: unknown = await res.json();
-    return isValidDiscoverPayload(j) ? j : null;
+    if (!isValidDiscoverPayload(j) || !isAllowedLanApiPort(j.port)) return null;
+    return j;
   } catch {
     return null;
   }
@@ -78,7 +80,8 @@ export async function probeDiscoverRoot(rootUrl: string, timeoutMs = 500): Promi
     const res = await fetchWithTimeout(url, timeoutMs);
     if (!res.ok) return null;
     const j: unknown = await res.json();
-    return isValidDiscoverPayload(j) ? j : null;
+    if (!isValidDiscoverPayload(j) || !isAllowedLanApiPort(j.port)) return null;
+    return j;
   } catch {
     return null;
   }
@@ -195,17 +198,6 @@ export function getLocalIPv4ViaWebRTC(): Promise<string | null> {
   });
 }
 
-function parseStoredRoot(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(PBOOKS_API_BASE_STORAGE_KEY);
-    if (!raw?.trim()) return null;
-    return raw.replace(/\/api\/?$/i, '').trim();
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Try last successful server from localStorage, then optional first match in /24 scan.
  * @param stopAfterFirst - if true, cancel remaining work after first valid server (fast).
@@ -221,7 +213,7 @@ export async function scanLanSubnet(
     signal?: AbortSignal;
   } = {}
 ): Promise<DiscoverPayload[]> {
-  const port = options.port ?? DEFAULT_LAN_API_PORT;
+  const port = options.port ?? getLanApiPort();
   const timeoutMs = options.timeoutMs ?? 500;
   const parallel = options.parallel ?? 20;
   const stopAfterFirst = options.stopAfterFirst ?? true;
@@ -230,7 +222,7 @@ export async function scanLanSubnet(
   const seenIp = new Set<string>();
 
   const pushIfNew = (p: DiscoverPayload | null) => {
-    if (!p) return;
+    if (!p || !isAllowedLanApiPort(p.port)) return;
     const key = `${p.ip}:${p.port}`;
     if (seenIp.has(key)) return;
     seenIp.add(key);
@@ -243,7 +235,7 @@ export async function scanLanSubnet(
   if (stopAfterFirst && found.length > 0) return found;
 
   if (tryStoredFirst) {
-    const stored = parseStoredRoot();
+    const stored = getStoredLanApiRootUrl();
     if (stored) {
       try {
         const u = new URL(stored.includes('://') ? stored : `http://${stored}`);
@@ -290,7 +282,8 @@ export function parseManualConnection(input: string): { host: string; port: numb
   try {
     const u = new URL(withProto);
     if (!u.hostname) return null;
-    const port = u.port ? parseInt(u.port, 10) : DEFAULT_LAN_API_PORT;
+    const port = u.port ? parseInt(u.port, 10) : getLanApiPort();
+    if (!isAllowedLanApiPort(port)) return null;
     return { host: u.hostname, port };
   } catch {
     return null;

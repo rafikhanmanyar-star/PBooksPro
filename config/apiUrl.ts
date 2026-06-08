@@ -63,14 +63,24 @@ export function ensureLegacyOfflineApiSessionMarked(): void {
   }
 }
 
-function isProductionLocalApiUrl(url: string): boolean {
+export function isProductionLocalApiUrl(url: string): boolean {
   if (!url) return false;
   return /:3000(\/|$)/.test(url);
 }
 
-function isStagingLocalApiUrl(url: string): boolean {
+export function isStagingLocalApiUrl(url: string): boolean {
   if (!url) return false;
   return /:3001(\/|$)/.test(url);
+}
+
+/** HTTP port this client build should use for LAN API discovery and connection. */
+export function getLanApiPort(): number {
+  return isStagingEnvironment() ? STAGING_LAN_API_PORT : DEFAULT_LAN_API_PORT;
+}
+
+/** True when a discovered / manual server port matches this client (staging → 3001, production → 3000). */
+export function isAllowedLanApiPort(port: number): boolean {
+  return port === getLanApiPort();
 }
 
 /** Root URL (no /api) for the default API server for this build (staging → :3001, production → :3000). */
@@ -90,6 +100,13 @@ export function getDefaultApiBaseUrl(): string {
   return `${getDefaultApiRootUrl()}/api`;
 }
 
+/** Persisted LAN server root (no /api), cleared when it targets the wrong port for this build. */
+export function getStoredLanApiRootUrl(): string | null {
+  const stored = readStoredApiBaseUrl();
+  if (!stored) return null;
+  return stored.replace(/\/api\/?$/i, '');
+}
+
 function readStoredApiBaseUrl(): string | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -97,9 +114,11 @@ function readStoredApiBaseUrl(): string | null {
     if (!stored?.trim()) return null;
     const normalized = normalizeApiBaseUrl(stored);
     if (isStagingEnvironment() && isProductionLocalApiUrl(normalized)) {
+      localStorage.removeItem(PBOOKS_API_BASE_STORAGE_KEY);
       return null;
     }
     if (!isStagingEnvironment() && isStagingLocalApiUrl(normalized)) {
+      localStorage.removeItem(PBOOKS_API_BASE_STORAGE_KEY);
       return null;
     }
     return normalized;
