@@ -11,6 +11,9 @@ productName: PBooks Pro API Server
 extraMetadata:
   main: electron/server-main.cjs
 compression: maximum
+# English only — default Chromium locale packs add ~40 MB uncompressed to the installer.
+electronLanguages:
+  - en-US
 directories:
   output: release-api-server
 files:

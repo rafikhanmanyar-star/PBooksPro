@@ -73,7 +73,7 @@ import { bmAnalysisRouter } from './routes/bmAnalysisRoutes.js';
 import { tenantLedgerRouter } from './routes/tenantLedgerRoutes.js';
 import { clientLedgerRouter } from './routes/clientLedgerRoutes.js';
 import { vendorLedgerRouter } from './routes/vendorLedgerRoutes.js';
-import { authMiddleware } from './middleware/authMiddleware.js';
+import { authMiddleware, optionalAuthMiddleware } from './middleware/authMiddleware.js';
 import { requireActiveSubscription } from './middleware/licenseEnforcementMiddleware.js';
 import { requireFinancialWriteOnMutations, requirePayrollAccess, requirePermission } from './middleware/rbacMiddleware.js';
 import { permissionsRouter } from './routes/permissionsRoutes.js';
@@ -182,16 +182,22 @@ app.get('/api/app-info/version', publicIntrospectionLimiter, (_req, res) => {
   });
 });
 
-/** Authenticated admins: WebSocket client count (set ALLOW_PUBLIC_CONNECTED_CLIENTS=true to open). */
-app.get('/api/server/connected-clients', authMiddleware, requireConnectedClientsAccess, async (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  try {
-    const data = await getConnectedClientsSnapshot();
-    sendSuccess(res, data);
-  } catch (e) {
-    handleRouteError(res, e, { route: '/api/server/connected-clients' });
+/** Loopback API Server tray + optional authenticated admins (see requireConnectedClientsAccess). */
+app.get(
+  '/api/server/connected-clients',
+  publicIntrospectionLimiter,
+  optionalAuthMiddleware,
+  requireConnectedClientsAccess,
+  async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const data = await getConnectedClientsSnapshot();
+      sendSuccess(res, data);
+    } catch (e) {
+      handleRouteError(res, e, { route: '/api/server/connected-clients' });
+    }
   }
-});
+);
 
 /** Standalone admin portal (separate admin_users JWT, not tenant-scoped). */
 app.use('/api/admin', adminPortalRouter);

@@ -259,8 +259,8 @@ export const UserSetupStepPanel: React.FC<StepPanelProps> = ({ state, onStepData
       <Input label="Temporary password" type="password" value={data.password ?? ''} onChange={(e) => onStepDataChange({ password: e.target.value })} />
       <Select label="Role" value={data.role ?? 'Accounts'} onChange={(e) => onStepDataChange({ role: e.target.value })}>
         {ASSIGNABLE_ROLES.map((r) => (
-          <option key={r} value={r}>
-            {r}
+          <option key={r.value} value={r.value}>
+            {r.label}
           </option>
         ))}
       </Select>

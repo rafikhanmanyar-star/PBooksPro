@@ -12,6 +12,7 @@ const companyManager = require('./companyManager.cjs');
 const stability = require('./stability.cjs');
 const spellChecker = require('./spellChecker.cjs');
 const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils.cjs');
+const { isStagingClient, applyStagingPrereleaseFeed } = require('./stagingUpdateFeed.cjs');
 
 let mainWindow = null;
 let autoUpdater = null;
@@ -394,6 +395,11 @@ function getReleasesUrl() {
   return null;
 }
 
+async function prepareUpdaterFeed() {
+  if (!autoUpdater || !isStagingClient(app)) return;
+  await applyStagingPrereleaseFeed(autoUpdater, app);
+}
+
 function setupUpdaterIPC() {
   ipcMain.handle('get-app-version', () => app.getVersion());
 
@@ -412,6 +418,7 @@ function setupUpdaterIPC() {
     try {
       isManualCheck = true;
       sendUpdateStatus({ status: 'checking' });
+      await prepareUpdaterFeed();
       await autoUpdater.checkForUpdates();
     } catch (err) {
       const formatted = formatUpdaterError(err);
@@ -455,8 +462,7 @@ function setupUpdaterIPC() {
     // NSIS full installer: enables blockmap-based differential updates (same as electron-updater recommendation).
     autoUpdater.disableWebInstaller = true;
 
-    const isStaging = app.getName().toLowerCase().includes('staging');
-    if (isStaging) {
+    if (isStagingClient(app)) {
       autoUpdater.allowPrerelease = true;
     }
 
@@ -516,18 +522,22 @@ app.whenReady().then(() => {
   if (autoUpdater && app.isPackaged) {
     // Check for updates on first load (short delay so window is ready)
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch((err) => {
-        console.log(formatUpdaterError(err).logLine);
-      });
+      prepareUpdaterFeed()
+        .then(() => autoUpdater.checkForUpdates())
+        .catch((err) => {
+          console.log(formatUpdaterError(err).logLine);
+        });
     }, 5000);
 
     // Check every 1 hour and alert user if a new version is available
     const oneHourMs = 60 * 60 * 1000;
     updateCheckIntervalId = setInterval(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        autoUpdater.checkForUpdates().catch((err) => {
-          console.log(formatUpdaterError(err).logLine);
-        });
+        prepareUpdaterFeed()
+          .then(() => autoUpdater.checkForUpdates())
+          .catch((err) => {
+            console.log(formatUpdaterError(err).logLine);
+          });
       }
     }, oneHourMs);
   }

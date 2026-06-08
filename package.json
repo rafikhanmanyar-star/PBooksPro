@@ -62,6 +62,7 @@
     "deploy:production": "dotenv -e .env.production -- npm run deploy:production-inner",
     "deploy:production-inner": "node scripts/assert-git-branch.cjs main && npm run rebuild:native && npm version patch --no-git-tag-version && npm run electron:extract-schema && npm run build:backend && npm run db:migrate:production && npm run electron:stage-api-server && electron-builder --win nsis -c electron-builder-api-server.yml --publish never && cross-env VITE_LOCAL_ONLY=false VITE_ELECTRON_BUILD=true VITE_STAGING=false VITE_API_URL=http://127.0.0.1:3000/api VITE_WS_URL=http://127.0.0.1:3000 npm run build && electron-builder --win nsis -c electron-builder-api-client.yml --publish always && node scripts/upload-api-server-to-github-release.cjs && node scripts/push-release-source-to-github.cjs && node scripts/clean-old-github-releases.cjs --keep 3 --ignore-missing-token",
     "github:clean-releases": "dotenv -e .env -- node scripts/clean-old-github-releases.cjs",
+    "github:backfill-staging-yml": "dotenv -e .env.staging -- node scripts/upload-staging-channel-yml.cjs",
     "smoke:design-system": "node scripts/smoke-test-design-system.mjs",
     "smoke:design-system:full": "node scripts/smoke-test-design-system.mjs --build",
     "verify:financial-engine": "node scripts/verify-financial-engine.mjs",
@@ -136,6 +137,9 @@
     "appId": "com.pbookspro.app",
     "productName": "PBooks Pro",
     "compression": "maximum",
+    "electronLanguages": [
+      "en-US"
+    ],
     "directories": {
       "output": "release"
     },
@@ -156,6 +160,7 @@
       "electron/companyManager.cjs",
       "electron/spellChecker.cjs",
       "electron/updaterErrorUtils.cjs",
+      "electron/stagingUpdateFeed.cjs",
       "electron/schema.sql",
       "electron/assets/**/*",
       "package.json",

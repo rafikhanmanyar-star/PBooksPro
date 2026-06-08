@@ -2,6 +2,9 @@
 appId: com.pbookspro.app.client
 productName: PBooks Pro Client
 compression: maximum
+# English only — default Chromium locale packs add ~40 MB uncompressed to the installer.
+electronLanguages:
+  - en-US
 directories:
   output: release-api-client
 files:
@@ -21,6 +24,7 @@ files:
   - "electron/companyManager.cjs"
   - "electron/spellChecker.cjs"
   - "electron/updaterErrorUtils.cjs"
+  - "electron/stagingUpdateFeed.cjs"
   - "electron/schema.sql"
   - "electron/assets/**/*"
   - "package.json"

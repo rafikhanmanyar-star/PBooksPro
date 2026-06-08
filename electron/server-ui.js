@@ -238,7 +238,15 @@
   };
 
   setupDownloadProgress();
-  ui.onServerEvent(() => refresh());
-  refresh();
-  setInterval(refresh, 4000);
+  let refreshTimer = null;
+  function scheduleRefresh() {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      void refresh();
+    }, 300);
+  }
+  ui.onServerEvent(() => scheduleRefresh());
+  void refresh();
+  setInterval(() => void refresh(), 4000);
 })();

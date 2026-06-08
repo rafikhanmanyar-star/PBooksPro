@@ -1,10 +1,8 @@
 import type { OffsiteStorageProvider, StorageProviderConfig, StorageProviderId } from './types.js';
-import { S3CompatibleStorageProvider } from './s3CompatibleProvider.js';
-import { AzureBlobStorageProvider } from './azureBlobProvider.js';
 
-export function createOffsiteStorageProvider(
+export async function createOffsiteStorageProvider(
   config: StorageProviderConfig
-): OffsiteStorageProvider {
+): Promise<OffsiteStorageProvider> {
   const { provider, bucketName, accessKey, secretKey } = config;
   if (!bucketName?.trim()) {
     throw new Error('Bucket / container name is required.');
@@ -14,20 +12,28 @@ export function createOffsiteStorageProvider(
   }
 
   switch (provider) {
-    case 'aws_s3':
+    case 'aws_s3': {
+      const { S3CompatibleStorageProvider } = await import('./s3CompatibleProvider.js');
       return new S3CompatibleStorageProvider('aws_s3', config);
-    case 'cloudflare_r2':
+    }
+    case 'cloudflare_r2': {
       if (!config.endpointUrl?.trim()) {
         throw new Error('Cloudflare R2 requires an endpoint URL (S3 API endpoint).');
       }
+      const { S3CompatibleStorageProvider } = await import('./s3CompatibleProvider.js');
       return new S3CompatibleStorageProvider('cloudflare_r2', config);
-    case 'backblaze_b2':
+    }
+    case 'backblaze_b2': {
       if (!config.endpointUrl?.trim()) {
         throw new Error('Backblaze B2 requires an S3-compatible endpoint URL.');
       }
+      const { S3CompatibleStorageProvider } = await import('./s3CompatibleProvider.js');
       return new S3CompatibleStorageProvider('backblaze_b2', config);
-    case 'azure_blob':
+    }
+    case 'azure_blob': {
+      const { AzureBlobStorageProvider } = await import('./azureBlobProvider.js');
       return new AzureBlobStorageProvider(config);
+    }
     default:
       throw new Error(`Unsupported storage provider: ${String(provider)}`);
   }

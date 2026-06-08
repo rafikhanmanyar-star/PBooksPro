@@ -27,6 +27,61 @@ function copyDir(from, to) {
   }
 }
 
+const PRUNE_DIR_NAMES = new Set([
+  'test',
+  'tests',
+  '__tests__',
+  'docs',
+  'doc',
+  'example',
+  'examples',
+  '.github',
+]);
+
+/** Drop TypeScript typings, docs, tests, and other dev-only bulk from staged production node_modules. */
+function pruneStagedNodeModules(nmRoot, { removeCloudBackupSdks = false } = {}) {
+  if (!fs.existsSync(nmRoot)) return;
+
+  if (removeCloudBackupSdks) {
+    for (const name of ['@azure', '@aws-sdk', '@aws-crypto', '@smithy']) {
+      rmrf(path.join(nmRoot, name));
+    }
+    console.log('Pruned cloud backup SDKs from staging API server bundle.');
+  }
+
+  // Type packages are compile-time only; safe to drop from all API server installers.
+  for (const name of ['@types', '@typespec']) {
+    rmrf(path.join(nmRoot, name));
+  }
+
+  const stack = [nmRoot];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const ent of entries) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (PRUNE_DIR_NAMES.has(ent.name.toLowerCase())) {
+          rmrf(p);
+        } else {
+          stack.push(p);
+        }
+        continue;
+      }
+      if (ent.name.endsWith('.md') || ent.name.endsWith('.map')) {
+        try {
+          fs.unlinkSync(p);
+        } catch (_) {}
+      }
+    }
+  }
+}
+
 rmrf(out);
 const backendOut = path.join(out, 'backend');
 const dbOut = path.join(out, 'database', 'migrations');
@@ -80,5 +135,11 @@ if (isStaging) {
 
 console.log('npm ci --omit=dev in staged backend...');
 execSync('npm ci --omit=dev', { cwd: backendOut, stdio: 'inherit' });
+
+console.log('Pruning staged node_modules...');
+pruneStagedNodeModules(path.join(backendOut, 'node_modules'), {
+  // Staging installer targets local PostgreSQL; cloud backup SDKs add ~28 MB uncompressed.
+  removeCloudBackupSdks: isStaging,
+});
 
 console.log('Staged:', out);

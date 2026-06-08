@@ -186,7 +186,7 @@ export async function getConfiguredProvider(client: pg.PoolClient) {
     return null;
   }
   const config = rowToConfig(row);
-  return createOffsiteStorageProvider(config);
+  return await createOffsiteStorageProvider(config);
 }
 
 export async function testStorageConnection(
@@ -215,7 +215,7 @@ export async function testStorageConnection(
     config = rowToConfig(row);
   }
 
-  const provider = createOffsiteStorageProvider(config);
+  const provider = await createOffsiteStorageProvider(config);
   await provider.testConnection();
 }
 

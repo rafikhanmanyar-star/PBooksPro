@@ -9,6 +9,9 @@ extraMetadata:
   name: pbooks-pro-staging-api-server
   description: PBooks Pro Staging API Server (PostgreSQL pBookspro_Staging, port 3001)
 compression: maximum
+# English only — default Chromium locale packs add ~40 MB uncompressed to the installer.
+electronLanguages:
+  - en-US
 directories:
   output: release-api-server-staging
 files:
