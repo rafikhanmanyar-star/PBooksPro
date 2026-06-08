@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
-import { requireRole } from '../middleware/rbacMiddleware.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { getTemplateCatalog } from '../constants/emailAutomation.js';
 import {
@@ -11,8 +10,6 @@ import {
 } from '../services/emailAutomation/emailAutomationCampaignService.js';
 
 export const adminEmailAutomationRouter = Router();
-
-adminEmailAutomationRouter.use(requireRole('super_admin'));
 
 adminEmailAutomationRouter.get('/admin/email-automation/templates', (_req, res) => {
   sendSuccess(res, { templates: getTemplateCatalog() });

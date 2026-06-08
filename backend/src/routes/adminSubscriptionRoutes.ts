@@ -4,7 +4,6 @@
 
 import { Router } from 'express';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
-import { requireRole } from '../middleware/rbacMiddleware.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { getPool } from '../db/pool.js';
 import {
@@ -15,8 +14,6 @@ import {
 import { runSubscriptionMaintenance } from '../services/billing/subscriptionLifecycleService.js';
 
 export const adminSubscriptionRouter = Router();
-
-adminSubscriptionRouter.use(requireRole('super_admin'));
 
 adminSubscriptionRouter.get('/admin/subscriptions/stats', async (_req, res) => {
   const pool = getPool();

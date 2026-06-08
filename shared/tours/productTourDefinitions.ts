@@ -12,7 +12,7 @@ export type ProductTourId =
   | 'reports'
   | 'demo_overview';
 
-export type TourPrepareAction = 'openKpiPanel' | 'openKpiReports' | 'openProjectTrialBalance';
+export type TourPrepareAction = 'openKpiPanel' | 'openKpiReports' | 'openAccountingTrialBalance';
 
 export type ProductTourStep = {
   id: string;
@@ -166,7 +166,7 @@ export const PRODUCT_TOURS: Record<ProductTourId, ProductTourDefinition> = {
       {
         id: 'subnav',
         title: 'Project workspace',
-        body: 'Operational tabs cover contracts, bills, payouts, and layouts. Financial reports are grouped separately.',
+        body: 'Operational tabs cover contracts, bills, payouts, and layouts. Operational reports stay here; financial statements live under Accounting.',
         selector: '[data-tour="project-subnav"]',
         page: 'projectManagement',
       },
@@ -180,7 +180,7 @@ export const PRODUCT_TOURS: Record<ProductTourId, ProductTourDefinition> = {
       {
         id: 'reports',
         title: 'Project reports',
-        body: 'Run P&L, trial balance, cash flow, and custom reports per project from the Reports section.',
+        body: 'Run project-specific operational reports from the Reports section. P&L, trial balance, and cash flow are under Accounting in the sidebar.',
         selector: '[data-tour="project-reports"]',
         page: 'projectManagement',
       },
@@ -209,10 +209,10 @@ export const PRODUCT_TOURS: Record<ProductTourId, ProductTourDefinition> = {
       {
         id: 'trial-balance',
         title: 'Trial balance',
-        body: 'Validate debits and credits across all accounts. Available under project financial reports and KPI favorites.',
+        body: 'Validate debits and credits across all accounts. Open from Accounting in the sidebar or KPI favorites.',
         selector: '[data-tour="report-trial-balance"]',
-        page: 'projectManagement',
-        prepare: 'openProjectTrialBalance',
+        page: 'accounting',
+        prepare: 'openAccountingTrialBalance',
       },
       {
         id: 'dashboard-reports',

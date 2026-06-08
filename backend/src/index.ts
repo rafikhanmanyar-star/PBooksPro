@@ -75,7 +75,12 @@ import { clientLedgerRouter } from './routes/clientLedgerRoutes.js';
 import { vendorLedgerRouter } from './routes/vendorLedgerRoutes.js';
 import { authMiddleware, optionalAuthMiddleware } from './middleware/authMiddleware.js';
 import { requireActiveSubscription } from './middleware/licenseEnforcementMiddleware.js';
-import { requireFinancialWriteOnMutations, requirePayrollAccessForPayrollPaths, requirePermissionWhenPathStartsWith } from './middleware/rbacMiddleware.js';
+import {
+  requireFinancialWriteOnMutations,
+  requirePayrollAccessForPayrollPaths,
+  requirePermissionWhenPathStartsWith,
+  requireRoleWhenPathStartsWith,
+} from './middleware/rbacMiddleware.js';
 import { permissionsRouter } from './routes/permissionsRoutes.js';
 import { auditTrailRouter } from './routes/auditTrailRoutes.js';
 import { privacyRouter } from './routes/privacyRoutes.js';
@@ -308,10 +313,11 @@ app.use('/api', authMiddleware, requireActiveSubscription(), tenantBackupRouter)
 
 app.use('/api', authMiddleware, requireActiveSubscription(), disasterRecoveryRouter);
 
-app.use('/api', authMiddleware, adminSubscriptionRouter);
-app.use('/api', authMiddleware, adminReferralRouter);
-app.use('/api', authMiddleware, adminEmailAutomationRouter);
-app.use('/api', authMiddleware, adminMonitoringRouter);
+const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', 'super_admin');
+app.use('/api', authMiddleware, requireSuperAdminForAdminPaths, adminSubscriptionRouter);
+app.use('/api', authMiddleware, requireSuperAdminForAdminPaths, adminReferralRouter);
+app.use('/api', authMiddleware, requireSuperAdminForAdminPaths, adminEmailAutomationRouter);
+app.use('/api', authMiddleware, requireSuperAdminForAdminPaths, adminMonitoringRouter);
 app.use('/api', authMiddleware, monitoringIngestRouter);
 
 app.use('/api', authMiddleware, requireActiveSubscription(), onboardingRouter);

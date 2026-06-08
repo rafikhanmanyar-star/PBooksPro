@@ -102,6 +102,10 @@ export interface FinancialReconciliationResult {
 const SYS_CLEARING = 'sys-acc-clearing';
 const SYS_AR = 'sys-acc-ar';
 const SYS_AP = 'sys-acc-ap';
+const SYS_INCOME_SUMMARY = 'sys-acc-income-summary';
+const SYS_EXPENSE_SUMMARY = 'sys-acc-expense-summary';
+const SYS_RETAINED_EARNINGS = 'sys-acc-retained-earnings';
+const SYS_CURRENT_YEAR_EARNINGS = 'sys-acc-current-year-earnings';
 
 function ymd(d: string): string {
   return d.slice(0, 10);
@@ -276,7 +280,7 @@ function classifyAccountPosition(type: string): 'asset' | 'liability' | 'equity'
   return 'asset';
 }
 
-/** Sum TB sections for balance sheet reconciliation. */
+/** Sum TB sections for balance sheet reconciliation (raw journal classification). */
 export function sumBalanceSheetSectionsFromJournal(
   balances: Map<string, JournalAccountBalance>,
   accounts: LedgerAccount[]
@@ -302,6 +306,84 @@ export function sumBalanceSheetSectionsFromJournal(
   return { assets, liabilities, equity };
 }
 
+function resolveClearingAccountId(accounts: LedgerAccount[]): string {
+  return (
+    accounts.find((a) => a.id === SYS_CLEARING || a.name === 'Internal Clearing')?.id ?? SYS_CLEARING
+  );
+}
+
+export interface JournalCertificationBsOptions {
+  /** Cumulative net profit through as-of date (matches BS engine retainedEarningsFromPL). */
+  cumulativeNetProfit?: number;
+}
+
+/**
+ * Journal-mode balance sheet section totals aligned with balanceSheetEngine (useJournalLedger).
+ * Excludes Internal Clearing; closes to cumulative P&L when income/expense summary lines are absent.
+ */
+export function sumBalanceSheetSectionsForJournalCertification(
+  balances: Map<string, JournalAccountBalance>,
+  accounts: LedgerAccount[],
+  options?: JournalCertificationBsOptions
+): { assets: number; liabilities: number; equity: number } {
+  let assets = 0;
+  let liabilities = 0;
+  let equity = 0;
+  let hasSummaryEquity = false;
+  const accountById = new Map(accounts.map((a) => [a.id, a]));
+  const clearingId = resolveClearingAccountId(accounts);
+
+  for (const [accountId, bal] of balances) {
+    const acc = accountById.get(accountId);
+    if (!acc) continue;
+    if (accountId === clearingId) continue;
+
+    const signed = bal.signedBalance;
+    const hasBalance = Math.abs(signed) >= MONEY_EPSILON;
+    const type = (acc.type || '').toLowerCase();
+
+    if (type === 'equity') {
+      if (accountId === SYS_INCOME_SUMMARY || accountId === SYS_EXPENSE_SUMMARY) {
+        if (!hasBalance) continue;
+        hasSummaryEquity = true;
+        equity = roundMoney(equity + signed);
+        continue;
+      }
+      const isRetained =
+        accountId === SYS_RETAINED_EARNINGS || accountId === SYS_CURRENT_YEAR_EARNINGS;
+      if (!hasBalance && !isRetained) continue;
+      equity = roundMoney(equity + signed);
+      continue;
+    }
+
+    if (type === 'liability') {
+      if (!hasBalance) continue;
+      liabilities = roundMoney(liabilities + signed);
+      continue;
+    }
+
+    if (!hasBalance) continue;
+    assets = roundMoney(assets + signed);
+  }
+
+  if (
+    options?.cumulativeNetProfit !== undefined &&
+    !hasSummaryEquity &&
+    Math.abs(options.cumulativeNetProfit - equity) > 1
+  ) {
+    equity = roundMoney(options.cumulativeNetProfit);
+  }
+
+  return { assets, liabilities, equity };
+}
+
+export interface ReconcileFinancialStatementsOptions {
+  /** When set, used for A=L+E (authoritative BS engine totals). */
+  balanceSheetSections?: { assets: number; liabilities: number; equity: number };
+  /** Cumulative P&L net through as-of date for journal certification rollup. */
+  cumulativeNetProfit?: number;
+}
+
 /**
  * Reconcile trial balance, balance sheet totals, and net P&L.
  * @param netProfit — period net profit from journal-backed P&L
@@ -312,10 +394,14 @@ export function reconcileFinancialStatements(
   balances: Map<string, JournalAccountBalance>,
   accounts: LedgerAccount[],
   netProfit: number,
-  priorEquity?: number
+  priorEquity?: number,
+  options?: ReconcileFinancialStatementsOptions
 ): FinancialReconciliationResult {
-  const { assets, liabilities, equity } = sumBalanceSheetSectionsFromJournal(balances, accounts);
-  const totalEquity = equity;
+  const journalSections = sumBalanceSheetSectionsForJournalCertification(balances, accounts, {
+    cumulativeNetProfit: options?.cumulativeNetProfit,
+  });
+  const sections = options?.balanceSheetSections ?? journalSections;
+  const { assets, liabilities, equity: totalEquity } = sections;
   const diff = roundMoney(assets - (liabilities + totalEquity));
   const assetsEqual = Math.abs(diff) < 1;
 
@@ -360,4 +446,12 @@ export function reconcileFinancialStatements(
   };
 }
 
-export { SYS_CLEARING, SYS_AR, SYS_AP };
+export {
+  SYS_CLEARING,
+  SYS_AR,
+  SYS_AP,
+  SYS_INCOME_SUMMARY,
+  SYS_EXPENSE_SUMMARY,
+  SYS_RETAINED_EARNINGS,
+  SYS_CURRENT_YEAR_EARNINGS,
+};

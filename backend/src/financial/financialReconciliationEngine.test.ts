@@ -9,6 +9,8 @@ import {
 } from './financialReconciliationEngine.js';
 import {
   buildTrialBalanceFromJournal,
+  computeAccountBalancesFromJournal,
+  sumBalanceSheetSectionsForJournalCertification,
   type JournalEntryRow,
   type JournalLineRow,
   type LedgerAccount,
@@ -74,9 +76,15 @@ describe('financialReconciliationEngine', () => {
       journalLedger: { journalLines, journalEntries, accounts, transactions },
       period: { from: '2024-05-01', to: '2024-05-31' },
       netProfit: 1000,
+      cumulativeNetProfit: 1000,
+      balanceSheetTotals: { assets: 1000, liabilities: 0, equity: 1000, isBalanced: true },
     });
 
     assert.equal(certification.checks.find((c: ReconciliationCheck) => c.id === 'tb_debits_equal_credits')?.passed, true);
+    assert.equal(
+      certification.checks.find((c: ReconciliationCheck) => c.id === 'assets_equal_liabilities_equity')?.passed,
+      true
+    );
     assert.equal(certification.missingJournalCount, 0);
     assert.ok(certification.score >= 70);
   });
@@ -96,6 +104,26 @@ describe('financialReconciliationEngine', () => {
       false
     );
     assert.notEqual(certification.overallStatus, 'reconciled');
+  });
+
+  it('journal certification rollup excludes clearing and closes to cumulative P&L', () => {
+    const accounts = [
+      account('cash', 'Cash', 'Cash'),
+      account('sys-acc-clearing', 'Internal Clearing', 'Bank'),
+    ];
+    const journalEntries = [entry('je1', '2024-06-01', 'tx1')];
+    const journalLines = [
+      line('je1', 'cash', 1000, 0),
+      line('je1', 'sys-acc-clearing', 0, 1000),
+    ];
+    const ledger = { journalLines, journalEntries, accounts };
+    const balances = computeAccountBalancesFromJournal(ledger, '2024-06-30');
+    const sections = sumBalanceSheetSectionsForJournalCertification(balances, accounts, {
+      cumulativeNetProfit: 1000,
+    });
+    assert.equal(sections.assets, 1000);
+    assert.equal(sections.liabilities, 0);
+    assert.equal(sections.equity, 1000);
   });
 });
 

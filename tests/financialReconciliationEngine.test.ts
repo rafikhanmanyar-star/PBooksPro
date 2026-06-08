@@ -46,6 +46,8 @@ function line(jeId: string, accId: string, d: number, c: number) {
     },
     period: { from: '2024-06-01', to: '2024-06-30' },
     netProfit: 500,
+    cumulativeNetProfit: 500,
+    balanceSheetTotals: { assets: 500, liabilities: 0, equity: 500, isBalanced: true },
   });
   assert.equal(certification.missingJournalCount, 0);
   assert.equal(certification.checks.find((c) => c.id === 'tb_debits_equal_credits')?.passed, true);

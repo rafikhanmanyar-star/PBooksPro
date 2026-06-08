@@ -12,8 +12,6 @@ import { z } from 'zod';
 
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 
-import { requireRole } from '../middleware/rbacMiddleware.js';
-
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 
 import { getPool } from '../db/pool.js';
@@ -41,10 +39,6 @@ import { approveReferralReward, rejectReferralReward } from '../services/referra
 
 
 export const adminReferralRouter = Router();
-
-
-
-adminReferralRouter.use(requireRole('super_admin'));
 
 
 

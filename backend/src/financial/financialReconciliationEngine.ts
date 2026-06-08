@@ -13,7 +13,7 @@ import {
   computeAccountBalancesFromJournal,
   mirroredTransactionIds,
   reconcileFinancialStatements,
-  sumBalanceSheetSectionsFromJournal,
+  sumBalanceSheetSectionsForJournalCertification,
   type FinancialReconciliationResult,
   type JournalEntryRow,
   type JournalLedgerInput,
@@ -235,7 +235,13 @@ export interface RunCertificationInput {
   period: { from: string; to: string };
   /** Period net profit from journal-backed P&L */
   netProfit: number;
-  /** Optional BS engine cross-check */
+  /** Cumulative P&L net through period end (matches BS engine retainedEarningsFromPL). */
+  cumulativeNetProfit?: number;
+  /** Cumulative P&L net through day before period start (for prior equity rollup). */
+  cumulativeNetProfitPrior?: number;
+  /** Equity from BS engine at day before period start. */
+  priorBalanceSheetEquity?: number;
+  /** BS engine totals at period end — authoritative for A=L+E when provided. */
   balanceSheetTotals?: { assets: number; liabilities: number; equity: number; isBalanced: boolean };
   missingJournalLimit?: number;
 }
@@ -259,14 +265,28 @@ export function runFinancialReconciliationCertification(
   const balancesAtEnd = computeAccountBalancesFromJournal(journalLedger, asOfDate);
   const priorEquityDate = priorDay(period.from);
   const balancesPrior = computeAccountBalancesFromJournal(journalLedger, priorEquityDate);
-  const { equity: priorEquity } = sumBalanceSheetSectionsFromJournal(balancesPrior, journalLedger.accounts);
+  const priorEquity =
+    input.priorBalanceSheetEquity ??
+    sumBalanceSheetSectionsForJournalCertification(balancesPrior, journalLedger.accounts, {
+      cumulativeNetProfit: input.cumulativeNetProfitPrior,
+    }).equity;
 
   const reconciliation = reconcileFinancialStatements(
     tb,
     balancesAtEnd,
     journalLedger.accounts,
     netProfit,
-    priorEquity
+    priorEquity,
+    {
+      balanceSheetSections: input.balanceSheetTotals
+        ? {
+            assets: input.balanceSheetTotals.assets,
+            liabilities: input.balanceSheetTotals.liabilities,
+            equity: input.balanceSheetTotals.equity,
+          }
+        : undefined,
+      cumulativeNetProfit: input.cumulativeNetProfit,
+    }
   );
 
   const missingJournals = findMissingJournalMirrors(transactions, journalLedger.journalEntries, {
@@ -326,15 +346,22 @@ export function runFinancialReconciliationCertification(
 
   if (input.balanceSheetTotals) {
     const bs = input.balanceSheetTotals;
-    const journalAssets = reconciliation.totalAssets;
-    const bsDiff = roundMoney(Math.abs(journalAssets - bs.assets));
+    const journalAligned = sumBalanceSheetSectionsForJournalCertification(
+      balancesAtEnd,
+      journalLedger.accounts,
+      { cumulativeNetProfit: input.cumulativeNetProfit }
+    );
+    const assetDiff = roundMoney(Math.abs(journalAligned.assets - bs.assets));
+    const liabDiff = roundMoney(Math.abs(journalAligned.liabilities - bs.liabilities));
+    const eqDiff = roundMoney(Math.abs(journalAligned.equity - bs.equity));
+    const totalsDiff = roundMoney(assetDiff + liabDiff + eqDiff);
     checks.push({
       id: 'bs_engine_matches_journal',
-      label: 'Balance Sheet engine totals match journal sections',
-      passed: bsDiff < 1 && bs.isBalanced,
-      expected: `Assets ${journalAssets} (balanced)`,
-      actual: `Assets ${bs.assets} (balanced=${bs.isBalanced})`,
-      difference: bsDiff,
+      label: 'Balance Sheet engine totals align with journal rollup',
+      passed: totalsDiff < 1 && bs.isBalanced,
+      expected: `A ${bs.assets} L ${bs.liabilities} E ${bs.equity} (balanced)`,
+      actual: `A ${journalAligned.assets} L ${journalAligned.liabilities} E ${journalAligned.equity}`,
+      difference: totalsDiff,
       severity: 'warning',
     });
   }

@@ -16,6 +16,15 @@ import type { JournalLedgerInput, LedgerAccount, LedgerTransaction } from '../fi
 
 export type { FinancialReconciliationCertification };
 
+/** Matches balanceSheetEngine BS_PL_CUMULATIVE_START for retained-earnings alignment. */
+const BS_PL_CUMULATIVE_START = '2000-01-01';
+
+function priorDay(ymd: string): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function strOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
@@ -75,9 +84,14 @@ export async function getFinancialReconciliationCertification(
     transactions,
   };
 
-  const [plReport, bsReport] = await Promise.all([
+  const priorDate = priorDay(options.from);
+
+  const [plReport, plCumulative, plCumulativePrior, bsReport, bsPrior] = await Promise.all([
     getProfitLossReportJson(client, tenantId, options.from, options.to, projectId),
+    getProfitLossReportJson(client, tenantId, BS_PL_CUMULATIVE_START, options.to, projectId),
+    getProfitLossReportJson(client, tenantId, BS_PL_CUMULATIVE_START, priorDate, projectId),
     getBalanceSheetReportJson(client, tenantId, options.to, projectId),
+    getBalanceSheetReportJson(client, tenantId, priorDate, projectId),
   ]);
 
   const netProfit = Number(plReport.net_profit ?? 0);
@@ -86,6 +100,9 @@ export async function getFinancialReconciliationCertification(
     journalLedger,
     period: { from: options.from, to: options.to },
     netProfit,
+    cumulativeNetProfit: Number(plCumulative.net_profit ?? 0),
+    cumulativeNetProfitPrior: Number(plCumulativePrior.net_profit ?? 0),
+    priorBalanceSheetEquity: bsPrior.totals.equity,
     balanceSheetTotals: {
       assets: bsReport.totals.assets,
       liabilities: bsReport.totals.liabilities,

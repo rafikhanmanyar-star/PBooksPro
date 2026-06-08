@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
-import { requireRole } from '../middleware/rbacMiddleware.js';
 import { getPool } from '../db/pool.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { MONITORING_CATEGORIES, CATEGORY_LABELS } from '../constants/monitoring.js';
@@ -22,8 +21,6 @@ import {
 import { getObservabilityStatus } from '../services/monitoring/observabilityProvider.js';
 
 export const adminMonitoringRouter = Router();
-
-adminMonitoringRouter.use(requireRole('super_admin'));
 
 adminMonitoringRouter.get('/admin/monitoring/overview', async (req, res) => {
   const hours = Math.min(Number(req.query.hours ?? 24), 168);

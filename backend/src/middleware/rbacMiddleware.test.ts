@@ -10,6 +10,7 @@ import {
   requirePermission,
   requirePermissionWhenPathStartsWith,
   requireRole,
+  requireRoleWhenPathStartsWith,
 } from './rbacMiddleware.js';
 import type { AuthedRequest } from './authMiddleware.js';
 
@@ -194,6 +195,38 @@ describe('rbacMiddleware', () => {
       });
       assert.equal(called, false);
       assert.equal(res.statusCode, 403);
+    }
+  });
+
+  it('requireRoleWhenPathStartsWith skips unrelated paths', () => {
+    const guard = requireRoleWhenPathStartsWith('/admin', 'super_admin');
+    {
+      const req = mockReq('GET', 'Admin', '/payroll/departments');
+      const res = mockRes();
+      let called = false;
+      guard(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, true);
+    }
+    {
+      const req = mockReq('GET', 'Admin', '/admin/subscriptions/stats');
+      const res = mockRes();
+      let called = false;
+      guard(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, false);
+      assert.equal(res.statusCode, 403);
+    }
+    {
+      const req = mockReq('GET', 'super_admin', '/admin/subscriptions/stats');
+      const res = mockRes();
+      let called = false;
+      guard(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, true);
     }
   });
 });

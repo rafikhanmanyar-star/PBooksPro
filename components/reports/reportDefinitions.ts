@@ -4,7 +4,7 @@ import { Page } from '../../types';
 export interface ReportDefinition {
     id: string;
     title: string;
-    group: 'Rental' | 'Project' | 'General';
+    group: 'Rental' | 'Project' | 'Accounting' | 'General';
     path: Page;
     subPath?: string; // Format: "MainTab:SubTab"
 }
@@ -42,12 +42,13 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'project-material-report', title: 'Material Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Material Report' },
     { id: 'project-budget-vs-actual', title: 'Budget vs Actual Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Budget vs Actual' },
     { id: 'project-custom-report-builder', title: 'Custom Report Builder', group: 'Project', path: 'projectManagement', subPath: 'Reports:Custom Report Builder' },
-    { id: 'project-profit-loss', title: 'Profit & Loss Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Profit & Loss' },
-    { id: 'project-balance-sheet', title: 'Balance Sheet Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Balance Sheet' },
-    { id: 'project-trial-balance', title: 'Trial Balance Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Trial Balance' },
-    { id: 'project-reconciliation', title: 'Financial Reconciliation', group: 'Project', path: 'projectManagement', subPath: 'Reports:Reconciliation' },
-    { id: 'project-cash-flows', title: 'Cash Flow Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Cash Flows' },
-    { id: 'project-investor-distribution', title: 'Investor Distribution Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Investor Distribution' },
+    // Accounting — financial statements (consolidated / per-project)
+    { id: 'accounting-profit-loss', title: 'Profit & Loss Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Profit & Loss' },
+    { id: 'accounting-balance-sheet', title: 'Balance Sheet Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Balance Sheet' },
+    { id: 'accounting-trial-balance', title: 'Trial Balance Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Trial Balance' },
+    { id: 'accounting-reconciliation', title: 'Financial Reconciliation', group: 'Accounting', path: 'accounting', subPath: 'Reports:Reconciliation' },
+    { id: 'accounting-cash-flows', title: 'Cash Flow Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Cash Flows' },
+    { id: 'accounting-investor-distribution', title: 'Investor Distribution Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Investor Distribution' },
 
     // General Reports
     { id: 'transfer-statistics', title: 'Transfer Statistics Report', group: 'General', path: 'dashboard', subPath: '' },

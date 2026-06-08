@@ -23,6 +23,7 @@ export type Page =
   | 'import'
   | 'payroll'
   | 'personalTransactions'
+  | 'accounting'
 ;
 
 export enum TransactionType {

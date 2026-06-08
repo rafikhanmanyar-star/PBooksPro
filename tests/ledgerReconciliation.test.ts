@@ -224,7 +224,14 @@ function line(jeId: string, accId: string, d: number, c: number): JournalLineRow
     basis: 'period',
   });
   const balances = computeAccountBalancesFromJournal(journalLedger, '2024-05-31');
-  const recon = reconcileFinancialStatements(tb, balances, accounts, pl.net_profit);
+  const recon = reconcileFinancialStatements(tb, balances, accounts, pl.net_profit, 0, {
+    balanceSheetSections: {
+      assets: bs.totals.assets,
+      liabilities: bs.totals.liabilities,
+      equity: bs.totals.equity,
+    },
+    cumulativeNetProfit: pl.net_profit,
+  });
   assert.strictEqual(recon.isBalanced, true, recon.issues.join('; '));
   assert.strictEqual(recon.assetsEqualLiabilitiesPlusEquity, true);
   assert.strictEqual(recon.trialBalance.isBalanced, true);

@@ -83,6 +83,7 @@ const MobilePaymentsPage = lazyWithRetry(() => import('./components/mobile/Mobil
 
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
 const PersonalTransactionsPage = lazyWithRetry(() => import('./components/personalTransactions/PersonalTransactionsPage'));
+const AccountingPage = lazyWithRetry(() => import('./components/accounting/AccountingPage'));
 
 const SetPasswordModal = lazyWithRetry(() => import('./components/company/SetPasswordModal'));
 
@@ -105,6 +106,7 @@ const PAGE_GROUPS = {
   IMPORT: ['import'],
   PAYROLL: ['payroll'],
   PERSONAL_TRANSACTIONS: ['personalTransactions'],
+  ACCOUNTING: ['accounting'],
 };
 
 const App: React.FC = () => {
@@ -617,6 +619,7 @@ const App: React.FC = () => {
 
       case 'payroll': return 'Payroll Management';
       case 'personalTransactions': return 'Personal transactions';
+      case 'accounting': return 'Accounting';
 
       default: return getAppDisplayName();
     }
@@ -640,12 +643,12 @@ const App: React.FC = () => {
     const pageId = `page-${groupKey}`;
 
     // Fixed layout for certain complex modules
-    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'PROJECT_SELLING' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL' || groupKey === 'PERSONAL_TRANSACTIONS';
+    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'PROJECT_SELLING' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'ACCOUNTING';
     const overflowClass = isFixedLayout ? 'overflow-hidden' : 'overflow-y-auto';
     const bgClass = getPageBackground(groupKey);
     // Project Selling: no top padding so tab row sits directly under header
     // Rental: same — second-level module nav sits directly under header / banners
-    const noTopPad = groupKey === 'PROJECT_SELLING' || groupKey === 'RENTAL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'PAYROLL' || groupKey === 'INVESTMENT';
+    const noTopPad = groupKey === 'PROJECT_SELLING' || groupKey === 'RENTAL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'PAYROLL' || groupKey === 'INVESTMENT' || groupKey === 'ACCOUNTING';
 
     return (
       <div
@@ -803,18 +806,19 @@ const App: React.FC = () => {
                 'RENTAL',
                 <RentalManagementPage initialPage={currentPage} />
               )}
-              {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
-              {renderPersistentPage('PROJECT_SELLING', <ProjectManagementPage initialPage={currentPage} />)}
+              {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage="projectManagement" />)}
+              {renderPersistentPage('PROJECT_SELLING', <ProjectManagementPage initialPage="projectSelling" />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
               {renderPersistentPage('PERSONAL_TRANSACTIONS', <PersonalTransactionsPage />)}
+              {renderPersistentPage('ACCOUNTING', <AccountingPage />)}
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>
 
             {/* Loading Overlay - Shows when navigating between pages (excluded for PROJECT, RENTAL, INVESTMENT, and PM_CONFIG groups to avoid duplicates with Suspense) */}
-            {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'PROJECT_SELLING' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && activeGroup !== 'PERSONAL_TRANSACTIONS' && activeGroup !== 'PAYROLL' && (
+            {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'PROJECT_SELLING' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && activeGroup !== 'PERSONAL_TRANSACTIONS' && activeGroup !== 'PAYROLL' && activeGroup !== 'ACCOUNTING' && (
               <div className="absolute inset-0 bg-app-bg/90 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-200 animate-fade-in pointer-events-none" aria-hidden="true">
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative">

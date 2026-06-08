@@ -30,6 +30,7 @@ const PRIMARY_SIDEBAR_MODULE_PAGES: ReadonlySet<Page> = new Set([
     'projectSelling',
     'projectManagement',
     'rentalManagement',
+    'accounting',
 ]);
 
 function isPrimarySidebarModule(page: Page): boolean {
@@ -42,6 +43,7 @@ const TOUR_DATA_ATTR: Partial<Record<string, string>> = {
     projectManagement: 'nav-projects',
     transactions: 'nav-ledger',
     budgets: 'nav-budgets',
+    accounting: 'nav-accounting',
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
@@ -220,6 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 title: 'Financials',
                 items: [
                     { page: 'transactions', label: 'General Ledger', icon: ICONS.trendingUp },
+                    { page: 'accounting', label: 'Accounting', icon: ICONS.clipboard },
                     ...(isAdmin ? [{ page: 'personalTransactions', label: 'Personal transactions', icon: ICONS.wallet }] : []),
                     { page: 'budgets', label: 'Budget Planner', icon: ICONS.barChart },
                 ]
@@ -302,6 +305,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         if (itemPage === 'projectManagement' && (currentPage.startsWith('project') || currentPage === 'bills') && currentPage !== 'projectSelling' && currentPage !== 'projectInvoices') return true;
         // projectInvoices is now under Selling (Project selling), so it should activate projectSelling not projectManagement.
         if (itemPage === 'projectSelling' && (currentPage === 'projectSelling' || currentPage === 'projectInvoices')) return true;
+        if (itemPage === 'accounting' && currentPage === 'accounting') return true;
         return false;
     };
 

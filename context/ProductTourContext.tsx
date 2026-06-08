@@ -69,7 +69,7 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
   }, []);
 
   const runPrepare = useCallback(
-    async (prepare?: 'openKpiPanel' | 'openKpiReports' | 'openProjectTrialBalance') => {
+    async (prepare?: 'openKpiPanel' | 'openKpiReports' | 'openAccountingTrialBalance') => {
       if (!prepare) return;
       if (prepare === 'openKpiPanel' || prepare === 'openKpiReports') {
         if (!isPanelOpen) togglePanel();
@@ -78,7 +78,7 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
           setActivePanelTab('reports');
         }
       }
-      if (prepare === 'openProjectTrialBalance') {
+      if (prepare === 'openAccountingTrialBalance') {
         dispatch({ type: 'SET_INITIAL_TABS', payload: ['Reports', 'Trial Balance'] });
         await new Promise((r) => setTimeout(r, 500));
       }
