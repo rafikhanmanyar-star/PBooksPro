@@ -88,6 +88,8 @@ export function useOnboarding() {
   }, [tenant?.id, companyCtx?.activeCompany?.id]);
 
   const canManage = perms.canManageUsers;
+  const canAccessOnboarding =
+    perms.enterpriseRole === 'company_admin' || perms.enterpriseRole === 'super_admin';
 
   const load = useCallback(async () => {
     if (!storageId) {
@@ -100,7 +102,7 @@ export function useOnboarding() {
       if (isLocalOnlyMode()) {
         const local = loadLocalOnboarding(storageId) ?? defaultState(storageId);
         setState(local);
-      } else if (isAuthenticated && canManage) {
+      } else if (isAuthenticated && canAccessOnboarding) {
         const remote = await onboardingApi.get();
         setState(remote);
         saveLocalOnboarding(storageId, remote);
@@ -118,7 +120,7 @@ export function useOnboarding() {
     } finally {
       setLoading(false);
     }
-  }, [storageId, isAuthenticated, canManage]);
+  }, [storageId, isAuthenticated, canAccessOnboarding]);
 
   useEffect(() => {
     void load();
@@ -128,7 +130,7 @@ export function useOnboarding() {
     async (next: OnboardingState) => {
       setState(next);
       if (storageId) saveLocalOnboarding(storageId, next);
-      if (!isLocalOnlyMode() && isAuthenticated && canManage) {
+      if (!isLocalOnlyMode() && isAuthenticated && canAccessOnboarding) {
         try {
           const remote = await onboardingApi.save({
             currentStep: next.currentStep,
@@ -142,13 +144,13 @@ export function useOnboarding() {
         }
       }
     },
-    [storageId, isAuthenticated, canManage]
+    [storageId, isAuthenticated, canAccessOnboarding]
   );
 
   const completeStep = useCallback(
     async (stepId: OnboardingStepId, stepData?: Record<string, unknown>) => {
       if (!state) return;
-      if (isLocalOnlyMode() || !isAuthenticated) {
+      if (isLocalOnlyMode() || !isAuthenticated || !canAccessOnboarding) {
         const next = advanceOnboardingStepLocally(state, stepId, stepData);
         await persist(next);
         return next;
@@ -159,7 +161,7 @@ export function useOnboarding() {
         if (storageId) saveLocalOnboarding(storageId, remote);
         return remote;
       } catch (err: unknown) {
-        if (canManage && isOnboardingApiFallbackError(err)) {
+        if (canAccessOnboarding && isOnboardingApiFallbackError(err)) {
           const next = advanceOnboardingStepLocally(state, stepId, stepData);
           await persist(next);
           return next;
@@ -167,11 +169,11 @@ export function useOnboarding() {
         throw err;
       }
     },
-    [state, isAuthenticated, canManage, persist, storageId]
+    [state, isAuthenticated, canAccessOnboarding, persist, storageId]
   );
 
   const skipAll = useCallback(async () => {
-    if (!isLocalOnlyMode() && isAuthenticated && canManage) {
+    if (!isLocalOnlyMode() && isAuthenticated && canAccessOnboarding) {
       const remote = await onboardingApi.skip();
       setState(remote);
       if (storageId) saveLocalOnboarding(storageId, remote);
@@ -185,7 +187,7 @@ export function useOnboarding() {
     } catch {
       /* ignore */
     }
-  }, [state, isAuthenticated, canManage, persist, storageId]);
+  }, [state, isAuthenticated, canAccessOnboarding, persist, storageId]);
 
   const resumeLater = useCallback(() => {
     setOpen(false);
@@ -197,7 +199,7 @@ export function useOnboarding() {
   }, []);
 
   const restart = useCallback(async () => {
-    if (!isLocalOnlyMode() && isAuthenticated && canManage) {
+    if (!isLocalOnlyMode() && isAuthenticated && canAccessOnboarding) {
       const remote = await onboardingApi.restart();
       setState(remote);
       if (storageId) saveLocalOnboarding(storageId, remote);
@@ -212,11 +214,11 @@ export function useOnboarding() {
     } catch {
       /* ignore */
     }
-  }, [isAuthenticated, canManage, storageId]);
+  }, [isAuthenticated, canAccessOnboarding, storageId]);
 
   const shouldAutoOpen = useMemo(() => {
     if (isDemoModeActive()) return false;
-    if (!canManage) return false;
+    if (!canAccessOnboarding) return false;
     if (!state || state.status !== 'in_progress') return false;
     try {
       if (sessionStorage.getItem(SESSION_DISMISS_KEY) === '1') return false;
@@ -224,7 +226,7 @@ export function useOnboarding() {
       /* ignore */
     }
     return true;
-  }, [state, canManage]);
+  }, [state, canAccessOnboarding]);
 
   useEffect(() => {
     if (!loading && shouldAutoOpen) setOpen(true);
@@ -243,6 +245,7 @@ export function useOnboarding() {
     resumeLater,
     restart,
     canManage,
+    canAccessOnboarding,
     isComplete: state?.status === 'completed' || state?.status === 'skipped',
   };
 }

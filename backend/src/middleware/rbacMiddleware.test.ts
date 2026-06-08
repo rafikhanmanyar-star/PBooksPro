@@ -5,9 +5,11 @@ import {
   requireCompanyAdmin,
   requireFinancialWriteOnMutations,
   requireFinancialWriteRole,
-  requirePermission,
-  requireRole,
   requirePayrollAccess,
+  requirePayrollAccessForPayrollPaths,
+  requirePermission,
+  requirePermissionWhenPathStartsWith,
+  requireRole,
 } from './rbacMiddleware.js';
 import type { AuthedRequest } from './authMiddleware.js';
 
@@ -27,8 +29,8 @@ function mockRes(): Response & { statusCode: number; body: unknown } {
   return res as Response & { statusCode: number; body: unknown };
 }
 
-function mockReq(method: string, role?: string): AuthedRequest {
-  return { method, role } as AuthedRequest;
+function mockReq(method: string, role?: string, path = '/'): AuthedRequest {
+  return { method, role, path } as AuthedRequest;
 }
 
 describe('rbacMiddleware', () => {
@@ -142,6 +144,52 @@ describe('rbacMiddleware', () => {
       const res = mockRes();
       let called = false;
       requireCompanyAdmin()(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, false);
+      assert.equal(res.statusCode, 403);
+    }
+  });
+
+  it('requirePermissionWhenPathStartsWith skips unrelated paths', () => {
+    const guard = requirePermissionWhenPathStartsWith('/reports/balance-sheet', 'reports.balance_sheet.read');
+    {
+      const req = mockReq('GET', 'Project Manager', '/tasks/upcoming');
+      const res = mockRes();
+      let called = false;
+      guard(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, true);
+    }
+    {
+      const req = mockReq('GET', 'Project Manager', '/reports/balance-sheet');
+      const res = mockRes();
+      let called = false;
+      guard(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, false);
+      assert.equal(res.statusCode, 403);
+    }
+  });
+
+  it('requirePayrollAccessForPayrollPaths skips unrelated paths', () => {
+    const guard = requirePayrollAccessForPayrollPaths();
+    {
+      const req = mockReq('GET', 'Project Manager', '/tasks/upcoming');
+      const res = mockRes();
+      let called = false;
+      guard(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, true);
+    }
+    {
+      const req = mockReq('GET', 'Project Manager', '/payroll/employees');
+      const res = mockRes();
+      let called = false;
+      guard(req, res, () => {
         called = true;
       });
       assert.equal(called, false);

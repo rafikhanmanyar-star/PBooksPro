@@ -29,11 +29,24 @@ export type AccountRow = {
   opening_balance?: string | null;
 };
 
+/** Map DB enum (`BANK`) to API enum (`Bank`) used by report engines. */
+export function normalizeAccountType(raw: string): string {
+  const key = raw.trim().toLowerCase();
+  const map: Record<string, string> = {
+    bank: 'Bank',
+    cash: 'Cash',
+    asset: 'Asset',
+    liability: 'Liability',
+    equity: 'Equity',
+  };
+  return map[key] ?? raw;
+}
+
 export function rowToAccountApi(row: AccountRow): Record<string, unknown> {
   const base: Record<string, unknown> = {
     id: row.id,
     name: row.name,
-    type: row.type,
+    type: normalizeAccountType(row.type),
     balance: Number(row.balance),
     isPermanent: row.is_permanent,
     description: row.description ?? undefined,

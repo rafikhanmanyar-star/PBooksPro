@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional } from '../utils/dateOnly.js';
 import { enforceLockForSave } from './recordLocksService.js';
+import { syncBillJournalMirror, reverseBillJournalMirror } from './billJournalPostingService.js';
 
 export type BillRow = {
   id: string;
@@ -90,6 +91,14 @@ export function resolveBillRowCategoryIdForExpenseMirror(bill: BillRow): string 
 }
 
 export function rowToBillApi(row: BillRow): Record<string, unknown> {
+  let expenseCategoryItems: unknown = undefined;
+  if (row.expense_category_items?.trim()) {
+    try {
+      expenseCategoryItems = JSON.parse(row.expense_category_items);
+    } catch {
+      expenseCategoryItems = undefined;
+    }
+  }
   const base: Record<string, unknown> = {
     id: row.id,
     billNumber: row.bill_number,
@@ -109,7 +118,7 @@ export function rowToBillApi(row: BillRow): Record<string, unknown> {
     contractId: row.contract_id ?? undefined,
     staffId: row.staff_id ?? undefined,
     expenseBearerType: row.expense_bearer_type ?? undefined,
-    expenseCategoryItems: row.expense_category_items ?? undefined,
+    expenseCategoryItems,
     documentPath: row.document_path ?? undefined,
     documentId: row.document_id ?? undefined,
     userId: row.user_id ?? undefined,
@@ -225,6 +234,7 @@ async function finalizeBillSaveFromLedger(
   await recalculateBillPaymentAggregates(client, tenantId, billId);
   const row = await getBillById(client, tenantId, billId);
   if (!row) throw new Error('Bill not found after save.');
+  await syncBillJournalMirror(client, tenantId, row, row.user_id);
   return row;
 }
 
@@ -605,7 +615,8 @@ export async function upsertBill(
     );
     const row = u.rows[0];
     if (!row) throw new Error('Bill upsert failed.');
-    return { row, conflict: false, wasInsert: false };
+    const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id);
+    return { row: finalized, conflict: false, wasInsert: false };
   } catch (e) {
     if (!isDuplicateBillNumberConstraint(e)) throw e;
     throw new Error(
@@ -631,6 +642,7 @@ export async function softDeleteBill(
       if (!ex) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await reverseBillJournalMirror(client, tenantId, id, null);
     return { ok: true, conflict: false };
   }
   const r = await client.query(
@@ -638,6 +650,9 @@ export async function softDeleteBill(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
+  if ((r.rowCount ?? 0) > 0) {
+    await reverseBillJournalMirror(client, tenantId, id, null);
+  }
   return { ok: (r.rowCount ?? 0) > 0, conflict: false };
 }
 

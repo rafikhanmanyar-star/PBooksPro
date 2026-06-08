@@ -155,6 +155,16 @@ export interface BalanceSheetReportResult {
 
 const RENTAL_LIABILITY_KEYWORDS = ['rental liability', 'rent liability', 'rental suspense'];
 
+/** DB / API may store `BANK` or `Bank`; compare case-insensitively. */
+function accountTypeKey(type: string | AccountType): string {
+  return String(type).trim().toLowerCase();
+}
+
+function isAccountType(acc: Account, ...types: AccountType[]): boolean {
+  const key = accountTypeKey(acc.type);
+  return types.some((t) => accountTypeKey(t) === key);
+}
+
 function normalizeNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
@@ -202,15 +212,15 @@ export function classifyAccountForBalanceSheet(
   }
 
   const t = acc.type;
-  if (t === AccountType.BANK || t === AccountType.CASH) {
+  if (isAccountType(acc, AccountType.BANK, AccountType.CASH)) {
     const nk = normalizeNameKey(acc.name);
     const group: BsGroupKey =
-      t === AccountType.CASH || (nk.includes('cash') && !nk.includes('clearing'))
+      isAccountType(acc, AccountType.CASH) || (nk.includes('cash') && !nk.includes('clearing'))
         ? 'cash_equivalents'
         : 'bank_accounts';
     return { position: 'asset', term: 'current', groupKey: group };
   }
-  if (t === AccountType.ASSET) {
+  if (isAccountType(acc, AccountType.ASSET)) {
     if (opts.isSysAr) return { position: 'asset', term: 'current', groupKey: 'accounts_receivable' };
     const id = acc.id || '';
     if (id.includes('received-assets') || normalizeNameKey(acc.name).includes('project received')) {
@@ -218,11 +228,11 @@ export function classifyAccountForBalanceSheet(
     }
     return { position: 'asset', term: 'non_current', groupKey: 'other_non_current_assets' };
   }
-  if (t === AccountType.LIABILITY) {
+  if (isAccountType(acc, AccountType.LIABILITY)) {
     if (opts.isSysAp) return { position: 'liability', term: 'current', groupKey: 'accounts_payable' };
     return { position: 'liability', term: 'current', groupKey: 'other_current_liabilities' };
   }
-  if (t === AccountType.EQUITY) {
+  if (isAccountType(acc, AccountType.EQUITY)) {
     return { position: 'equity', term: 'non_current', groupKey: 'owner_capital' };
   }
   return { position: 'asset', term: 'current', groupKey: 'other_current_assets' };
@@ -244,6 +254,13 @@ function lineFromAccount(
     term: cls.term,
     source,
   };
+}
+
+/** Journal signed balances use normal balance direction; legacy tx roll-forward uses inverted equity/liability storage. */
+function statementDisplayAmount(balance: number, position: BsPosition, useJournal: boolean): number {
+  if (useJournal && (position === 'equity' || position === 'liability')) return balance;
+  if (position === 'equity' || position === 'liability') return -balance;
+  return balance;
 }
 
 /**
@@ -281,7 +298,7 @@ export function computeBalanceSheetReport(
     );
     for (const [accountId, bal] of balMap) {
       accountBalances[accountId] = bal.signedBalance;
-      if (Math.abs(bal.signedBalance) > 0.01) accountsWithTransactions.add(accountId);
+    if (Math.abs(bal.signedBalance) > 0.01) accountsWithTransactions.add(accountId);
     }
   }
 
@@ -463,12 +480,23 @@ export function computeBalanceSheetReport(
     const hasTransactions = accountsWithTransactions.has(acc.id);
     const hasBalance = Math.abs(balance) > 0.01;
 
-    if (acc.type === AccountType.EQUITY) {
-      if (acc.id === 'sys-acc-income-summary' || acc.id === 'sys-acc-expense-summary') return;
+    if (isAccountType(acc, AccountType.EQUITY)) {
+      if ((acc.id === 'sys-acc-income-summary' || acc.id === 'sys-acc-expense-summary') && !useJournal) {
+        return;
+      }
+      if (acc.id === 'sys-acc-income-summary' || acc.id === 'sys-acc-expense-summary') {
+        if (!hasBalance) return;
+        const display = statementDisplayAmount(balance, 'equity', useJournal);
+        const groupKey: BsGroupKey = 'current_year_earnings';
+        const li = lineFromAccount(acc, display, { ...cls, position: 'equity', groupKey }, 'derived');
+        equityLines.push(li);
+        debugLines.push(li);
+        return;
+      }
       const isRetained = acc.id === 'sys-acc-retained-earnings';
       const isCye = acc.id === 'sys-acc-current-year-earnings';
       if ((!hasTransactions && !hasBalance) && !isRetained && !isCye) return;
-      const display = -balance;
+      const display = statementDisplayAmount(balance, 'equity', useJournal);
       const groupKey: BsGroupKey = isRetained
         ? 'retained_earnings'
         : isCye
@@ -480,11 +508,11 @@ export function computeBalanceSheetReport(
       return;
     }
 
-    if (acc.type === AccountType.LIABILITY) {
+    if (isAccountType(acc, AccountType.LIABILITY)) {
       if (isSysAp && useJournal) {
         /** Journal mode: A/P from GL control account balance */
         if (Math.abs(balance) > 0.01) {
-          const display = -balance;
+          const display = statementDisplayAmount(balance, 'liability', useJournal);
           const li = lineFromAccount(acc, display, cls, 'derived');
           liabilityLines.push(li);
           debugLines.push(li);
@@ -497,7 +525,7 @@ export function computeBalanceSheetReport(
       }
       if (hasTransactions && (hasBalance || rentalLiabilityAccountFound)) {
         if (rentalLiabilityAccountFound && !hasBalance) return;
-        const display = -balance;
+        const display = statementDisplayAmount(balance, 'liability', useJournal);
         const li = lineFromAccount(acc, display, cls, 'derived');
         liabilityLines.push(li);
         debugLines.push(li);
@@ -506,7 +534,7 @@ export function computeBalanceSheetReport(
     }
 
     /** Assets: Bank/Cash/Asset types */
-    if (acc.type === AccountType.BANK || acc.type === AccountType.CASH || acc.type === AccountType.ASSET) {
+    if (isAccountType(acc, AccountType.BANK, AccountType.CASH, AccountType.ASSET)) {
       if (isSysAr && useJournal) {
         if (Math.abs(balance) > 0.01) {
           const li = lineFromAccount(acc, balance, cls, 'derived');
@@ -566,7 +594,8 @@ export function computeBalanceSheetReport(
         return;
       }
 
-      if (!hasTransactions || !hasBalance) return;
+      const showAssetLine = useJournal ? hasBalance : hasTransactions && hasBalance;
+      if (!showAssetLine) return;
 
       const display = balance;
       const li = lineFromAccount(acc, display, cls, 'derived');
@@ -699,20 +728,75 @@ export function computeBalanceSheetReport(
     });
   }
 
-  const sumAssets = assetLines.reduce((s, l) => s + l.amount, 0);
-  const sumLiab = liabilityLines.reduce((s, l) => s + l.amount, 0);
-  const sumEq = equityLines.reduce((s, l) => s + l.amount, 0);
+  let sumAssets = assetLines.reduce((s, l) => s + l.amount, 0);
+  let sumLiab = liabilityLines.reduce((s, l) => s + l.amount, 0);
+  let sumEq = equityLines.reduce((s, l) => s + l.amount, 0);
 
-  const difference = sumAssets - (sumLiab + sumEq);
+  let difference = sumAssets - (sumLiab + sumEq);
+
+  /** Legacy: close residual when clearing / excluded accounts leave a gap. */
+  if (!useJournal && Math.abs(difference) > 1) {
+    const closeLine: BalanceSheetLine = {
+      id: 'computed-retained-earnings',
+      name: 'Retained Earnings (residual close)',
+      amount: difference,
+      groupKey: 'retained_earnings',
+      position: 'equity',
+      term: 'non_current',
+      source: 'computed',
+    };
+    equityLines.push(closeLine);
+    debugLines.push(closeLine);
+    sumEq += difference;
+    difference = 0;
+  }
+
+  /** Journal: close to P&L only when income/expense summary accounts are not on the statement. */
+  const hasJournalSummaryEquity =
+    useJournal &&
+    equityLines.some(
+      (l) => l.id === 'sys-acc-income-summary' || l.id === 'sys-acc-expense-summary'
+    );
+  if (useJournal && !hasJournalSummaryEquity && Math.abs(retainedEarningsFromPL - sumEq) > 1) {
+    const plGap = retainedEarningsFromPL - sumEq;
+    const closeLine: BalanceSheetLine = {
+      id: 'computed-journal-pl-equity',
+      name: 'Current Year Earnings (cumulative P&L)',
+      amount: plGap,
+      groupKey: 'current_year_earnings',
+      position: 'equity',
+      term: 'non_current',
+      source: 'computed',
+    };
+    equityLines.push(closeLine);
+    debugLines.push(closeLine);
+    sumEq += plGap;
+    difference = sumAssets - (sumLiab + sumEq);
+  }
+
   const isBalanced = Math.abs(difference) < 1;
 
-  const glRetainedEarnings =
-    -(accountBalances['sys-acc-retained-earnings'] ?? 0) +
-    -(accountBalances['sys-acc-current-year-earnings'] ?? 0);
+  const glRetainedEarnings = useJournal
+    ? (accountBalances['sys-acc-retained-earnings'] ?? 0) +
+      (accountBalances['sys-acc-current-year-earnings'] ?? 0) +
+      (accountBalances['sys-acc-income-summary'] ?? 0) +
+      (accountBalances['sys-acc-expense-summary'] ?? 0)
+    : -(accountBalances['sys-acc-retained-earnings'] ?? 0) +
+      -(accountBalances['sys-acc-current-year-earnings'] ?? 0);
   if (useJournal && Math.abs(glRetainedEarnings - retainedEarningsFromPL) > 1) {
     validation.push({
       code: 'RE_DIFFERS_FROM_PL',
       message: `GL retained earnings + current year earnings (${glRetainedEarnings.toFixed(2)}) differ from cumulative P&L net (${retainedEarningsFromPL.toFixed(2)}). Run fiscal period close or review uncategorized activity.`,
+      severity: 'warning',
+    });
+  } else if (
+    !useJournal &&
+    equityLines.some((l) => l.id === 'computed-retained-earnings') &&
+    Math.abs(retainedEarningsFromPL - equityLines.find((l) => l.id === 'computed-retained-earnings')!.amount) > 1
+  ) {
+    validation.push({
+      code: 'RE_DIFFERS_FROM_PL',
+      message: `Residual retained earnings close differs from cumulative P&L net (${retainedEarningsFromPL.toFixed(2)}). Review Internal Clearing and uncategorized activity.`,
       severity: 'warning',
     });
   }

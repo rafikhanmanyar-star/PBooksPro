@@ -6,7 +6,7 @@
 import { apiClient } from './client';
 import type { BalanceSheetReportResult } from '../../components/reports/balanceSheetEngine';
 import type { ProfitLossReportResult } from '../../components/reports/profitLossEngine';
-import type { CashFlowReportResult } from '../../components/reports/cashFlowEngine';
+import type { CashFlowLine, CashFlowReportResult } from '../../components/reports/cashFlowEngine';
 
 export async function fetchBalanceSheetReport(options: {
   asOfDate: string;
@@ -71,6 +71,30 @@ function normalizeProfitLossValidation(raw: unknown): ProfitLossReportResult['va
   };
 }
 
+function normalizeCashFlowLines(items: unknown, section: string): CashFlowLine[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item, idx) => {
+    const row = item as Record<string, unknown>;
+    const label = String(row.label ?? 'Line');
+    return {
+      key: typeof row.key === 'string' ? row.key : `${section}_${label}_${idx}`,
+      label,
+      amount: Number(row.amount ?? 0),
+      transactionIds: Array.isArray(row.transactionIds) ? row.transactionIds.map(String) : [],
+      isNonCash: Boolean(row.isNonCash),
+      detailGroup: row.detailGroup as CashFlowLine['detailGroup'],
+    };
+  });
+}
+
+function normalizeCashFlowSection(raw: unknown, section: string): CashFlowReportResult['operating'] {
+  const sectionObj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return {
+    items: normalizeCashFlowLines(sectionObj.items, section),
+    total: Number(sectionObj.total ?? 0),
+  };
+}
+
 export async function fetchCashFlowReport(options: {
   from: string;
   to: string;
@@ -79,7 +103,32 @@ export async function fetchCashFlowReport(options: {
   const q = new URLSearchParams({ from: options.from, to: options.to });
   if (options.projectId && options.projectId !== 'all') q.set('projectId', options.projectId);
   const raw = await apiClient.get<Record<string, unknown>>(`/reports/cash-flow?${q.toString()}`);
-  return raw as unknown as CashFlowReportResult;
+  const summary =
+    raw.summary && typeof raw.summary === 'object' ? (raw.summary as Record<string, unknown>) : {};
+  const validation =
+    raw.validation && typeof raw.validation === 'object' ? (raw.validation as Record<string, unknown>) : {};
+  const flags = raw.flags && typeof raw.flags === 'object' ? (raw.flags as Record<string, unknown>) : {};
+  return {
+    operating: normalizeCashFlowSection(raw.operating, 'operating'),
+    investing: normalizeCashFlowSection(raw.investing, 'investing'),
+    financing: normalizeCashFlowSection(raw.financing, 'financing'),
+    summary: {
+      net_change: Number(summary.net_change ?? 0),
+      opening_cash: Number(summary.opening_cash ?? 0),
+      closing_cash: Number(summary.closing_cash ?? 0),
+      computed_closing_cash: Number(summary.computed_closing_cash ?? 0),
+    },
+    validation: {
+      reconciled: Boolean(validation.reconciled),
+      discrepancy: Number(validation.discrepancy ?? 0),
+      balance_sheet_cash: Number(validation.balance_sheet_cash ?? 0),
+      messages: Array.isArray(validation.messages) ? validation.messages.map(String) : [],
+    },
+    flags: {
+      negative_opening_cash: Boolean(flags.negative_opening_cash),
+    },
+    audit: Array.isArray(raw.audit) ? (raw.audit as CashFlowReportResult['audit']) : [],
+  };
 }
 
 export type ClientLedgerReportApiResult = {

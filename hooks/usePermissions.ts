@@ -42,6 +42,8 @@ export function usePermissions() {
       canManageUsers: has('users.manage'),
       canReadBilling: has('billing.read'),
       canManageBilling: has('billing.manage'),
+      /** Matches backend requireBillingRead() — billing.read or users.read */
+      canAccessBillingPortal: has('billing.read') || has('users.read'),
       canReadAuditLogs: has('audit_logs.read'),
       canWriteFinancial: has('financial.write'),
       canReadPermissions: has('permissions.read'),

@@ -74,15 +74,15 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     );
 
     const pendingBills = useMemo(() => {
-        let bills = bills.filter((b) => {
+        let filtered = bills.filter((b) => {
             if (b.vendorId !== vendor.id) return false;
             if (editSettlement && b.id === editSettlement.billId) return true;
             return b.status !== InvoiceStatus.PAID;
         }).sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
         if (restrictSet) {
-            bills = bills.filter((b) => restrictSet.has(b.id));
+            filtered = filtered.filter((b) => restrictSet.has(b.id));
         }
-        return bills;
+        return filtered;
     }, [bills, vendor.id, restrictSet, editSettlement?.billId]);
 
     const userSelectableAccounts = useMemo(

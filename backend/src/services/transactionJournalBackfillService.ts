@@ -5,6 +5,7 @@ import {
   ensureTransactionJournalMirror,
   buildJournalLinesFromTransaction,
   shouldSkipTransactionJournalMirror,
+  syncTransactionJournalMirror,
   TRANSACTION_JOURNAL_SOURCE_MODULE,
 } from './transactionJournalPostingService.js';
 
@@ -18,6 +19,8 @@ export type TransactionJournalBackfillOptions = {
   toDate?: string | null;
   batchSize?: number;
   dryRun?: boolean;
+  /** Reverse and repost mirrors for all active transactions (updates posting rules). */
+  replaceExisting?: boolean;
   onProgress?: (msg: string) => void;
 };
 
@@ -155,5 +158,73 @@ export async function backfillTransactionJournalMirrorsForTenant(
     );
   }
 
+  return stats;
+}
+
+/** Re-post journal mirrors for all active transactions (e.g. after changing clearing → summary rules). */
+export async function replaceAllTransactionJournalMirrorsForTenant(
+  client: pg.PoolClient,
+  tenantId: string,
+  options: Pick<TransactionJournalBackfillOptions, 'fromDate' | 'toDate' | 'dryRun' | 'onProgress'> = {}
+): Promise<TransactionJournalBackfillStats> {
+  const params: unknown[] = [tenantId];
+  let dateCond = '';
+  if (options.fromDate) {
+    params.push(options.fromDate);
+    dateCond += ` AND t.date >= $${params.length}::date`;
+  }
+  if (options.toDate) {
+    params.push(options.toDate);
+    dateCond += ` AND t.date <= $${params.length}::date`;
+  }
+
+  await bootstrapTenantChart(client, tenantId, { legacyIds: false });
+
+  const r = await client.query<TransactionRow>(
+    `${TX_SELECT}
+     FROM transactions t
+     WHERE t.tenant_id = $1 AND t.deleted_at IS NULL ${dateCond}
+     ORDER BY t.date ASC, t.id ASC`,
+    params
+  );
+
+  const stats: TransactionJournalBackfillStats = {
+    tenantId,
+    candidates: r.rows.length,
+    posted: 0,
+    skippedAlreadyPosted: 0,
+    skippedMirrorRule: 0,
+    skippedNoLines: 0,
+    failed: 0,
+    errors: [],
+  };
+
+  if (options.dryRun) {
+    logProgress(options, `tenant=${tenantId} would_replace=${r.rows.length} transaction mirrors`);
+    return stats;
+  }
+
+  for (const row of r.rows) {
+    try {
+      if (shouldSkipTransactionJournalMirror(row)) {
+        stats.skippedMirrorRule += 1;
+        continue;
+      }
+      if (!buildJournalLinesFromTransaction(row)) {
+        stats.skippedNoLines += 1;
+        continue;
+      }
+      await syncTransactionJournalMirror(client, tenantId, row, row.user_id, { replaceExisting: true });
+      stats.posted += 1;
+    } catch (e) {
+      stats.failed += 1;
+      stats.errors.push({
+        transactionId: row.id,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  logProgress(options, `tenant=${tenantId} replaced=${stats.posted} failed=${stats.failed}`);
   return stats;
 }

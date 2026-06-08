@@ -19,6 +19,8 @@ export const TRANSACTION_JOURNAL_SOURCE_MODULE = 'transaction';
 const SYS_AR = 'sys-acc-ar';
 const SYS_AP = 'sys-acc-ap';
 const SYS_CLEARING = 'sys-acc-clearing';
+const SYS_INCOME_SUMMARY = 'sys-acc-income-summary';
+const SYS_EXPENSE_SUMMARY = 'sys-acc-expense-summary';
 
 const EQ_SUB_INVESTMENT = 'equity_investment';
 const EQ_SUB_WITHDRAWAL = 'equity_withdrawal';
@@ -67,7 +69,7 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
   const type = String(row.type ?? '').trim();
 
   if (type.toLowerCase() === 'income') {
-    const creditAccount = row.invoice_id ? SYS_AR : SYS_CLEARING;
+    const creditAccount = row.invoice_id ? SYS_AR : SYS_INCOME_SUMMARY;
     return [
       { accountId: row.account_id, debitAmount: M, creditAmount: 0, projectId },
       { accountId: creditAccount, debitAmount: 0, creditAmount: M, projectId },
@@ -75,7 +77,7 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
   }
 
   if (type.toLowerCase() === 'expense') {
-    const debitAccount = row.bill_id ? SYS_AP : SYS_CLEARING;
+    const debitAccount = row.bill_id ? SYS_AP : SYS_EXPENSE_SUMMARY;
     return [
       { accountId: debitAccount, debitAmount: M, creditAmount: 0, projectId },
       { accountId: row.account_id, debitAmount: 0, creditAmount: M, projectId },

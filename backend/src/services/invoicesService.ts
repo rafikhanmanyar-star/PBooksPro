@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { enforceLockForSave } from './recordLocksService.js';
+import { syncInvoiceJournalMirror, reverseInvoiceJournalMirror } from './invoiceJournalPostingService.js';
 
 export type InvoiceRow = {
   id: string;
@@ -199,6 +200,7 @@ async function finalizeInvoiceSaveFromLedger(
   await recalculateInvoicePaymentAggregates(client, tenantId, invoiceId);
   const row = await getInvoiceById(client, tenantId, invoiceId);
   if (!row) throw new Error('Invoice not found after save.');
+  await syncInvoiceJournalMirror(client, tenantId, row, row.user_id);
   return row;
 }
 
@@ -323,7 +325,8 @@ export async function createInvoice(
       p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
     ]
   );
-  return finalizeInvoiceSaveFromLedger(client, tenantId, id);
+  const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
+  return finalized;
 }
 
 export async function updateInvoice(
@@ -423,6 +426,9 @@ export async function softDeleteInvoice(
       if (!ex) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    if (r.rowCount) {
+      await reverseInvoiceJournalMirror(client, tenantId, id, actorUserId ?? null);
+    }
     return { ok: true, conflict: false };
   }
   const r = await client.query(
@@ -430,6 +436,9 @@ export async function softDeleteInvoice(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
+  if ((r.rowCount ?? 0) > 0) {
+    await reverseInvoiceJournalMirror(client, tenantId, id, actorUserId ?? null);
+  }
   return { ok: (r.rowCount ?? 0) > 0, conflict: false };
 }
 

@@ -75,7 +75,7 @@ import { clientLedgerRouter } from './routes/clientLedgerRoutes.js';
 import { vendorLedgerRouter } from './routes/vendorLedgerRoutes.js';
 import { authMiddleware, optionalAuthMiddleware } from './middleware/authMiddleware.js';
 import { requireActiveSubscription } from './middleware/licenseEnforcementMiddleware.js';
-import { requireFinancialWriteOnMutations, requirePayrollAccess, requirePermission } from './middleware/rbacMiddleware.js';
+import { requireFinancialWriteOnMutations, requirePayrollAccessForPayrollPaths, requirePermissionWhenPathStartsWith } from './middleware/rbacMiddleware.js';
 import { permissionsRouter } from './routes/permissionsRoutes.js';
 import { auditTrailRouter } from './routes/auditTrailRoutes.js';
 import { privacyRouter } from './routes/privacyRoutes.js';
@@ -223,14 +223,14 @@ app.use('/api', authMiddleware, requireActiveSubscription(), auditTrailRouter);
 
 app.use('/api', authMiddleware, requireActiveSubscription(), privacyRouter);
 
-app.use('/api', authMiddleware, requireActiveSubscription(), requirePermission('reports.balance_sheet.read'), balanceSheetRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), requirePermissionWhenPathStartsWith('/reports/balance-sheet', 'reports.balance_sheet.read'), balanceSheetRouter);
 
-app.use('/api', authMiddleware, requireActiveSubscription(), requirePermission('reports.profit_loss.read'), profitLossRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), requirePermissionWhenPathStartsWith('/reports/profit-loss', 'reports.profit_loss.read'), profitLossRouter);
 
-app.use('/api', authMiddleware, requireActiveSubscription(), requirePermission('reports.cash_flow.read'), cashFlowRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), requirePermissionWhenPathStartsWith('/reports/cash-flow', 'reports.cash_flow.read'), cashFlowRouter);
 
-app.use('/api', authMiddleware, requireActiveSubscription(), requirePermission('reports.trial_balance.read'), trialBalanceRouter);
-app.use('/api', authMiddleware, requireActiveSubscription(), requirePermission('reports.trial_balance.read'), financialReconciliationRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), requirePermissionWhenPathStartsWith('/reports/trial-balance', 'reports.trial_balance.read'), trialBalanceRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), requirePermissionWhenPathStartsWith('/reports/reconciliation', 'reports.trial_balance.read'), financialReconciliationRouter);
 app.use('/api', authMiddleware, requireActiveSubscription(), rentalOwnerSummariesRouter);
 app.use('/api', authMiddleware, requireActiveSubscription(), ownerRentalIncomeRouter);
 app.use('/api', authMiddleware, requireActiveSubscription(), rentalBillsDashboardRouter);
@@ -330,7 +330,7 @@ app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWri
 
 app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWriteOnMutations, locksRouter);
 
-app.use('/api', authMiddleware, requireActiveSubscription(), requirePayrollAccess, payrollRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), requirePayrollAccessForPayrollPaths(), payrollRouter);
 
 app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWriteOnMutations, contractorRouter);
 

@@ -55,6 +55,12 @@ describe('transactionJournalPostingService', () => {
     assert.equal(shouldSkipTransactionJournalMirror(baseRow({ id: 'invj_tx_abc' })), true);
   });
 
+  it('builds income lines with income summary credit when no invoice linked', () => {
+    const lines = buildJournalLinesFromTransaction(baseRow({ type: 'Income', amount: '100' }));
+    assert.ok(lines);
+    assert.equal(lines![1].accountId, 'sys-acc-income-summary');
+  });
+
   it('builds income lines with AR credit when invoice linked', () => {
     const lines = buildJournalLinesFromTransaction(
       baseRow({ type: 'Income', invoice_id: 'inv-1', amount: '250.5' })

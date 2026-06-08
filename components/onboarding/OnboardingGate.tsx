@@ -15,11 +15,11 @@ const OnboardingGate: React.FC = () => {
     persist,
     skipAll,
     resumeLater,
-    canManage,
+    canAccessOnboarding,
     isComplete,
   } = useOnboardingContext();
 
-  if (loading || !canManage || !state || isComplete || !open) return null;
+  if (loading || !canAccessOnboarding || !state || isComplete || !open) return null;
 
   return (
     <OnboardingWizard

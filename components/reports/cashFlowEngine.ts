@@ -241,10 +241,11 @@ export function partitionFinancingEquityTransferPayout(items: CashFlowLine[]): {
   const rolled: CashFlowLine[] = [];
   const main: CashFlowLine[] = [];
   for (const it of items) {
+    const key = it.key ?? '';
     if (
       it.detailGroup === 'equity_transfer_payout' ||
-      it.key.startsWith('inter_proj_') ||
-      it.key === 'capital_payout'
+      key.startsWith('inter_proj_') ||
+      key === 'capital_payout'
     ) {
       rolled.push(it);
     } else {

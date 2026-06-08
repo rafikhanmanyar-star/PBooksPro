@@ -135,7 +135,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Project Summary', 'Marketing Activity', 'Revenue Analysis',
         'Owner Ledger', 'Broker Report', 'Income by Category', 'Expense by Category',
         'Custom Report Builder',
-        'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'
+        'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Reconciliation', 'Cash Flows', 'Investor Distribution'
     ];
 
     const allowedConstructionViews = [
@@ -143,7 +143,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Project Summary', 'Budget vs Actual', 'Contract Report',
         'PM Cost Report', 'Material Report', 'Vendor Ledger',
         'Owner Ledger', 'Income by Category', 'Expense by Category',
-        'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'
+        'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Reconciliation', 'Cash Flows', 'Investor Distribution'
     ];
 
     useEffect(() => {

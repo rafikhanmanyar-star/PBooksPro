@@ -141,9 +141,9 @@ export async function getCashFlowReportFromJournal(
   from: string;
   to: string;
   projectId: string;
-  operating: { items: { label: string; amount: number; transactionIds: string[] }[]; total: number };
-  investing: { items: { label: string; amount: number; transactionIds: string[] }[]; total: number };
-  financing: { items: { label: string; amount: number; transactionIds: string[] }[]; total: number };
+  operating: { items: { key: string; label: string; amount: number; transactionIds: string[] }[]; total: number };
+  investing: { items: { key: string; label: string; amount: number; transactionIds: string[] }[]; total: number };
+  financing: { items: { key: string; label: string; amount: number; transactionIds: string[] }[]; total: number };
   summary: {
     net_change: number;
     opening_cash: number;
@@ -287,9 +287,10 @@ export async function getCashFlowReportFromJournal(
   }
 
   const toItems = (b: Bucket) =>
-    [...b.values()]
-      .sort((a, x) => a.label.localeCompare(x.label))
-      .map((v) => ({
+    [...b.entries()]
+      .sort((a, x) => a[1].label.localeCompare(x[1].label))
+      .map(([key, v]) => ({
+        key,
         label: v.label,
         amount: v.amount,
         transactionIds: v.ids,

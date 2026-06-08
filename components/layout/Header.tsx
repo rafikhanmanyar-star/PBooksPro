@@ -14,6 +14,7 @@ import { fetchUpcomingTasks } from '../../components/personalTransactions/person
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {}, connect: () => {}, disconnect: () => {} });
 import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
 import { useTheme } from '../../context/ThemeContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { scheduleIdleWork, cancelScheduledIdle } from '../../utils/interactionScheduling';
 interface HeaderProps {
   title: string;
@@ -33,6 +34,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const whatsAppMode = useStateSelector(s => s.whatsAppMode);
   const currentPage = useStateSelector(s => s.currentPage);
   const { isAuthenticated } = useAuth();
+  const { canReadUsers } = usePermissions();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -465,7 +467,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       setOrgUsers([]);
       return;
     }
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !canReadUsers) {
       setOrgUsers([]);
       return;
     }
@@ -488,7 +490,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       void loadOrgUsers();
     }, { timeout: 4000 });
     return () => cancelScheduledIdle(idleId);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, canReadUsers]);
 
   // Load WhatsApp unread count - only when authenticated
   // Load WhatsApp unread data (count + conversations)

@@ -105,3 +105,35 @@ export const requirePayrollAccess: RequestHandler = (req, res, next) => {
   }
   return requirePermission('payroll.write')(req, res, next);
 };
+
+/**
+ * Run a permission guard only when the request path matches a prefix.
+ * Use on shared `app.use('/api', …)` mounts so later routers (tasks, users, etc.)
+ * are not blocked by unrelated route permissions.
+ */
+export function requirePermissionWhenPathStartsWith(
+  pathPrefix: string,
+  permission: Permission
+): RequestHandler {
+  const guard = requirePermission(permission);
+  return (req, res, next) => {
+    const path = req.path ?? req.url?.split('?')[0] ?? '';
+    if (!path.startsWith(pathPrefix)) {
+      next();
+      return;
+    }
+    return guard(req, res, next);
+  };
+}
+
+/** Payroll RBAC scoped to `/payroll…` paths only (see requirePermissionWhenPathStartsWith). */
+export function requirePayrollAccessForPayrollPaths(pathPrefix = '/payroll'): RequestHandler {
+  return (req, res, next) => {
+    const path = req.path ?? req.url?.split('?')[0] ?? '';
+    if (!path.startsWith(pathPrefix)) {
+      next();
+      return;
+    }
+    return requirePayrollAccess(req, res, next);
+  };
+}
