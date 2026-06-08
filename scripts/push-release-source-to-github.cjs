@@ -12,6 +12,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { stageSourceForCommit } = require('./git-release-utils.cjs');
 
 const root = path.join(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -38,7 +39,7 @@ try {
   process.exit(0);
 }
 
-run('git add -A');
+stageSourceForCommit();
 
 let hasStagedChanges = false;
 try {
