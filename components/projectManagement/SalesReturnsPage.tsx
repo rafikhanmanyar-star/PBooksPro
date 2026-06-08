@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     SalesReturn,
@@ -32,7 +32,8 @@ type EnrichedSalesReturn = SalesReturn & {
 };
 
 const SalesReturnsPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
+    const { salesReturns: appSalesReturns } = state;
     const dispatch = useDispatchOnly();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -139,16 +140,16 @@ const SalesReturnsPage: React.FC = () => {
         });
 
         return filtered;
-    }, [salesReturns, searchQuery, statusFilter, sortConfig]);
+    }, [appSalesReturns, searchQuery, statusFilter, sortConfig]);
 
     // Statistics
     const stats = useMemo(() => {
         const total = salesReturns.length;
-        const pending = salesReturns.filter(sr => sr.status === SalesReturnStatus.PENDING).length;
-        const processed = salesReturns.filter(sr => sr.status === SalesReturnStatus.PROCESSED).length;
-        const refunded = salesReturns.filter(sr => sr.status === SalesReturnStatus.REFUNDED).length;
-        const totalRefundAmount = Math.round(salesReturns.reduce((sum, sr) => sum + sr.refundAmount, 0)); // Round to whole number
-        const totalPenaltyAmount = Math.round(salesReturns.reduce((sum, sr) => sum + sr.penaltyAmount, 0)); // Round to whole number
+        const pending = appSalesReturns.filter(sr => sr.status === SalesReturnStatus.PENDING).length;
+        const processed = appSalesReturns.filter(sr => sr.status === SalesReturnStatus.PROCESSED).length;
+        const refunded = appSalesReturns.filter(sr => sr.status === SalesReturnStatus.REFUNDED).length;
+        const totalRefundAmount = Math.round(appSalesReturns.reduce((sum, sr) => sum + sr.refundAmount, 0)); // Round to whole number
+        const totalPenaltyAmount = Math.round(appSalesReturns.reduce((sum, sr) => sum + sr.penaltyAmount, 0)); // Round to whole number
         const pendingRefundAmount = Math.round(salesReturns
             .filter(sr => {
                 // Only count returns that are not fully refunded
@@ -170,7 +171,7 @@ const SalesReturnsPage: React.FC = () => {
             totalPenaltyAmount,
             pendingRefundAmount,
         };
-    }, [salesReturns, state.bills]);
+    }, [appSalesReturns, state.bills]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(prev => ({

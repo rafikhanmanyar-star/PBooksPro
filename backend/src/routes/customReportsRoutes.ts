@@ -16,6 +16,7 @@ import {
 import * as templateRepo from '../modules/reporting/repositories/customReportTemplateRepository.js';
 import { appendReportAudit } from '../modules/reporting/repositories/reportAuditRepository.js';
 import { getReportCapability } from '../modules/reporting/middleware/reportCapability.js';
+import { requireFinancialWriteRole } from '../middleware/rbacMiddleware.js';
 import {
   customReportExportBodySchema,
   customReportGenerateBodySchema,
@@ -95,7 +96,7 @@ customReportsRouter.get('/reports/custom/metadata', reportLimiter, async (req: A
   }
 });
 
-customReportsRouter.post('/reports/custom/generate', reportLimiter, async (req: AuthedRequest, res) => {
+customReportsRouter.post('/reports/custom/generate', requireFinancialWriteRole, reportLimiter, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   const userId = req.userId;
   if (!tenantId || !userId) {
@@ -134,7 +135,7 @@ customReportsRouter.post('/reports/custom/generate', reportLimiter, async (req: 
   }
 });
 
-customReportsRouter.post('/reports/custom/export', reportLimiter, async (req: AuthedRequest, res) => {
+customReportsRouter.post('/reports/custom/export', requireFinancialWriteRole, reportLimiter, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   const userId = req.userId;
   if (!tenantId || !userId) {
@@ -208,7 +209,7 @@ customReportsRouter.post('/reports/custom/export', reportLimiter, async (req: Au
   }
 });
 
-customReportsRouter.post('/reports/custom/save-template', reportLimiter, async (req: AuthedRequest, res) => {
+customReportsRouter.post('/reports/custom/save-template', requireFinancialWriteRole, reportLimiter, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   const userId = req.userId;
   if (!tenantId || !userId) {
@@ -332,7 +333,7 @@ customReportsRouter.get('/reports/custom/template/:id', reportLimiter, async (re
   }
 });
 
-customReportsRouter.put('/reports/custom/template/:id', reportLimiter, async (req: AuthedRequest, res) => {
+customReportsRouter.put('/reports/custom/template/:id', requireFinancialWriteRole, reportLimiter, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   const userId = req.userId;
   if (!tenantId || !userId) {
@@ -397,7 +398,7 @@ customReportsRouter.put('/reports/custom/template/:id', reportLimiter, async (re
   }
 });
 
-customReportsRouter.delete('/reports/custom/template/:id', reportLimiter, async (req: AuthedRequest, res) => {
+customReportsRouter.delete('/reports/custom/template/:id', requireFinancialWriteRole, reportLimiter, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   const userId = req.userId;
   if (!tenantId || !userId) {

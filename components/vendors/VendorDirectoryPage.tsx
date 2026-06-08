@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -38,7 +38,8 @@ const AddVendorSection: React.FC<{
     triggerAddVendor?: boolean;
     onModalOpenHandled?: () => void;
 }> = ({ optionsView, setOptionsView, setSelectedVendorId, triggerAddVendor, onModalOpenHandled }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { contacts, vendors: appVendors, transactions, invoices, bills, whatsAppTemplates, whatsAppMode, currentUser } = state;
     const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const { showToast } = useNotification();
@@ -134,7 +135,7 @@ const AddVendorSection: React.FC<{
                     onSubmit={handleSubmit}
                     onCancel={() => setIsModalOpen(false)}
                     isVendorForm={true}
-                    existingVendors={vendors}
+                    existingVendors={appVendors}
                 />
             </Modal>
         </>
@@ -145,7 +146,15 @@ type SortKey = 'name' | 'payable';
 type SortDirection = 'asc' | 'desc';
 
 const VendorDirectoryPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const {
+        contacts,
+        vendors: appVendors,
+        transactions,
+        bills,
+        whatsAppTemplates,
+        whatsAppMode,
+    } = state;
     const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     const { showConfirm, showAlert, showToast } = useNotification();
@@ -202,28 +211,16 @@ const VendorDirectoryPage: React.FC = () => {
 
     const [triggerAddVendor, setTriggerAddVendor] = useState(false);
 
-    // Safety check: ensure state is initialized
-    if (!state || !contacts) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
-                    <p className="text-sm text-gray-600">Loading vendors...</p>
-                </div>
-            </div>
-        );
-    }
-
     const vendors = useMemo(() => {
-        const list = [...(vendors || [])];
+        const list = [...(appVendors || [])];
         return list.sort((a, b) => a.name.localeCompare(b.name));
-    }, [vendors]);
+    }, [appVendors]);
 
     const filteredVendors = useMemo(() => {
         if (!vendorSearch) return vendors;
         const q = vendorSearch.toLowerCase();
-        return vendors.filter(v => v.name.toLowerCase().includes(q) || (v.companyName && v.companyName.toLowerCase().includes(q)));
-    }, [vendors, vendorSearch]);
+        return appVendors.filter(v => v.name.toLowerCase().includes(q) || (v.companyName && v.companyName.toLowerCase().includes(q)));
+    }, [appVendors, vendorSearch]);
 
     // Calculate payable amounts for each vendor
     const vendorsWithPayable = useMemo(() => {
@@ -299,7 +296,7 @@ const VendorDirectoryPage: React.FC = () => {
         document.body.style.userSelect = 'none';
     }, [sidebarWidth, handleResize, stopResize]);
 
-    const selectedVendor = vendors.find(v => v.id === selectedVendorId) || null;
+    const selectedVendor = appVendors.find(v => v.id === selectedVendorId) || null;
 
     const billToEdit = editingItem?.type === 'bill' ? (bills || []).find(b => b.id === editingItem.id) : undefined;
     const transactionToEdit = editingItem?.type === 'transaction' ? (transactions || []).find(t => t.id === editingItem.id) : undefined;
@@ -406,6 +403,17 @@ const VendorDirectoryPage: React.FC = () => {
             return sum + Math.max(0, balance);
         }, 0);
     };
+
+    if (!state || !contacts) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
+                    <p className="text-sm text-gray-600">Loading vendors...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col h-full bg-slate-50 overflow-hidden">

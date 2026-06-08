@@ -8,6 +8,7 @@ import MarketingPage from '../marketing/MarketingPage';
 import SalesReturnsPage from './SalesReturnsPage';
 import BrokerPayouts from '../payouts/BrokerPayouts';
 import { Page, InvoiceType, TransactionType } from '../../types';
+import { isAccountingFinancialView } from '../accounting/accountingReportTypes';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -27,14 +28,9 @@ const ProjectBrokerReport = React.lazy(() => import('../reports/ProjectBrokerRep
 const ProjectCategoryReport = React.lazy(() => import('../reports/ProjectCategoryReport'));
 const VendorLedgerReport = React.lazy(() => import('../reports/VendorLedgerReport'));
 const ProjectPMCostReport = React.lazy(() => import('../reports/ProjectPMCostReport'));
-const ProjectProfitLossReport = React.lazy(() => import('../reports/ProjectProfitLossReport'));
-const ProjectBalanceSheetReport = React.lazy(() => import('../reports/ProjectBalanceSheetReport'));
-const ProjectInvestorReport = React.lazy(() => import('../reports/ProjectInvestorReport'));
 const ProjectContractReport = React.lazy(() => import('../reports/ProjectContractReport'));
 const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetReport'));
 const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
-const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
-const TrialBalanceReport = React.lazy(() => import('../reports/TrialBalanceReport'));
 const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
 const CustomReportBuilderPage = React.lazy(() => import('../reports/customReportBuilder/CustomReportBuilderPage'));
 const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
@@ -51,13 +47,11 @@ type ProjectView =
     | 'Visual Layout' | 'Tabular View'
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
-    | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Trial Balance' | 'Investor Distribution' | 'Contract Report'
-    | 'Budget vs Actual' | 'Cash Flows' | 'Marketing Activity' | 'Custom Report Builder';
+    | 'PM Cost Report' | 'Contract Report'
+    | 'Budget vs Actual' | 'Marketing Activity' | 'Custom Report Builder';
 
 /** Project selling — operational tabs (persistent mount) */
 const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Assets', 'Sales Returns'];
-
-const SELLING_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'];
 
 const SELLING_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -72,8 +66,6 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
 
 /** Project construction */
 const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Contracts', 'Bills'];
-
-const CONSTRUCTION_FINANCIAL_REPORTS: ProjectView[] = ['Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'];
 
 const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -100,8 +92,6 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const currentUser = useStateSelector(s => s.currentUser);
     const dispatch = useDispatchOnly();
     const { user } = useAuth();
-    const isAdmin = user?.role === 'Admin' || currentUser?.role === 'Admin';
-
     const [constructionView, setConstructionView] = useLocalStorage<ProjectView>('projectManagement_activeView', 'Contracts');
     const [sellingView, setSellingView] = useLocalStorage<ProjectView>('projectSelling_activeView', 'Marketing');
 
@@ -121,7 +111,6 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Project Summary', 'Marketing Activity', 'Revenue Analysis',
         'Owner Ledger', 'Broker Report', 'Income by Category', 'Expense by Category',
         'Custom Report Builder',
-        'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'
     ];
 
     const allowedConstructionViews = [
@@ -129,12 +118,21 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Project Summary', 'Budget vs Actual', 'Contract Report',
         'PM Cost Report', 'Material Report', 'Vendor Ledger',
         'Owner Ledger', 'Income by Category', 'Expense by Category',
-        'Profit & Loss', 'Balance Sheet', 'Trial Balance', 'Cash Flows', 'Investor Distribution'
     ];
 
     useEffect(() => {
         if (initialTabs && initialTabs.length > 0) {
             const [mainTab, subTab] = initialTabs;
+            if (mainTab === 'Reports' && subTab && isAccountingFinancialView(subTab)) {
+                dispatch({ type: 'SET_PAGE', payload: 'accounting' });
+                dispatch({ type: 'SET_INITIAL_TABS', payload: [subTab] });
+                return;
+            }
+            if (isAccountingFinancialView(mainTab)) {
+                dispatch({ type: 'SET_PAGE', payload: 'accounting' });
+                dispatch({ type: 'SET_INITIAL_TABS', payload: [mainTab] });
+                return;
+            }
             if (mainTab === 'Reports' && subTab) {
                 if (subTab === 'Visual Layout') setActiveView('Visual Layout');
                 else if (subTab === 'Project Units') setActiveView('Tabular View');
@@ -144,16 +142,18 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 setActiveView(mainTab as ProjectView);
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
-        } else {
-            if (isSellingMode) {
-                if (!allowedSellingViews.includes(activeView as string)) {
-                    setActiveView('Marketing');
-                }
-            } else {
-                if (!allowedConstructionViews.includes(activeView as string)) {
-                    setActiveView('Contracts');
-                }
+            return;
+        }
+
+        const defaultView: ProjectView = isSellingMode ? 'Marketing' : 'Contracts';
+        if (isAccountingFinancialView(activeView)) {
+            setActiveView(defaultView);
+        } else if (isSellingMode) {
+            if (!allowedSellingViews.includes(activeView as string)) {
+                setActiveView(defaultView);
             }
+        } else if (!allowedConstructionViews.includes(activeView as string)) {
+            setActiveView(defaultView);
         }
     }, [initialTabs, dispatch, setActiveView, isSellingMode, activeView]);
 
@@ -183,11 +183,6 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Budget vs Actual': return <ProjectBudgetReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
             case 'Custom Report Builder': return <CustomReportBuilderPage />;
-            case 'Profit & Loss': return isAdmin ? <ProjectProfitLossReport /> : null;
-            case 'Balance Sheet': return isAdmin ? <ProjectBalanceSheetReport /> : null;
-            case 'Trial Balance': return isAdmin ? <TrialBalanceReport /> : null;
-            case 'Cash Flows': return isAdmin ? <ProjectCashFlowReport /> : null;
-            case 'Investor Distribution': return isAdmin ? <ProjectInvestorReport /> : null;
             default: return null;
         }
     };
@@ -243,8 +238,8 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         );
     };
 
-    const sellingReportKeys = [...(isAdmin ? SELLING_FINANCIAL_REPORTS : []), ...SELLING_OTHER_REPORTS];
-    const constructionReportKeys = [...(isAdmin ? CONSTRUCTION_FINANCIAL_REPORTS : []), ...CONSTRUCTION_OTHER_REPORTS];
+    const sellingReportKeys = [...SELLING_OTHER_REPORTS];
+    const constructionReportKeys = [...CONSTRUCTION_OTHER_REPORTS];
 
     const isSellingReportActive = sellingReportKeys.includes(activeView);
     const isConstructionReportActive = constructionReportKeys.includes(activeView);
@@ -254,16 +249,16 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         if (sellingReportKeys.includes(activeView)) {
             setSellingReportsExpanded(true);
         }
-    }, [isSellingMode, activeView, isAdmin]);
+    }, [isSellingMode, activeView, sellingReportKeys]);
 
     useEffect(() => {
         if (isSellingMode) return;
         if (constructionReportKeys.includes(activeView)) {
             setConstructionReportsExpanded(true);
         }
-    }, [isSellingMode, activeView, isAdmin]);
+    }, [isSellingMode, activeView, constructionReportKeys]);
 
-    const ModuleNavItem = ({ view, label, collapsed }: { view: ProjectView; label: string; collapsed: boolean }) => {
+    const ModuleNavItem = ({ view, label, collapsed, dataTour }: { view: ProjectView; label: string; collapsed: boolean; dataTour?: string }) => {
         const on = activeView === view;
         const short = projectNavLabelShort(label);
         if (collapsed) {
@@ -271,6 +266,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 <button
                     type="button"
                     title={label}
+                    data-tour={dataTour}
                     onClick={() => setActiveView(view)}
                     className={`w-full flex justify-center px-1 py-1.5 rounded-md text-[10px] font-bold leading-tight transition-colors ${on
                         ? 'bg-indigo-600 text-white shadow-sm'
@@ -284,6 +280,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         return (
             <button
                 type="button"
+                data-tour={dataTour}
                 onClick={() => setActiveView(view)}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${on
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/20'
@@ -351,29 +348,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                         )}
                     </button>
                     {sellingReportsExpanded && (
-                        <div className="mt-1 space-y-2">
-                            {isAdmin && (
-                                <div>
-                                    {!subCollapsed && (
-                                        <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Financial statements</p>
-                                    )}
-                                    <div className="space-y-0.5">
-                                        {SELLING_FINANCIAL_REPORTS.map((name) => (
-                                            <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <div>
-                                {!subCollapsed && (
-                                    <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Operational reports</p>
-                                )}
-                                <div className="space-y-0.5">
-                                    {SELLING_OTHER_REPORTS.map((name) => (
-                                        <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
-                                    ))}
-                                </div>
-                            </div>
+                        <div className="mt-1 space-y-0.5">
+                            {SELLING_OTHER_REPORTS.map((name) => (
+                                <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
+                            ))}
                         </div>
                     )}
                 </div>
@@ -396,10 +374,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     compact
                 />
             </div>
-            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project construction navigation">
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project construction navigation" data-tour="project-subnav">
                 <div className="space-y-0.5">
                     <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} dataTour="project-bills" />
                 </div>
 
                 <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
@@ -412,6 +390,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700">
                     <button
                         type="button"
+                        data-tour="project-reports"
                         onClick={() => setConstructionReportsExpanded((e) => !e)}
                         className={`w-full flex items-center ${subCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2 rounded-md text-sm font-medium transition-colors ${isConstructionReportActive || constructionReportsExpanded
                             ? 'bg-indigo-50 dark:bg-indigo-950/50 text-accent'
@@ -426,29 +405,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                         )}
                     </button>
                     {constructionReportsExpanded && (
-                        <div className="mt-1 space-y-2">
-                            {isAdmin && (
-                                <div>
-                                    {!subCollapsed && (
-                                        <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Financial statements</p>
-                                    )}
-                                    <div className="space-y-0.5">
-                                        {CONSTRUCTION_FINANCIAL_REPORTS.map((name) => (
-                                            <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <div>
-                                {!subCollapsed && (
-                                    <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Operational reports</p>
-                                )}
-                                <div className="space-y-0.5">
-                                    {CONSTRUCTION_OTHER_REPORTS.map((name) => (
-                                        <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
-                                    ))}
-                                </div>
-                            </div>
+                        <div className="mt-1 space-y-0.5">
+                            {CONSTRUCTION_OTHER_REPORTS.map((name) => (
+                                <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
+                            ))}
                         </div>
                     )}
                 </div>
@@ -461,15 +421,13 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         { value: 'Broker Payouts', label: 'Brokers', group: 'Payouts' },
         { value: 'Visual Layout', label: 'Visual', group: 'Project views' },
         { value: 'Tabular View', label: 'Units', group: 'Project views' },
-        ...(isAdmin ? SELLING_FINANCIAL_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Financial' })) : []),
-        ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v === 'Custom Report Builder' ? 'Custom builder' : v, group: 'Reports — Operational' })),
+        ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v === 'Custom Report Builder' ? 'Custom builder' : v, group: 'Reports' })),
     ];
 
     const allConstructionMobileOptions: { value: ProjectView; label: string; group: string }[] = [
         ...CONSTRUCTION_OPERATIONAL_VIEWS.map((v) => ({ value: v, label: v, group: 'Operations' })),
         { value: 'PM Payouts', label: 'PM Fee Log', group: 'Payouts' },
-        ...(isAdmin ? CONSTRUCTION_FINANCIAL_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Financial' })) : []),
-        ...CONSTRUCTION_OTHER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Operational' })),
+        ...CONSTRUCTION_OTHER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports' })),
     ];
 
     const sharedContentShell = (children: React.ReactNode) => (
@@ -500,7 +458,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                         className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
                         aria-label="Project selling section"
                     >
-                        {['Operations', 'Payouts', 'Project views', 'Reports — Financial', 'Reports — Operational'].map((group) => {
+                        {['Operations', 'Payouts', 'Project views', 'Reports'].map((group) => {
                             const opts = allSellingMobileOptions.filter((o) => o.group === group);
                             if (opts.length === 0) return null;
                             return (
@@ -538,7 +496,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
                     aria-label="Project construction section"
                 >
-                    {['Operations', 'Payouts', 'Reports — Financial', 'Reports — Operational'].map((group) => {
+                    {['Operations', 'Payouts', 'Reports'].map((group) => {
                         const opts = allConstructionMobileOptions.filter((o) => o.group === group);
                         if (opts.length === 0) return null;
                         return (

@@ -9,6 +9,10 @@ export const SYSTEM_ACCOUNT_DEFS: { logicalId: string; name: string; type: strin
   { logicalId: 'sys-acc-clearing', name: 'Internal Clearing', type: 'BANK' },
   { logicalId: 'sys-acc-sec-liability', name: 'Security Liability', type: 'LIABILITY' },
   { logicalId: 'sys-acc-received-assets', name: 'Project Received Assets', type: 'ASSET' },
+  { logicalId: 'sys-acc-retained-earnings', name: 'Retained Earnings', type: 'EQUITY' },
+  { logicalId: 'sys-acc-current-year-earnings', name: 'Current Year Earnings', type: 'EQUITY' },
+  { logicalId: 'sys-acc-income-summary', name: 'Income Summary', type: 'EQUITY' },
+  { logicalId: 'sys-acc-expense-summary', name: 'Expense Summary', type: 'EQUITY' },
 ];
 
 /** Matches context/AppContext SYSTEM_CATEGORIES / seed. */

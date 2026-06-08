@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, Project, InvoiceStatus, InvoiceType } from '../../types';
 import Card from '../ui/Card';
@@ -92,7 +92,7 @@ const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: strin
 });
 
 const ProjectSummaryReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { print: triggerPrint } = usePrintContext();
     
     // Filters

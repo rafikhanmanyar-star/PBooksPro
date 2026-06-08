@@ -7,9 +7,13 @@ import { roundMoney } from './validation';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { journalApi } from '../api/journalApi';
 import {
+  applyOpeningBalances,
   buildTrialBalanceReport,
   compareTrialBalanceType,
   ledgerTenantIdsForLocalQuery,
+  mergeRawRowsByAccount,
+  normalBalanceDirection,
+  type AccountOpeningInput,
   type TrialBalanceBasis,
   type TrialBalanceRawRow,
   type TrialBalanceReportPayload,
@@ -176,52 +180,35 @@ export async function fetchTrialBalanceReport(
   }
 
   const bridge = getBridge();
-  let dateCond = '';
   const tenantIds = ledgerTenantIdsForLocalQuery(tenantId);
   const tenantPlaceholders = tenantIds.map(() => '?').join(', ');
-  const params: unknown[] = [...tenantIds];
-  if (basis === 'cumulative') {
-    dateCond = ` AND je.entry_date <= ?`;
-    params.push(to);
-  } else {
-    dateCond = ` AND je.entry_date >= ? AND je.entry_date <= ?`;
-    params.push(from, to);
+
+  const periodRows = await queryLocalJournalAggregates(
+    bridge,
+    tenantPlaceholders,
+    tenantIds,
+    from,
+    to,
+    basis,
+    false
+  );
+
+  let activityRows = periodRows;
+  if (basis === 'period') {
+    const priorRows = await queryLocalJournalAggregates(
+      bridge,
+      tenantPlaceholders,
+      tenantIds,
+      from,
+      to,
+      basis,
+      true
+    );
+    activityRows = mergeRawRowsByAccount([...priorRows, ...periodRows]);
   }
 
-  const sql = `
-    SELECT
-      jl.account_id AS account_id,
-      a.name AS account_name,
-      a.type AS account_type,
-      a.parent_account_id AS parent_account_id,
-      a.account_code AS account_code,
-      a.sub_type AS sub_type,
-      COALESCE(a.is_active, 1) AS is_active_raw,
-      COALESCE(SUM(jl.debit_amount), 0) AS gross_debit,
-      COALESCE(SUM(jl.credit_amount), 0) AS gross_credit
-    FROM journal_lines jl
-    INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
-    INNER JOIN accounts a ON a.id = jl.account_id
-    WHERE je.tenant_id IN (${tenantPlaceholders})
-      AND a.deleted_at IS NULL
-      ${dateCond}
-    GROUP BY jl.account_id, a.name, a.type, a.parent_account_id, a.account_code, a.sub_type, a.is_active
-  `;
-
-  const r = await bridge.query(sql, params);
-  if (!r.ok) throw new Error(r.error || 'Trial balance query failed');
-
-  let rawRows: TrialBalanceRawRow[] = (r.rows || []).map((row: Record<string, unknown>) => ({
-    accountId: String(row.account_id),
-    accountName: String(row.account_name),
-    accountType: String(row.account_type),
-    parentAccountId: row.parent_account_id != null ? String(row.parent_account_id) : null,
-    accountCode: row.account_code != null ? String(row.account_code) : null,
-    subType: row.sub_type != null ? String(row.sub_type) : null,
-    isActive: Number(row.is_active_raw) !== 0,
-    grossDebit: roundMoney(Number(row.gross_debit)),
-    grossCredit: roundMoney(Number(row.gross_credit)),
-  }));
+  const openings = await queryLocalAccountOpenings(bridge, tenantPlaceholders, tenantIds);
+  let rawRows = applyOpeningBalances(activityRows, openings);
 
   let dataSource: 'journal' | 'transactions_fallback' = 'journal';
 
@@ -258,6 +245,97 @@ export async function fetchTrialBalanceReport(
   };
 }
 
+async function queryLocalJournalAggregates(
+  bridge: NonNullable<typeof window.sqliteBridge>,
+  tenantPlaceholders: string,
+  tenantIds: string[],
+  from: string,
+  to: string,
+  basis: TrialBalanceBasis,
+  priorOnly: boolean
+): Promise<TrialBalanceRawRow[]> {
+  let dateCond = '';
+  const params: unknown[] = [...tenantIds];
+  if (priorOnly) {
+    dateCond = ` AND je.entry_date < ?`;
+    params.push(from);
+  } else if (basis === 'cumulative') {
+    dateCond = ` AND je.entry_date <= ?`;
+    params.push(to);
+  } else {
+    dateCond = ` AND je.entry_date >= ? AND je.entry_date <= ?`;
+    params.push(from, to);
+  }
+
+  const sql = `
+    SELECT
+      jl.account_id AS account_id,
+      a.name AS account_name,
+      a.type AS account_type,
+      a.parent_account_id AS parent_account_id,
+      a.account_code AS account_code,
+      a.sub_type AS sub_type,
+      COALESCE(a.is_active, 1) AS is_active_raw,
+      COALESCE(SUM(jl.debit_amount), 0) AS gross_debit,
+      COALESCE(SUM(jl.credit_amount), 0) AS gross_credit
+    FROM journal_lines jl
+    INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
+    INNER JOIN accounts a ON a.id = jl.account_id
+    WHERE je.tenant_id IN (${tenantPlaceholders})
+      AND a.deleted_at IS NULL
+      ${dateCond}
+    GROUP BY jl.account_id, a.name, a.type, a.parent_account_id, a.account_code, a.sub_type, a.is_active
+  `;
+
+  const r = await bridge.query(sql, params);
+  if (!r.ok) throw new Error(r.error || 'Trial balance query failed');
+
+  return (r.rows || []).map((row: Record<string, unknown>) => ({
+    accountId: String(row.account_id),
+    accountName: String(row.account_name),
+    accountType: String(row.account_type),
+    parentAccountId: row.parent_account_id != null ? String(row.parent_account_id) : null,
+    accountCode: row.account_code != null ? String(row.account_code) : null,
+    subType: row.sub_type != null ? String(row.sub_type) : null,
+    isActive: Number(row.is_active_raw) !== 0,
+    grossDebit: roundMoney(Number(row.gross_debit)),
+    grossCredit: roundMoney(Number(row.gross_credit)),
+  }));
+}
+
+async function queryLocalAccountOpenings(
+  bridge: NonNullable<typeof window.sqliteBridge>,
+  tenantPlaceholders: string,
+  tenantIds: string[]
+): Promise<AccountOpeningInput[]> {
+  const sql = `
+    SELECT
+      a.id AS account_id,
+      a.name AS account_name,
+      a.type AS account_type,
+      a.parent_account_id AS parent_account_id,
+      a.account_code AS account_code,
+      a.sub_type AS sub_type,
+      COALESCE(a.is_active, 1) AS is_active_raw,
+      COALESCE(a.opening_balance, 0) AS opening_balance
+    FROM accounts a
+    WHERE a.tenant_id IN (${tenantPlaceholders})
+      AND a.deleted_at IS NULL
+      AND COALESCE(a.opening_balance, 0) <> 0
+  `;
+  const r = await bridge.query(sql, tenantIds);
+  if (!r.ok) throw new Error(r.error || 'Opening balance query failed');
+  return (r.rows || []).map((row: Record<string, unknown>) => ({
+    accountId: String(row.account_id),
+    accountName: String(row.account_name),
+    accountType: String(row.account_type),
+    parentAccountId: row.parent_account_id != null ? String(row.parent_account_id) : null,
+    accountCode: row.account_code != null ? String(row.account_code) : null,
+    subType: row.sub_type != null ? String(row.sub_type) : null,
+    isActive: Number(row.is_active_raw) !== 0,
+    openingBalance: roundMoney(Number(row.opening_balance)),
+  }));
+}
 /**
  * @deprecated Use fetchTrialBalanceReport for net columns and is_balanced.
  */
@@ -286,13 +364,9 @@ export type GeneralLedgerRow = {
   debit_amount: number;
   credit_amount: number;
   running_balance: number;
+  /** True for the synthetic brought-forward row (opening + prior activity). */
+  is_brought_forward?: boolean;
 };
-
-function normalBalanceDirection(accountType: string): 1 | -1 {
-  const t = (accountType || '').toLowerCase();
-  if (t === 'asset' || t === 'expense') return 1;
-  return -1;
-}
 
 /**
  * Running balance uses (debit - credit) * direction for normal balance display.
@@ -320,19 +394,56 @@ export async function getGeneralLedger(
         debit_amount: roundMoney(Number(r.debit_amount)),
         credit_amount: roundMoney(Number(r.credit_amount)),
         running_balance: roundMoney(Number(r.running_balance)),
+        is_brought_forward: Boolean((r as { is_brought_forward?: boolean }).is_brought_forward),
       })),
     };
   }
 
   const bridge = getBridge();
   const acc = await bridge.query(
-    `SELECT type, name FROM accounts WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+    `SELECT type, name, COALESCE(opening_balance, 0) AS opening_balance FROM accounts WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
     [accountId, tenantId]
   );
   if (!acc.ok || !acc.rows?.length) throw new Error('Account not found.');
   const accountType = String((acc.rows[0] as { type: string }).type);
   const accountName = String((acc.rows[0] as { name: string }).name);
+  const openingBalance = roundMoney(Number((acc.rows[0] as { opening_balance: number }).opening_balance));
   const dir = normalBalanceDirection(accountType);
+
+  let running = roundMoney(dir * openingBalance);
+
+  // Prior journal activity before fromDate (brought forward)
+  if (options?.fromDate) {
+    const prior = await bridge.query(
+      `SELECT
+        COALESCE(SUM(jl.debit_amount), 0) AS gross_debit,
+        COALESCE(SUM(jl.credit_amount), 0) AS gross_credit
+      FROM journal_lines jl
+      INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_id = ? AND je.tenant_id = ? AND je.entry_date < ?`,
+      [accountId, tenantId, options.fromDate]
+    );
+    if (prior.ok && prior.rows?.length) {
+      const gd = roundMoney(Number((prior.rows[0] as { gross_debit: number }).gross_debit));
+      const gc = roundMoney(Number((prior.rows[0] as { gross_credit: number }).gross_credit));
+      running = roundMoney(running + dir * (gd - gc));
+    }
+  }
+
+  const rows: GeneralLedgerRow[] = [];
+  if (Math.abs(running) >= 0.005 || openingBalance !== 0) {
+    rows.push({
+      entry_date: options?.fromDate ?? '',
+      journal_entry_id: '',
+      reference: 'B/F',
+      description: 'Brought forward (opening balance + prior activity)',
+      line_number: 0,
+      debit_amount: 0,
+      credit_amount: 0,
+      running_balance: running,
+      is_brought_forward: true,
+    });
+  }
 
   let sql = `
     SELECT
@@ -361,23 +472,25 @@ export async function getGeneralLedger(
   const r = await bridge.query(sql, params);
   if (!r.ok) throw new Error(r.error || 'General ledger query failed');
 
-  let running = 0;
-  const rows: GeneralLedgerRow[] = (r.rows || []).map((raw: Record<string, unknown>) => {
-    const debit = roundMoney(Number(raw.debit_amount));
-    const credit = roundMoney(Number(raw.credit_amount));
+  for (const raw of r.rows || []) {
+    const debit = roundMoney(Number((raw as Record<string, unknown>).debit_amount));
+    const credit = roundMoney(Number((raw as Record<string, unknown>).credit_amount));
     const delta = dir * (debit - credit);
     running = roundMoney(running + delta);
-    return {
-      entry_date: String(raw.entry_date),
-      journal_entry_id: String(raw.journal_entry_id),
-      reference: String(raw.reference ?? ''),
-      description: raw.description != null ? String(raw.description) : null,
-      line_number: Number(raw.line_number),
+    rows.push({
+      entry_date: String((raw as Record<string, unknown>).entry_date),
+      journal_entry_id: String((raw as Record<string, unknown>).journal_entry_id),
+      reference: String((raw as Record<string, unknown>).reference ?? ''),
+      description:
+        (raw as Record<string, unknown>).description != null
+          ? String((raw as Record<string, unknown>).description)
+          : null,
+      line_number: Number((raw as Record<string, unknown>).line_number),
       debit_amount: debit,
       credit_amount: credit,
       running_balance: running,
-    };
-  });
+    });
+  }
 
   return { accountType, accountName, rows };
 }
@@ -390,4 +503,76 @@ export async function getAccountStatement(
   options?: { fromDate?: string; toDate?: string }
 ): Promise<{ accountType: string; accountName: string; rows: AccountStatementRow[] }> {
   return getGeneralLedger(accountId, tenantId, options);
+}
+
+/** Load journal lines + entries for unified GL reporting (local SQLite). */
+export async function fetchJournalLedgerInput(
+  tenantId: string,
+  options?: { asOfDate?: string }
+): Promise<import('./journalLedgerCore').JournalLedgerInput> {
+  const bridge = getBridge();
+  const tenantIds = ledgerTenantIdsForLocalQuery(tenantId);
+  const tenantPlaceholders = tenantIds.map(() => '?').join(', ');
+  const params: unknown[] = [...tenantIds];
+  let dateCond = '';
+  if (options?.asOfDate) {
+    dateCond = ` AND je.entry_date <= ?`;
+    params.push(options.asOfDate);
+  }
+
+  const linesR = await bridge.query(
+    `SELECT
+      jl.journal_entry_id AS journal_entry_id,
+      jl.account_id AS account_id,
+      jl.debit_amount AS debit_amount,
+      jl.credit_amount AS credit_amount,
+      jl.line_number AS line_number,
+      jl.project_id AS project_id
+    FROM journal_lines jl
+    INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
+    WHERE je.tenant_id IN (${tenantPlaceholders})${dateCond}
+    ORDER BY je.entry_date ASC, je.id ASC, jl.line_number ASC`,
+    params
+  );
+  if (!linesR.ok) throw new Error(linesR.error || 'Journal lines query failed');
+
+  const entriesR = await bridge.query(
+    `SELECT
+      je.id AS id,
+      je.entry_date AS entry_date,
+      je.reference AS reference,
+      je.description AS description,
+      je.source_module AS source_module,
+      je.source_id AS source_id,
+      je.project_id AS project_id,
+      CASE WHEN EXISTS (
+        SELECT 1 FROM journal_reversals jr WHERE jr.original_journal_entry_id = je.id
+      ) THEN 1 ELSE 0 END AS is_reversed
+    FROM journal_entries je
+    WHERE je.tenant_id IN (${tenantPlaceholders})${dateCond}`,
+    params
+  );
+  if (!entriesR.ok) throw new Error(entriesR.error || 'Journal entries query failed');
+
+  return {
+    journalLines: (linesR.rows || []).map((r: Record<string, unknown>) => ({
+      journalEntryId: String(r.journal_entry_id),
+      accountId: String(r.account_id),
+      debitAmount: roundMoney(Number(r.debit_amount)),
+      creditAmount: roundMoney(Number(r.credit_amount)),
+      lineNumber: Number(r.line_number),
+      projectId: r.project_id != null ? String(r.project_id) : null,
+    })),
+    journalEntries: (entriesR.rows || []).map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      entryDate: String(r.entry_date).slice(0, 10),
+      reference: r.reference != null ? String(r.reference) : undefined,
+      description: r.description != null ? String(r.description) : null,
+      sourceModule: r.source_module != null ? String(r.source_module) : null,
+      sourceId: r.source_id != null ? String(r.source_id) : null,
+      projectId: r.project_id != null ? String(r.project_id) : null,
+      isReversed: Number(r.is_reversed) !== 0,
+    })),
+    accounts: [],
+  };
 }

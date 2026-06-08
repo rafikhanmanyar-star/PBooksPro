@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useKPIAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { useKpis } from '../../context/KPIContext';
 import { ICONS, CURRENCY } from '../../constants';
@@ -14,7 +14,18 @@ type SortConfig = {
 
 const KPIDrilldown: React.FC = () => {
     const { activeDrilldownKpi, closeDrilldown } = useKpis();
-    const state = useFullAppState();
+        const state = useKPIAppState();
+    const {
+        accounts,
+        categories,
+        projects,
+        transactions,
+        bills,
+        invoices,
+        buildings,
+        properties,
+        contacts,
+        rentalAgreements } = state;
     const dispatch = useDispatchOnly();
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
 
@@ -60,11 +71,11 @@ const KPIDrilldown: React.FC = () => {
                 { key: 'amount', label: 'Amount', isNumeric: true }
             ];
 
-            const transactions = transactions
+            const accountTransactions = transactions
                 .filter(tx => tx.accountId === accountId || tx.fromAccountId === accountId || tx.toAccountId === accountId)
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-            items = transactions.map(tx => {
+            items = accountTransactions.map(tx => {
                 let amount = tx.amount;
 
                 // Determine sign based on transaction flow relative to this account
@@ -124,7 +135,7 @@ const KPIDrilldown: React.FC = () => {
             const secRefId = categories.find(c => c.name === 'Security Deposit Refund')?.id;
             const ownerSecPayId = categories.find(c => c.name === 'Owner Security Payout')?.id;
 
-            const transactions = transactions
+            const securityTransactions = transactions
                 .filter(tx => {
                     if (tx.type === TransactionType.INCOME && tx.categoryId === secDepId) return true;
                     if (tx.type === TransactionType.EXPENSE) {
@@ -139,7 +150,7 @@ const KPIDrilldown: React.FC = () => {
                 })
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-            items = transactions.map(tx => {
+            items = securityTransactions.map(tx => {
                 let amount = tx.amount;
                 // If expense (Refund/Payout/Deduction), it reduces liability, so show as negative
                 if (tx.type === TransactionType.EXPENSE) amount = -amount;

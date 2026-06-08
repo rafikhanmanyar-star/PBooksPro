@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import TransactionItem from '../transactions/TransactionItem';
@@ -17,7 +17,8 @@ interface SettingsLedgerModalProps {
 }
 
 const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClose, entityId, entityType, entityName }) => {
-    const state = useFullAppState();
+        const state = useFinancialReportAppState();
+    const { accounts, transactions: allTransactions } = state;
     const dispatch = useDispatchOnly();
 
     const [contractorLedger, setContractorLedger] = useState<{
@@ -55,11 +56,9 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
                             billDate: a.billDate,
                             billAmount: a.billAmount,
                             advanceId: a.advanceId,
-                            adjustmentAmount: a.adjustmentAmount,
-                        })),
+                            adjustmentAmount: a.adjustmentAmount })),
                         summary: data.summary,
-                        loadError: null,
-                    });
+                        loadError: null });
                 } else if (!cancelled) {
                     setContractorLedger(null);
                 }
@@ -69,8 +68,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
                         advances: [],
                         adjustments: [],
                         summary: { totalOriginalAmount: 0, totalRemainingAmount: 0 },
-                        loadError: 'Could not load contractor ledger.',
-                    });
+                        loadError: 'Could not load contractor ledger.' });
             }
         })();
         return () => {
@@ -81,7 +79,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
     const transactions = useMemo(() => {
         if (!entityId) return [];
 
-        return transactions.filter(tx => {
+        return allTransactions.filter(tx => {
             if (entityType === 'account') {
                 return tx.accountId === entityId || tx.fromAccountId === entityId || tx.toAccountId === entityId;
             }
@@ -105,7 +103,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
             }
             return false;
         }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [transactions, entityId, entityType]);
+    }, [allTransactions, entityId, entityType]);
 
     const totalBalance = useMemo(() => {
         if (entityType === 'account') {

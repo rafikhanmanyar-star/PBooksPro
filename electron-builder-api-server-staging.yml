@@ -6,12 +6,18 @@ appId: com.pbookspro.api.server.staging
 productName: PBooks Pro Staging API Server
 extraMetadata:
   main: electron/server-main.cjs
+  name: pbooks-pro-staging-api-server
+  description: PBooks Pro Staging API Server (PostgreSQL pBookspro_Staging, port 3001)
 compression: maximum
+# English only — default Chromium locale packs add ~40 MB uncompressed to the installer.
+electronLanguages:
+  - en-US
 directories:
   output: release-api-server-staging
 files:
   - electron/server-main.cjs
   - electron/updaterErrorUtils.cjs
+  - electron/stagingUpdateFeed.cjs
   - electron/server-preload.cjs
   - electron/server-ui.html
   - electron/server-ui.js

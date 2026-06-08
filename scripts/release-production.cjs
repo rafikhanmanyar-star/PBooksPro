@@ -50,7 +50,7 @@ if (!tryRun('git merge origin/staging --no-ff -m "Release: merge staging into ma
 console.log('[release:production] Pushing merged main to origin…');
 run('git push origin main');
 
-console.log('[release:production] Building, bumping version, publishing production release…');
+console.log('[release:production] Building, bumping version, publishing GitHub full release (latest channel)…');
 run('npm run deploy:production');
 
 console.log('[release:production] Syncing staging branch with main…');
@@ -66,5 +66,7 @@ try {
 }
 
 console.log('');
-console.log('[release:production] Done. Production clients will pick up the new GitHub release.');
+console.log('[release:production] Done.');
+console.log('  Production apps (PBooks Pro Client) will update from the new GitHub full release.');
+console.log('  Staging prereleases remain separate — staging apps keep using the staging channel.');
 console.log('');

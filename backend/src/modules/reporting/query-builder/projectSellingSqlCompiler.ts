@@ -5,9 +5,9 @@ import type { CustomReportGeneratePayload } from '../validators/reportConfigurat
 import {
   buildFilterSql,
   buildGroupedSelect,
+  buildGroupedOrderParts,
   escapeIlikePattern,
   expandSqlKeysPreserveOrder,
-  groupDimensionAlias,
   resolveSelectedKeys,
   type CompiledReportQuery,
 } from './reportSqlHelpers.js';
@@ -158,18 +158,20 @@ export function compileProjectSellingReport(
     groupExprs.push(...grouped.groupExprs);
 
     const groupSql = groupExprs.length ? ` GROUP BY ${groupExprs.join(', ')}` : '';
-    const orderParts: string[] = [];
-    for (const s of payload.sortBy ?? []) {
-      if (registryPack.groupDimensions[s.field]) {
-        orderParts.push(`"${groupDimensionAlias(s.field)}" ${s.direction}`);
-      }
-    }
+    const orderParts = buildGroupedOrderParts(
+      payload.sortBy,
+      registryPack.groupDimensions,
+      grouped.projectedKeys
+    );
     const orderSql = orderParts.length ? ` ORDER BY ${orderParts.join(', ')}` : '';
     const inner = `SELECT ${selectParts.join(', ')} ${PROJECT_SELLING_BASE_FROM} ${baseWhere} ${groupSql}`;
 
     const countSql = `SELECT COUNT(*)::bigint AS c FROM (${inner}) __grp`;
-    const cap = mode === 'export' ? MAX_EXPORT_ROWS : MAX_PREVIEW_ROWS;
-    const listSql = `${inner} ${orderSql} LIMIT ${cap}`;
+    const page = payload.page ?? 1;
+    const pageSize = Math.min(payload.pageSize ?? 50, MAX_PREVIEW_ROWS);
+    const offset = mode === 'export' ? 0 : (page - 1) * pageSize;
+    const limit = mode === 'export' ? MAX_EXPORT_ROWS : pageSize;
+    const listSql = `${inner} ${orderSql} LIMIT ${limit} OFFSET ${offset}`;
 
     return {
       listSql,

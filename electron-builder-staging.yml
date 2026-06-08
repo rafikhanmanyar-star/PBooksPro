@@ -5,6 +5,8 @@
 appId: com.pbookspro.app
 productName: PBooks Pro (Staging)
 compression: maximum
+electronLanguages:
+  - en-US
 directories:
   output: release-staging
 files:
@@ -24,6 +26,7 @@ files:
   - "electron/companyManager.cjs"
   - "electron/spellChecker.cjs"
   - "electron/updaterErrorUtils.cjs"
+  - "electron/stagingUpdateFeed.cjs"
   - "electron/schema.sql"
   - "electron/assets/**/*"
   - "package.json"
@@ -64,7 +67,7 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: PBooks Pro (Staging)
   artifactName: PBooks-Pro-Staging-Setup-${version}.${ext}
-# Staging releases are published as GitHub prereleases.
+# Staging releases are published as GitHub prereleases (latest.yml).
 publish:
   - provider: github
     releaseType: prerelease

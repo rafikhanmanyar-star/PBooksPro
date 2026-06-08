@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useAccounts } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Account, AccountType } from '../../types';
 import Input from '../ui/Input';
@@ -25,7 +25,7 @@ interface AccountFormProps {
 }
 
 const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete, accountToEdit, initialName }) => {
-    const state = useFullAppState();
+    const accounts = useAccounts();
     const [name, setName] = useState(accountToEdit?.name || initialName || '');
     const [description, setDescription] = useState(accountToEdit?.description || '');
     const [type, setType] = useState<AccountType>(accountToEdit?.type || AccountType.BANK);
@@ -88,16 +88,14 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
                 description,
                 type,
                 parentAccountId: parentAccountId || undefined,
-                openingBalance: parseNum(openingAmount),
-            });
+                openingBalance: parseNum(openingAmount) });
         } else {
             onSubmit({
                 name,
                 description,
                 type,
                 parentAccountId: parentAccountId || undefined,
-                initialBalance: parseNum(nonBankInitial),
-            });
+                initialBalance: parseNum(nonBankInitial) });
         }
     };
 

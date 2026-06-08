@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, InvoiceType, InvoiceStatus, ContactType } from '../../types';
 import Card from '../ui/Card';
@@ -58,7 +58,7 @@ type SortKey =
     | 'netFlow';
 
 const BuildingAccountsReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState('2100-12-31');

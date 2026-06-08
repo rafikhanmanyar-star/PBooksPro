@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Vendor, Transaction, TransactionType, InvoiceStatus, AccountType, Bill } from '../../types';
 import Modal from '../ui/Modal';
@@ -47,7 +47,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     presetSelectedBillIds,
     editSettlement,
 }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { accounts, contacts, categories, transactions, bills } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();
@@ -73,15 +74,15 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     );
 
     const pendingBills = useMemo(() => {
-        let bills = bills.filter((b) => {
+        let filtered = bills.filter((b) => {
             if (b.vendorId !== vendor.id) return false;
             if (editSettlement && b.id === editSettlement.billId) return true;
             return b.status !== InvoiceStatus.PAID;
         }).sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
         if (restrictSet) {
-            bills = bills.filter((b) => restrictSet.has(b.id));
+            filtered = filtered.filter((b) => restrictSet.has(b.id));
         }
-        return bills;
+        return filtered;
     }, [bills, vendor.id, restrictSet, editSettlement?.billId]);
 
     const userSelectableAccounts = useMemo(

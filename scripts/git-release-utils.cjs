@@ -37,10 +37,50 @@ function hasUncommittedChanges() {
   return status.length > 0;
 }
 
+const RELEASE_ARTIFACT_PATHS = [
+  'release-api-client',
+  'release-api-server',
+  'release-api-client-staging',
+  'release-api-server-staging',
+  'release',
+  'release-staging',
+  'build/electron-api-server',
+  'win-unpacked',
+  'mac-unpacked',
+  'linux-unpacked',
+  'dist',
+];
+
+function unstageReleaseArtifacts() {
+  for (const p of RELEASE_ARTIFACT_PATHS) {
+    tryRun(`git reset HEAD -- "${p}"`);
+  }
+  const status = runOut('git status --porcelain');
+  for (const line of status.split('\n')) {
+    if (!line) continue;
+    const file = line.slice(3).trim().replace(/^"(.+)"$/, '$1');
+    if (
+      /\.(exe|blockmap)$/i.test(file) ||
+      /^release(-api)?(-client|-server)?(-staging)?\//i.test(file) ||
+      /^release(-staging)?\//i.test(file)
+    ) {
+      tryRun(`git reset HEAD -- "${file}"`);
+    }
+  }
+}
+
+function stageSourceForCommit() {
+  run('git add -A');
+  unstageReleaseArtifacts();
+}
+
 function commitPendingChanges(message) {
   if (!hasUncommittedChanges()) return false;
-  run('git add -A');
-  run(`git commit -m "${message.replace(/"/g, '\\"')}"`);
+  stageSourceForCommit();
+  if (!tryRun(`git commit -m "${message.replace(/"/g, '\\"')}"`)) {
+    console.warn('[release] git commit skipped (no committable changes or commit rejected).');
+    return false;
+  }
   return true;
 }
 
@@ -67,6 +107,8 @@ module.exports = {
   isGitRepo,
   currentBranch,
   hasUncommittedChanges,
+  stageSourceForCommit,
+  unstageReleaseArtifacts,
   commitPendingChanges,
   requireEnvFile,
   checkoutBranch,

@@ -70,7 +70,6 @@ const ProjectProfitLossReport: React.FC = () => {
   const localOnly = isLocalOnlyMode();
   const [serverReport, setServerReport] = useState<ProfitLossReportResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (localOnly) {
@@ -79,13 +78,12 @@ const ProjectProfitLossReport: React.FC = () => {
     }
     let cancelled = false;
     setLoading(true);
-    setFetchError(null);
     void fetchProfitLossReport({ from: startDate, to: endDate, projectId: selectedProjectId })
       .then((r) => {
         if (!cancelled) setServerReport(r);
       })
-      .catch((e) => {
-        if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+      .catch(() => {
+        if (!cancelled) setServerReport(null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -124,6 +122,12 @@ const ProjectProfitLossReport: React.FC = () => {
     if (!localOnly && serverReport) return serverReport;
     return computeProfitLossReport(reportState, { startDate, endDate, selectedProjectId });
   }, [localOnly, serverReport, reportState, startDate, endDate, selectedProjectId]);
+
+  const validationErrors = useMemo(
+    () => report.validation.issues.filter((iss) => iss.severity === 'error'),
+    [report.validation.issues]
+  );
+  const showValidationBanner = validationErrors.length > 0 || !report.validation.ledgerMatch;
 
   const toggleOpexRoot = useCallback((id: string) => {
     setCollapsedOpexRoots((prev) => {
@@ -258,16 +262,13 @@ const ProjectProfitLossReport: React.FC = () => {
           {!localOnly && loading && (
             <p className="text-center text-xs text-slate-500 mb-2">Loading from server…</p>
           )}
-          {!localOnly && fetchError && (
-            <p className="text-center text-xs text-rose-600 mb-2">{fetchError}</p>
-          )}
 
-          {report.validation.issues.length > 0 && (
+          {showValidationBanner && (
             <div className="max-w-4xl mx-auto mb-4 space-y-1">
-              {report.validation.issues.map((iss, i) => (
+              {validationErrors.map((iss, i) => (
                 <div
                   key={i}
-                  className={`text-sm rounded px-3 py-2 ${iss.severity === 'error' ? 'bg-rose-50 text-rose-900 border border-rose-200' : 'bg-amber-50 text-amber-900 border border-amber-200'}`}
+                  className="text-sm rounded px-3 py-2 bg-rose-50 text-rose-900 border border-rose-200"
                 >
                   {iss.message}
                 </div>

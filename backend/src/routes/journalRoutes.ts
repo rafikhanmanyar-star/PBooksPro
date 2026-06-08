@@ -3,6 +3,7 @@ import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse
 import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { requireLedgerRole } from '../middleware/authMiddleware.js';
+import { requirePermission } from '../middleware/rbacMiddleware.js';
 import { withTransaction } from '../db/pool.js';
 import {
   createJournalEntry,
@@ -67,7 +68,7 @@ journalRouter.post('/transactions/journal', requireLedgerRole, async (req: Authe
   }
 });
 
-journalRouter.get('/transactions/journal/reports/trial-balance', async (req: AuthedRequest, res) => {
+journalRouter.get('/transactions/journal/reports/trial-balance', requirePermission('reports.trial_balance.read'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -105,7 +106,7 @@ journalRouter.get('/transactions/journal/reports/trial-balance', async (req: Aut
   }
 });
 
-journalRouter.get('/transactions/journal/reports/account/:accountId/ledger', async (req: AuthedRequest, res) => {
+journalRouter.get('/transactions/journal/reports/account/:accountId/ledger', requirePermission('reports.trial_balance.read'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');

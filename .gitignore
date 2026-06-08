@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Electron build outputs
+# Electron build outputs (installers publish to GitHub Releases only — never commit)
 release
 release-staging
 release-api-client
@@ -23,6 +23,12 @@ build/electron-api-server
 win-unpacked
 mac-unpacked
 linux-unpacked
+*.exe
+*.blockmap
+release-api-client/**
+release-api-server/**
+release-api-client-staging/**
+release-api-server-staging/**
 
 # Electron installer build outputs
 release/**/*.exe
@@ -62,6 +68,8 @@ build/*.pem
 *.sqlite
 *.sqlite3
 *.dump
+*.pbkenc
+backend/backups/
 
 *.js.map
 

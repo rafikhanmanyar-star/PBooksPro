@@ -10,6 +10,7 @@ export interface DatabaseBackupCapabilities {
   format: string;
   tenantFormat?: string;
   fileExtension: string;
+  encryptedFormat?: string;
   hint: string;
 }
 
@@ -32,7 +33,7 @@ function parseJsonError(text: string): string {
   return text || 'Request failed';
 }
 
-export async function downloadPostgresBackup(): Promise<void> {
+export async function downloadPostgresBackup(options?: { password?: string }): Promise<void> {
   const base = apiClient.getBaseUrl().replace(/\/$/, '');
   const token = apiClient.getToken();
   if (!token) throw new Error('Not authenticated');
@@ -40,20 +41,30 @@ export async function downloadPostgresBackup(): Promise<void> {
   const headers: HeadersInit = { Authorization: `Bearer ${token}` };
   const tid = apiClient.getTenantId();
   if (tid) (headers as Record<string, string>)['X-Tenant-ID'] = tid;
+  if (options?.password?.trim()) {
+    (headers as Record<string, string>)['X-Backup-Password'] = options.password.trim();
+  }
 
+  const q = options?.password?.trim()
+    ? `?password=${encodeURIComponent(options.password.trim())}`
+    : '';
   const controller = new AbortController();
   const timeoutMs = 600_000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${base}/database/backup`, { method: 'GET', headers, signal: controller.signal });
+    const res = await fetch(`${base}/database/backup${q}`, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
     if (!res.ok) {
       const text = await res.text();
       throw new Error(parseJsonError(text) || `HTTP ${res.status}`);
     }
     const blob = await res.blob();
     const cd = res.headers.get('Content-Disposition');
-    let filename = 'pbooks-backup.dump';
+    let filename = options?.password ? 'pbooks-backup.pbkenc2' : 'pbooks-backup.pbkenc';
     const m = cd?.match(/filename="([^"]+)"/i) || cd?.match(/filename=([^;\s]+)/i);
     if (m) filename = m[1].trim();
 
@@ -75,7 +86,10 @@ export async function downloadPostgresBackup(): Promise<void> {
   }
 }
 
-export async function restorePostgresBackup(file: File): Promise<string> {
+export async function restorePostgresBackup(
+  file: File,
+  options?: { restoreToken?: string; backupPassword?: string }
+): Promise<string> {
   const base = apiClient.getBaseUrl().replace(/\/$/, '');
   const token = apiClient.getToken();
   if (!token) throw new Error('Not authenticated');
@@ -86,6 +100,12 @@ export async function restorePostgresBackup(file: File): Promise<string> {
   };
   const tid = apiClient.getTenantId();
   if (tid) (headers as Record<string, string>)['X-Tenant-ID'] = tid;
+  if (options?.restoreToken) {
+    (headers as Record<string, string>)['X-Restore-Token'] = options.restoreToken;
+  }
+  if (options?.backupPassword?.trim()) {
+    (headers as Record<string, string>)['X-Backup-Password'] = options.backupPassword.trim();
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 600_000);

@@ -4,6 +4,11 @@ import Tabs from '../ui/Tabs';
 import ExportDataModal from './ExportDataModal';
 import CompanyBackupRestore from '../company/CompanyBackupRestore';
 import PostgresBackupRestore from './PostgresBackupRestore';
+import BackupHistoryPage from './BackupHistoryPage';
+import BackupStorageSettingsPage from './BackupStorageSettingsPage';
+import TenantRestoreWizard from './TenantRestoreWizard';
+import DisasterRecoveryCenter from './DisasterRecoveryCenter';
+import BackupSecurityPage from './BackupSecurityPage';
 import { useCompanyOptional } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
 import ImportExportWizard from './ImportExportWizard';
@@ -21,7 +26,7 @@ const BackupRestorePage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<string>('Backup and Restore');
     const [isExportDataModalOpen, setIsExportDataModalOpen] = useState(false);
 
-    const backupTabs = ['Backup and Restore', 'Import', 'Selective Export'];
+    const backupTabs = ['Backup and Restore', 'Backup History', 'Disaster Recovery', 'Backup Security', 'Tenant Restore', 'Storage Settings', 'Import', 'Selective Export'];
 
     const renderBackupRestore = () => {
         const showSqliteCompanyBackup = isLocalOnlyMode() && companyCtx?.activeCompany;
@@ -98,10 +103,26 @@ const BackupRestorePage: React.FC = () => {
         </div>
     );
 
+    const renderBackupSecurity = () => <BackupSecurityPage />;
+    const renderDisasterRecovery = () => <DisasterRecoveryCenter />;
+    const renderBackupHistory = () => <BackupHistoryPage />;
+    const renderStorageSettings = () => <BackupStorageSettingsPage />;
+    const renderTenantRestore = () => <TenantRestoreWizard />;
+
     const renderTabContent = () => {
         switch (activeTab) {
             case 'Backup and Restore':
                 return renderBackupRestore();
+            case 'Backup History':
+                return renderBackupHistory();
+            case 'Disaster Recovery':
+                return renderDisasterRecovery();
+            case 'Backup Security':
+                return renderBackupSecurity();
+            case 'Tenant Restore':
+                return renderTenantRestore();
+            case 'Storage Settings':
+                return renderStorageSettings();
             case 'Import':
                 return renderImport();
             case 'Selective Export':

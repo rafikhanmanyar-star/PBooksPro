@@ -11,11 +11,12 @@ import { listProjectAgreementsWithUnits, rowToProjectAgreementApi } from './proj
 import { listUnits, rowToUnitApi } from './unitsService.js';
 import { listProjectReceivedAssets, rowToProjectReceivedAssetApi } from './projectReceivedAssetsService.js';
 import { listProjects, rowToProjectApi } from './projectsService.js';
+import { loadJournalLedgerInput } from './journalLedgerLoadService.js';
 
 type BalanceSheetEngineModule = {
   computeBalanceSheetReport: (
     state: Record<string, unknown>,
-    options: { asOfDate: string; selectedProjectId: string }
+    options: { asOfDate: string; selectedProjectId: string; useJournalLedger?: boolean }
   ) => Record<string, unknown>;
 };
 
@@ -42,7 +43,7 @@ function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>)
  */
 /** Exported for profit-loss and other reports that share the same minimal state shape. */
 export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId: string, asOfDate: string) {
-  const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap, projectRows] =
+  const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap, projectRows, journalData] =
     await Promise.all([
       listAccounts(client, tenantId),
       listTransactions(client, tenantId, {
@@ -58,6 +59,7 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
       listProjectAgreementsWithUnits(client, tenantId),
       fetchPlSubTypesForTenant(client, tenantId),
       listProjects(client, tenantId),
+      loadJournalLedgerInput(client, tenantId, { asOfDate }),
     ]);
 
   const accounts = accountRows.map((r) => asRecord(rowToAccountApi(r)));
@@ -83,6 +85,11 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
     projectReceivedAssets,
     units,
     projects,
+    journalLedger: {
+      ...journalData,
+      accounts,
+      transactions,
+    },
   };
 }
 
@@ -95,7 +102,11 @@ export async function getBalanceSheetReportJson(
 ) {
   const state = await loadBalanceSheetStateInput(client, tenantId, asOfDate);
   const { computeBalanceSheetReport } = await loadBalanceSheetEngine();
-  const report = computeBalanceSheetReport(state as never, { asOfDate, selectedProjectId }) as {
+  const report = computeBalanceSheetReport(state as never, {
+    asOfDate,
+    selectedProjectId,
+    useJournalLedger: true,
+  }) as {
     assets: { current: unknown[]; non_current: unknown[]; total: number };
     liabilities: { current: unknown[]; non_current: unknown[]; total: number };
     equity: { items: unknown[]; total: number };

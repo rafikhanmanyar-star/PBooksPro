@@ -867,9 +867,6 @@ CREATE INDEX IF NOT EXISTS idx_rental_agreements_contact_id ON rental_agreements
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_property_id ON rental_agreements(property_id);
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant ON rental_agreements(tenant_id);
 
--- Sales Returns
-CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
-
 -- Properties
 CREATE INDEX IF NOT EXISTS idx_properties_building ON properties(building_id);
 CREATE INDEX IF NOT EXISTS idx_properties_owner ON properties(owner_id);
@@ -1203,6 +1200,72 @@ CREATE TABLE IF NOT EXISTS accounting_audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_accounting_audit_entity ON accounting_audit_log(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_accounting_audit_ts ON accounting_audit_log(timestamp);
+
+CREATE TABLE IF NOT EXISTS accounting_periods (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+    closed_by TEXT,
+    closed_at TEXT,
+    closing_journal_entry_id TEXT,
+    year_end_transfer_journal_entry_id TEXT,
+    reopened_by TEXT,
+    reopened_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (closing_journal_entry_id) REFERENCES journal_entries(id) ON DELETE SET NULL,
+    FOREIGN KEY (year_end_transfer_journal_entry_id) REFERENCES journal_entries(id) ON DELETE SET NULL,
+    UNIQUE (tenant_id, start_date, end_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_accounting_periods_tenant_status ON accounting_periods(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_accounting_periods_tenant_dates ON accounting_periods(tenant_id, start_date, end_date);
+
+CREATE TABLE IF NOT EXISTS login_events (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    email TEXT,
+    login_time TEXT NOT NULL DEFAULT (datetime('now')),
+    logout_time TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'logout'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_events_tenant_time ON login_events(tenant_id, login_time);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    email TEXT,
+    module TEXT NOT NULL,
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    summary TEXT,
+    old_value TEXT,
+    new_value TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_tenant_time ON audit_events(tenant_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_audit_events_module ON audit_events(tenant_id, module, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events(tenant_id, action, occurred_at);
+
+CREATE TRIGGER IF NOT EXISTS audit_events_immutable_upd BEFORE UPDATE ON audit_events
+BEGIN SELECT RAISE(ABORT, 'audit_events are immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS audit_events_immutable_del BEFORE DELETE ON audit_events
+BEGIN SELECT RAISE(ABORT, 'audit_events cannot be deleted'); END;
+
+CREATE TRIGGER IF NOT EXISTS login_events_immutable_del ON login_events
+BEGIN SELECT RAISE(ABORT, 'login_events cannot be deleted'); END;
 
 CREATE TRIGGER IF NOT EXISTS journal_entries_immutable_upd BEFORE UPDATE ON journal_entries
 BEGIN SELECT RAISE(ABORT, 'journal_entries are immutable'); END;

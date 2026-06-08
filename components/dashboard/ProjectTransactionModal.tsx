@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { TransactionType, type Transaction } from '../../types';
@@ -69,7 +69,7 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
   data,
   listMode = 'profitLoss',
 }) => {
-  const state = useFullAppState();
+  const state = useFinancialReportAppState();
 
   const processedBillsForPl = useMemo(() => {
     if (!data || listMode === 'categoryReport') return new Set<string>();

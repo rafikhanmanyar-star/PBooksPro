@@ -4,11 +4,14 @@
  * Allows new tenants to register and start a free 30-day trial.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { referralApi } from '../../services/api/referralApi';
 import { APP_LOGO } from '../../constants';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LegalAcceptanceCheckbox from '../legal/LegalAcceptanceCheckbox';
+import type { LegalAcceptanceInput } from '../../services/api/legalApi';
 
 const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => void }> = ({ 
   onSuccess, 
@@ -26,6 +29,27 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
     isSupplier: false,
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [legalAcceptances, setLegalAcceptances] = useState<LegalAcceptanceInput[]>([]);
+  const referralParams = useMemo(() => {
+    if (typeof window === 'undefined') return { code: '', invite: '' };
+    const params = new URLSearchParams(window.location.search);
+    return {
+      code: params.get('ref')?.trim() || '',
+      invite: params.get('invite')?.trim() || '',
+    };
+  }, []);
+  const [referrerLabel, setReferrerLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!referralParams.code) return;
+    void referralApi.trackClick(referralParams.code).catch(() => undefined);
+    void referralApi.validateCode(referralParams.code).then((res) => {
+      if (res.valid && res.referrerTenantName) {
+        setReferrerLabel(res.referrerTenantName);
+      }
+    }).catch(() => undefined);
+  }, [referralParams.code]);
 
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
@@ -54,6 +78,10 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
 
     if (!formData.adminName || !formData.adminName.trim()) {
       errors.adminName = 'Admin name is required';
+    }
+
+    if (!legalAccepted || legalAcceptances.length === 0) {
+      errors.legal = 'You must accept the Terms of Service and Privacy Policy';
     }
 
     setValidationErrors(errors);
@@ -87,7 +115,12 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
     }
 
     try {
-      const result = await registerTenant(formData);
+      const result = await registerTenant({
+        ...formData,
+        legalAcceptances,
+        referralCode: referralParams.code || undefined,
+        inviteToken: referralParams.invite || undefined,
+      });
       // Show success message
       alert(`✅ Registration successful!\n\nTenant ID: ${result.tenantId}\nFree Trial: ${result.trialDaysRemaining} days remaining\n\nYou can now login with your credentials.`);
       if (onSuccess) {
@@ -137,6 +170,11 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
           <img src={APP_LOGO} alt="Logo" className="w-16 h-16 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-slate-800">PBooksPro</h1>
           <p className="text-slate-500 mt-2">Register for a free 30-day trial</p>
+          {referrerLabel && (
+            <p className="text-sm text-indigo-600 mt-2 font-medium">
+              Referred by {referrerLabel}
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -228,6 +266,26 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
             </div>
           )}
 
+          <LegalAcceptanceCheckbox
+            context="registration"
+            checked={legalAccepted}
+            disabled={isLoading}
+            onChange={(checked, acceptances) => {
+              setLegalAccepted(checked);
+              setLegalAcceptances(acceptances);
+              if (validationErrors.legal) {
+                setValidationErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.legal;
+                  return next;
+                });
+              }
+            }}
+          />
+          {validationErrors.legal && (
+            <p className="text-sm text-rose-600">{validationErrors.legal}</p>
+          )}
+
           <div className="flex gap-4">
             {onCancel && (
               <Button
@@ -243,7 +301,7 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
             <Button
               type="submit"
               className="flex-1 justify-center"
-              disabled={isLoading}
+              disabled={isLoading || !legalAccepted}
             >
               {isLoading ? 'Registering...' : 'Register & Start Free Trial'}
             </Button>
@@ -251,7 +309,7 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
         </form>
 
         <p className="text-xs text-center text-slate-400 mt-6">
-          By registering, you agree to start a free 30-day trial. No credit card required.
+          Free 30-day trial. No credit card required.
         </p>
       </div>
     </div>

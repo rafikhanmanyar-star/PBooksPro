@@ -22,6 +22,7 @@ import { formatDate } from '../../utils/dateUtils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
 import { isLocalOnlyMode } from '../../config/apiUrl';
+import SubscriptionStatusWidget from '../billing/SubscriptionStatusWidget';
 import { useMonthlyRentalSummaryRangeQuery } from '../../hooks/queries/useRentalRollupQueries';
 
 const DashboardPage: React.FC = () => {
@@ -176,7 +177,7 @@ const DashboardPage: React.FC = () => {
             </div>
 
             {/* Overview Reports & Bank Accounts - Top Section */}
-            <div className="flex flex-col rounded-2xl overflow-hidden">
+            <div className="flex flex-col rounded-2xl overflow-hidden" data-tour="dashboard-report-tabs">
                 <div className="flex-shrink-0">
                     <Tabs
                         variant="browser"
@@ -199,9 +200,15 @@ const DashboardPage: React.FC = () => {
             {/* Custom KPIs & Dashboard Widgets Section */}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
 
+                {!isLocalOnlyMode() && isAuthenticated && isAdmin && (
+                    <div className="col-span-1 md:col-span-1">
+                        <SubscriptionStatusWidget />
+                    </div>
+                )}
+
                 {/* KPI Cards Row */}
-                {kpisToDisplay.slice(0, 4).map((kpi) => (
-                    <div key={kpi.id} className="col-span-1">
+                {kpisToDisplay.slice(0, 4).map((kpi, idx) => (
+                    <div key={kpi.id} className="col-span-1" data-tour={idx === 0 ? 'dashboard-kpis' : undefined}>
                         <KPICard
                             title={kpi.title}
                             amount={kpi.amount}
@@ -214,7 +221,7 @@ const DashboardPage: React.FC = () => {
                 ))}
 
                 {/* Main Chart Section (Span 2 or 3 cols) */}
-                <div className="col-span-1 md:col-span-2 lg:col-span-3 min-w-0 bg-app-card p-4 md:p-6 rounded-2xl border border-app-border shadow-ds-card relative overflow-hidden transition-shadow duration-ds">
+                <div className="col-span-1 md:col-span-2 lg:col-span-3 min-w-0 bg-app-card p-4 md:p-6 rounded-2xl border border-app-border shadow-ds-card relative overflow-hidden transition-shadow duration-ds" data-tour="dashboard-cashflow">
                     <div className="flex justify-between items-center mb-4 md:mb-6">
                         <h3 className="text-base md:text-lg font-bold text-app-text">Cash Flow</h3>
                         <div className="flex gap-2 md:gap-3">
@@ -274,7 +281,7 @@ const DashboardPage: React.FC = () => {
                 <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-3 md:space-y-6">
 
                     {/* Recent Activity Mini List */}
-                    <div className="bg-app-card p-4 md:p-5 rounded-2xl border border-app-border shadow-ds-card transition-shadow duration-ds">
+                    <div className="bg-app-card p-4 md:p-5 rounded-2xl border border-app-border shadow-ds-card transition-shadow duration-ds" data-tour="dashboard-activity">
                         <h3 className="text-xs md:text-sm font-bold text-app-text mb-3 md:mb-4 uppercase tracking-wide">Recent Activity</h3>
                         <div className="space-y-3 md:space-y-4">
                             {recentActivity.map((item, i) => (

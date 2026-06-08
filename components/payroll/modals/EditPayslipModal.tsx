@@ -9,6 +9,10 @@ import { storageService } from '../services/storageService';
 import { isAccountingBackedByRemoteApi, isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { syncPayrollFromServer } from '../services/payrollSync';
+import { useStateSelector } from '../../../hooks/useSelectiveState';
+import { useRecordLock, isAdminRole } from '../../../hooks/useRecordLock';
+import RecordLockBanner from '../../recordLock/RecordLockBanner';
+import RecordLockConflictModal from '../../recordLock/RecordLockConflictModal';
 
 interface EditPayslipModalProps {
   isOpen: boolean;
@@ -31,6 +35,16 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
   tenantId,
   userId
 }) => {
+  const currentUser = useStateSelector((s) => s.currentUser);
+  const recordLock = useRecordLock({
+    recordType: 'payroll',
+    recordId: payslip?.payroll_run_id,
+    enabled: isOpen && Boolean(payslip?.payroll_run_id),
+    currentUserId: currentUser?.id ?? userId,
+    currentUserName: currentUser?.name,
+    userRole: currentUser?.role,
+  });
+
   const [basicPay, setBasicPay] = useState(0);
   const [totalAllowances, setTotalAllowances] = useState(0);
   const [totalDeductions, setTotalDeductions] = useState(0);
@@ -55,6 +69,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
 
   const handleSave = async () => {
     if (!payslip) return;
+    if (!isLocalOnlyMode() && recordLock.viewOnly) return;
     setIsSaving(true);
     try {
       const updated: Payslip = {
@@ -96,6 +111,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
 
   const handleDelete = async () => {
     if (!payslip) return;
+    if (!isLocalOnlyMode() && recordLock.viewOnly) return;
     setIsDeleting(true);
     try {
       let deleted: boolean;
@@ -120,6 +136,14 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+        <RecordLockConflictModal
+          isOpen={recordLock.showConflictModal}
+          lockedByName={recordLock.lockedByName ?? 'Another user'}
+          isAdmin={isAdminRole(currentUser?.role)}
+          onViewOnly={recordLock.chooseViewOnly}
+          onForceEdit={() => void recordLock.forceTakeover()}
+          onDismiss={recordLock.dismissModal}
+        />
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-slate-900">
             Edit payslip {employee ? `– ${employee.name}` : ''}
@@ -129,7 +153,14 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
           </button>
         </div>
 
-        <div className="space-y-3">
+        {recordLock.bannerMode === 'self' && (
+          <RecordLockBanner mode="self" currentUserName={currentUser?.name} />
+        )}
+        {recordLock.bannerMode === 'other' && (
+          <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
+        )}
+
+        <div className={`space-y-3 ${recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''}`}>
           <div>
             <label htmlFor="edit-payslip-basic-pay" className="block text-sm font-medium text-slate-700 mb-1">Basic pay</label>
             <input
@@ -208,7 +239,8 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-3 py-2 rounded-xl font-medium text-red-600 hover:bg-red-50 flex items-center gap-1.5 text-sm"
+                disabled={recordLock.viewOnly}
+                className="px-3 py-2 rounded-xl font-medium text-red-600 hover:bg-red-50 flex items-center gap-1.5 text-sm disabled:opacity-50"
               >
                 <Trash2 size={16} /> {payslip.is_paid ? 'Remove payslip' : 'Delete payslip'}
               </button>
@@ -221,7 +253,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || recordLock.viewOnly}
               className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
             >
               {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}

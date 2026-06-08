@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Download, FileText, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -37,7 +37,8 @@ import type { WithdrawalValidationResult } from '../types/fundAvailability.types
 import { WithdrawalValidationModal } from './WithdrawalValidationModal';
 
 export const FundAvailabilityPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { projects } = state;
     const { user } = useAuth();
     const qc = useQueryClient();
     const [endDate, setEndDate] = useState(() => toLocalDateString(new Date()));

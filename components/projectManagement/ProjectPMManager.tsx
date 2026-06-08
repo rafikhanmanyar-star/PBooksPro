@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { TransactionType, Transaction, AccountType, Project, Bill, InvoiceStatus, ContactType, PMCycleAllocation } from '../../types';
 import Button from '../ui/Button';
@@ -36,7 +36,8 @@ interface PMLedgerItem {
 }
 
 const ProjectPMManager: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
+    const { accounts } = state;
     const dispatch = useDispatchOnly();
     const { showAlert, showConfirm, showToast } = useNotification();
 

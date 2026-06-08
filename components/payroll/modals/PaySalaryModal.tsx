@@ -3,13 +3,13 @@
  * and pay the rest from Bank/Cash. Totals reconcile with payroll ledger (Σ nets − Σ expenses).
  */
 
-import { useDispatchOnly, useFullAppState } from '../../../hooks/useSelectiveState';
+import { useDispatchOnly, usePayrollPaymentState } from '../../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { X, Banknote, Loader2, AlertCircle } from 'lucide-react';
 import { PayrollEmployee, Payslip, PayrollRun, PayrollStatus } from '../types';
 import { storageService } from '../services/storageService';
 import { Account, Transaction, TransactionType, AccountType } from '../../../types';
-import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
+import { isAccountingBackedByRemoteApi, isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { syncPayrollFromServer } from '../services/payrollSync';
 import { resolveSystemCategoryId } from '../../../services/systemEntityIds';
@@ -18,6 +18,9 @@ import { resolvePayslipAssignment } from '../utils/payslipAssignment';
 import { employeePayrollNetBalanceFromTotals } from '../utils/payrollLedgerCore';
 import { todayLocalYyyyMmDd, toLocalDateString } from '../../../utils/dateUtils';
 import DatePicker from '../../ui/DatePicker';
+import { useRecordLock, isAdminRole } from '../../../hooks/useRecordLock';
+import RecordLockBanner from '../../recordLock/RecordLockBanner';
+import RecordLockConflictModal from '../../recordLock/RecordLockConflictModal';
 
 const EPS = 0.01;
 
@@ -82,8 +85,17 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
   tenantId,
   userId,
 }) => {
-  const state = useFullAppState();
-    const dispatch = useDispatchOnly();
+  const { accounts, categories, projects, buildings, transactions, currentUser } = usePayrollPaymentState();
+  const dispatch = useDispatchOnly();
+  const payrollRunId = run?.id ?? payslip?.payroll_run_id;
+  const recordLock = useRecordLock({
+    recordType: 'payroll',
+    recordId: payrollRunId,
+    enabled: isOpen && Boolean(payrollRunId),
+    currentUserId: currentUser?.id ?? userId,
+    currentUserName: currentUser?.name,
+    userRole: currentUser?.role,
+  });
   const [advanceApplyStr, setAdvanceApplyStr] = useState('');
   const [cashAmountStr, setCashAmountStr] = useState('');
   const [advanceClearingAccountId, setAdvanceClearingAccountId] = useState('');
@@ -144,6 +156,7 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payslip || !employee || !tenantId) return;
+    if (!isLocalOnlyMode() && recordLock.viewOnly) return;
     if (!salaryCategory) {
       setError('Salary expense category not found. Please contact support.');
       return;
@@ -442,11 +455,20 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
   const submitOk =
     advClamp + cashClamp > EPS &&
     (!advClamp || !!advanceClearingAccountId) &&
-    (!(cashClamp > EPS) || !!bankAccountId);
+    (!(cashClamp > EPS) || !!bankAccountId) &&
+    !recordLock.viewOnly;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <RecordLockConflictModal
+          isOpen={recordLock.showConflictModal}
+          lockedByName={recordLock.lockedByName ?? 'Another user'}
+          isAdmin={isAdminRole(currentUser?.role)}
+          onViewOnly={recordLock.chooseViewOnly}
+          onForceEdit={() => void recordLock.forceTakeover()}
+          onDismiss={recordLock.dismissModal}
+        />
         <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
           <div className="flex items-center gap-2">
             <Banknote className="text-emerald-600" size={24} />
@@ -457,7 +479,14 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        {recordLock.bannerMode === 'self' && (
+          <RecordLockBanner mode="self" currentUserName={currentUser?.name} />
+        )}
+        {recordLock.bannerMode === 'other' && (
+          <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
+        )}
+
+        <form onSubmit={handleSubmit} className={`p-6 space-y-5 ${recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''}`}>
           <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Employee</label>

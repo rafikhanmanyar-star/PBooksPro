@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { InvoiceType, TransactionType } from '../../types';
 import Select from '../ui/Select';
@@ -13,7 +13,8 @@ import { format } from 'date-fns';
 const COLORS = ['#00C49F', '#FFBB28', '#FF8042', '#0088FE'];
 
 const InvoicePaymentAnalysisReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { contacts, properties, transactions, invoices } = state;
     const [groupBy, setGroupBy] = useState<'tenant' | 'owner' | 'property'>('tenant');
     const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
     const [dateRange, setDateRange] = useState<'all' | 'this_year' | 'last_year'>('this_year');

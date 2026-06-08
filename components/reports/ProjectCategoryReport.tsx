@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType } from '../../types';
 import Card from '../ui/Card';
@@ -81,7 +81,7 @@ interface ProjectCategoryReportProps {
 type SortKey = 'categoryName' | 'count' | 'amount' | 'percentage';
 
 const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(toLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));

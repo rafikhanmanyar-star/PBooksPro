@@ -1,7 +1,7 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
-import React, { useState, useMemo } from 'react';
-import { TransactionType, ContactType, Transaction } from '../../types';
+import { useDispatchOnly, useRentalReportAppState } from '../../hooks/useSelectiveState';
+import React, { useState, useMemo, useEffect } from 'react';
+import { ContactType, Transaction } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -19,28 +19,25 @@ import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import {
+    computeServiceChargesDeductionReport,
+    type ServiceChargeDeductionRow,
+    type ServiceChargeDeductionSortKey,
+} from './serviceChargesDeductionReportEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchServiceChargesDeductionReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
-interface ReportRow {
-    id: string;
-    date: string;
-    buildingName: string;
-    propertyName: string;
-    ownerName: string;
-    particulars: string;
-    amount: number;
-    entityType: 'transaction';
-    entityId: string;
-}
-
-type SortKey = 'date' | 'buildingName' | 'propertyName' | 'ownerName' | 'particulars' | 'amount';
+type SortKey = ServiceChargeDeductionSortKey;
 
 const ServiceChargesDeductionReport: React.FC = () => {
-    const state = useFullAppState();
+    const rentalState = useRentalReportAppState();
+    const { contacts, buildings: appBuildings } = rentalState;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
+    const localOnly = isLocalOnlyMode();
     
     // Filters State
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
@@ -64,7 +61,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
     });
 
     // Dropdown Items
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
+    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...appBuildings], [appBuildings]);
     const owners = useMemo(() => {
         const ownerContacts = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
         return [{ id: 'all', name: 'All Owners' }, ...ownerContacts];
@@ -101,97 +98,65 @@ const ServiceChargesDeductionReport: React.FC = () => {
         });
     };
 
-    const reportData = useMemo<ReportRow[]>(() => {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+    const [serverRows, setServerRows] = useState<ServiceChargeDeductionRow[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
-        const rentalIncomeCatId = categories.find(c => c.name === 'Rental Income')?.id;
-        
-        const deductionCategoryIds = new Set(categories
-            .filter(c => c.type === TransactionType.EXPENSE && c.name.toLowerCase().includes('service charge'))
-            .map(c => c.id));
-        
-        const legacyId = categories.find(c => c.name === 'Service Charge Deduction')?.id;
-        if (legacyId) deductionCategoryIds.add(legacyId);
-
-        const rows: ReportRow[] = [];
-
-        transactions.forEach(tx => {
-            const date = new Date(tx.date);
-            if (date < start || date > end) return;
-
-            let isDeduction = false;
-            let amount = 0;
-
-            if (tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCatId && tx.amount < 0) {
-                isDeduction = true;
-                amount = Math.abs(tx.amount);
-            } else if (tx.type === TransactionType.EXPENSE && tx.categoryId && deductionCategoryIds.has(tx.categoryId)) {
-                isDeduction = true;
-                amount = tx.amount;
-            }
-
-            if (isDeduction) {
-                const property = properties.find(p => p.id === tx.propertyId);
-                const building = allBuildings.find(b => b.id === (tx.buildingId || property?.buildingId));
-                const owner = contacts.find(c => c.id === (tx.contactId || property?.ownerId));
-
-                // Apply Filters
-                if (selectedBuildingId !== 'all') {
-                    if (building?.id !== selectedBuildingId) return;
-                }
-                if (selectedOwnerId !== 'all') {
-                    if (owner?.id !== selectedOwnerId) return;
-                }
-
-                rows.push({
-                    id: tx.id,
-                    date: tx.date,
-                    buildingName: building?.name || 'Unknown',
-                    propertyName: property?.name || 'Unknown',
-                    ownerName: owner?.name || 'Unknown',
-                    particulars: tx.description || 'Service Charge Deduction',
-                    amount,
-                    entityType: 'transaction' as const,
-                    entityId: tx.id
-                });
-            }
-        });
-
-        // Sorting
-        if (sortConfig) {
-            rows.sort((a, b) => {
-                const aVal = a[sortConfig.key];
-                const bVal = b[sortConfig.key];
-
-                if (sortConfig.key === 'date') {
-                     return sortConfig.direction === 'asc' 
-                        ? new Date(aVal as string).getTime() - new Date(bVal as string).getTime()
-                        : new Date(bVal as string).getTime() - new Date(aVal as string).getTime();
-                }
-
-                if (typeof aVal === 'string' && typeof bVal === 'string') {
-                    return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                }
-                if (typeof aVal === 'number' && typeof bVal === 'number') {
-                    return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
-                }
-                return 0;
+    useEffect(() => {
+        if (localOnly) {
+            setServerRows(null);
+            setFetchError(null);
+            return;
+        }
+        let cancelled = false;
+        setLoading(true);
+        setFetchError(null);
+        void fetchServiceChargesDeductionReport({
+            startDate,
+            endDate,
+            buildingId: selectedBuildingId,
+            ownerId: selectedOwnerId,
+            search: searchQuery,
+            sortKey: sortConfig?.key,
+            sortDirection: sortConfig?.direction,
+        })
+            .then((r) => {
+                if (!cancelled) setServerRows(r.rows);
+            })
+            .catch((e) => {
+                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
             });
-        } else {
-            // Default Sort
-            rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        }
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        localOnly,
+        startDate,
+        endDate,
+        selectedBuildingId,
+        selectedOwnerId,
+        searchQuery,
+        sortConfig,
+    ]);
 
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            return rows.filter(r => r.ownerName.toLowerCase().includes(q) || r.propertyName.toLowerCase().includes(q));
-        }
+    const localReportData = useMemo(
+        () =>
+            computeServiceChargesDeductionReport(rentalState, {
+                startDate,
+                endDate,
+                selectedBuildingId,
+                selectedOwnerId,
+                searchQuery,
+                sortKey: sortConfig?.key,
+                sortDirection: sortConfig?.direction,
+            }),
+        [rentalState, startDate, endDate, selectedBuildingId, selectedOwnerId, searchQuery, sortConfig]
+    );
 
-        return rows;
-    }, [categories, transactions, properties, contacts, allBuildings, invoices, bills, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, sortConfig]);
+    const reportData = localOnly ? localReportData : (serverRows ?? localReportData);
 
     const totalAmount = useMemo(() => reportData.reduce((sum, r) => sum + r.amount, 0), [reportData]);
 
@@ -348,6 +313,13 @@ const ServiceChargesDeductionReport: React.FC = () => {
                 </div>
             </div>
 
+            {!localOnly && loading && (
+                <p className="text-sm text-app-muted px-1">Loading report from server…</p>
+            )}
+            {!localOnly && fetchError && (
+                <p className="text-sm text-rose-600 px-1">Server report failed: {fetchError}. Showing local data.</p>
+            )}
+
             <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
@@ -359,7 +331,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
                         {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all') && (
                             <p className="text-xs text-app-muted mt-1">
                                 Filters: 
-                                {selectedBuildingId !== 'all' && ` Building: ${allBuildings.find(b=>b.id===selectedBuildingId)?.name} `}
+                                {selectedBuildingId !== 'all' && ` Building: ${appBuildings.find(b=>b.id===selectedBuildingId)?.name} `}
                                 {selectedOwnerId !== 'all' && ` Owner: ${contacts.find(c=>c.id===selectedOwnerId)?.name}`}
                             </p>
                         )}

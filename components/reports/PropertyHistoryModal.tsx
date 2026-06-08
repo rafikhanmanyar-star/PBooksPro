@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { Transaction, Invoice, Bill, TransactionType, InvoiceType, ContactType, RentalAgreementStatus, InvoiceStatus } from '../../types';
@@ -32,7 +32,8 @@ interface HistoryItem {
 type SortKey = 'date' | 'type' | 'reference' | 'description' | 'contactName' | 'amount' | 'status';
 
 const PropertyHistoryModal: React.FC<PropertyHistoryModalProps> = ({ isOpen, onClose, propertyId, propertyName }) => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
+    const { users } = state;
     const [filterType, setFilterType] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 

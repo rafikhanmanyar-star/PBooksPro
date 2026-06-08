@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Invoice, TransactionType, Transaction, AccountType, InvoiceType } from '../../types';
 import Modal from '../ui/Modal';
@@ -27,7 +27,8 @@ interface RentalPaymentModalProps {
 }
 
 const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose, invoice, transactionToEdit, onShowDeleteWarning }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { accounts, contacts, categories, buildings, properties, transactions, invoices, rentalAgreements, whatsAppTemplates, whatsAppMode } = state;
     const dispatch = useDispatchOnly();
     const { showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();

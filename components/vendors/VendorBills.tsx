@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { Bill, InvoiceStatus } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
@@ -18,7 +18,8 @@ interface VendorBillsProps {
 type SortKey = 'issueDate' | 'billNumber' | 'amount' | 'paidAmount' | 'status' | 'balance' | 'description';
 
 const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { vendors, bills: appBills, whatsAppTemplates, whatsAppMode } = state;
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
     const [search, setSearch] = useState('');
@@ -28,8 +29,8 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
     const vendor = vendors?.find(v => v.id === vendorId);
 
     const bills = useMemo(() => {
-        return allBills.filter(b => (b.vendorId || b.contactId) === vendorId);
-    }, [allBills, vendorId]);
+        return appBills.filter(b => (b.vendorId || b.contactId) === vendorId);
+    }, [appBills, vendorId]);
 
     const filteredBills = useMemo(() => {
         let result = bills;

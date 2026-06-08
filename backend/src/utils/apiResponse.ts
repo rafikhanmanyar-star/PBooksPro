@@ -113,5 +113,26 @@ export function handleRouteError(
     message: e instanceof Error ? e.message : String(e),
     stack: e instanceof Error ? e.stack : undefined,
   });
+
+  void import('../services/monitoring/monitoringCapture.js').then(({ captureMonitoringEvent }) => {
+    const isDb =
+      mapped.code === 'DB_CONNECTION' ||
+      mapped.code === 'TIMEOUT' ||
+      (e instanceof Error && /ECONNREFUSED|terminating connection|57P01/i.test(e.message));
+    const payload = context?.payload as { requestId?: string; tenantId?: string; userId?: string } | undefined;
+    captureMonitoringEvent({
+      category: isDb ? 'database' : 'api_failure',
+      severity: mapped.status >= 500 ? 'error' : 'warn',
+      message: e instanceof Error ? e.message : String(e),
+      code: mapped.code,
+      route: context?.route,
+      requestId: payload?.requestId,
+      tenantId: payload?.tenantId ?? null,
+      userId: payload?.userId ?? null,
+      statusCode: mapped.status,
+      stackTrace: e instanceof Error ? e.stack : undefined,
+    });
+  });
+
   sendFailure(res, mapped.status, mapped.code, mapped.message, mapped.extra);
 }

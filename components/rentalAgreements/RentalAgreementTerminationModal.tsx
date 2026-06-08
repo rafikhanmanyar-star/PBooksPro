@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RentalAgreement, RentalAgreementStatus, InvoiceStatus, Invoice } from '../../types';
 import Modal from '../ui/Modal';
@@ -19,7 +19,8 @@ interface RentalAgreementTerminationModalProps {
 }
 
 const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalProps> = ({ isOpen, onClose, agreement }) => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
+    const { contacts, properties, invoices } = state;
     const dispatch = useDispatchOnly();
     const { showToast } = useNotification();
 

@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, LoanSubtype } from '../../types';
 import Card from '../ui/Card';
@@ -22,7 +22,7 @@ interface LoanReportRow {
 }
 
 const LoanAnalysisReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
     const { print: triggerPrint } = usePrintContext();
 
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');

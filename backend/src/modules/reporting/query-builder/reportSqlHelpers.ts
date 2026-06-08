@@ -104,6 +104,23 @@ export function groupDimensionAlias(g: string): string {
   return `g_${g.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 }
 
+/** Build ORDER BY fragments for grouped reports (dimensions + aggregate aliases). */
+export function buildGroupedOrderParts(
+  sortBy: { field: string; direction: string }[] | undefined,
+  groupDimensions: Record<string, string>,
+  projectedKeys: string[]
+): string[] {
+  const orderParts: string[] = [];
+  for (const s of sortBy ?? []) {
+    if (groupDimensions[s.field]) {
+      orderParts.push(`"${groupDimensionAlias(s.field)}" ${s.direction}`);
+    } else if (projectedKeys.includes(s.field)) {
+      orderParts.push(`"${s.field}" ${s.direction}`);
+    }
+  }
+  return orderParts;
+}
+
 function formatGroupLabel(g: string): string {
   return g.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

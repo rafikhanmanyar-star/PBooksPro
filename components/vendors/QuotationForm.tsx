@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNotification } from '../../context/NotificationContext';
 import { Quotation, QuotationItem, Contact, TransactionType, Document } from '../../types';
@@ -18,7 +18,8 @@ interface QuotationFormProps {
 }
 
 const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit, vendorId, vendorName }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { categories } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const fileInputRef = useRef<HTMLInputElement>(null);

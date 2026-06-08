@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Contact } from '../../types';
 import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
@@ -20,10 +20,9 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
   isOpen,
   onClose,
   contact,
-  phoneNumber: propPhoneNumber,
-}) => {
+  phoneNumber: propPhoneNumber }) => {
   const { showAlert, showToast } = useNotification();
-  const state = useFullAppState();
+      const state = useRentalReportAppState();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -71,16 +70,14 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
         devLogger.log('[WhatsAppChatWindow] Loading messages', {
           phoneNumber: phoneNumber.substring(0, 5) + '***',
           contactId: contact?.id || null,
-          contactName: contact?.name || null,
-        });
+          contactName: contact?.name || null });
         
         const loadedMessages = await WhatsAppChatService.getMessages(phoneNumber, 50, 0, contact?.id);
         
         devLogger.log('[WhatsAppChatWindow] Messages loaded', {
           count: loadedMessages.length,
           hasIncoming: loadedMessages.some(m => m.direction === 'incoming'),
-          hasOutgoing: loadedMessages.some(m => m.direction === 'outgoing'),
-        });
+          hasOutgoing: loadedMessages.some(m => m.direction === 'outgoing') });
         
         setMessages(loadedMessages); // Server already returns in chronological order (oldest first)
         
@@ -117,8 +114,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
         messageId: data.id,
         phoneNumber: data.phoneNumber,
         currentPhoneNumber: phoneNumber,
-        direction: data.direction,
-      });
+        direction: data.direction });
 
       const dataNorm = normalizePhoneForMatch(data.phoneNumber || '');
       const currentNorm = normalizePhoneForMatch(phoneNumber);
@@ -134,8 +130,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
               ...updated[existingIndex],
               ...data,
               timestamp: typeof data.timestamp === 'string' ? new Date(data.timestamp) : data.timestamp,
-              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt,
-            };
+              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt };
             return updated;
           } else {
             // Add new message
@@ -144,8 +139,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
               {
                 ...data,
                 timestamp: typeof data.timestamp === 'string' ? new Date(data.timestamp) : data.timestamp,
-                createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt,
-              },
+                createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt },
             ];
           }
         });
@@ -159,8 +153,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
         currentPhoneNumber: phoneNumber,
         direction: data.direction,
         contactId: data.contactId,
-        currentContactId: contact?.id || null,
-      });
+        currentContactId: contact?.id || null });
 
       const dataNorm = normalizePhoneForMatch(data.phoneNumber || '');
       const currentNorm = normalizePhoneForMatch(phoneNumber);
@@ -174,8 +167,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
       if (phoneMatches && contactMatches && data.direction === 'incoming') {
         devLogger.log('[WhatsAppChatWindow] Adding incoming message to UI', {
           messageId: data.id,
-          phoneNumber: data.phoneNumber.substring(0, 5) + '***',
-        });
+          phoneNumber: data.phoneNumber.substring(0, 5) + '***' });
         
         setMessages((prev) => {
           // Check if message already exists (by id or messageId/wamId)
@@ -189,27 +181,23 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
             // Update existing message
             devLogger.log('[WhatsAppChatWindow] Updating existing message in UI', {
               existingIndex,
-              messageId: data.id,
-            });
+              messageId: data.id });
             const updated = [...prev];
             updated[existingIndex] = {
               ...updated[existingIndex],
               ...data,
               timestamp: typeof data.timestamp === 'string' ? new Date(data.timestamp) : data.timestamp,
-              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt,
-            };
+              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt };
             return updated;
           } else {
             // Add new message (insert in chronological order)
             devLogger.log('[WhatsAppChatWindow] Adding new message to UI', {
               messageId: data.id,
-              currentMessageCount: prev.length,
-            });
+              currentMessageCount: prev.length });
             const newMessage = {
               ...data,
               timestamp: typeof data.timestamp === 'string' ? new Date(data.timestamp) : data.timestamp,
-              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt,
-            };
+              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt };
             
             // Insert in chronological order
             const newMessages = [...prev, newMessage];
@@ -231,16 +219,14 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
           phoneMatches,
           contactMatches,
           dataContactId: data.contactId,
-          currentContactId: contact?.id || null,
-        });
+          currentContactId: contact?.id || null });
       }
     };
 
     const handleWhatsAppMessageStatus = (data: { messageId: string; status: string; timestamp?: Date }) => {
       devLogger.log('[WhatsAppChatWindow] WebSocket: Status update received', {
         messageId: data.messageId,
-        status: data.status,
-      });
+        status: data.status });
 
       // Update message status if it exists
       setMessages((prev) =>
@@ -248,8 +234,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
           if (msg.messageId === data.messageId || msg.wamId === data.messageId) {
             return {
               ...msg,
-              status: data.status as WhatsAppMessage['status'],
-            };
+              status: data.status as WhatsAppMessage['status'] };
           }
           return msg;
         })
@@ -290,16 +275,14 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
       status: 'sending',
       messageText: messageText,
       timestamp: new Date(),
-      createdAt: new Date(),
-    };
+      createdAt: new Date() };
     setMessages((prev) => [...prev, tempMessage]);
 
     try {
       const result = await WhatsAppChatService.sendMessage({
         phoneNumber,
         message: messageText,
-        contactId: contact?.id,
-      });
+        contactId: contact?.id });
 
       // Update temp message with actual message ID
       setMessages((prev) =>

@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { TransactionType, Transaction, AccountType, Project, Bill, InvoiceStatus } from '../../types';
 import Modal from '../ui/Modal';
@@ -47,7 +47,8 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
     balanceDue,
     unpaidAllocations 
 }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
+    const { transactions } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();

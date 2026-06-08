@@ -178,6 +178,225 @@ export function usePrintSettings() {
     return useStateSelector(s => s.printSettings);
 }
 
+/** Payroll payment modals: accounts, categories, projects, buildings, transactions, current user. */
+export function usePayrollPaymentState() {
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const projects = useProjects();
+    const buildings = useBuildings();
+    const transactions = useTransactions();
+    const currentUser = useCurrentUser();
+    return { accounts, categories, projects, buildings, transactions, currentUser };
+}
+
+/** Dashboard budget widgets: budgets, categories, projects, transactions, bills, invoices. */
+export function useBudgetDashboardState() {
+    const budgets = useBudgets();
+    const categories = useCategories();
+    const projects = useProjects();
+    const transactions = useTransactions();
+    const bills = useBills();
+    const invoices = useInvoices();
+    const defaultProjectId = useStateSelector((s) => s.defaultProjectId);
+    return { budgets, categories, projects, transactions, bills, invoices, defaultProjectId };
+}
+
+/** Payroll hub: ledger reconciliation against payslip-linked transactions. */
+export function usePayrollHubState() {
+    const accounts = useAccounts();
+    const transactions = useTransactions();
+    const whatsAppMode = useWhatsAppMode();
+    return { accounts, transactions, whatsAppMode };
+}
+
+/** KPI panel / drilldown: financial + rental slices used by KPI getData(). */
+export function useKPIAppState(): AppState {
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const projects = useProjects();
+    const transactions = useTransactions();
+    const bills = useBills();
+    const invoices = useInvoices();
+    const buildings = useBuildings();
+    const properties = useProperties();
+    const contacts = useContacts();
+    const rentalAgreements = useRentalAgreements();
+    return useMemo(
+        () => _getAppState(),
+        [accounts, categories, projects, transactions, bills, invoices, buildings, properties, contacts, rentalAgreements]
+    );
+}
+
+/** Settings page: entity catalogs + preferences. */
+export function useSettingsPageState(): AppState {
+    const accounts = useAccounts();
+    const categories = useCategories();
+    const projects = useProjects();
+    const buildings = useBuildings();
+    const properties = useProperties();
+    const contacts = useContacts();
+    const units = useUnits();
+    const transactions = useTransactions();
+    const projectAgreements = useProjectAgreements();
+    const currentUser = useCurrentUser();
+    const users = useUsers();
+    const projectInvoiceSettings = useStateSelector((s) => s.projectInvoiceSettings);
+    const showSystemTransactions = useStateSelector((s) => s.showSystemTransactions);
+    const enableColorCoding = useStateSelector((s) => s.enableColorCoding);
+    const enableBeepOnSave = useStateSelector((s) => s.enableBeepOnSave);
+    const enableDatePreservation = useStateSelector((s) => s.enableDatePreservation);
+    const whatsAppMode = useWhatsAppMode();
+    const defaultProjectId = useStateSelector((s) => s.defaultProjectId);
+    const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
+    const agreementSettings = useStateSelector((s) => s.agreementSettings);
+    const projectAgreementSettings = useStateSelector((s) => s.projectAgreementSettings);
+    const editingEntity = useStateSelector((s) => s.editingEntity);
+    return useMemo(
+        () => _getAppState(),
+        [
+            accounts,
+            categories,
+            projects,
+            buildings,
+            properties,
+            contacts,
+            units,
+            transactions,
+            projectAgreements,
+            currentUser,
+            users,
+            projectInvoiceSettings,
+            showSystemTransactions,
+            enableColorCoding,
+            enableBeepOnSave,
+            enableDatePreservation,
+            whatsAppMode,
+            defaultProjectId,
+            rentalInvoiceSettings,
+            agreementSettings,
+            projectAgreementSettings,
+            editingEntity,
+        ]
+    );
+}
+
+/** Import / export wizard: broad entity coverage for full backup files. */
+export function useImportExportState(): AppState {
+    const accounts = useAccounts();
+    const contacts = useContacts();
+    const vendors = useVendors();
+    const categories = useCategories();
+    const projects = useProjects();
+    const buildings = useBuildings();
+    const properties = useProperties();
+    const units = useUnits();
+    const transactions = useTransactions();
+    const invoices = useInvoices();
+    const bills = useBills();
+    const budgets = useBudgets();
+    const contracts = useContracts();
+    const quotations = useQuotations();
+    const documents = useDocuments();
+    return useMemo(
+        () => _getAppState(),
+        [
+            accounts,
+            contacts,
+            vendors,
+            categories,
+            projects,
+            buildings,
+            properties,
+            units,
+            transactions,
+            invoices,
+            bills,
+            budgets,
+            contracts,
+            quotations,
+            documents,
+        ]
+    );
+}
+
+/** Personal finance tab + modals. */
+export function usePersonalFinanceState() {
+    const personalTransactions = usePersonalTransactions();
+    const personalCategories = usePersonalCategories();
+    const accounts = useAccounts();
+    const currentUser = useCurrentUser();
+    return { personalTransactions, personalCategories, accounts, currentUser };
+}
+
+/** Assets / contacts settings grids. */
+export function useEntityCatalogState(): AppState {
+    const projects = useProjects();
+    const buildings = useBuildings();
+    const properties = useProperties();
+    const units = useUnits();
+    const contacts = useContacts();
+    const transactions = useTransactions();
+    return useMemo(
+        () => _getAppState(),
+        [projects, buildings, properties, units, contacts, transactions]
+    );
+}
+
+/** Marketing / project selling page. */
+export function useMarketingPageState(): AppState {
+    const projects = useProjects();
+    const units = useUnits();
+    const contacts = useContacts();
+    const categories = useCategories();
+    const invoices = useInvoices();
+    const documents = useDocuments();
+    const projectAgreements = useProjectAgreements();
+    const installmentPlans = useInstallmentPlans();
+    const planAmenities = usePlanAmenities();
+    const currentUser = useCurrentUser();
+    const users = useUsers();
+    const agreementSettings = useStateSelector((s) => s.agreementSettings);
+    const projectAgreementSettings = useStateSelector((s) => s.projectAgreementSettings);
+    const projectInvoiceSettings = useStateSelector((s) => s.projectInvoiceSettings);
+    const editingEntity = useStateSelector((s) => s.editingEntity);
+    return useMemo(
+        () => _getAppState(),
+        [
+            projects,
+            units,
+            contacts,
+            categories,
+            invoices,
+            documents,
+            projectAgreements,
+            installmentPlans,
+            planAmenities,
+            currentUser,
+            users,
+            agreementSettings,
+            projectAgreementSettings,
+            projectInvoiceSettings,
+            editingEntity,
+        ]
+    );
+}
+
+export function useTransactionLog() {
+    return useStateSelector((s) => s.transactionLog);
+}
+
+export function useErrorLog() {
+    return useStateSelector((s) => s.errorLog);
+}
+
+export function useEditingEntity() {
+    return useStateSelector((s) => s.editingEntity);
+}
+
+export function useWarehouses() {
+    return useStateSelector((s) => (s as AppState & { warehouses?: unknown[] }).warehouses ?? []);
+}
+
 export function useWhatsAppTemplates() {
     return useStateSelector(s => s.whatsAppTemplates);
 }
@@ -311,6 +530,10 @@ export function useProjectReportAppState(): AppState {
     const pmCostPercentage = useStateSelector((s) => s.pmCostPercentage);
     const defaultProjectId = useStateSelector((s) => s.defaultProjectId);
     const currentUser = useCurrentUser();
+    const projectAgreementSettings = useStateSelector((s) => s.projectAgreementSettings);
+    const projectInvoiceSettings = useStateSelector((s) => s.projectInvoiceSettings);
+    const enableColorCoding = useStateSelector((s) => s.enableColorCoding);
+    const enableDatePreservation = useStateSelector((s) => s.enableDatePreservation);
     return useMemo(
         () => _getAppState(),
         [
@@ -333,6 +556,10 @@ export function useProjectReportAppState(): AppState {
             pmCostPercentage,
             defaultProjectId,
             currentUser,
+            projectAgreementSettings,
+            projectInvoiceSettings,
+            enableColorCoding,
+            enableDatePreservation,
         ]
     );
 }
@@ -406,6 +633,12 @@ export function useRentalReportAppState(): AppState {
     const invoices = useInvoices();
     const rentalAgreements = useRentalAgreements();
     const units = useUnits();
+    const projects = useProjects();
+    const agreementSettings = useStateSelector((s) => s.agreementSettings);
+    const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
+    const currentUser = useCurrentUser();
+    const enableColorCoding = useStateSelector((s) => s.enableColorCoding);
+    const enableDatePreservation = useStateSelector((s) => s.enableDatePreservation);
     const whatsAppTemplates = useStateSelector((s) => s.whatsAppTemplates);
     const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
     return useMemo(
@@ -420,6 +653,12 @@ export function useRentalReportAppState(): AppState {
             invoices,
             rentalAgreements,
             units,
+            projects,
+            agreementSettings,
+            rentalInvoiceSettings,
+            currentUser,
+            enableColorCoding,
+            enableDatePreservation,
             whatsAppTemplates,
             whatsAppMode,
         ]

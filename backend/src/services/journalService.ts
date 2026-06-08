@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
 import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 import { todayUtcYyyyMmDd } from '../utils/dateOnly.js';
@@ -8,6 +9,7 @@ import {
   swapLinesForReversal,
   type JournalLineInput,
 } from '../financial/validation.js';
+import { appendAuditEvent } from './enterpriseAuditService.js';
 
 export type InvestorTransactionType = 'investment' | 'profit_allocation' | 'withdrawal' | 'transfer';
 
@@ -55,10 +57,15 @@ export async function insertJournalEntry(
   client: pg.PoolClient,
   tenantId: string,
   input: CreateJournalBody,
-  journalEntryIdOverride?: string
+  journalEntryIdOverride?: string,
+  options?: { allowClosedPeriod?: boolean }
 ): Promise<{ journalEntryId: string }> {
   const err = validateBalanced(input.lines);
   if (err) throw new Error(err);
+
+  await assertAccountingPeriodOpen(client, tenantId, input.entryDate, {
+    allowClosedPeriod: options?.allowClosedPeriod,
+  });
 
   await assertAccountsExist(
     client,
@@ -124,6 +131,17 @@ export async function insertJournalEntry(
      VALUES ($1, $2, 'journal_entry', $3, 'create', $4, NOW(), NULL, $5)`,
     [auditId, tenantId, journalEntryId, input.createdBy ?? null, auditPayload]
   );
+
+  await appendAuditEvent(client, {
+    tenantId,
+    userId: input.createdBy ?? null,
+    module: 'journal',
+    action: 'post',
+    entityType: 'journal_entry',
+    entityId: journalEntryId,
+    summary: `Journal entry posted (${input.reference?.trim() || journalEntryId.slice(0, 8)})`,
+    newValue: JSON.parse(auditPayload),
+  });
 
   return { journalEntryId };
 }
@@ -310,6 +328,7 @@ export type GeneralLedgerReportRow = {
   debit_amount: number;
   credit_amount: number;
   running_balance: number;
+  is_brought_forward?: boolean;
 };
 
 export async function getGeneralLedgerReport(
@@ -319,22 +338,58 @@ export async function getGeneralLedgerReport(
   options?: { fromDate?: string; toDate?: string }
 ): Promise<{ accountType: string; accountName: string; rows: GeneralLedgerReportRow[] }> {
   const acc = await client.query(
-    `SELECT type, name FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) AND deleted_at IS NULL`,
+    `SELECT type, name, COALESCE(opening_balance, 0)::float AS opening_balance
+     FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) AND deleted_at IS NULL`,
     [accountId, tenantId, GLOBAL_SYSTEM_TENANT_ID]
   );
   if (acc.rows.length === 0) throw new Error('Account not found.');
   const accountType = String((acc.rows[0] as { type: string }).type);
   const accountName = String((acc.rows[0] as { name: string }).name);
+  const openingBalance = roundMoney(Number((acc.rows[0] as { opening_balance: number }).opening_balance));
   const dir = normalBalanceDirection(accountType);
+
+  let running = roundMoney(dir * openingBalance);
+
+  if (options?.fromDate) {
+    const prior = await client.query(
+      `SELECT
+        COALESCE(SUM(jl.debit_amount), 0)::float AS gross_debit,
+        COALESCE(SUM(jl.credit_amount), 0)::float AS gross_credit
+      FROM journal_lines jl
+      INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_id = $1 AND je.tenant_id = $2 AND je.entry_date < $3::date`,
+      [accountId, tenantId, options.fromDate]
+    );
+    if (prior.rows.length) {
+      const gd = roundMoney(Number((prior.rows[0] as { gross_debit: number }).gross_debit));
+      const gc = roundMoney(Number((prior.rows[0] as { gross_credit: number }).gross_credit));
+      running = roundMoney(running + dir * (gd - gc));
+    }
+  }
+
+  const rows: GeneralLedgerReportRow[] = [];
+  if (Math.abs(running) >= 0.005 || openingBalance !== 0) {
+    rows.push({
+      entry_date: options?.fromDate ?? '',
+      journal_entry_id: '',
+      reference: 'B/F',
+      description: 'Brought forward (opening balance + prior activity)',
+      line_number: 0,
+      debit_amount: 0,
+      credit_amount: 0,
+      running_balance: running,
+      is_brought_forward: true,
+    });
+  }
 
   const params: unknown[] = [accountId, tenantId];
   let cond = '';
   if (options?.fromDate) {
-    cond += ` AND je.entry_date >= $${params.length + 1}`;
+    cond += ` AND je.entry_date >= $${params.length + 1}::date`;
     params.push(options.fromDate);
   }
   if (options?.toDate) {
-    cond += ` AND je.entry_date <= $${params.length + 1}`;
+    cond += ` AND je.entry_date <= $${params.length + 1}::date`;
     params.push(options.toDate);
   }
 
@@ -354,13 +409,12 @@ export async function getGeneralLedgerReport(
     params
   );
 
-  let running = 0;
-  const rows: GeneralLedgerReportRow[] = (r.rows as Record<string, unknown>[]).map((raw) => {
+  for (const raw of r.rows as Record<string, unknown>[]) {
     const debit = roundMoney(Number(raw.debit_amount));
     const credit = roundMoney(Number(raw.credit_amount));
     const delta = dir * (debit - credit);
     running = roundMoney(running + delta);
-    return {
+    rows.push({
       entry_date: String(raw.entry_date),
       journal_entry_id: String(raw.journal_entry_id),
       reference: String(raw.reference ?? ''),
@@ -369,8 +423,8 @@ export async function getGeneralLedgerReport(
       debit_amount: debit,
       credit_amount: credit,
       running_balance: running,
-    };
-  });
+    });
+  }
 
   return { accountType, accountName, rows };
 }

@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -28,7 +28,7 @@ interface RevenueRow {
 type SortKey = 'agreementNumber' | 'projectName' | 'ownerName' | 'listPrice' | 'customerDiscount' | 'floorDiscount' | 'lumpSumDiscount' | 'miscDiscount' | 'sellingPrice' | 'brokerFee';
 
 const RevenueAnalysisReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { print: triggerPrint } = usePrintContext();
     
     // Filter State

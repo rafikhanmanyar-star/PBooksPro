@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import { Invoice, InvoiceStatus, InvoiceType } from '../../types';
 import Modal from '../ui/Modal';
@@ -45,7 +45,7 @@ const PropertyInvoicePickModal: React.FC<PropertyInvoicePickModalProps> = ({
     invoiceType = 'ALL',
     onSelectInvoice,
 }) => {
-    const state = useFullAppState();
+    const state = useRentalReportAppState();
 
     const isUnpaid = (inv: Invoice) =>
         inv.status !== InvoiceStatus.PAID &&

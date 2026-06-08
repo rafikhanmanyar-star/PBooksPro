@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { ProjectAgreement, ContactType, ProjectAgreementStatus, Invoice, InvoiceStatus, InvoiceType, Project, InstallmentFrequency } from '../../types';
@@ -7,12 +7,27 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
+import Textarea from '../ui/Textarea';
+import FormSectionCard from '../ui/FormSectionCard';
 import { useNotification } from '../../context/NotificationContext';
 import { usePrintContext } from '../../context/PrintContext';
 import type { AgreementPrintData } from '../print/AgreementLayout';
 import InstallmentConfigForm from '../settings/InstallmentConfigForm';
 import Modal from '../ui/Modal';
-import { ICONS } from '../../constants';
+import { CURRENCY, ICONS } from '../../constants';
+import {
+    AlertCircle,
+    Calendar,
+    CheckCircle2,
+    FileCheck,
+    FileText,
+    Info,
+    Loader2,
+    Save,
+    User,
+    Wallet,
+    X,
+} from 'lucide-react';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { formatApiErrorMessage } from '../../services/api/client';
@@ -131,7 +146,7 @@ interface ProjectAgreementFormProps {
 }
 
 const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, agreementToEdit, onCancelRequest }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showToast, showAlert, showProgress, hideProgress } = useNotification();
     const { print: triggerPrint } = usePrintContext();
@@ -224,6 +239,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     const [rebateBrokerId, setRebateBrokerId] = useState(agreementToEdit?.rebateBrokerId || '');
 
     const [description, setDescription] = useState(agreementToEdit?.description || '');
+    const [isSaving, setIsSaving] = useState(false);
     const [agreementNumberError, setAgreementNumberError] = useState('');
     const [status, setStatus] = useState<ProjectAgreementStatus>(agreementToEdit?.status || ProjectAgreementStatus.ACTIVE);
     const [installmentPlan, setInstallmentPlan] = useState<{ durationYears: number; downPaymentPercentage: number; frequency: InstallmentFrequency; optionalInstallment?: boolean; optionalInstallmentName?: string } | undefined>(agreementToEdit?.installmentPlan);
@@ -898,8 +914,26 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         // Prevent submission if the nested installment config form is open
         if (showInstallmentConfig) return;
         if (agreementNumberError) return;
-        await executeSave(false);
+        if (isSaving) return;
+        setIsSaving(true);
+        try {
+            await executeSave(false);
+        } finally {
+            setIsSaving(false);
+        }
     };
+
+    const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setDescription(e.target.value.slice(0, 500));
+    };
+
+    const formatCurrencyDisplay = (value: string | number) => {
+        const num = typeof value === 'string' ? parseFloat(value) || 0 : value;
+        return `${CURRENCY} ${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
+    const sellingPriceNum = parseFloat(sellingPrice) || 0;
+    const isFinalPriceValid = sellingPriceNum > 0;
 
     const handleCreatePlan = () => {
         setShowMissingPlanDialog(false);
@@ -979,8 +1013,13 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         return getFormBackgroundColorStyle(projectId, undefined, state);
     }, [projectId, state]);
 
-    const cardClass = 'bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5 lg:p-6';
-    const sectionTitleClass = 'text-sm font-semibold text-slate-800 mb-4';
+    const inputClass =
+        'text-sm rounded-lg border-slate-200 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400';
+    const isEditMode = Boolean(agreementToEdit);
+    const modalTitle = isEditMode ? 'Edit Project Agreement' : 'New Project Agreement';
+    const modalSubtitle = isEditMode
+        ? 'Update agreement details and pricing for this project.'
+        : 'Create a new agreement and define pricing details for this project.';
 
     return (
         <>
@@ -992,290 +1031,526 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 onForceEdit={handleForceRecordLock}
                 onDismiss={recordLock.dismissModal}
             />
-            <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0" style={formBackgroundStyle}>
-                {/* Header: Agreement ID badge (when editing) */}
-                <div className="flex-shrink-0 mb-4 space-y-2">
-                    <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-sm font-medium">
-                        {agreementNumber.trim() || '—'}
-                    </span>
-                    {recordLock.bannerMode === 'self' && (
-                        <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
-                    )}
-                    {recordLock.bannerMode === 'other' && (
-                        <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
-                    )}
-                    {invoiceLockedLayout && !recordLock.viewOnly && (
-                        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                            This agreement has installment invoices. Owner, project, pricing, dates, and installment plan are locked. You can still update the broker and the rebate amount (broker fee), then save.
-                        </p>
-                    )}
-                </div>
+            <form
+                onSubmit={handleSubmit}
+                className="flex flex-col h-full min-h-0"
+                style={formBackgroundStyle}
+                aria-label={modalTitle}
+            >
+                {/* Header */}
+                <header className="flex-shrink-0 pb-5 border-b border-slate-200/80">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                            <div
+                                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600 shadow-sm"
+                                aria-hidden="true"
+                            >
+                                <FileCheck className="h-5 w-5" strokeWidth={2} />
+                            </div>
+                            <div className="min-w-0 flex-1 space-y-2">
+                                <div>
+                                    <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                                        {modalTitle}
+                                    </h2>
+                                    <p className="mt-0.5 text-sm text-slate-500">{modalSubtitle}</p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 shadow-sm">
+                                        <span className="text-xs font-medium text-violet-600">Agreement ID</span>
+                                        <input
+                                            type="text"
+                                            value={agreementNumber}
+                                            onChange={(e) => setAgreementNumber(e.target.value)}
+                                            disabled={agreementFieldsDisabled}
+                                            autoFocus={!isEditMode}
+                                            aria-label="Agreement ID"
+                                            aria-invalid={Boolean(agreementNumberError)}
+                                            aria-describedby={agreementNumberError ? 'agreement-id-error' : undefined}
+                                            className="min-w-[5rem] max-w-[10rem] bg-transparent border-0 p-0 text-sm font-semibold text-violet-900 focus:outline-none focus:ring-0 disabled:opacity-60"
+                                        />
+                                    </div>
+                                    {agreementNumberError && (
+                                        <p id="agreement-id-error" className="text-xs text-red-600 w-full" role="alert">
+                                            {agreementNumberError}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-shrink-0 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                            aria-label="Close modal"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
 
-                {/* Main content: two-column desktop, single-column mobile */}
+                    {(recordLock.bannerMode === 'self' ||
+                        recordLock.bannerMode === 'other' ||
+                        (invoiceLockedLayout && !recordLock.viewOnly)) && (
+                        <div className="mt-4 space-y-2">
+                            {recordLock.bannerMode === 'self' && (
+                                <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
+                            )}
+                            {recordLock.bannerMode === 'other' && (
+                                <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
+                            )}
+                            {invoiceLockedLayout && !recordLock.viewOnly && (
+                                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                    This agreement has installment invoices. Owner, project, pricing, dates, and installment
+                                    plan are locked. You can still update the broker and the rebate amount (broker fee),
+                                    then save.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </header>
+
+                {/* Body — 2×2 card grid on desktop, single column on tablet/mobile */}
                 <div
-                    className={`flex-1 min-h-[280px] grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4 lg:gap-6 overflow-y-auto overflow-x-hidden overscroll-contain ${
+                    className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain py-5 ${
                         recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''
                     }`}
                 >
-                    {/* SECTION 1 — Agreement Details (left column) */}
-                    <div className={cardClass}>
-                        <h3 className={sectionTitleClass}>Agreement Details</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <Input
-                                    label="Agreement ID"
-                                    value={agreementNumber}
-                                    onChange={e => setAgreementNumber(e.target.value)}
-                                    required
-                                    autoFocus
-                                    disabled={agreementFieldsDisabled}
-                                    className="text-sm rounded-lg border-slate-300 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
-                                />
-                                {agreementNumberError && (
-                                    <p className="text-red-500 text-xs mt-1">{agreementNumberError}</p>
-                                )}
-                            </div>
-                            <DatePicker
-                                label="Date"
-                                value={issueDate}
-                                onChange={handleIssueDateChange}
-                                required
-                                disabled={agreementFieldsDisabled}
-                                className="text-sm"
-                            />
-                            <ComboBox
-                                label="Owner"
-                                items={clients}
-                                selectedId={clientId}
-                                onSelect={item => setClientId(item?.id || '')}
-                                placeholder="Select owner"
-                                required
-                                disabled={agreementFieldsDisabled}
-                                allowAddNew={false}
-                            />
-                            <ComboBox
-                                label="Project"
-                                items={state.projects}
-                                selectedId={projectId}
-                                onSelect={item => { setProjectId(item?.id || ''); setUnitIds([]); }}
-                                placeholder="Select project"
-                                required
-                                disabled={agreementFieldsDisabled}
-                                allowAddNew={false}
-                            />
-                            {/* Units — multi-select tag style */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Units <span className="text-red-500">*</span>
-                                </label>
-                                <div className="min-h-[2.75rem] p-3 rounded-lg border border-slate-300 bg-slate-50/50 focus-within:ring-2 focus-within:ring-emerald-500/50 focus-within:border-emerald-500 transition-colors">
-                                    <div className="flex flex-wrap gap-2 mb-2">
-                                        {unitIds.map(id => {
-                                            const unit = state.units.find(u => u.id === id);
-                                            if (!unit) return null;
-                                            return (
-                                                <span
-                                                    key={id}
-                                                    className="inline-flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 px-2.5 py-1 rounded-md text-sm font-medium shadow-sm"
-                                                >
-                                                    {unit.name}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemoveUnit(id)}
-                                                        disabled={agreementFieldsDisabled}
-                                                        className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400/50 disabled:opacity-40 disabled:pointer-events-none"
-                                                        aria-label="Remove unit"
-                                                    >
-                                                        <div className="w-3.5 h-3.5">{ICONS.x}</div>
-                                                    </button>
-                                                </span>
-                                            );
-                                        })}
-                                        {unitIds.length === 0 && (
-                                            <span className="text-sm text-slate-400 italic">No units selected</span>
-                                        )}
-                                    </div>
-                                    <ComboBox
-                                        items={unitsForSelection}
-                                        selectedId=""
-                                        onSelect={handleAddUnit}
-                                        placeholder={projectId ? 'Add unit...' : 'Select project first'}
-                                        disabled={!projectId || agreementFieldsDisabled}
-                                        allowAddNew={false}
-                                    />
-                                </div>
-                            </div>
-                            {agreementToEdit && (
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
-                                    <select
-                                        value={status}
-                                        onChange={(e) => setStatus(e.target.value as ProjectAgreementStatus)}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
+                        {/* Column 1 */}
+                        <div className="flex flex-col gap-5 lg:gap-6 min-w-0">
+                            <FormSectionCard
+                                id="agreement-info"
+                                title="Agreement Information"
+                                icon={<Info className="h-4 w-4" strokeWidth={2} />}
+                            >
+                                <div className="space-y-4">
+                                    <DatePicker
+                                        label="Date"
+                                        value={issueDate}
+                                        onChange={handleIssueDateChange}
+                                        required
                                         disabled={agreementFieldsDisabled}
-                                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                        aria-label="Agreement status"
-                                    >
-                                        <option value={ProjectAgreementStatus.ACTIVE}>Active</option>
-                                        <option value={ProjectAgreementStatus.CANCELLED}>Cancelled</option>
-                                        <option value={ProjectAgreementStatus.COMPLETED}>Completed</option>
-                                    </select>
-                                    {status === ProjectAgreementStatus.CANCELLED && agreementToEdit.status !== ProjectAgreementStatus.CANCELLED && (
-                                        <p className="text-xs text-amber-600 mt-1.5">Use &quot;Cancel Agreement&quot; below for proper processing.</p>
+                                        className={inputClass}
+                                    />
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <ComboBox
+                                            label="Owner"
+                                            items={clients}
+                                            selectedId={clientId}
+                                            onSelect={(item) => setClientId(item?.id || '')}
+                                            placeholder="Select owner"
+                                            required
+                                            disabled={agreementFieldsDisabled}
+                                            allowAddNew={false}
+                                        />
+                                        <ComboBox
+                                            label="Project"
+                                            items={state.projects}
+                                            selectedId={projectId}
+                                            onSelect={(item) => {
+                                                setProjectId(item?.id || '');
+                                                setUnitIds([]);
+                                            }}
+                                            placeholder="Select project"
+                                            required
+                                            disabled={agreementFieldsDisabled}
+                                            allowAddNew={false}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                                            Units <span className="text-red-500" aria-hidden="true">*</span>
+                                        </label>
+                                        <div
+                                            className={`min-h-[5.5rem] rounded-xl border p-4 transition-colors ${
+                                                projectId
+                                                    ? 'border-slate-200 bg-white focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-500/20'
+                                                    : 'border-slate-200 bg-slate-50/80 opacity-80'
+                                            }`}
+                                        >
+                                            <div className="flex flex-wrap gap-2 mb-2">
+                                                {unitIds.map((id) => {
+                                                    const unit = state.units.find((u) => u.id === id);
+                                                    if (!unit) return null;
+                                                    return (
+                                                        <span
+                                                            key={id}
+                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-sm font-medium text-slate-700"
+                                                        >
+                                                            {unit.name}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveUnit(id)}
+                                                                disabled={agreementFieldsDisabled}
+                                                                className="rounded p-0.5 text-slate-400 transition-colors hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50 disabled:opacity-40 disabled:pointer-events-none"
+                                                                aria-label={`Remove unit ${unit.name}`}
+                                                            >
+                                                                <X className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </span>
+                                                    );
+                                                })}
+                                                {unitIds.length === 0 && (
+                                                    <span className="text-sm italic text-slate-400">No units selected</span>
+                                                )}
+                                            </div>
+                                            {!projectId && (
+                                                <p className="text-xs text-slate-400 mb-2">
+                                                    Select project first to choose units
+                                                </p>
+                                            )}
+                                            <ComboBox
+                                                items={unitsForSelection}
+                                                selectedId=""
+                                                onSelect={handleAddUnit}
+                                                placeholder={projectId ? 'Add unit...' : 'Select project first'}
+                                                disabled={!projectId || agreementFieldsDisabled}
+                                                allowAddNew={false}
+                                            />
+                                        </div>
+                                    </div>
+                                    {agreementToEdit && (
+                                        <div>
+                                            <label htmlFor="agreement-status" className="block text-sm font-medium text-slate-700 mb-2">
+                                                Status
+                                            </label>
+                                            <select
+                                                id="agreement-status"
+                                                value={status}
+                                                onChange={(e) => setStatus(e.target.value as ProjectAgreementStatus)}
+                                                disabled={agreementFieldsDisabled}
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:cursor-not-allowed disabled:bg-slate-100"
+                                            >
+                                                <option value={ProjectAgreementStatus.ACTIVE}>Active</option>
+                                                <option value={ProjectAgreementStatus.CANCELLED}>Cancelled</option>
+                                                <option value={ProjectAgreementStatus.COMPLETED}>Completed</option>
+                                            </select>
+                                            {status === ProjectAgreementStatus.CANCELLED &&
+                                                agreementToEdit.status !== ProjectAgreementStatus.CANCELLED && (
+                                                    <p className="mt-1.5 text-xs text-amber-600">
+                                                        Use &quot;Cancel Agreement&quot; below for proper processing.
+                                                    </p>
+                                                )}
+                                        </div>
                                     )}
                                 </div>
-                            )}
+                            </FormSectionCard>
+
+                            <FormSectionCard
+                                id="additional-details"
+                                title="Additional Details"
+                                icon={<FileText className="h-4 w-4" strokeWidth={2} />}
+                            >
+                                <div>
+                                    <Textarea
+                                        label="Notes / Remarks"
+                                        value={description}
+                                        onChange={handleDescriptionChange}
+                                        disabled={agreementFieldsDisabled}
+                                        placeholder="Add any additional notes or remarks about this agreement..."
+                                        rows={4}
+                                        maxLength={500}
+                                    />
+                                    <p
+                                        className="mt-1.5 text-right text-xs text-slate-400 tabular-nums"
+                                        aria-live="polite"
+                                    >
+                                        {description.length} / 500
+                                    </p>
+                                </div>
+                            </FormSectionCard>
+                        </div>
+
+                        {/* Column 2 */}
+                        <div className="flex flex-col gap-5 lg:gap-6 min-w-0">
+                            <FormSectionCard
+                                id="pricing-summary"
+                                title="Pricing Summary"
+                                icon={<Wallet className="h-4 w-4" strokeWidth={2} />}
+                            >
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                                        <Input
+                                            label="List Price"
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={listPrice}
+                                            onChange={(e) => {
+                                                userEditedListPriceRef.current = true;
+                                                handleAmountChange(setListPrice)(e);
+                                            }}
+                                            disabled={agreementFieldsDisabled}
+                                            className={inputClass}
+                                        />
+                                        <Input
+                                            label="Customer Discount"
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={customerDiscount}
+                                            onChange={handleAmountChange(setCustomerDiscount)}
+                                            disabled={agreementFieldsDisabled}
+                                            className={inputClass}
+                                        />
+                                        <Input
+                                            label="Floor Discount"
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={floorDiscount}
+                                            onChange={handleAmountChange(setFloorDiscount)}
+                                            disabled={agreementFieldsDisabled}
+                                            className={inputClass}
+                                        />
+                                        <Input
+                                            label="Lump Sum"
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={lumpSumDiscount}
+                                            onChange={handleAmountChange(setLumpSumDiscount)}
+                                            disabled={agreementFieldsDisabled}
+                                            className={inputClass}
+                                        />
+                                        <Input
+                                            label="Misc"
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={miscDiscount}
+                                            onChange={handleAmountChange(setMiscDiscount)}
+                                            disabled={agreementFieldsDisabled}
+                                            className={`${inputClass} sm:col-span-2`}
+                                        />
+                                    </div>
+
+                                    <div className="border-t border-slate-200 pt-4">
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                                            Final Price (Selling Price){' '}
+                                            <span className="text-red-500" aria-hidden="true">*</span>
+                                        </label>
+                                        <div
+                                            className={`rounded-xl border-2 px-4 py-3.5 transition-colors ${
+                                                isFinalPriceValid
+                                                    ? 'border-emerald-300 bg-emerald-50/80'
+                                                    : 'border-amber-300 bg-amber-50/80'
+                                            }`}
+                                            role="status"
+                                            aria-live="polite"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span
+                                                    className={`text-xl sm:text-2xl font-bold tabular-nums ${
+                                                        isFinalPriceValid ? 'text-emerald-700' : 'text-amber-700'
+                                                    }`}
+                                                >
+                                                    {formatCurrencyDisplay(sellingPrice)}
+                                                </span>
+                                                {isFinalPriceValid ? (
+                                                    <CheckCircle2
+                                                        className="h-6 w-6 flex-shrink-0 text-emerald-600"
+                                                        aria-label="Final price is valid"
+                                                    />
+                                                ) : (
+                                                    <AlertCircle
+                                                        className="h-6 w-6 flex-shrink-0 text-amber-600"
+                                                        aria-label="Final price must be greater than zero"
+                                                    />
+                                                )}
+                                            </div>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Calculated from list price and discounts; must be greater than zero
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </FormSectionCard>
+
+                            <FormSectionCard
+                                id="broker-details"
+                                title="Broker Details"
+                                icon={<User className="h-4 w-4" strokeWidth={2} />}
+                            >
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <ComboBox
+                                        label="Broker Name"
+                                        items={brokers}
+                                        selectedId={rebateBrokerId}
+                                        onSelect={(item) => setRebateBrokerId(item?.id || '')}
+                                        placeholder="Select broker"
+                                        disabled={brokerFieldsDisabled}
+                                        allowAddNew={false}
+                                    />
+                                    <div>
+                                        <label htmlFor="rebate-amount" className="block text-sm font-medium text-slate-700 mb-1">
+                                            Rebate Amount
+                                        </label>
+                                        <div className="relative flex rounded-lg border border-slate-200 bg-white focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-500/30">
+                                            <input
+                                                id="rebate-amount"
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={rebateAmount}
+                                                onChange={handleAmountChange(setRebateAmount)}
+                                                disabled={brokerFieldsDisabled}
+                                                className="block w-full rounded-l-lg border-0 bg-transparent px-3 py-2.5 text-sm tabular-nums focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:bg-slate-100"
+                                                aria-label="Rebate amount"
+                                            />
+                                            <span className="inline-flex items-center rounded-r-lg border-l border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-500">
+                                                {CURRENCY}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </FormSectionCard>
                         </div>
                     </div>
 
-                    {/* Right column: Pricing Summary + Broker + Installment Plan */}
-                    <div className="flex flex-col gap-4 min-h-0 min-w-0">
-                        {/* SECTION 2 — Pricing Summary */}
-                        <div className={`${cardClass} flex-shrink-0`}>
-                            <h3 className={sectionTitleClass}>Pricing Summary</h3>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-                                <Input
-                                    label="List Price"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={listPrice}
-                                    onChange={(e) => {
-                                        userEditedListPriceRef.current = true;
-                                        handleAmountChange(setListPrice)(e);
-                                    }}
-                                    disabled={agreementFieldsDisabled}
-                                    className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50"
-                                />
-                                <Input label="Customer Discount" type="text" inputMode="decimal" value={customerDiscount} onChange={handleAmountChange(setCustomerDiscount)} disabled={agreementFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
-                                <Input label="Floor Discount" type="text" inputMode="decimal" value={floorDiscount} onChange={handleAmountChange(setFloorDiscount)} disabled={agreementFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
-                                <Input label="Lump Sum" type="text" inputMode="decimal" value={lumpSumDiscount} onChange={handleAmountChange(setLumpSumDiscount)} disabled={agreementFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
-                                <Input label="Misc" type="text" inputMode="decimal" value={miscDiscount} onChange={handleAmountChange(setMiscDiscount)} disabled={agreementFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
-                                <div className="col-span-2">
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        Final price (Selling price) <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="rounded-lg border-2 border-emerald-200 bg-emerald-50/80 px-3 py-2.5">
-                                        <span className="text-lg font-bold text-emerald-700 tabular-nums">{parseFloat(sellingPrice || '0').toLocaleString()}</span>
-                                        <p className="text-xs text-slate-500 mt-0.5">Calculated from list price and discounts; must be greater than zero</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* SECTION 3 — Broker */}
-                        <div className={`${cardClass} flex-shrink-0`}>
-                            <h3 className={sectionTitleClass}>Broker</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <ComboBox label="Broker Name" items={brokers} selectedId={rebateBrokerId} onSelect={item => setRebateBrokerId(item?.id || '')} placeholder="Select broker" disabled={brokerFieldsDisabled} allowAddNew={false} />
-                                <Input label="Rebate Amount" type="text" inputMode="decimal" value={rebateAmount} onChange={handleAmountChange(setRebateAmount)} disabled={brokerFieldsDisabled} className="text-sm rounded-lg focus:ring-2 focus:ring-emerald-500/50" />
-                            </div>
-                        </div>
-
-                        {/* SECTION 4 — Installment Plan — more vertical space when in edit mode */}
-                        {projectId && clientId && (
-                            <div
-                                className={`${cardClass} flex-1 flex flex-col overflow-hidden ${showInstallmentConfig ? 'min-h-[420px]' : 'min-h-[180px]'}`}
-                            >
-                                <div className="flex items-center justify-between gap-2 flex-shrink-0 mb-4">
-                                    <h3 className={sectionTitleClass + ' mb-0'}>Installment Plan</h3>
+                    {/* Installment Plan — full width below grid */}
+                    {projectId && clientId && (
+                        <div className="mt-5 lg:mt-6">
+                            <FormSectionCard
+                                id="installment-plan"
+                                title="Installment Plan"
+                                icon={<Calendar className="h-4 w-4" strokeWidth={2} />}
+                                headerAction={
                                     <Button
                                         type="button"
                                         variant="secondary"
                                         onClick={() => setShowInstallmentConfig(!showInstallmentConfig)}
                                         disabled={recordLock.viewOnly || invoiceLockedLayout}
-                                        className="!text-sm !px-3 !py-1.5 rounded-lg border-slate-300"
+                                        className="!text-xs !py-1.5 !px-3 rounded-lg border-slate-200"
                                     >
                                         {showInstallmentConfig ? 'Hide' : installmentPlan ? 'Edit Plan' : 'Configure'}
                                     </Button>
-                                </div>
+                                }
+                                className={showInstallmentConfig ? 'min-h-[420px]' : ''}
+                            >
                                 {installmentPlan && !showInstallmentConfig && (
-                                    <div className="flex flex-wrap gap-2 flex-shrink-0">
-                                        <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-sm font-medium">
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
                                             {installmentPlan.durationYears} Years
                                         </span>
-                                        <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-sm font-medium">
+                                        <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
                                             {installmentPlan.downPaymentPercentage}% Down Payment
                                         </span>
-                                        <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-sm font-medium">
+                                        <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
                                             {installmentPlan.frequency} Installments
                                         </span>
                                         {installmentPlan.optionalInstallment && (
-                                            <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-medium">
+                                            <span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800">
                                                 + {installmentPlan.optionalInstallmentName || 'On Possession'}
                                             </span>
                                         )}
                                     </div>
                                 )}
+                                {!installmentPlan && !showInstallmentConfig && (
+                                    <p className="text-sm text-slate-500">
+                                        No installment plan configured. Click Configure to set up payment terms.
+                                    </p>
+                                )}
                                 {showInstallmentConfig && (
-                                    <div className="flex-1 min-h-[320px] mt-2 bg-slate-50/80 p-4 rounded-lg border border-slate-200 overflow-y-auto overflow-x-hidden">
-                                        <InstallmentConfigForm config={installmentPlan} onSave={handleConfigSave} onCancel={() => setShowInstallmentConfig(false)} />
+                                    <div className="mt-2 min-h-[320px] overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                                        <InstallmentConfigForm
+                                            config={installmentPlan}
+                                            onSave={handleConfigSave}
+                                            onCancel={() => setShowInstallmentConfig(false)}
+                                        />
                                     </div>
                                 )}
-                            </div>
-                        )}
-                    </div>
+                            </FormSectionCard>
+                        </div>
+                    )}
                 </div>
 
-                {/* SECTION 5 — Action bar */}
-                <div className="flex-shrink-0 pt-4 mt-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-3 pointer-events-auto">
-                    <div className="flex flex-wrap gap-2">
-                        {agreementToEdit && (
-                            <Button
-                                type="button"
-                                variant="danger"
-                                onClick={handleDelete}
-                                disabled={recordLock.viewOnly}
-                                className="!text-sm !py-2 !px-4 rounded-lg"
-                            >
-                                Delete
-                            </Button>
-                        )}
-                        {agreementToEdit && agreementToEdit.status === ProjectAgreementStatus.ACTIVE && onCancelRequest && (
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => onCancelRequest(agreementToEdit)}
-                                disabled={recordLock.viewOnly}
-                                className="!text-sm !py-2 !px-4 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50"
-                            >
-                                Cancel Agreement
-                            </Button>
-                        )}
+                {/* Sticky footer */}
+                <footer className="flex-shrink-0 border-t border-slate-200/80 bg-white/95 backdrop-blur-sm pt-4 mt-auto pointer-events-auto">
+                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-violet-100 bg-violet-50/80 px-3 py-2.5 text-sm text-violet-800">
+                        <Info className="h-4 w-4 flex-shrink-0 text-violet-600" aria-hidden="true" />
+                        <span>Fields marked with * are required.</span>
                     </div>
-                    <div className="flex flex-wrap gap-2 justify-end">
-                        {agreementToEdit && (
+
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap gap-2">
+                            {agreementToEdit && (
+                                <Button
+                                    type="button"
+                                    variant="danger"
+                                    onClick={handleDelete}
+                                    disabled={recordLock.viewOnly || isSaving}
+                                    className="!text-sm !py-2 !px-4 rounded-lg"
+                                >
+                                    Delete
+                                </Button>
+                            )}
+                            {agreementToEdit &&
+                                agreementToEdit.status === ProjectAgreementStatus.ACTIVE &&
+                                onCancelRequest && (
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        onClick={() => onCancelRequest(agreementToEdit)}
+                                        disabled={recordLock.viewOnly || isSaving}
+                                        className="!text-sm !py-2 !px-4 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50"
+                                    >
+                                        Cancel Agreement
+                                    </Button>
+                                )}
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-end ml-auto">
+                            {agreementToEdit && (
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={handleManualGenerate}
+                                    disabled={recordLock.viewOnly || invoiceLockedLayout || isSaving}
+                                    className="!text-sm !py-2 !px-4 rounded-lg"
+                                >
+                                    Create Installments
+                                </Button>
+                            )}
+                            {agreementToEdit && agreementPrintData && (
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={() => triggerPrint('AGREEMENT', agreementPrintData)}
+                                    disabled={isSaving}
+                                    className="!text-sm !py-2 !px-4 rounded-lg flex items-center gap-2"
+                                >
+                                    {ICONS.print && (
+                                        <span className="w-4 h-4 [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>
+                                    )}
+                                    Print
+                                </Button>
+                            )}
                             <Button
                                 type="button"
                                 variant="secondary"
-                                onClick={handleManualGenerate}
-                                disabled={recordLock.viewOnly || invoiceLockedLayout}
-                                className="!text-sm !py-2 !px-4 rounded-lg"
+                                onClick={onClose}
+                                disabled={isSaving}
+                                className="!text-sm !py-2 !px-4 rounded-lg border-slate-200"
                             >
-                                Create Installments
+                                Cancel
                             </Button>
-                        )}
-                        {agreementToEdit && agreementPrintData && (
                             <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => triggerPrint('AGREEMENT', agreementPrintData)}
-                                className="!text-sm !py-2 !px-4 rounded-lg flex items-center gap-2"
+                                type="submit"
+                                disabled={
+                                    !!agreementNumberError ||
+                                    (Boolean(agreementToEdit) && recordLock.viewOnly) ||
+                                    isSaving
+                                }
+                                className="!text-sm !py-2.5 !px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm"
                             >
-                                {ICONS.print && <span className="w-4 h-4 [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>}
-                                Print
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                        <span>Saving…</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="h-4 w-4" aria-hidden="true" />
+                                        <span>{agreementToEdit ? 'Update Agreement' : 'Save Agreement'}</span>
+                                    </>
+                                )}
                             </Button>
-                        )}
-                        <Button type="button" variant="secondary" onClick={onClose} className="!text-sm !py-2 !px-4 rounded-lg">
-                            Cancel
-                        </Button>
-                        <Button
-                            type="submit"
-                            disabled={!!agreementNumberError || (Boolean(agreementToEdit) && recordLock.viewOnly)}
-                            className="!text-sm !py-2 !px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border-0"
-                        >
-                            {agreementToEdit ? 'Update' : 'Save'}
-                        </Button>
+                        </div>
                     </div>
-                </div>
+                </footer>
             </form>
 
             <Modal isOpen={showMissingPlanDialog} onClose={() => setShowMissingPlanDialog(false)} title="Installment Plan Not Configured">

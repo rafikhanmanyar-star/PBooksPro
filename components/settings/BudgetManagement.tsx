@@ -1,7 +1,6 @@
 
-import { useBills, useBudgets, useCategories, useDispatchOnly, useInvoices, useProjects, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useBudgetDashboardState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
 import { Category, TransactionType, Budget } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -123,8 +122,8 @@ type SortField = 'category' | 'budget' | 'spent' | 'remaining' | 'progress';
 type SortDirection = 'asc' | 'desc';
 
 const BudgetManagement: React.FC = () => {
-    const state = useFullAppState();
-    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || '');
+    const { categories, projects, transactions, invoices, bills, budgets, defaultProjectId } = useBudgetDashboardState();
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(defaultProjectId || '');
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [sortField, setSortField] = useState<SortField>('category');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');

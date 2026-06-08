@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useEntityCatalogState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -33,7 +33,7 @@ type AssetEntity = Project | Building | Property | Unit;
 type AssetType = 'project' | 'building' | 'property' | 'unit';
 
 const AssetsManagement: React.FC = () => {
-    const appState = useFullAppState();
+        const appState = useEntityCatalogState();
     const appDispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     /** Match delete flow / header: persist when JWT exists even if AuthContext lags behind the token. */
@@ -295,8 +295,7 @@ const AssetsManagement: React.FC = () => {
                 color: color,
                 status: projectStatus,
                 location: projectLocation.trim() || undefined,
-                projectType: projectAssetType.trim() || undefined,
-            };
+                projectType: projectAssetType.trim() || undefined };
             const pid = editingEntity ? editingEntity.id : Date.now().toString();
             let projectPayload: Project = { ...projectData, id: pid };
 
@@ -309,8 +308,7 @@ const AssetsManagement: React.FC = () => {
                             ...projectPayload,
                             version:
                                 (latestP as Project & { version?: number } | undefined)?.version ??
-                                (editingEntity as Project & { version?: number }).version,
-                        });
+                                (editingEntity as Project & { version?: number }).version });
                         projectPayload = { ...projectPayload, ...merged };
                     } else {
                         const merged = await api.saveProject(projectPayload);
@@ -354,8 +352,7 @@ const AssetsManagement: React.FC = () => {
                             ...buildingPayload,
                             version:
                                 (latestB as Building & { version?: number } | undefined)?.version ??
-                                (editingEntity as Building & { version?: number }).version,
-                        });
+                                (editingEntity as Building & { version?: number }).version });
                         buildingPayload = { ...buildingPayload, ...merged };
                     } else {
                         const merged = await api.saveBuilding(buildingPayload);
@@ -402,8 +399,7 @@ const AssetsManagement: React.FC = () => {
                             ownerId: propertyPayload.ownerId,
                             buildingId: propertyPayload.buildingId,
                             description: propertyPayload.description,
-                            monthlyServiceCharge: propertyPayload.monthlyServiceCharge,
-                        };
+                            monthlyServiceCharge: propertyPayload.monthlyServiceCharge };
                         let merged: Awaited<ReturnType<typeof api.updateProperty>> | undefined;
                         let lastErr: unknown;
                         const maxAttempts = 5;
@@ -422,8 +418,7 @@ const AssetsManagement: React.FC = () => {
                                     String(pid),
                                     {
                                         ...bodyBase,
-                                        ...(propVersionForLock !== undefined ? { version: propVersionForLock } : {}),
-                                    },
+                                        ...(propVersionForLock !== undefined ? { version: propVersionForLock } : {}) },
                                     { skipConflictNotification: true }
                                 );
                                 break;
@@ -487,8 +482,7 @@ const AssetsManagement: React.FC = () => {
                 area: area ? parseFloat(area) : undefined,
                 floor: floor.trim() || undefined,
                 description: description.trim() || undefined,
-                status: unitStatus,
-            };
+                status: unitStatus };
             const uid = editingEntity ? editingEntity.id : Date.now().toString();
             const unitPayload: Unit = { ...unitData, id: uid };
 

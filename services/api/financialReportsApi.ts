@@ -4,9 +4,64 @@
  */
 
 import { apiClient } from './client';
-import type { BalanceSheetReportResult } from '../../components/reports/balanceSheetEngine';
-import type { ProfitLossReportResult } from '../../components/reports/profitLossEngine';
-import type { CashFlowReportResult } from '../../components/reports/cashFlowEngine';
+import type { BalanceSheetReportResult, BalanceSheetValidationIssue } from '../../components/reports/balanceSheetEngine';
+import type { ProfitLossReportResult, ProfitLossValidationIssue } from '../../components/reports/profitLossEngine';
+import type { CashFlowLine, CashFlowReportResult } from '../../components/reports/cashFlowEngine';
+
+function formatValidationMessage(raw: unknown): string {
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    if (typeof o.message === 'string' && o.message.trim()) return o.message.trim();
+  }
+  return '';
+}
+
+function normalizeBalanceSheetValidation(raw: unknown): BalanceSheetValidationIssue[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BalanceSheetValidationIssue[] = [];
+  for (const item of raw) {
+    const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    const message = formatValidationMessage(row.message ?? item);
+    if (!message) continue;
+    out.push({
+      code: String(row.code ?? 'VALIDATION'),
+      message,
+      severity: row.severity === 'error' ? 'error' : 'warning',
+    });
+  }
+  return out;
+}
+
+function normalizeProfitLossValidation(raw: unknown): ProfitLossReportResult['validation'] {
+  const empty = {
+    issues: [] as ProfitLossValidationIssue[],
+    legacyNetProfit: 0,
+    structuredNetProfit: 0,
+    ledgerMatch: true,
+  };
+  if (!raw || typeof raw !== 'object') return empty;
+  const v = raw as Record<string, unknown>;
+  const issuesRaw = Array.isArray(v.issues) ? v.issues : [];
+  const issues: ProfitLossValidationIssue[] = [];
+  for (const item of issuesRaw) {
+    const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    const message = formatValidationMessage(row.message ?? item);
+    if (!message) continue;
+    issues.push({
+      code: String(row.code ?? 'VALIDATION'),
+      message,
+      severity: row.severity === 'error' ? 'error' : 'warning',
+      categoryId: typeof row.categoryId === 'string' ? row.categoryId : undefined,
+    });
+  }
+  return {
+    issues,
+    legacyNetProfit: Number(v.legacyNetProfit ?? 0),
+    structuredNetProfit: Number(v.structuredNetProfit ?? 0),
+    ledgerMatch: v.ledgerMatch !== false,
+  };
+}
 
 export async function fetchBalanceSheetReport(options: {
   asOfDate: string;
@@ -28,7 +83,7 @@ export async function fetchBalanceSheetReport(options: {
     retainedEarningsFromPL: Number(raw.retainedEarningsFromPL ?? 0),
     isBalanced: Boolean(raw.isBalanced),
     discrepancy: Number(raw.discrepancy ?? 0),
-    validation: (raw.validation as BalanceSheetReportResult['validation']) ?? [],
+    validation: normalizeBalanceSheetValidation(raw.validation),
     debugLines: (raw.debugLines as BalanceSheetReportResult['debugLines']) ?? [],
   };
 }
@@ -59,15 +114,27 @@ export async function fetchProfitLossReport(options: {
   };
 }
 
-function normalizeProfitLossValidation(raw: unknown): ProfitLossReportResult['validation'] {
-  if (raw && typeof raw === 'object' && 'issues' in raw) {
-    return raw as ProfitLossReportResult['validation'];
-  }
+function normalizeCashFlowLines(items: unknown, section: string): CashFlowLine[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item, idx) => {
+    const row = item as Record<string, unknown>;
+    const label = String(row.label ?? 'Line');
+    return {
+      key: typeof row.key === 'string' ? row.key : `${section}_${label}_${idx}`,
+      label,
+      amount: Number(row.amount ?? 0),
+      transactionIds: Array.isArray(row.transactionIds) ? row.transactionIds.map(String) : [],
+      isNonCash: Boolean(row.isNonCash),
+      detailGroup: row.detailGroup as CashFlowLine['detailGroup'],
+    };
+  });
+}
+
+function normalizeCashFlowSection(raw: unknown, section: string): CashFlowReportResult['operating'] {
+  const sectionObj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   return {
-    issues: [],
-    legacyNetProfit: 0,
-    structuredNetProfit: 0,
-    ledgerMatch: true,
+    items: normalizeCashFlowLines(sectionObj.items, section),
+    total: Number(sectionObj.total ?? 0),
   };
 }
 
@@ -79,5 +146,123 @@ export async function fetchCashFlowReport(options: {
   const q = new URLSearchParams({ from: options.from, to: options.to });
   if (options.projectId && options.projectId !== 'all') q.set('projectId', options.projectId);
   const raw = await apiClient.get<Record<string, unknown>>(`/reports/cash-flow?${q.toString()}`);
-  return raw as unknown as CashFlowReportResult;
+  const summary =
+    raw.summary && typeof raw.summary === 'object' ? (raw.summary as Record<string, unknown>) : {};
+  const validation =
+    raw.validation && typeof raw.validation === 'object' ? (raw.validation as Record<string, unknown>) : {};
+  const flags = raw.flags && typeof raw.flags === 'object' ? (raw.flags as Record<string, unknown>) : {};
+  return {
+    operating: normalizeCashFlowSection(raw.operating, 'operating'),
+    investing: normalizeCashFlowSection(raw.investing, 'investing'),
+    financing: normalizeCashFlowSection(raw.financing, 'financing'),
+    summary: {
+      net_change: Number(summary.net_change ?? 0),
+      opening_cash: Number(summary.opening_cash ?? 0),
+      closing_cash: Number(summary.closing_cash ?? 0),
+      computed_closing_cash: Number(summary.computed_closing_cash ?? 0),
+    },
+    validation: {
+      reconciled: Boolean(validation.reconciled),
+      discrepancy: Number(validation.discrepancy ?? 0),
+      balance_sheet_cash: Number(validation.balance_sheet_cash ?? 0),
+      messages: Array.isArray(validation.messages) ? validation.messages.map(String) : [],
+    },
+    flags: {
+      negative_opening_cash: Boolean(flags.negative_opening_cash),
+    },
+    audit: Array.isArray(raw.audit) ? (raw.audit as CashFlowReportResult['audit']) : [],
+  };
+}
+
+export type ClientLedgerReportApiResult = {
+  startDate: string;
+  endDate: string;
+  selectionKind: 'all' | 'owner' | 'unit';
+  ownerId?: string;
+  unitId?: string;
+  rows: import('../../components/reports/clientLedgerReportEngine').ClientLedgerItem[];
+  agreementSummaries: import('../../components/reports/clientLedgerReportEngine').ClientAgreementSummary[];
+  totals: { debit: number; credit: number };
+  closingBalance: number;
+};
+
+export async function fetchClientLedgerReport(options: {
+  startDate: string;
+  endDate: string;
+  selection: import('../../components/reports/clientLedgerReportEngine').ClientLedgerTreeSelection;
+  sortKey?: string;
+  sortDirection?: 'asc' | 'desc';
+}): Promise<ClientLedgerReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+    selectionKind: options.selection.kind,
+  });
+  if (options.selection.kind === 'owner') q.set('ownerId', options.selection.ownerId);
+  if (options.selection.kind === 'unit') q.set('unitId', options.selection.unitId);
+  if (options.sortKey) q.set('sortKey', options.sortKey);
+  if (options.sortDirection) q.set('sortDirection', options.sortDirection);
+
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/client-ledger?${q.toString()}`);
+  return {
+    startDate: String(raw.startDate ?? options.startDate),
+    endDate: String(raw.endDate ?? options.endDate),
+    selectionKind: (raw.selectionKind as ClientLedgerReportApiResult['selectionKind']) ?? options.selection.kind,
+    ownerId: typeof raw.ownerId === 'string' ? raw.ownerId : undefined,
+    unitId: typeof raw.unitId === 'string' ? raw.unitId : undefined,
+    rows: (raw.rows as ClientLedgerReportApiResult['rows']) ?? [],
+    agreementSummaries: (raw.agreementSummaries as ClientLedgerReportApiResult['agreementSummaries']) ?? [],
+    totals: {
+      debit: Number((raw.totals as Record<string, unknown>)?.debit ?? 0),
+      credit: Number((raw.totals as Record<string, unknown>)?.credit ?? 0),
+    },
+    closingBalance: Number(raw.closingBalance ?? 0),
+  };
+}
+
+export type VendorLedgerReportApiResult = {
+  startDate: string;
+  endDate: string;
+  vendorId: string;
+  buildingId: string;
+  context: 'Rental' | 'Project' | null;
+  rows: import('../../components/reports/vendorLedgerReportEngine').VendorLedgerRow[];
+  totals: { bill: number; paid: number };
+  closingBalance: number;
+};
+
+export async function fetchVendorLedgerReport(options: {
+  startDate: string;
+  endDate: string;
+  vendorId?: string;
+  buildingId?: string;
+  search?: string;
+  context?: 'Rental' | 'Project';
+  sortDirection?: 'asc' | 'desc';
+}): Promise<VendorLedgerReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+  });
+  if (options.vendorId && options.vendorId !== 'all') q.set('vendorId', options.vendorId);
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
+  if (options.search?.trim()) q.set('search', options.search.trim());
+  if (options.context) q.set('context', options.context);
+  if (options.sortDirection) q.set('sortDirection', options.sortDirection);
+
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/vendor-ledger?${q.toString()}`);
+  const ctxRaw = raw.context;
+  return {
+    startDate: String(raw.startDate ?? options.startDate),
+    endDate: String(raw.endDate ?? options.endDate),
+    vendorId: String(raw.vendorId ?? 'all'),
+    buildingId: String(raw.buildingId ?? 'all'),
+    context: ctxRaw === 'Rental' || ctxRaw === 'Project' ? ctxRaw : null,
+    rows: (raw.rows as VendorLedgerReportApiResult['rows']) ?? [],
+    totals: {
+      bill: Number((raw.totals as Record<string, unknown>)?.bill ?? 0),
+      paid: Number((raw.totals as Record<string, unknown>)?.paid ?? 0),
+    },
+    closingBalance: Number(raw.closingBalance ?? 0),
+  };
 }

@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useImportExportState } from '../../hooks/useSelectiveState';
 import React, { useState, useRef, useCallback } from 'react';
 import { getApiBaseUrl, isLocalOnlyMode } from '../../config/apiUrl';
 import { useProgress } from '../../context/ProgressContext';
@@ -52,10 +52,7 @@ interface ImportResult {
     units: { count: number; skipped: number };
     categories: { count: number; skipped: number };
     accounts: { count: number; skipped: number };
-    inventoryItems?: { count: number; skipped: number };
     vendors?: { count: number; skipped: number };
-    purchaseBills?: { count: number; skipped: number };
-    purchaseBillItems?: { count: number; skipped: number };
     invoices?: { count: number; skipped: number };
     rentalInvoicePayments?: { count: number; skipped: number };
     contracts?: { count: number; skipped: number };
@@ -89,10 +86,7 @@ const IMPORT_ORDER = [
   { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
   { name: 'RentalInvoicePayments', dependencies: ['RentalInvoices', 'Accounts'], description: 'Import rental invoice payments (depends on Rental Invoices and Accounts). Data is saved to your local database.' },
   { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to your local database.' },
-  { name: 'InventoryItems', dependencies: [], description: 'Import inventory items (name, unit type, price per unit). Supports parent-child hierarchy via parentItemName.' },
   { name: 'Vendors', dependencies: [], description: 'Import vendors (name, contact info, address)' },
-  { name: 'PurchaseBills', dependencies: ['Vendors'], description: 'Import purchase bills (depends on Vendors)' },
-  { name: 'PurchaseBillItems', dependencies: ['PurchaseBills', 'InventoryItems'], description: 'Import purchase bill line items (depends on Purchase Bills and Inventory Items)' },
   { name: 'Contracts', dependencies: ['Projects', 'Contacts'], description: 'Import project contracts (depends on Projects and Contacts/Vendors)' },
   { name: 'ProjectBills', dependencies: ['Contracts', 'Projects', 'Categories', 'Contacts'], description: 'Import project bills (depends on Contracts, Projects, Categories, and Contacts)' },
   { name: 'ProjectBillPayments', dependencies: ['ProjectBills', 'Accounts'], description: 'Import project bill payments (depends on Project Bills and Accounts)' },
@@ -113,15 +107,11 @@ const SHEET_TO_IMPORT_TYPE: Record<string, ImportType> = {
   'RentalInvoices': ImportType.RENTAL_INVOICES,
   'RentalInvoicePayments': ImportType.RENTAL_INVOICE_PAYMENTS,
   'LoanTransactions': ImportType.LOAN_TRANSACTIONS,
-  'InventoryItems': ImportType.FULL, // Uses FULL import type
   'Vendors': ImportType.VENDORS,
-  'PurchaseBills': ImportType.BILLS, // Uses BILLS import type
-  'PurchaseBillItems': ImportType.FULL, // Uses FULL import type
   'Contracts': ImportType.CONTRACTS,
   'ProjectBills': ImportType.PROJECT_BILLS,
   'ProjectBillPayments': ImportType.PROJECT_BILL_PAYMENTS,
-  'Budgets': ImportType.BUDGETS,
-};
+  'Budgets': ImportType.BUDGETS };
 
 // UI grouping for Import Data page (Existing = wired to current import; New = Phase 2)
 interface ImportCategoryItem {
@@ -139,8 +129,7 @@ const IMPORT_CATEGORIES: { title: string; items: ImportCategoryItem[] }[] = [
       { label: 'Invoice payments', sheetName: 'RentalInvoicePayments', existing: true },
       { label: 'Rental Bills', sheetName: null, existing: false },
       { label: 'Rental bills payments', sheetName: null, existing: false },
-    ],
-  },
+    ] },
   {
     title: 'Project construction',
     items: [
@@ -148,8 +137,7 @@ const IMPORT_CATEGORIES: { title: string; items: ImportCategoryItem[] }[] = [
       { label: 'Project bills', sheetName: 'ProjectBills', existing: true },
       { label: 'Project bills payment', sheetName: 'ProjectBillPayments', existing: true },
       { label: 'Budget', sheetName: 'Budgets', existing: true },
-    ],
-  },
+    ] },
   {
     title: 'Project selling',
     items: [
@@ -157,8 +145,7 @@ const IMPORT_CATEGORIES: { title: string; items: ImportCategoryItem[] }[] = [
       { label: 'Project agreements', sheetName: null, existing: false },
       { label: 'Project invoices', sheetName: null, existing: false },
       { label: 'Project payment', sheetName: null, existing: false },
-    ],
-  },
+    ] },
   {
     title: 'General',
     items: [
@@ -170,8 +157,7 @@ const IMPORT_CATEGORIES: { title: string; items: ImportCategoryItem[] }[] = [
       { label: 'Buildings', sheetName: 'Buildings', existing: true },
       { label: 'Loan transaction', sheetName: 'LoanTransactions', existing: true },
       { label: 'Transfer transactions (Account to Account transfer)', sheetName: null, existing: false },
-    ],
-  },
+    ] },
 ];
 
 export interface ImportExportWizardProps {
@@ -184,7 +170,8 @@ export interface ImportExportWizardProps {
 }
 
 const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, startAtImport, onBack }) => {
-  const state = useFullAppState();
+    const state = useImportExportState();
+    const { accounts, contacts, vendors, categories, projects, buildings, properties, units, transactions, invoices, bills, budgets, contracts } = state;
     const dispatch = useDispatchOnly();
   const progress = useProgress();
   const [currentStep, setCurrentStep] = useState<WizardStep>(embedded && startAtImport ? 'import' : 'choose');
@@ -566,17 +553,13 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
               units: { count: selectedSheet === 'Units' ? result.success : 0, skipped: selectedSheet === 'Units' ? result.skipped : 0 },
               categories: { count: selectedSheet === 'Categories' ? result.success : 0, skipped: selectedSheet === 'Categories' ? result.skipped : 0 },
               accounts: { count: selectedSheet === 'Accounts' ? result.success : 0, skipped: selectedSheet === 'Accounts' ? result.skipped : 0 },
-              inventoryItems: { count: selectedSheet === 'InventoryItems' ? result.success : 0, skipped: selectedSheet === 'InventoryItems' ? result.skipped : 0 },
               vendors: { count: selectedSheet === 'Vendors' ? result.success : 0, skipped: selectedSheet === 'Vendors' ? result.skipped : 0 },
-              purchaseBills: { count: selectedSheet === 'PurchaseBills' ? result.success : 0, skipped: selectedSheet === 'PurchaseBills' ? result.skipped : 0 },
-              purchaseBillItems: { count: selectedSheet === 'PurchaseBillItems' ? result.success : 0, skipped: selectedSheet === 'PurchaseBillItems' ? result.skipped : 0 },
               invoices: { count: (selectedSheet === 'RentalInvoices' || selectedSheet === 'Invoices') ? result.success : 0, skipped: (selectedSheet === 'RentalInvoices' || selectedSheet === 'Invoices') ? result.skipped : 0 },
               rentalInvoicePayments: { count: selectedSheet === 'RentalInvoicePayments' ? result.success : 0, skipped: selectedSheet === 'RentalInvoicePayments' ? result.skipped : 0 },
               contracts: { count: selectedSheet === 'Contracts' ? result.success : 0, skipped: selectedSheet === 'Contracts' ? result.skipped : 0 },
               projectBills: { count: selectedSheet === 'ProjectBills' ? result.success : 0, skipped: selectedSheet === 'ProjectBills' ? result.skipped : 0 },
               projectBillPayments: { count: selectedSheet === 'ProjectBillPayments' ? result.success : 0, skipped: selectedSheet === 'ProjectBillPayments' ? result.skipped : 0 },
-              budgets: { count: selectedSheet === 'Budgets' ? result.success : 0, skipped: selectedSheet === 'Budgets' ? result.skipped : 0 },
-            },
+              budgets: { count: selectedSheet === 'Budgets' ? result.success : 0, skipped: selectedSheet === 'Budgets' ? result.skipped : 0 } },
             summary: {
               totalRows: sheetData.length,
               validRows: result.success,
@@ -1331,36 +1314,12 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                         </div>
                         <div className="text-sm text-slate-600">Accounts</div>
                       </div>
-                      {importResult.imported.inventoryItems && importResult.imported.inventoryItems.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
-                            {importResult.imported.inventoryItems.count}
-                          </div>
-                          <div className="text-sm text-slate-600">Inventory Items</div>
-                        </div>
-                      )}
                       {importResult.imported.vendors && importResult.imported.vendors.count > 0 && (
                         <div className="bg-slate-50 rounded-lg p-4">
                           <div className="text-2xl font-bold text-slate-800">
                             {importResult.imported.vendors.count}
                           </div>
                           <div className="text-sm text-slate-600">Vendors</div>
-                        </div>
-                      )}
-                      {importResult.imported.purchaseBills && importResult.imported.purchaseBills.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
-                            {importResult.imported.purchaseBills.count}
-                          </div>
-                          <div className="text-sm text-slate-600">Purchase Bills</div>
-                        </div>
-                      )}
-                      {importResult.imported.purchaseBillItems && importResult.imported.purchaseBillItems.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
-                            {importResult.imported.purchaseBillItems.count}
-                          </div>
-                          <div className="text-sm text-slate-600">Purchase Bill Items</div>
                         </div>
                       )}
                       {importResult.imported.invoices && importResult.imported.invoices.count > 0 && (

@@ -1,7 +1,12 @@
 # Staging API Client — connects to staging API (pbooks_staging). Output: release-api-client-staging/
 appId: com.pbookspro.app.client.staging
 productName: PBooks Pro Staging Client
+extraMetadata:
+  name: pbooks-pro-staging-client
 compression: maximum
+# English only — default Chromium locale packs add ~40 MB uncompressed to the installer.
+electronLanguages:
+  - en-US
 directories:
   output: release-api-client-staging
 files:
@@ -21,6 +26,7 @@ files:
   - "electron/companyManager.cjs"
   - "electron/spellChecker.cjs"
   - "electron/updaterErrorUtils.cjs"
+  - "electron/stagingUpdateFeed.cjs"
   - "electron/schema.sql"
   - "electron/assets/**/*"
   - "package.json"
@@ -61,6 +67,7 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: PBooks Pro Staging Client
   artifactName: PBooks-Pro-Staging-Client-Setup-${version}.${ext}
+# Staging prereleases publish latest.yml (staging updater resolves prerelease tags via GitHub API).
 publish:
   - provider: github
     releaseType: prerelease

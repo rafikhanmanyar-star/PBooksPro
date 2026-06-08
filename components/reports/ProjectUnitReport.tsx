@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { Unit, ProjectAgreementStatus } from '../../types';
 import Card from '../ui/Card';
@@ -24,7 +24,7 @@ interface ReportRow {
 }
 
 const ProjectUnitReport: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
     const { print: triggerPrint } = usePrintContext();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');

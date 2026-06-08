@@ -21,9 +21,9 @@ export type Page =
   | 'pmConfig'
   | 'settings'
   | 'import'
-  | 'marketing'
   | 'payroll'
   | 'personalTransactions'
+  | 'accounting'
 ;
 
 export enum TransactionType {
@@ -189,17 +189,17 @@ export enum ImportType {
 
 
 export type UserRole =
-  // Administrative Roles
+  // Enterprise roles
   | 'SUPER_ADMIN'
   | 'Admin'
+  | 'Accountant'
+  | 'Project Manager'
+  | 'Sales User'
+  | 'Read Only User'
+  // Legacy roles (mapped to enterprise permissions)
   | 'Manager'
   | 'Accounts'
-  // POS & Shop Roles  
-  | 'Store Manager'
-  | 'Cashier'
-  | 'Inventory Manager'
   // Task & Performance Roles
-  | 'Project Manager'
   | 'Team Lead'
   | 'Task Contributor';
 
@@ -794,20 +794,6 @@ export interface PrintSettings {
   marginBottom?: number;
   marginLeft?: number;
   marginRight?: number;
-
-  // POS Receipt Settings
-  /** Shop name for POS receipts */
-  posShopName?: string;
-  /** Shop address for POS receipts */
-  posShopAddress?: string;
-  /** Shop phone number for POS receipts */
-  posShopPhone?: string;
-  /** Terminal ID for POS receipts */
-  posTerminalId?: string;
-  /** Show barcode on POS receipts */
-  posShowBarcode?: boolean;
-  /** Footer text for POS receipts */
-  posReceiptFooter?: string;
 }
 
 export interface WhatsAppTemplates {

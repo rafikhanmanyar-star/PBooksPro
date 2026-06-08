@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Vendor, Account, AccountType } from '../../types';
 import Modal from '../ui/Modal';
@@ -70,7 +70,8 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     vendor,
     defaultProjectId,
 }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { accounts, projects, bills, defaultProjectId: savedDefaultProjectId } = state;
     const { showToast, showAlert } = useNotification();
 
     const [advanceDate, setAdvanceDate] = useState(toLocalDateString(new Date()));

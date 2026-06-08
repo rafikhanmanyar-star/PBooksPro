@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect } from 'react';
 import { Contact } from '../../types';
 import Modal from '../ui/Modal';
@@ -27,7 +27,8 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
   templateVariables,
   initialMessage
 }) => {
-  const state = useFullAppState();
+      const state = useRentalReportAppState();
+    const { invoices, whatsAppTemplates, whatsAppMode } = state;
   const { showAlert } = useNotification();
   const { openChat } = useWhatsApp();
   const [message, setMessage] = useState('');
@@ -74,8 +75,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
                 : invoiceIdVar
                   ? sumOutstandingInvoiceBalancesForContact(invoices, contact.id, {
                       invoiceId: invoiceIdVar,
-                      invoiceBalanceOverride: balanceNum,
-                    })
+                      invoiceBalanceOverride: balanceNum })
                   : sumOutstandingInvoiceBalancesForContact(invoices, contact.id);
 
             generatedMessage = WhatsAppService.generateInvoiceReceipt(

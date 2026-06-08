@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { Quotation, TransactionType } from '../../types';
 import Card from '../ui/Card';
@@ -31,7 +31,8 @@ interface VendorComparisonReportProps {
 }
 
 const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context }) => {
-    const state = useFullAppState();
+    const state = useFinancialReportAppState();
+    const { vendors: appVendors, quotations: appQuotations } = state;
     const { print: triggerPrint } = usePrintContext();
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
 
@@ -59,7 +60,7 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
         const categoryMap = new Map<string, Map<string, Quotation[]>>();
 
         // Group quotations by category and vendor
-        quotations.forEach(quotation => {
+        appQuotations.forEach(quotation => {
             quotation.items.forEach(item => {
                 if (selectedCategoryId !== 'all' && item.categoryId !== selectedCategoryId) {
                     return;
@@ -88,7 +89,7 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
             const vendorComparisons: CategoryVendorComparison['vendors'] = [];
 
             vendorMap.forEach((quotationList, vendorId) => {
-                const vendor = vendors.find(v => v.id === vendorId);
+                const vendor = appVendors.find(v => v.id === vendorId);
                 if (!vendor) return;
 
                 // Calculate prices for this category from all quotations
@@ -132,7 +133,7 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
         result.sort((a, b) => a.categoryName.localeCompare(b.categoryName));
 
         return result;
-    }, [quotations, vendors, state.categories, selectedCategoryId]);
+    }, [appQuotations, appVendors, state.categories, selectedCategoryId]);
 
     const handleExport = () => {
         const data: any[] = [];

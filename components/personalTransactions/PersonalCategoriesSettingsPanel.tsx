@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { usePersonalFinanceState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -9,8 +9,7 @@ import {
   getPersonalExpenseCategories,
   setPersonalIncomeCategories,
   setPersonalExpenseCategories,
-  replacePersonalCategoriesApi,
-} from './personalCategoriesService';
+  replacePersonalCategoriesApi } from './personalCategoriesService';
 import { ICONS } from '../../constants';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useOffline } from '../../context/OfflineContext';
@@ -45,7 +44,7 @@ type EditorState =
  * Chart-of-accounts-style management for personal income/expense categories only (no bank accounts).
  */
 const PersonalCategoriesSettingsPanel: React.FC = () => {
-  const state = useFullAppState();
+  const { accounts, categories, transactions, personalCategories } = usePersonalFinanceState();
   const { isOffline } = useOffline();
   const { showConfirm, showToast } = useNotification();
 
@@ -53,8 +52,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDir }>({
     key: 'name',
-    direction: 'asc',
-  });
+    direction: 'asc' });
   const [listVersion, setListVersion] = useState(0);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [editor, setEditor] = useState<EditorState>({ open: false });
@@ -150,8 +148,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
     const ok = await showConfirm(`Delete category "${row.name}"?`, {
       title: 'Delete category',
       confirmLabel: 'Delete',
-      cancelLabel: 'Cancel',
-    });
+      cancelLabel: 'Cancel' });
     if (!ok) return;
     const list = row.type === 'Income' ? getPersonalIncomeCategories() : getPersonalExpenseCategories();
     await persistType(row.type, list.filter((c) => c.id !== row.id));
@@ -170,8 +167,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
   const handleSort = (key: SortKey) => {
     setSortConfig((prev) => ({
       key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
-    }));
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
   };
 
   const SortHeader: React.FC<{ label: string; sortKey: SortKey }> = ({ label, sortKey }) => (

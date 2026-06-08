@@ -1,8 +1,7 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { usePrintSettings } from '../../hooks/useSelectiveState';
 import React from 'react';
 const ReportFooter: React.FC = () => {
-    const state = useFullAppState();
-    const { printSettings } = state;
+    const printSettings = usePrintSettings();
 
     if (!printSettings) return null;
 

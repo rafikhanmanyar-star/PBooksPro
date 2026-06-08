@@ -21,7 +21,7 @@ const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
 const TRIAL_DURATION_DAYS = 30;
 
 /** In local-only mode, all these modules are enabled for testing. */
-const LOCAL_ONLY_MODULES = ['real_estate', 'rental', 'shop'];
+const LOCAL_ONLY_MODULES = ['real_estate', 'rental'];
 
 /** Generate a short unique ID; works in HTTP and older browsers where crypto.randomUUID may be missing. */
 function generateDeviceId(): string {
@@ -104,11 +104,11 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
             return;
         }
 
-        // LAN / API without cloud license payload (no /tenants/license-status or empty modules): same as local dev
+        // LAN / API without cloud license payload: do not assume valid — wait for server or treat as unknown
         if (!isLocalOnlyMode() && isAuthenticated && !cloudLicense) {
-            setIsRegistered(true);
+            setIsRegistered(false);
             setIsExpired(false);
-            setDaysRemaining(999);
+            setDaysRemaining(0);
             return;
         }
 
@@ -165,18 +165,14 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (!isAuthenticated) return false;
         if (isLocalOnlyMode()) return LOCAL_ONLY_MODULES.includes(moduleKey);
         const mods = cloudLicense?.modules;
-        if (!mods?.length) {
-            return LOCAL_ONLY_MODULES.includes(moduleKey);
-        }
+        if (!mods?.length) return false;
         return mods.includes(moduleKey);
     }, [isAuthenticated, cloudLicense?.modules]);
 
     const effectiveModules = useMemo(() => {
         if (!isAuthenticated) return [];
         if (isLocalOnlyMode()) return LOCAL_ONLY_MODULES;
-        const mods = cloudLicense?.modules;
-        if (mods?.length) return mods;
-        return LOCAL_ONLY_MODULES;
+        return cloudLicense?.modules?.length ? cloudLicense.modules : [];
     }, [isAuthenticated, cloudLicense?.modules]);
 
     const value = useMemo(() => ({

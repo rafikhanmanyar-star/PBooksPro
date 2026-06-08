@@ -30,11 +30,21 @@ const PRIMARY_SIDEBAR_MODULE_PAGES: ReadonlySet<Page> = new Set([
     'projectSelling',
     'projectManagement',
     'rentalManagement',
+    'accounting',
 ]);
 
 function isPrimarySidebarModule(page: Page): boolean {
     return PRIMARY_SIDEBAR_MODULE_PAGES.has(page);
 }
+
+const TOUR_DATA_ATTR: Partial<Record<string, string>> = {
+    dashboard: 'nav-dashboard',
+    rentalManagement: 'nav-rental',
+    projectManagement: 'nav-projects',
+    transactions: 'nav-ledger',
+    budgets: 'nav-budgets',
+    accounting: 'nav-accounting',
+};
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { mainNavCollapsed, toggleMainNav } = useViewport();
@@ -212,6 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 title: 'Financials',
                 items: [
                     { page: 'transactions', label: 'General Ledger', icon: ICONS.trendingUp },
+                    { page: 'accounting', label: 'Accounting', icon: ICONS.clipboard },
                     ...(isAdmin ? [{ page: 'personalTransactions', label: 'Personal transactions', icon: ICONS.wallet }] : []),
                     { page: 'budgets', label: 'Budget Planner', icon: ICONS.barChart },
                 ]
@@ -293,7 +304,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         }
         if (itemPage === 'projectManagement' && (currentPage.startsWith('project') || currentPage === 'bills') && currentPage !== 'projectSelling' && currentPage !== 'projectInvoices') return true;
         // projectInvoices is now under Selling (Project selling), so it should activate projectSelling not projectManagement.
-        if (itemPage === 'projectSelling' && (currentPage === 'projectSelling' || currentPage === 'projectInvoices' || currentPage === 'marketing')) return true;
+        if (itemPage === 'projectSelling' && (currentPage === 'projectSelling' || currentPage === 'projectInvoices')) return true;
+        if (itemPage === 'accounting' && currentPage === 'accounting') return true;
         return false;
     };
 
@@ -404,6 +416,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                             setCurrentPage(item.page as Page);
                                                             setIsMobileMenuOpen(false); // Close menu after navigation
                                                         }}
+                                                        data-tour={TOUR_DATA_ATTR[item.page as string]}
                                                         className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-2.5 rounded-md text-sm font-medium transition-all duration-ds group touch-manipulation border-l-[3px] ${active
                                                                 ? 'border-primary bg-nav-active text-white'
                                                                 : primary
@@ -578,6 +591,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                 title={item.label}
                                                 aria-label={item.label}
                                                 aria-current={active ? 'page' : undefined}
+                                                data-tour={TOUR_DATA_ATTR[item.page as string]}
                                                 className={`w-full flex items-center justify-center p-2.5 rounded-md transition-all duration-ds border-l-[3px] ${active
                                                     ? 'border-primary bg-nav-active text-primary shadow-none ring-0'
                                                     : primary
@@ -710,6 +724,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                         key={item.page}
                                                         type="button"
                                                         onClick={() => setCurrentPage(item.page as Page)}
+                                                        data-tour={TOUR_DATA_ATTR[item.page as string]}
                                                         className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-1.5 rounded-md text-xs font-medium transition-all duration-ds group border-l-[3px] ${active
                                                                 ? 'border-primary bg-nav-active text-white'
                                                                 : primary

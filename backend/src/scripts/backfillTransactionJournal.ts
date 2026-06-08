@@ -13,7 +13,10 @@
 
 import '../loadEnv.js';
 import { getPool } from '../db/pool.js';
-import { backfillTransactionJournalMirrorsForTenant } from '../services/transactionJournalBackfillService.js';
+import {
+  backfillTransactionJournalMirrorsForTenant,
+  replaceAllTransactionJournalMirrorsForTenant,
+} from '../services/transactionJournalBackfillService.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -25,6 +28,7 @@ async function main(): Promise<void> {
   const tenant = arg('--tenant');
   const all = process.argv.includes('--all');
   const dryRun = process.argv.includes('--dry-run');
+  const replaceAll = process.argv.includes('--replace-all');
   const fromDate = arg('--from') ?? null;
   const toDate = arg('--to') ?? null;
   const batchSizeRaw = arg('--batch-size');
@@ -32,7 +36,7 @@ async function main(): Promise<void> {
 
   if ((!tenant && !all) || (tenant && all)) {
     console.error(
-      'Usage: --tenant <tenantId> | --all  [--dry-run] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--batch-size N]'
+      'Usage: --tenant <tenantId> | --all  [--dry-run] [--replace-all] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--batch-size N]'
     );
     process.exit(1);
   }
@@ -60,13 +64,24 @@ async function main(): Promise<void> {
   for (const tid of tenantIds) {
     const client = await pool.connect();
     try {
-      const stats = await backfillTransactionJournalMirrorsForTenant(client, tid, {
-        dryRun,
-        fromDate,
-        toDate,
-        batchSize,
-        onProgress: (msg) => console.log(msg),
-      });
+      await client.query('BEGIN');
+      const stats = replaceAll
+        ? await replaceAllTransactionJournalMirrorsForTenant(client, tid, {
+            dryRun,
+            fromDate,
+            toDate,
+            onProgress: (msg) => console.log(msg),
+          })
+        : await backfillTransactionJournalMirrorsForTenant(client, tid, {
+            dryRun,
+            fromDate,
+            toDate,
+            batchSize,
+            onProgress: (msg) => console.log(msg),
+          });
+
+      if (dryRun) await client.query('ROLLBACK');
+      else await client.query('COMMIT');
 
       if (dryRun) {
         console.log(

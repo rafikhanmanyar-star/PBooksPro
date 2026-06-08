@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { ProjectAgreement, ContactType, ProjectAgreementStatus, TransactionType } from '../../types';
 import Button from '../ui/Button';
@@ -122,7 +122,8 @@ const AgreementTreeSidebar: React.FC<{
 };
 
 const ProjectAgreementsPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
+    const { units: appUnits } = state;
     const dispatch = useDispatchOnly();
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -740,10 +741,12 @@ const ProjectAgreementsPage: React.FC = () => {
                 isOpen={isCreateModalOpen} 
                 onClose={() => setIsCreateModalOpen(false)} 
                 title={agreementToEdit ? `Edit Agreement ${agreementToEdit.agreementNumber}` : "New Project Agreement"} 
-                size="xl"
+                size="full"
                 disableScroll
+                hideHeader
+                className="!max-w-[min(87.5rem,calc(100vw-2rem))] !rounded-2xl animate-fade-in-fast"
             >
-                <div className="h-full min-h-0 flex flex-col p-4">
+                <div className="h-full min-h-0 flex flex-col px-4 py-3 sm:px-6 sm:py-4 md:px-8 md:py-5">
                     <ProjectAgreementForm
                         onClose={() => setIsCreateModalOpen(false)}
                         agreementToEdit={agreementToEdit}

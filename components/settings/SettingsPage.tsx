@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useSettingsPageState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useOffline } from '../../context/OfflineContext';
@@ -16,7 +16,7 @@ import MessagingTemplatesForm, { type MessagingTemplatesFormHandle } from './Mes
 import PrintTemplateForm from './PrintTemplateForm';
 import WhatsAppConfigForm from './WhatsAppConfigForm';
 import WhatsAppMenuForm from './WhatsAppMenuForm';
-import HelpSection from './HelpSection';
+import CustomerSuccessCenter from '../customerSuccess/CustomerSuccessCenter';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
 import { Project, ContactType, TransactionType, AccountType, ProjectAgreementStatus, AgreementSettings, InvoiceSettings, ProfitLossSubType } from '../../types';
@@ -26,7 +26,15 @@ import UpdateCheck from './UpdateCheck';
 import { CompanyManagementSection } from '../company/CompanyManagementSection';
 import DbHealthPanel from '../diagnostics/DbHealthPanel';
 import ManualJournalEntrySection from './ManualJournalEntrySection';
-import LicenseManagement from '../license/LicenseManagement';
+import AccountingPeriodsSection from './AccountingPeriodsSection';
+import PermissionManagementSection from './PermissionManagementSection';
+import EnterpriseAuditViewer from './EnterpriseAuditViewer';
+import { usePermissions } from '../../hooks/usePermissions';
+import CustomerBillingPortal from '../billing/CustomerBillingPortal';
+import AdminSubscriptionDashboard from '../billing/AdminSubscriptionDashboard';
+import AdminMonitoringDashboard from '../monitoring/AdminMonitoringDashboard';
+import AdminReferralDashboard from '../referrals/AdminReferralDashboard';
+import { useOnboardingOptional } from '../../context/OnboardingContext';
 import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
 import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
@@ -40,6 +48,8 @@ import { persistUserDisplayTimezone } from '../../services/userDisplayTimezonePe
 
 const UserManagement = lazy(() => import('./UserManagement'));
 const BackupRestorePage = lazy(() => import('./BackupRestorePage'));
+const PrivacyCenter = lazy(() => import('./PrivacyCenter'));
+const MfaSettingsSection = lazy(() => import('./MfaSettingsSection'));
 const ContactsManagement = lazy(() => import('./ContactsManagement'));
 const AssetsManagement = lazy(() => import('./AssetsManagement'));
 
@@ -49,8 +59,7 @@ const PL_CLASSIFICATION_LABELS: Record<ProfitLossSubType, string> = {
     operating_expense: 'Operating expense',
     other_income: 'Other income',
     finance_cost: 'Finance costs',
-    tax: 'Tax',
-};
+    tax: 'Tax' };
 
 interface TableRowData {
     id: string;
@@ -73,7 +82,30 @@ function ianaTimeZoneCityLabel(iana: string): string {
 }
 
 const SettingsPage: React.FC = () => {
-    const state = useFullAppState();
+        const state = useSettingsPageState();
+    const {
+        accounts,
+        categories,
+        projects,
+        buildings,
+        properties,
+        contacts,
+        units,
+        transactions,
+        projectAgreements,
+        currentUser,
+        users,
+        projectInvoiceSettings,
+        showSystemTransactions,
+        enableColorCoding,
+        enableBeepOnSave,
+        enableDatePreservation,
+        whatsAppMode,
+        defaultProjectId,
+        rentalInvoiceSettings,
+        agreementSettings,
+        projectAgreementSettings,
+        editingEntity } = state;
     const dispatch = useDispatchOnly();
     const { user: authUser } = useAuth();
     const { showConfirm, showToast, showAlert } = useNotification();
@@ -153,16 +185,18 @@ const SettingsPage: React.FC = () => {
             auto,
             ...ianaTimeZones.map((tz) => ({
                 id: tz,
-                name: `${ianaTimeZoneCityLabel(tz)} · ${tz}`,
-            })),
+                name: `${ianaTimeZoneCityLabel(tz)} · ${tz}` })),
         ];
     }, [ianaTimeZones]);
 
-    // Check if user is admin - use AuthContext user (cloud auth), AppContext currentUser (local), or CompanyContext (local-only company login)
-    const isAdmin = authUser?.role === 'Admin' || currentUser?.role === 'Admin' || companyCtx?.authenticatedUser?.role === 'SUPER_ADMIN';
+    const perms = usePermissions();
+    const onboarding = useOnboardingOptional();
 
-    // User Management: visible when admin (cloud/local) OR when in local-only mode with a company open (user created company and is logged in)
-    const showUserManagement = isAdmin || (isLocalOnlyMode() && !!companyCtx?.activeCompany);
+    const showUserManagement =
+        perms.canManageUsers || perms.canReadUsers || (isLocalOnlyMode() && !!companyCtx?.activeCompany);
+    const showPermissionManagement = perms.canReadPermissions || isLocalOnlyMode();
+    const showBillingPortal =
+        !isLocalOnlyMode() && (perms.canReadBilling || perms.canManageBilling || perms.canReadUsers || perms.canManageUsers);
 
     // Grouped Categories for Sidebar
     const categoryGroups = [
@@ -177,19 +211,44 @@ const SettingsPage: React.FC = () => {
             title: 'General',
             items: [
                 { id: 'preferences', label: 'Preferences', icon: ICONS.settings },
-                { id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' },
+                ...(showBillingPortal
+                  ? [{ id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' }]
+                  : []),
+                ...(onboarding?.canManage
+                  ? [{ id: 'setup-wizard', label: 'Setup Wizard', icon: ICONS.fileText || '📋' }]
+                  : []),
+                ...(perms.enterpriseRole === 'super_admin' && !isLocalOnlyMode()
+                  ? [
+                      { id: 'admin-subscriptions', label: 'Subscription Admin', icon: ICONS.briefcase || '📊' },
+                      { id: 'admin-monitoring', label: 'Monitoring', icon: ICONS.activity || '📡' },
+                      { id: 'admin-referrals', label: 'Referral Admin', icon: ICONS.users || '👥' },
+                    ]
+                  : []),
                 ...(showUserManagement ? [
                     { id: 'users', label: 'User Management', icon: ICONS.users },
                 ] : []),
-                { id: 'backup', label: 'Backup & Restore', icon: ICONS.download },
+                ...(showPermissionManagement ? [
+                    { id: 'permissions', label: 'Permissions', icon: ICONS.lock },
+                ] : []),
+                ...(perms.canReadAuditLogs && !isLocalOnlyMode()
+                  ? [{ id: 'audit-trail', label: 'Audit Trail', icon: ICONS.fileText }]
+                  : []),
+                ...(!isLocalOnlyMode()
+                  ? [{ id: 'privacy', label: 'Privacy Center', icon: ICONS.shield || '🛡️' }]
+                  : []),
+                ...(!isLocalOnlyMode()
+                  ? [{ id: 'mfa', label: 'Two-Factor Auth', icon: ICONS.lock || '🔐' }]
+                  : []),
+                { id: 'backup', label: 'Backup Center', icon: ICONS.download },
                 { id: 'data', label: 'Data Management', icon: ICONS.trash },
-                { id: 'help', label: 'Help & Guide', icon: ICONS.fileText },
+                { id: 'help', label: 'Customer Success', icon: ICONS.fileText },
             ]
         },
         {
             title: 'Financial',
             items: [
                 { id: 'accounts', label: 'Chart of Accounts', icon: ICONS.wallet },
+                ...(!isLocalOnlyMode() ? [{ id: 'accounting-periods', label: 'Accounting Periods', icon: ICONS.lock }] : []),
                 ...(isLocalOnlyMode() ? [{ id: 'gl-journal', label: 'Journal entry (GL)', icon: ICONS.fileText }] : []),
             ]
         },
@@ -211,7 +270,7 @@ const SettingsPage: React.FC = () => {
 
     const settingCategories = useMemo(() => {
         return flatCategories;
-    }, [showUserManagement, flatCategories]);
+    }, [showUserManagement, showPermissionManagement, showBillingPortal, perms.canReadAuditLogs, flatCategories]);
 
     // --- Data Preparation Logic (Preserved) ---
     const columnConfig: Record<string, ColumnDef[]> = {
@@ -235,8 +294,7 @@ const SettingsPage: React.FC = () => {
                         <span className="text-slate-500 italic">Default (inferred)</span>
                     ) : (
                         val
-                    ),
-            },
+                    ) },
             { key: 'isSystem', label: 'System', render: (val) => val ? 'Yes' : 'No' },
             { key: 'balance', label: 'Balance', isNumeric: true }
         ],
@@ -611,8 +669,7 @@ const SettingsPage: React.FC = () => {
             prefix: 'P-INV-',
             nextNumber: 1,
             padding: 5,
-            autoSendBillPaymentWhatsApp: false,
-        };
+            autoSendBillPaymentWhatsApp: false };
         const [localSettings, setLocalSettings] = useState(settings);
         const handleChange = (field: string, val: string | number | boolean) =>
             setLocalSettings((prev) => ({ ...prev, [field]: val }));
@@ -620,8 +677,7 @@ const SettingsPage: React.FC = () => {
             const payload = {
                 ...localSettings,
                 nextNumber: parseInt(String(localSettings.nextNumber)) || 1,
-                padding: parseInt(String(localSettings.padding)) || 4,
-            };
+                padding: parseInt(String(localSettings.padding)) || 4 };
             dispatch({ type: 'UPDATE_PROJECT_INVOICE_SETTINGS', payload });
             showToast('Project Invoices updated!', 'success');
         };
@@ -800,8 +856,7 @@ const SettingsPage: React.FC = () => {
                             try {
                                 await persistUserDisplayTimezone(zoneVal, {
                                     companyId: companyCtx?.activeCompany?.id,
-                                    userId: companyCtx?.authenticatedUser?.id ?? authUser?.id,
-                                });
+                                    userId: companyCtx?.authenticatedUser?.id ?? authUser?.id });
                                 showToast('Time zone saved.', 'success');
                             } catch (e) {
                                 showToast('Saved on this device; could not save to the database.', 'warning');
@@ -969,6 +1024,7 @@ const SettingsPage: React.FC = () => {
                     <DatabaseAnalyzer />
                 </div>
 
+            {perms.canReadAuditLogs && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                 <h4 className="font-bold text-slate-800 mb-4 text-lg">Transaction Audits & Logs</h4>
                 <button onClick={() => setIsTransactionLogOpen(true)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 transition-all text-left flex items-center justify-between group">
@@ -979,11 +1035,12 @@ const SettingsPage: React.FC = () => {
                     <div className="text-slate-400 group-hover:text-indigo-600 shift-x-1 transition-transform">→</div>
                 </button>
             </div>
+            )}
 
             <div className="bg-white rounded-xl border border-rose-100 shadow-sm p-6">
                 <h3 className="font-bold text-lg mb-4 text-rose-800 flex items-center gap-2">{ICONS.alertTriangle} Danger Zone</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {isAdmin && (
+                    {perms.canManageUsers && (
                         <button onClick={() => setIsClearTransactionsModalOpen(true)} className="p-4 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 hover:border-rose-300 transition-all text-left group">
                             <div className="font-bold text-rose-700 mb-1 flex items-center gap-2">{ICONS.trash} Clear Transactions</div>
                             <p className="text-xs text-rose-600/80 leading-relaxed">Deletes all financial data but keeps your entity structure (Accounts, Projects, etc.) intact.</p>
@@ -1184,8 +1241,56 @@ const SettingsPage: React.FC = () => {
                         )}
                         {activeCategory === 'preferences' && renderPreferences()}
                         {activeCategory === 'license' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                <LicenseManagement />
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                                <CustomerBillingPortal />
+                            </div>
+                        )}
+                        {activeCategory === 'setup-wizard' && onboarding?.canManage && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6 space-y-4">
+                                <h2 className="text-lg font-semibold text-slate-800">Organization setup wizard</h2>
+                                <p className="text-sm text-slate-600">
+                                  Resume guided onboarding for company profile, fiscal year, properties, and users.
+                                  Progress is saved automatically.
+                                </p>
+                                {onboarding.state && (
+                                  <p className="text-sm text-slate-500">
+                                    Status: <span className="font-medium capitalize">{onboarding.state.status.replace('_', ' ')}</span>
+                                    {' · '}
+                                    {onboarding.state.progressPercent}% complete
+                                  </p>
+                                )}
+                                <div className="flex flex-wrap gap-3">
+                                  <Button
+                                    onClick={() => {
+                                      try {
+                                        sessionStorage.removeItem('pbooks_onboarding_dismissed_session');
+                                      } catch {
+                                        /* ignore */
+                                      }
+                                      onboarding.setOpen(true);
+                                    }}
+                                  >
+                                    Resume wizard
+                                  </Button>
+                                  <Button variant="secondary" onClick={() => void onboarding.restart()}>
+                                    Restart from beginning
+                                  </Button>
+                                </div>
+                            </div>
+                        )}
+                        {activeCategory === 'admin-subscriptions' && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                                <AdminSubscriptionDashboard />
+                            </div>
+                        )}
+                        {activeCategory === 'admin-monitoring' && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                                <AdminMonitoringDashboard />
+                            </div>
+                        )}
+                        {activeCategory === 'admin-referrals' && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                                <AdminReferralDashboard />
                             </div>
                         )}
                         {activeCategory === 'backup' && (
@@ -1193,10 +1298,24 @@ const SettingsPage: React.FC = () => {
                                 <BackupRestorePage />
                             </Suspense>
                         )}
+                        {activeCategory === 'privacy' && !isLocalOnlyMode() && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                                <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                                    <PrivacyCenter />
+                                </Suspense>
+                            </div>
+                        )}
+                        {activeCategory === 'mfa' && !isLocalOnlyMode() && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                                <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                                    <MfaSettingsSection />
+                                </Suspense>
+                            </div>
+                        )}
                         {activeCategory === 'data' && renderDataManagement()}
                         {activeCategory === 'help' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                <HelpSection />
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-4 sm:p-6">
+                                <CustomerSuccessCenter onOpenSettingsTab={setActiveCategory} />
                             </div>
                         )}
                         {activeCategory === 'contacts' && (
@@ -1217,6 +1336,15 @@ const SettingsPage: React.FC = () => {
                         )}
                         {activeCategory === 'gl-journal' && isLocalOnlyMode() && (
                             <ManualJournalEntrySection />
+                        )}
+                        {activeCategory === 'permissions' && showPermissionManagement && (
+                            <PermissionManagementSection />
+                        )}
+                        {activeCategory === 'audit-trail' && perms.canReadAuditLogs && !isLocalOnlyMode() && (
+                            <EnterpriseAuditViewer />
+                        )}
+                        {activeCategory === 'accounting-periods' && !isLocalOnlyMode() && (
+                            <AccountingPeriodsSection isAdmin={perms.canManageUsers} />
                         )}
                     </div>
                 </div>

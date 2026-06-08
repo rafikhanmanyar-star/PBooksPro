@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Contract, ContactType, ContractStatus } from '../../types';
 import Button from '../ui/Button';
@@ -20,7 +20,8 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 type SortKey = 'contractNumber' | 'name' | 'totalAmount' | 'paid' | 'balance' | 'status' | 'startDate';
 
 const ProjectContractsPage: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
+    const { bills, contracts } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { openChat } = useWhatsApp();

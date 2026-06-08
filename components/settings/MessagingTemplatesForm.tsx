@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useWhatsAppTemplates } from '../../hooks/useSelectiveState';
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { WhatsAppTemplates } from '../../types';
 import Textarea from '../ui/Textarea';
@@ -55,7 +55,7 @@ const TemplateField: React.FC<{
 
 const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, MessagingTemplatesFormProps>(
   ({ onClose }, ref) => {
-    const state = useFullAppState();
+        const whatsAppTemplates = useWhatsAppTemplates();
     const dispatch = useDispatchOnly();
     const { showToast, showConfirm } = useNotification();
     const [templates, setTemplates] = useState<WhatsAppTemplates>(() => ({ ...whatsAppTemplates }));
@@ -83,8 +83,7 @@ const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, Messagin
     useImperativeHandle(
       ref,
       () => ({
-        requestCloseWithDiscardConfirm: closeWithDiscardConfirm,
-      }),
+        requestCloseWithDiscardConfirm: closeWithDiscardConfirm }),
       [closeWithDiscardConfirm]
     );
 
@@ -95,8 +94,7 @@ const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, Messagin
     const handleSave = () => {
       const payload: WhatsAppTemplates = {
         ...whatsAppTemplates,
-        ...templatesRef.current,
-      };
+        ...templatesRef.current };
       dispatch({ type: 'UPDATE_WHATSAPP_TEMPLATES', payload });
       showToast('Messaging templates updated successfully!', 'success');
       onClose?.();

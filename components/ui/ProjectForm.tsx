@@ -1,5 +1,5 @@
 
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjects } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Project, ProjectStatus } from '../../types';
 import Input from '../ui/Input';
@@ -18,7 +18,7 @@ interface ProjectFormProps {
 }
 
 const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete, projectToEdit, initialName }) => {
-    const state = useFullAppState();
+    const projects = useProjects();
     const { showAlert } = useNotification();
     const [name, setName] = useState(projectToEdit?.name || initialName || '');
     const [description, setDescription] = useState(projectToEdit?.description || '');
@@ -63,8 +63,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
             color,
             location: location.trim() || undefined,
             projectType: projectType.trim() || undefined,
-            status,
-        });
+            status });
     };
     return (
         <form onSubmit={handleSubmit} className="space-y-4">

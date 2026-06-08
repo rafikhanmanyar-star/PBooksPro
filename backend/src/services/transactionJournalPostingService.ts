@@ -7,7 +7,6 @@ import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
 import {
   insertJournalEntry,
-  isJournalReversed,
   reverseJournalEntry,
   type CreateJournalBody,
 } from './journalService.js';
@@ -20,6 +19,8 @@ export const TRANSACTION_JOURNAL_SOURCE_MODULE = 'transaction';
 const SYS_AR = 'sys-acc-ar';
 const SYS_AP = 'sys-acc-ap';
 const SYS_CLEARING = 'sys-acc-clearing';
+const SYS_INCOME_SUMMARY = 'sys-acc-income-summary';
+const SYS_EXPENSE_SUMMARY = 'sys-acc-expense-summary';
 
 const EQ_SUB_INVESTMENT = 'equity_investment';
 const EQ_SUB_WITHDRAWAL = 'equity_withdrawal';
@@ -47,16 +48,17 @@ async function findActiveJournalEntryIdForTransaction(
   transactionId: string
 ): Promise<string | null> {
   const r = await client.query<{ id: string }>(
-    `SELECT id FROM journal_entries
-     WHERE tenant_id = $1 AND source_module = $2 AND source_id = $3
-     ORDER BY created_at DESC
+    `SELECT je.id FROM journal_entries je
+     WHERE je.tenant_id = $1 AND je.source_module = $2 AND je.source_id = $3
+       AND NOT EXISTS (
+         SELECT 1 FROM journal_reversals jr
+         WHERE jr.original_journal_entry_id = je.id AND jr.tenant_id = $1
+       )
+     ORDER BY je.created_at DESC, je.id DESC
      LIMIT 1`,
     [tenantId, TRANSACTION_JOURNAL_SOURCE_MODULE, transactionId]
   );
-  const id = r.rows[0]?.id;
-  if (!id) return null;
-  if (await isJournalReversed(client, id, tenantId)) return null;
-  return id;
+  return r.rows[0]?.id ?? null;
 }
 
 export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLineInput[] | null {
@@ -67,7 +69,7 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
   const type = String(row.type ?? '').trim();
 
   if (type.toLowerCase() === 'income') {
-    const creditAccount = row.invoice_id ? SYS_AR : SYS_CLEARING;
+    const creditAccount = row.invoice_id ? SYS_AR : SYS_INCOME_SUMMARY;
     return [
       { accountId: row.account_id, debitAmount: M, creditAmount: 0, projectId },
       { accountId: creditAccount, debitAmount: 0, creditAmount: M, projectId },
@@ -75,7 +77,7 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
   }
 
   if (type.toLowerCase() === 'expense') {
-    const debitAccount = row.bill_id ? SYS_AP : SYS_CLEARING;
+    const debitAccount = row.bill_id ? SYS_AP : SYS_EXPENSE_SUMMARY;
     return [
       { accountId: debitAccount, debitAmount: M, creditAmount: 0, projectId },
       { accountId: row.account_id, debitAmount: 0, creditAmount: M, projectId },

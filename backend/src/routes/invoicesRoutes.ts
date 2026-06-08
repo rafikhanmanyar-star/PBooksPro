@@ -10,6 +10,7 @@ import {
   updateInvoice,
   upsertInvoice,
 } from '../services/invoicesService.js';
+import { requireResourceQuota } from '../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../core/realtime.js';
 import { LockGuardError } from '../services/recordLocksService.js';
 
@@ -75,7 +76,7 @@ invoicesRouter.get('/invoices/:id', async (req: AuthedRequest, res) => {
   }
 });
 
-invoicesRouter.post('/invoices', async (req: AuthedRequest, res) => {
+invoicesRouter.post('/invoices', requireResourceQuota('invoices'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');

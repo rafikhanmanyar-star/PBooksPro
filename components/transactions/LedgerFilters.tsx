@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useAccounts, useCategories } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, SortDirection, LedgerSortKey as SortKey, FilterCriteria } from '../../types';
 import Input from '../ui/Input';
@@ -22,7 +22,8 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
     onClear,
     onClose
 }) => {
-    const state = useFullAppState();
+    const accounts = useAccounts();
+    const categories = useCategories();
     const [tempFilters, setTempFilters] = useState<FilterCriteria>(filters);
 
     // Filter out Internal Clearing account from combo box - with defensive check

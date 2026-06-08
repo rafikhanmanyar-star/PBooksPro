@@ -55,7 +55,7 @@ const KPISelector: React.FC<KPISelectorProps> = ({ isOpen, onClose, initialTab =
         setVisibleKpiIds(newIds);
     };
 
-    const groupOrder = ['General', 'Account Balances', 'Rental', 'Project', 'Income Categories', 'Expense Categories'];
+    const groupOrder = ['General', 'Account Balances', 'Rental', 'Accounting', 'Project', 'Income Categories', 'Expense Categories'];
     const reportGroupOrder = ['Rental', 'Project', 'General'];
 
     const renderSelectedKPIs = () => (

@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { AccountType, TransactionType, Transaction, EquityLedgerSubtype } from '../../types';
 import Button from '../ui/Button';
@@ -156,7 +156,8 @@ export interface ProjectEquityManagementProps {
 }
 
 const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equityTab, onEquityTabChange }) => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
+    const { printSettings } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     

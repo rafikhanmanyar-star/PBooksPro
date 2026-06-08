@@ -3,13 +3,20 @@
  * Classification comes from Category.plSubType (pl_category_mapping) — no hardcoded category names.
  * Amounts and inclusion rules match computeProjectProfitLossTotals (projectProfitLossComputation).
  *
- * Double-entry: the Trial Balance report (journal_lines) is the GL source of truth for posted journals;
- * this engine remains category/transaction-based until operational flows post through the journal.
+ * Double-entry: when `journalLedger` is present on state, P&L uses only transactions
+ * with an active journal mirror (journal_lines as source of truth).
  */
 
 import type { AppState, Category, ProfitLossSubType } from '../../types';
 import { TransactionType } from '../../types';
 import { computeProjectProfitLossTotals } from './projectProfitLossComputation';
+import {
+  mirroredTransactionIds,
+  type JournalLedgerInput,
+} from '../../services/financialEngine/journalLedgerCore';
+
+/** Extended state with optional unified GL input. */
+export type ProfitLossStateInput = AppState & { journalLedger?: JournalLedgerInput };
 
 export const PL_TYPES: readonly ProfitLossSubType[] = [
   'revenue',
@@ -192,11 +199,17 @@ function buildRowsForBucket(
  * Full IFRS/GAAP-style P&L: bucket totals from mapped categories + same net as legacy P&L when mappings cover all flows.
  */
 export function computeProfitLossReport(
-  state: AppState,
+  state: ProfitLossStateInput,
   opts: { startDate: string; endDate: string; selectedProjectId: string }
 ): ProfitLossReportResult {
   const { startDate, endDate, selectedProjectId } = opts;
-  const pl = computeProjectProfitLossTotals(state, selectedProjectId, startDate, endDate);
+  const journalOpts = state.journalLedger
+    ? {
+        requireJournalMirror: true,
+        mirroredTransactionIds: mirroredTransactionIds(state.journalLedger),
+      }
+    : undefined;
+  const pl = computeProjectProfitLossTotals(state, selectedProjectId, startDate, endDate, journalOpts);
   const { categoryAmounts, assetSaleRevenue, assetSaleCost, netProfit: legacyNet } = pl;
 
   const issues: ProfitLossValidationIssue[] = [];

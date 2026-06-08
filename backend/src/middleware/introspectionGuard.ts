@@ -8,6 +8,17 @@ function isAdminRole(role: string | undefined): boolean {
   return r === 'admin' || r === 'super_admin';
 }
 
+/** True when the TCP peer is the same machine (API Server tray UI, local curl). */
+export function isLoopbackRequest(req: Request): boolean {
+  const candidates = [req.socket?.remoteAddress, req.ip].filter(
+    (v): v is string => typeof v === 'string' && v.length > 0
+  );
+  return candidates.some((raw) => {
+    const ip = raw.replace(/^::ffff:/, '');
+    return ip === '127.0.0.1' || ip === '::1';
+  });
+}
+
 /** Rate-limit unauthenticated discovery / tenant directory endpoints. */
 export const publicIntrospectionLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -54,10 +65,15 @@ export function requireDiscoveryToken(req: Request, res: Response, next: NextFun
 }
 
 /**
- * GET /api/server/connected-clients — authenticated admins only unless explicitly opened.
+ * GET /api/server/connected-clients — loopback (API Server tray) or authenticated admins.
+ * Set ALLOW_PUBLIC_CONNECTED_CLIENTS=true to expose on LAN without auth.
  */
 export const requireConnectedClientsAccess: RequestHandler = (req, res, next) => {
   if (process.env.ALLOW_PUBLIC_CONNECTED_CLIENTS === 'true') {
+    next();
+    return;
+  }
+  if (isLoopbackRequest(req)) {
     next();
     return;
   }

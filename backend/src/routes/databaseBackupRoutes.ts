@@ -1,38 +1,39 @@
 /**
  * Full PostgreSQL database backup (pg_dump) and restore (pg_restore).
- * Admin-only. Off by default on remote hosts unless ENABLE_DB_BACKUP_RESTORE=true.
- *
- * Requires PostgreSQL client tools (pg_dump, pg_restore) on the server PATH.
+ * AES-256 encrypted downloads; secure restore requires Super Admin / Company Admin authorization.
  */
 
 import type { NextFunction, Response } from 'express';
 import { Router } from 'express';
-import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import pg from 'pg';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { requireOrgUserAdmin } from '../middleware/authMiddleware.js';
-import { closePool, getPool } from '../db/pool.js';
+import { requireBackupRestoreAdmin } from '../middleware/backupSecurityMiddleware.js';
+import { getPool } from '../db/pool.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { buildTenantBackupPayload, compressTenantBackup } from '../services/tenantBackupService.js';
+import {
+  isDatabaseBackupRestoreEnabled,
+  runPgDumpToFile,
+} from '../services/fullPgBackupService.js';
+import { runPgRestoreFromFile } from '../services/pgRestoreService.js';
+import {
+  encryptBackupForDownload,
+  sha256Hex,
+} from '../services/backup/backupCryptoService.js';
+import { readBackupPlaintextFromBuffer } from '../services/backup/backupFileService.js';
+import { getBackupSecuritySettings } from '../services/backup/backupSecuritySettingsService.js';
+import {
+  consumeRestoreSession,
+  purgeExpiredRestoreSessions,
+} from '../services/backup/backupRestoreAuthService.js';
+import { backupAuditContext, logBackupAudit } from '../services/backup/backupAuditService.js';
 
 export const databaseBackupRouter = Router();
-
-function isDatabaseBackupRestoreEnabled(): boolean {
-  const ex = process.env.ENABLE_DB_BACKUP_RESTORE?.trim().toLowerCase();
-  if (ex === 'false' || ex === '0' || ex === 'no') return false;
-  if (ex === 'true' || ex === '1' || ex === 'yes') return true;
-  const url = process.env.DATABASE_URL || '';
-  return (
-    /127\.0\.0\.1/i.test(url) ||
-    /localhost/i.test(url) ||
-    /\[::1\]/i.test(url)
-  );
-}
 
 function requireBackupEnabled(_req: AuthedRequest, res: Response, next: NextFunction): void {
   if (!process.env.DATABASE_URL) {
@@ -51,76 +52,23 @@ function requireBackupEnabled(_req: AuthedRequest, res: Response, next: NextFunc
   next();
 }
 
-function runCommand(
-  command: string,
-  args: string[],
-  logLabel: string
-): Promise<{ code: number | null; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stderr = '';
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.on('error', (err) => {
-      reject(err);
-    });
-    child.on('close', (code) => {
-      if (stderr.trim()) {
-        console.error(`[${logLabel}]`, stderr.trim());
-      }
-      resolve({ code, stderr });
-    });
-  });
+async function getUserEmail(client: import('pg').PoolClient, userId: string): Promise<string | null> {
+  const { rows } = await client.query(`SELECT email FROM users WHERE id = $1`, [userId]);
+  return rows[0]?.email ?? null;
 }
 
-async function runPgDumpToFile(outFile: string): Promise<void> {
-  const dbUrl = process.env.DATABASE_URL!;
-  const { code, stderr } = await runCommand(
-    'pg_dump',
-    ['-Fc', '--no-owner', '--no-acl', '-f', outFile, '-d', dbUrl],
-    'pg_dump'
-  );
-  if (code !== 0) {
-    try {
-      await fs.unlink(outFile);
-    } catch {
-      /* ignore */
-    }
-    throw new Error(stderr.trim() || `pg_dump exited with code ${code}`);
-  }
+function backupPasswordFromRequest(req: AuthedRequest): string | undefined {
+  const header = req.headers['x-backup-password'];
+  if (typeof header === 'string' && header.trim()) return header.trim();
+  const q = req.query.password;
+  if (typeof q === 'string' && q.trim()) return q.trim();
+  return undefined;
 }
 
-async function terminateOtherDbSessions(connectionString: string): Promise<void> {
-  const c = new pg.Client({ connectionString });
-  await c.connect();
-  try {
-    await c.query(
-      `SELECT pg_terminate_backend(pid)
-       FROM pg_stat_activity
-       WHERE datname = current_database()
-         AND pid <> pg_backend_pid()
-         AND backend_type = 'client backend'`
-    );
-  } finally {
-    await c.end();
-  }
-}
-
-async function runPgRestore(dumpPath: string): Promise<void> {
-  const dbUrl = process.env.DATABASE_URL!;
-  const { code, stderr } = await runCommand(
-    'pg_restore',
-    ['--clean', '--if-exists', '--no-owner', '--no-acl', '-d', dbUrl, dumpPath],
-    'pg_restore'
-  );
-  // pg_restore: 0 = ok, 1 = warnings, 2 = errors
-  if (code === 2 || code === null) {
-    throw new Error(stderr.trim() || `pg_restore exited with code ${code}`);
-  }
+function restoreTokenFromRequest(req: AuthedRequest): string | undefined {
+  const header = req.headers['x-restore-token'];
+  if (typeof header === 'string' && header.trim()) return header.trim();
+  return undefined;
 }
 
 /** Any admin: whether backup API is allowed (for Settings UI). */
@@ -132,9 +80,11 @@ databaseBackupRouter.get('/database/backup/capabilities', requireOrgUserAdmin, (
     tenantBackupEnabled: enabled,
     format: 'custom',
     tenantFormat: 'json.gz',
-    fileExtension: '.dump',
+    tenantRestoreEnabled: enabled,
+    encryptedFormat: 'PBKENC1/PBKENC2',
+    fileExtension: '.pbkenc',
     hint: enabled
-      ? 'Full backup downloads a pg_dump custom-format file. Tenant backup exports this organization\'s rows as JSON (restore manually or contact support).'
+      ? 'Full backup downloads are AES-256 encrypted. Optional backup password adds PBKENC2 protection. Restore requires Super Admin or Company Admin authorization.'
       : hasUrl
         ? 'Set ENABLE_DB_BACKUP_RESTORE=true in the API server environment to allow backup/restore when not using localhost.'
         : 'DATABASE_URL is not set on the API server.',
@@ -148,7 +98,8 @@ databaseBackupRouter.get(
   requireBackupEnabled,
   async (req: AuthedRequest, res: Response) => {
     const tenantId = req.tenantId;
-    if (!tenantId) {
+    const userId = req.userId;
+    if (!tenantId || !userId) {
       sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
       return;
     }
@@ -160,6 +111,17 @@ databaseBackupRouter.get(
         const body = compressTenantBackup(payload);
         const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         const filename = `pbooks-tenant-${tenantId}-${stamp}.json.gz`;
+        const email = await getUserEmail(client, userId);
+        await logBackupAudit(client, {
+          tenantId,
+          userId,
+          email,
+          action: 'backup_downloaded',
+          entityId: tenantId,
+          summary: 'Organization tenant backup exported',
+          details: { format: 'json.gz', sizeBytes: body.length },
+          ctx: backupAuditContext(req),
+        });
         res.setHeader('Content-Type', 'application/gzip');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', String(body.length));
@@ -177,18 +139,72 @@ databaseBackupRouter.get(
   '/database/backup',
   requireOrgUserAdmin,
   requireBackupEnabled,
-  async (_req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+    if (!tenantId || !userId) {
+      sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+      return;
+    }
+
     const tmp = path.join(os.tmpdir(), `pbooks-backup-${Date.now()}.dump`);
     try {
       await runPgDumpToFile(tmp);
-      const stat = await fs.stat(tmp);
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const filename = `pbooks-full-backup-${stamp}.dump`;
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Length', String(stat.size));
+      const plain = await fs.readFile(tmp);
+      const backupPassword = backupPasswordFromRequest(req);
 
-      await pipeline(createReadStream(tmp), res);
+      const pool = getPool();
+      const client = await pool.connect();
+      let minPasswordLen = 8;
+      try {
+        const sec = await getBackupSecuritySettings(client);
+        minPasswordLen = sec.min_backup_password_length;
+        if (backupPassword && backupPassword.length < minPasswordLen) {
+          sendFailure(
+            res,
+            400,
+            'WEAK_PASSWORD',
+            `Backup password must be at least ${minPasswordLen} characters.`
+          );
+          return;
+        }
+
+        const encrypted = encryptBackupForDownload(plain, backupPassword);
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const ext = backupPassword ? '.pbkenc2' : '.pbkenc';
+        const filename = `pbooks-full-backup-${stamp}${ext}`;
+        const email = await getUserEmail(client, userId);
+
+        await logBackupAudit(client, {
+          tenantId,
+          userId,
+          email,
+          action: 'backup_created',
+          summary: 'Full database backup created',
+          details: {
+            plainSha256: sha256Hex(plain),
+            encryptedSizeBytes: encrypted.length,
+            passwordProtected: !!backupPassword,
+          },
+          ctx: backupAuditContext(req),
+        });
+        await logBackupAudit(client, {
+          tenantId,
+          userId,
+          email,
+          action: 'backup_downloaded',
+          summary: 'Full database backup downloaded',
+          details: { filename, sizeBytes: encrypted.length, passwordProtected: !!backupPassword },
+          ctx: backupAuditContext(req),
+        });
+
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', String(encrypted.length));
+        res.send(encrypted);
+      } finally {
+        client.release();
+      }
     } catch (e) {
       if (!res.headersSent) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -215,29 +231,87 @@ databaseBackupRouter.get(
 
 databaseBackupRouter.post(
   '/database/restore',
-  requireOrgUserAdmin,
+  requireBackupRestoreAdmin,
   requireBackupEnabled,
   async (req: AuthedRequest, res: Response) => {
-    const tmp = path.join(os.tmpdir(), `pbooks-restore-${Date.now()}.dump`);
-    try {
-      await pipeline(req, createWriteStream(tmp));
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+    if (!tenantId || !userId) {
+      sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+      return;
+    }
 
-      const st = await fs.stat(tmp);
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const settings = await getBackupSecuritySettings(client);
+      await purgeExpiredRestoreSessions(client);
+
+      if (settings.require_restore_authorization) {
+        const token = restoreTokenFromRequest(req);
+        if (!token) {
+          sendFailure(
+            res,
+            403,
+            'RESTORE_TOKEN_REQUIRED',
+            'Restore authorization required. Call POST /backups/security/restore/authorize first.'
+          );
+          return;
+        }
+        const ok = await consumeRestoreSession(client, token, userId, tenantId);
+        if (!ok) {
+          sendFailure(res, 403, 'RESTORE_TOKEN_INVALID', 'Restore authorization token is invalid or expired.');
+          return;
+        }
+      }
+    } finally {
+      client.release();
+    }
+
+    const tmpEnc = path.join(os.tmpdir(), `pbooks-restore-enc-${Date.now()}.bin`);
+    const tmpPlain = path.join(os.tmpdir(), `pbooks-restore-${Date.now()}.dump`);
+    try {
+      await pipeline(req, createWriteStream(tmpEnc));
+
+      const st = await fs.stat(tmpEnc);
       if (st.size < 64) {
         sendFailure(res, 400, 'INVALID_FILE', 'Backup file is empty or too small.');
         return;
       }
 
-      const dbUrl = process.env.DATABASE_URL!;
+      const raw = await fs.readFile(tmpEnc);
+      const backupPassword =
+        typeof req.headers['x-backup-password'] === 'string'
+          ? req.headers['x-backup-password'].trim()
+          : undefined;
 
-      await closePool();
+      let plain: Buffer;
       try {
-        await terminateOtherDbSessions(dbUrl);
+        plain = await readBackupPlaintextFromBuffer(raw, { password: backupPassword });
       } catch (e) {
-        console.warn('[database/restore] terminateOtherDbSessions:', e);
+        const msg = e instanceof Error ? e.message : String(e);
+        sendFailure(res, 400, 'DECRYPT_FAILED', msg);
+        return;
       }
 
-      await runPgRestore(tmp);
+      await fs.writeFile(tmpPlain, plain);
+      await runPgRestoreFromFile(tmpPlain);
+
+      const auditClient = await pool.connect();
+      try {
+        const email = userId ? await getUserEmail(auditClient, userId) : null;
+        await logBackupAudit(auditClient, {
+          tenantId,
+          userId,
+          email,
+          action: 'backup_restored',
+          summary: 'Full database restored from backup file',
+          details: { sizeBytes: plain.length },
+          ctx: backupAuditContext(req),
+        });
+      } finally {
+        auditClient.release();
+      }
 
       sendSuccess(res, {
         ok: true,
@@ -257,7 +331,8 @@ databaseBackupRouter.post(
       handleRouteError(res, e, { route: 'POST /database/restore' });
     } finally {
       try {
-        await fs.unlink(tmp);
+        await fs.unlink(tmpEnc);
+        await fs.unlink(tmpPlain);
       } catch {
         /* ignore */
       }

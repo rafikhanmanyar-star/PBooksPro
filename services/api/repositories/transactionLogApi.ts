@@ -68,4 +68,19 @@ export class TransactionLogApiRepository {
       };
     });
   }
+
+  /** Append one audit log entry (idempotent by id). */
+  async append(entry: Partial<TransactionLogEntry>): Promise<void> {
+    await apiClient.post('/transaction-audit', {
+      id: entry.id,
+      timestamp: entry.timestamp,
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      description: entry.description,
+      userId: entry.userId,
+      userLabel: entry.userLabel,
+      data: entry.data,
+    });
+  }
 }

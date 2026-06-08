@@ -5,6 +5,7 @@ import { apiClient } from '../../services/api/client';
 import { getDatabaseService } from '../../services/database/databaseService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { UserRole } from '../../types';
+import { ASSIGNABLE_ROLES, ENTERPRISE_ROLE_LABELS, resolveEnterpriseRole } from '../../shared/rbac/permissions';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -298,9 +299,6 @@ const UserManagement: React.FC = () => {
                                             user.role === 'Admin' || user.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-800' :
                                             user.role === 'Manager' ? 'bg-blue-100 text-blue-800' :
                                             user.role === 'Accounts' ? 'bg-slate-100 text-slate-800' :
-                                            user.role === 'Store Manager' ? 'bg-emerald-100 text-emerald-800' :
-                                            user.role === 'Cashier' ? 'bg-cyan-100 text-cyan-800' :
-                                            user.role === 'Inventory Manager' ? 'bg-orange-100 text-orange-800' :
                                             user.role === 'Project Manager' ? 'bg-indigo-100 text-indigo-800' :
                                             user.role === 'Team Lead' ? 'bg-violet-100 text-violet-800' :
                                             'bg-gray-100 text-gray-800'
@@ -402,73 +400,22 @@ const UserManagement: React.FC = () => {
                         value={role}
                         onChange={e => setRole(e.target.value as UserRole)}
                     >
-                        <optgroup label="Administrative Roles">
-                            <option value="Admin">Admin (Full Access)</option>
-                            <option value="Manager">Manager (Config + Data)</option>
-                            <option value="Accounts">Accounts (Data Entry)</option>
-                        </optgroup>
-                        <optgroup label="POS & Shop Roles">
-                            <option value="Store Manager">Store Manager (Shop Operations)</option>
-                            <option value="Cashier">Cashier (POS Only)</option>
+                        {ASSIGNABLE_ROLES.map((r) => (
+                            <option key={r.value} value={r.value}>
+                                {r.label}
+                            </option>
+                        ))}
+                        <optgroup label="Legacy roles">
+                            <option value="Team Lead">Team Lead</option>
+                            <option value="Task Contributor">Task Contributor</option>
                         </optgroup>
                     </Select>
 
                     <div className="pt-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg overflow-y-auto max-h-40">
-                        {role === 'Admin' && (
-                            <div>
-                                <p className="font-bold text-slate-700 mb-1">Administrator</p>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Full system access to all modules</li>
-                                    <li>User management and system settings</li>
-                                    <li>All financial reports including P&L</li>
-                                    <li>Can manage POS, inventory, and procurement</li>
-                                </ul>
-                            </div>
-                        )}
-                        {role === 'Manager' && (
-                            <div>
-                                <p className="font-bold text-slate-700 mb-1">Manager</p>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Can manage settings, contacts, and data</li>
-                                    <li>Access to operational reports</li>
-                                    <li>Cannot see Profit/Loss or Balance Sheet</li>
-                                    <li>No access to sensitive investor reports</li>
-                                </ul>
-                            </div>
-                        )}
-                        {role === 'Accounts' && (
-                            <div>
-                                <p className="font-bold text-slate-700 mb-1">Accounts</p>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Can enter transactions, invoices, bills</li>
-                                    <li>Basic ledger and payment entry</li>
-                                    <li>No access to Settings or analytical reports</li>
-                                    <li>Cannot modify system configurations</li>
-                                </ul>
-                            </div>
-                        )}
-                        {role === 'Store Manager' && (
-                            <div>
-                                <p className="font-bold text-slate-700 mb-1">Store Manager</p>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Full access to POS and Shop modules</li>
-                                    <li>Manage products, pricing, and promotions</li>
-                                    <li>View sales reports and analytics</li>
-                                    <li>Manage cashiers and shift operations</li>
-                                </ul>
-                            </div>
-                        )}
-                        {role === 'Cashier' && (
-                            <div>
-                                <p className="font-bold text-slate-700 mb-1">Cashier</p>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Access to POS sales screen only</li>
-                                    <li>Process sales transactions and payments</li>
-                                    <li>Handle customer checkouts</li>
-                                    <li>Cannot modify prices or products</li>
-                                </ul>
-                            </div>
-                        )}
+                        <p className="font-bold text-slate-700 mb-1">
+                            {ENTERPRISE_ROLE_LABELS[resolveEnterpriseRole(role)]}
+                        </p>
+                        <p>Permissions are enforced server-side. See Settings → Permissions for the full matrix.</p>
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4 border-t">

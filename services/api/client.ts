@@ -5,7 +5,7 @@
  * Handles authentication, error handling, and request/response transformation.
  */
 
-import { getApiBaseUrl, isLanBackendApi, PBOOKS_API_BASE_STORAGE_KEY } from '../../config/apiUrl';
+import { getApiBaseUrl, isLanBackendApi, isStagingEnvironment, PBOOKS_API_BASE_STORAGE_KEY } from '../../config/apiUrl';
 import { logger } from '../logger';
 import { notifyApiConflictIfUserFacing } from '../dbErrorNotification';
 import { stringifyApiJsonBody } from '../../utils/apiJsonSerialize';
@@ -74,6 +74,16 @@ export class ApiClient {
     let base = trimmed.replace(/\/+$/, '');
     if (!base.endsWith('/api')) {
       base = `${base}/api`;
+    }
+    if (isStagingEnvironment() && /:3000(\/|$)/.test(base)) {
+      throw new Error(
+        'This is the Staging client — it cannot connect to the production API (port 3000). Use port 3001 (PBooks Pro Staging API Server).'
+      );
+    }
+    if (!isStagingEnvironment() && /:3001(\/|$)/.test(base)) {
+      throw new Error(
+        'This is the Production client — it cannot connect to the staging API (port 3001). Use port 3000.'
+      );
     }
     this.baseUrl = base;
     if (typeof window !== 'undefined') {
@@ -249,6 +259,7 @@ export class ApiClient {
     // Auth endpoints (login, register, lookup) don't require a token.
     const isPublicEndpoint = endpoint.includes('/auth/') ||
                              endpoint.includes('/register-tenant') ||
+                             endpoint.includes('/legal/') ||
                              endpoint.includes('/health') ||
                              endpoint.includes('/schema/version') ||
                              endpoint.includes('/app-info/version') ||
@@ -268,8 +279,8 @@ export class ApiClient {
       ...(fetchOpts.headers as Record<string, string> | undefined),
     };
 
-    // Add auth token if available
-    if (this.token) {
+    // Add auth token if available (custom Authorization header takes precedence)
+    if (this.token && !headers['Authorization']) {
       // Validate token format before sending
       const tokenParts = this.token.split('.');
       if (tokenParts.length !== 3) {

@@ -5,6 +5,7 @@
 import {
   DEFAULT_LAN_API_PORT,
   getApiBaseUrl,
+  getDefaultApiRootUrl,
   PBOOKS_API_BASE_STORAGE_KEY,
 } from '../config/apiUrl';
 
@@ -83,13 +84,65 @@ export async function probeDiscoverRoot(rootUrl: string, timeoutMs = 500): Promi
   }
 }
 
+async function probeHealthRoot(rootUrl: string, timeoutMs: number): Promise<boolean> {
+  const url = `${rootUrl.replace(/\/+$/, '')}/health`;
+  try {
+    const res = await fetchWithTimeout(url, timeoutMs);
+    if (!res.ok) return false;
+    const j: unknown = await res.json();
+    if (!j || typeof j !== 'object') return false;
+    const o = j as Record<string, unknown>;
+    if (o.ok === true) return true;
+    if (o.success === true) {
+      const data = o.data;
+      return !!data && typeof data === 'object' && (data as Record<string, unknown>).ok === true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+async function probeServerRoot(rootUrl: string, timeoutMs: number): Promise<boolean> {
+  const root = rootUrl.replace(/\/+$/, '');
+  if (await probeDiscoverRoot(root, timeoutMs)) return true;
+  return probeHealthRoot(root, timeoutMs);
+}
+
+function normalizeRoot(url: string): string {
+  return url.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+}
+
+/**
+ * Returns true when the API responds on /api/discover or /health.
+ * Tries the configured URL first, then the build default (usually http://127.0.0.1:3000)
+ * so co-installed client + API Server on one PC still connect when localStorage has a stale LAN IP.
+ */
 export async function verifyServerReachable(
   apiBaseUrl: string,
   timeoutMs = 2500
 ): Promise<boolean> {
-  const root = apiBaseUrl.replace(/\/api\/?$/i, '');
-  const p = await probeDiscoverRoot(root, timeoutMs);
-  return p !== null;
+  return (await resolveReachableApiBaseUrl(apiBaseUrl, timeoutMs)) !== null;
+}
+
+/**
+ * When reachable, returns the API base URL to use (may differ from input when localhost fallback wins).
+ */
+export async function resolveReachableApiBaseUrl(
+  apiBaseUrl: string,
+  timeoutMs = 2500
+): Promise<string | null> {
+  const primary = normalizeRoot(apiBaseUrl);
+  if (await probeServerRoot(primary, timeoutMs)) {
+    return primary.endsWith('/api') ? primary : `${primary}/api`;
+  }
+
+  const fallback = normalizeRoot(getDefaultApiRootUrl());
+  if (fallback !== primary && (await probeServerRoot(fallback, timeoutMs))) {
+    return `${fallback}/api`;
+  }
+
+  return null;
 }
 
 /** e.g. 192.168.1.25 → 192.168.1 */
@@ -183,6 +236,11 @@ export async function scanLanSubnet(
     seenIp.add(key);
     found.push(p);
   };
+
+  // Co-installed client + API Server on the same PC (Electron file:// never hits 127.0.0.1 in a /24 scan).
+  const loopback = await probeDiscover('127.0.0.1', port, Math.min(timeoutMs + 200, 800));
+  pushIfNew(loopback);
+  if (stopAfterFirst && found.length > 0) return found;
 
   if (tryStoredFirst) {
     const stored = parseStoredRoot();

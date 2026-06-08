@@ -1,17 +1,16 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useBudgetDashboardState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import { Budget, TransactionType } from '../../types';
 import { CURRENCY } from '../../constants';
 import Card from '../ui/Card';
 import { formatCurrency } from '../../utils/numberUtils';
 
-const BudgetProgress: React.FC<{ budget: Budget; spent: number }> = ({ budget, spent }) => {
-    const state = useFullAppState();
-    const category = state.categories.find(c => c.id === budget.categoryId);
-    const project = budget.projectId ? state.projects.find(p => p.id === budget.projectId) : null;
-    
-    if (!category) return null;
-
+const BudgetProgress: React.FC<{
+    budget: Budget;
+    spent: number;
+    categoryName: string;
+    projectName?: string | null;
+}> = ({ budget, spent, categoryName, projectName }) => {
     const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
     const isOverBudget = spent > budget.amount;
     const remaining = budget.amount - spent;
@@ -20,8 +19,8 @@ const BudgetProgress: React.FC<{ budget: Budget; spent: number }> = ({ budget, s
         <div>
             <div className="flex justify-between items-baseline mb-1">
                 <span className="font-semibold text-slate-700 text-sm">
-                    {category.name}
-                    {project && <span className="text-xs text-slate-500 ml-1">({project.name})</span>}
+                    {categoryName}
+                    {projectName && <span className="text-xs text-slate-500 ml-1">({projectName})</span>}
                 </span>
                 <span className={`text-xs font-medium ${isOverBudget ? 'text-danger' : 'text-slate-500'}`}>
                     {CURRENCY} {formatCurrency(spent)} / {CURRENCY} {formatCurrency(budget.amount)}
@@ -45,89 +44,89 @@ const BudgetProgress: React.FC<{ budget: Budget; spent: number }> = ({ budget, s
 
 
 const BudgetStatus: React.FC = () => {
-    const state = useFullAppState();
+    const { budgets, categories, projects, transactions, bills, invoices } = useBudgetDashboardState();
 
-    // Get all budgets with amount > 0
-    const activeBudgets = useMemo(() => {
-        return state.budgets.filter(b => b.amount > 0);
-    }, [state.budgets]);
+    const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+    const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
 
-    // Calculate total spending per budget (lifetime)
+    const activeBudgets = useMemo(() => budgets.filter((b) => b.amount > 0), [budgets]);
+
     const budgetSpending = useMemo(() => {
         const spendingMap = new Map<string, number>();
-        
-        activeBudgets.forEach(budget => {
+
+        activeBudgets.forEach((budget) => {
             let totalSpent = 0;
-            
-            state.transactions.forEach(tx => {
+
+            transactions.forEach((tx) => {
                 if (tx.type !== TransactionType.EXPENSE) return;
-                
-                // Resolve projectId and categoryId from linked entities
+
                 let projectId = tx.projectId;
                 let categoryId = tx.categoryId;
-                
-                // Resolve from linked Bill if missing
+
                 if (tx.billId) {
-                    const bill = state.bills.find(b => b.id === tx.billId);
+                    const bill = bills.find((b) => b.id === tx.billId);
                     if (bill) {
                         if (!projectId) projectId = bill.projectId;
-                        // Handle expenseCategoryItems: if bill has multiple categories, distribute transaction amount proportionally
                         if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
-                            const totalBillAmount = bill.expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
+                            const totalBillAmount = bill.expenseCategoryItems.reduce(
+                                (sum, item) => sum + (item.netValue || 0),
+                                0
+                            );
                             if (totalBillAmount > 0) {
-                                // Check if this budget's category is in the bill's expenseCategoryItems
-                                const matchingItem = bill.expenseCategoryItems.find(item => item.categoryId === budget.categoryId);
+                                const matchingItem = bill.expenseCategoryItems.find(
+                                    (item) => item.categoryId === budget.categoryId
+                                );
                                 if (matchingItem) {
                                     const proportion = (matchingItem.netValue || 0) / totalBillAmount;
                                     const allocatedAmount = tx.amount * proportion;
-                                    // Match budget project scope
-                                    if ((budget.projectId && projectId === budget.projectId) || 
-                                        (!budget.projectId && !projectId)) {
+                                    if (
+                                        (budget.projectId && projectId === budget.projectId) ||
+                                        (!budget.projectId && !projectId)
+                                    ) {
                                         totalSpent += allocatedAmount;
                                     }
                                 }
                             }
-                            return; // Skip single category processing for this transaction
-                        } else if (!categoryId) {
-                            categoryId = bill.categoryId;
+                            return;
                         }
+                        if (!categoryId) categoryId = bill.categoryId;
                     }
                 }
-                
-                // Resolve from linked Invoice if missing
+
                 if (tx.invoiceId) {
-                    const inv = state.invoices.find(i => i.id === tx.invoiceId);
+                    const inv = invoices.find((i) => i.id === tx.invoiceId);
                     if (inv) {
                         if (!projectId) projectId = inv.projectId;
                         if (!categoryId) categoryId = inv.categoryId;
                     }
                 }
-                
+
                 if (categoryId === budget.categoryId) {
-                    // Match budget project scope
-                    if ((budget.projectId && projectId === budget.projectId) || 
-                        (!budget.projectId && !projectId)) {
+                    if (
+                        (budget.projectId && projectId === budget.projectId) ||
+                        (!budget.projectId && !projectId)
+                    ) {
                         totalSpent += tx.amount;
                     }
                 }
             });
-            
+
             spendingMap.set(budget.id, totalSpent);
         });
-        
+
         return spendingMap;
-    }, [state.transactions, state.bills, state.invoices, activeBudgets]);
+    }, [transactions, bills, invoices, activeBudgets]);
 
     const { totalBudgeted, totalSpent } = useMemo(() => {
-        let totalBudgeted = 0;
-        let totalSpent = 0;
-        activeBudgets.forEach(budget => {
-            totalBudgeted += budget.amount;
-            totalSpent += budgetSpending.get(budget.id) || 0;
+        let budgeted = 0;
+        let spent = 0;
+        activeBudgets.forEach((budget) => {
+            budgeted += budget.amount;
+            spent += budgetSpending.get(budget.id) || 0;
         });
-        return { totalBudgeted, totalSpent };
+        return { totalBudgeted: budgeted, totalSpent: spent };
     }, [activeBudgets, budgetSpending]);
-    
+
     if (activeBudgets.length === 0) {
         return (
             <Card>
@@ -138,7 +137,7 @@ const BudgetStatus: React.FC = () => {
             </Card>
         );
     }
-    
+
     const overallProgress = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
     const isOverallOverBudget = totalSpent > totalBudgeted;
     const totalRemaining = totalBudgeted - totalSpent;
@@ -146,22 +145,22 @@ const BudgetStatus: React.FC = () => {
     return (
         <Card>
             <h3 className="text-xl font-bold text-slate-800 mb-4">Budget Status</h3>
-            
-            {/* Overall Summary */}
+
             <div className="mb-6">
                 <div className="flex justify-between items-baseline mb-1">
                     <span className="font-semibold text-slate-800 text-md">Overall Budget Progress</span>
-                     <span className={`text-sm font-medium ${isOverallOverBudget ? 'text-danger' : 'text-slate-600'}`}>
+                    <span className={`text-sm font-medium ${isOverallOverBudget ? 'text-danger' : 'text-slate-600'}`}>
                         {CURRENCY} {formatCurrency(totalSpent)} / {CURRENCY} {formatCurrency(totalBudgeted)}
                     </span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500 mb-1">
                     <span>{totalRemaining >= 0 ? 'Remaining Budget' : 'Over Budget'}</span>
                     <span className={totalRemaining >= 0 ? 'text-emerald-600 font-semibold' : 'text-rose-600 font-semibold'}>
-                        {CURRENCY} {formatCurrency(Math.abs(totalRemaining))} ({Math.abs(totalRemaining / totalBudgeted * 100).toFixed(1)}%)
+                        {CURRENCY} {formatCurrency(Math.abs(totalRemaining))} (
+                        {Math.abs((totalRemaining / totalBudgeted) * 100).toFixed(1)}%)
                     </span>
                 </div>
-                 <div className="w-full bg-slate-200 rounded-full h-4">
+                <div className="w-full bg-slate-200 rounded-full h-4">
                     <div
                         className={`h-4 rounded-full ${isOverallOverBudget ? 'bg-danger' : 'bg-accent'}`}
                         style={{ width: `${Math.min(overallProgress, 100)}%` }}
@@ -170,13 +169,20 @@ const BudgetStatus: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-                {activeBudgets.map(budget => (
-                    <BudgetProgress
-                        key={budget.id}
-                        budget={budget}
-                        spent={budgetSpending.get(budget.id) || 0}
-                    />
-                ))}
+                {activeBudgets.map((budget) => {
+                    const category = categoryById.get(budget.categoryId);
+                    if (!category) return null;
+                    const project = budget.projectId ? projectById.get(budget.projectId) : null;
+                    return (
+                        <BudgetProgress
+                            key={budget.id}
+                            budget={budget}
+                            spent={budgetSpending.get(budget.id) || 0}
+                            categoryName={category.name}
+                            projectName={project?.name}
+                        />
+                    );
+                })}
             </div>
         </Card>
     );

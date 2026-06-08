@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../db/pool.js';
+import { requireResourceQuota } from '../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../core/realtime.js';
 import { perfPayrollLog, perfPayrollNow } from '../utils/payrollPerf.js';
 import { LockGuardError } from '../services/recordLocksService.js';
@@ -496,7 +497,7 @@ payrollRouter.get('/payroll/runs/:id', async (req: AuthedRequest, res) => {
   }
 });
 
-payrollRouter.post('/payroll/runs', async (req: AuthedRequest, res) => {
+payrollRouter.post('/payroll/runs', requireResourceQuota('payroll_runs'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -555,7 +556,7 @@ payrollRouter.post('/payroll/runs/:id/process', async (req: AuthedRequest, res) 
           : undefined;
     const t0 = perfPayrollNow();
     const result = await withTransaction((c) =>
-      processPayrollRun(c, tenantId, req.params.id, onlyEmployeeId)
+      processPayrollRun(c, tenantId, req.params.id, onlyEmployeeId, req.userId ?? null)
     );
     perfPayrollLog('payroll.processPayrollRun', perfPayrollNow() - t0, {
       tenantId,
@@ -569,6 +570,10 @@ payrollRouter.post('/payroll/runs/:id/process', async (req: AuthedRequest, res) 
         processing_summary: result.processing_summary,
       },);
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
@@ -581,7 +586,7 @@ payrollRouter.delete('/payroll/runs/:id', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const ok = await withTransaction((c) => deletePayrollRun(c, tenantId, req.params.id));
+    const ok = await withTransaction((c) => deletePayrollRun(c, tenantId, req.params.id, req.userId ?? null));
     if (!ok) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
@@ -589,6 +594,10 @@ payrollRouter.delete('/payroll/runs/:id', async (req: AuthedRequest, res) => {
     emitEntityEvent(tenantId, 'deleted', 'payroll_run', { id: req.params.id, sourceUserId: req.userId });
     sendSuccess(res, { message: 'Deleted' });
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
@@ -646,7 +655,7 @@ payrollRouter.put('/payroll/payslips/:id', async (req: AuthedRequest, res) => {
   }
   try {
     const row = await withTransaction((c) =>
-      updatePayslipAmounts(c, tenantId, req.params.id, req.body as Record<string, unknown>)
+      updatePayslipAmounts(c, tenantId, req.params.id, req.body as Record<string, unknown>, req.userId ?? null)
     );
     if (!row) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
@@ -655,6 +664,10 @@ payrollRouter.put('/payroll/payslips/:id', async (req: AuthedRequest, res) => {
     emitEntityEvent(tenantId, 'updated', 'payslip', { data: rowToPayslipApi(row), sourceUserId: req.userId });
     sendSuccess(res, rowToPayslipApi(row));
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
@@ -667,7 +680,7 @@ payrollRouter.delete('/payroll/payslips/:id', async (req: AuthedRequest, res) =>
     return;
   }
   try {
-    const ok = await withTransaction((c) => softDeletePayslip(c, tenantId, req.params.id));
+    const ok = await withTransaction((c) => softDeletePayslip(c, tenantId, req.params.id, req.userId ?? null));
     if (!ok) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
@@ -675,6 +688,10 @@ payrollRouter.delete('/payroll/payslips/:id', async (req: AuthedRequest, res) =>
     emitEntityEvent(tenantId, 'deleted', 'payslip', { id: req.params.id, sourceUserId: req.userId });
     sendSuccess(res, { id: req.params.id });
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
@@ -696,6 +713,10 @@ payrollRouter.post('/payroll/payslips/:payslipId/pay', async (req: AuthedRequest
     emitEntityEvent(tenantId, 'created', 'transaction', { data: result.transaction, sourceUserId: req.userId });
     sendSuccess(res, { payslip: rowToPayslipApi(result.payslip), transaction: result.transaction },);
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
@@ -767,6 +788,10 @@ payrollRouter.post('/payroll/payslips/bulk-pay', async (req: AuthedRequest, res)
       })),
     });
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, 'LOCK_HELD', e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }

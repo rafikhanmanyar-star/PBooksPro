@@ -119,6 +119,139 @@ export async function fetchRentalBillsDashboard(options: {
   };
 }
 
+export type ServiceChargesDeductionReportApiResult = {
+  startDate: string;
+  endDate: string;
+  buildingId: string;
+  ownerId: string;
+  rows: import('../../components/reports/serviceChargesDeductionReportEngine').ServiceChargeDeductionRow[];
+  totalAmount: number;
+};
+
+export type BmAnalysisReportApiResult = {
+  startDate: string;
+  endDate: string;
+  buildingId: string;
+  reportData: import('../../components/reports/bmAnalysisReportEngine').BuildingBMData[];
+  bmDetailsByBuilding: Record<
+    string,
+    import('../../components/reports/bmAnalysisReportEngine').BMBuildingDetail
+  >;
+  totals: { collected: number; receivable: number; expenses: number; net: number };
+};
+
+export async function fetchBmAnalysisReport(options: {
+  startDate: string;
+  endDate: string;
+  buildingId?: string;
+  search?: string;
+  sortKey?: string;
+  sortDirection?: 'asc' | 'desc';
+}): Promise<BmAnalysisReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+  });
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
+  if (options.search?.trim()) q.set('search', options.search.trim());
+  if (options.sortKey) q.set('sortKey', options.sortKey);
+  if (options.sortDirection) q.set('sortDirection', options.sortDirection);
+
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/bm-analysis?${q.toString()}`);
+  return {
+    startDate: String(raw.startDate ?? options.startDate),
+    endDate: String(raw.endDate ?? options.endDate),
+    buildingId: String(raw.buildingId ?? 'all'),
+    reportData:
+      (raw.reportData as BmAnalysisReportApiResult['reportData']) ?? [],
+    bmDetailsByBuilding:
+      (raw.bmDetailsByBuilding as BmAnalysisReportApiResult['bmDetailsByBuilding']) ?? {},
+    totals: {
+      collected: Number((raw.totals as Record<string, unknown>)?.collected ?? 0),
+      receivable: Number((raw.totals as Record<string, unknown>)?.receivable ?? 0),
+      expenses: Number((raw.totals as Record<string, unknown>)?.expenses ?? 0),
+      net: Number((raw.totals as Record<string, unknown>)?.net ?? 0),
+    },
+  };
+}
+
+export type TenantLedgerReportApiResult = {
+  startDate: string;
+  endDate: string;
+  tenantId: string;
+  groupBy: '' | 'tenant';
+  rows: import('../../components/reports/tenantLedgerReportEngine').TenantLedgerItem[];
+  totals: { debit: number; credit: number };
+  closingBalance: number;
+};
+
+export async function fetchTenantLedgerReport(options: {
+  startDate: string;
+  endDate: string;
+  tenantId?: string;
+  search?: string;
+  groupBy?: '' | 'tenant';
+  sortKey?: 'date';
+  sortDirection?: 'asc' | 'desc';
+}): Promise<TenantLedgerReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+  });
+  if (options.tenantId && options.tenantId !== 'all') q.set('tenantId', options.tenantId);
+  if (options.search?.trim()) q.set('search', options.search.trim());
+  if (options.groupBy === 'tenant') q.set('groupBy', 'tenant');
+  if (options.sortKey) q.set('sortKey', options.sortKey);
+  if (options.sortDirection) q.set('sortDirection', options.sortDirection);
+
+  const raw = await apiClient.get<Record<string, unknown>>(`/reports/tenant-ledger?${q.toString()}`);
+  return {
+    startDate: String(raw.startDate ?? options.startDate),
+    endDate: String(raw.endDate ?? options.endDate),
+    tenantId: String(raw.tenantId ?? 'all'),
+    groupBy: raw.groupBy === 'tenant' ? 'tenant' : '',
+    rows: (raw.rows as TenantLedgerReportApiResult['rows']) ?? [],
+    totals: {
+      debit: Number((raw.totals as Record<string, unknown>)?.debit ?? 0),
+      credit: Number((raw.totals as Record<string, unknown>)?.credit ?? 0),
+    },
+    closingBalance: Number(raw.closingBalance ?? 0),
+  };
+}
+
+export async function fetchServiceChargesDeductionReport(options: {
+  startDate: string;
+  endDate: string;
+  buildingId?: string;
+  ownerId?: string;
+  search?: string;
+  sortKey?: string;
+  sortDirection?: 'asc' | 'desc';
+}): Promise<ServiceChargesDeductionReportApiResult> {
+  const q = new URLSearchParams({
+    startDate: options.startDate,
+    endDate: options.endDate,
+  });
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
+  if (options.ownerId && options.ownerId !== 'all') q.set('ownerId', options.ownerId);
+  if (options.search?.trim()) q.set('search', options.search.trim());
+  if (options.sortKey) q.set('sortKey', options.sortKey);
+  if (options.sortDirection) q.set('sortDirection', options.sortDirection);
+
+  const raw = await apiClient.get<Record<string, unknown>>(
+    `/reports/service-charges-deduction?${q.toString()}`
+  );
+  return {
+    startDate: String(raw.startDate ?? options.startDate),
+    endDate: String(raw.endDate ?? options.endDate),
+    buildingId: String(raw.buildingId ?? 'all'),
+    ownerId: String(raw.ownerId ?? 'all'),
+    rows:
+      (raw.rows as ServiceChargesDeductionReportApiResult['rows']) ?? [],
+    totalAmount: Number(raw.totalAmount ?? 0),
+  };
+}
+
 export type RentalReceivableReportApiResult = {
   propertyReceivables: import('../../components/reports/rentalReceivableReportEngine').PropertyReceivable[];
 };

@@ -1,5 +1,5 @@
 
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Tabs from '../ui/Tabs';
 import { Invoice, Bill, Transaction, TransactionType, InvoiceStatus } from '../../types';
@@ -12,7 +12,8 @@ import { ICONS } from '../../constants';
 import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 
 const MobilePaymentsPage: React.FC = () => {
-    const state = useFullAppState();
+        const state = useFinancialReportAppState();
+    const { contacts, projects: appProjects, transactions, invoices, bills, defaultProjectId } = state;
     const dispatch = useDispatchOnly();
     const [activeTab, setActiveTab] = useState('Pay Bills');
     const [searchQuery, setSearchQuery] = useState('');
@@ -25,7 +26,7 @@ const MobilePaymentsPage: React.FC = () => {
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<Invoice | Bill | null>(null);
 
-    const projects = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
+    const projects = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...appProjects], [appProjects]);
 
     const isReceiving = activeTab === 'Receive Payments';
 

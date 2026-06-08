@@ -434,7 +434,8 @@ export function computeProjectProfitLossTotals(
     state: AppState,
     selectedProjectId: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    options?: { mirroredTransactionIds?: Set<string>; requireJournalMirror?: boolean }
 ): ProjectProfitLossTotals {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
@@ -466,6 +467,9 @@ export function computeProjectProfitLossTotals(
 
     const clearingAccountId = state.accounts.find((a) => a.name === 'Internal Clearing')?.id;
     state.transactions.forEach((tx) => {
+        if (options?.requireJournalMirror && options.mirroredTransactionIds && !options.mirroredTransactionIds.has(tx.id)) {
+            return;
+        }
         if (tx.billId && processedBills.has(tx.billId)) {
             return;
         }

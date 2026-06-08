@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { VisibilityState } from '@tanstack/react-table';
@@ -58,7 +58,8 @@ const COLUMN_PRESETS: { id: string; label: string }[] = [
  * Inv. Mgmt → Reports: enterprise project profitability analytics (Vite + React; data from synced AppState).
  */
 const ProjectProfitabilityAnalytics: React.FC = () => {
-    const state = useFullAppState();
+    const state = useProjectReportAppState();
+    const { projects, defaultProjectId } = state;
     const { user } = useAuth();
     const perm = useProfitabilityPermissions(user?.role);
     const { print: triggerPrint } = usePrintContext();

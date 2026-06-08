@@ -604,6 +604,7 @@ const EnhancedLedgerPage: React.FC = () => {
                 <button
                     onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
                     type="button"
+                    data-tour="ledger-filters"
                     className={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-ds flex items-center gap-2 border flex-shrink-0 ${activeFiltersCount > 0
                         ? 'bg-nav-active border-primary text-primary shadow-sm font-bold'
                         : 'bg-app-toolbar border-app-border text-app-muted hover:bg-app-surface-2 hover:border-app-border'
@@ -644,6 +645,7 @@ const EnhancedLedgerPage: React.FC = () => {
                 {/* New Transaction */}
                 <Button
                     onClick={() => { setSelectedTransaction(null); setIsAddModalOpen(true); }}
+                    data-tour="ledger-add"
                     className="!px-4 !py-2 !rounded-xl !text-sm !bg-primary hover:!bg-ds-primary-hover !text-ds-on-primary transition-all duration-ds shadow-ds-card"
                 >
                     <div className="w-4 h-4 mr-2">{ICONS.plus}</div> New Transaction
@@ -671,7 +673,7 @@ const EnhancedLedgerPage: React.FC = () => {
             <div className="flex flex-col gap-2 sm:gap-4 flex-grow min-h-0 printable-area" id="printable-area">
                 <ReportHeader />
                 {/* Summary Area */}
-                <div className="flex-shrink-0 p-4 rounded-xl bg-app-toolbar border border-app-border shadow-ds-card relative overflow-hidden printable-area">
+                <div className="flex-shrink-0 p-4 rounded-xl bg-app-toolbar border border-app-border shadow-ds-card relative overflow-hidden printable-area" data-tour="ledger-summary">
                     <div className="absolute top-0 right-0 p-3 opacity-[0.08] pointer-events-none text-app-muted">
                         <div className="w-24 h-24">{ICONS.barChart}</div>
                     </div>

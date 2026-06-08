@@ -1,4 +1,4 @@
-import { useFullAppState } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import Modal from '../ui/Modal';
 import { TransactionType } from '../../types';
@@ -17,7 +17,7 @@ interface ProjectCategoryDetailModalProps {
 }
 
 const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({ isOpen, onClose, data }) => {
-  const state = useFullAppState();
+  const state = useFinancialReportAppState();
 
   const categorySummary = useMemo(() => {
     if (!data) return [];

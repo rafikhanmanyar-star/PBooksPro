@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useMarketingPageState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -256,7 +256,8 @@ const ApprovalRequestModal: React.FC<{
 };
 
 const MarketingPage: React.FC = () => {
-    const state = useFullAppState();
+        const state = useMarketingPageState();
+    const { contacts, categories, projects, units: appUnits, invoices, documents, projectAgreements, agreementSettings, projectAgreementSettings, projectInvoiceSettings, installmentPlans, planAmenities, currentUser, users, editingEntity } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();
@@ -404,8 +405,8 @@ const MarketingPage: React.FC = () => {
     // Units for selected project
     const units = useMemo(() => {
         if (!projectId) return [];
-        return units.filter(u => u.projectId === projectId);
-    }, [projectId, units]);
+        return appUnits.filter(u => u.projectId === projectId);
+    }, [projectId, appUnits]);
 
     const activePlan = useMemo(() => {
         if (!selectedPlanId) return null;
@@ -422,7 +423,6 @@ const MarketingPage: React.FC = () => {
     const effectiveApprovalRequestedById = activePlan?.approvalRequestedById || approvalRequestedById;
     const effectiveApprovalReviewedById = activePlan?.approvalReviewedById || approvalReviewedById;
     const isMatchingUser = useMemo(() => {
-        const currentUser = currentUser;
         if (!currentUser) return () => false;
         const candidates = [
             currentUser.id,
@@ -559,12 +559,12 @@ const MarketingPage: React.FC = () => {
     // Handle Unit Selection - Auto fill list price
     useEffect(() => {
         if (unitId) {
-            const unit = units.find(u => u.id === unitId);
+            const unit = appUnits.find(u => u.id === unitId);
             if (unit && unit.salePrice) {
                 setListPrice(unit.salePrice.toString());
             }
         }
-    }, [unitId, units]);
+    }, [unitId, appUnits]);
 
     // Build selected amenities array for saving
     const buildSelectedAmenities = (): InstallmentPlanAmenity[] => {
@@ -910,7 +910,7 @@ const MarketingPage: React.FC = () => {
             // First, we need to render the plan in a hidden div, capture it, then send
             // For now, let's create a simplified approach: generate the plan HTML and convert to image
             const project = projects.find(p => p.id === plan.projectId);
-            const unit = units.find(u => u.id === plan.unitId);
+            const unit = appUnits.find(u => u.id === plan.unitId);
             
             // Create a temporary element to render the plan
             const tempDiv = document.createElement('div');
@@ -1123,7 +1123,7 @@ const MarketingPage: React.FC = () => {
 
             // Step 3: Update unit with owner
             logProgress('Updating unit ownership...');
-            const unit = units.find(u => u.id === plan.unitId);
+            const unit = appUnits.find(u => u.id === plan.unitId);
             if (!unit) {
                 await showAlert('Unit not found for this plan.');
                 return;
@@ -1371,7 +1371,7 @@ const MarketingPage: React.FC = () => {
         return latestPlans.filter(plan => {
             const lead = contacts.find(l => l.id === plan.leadId);
             const project = projects.find(p => p.id === plan.projectId);
-            const unit = units.find(u => u.id === plan.unitId);
+            const unit = appUnits.find(u => u.id === plan.unitId);
             
             return (
                 lead?.name.toLowerCase().includes(q) ||
@@ -1379,7 +1379,7 @@ const MarketingPage: React.FC = () => {
                 unit?.name.toLowerCase().includes(q)
             );
         });
-    }, [installmentPlans, contacts, projects, units, currentUser, searchQuery]);
+    }, [installmentPlans, contacts, projects, appUnits, currentUser, searchQuery]);
 
     const approvalTasks = useMemo(() => {
         const currentUserId = currentUser?.id;
@@ -1402,7 +1402,7 @@ const MarketingPage: React.FC = () => {
             .flatMap(plan => {
             const lead = contacts.find(l => l.id === plan.leadId);
             const project = projects.find(p => p.id === plan.projectId);
-            const unit = units.find(u => u.id === plan.unitId);
+            const unit = appUnits.find(u => u.id === plan.unitId);
             const label = `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
 
             const creatorUser = usersForApproval.find(u => u.id === (plan.userId || plan.approvalRequestedById));
@@ -1458,7 +1458,7 @@ const MarketingPage: React.FC = () => {
         });
 
         return feed.sort((a, b) => b.time.localeCompare(a.time));
-    }, [installmentPlans, contacts, projects, units, currentUser, usersForApproval]);
+    }, [installmentPlans, contacts, projects, appUnits, currentUser, usersForApproval]);
 
     const planHistoryItems = useMemo(() => {
         if (!historyRootId) return [];
@@ -2056,26 +2056,26 @@ const MarketingPage: React.FC = () => {
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">UNIT:</span>
                                                     <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
-                                                        {units.find(u => u.id === unitId)?.name || ''}
+                                                        {appUnits.find(u => u.id === unitId)?.name || ''}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">CATEGORY:</span>
                                                     <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
-                                                        {units.find(u => u.id === unitId)?.type || ''}
+                                                        {appUnits.find(u => u.id === unitId)?.type || ''}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">FLOOR:</span>
                                                     <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
-                                                        {units.find(u => u.id === unitId)?.floor || ''}
+                                                        {appUnits.find(u => u.id === unitId)?.floor || ''}
                                                     </span>
                                                 </div>
                                                 
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">SIZE:</span>
                                                     <div className="border-b border-slate-400 flex-1 flex justify-between px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
-                                                        <span>{units.find(u => u.id === unitId)?.area?.toFixed(2) || ''}</span>
+                                                        <span>{appUnits.find(u => u.id === unitId)?.area?.toFixed(2) || ''}</span>
                                                         <span className="text-[9px] font-normal not-italic">SFT</span>
                                                     </div>
                                                 </div>
@@ -2083,7 +2083,7 @@ const MarketingPage: React.FC = () => {
                                                     <span className="whitespace-nowrap">RATE:</span>
                                                     <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
                                                         {(() => {
-                                                            const unit = units.find(u => u.id === unitId);
+                                                            const unit = appUnits.find(u => u.id === unitId);
                                                             if (unit?.salePrice && unit?.area) {
                                                                 return (unit.salePrice / unit.area).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                                             }
@@ -2271,21 +2271,21 @@ const MarketingPage: React.FC = () => {
                                                 <h3 className="text-lg font-bold text-slate-800 mb-2">Exclusively for You</h3>
                                                 <div className="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-[10px] font-black text-indigo-700 uppercase tracking-widest border-b border-indigo-50 pb-2">
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-slate-400">Unit:</span> {units.find(u => u.id === unitId)?.name || 'N/A'}
+                                                        <span className="text-slate-400">Unit:</span> {appUnits.find(u => u.id === unitId)?.name || 'N/A'}
                                                     </span>
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-slate-400">Type:</span> {units.find(u => u.id === unitId)?.type || 'N/A'}
+                                                        <span className="text-slate-400">Type:</span> {appUnits.find(u => u.id === unitId)?.type || 'N/A'}
                                                     </span>
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-slate-400">Floor:</span> {units.find(u => u.id === unitId)?.floor || 'N/A'}
+                                                        <span className="text-slate-400">Floor:</span> {appUnits.find(u => u.id === unitId)?.floor || 'N/A'}
                                                     </span>
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-slate-400">Area:</span> {units.find(u => u.id === unitId)?.area || '0'} SFT
+                                                        <span className="text-slate-400">Area:</span> {appUnits.find(u => u.id === unitId)?.area || '0'} SFT
                                                     </span>
                                                 </div>
                                                 <div className="text-slate-600 italic leading-relaxed whitespace-pre-wrap">
                                                     {introText ? introText : (
-                                                        `Dear ${leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #${units.find(u => u.id === unitId)?.name || 'A-1204'} at ${projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This ${units.find(u => u.id === unitId)?.type || 'Unit'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction.`
+                                                        `Dear ${leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #${appUnits.find(u => u.id === unitId)?.name || 'A-1204'} at ${projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This ${appUnits.find(u => u.id === unitId)?.type || 'Unit'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction.`
                                                     )}
                                                 </div>
                                             </div>
@@ -2414,7 +2414,7 @@ const MarketingPage: React.FC = () => {
                                                     {approvalTasks.map(plan => {
                                                         const lead = contacts.find(l => l.id === plan.leadId);
                                                         const project = projects.find(p => p.id === plan.projectId);
-                                                        const unit = units.find(u => u.id === plan.unitId);
+                                                        const unit = appUnits.find(u => u.id === plan.unitId);
                                                         const statusMeta = getStatusMeta(plan.status);
                                                         return (
                                                             <tr key={plan.id} className="border-b border-slate-100">
@@ -2459,7 +2459,7 @@ const MarketingPage: React.FC = () => {
                                     {filteredPlans.map(plan => {
                                         const lead = contacts.find(l => l.id === plan.leadId);
                                         const project = projects.find(p => p.id === plan.projectId);
-                                        const unit = units.find(u => u.id === plan.unitId);
+                                        const unit = appUnits.find(u => u.id === plan.unitId);
                                         const statusMeta = getStatusMeta(plan.status);
                                         const isConvertible = plan.status === 'Approved';
                                         const isLocked = plan.status === 'Locked' || plan.status === 'Sale Recognized';

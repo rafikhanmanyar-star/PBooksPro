@@ -44,9 +44,11 @@ if (commitPendingChanges('Pre-release staging commit')) {
 console.log('[release:staging] Pushing source to origin/staging…');
 run('git push origin staging');
 
-console.log('[release:staging] Building, bumping version, publishing prerelease…');
+console.log('[release:staging] Building, bumping version, publishing GitHub prerelease (staging channel)…');
 run('npm run deploy:staging');
 
 console.log('');
-console.log('[release:staging] Done. Test staging installers, then run: npm run release:production');
+console.log('[release:staging] Done.');
+console.log('  Staging apps (PBooks Pro Staging Client) will update from GitHub prereleases.');
+console.log('  Production apps ignore prereleases — after testing, run: npm run release:production');
 console.log('');

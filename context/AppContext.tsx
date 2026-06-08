@@ -15,6 +15,7 @@ import { MANDATORY_SYSTEM_CATEGORIES } from '../services/database/mandatorySyste
 import { findSalesReturnCategory } from '../constants/salesReturnSystemCategories';
 import { resolveSystemCategoryId } from '../services/systemEntityIds';
 import packageJson from '../package.json';
+import { roleHasPermission } from '../shared/rbac/permissions';
 import { isLocalOnlyMode, isAccountingBackedByRemoteApi } from '../config/apiUrl';
 import { notifyDatabaseError } from '../services/dbErrorNotification';
 import { formatApiErrorMessage } from '../utils/formatApiErrorMessage';
@@ -34,6 +35,7 @@ import {
     resolveOwnerForPropertyOnDate,
 } from '../services/propertyOwnershipService';
 import { syncPayslipsAfterTransactionAction, getTenantIdForPayroll, type TransactionPayslipSyncInput } from '../components/payroll/services/payrollRevert';
+import { maybeQueueTransactionLogSync } from './syncTransactionLogToApi';
 import InitializationScreen from '../components/InitializationScreen';
 import { syncQueueStub as getSyncQueue } from '../services/sync/localOnlyStubs';
 import {
@@ -566,6 +568,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 a.payload,
                 state.transactions as unknown as TransactionPayslipSyncInput[],
                 newState.transactions as unknown as TransactionPayslipSyncInput[]
+            );
+        }
+
+        if (!(action as { _isRemote?: boolean })._isRemote) {
+            maybeQueueTransactionLogSync(
+                a.type,
+                !!(action as { _isRemote?: boolean })._isRemote,
+                state.transactionLog,
+                newState.transactionLog
             );
         }
 
@@ -1810,7 +1821,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dispatch({ type: 'SET_STATE', payload: merged, _isRemote: true } as any);
             setStoredState(prev => ({ ...prev, ...merged } as AppState));
 
-            if (currentTenantId) {
+            if (currentTenantId && roleHasPermission(auth.user?.role, 'payroll.read')) {
                 try {
                     const { storageService } = await import('../components/payroll/services/storageService');
                     storageService.init(currentTenantId);
@@ -1859,7 +1870,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } catch (e) {
             logger.warnCategory('sync', '⚠️ refreshFromApi failed:', e);
         }
-    }, [isAuthenticated, dispatch, setStoredState, currentTenantId]);
+    }, [isAuthenticated, dispatch, setStoredState, currentTenantId, auth.user?.role]);
 
     useEffect(() => {
         refreshFromApiRef.current = refreshFromApi;

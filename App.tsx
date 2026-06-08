@@ -17,11 +17,13 @@ import { useLicense } from './context/LicenseContext';
 import LicenseLockScreen from './components/license/LicenseLockScreen';
 import PaymentSuccessPage from './components/license/PaymentSuccessPage';
 import PaddleCheckoutPage from './components/license/PaddleCheckoutPage';
+import BillingCheckoutPage from './components/billing/BillingCheckoutPage';
+import LegalDocumentPage from './components/legal/LegalDocumentPage';
 import { useAuth } from './context/AuthContext';
 import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode, getAppDisplayName } from './config/apiUrl';
-import { verifyServerReachable } from './services/lanDiscovery';
-import { useCompanyOptional } from './context/CompanyContext';
 import { apiClient } from './services/api/client';
+import { resolveReachableApiBaseUrl } from './services/lanDiscovery';
+import { useCompanyOptional } from './context/CompanyContext';
 // Initialize Sync Service removed
 import UpdateNotification from './components/ui/UpdateNotification';
 import { getUnifiedDatabaseService } from './services/database/unifiedDatabaseService';
@@ -59,6 +61,9 @@ import SchemaBlockedScreen from './components/diagnostics/SchemaBlockedScreen';
 import StabilityBanner from './components/stability/StabilityBanner';
 import ApiLoginScreen from './components/auth/ApiLoginScreen';
 import ConnectServerScreen from './components/auth/ConnectServerScreen';
+import DemoProductTour from './components/onboarding/DemoProductTour';
+import OnboardingGate from './components/onboarding/OnboardingGate';
+import { isDemoModeActive } from './config/demoEnvironment';
 
 
 // Lazy Load Components
@@ -78,6 +83,7 @@ const MobilePaymentsPage = lazyWithRetry(() => import('./components/mobile/Mobil
 
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
 const PersonalTransactionsPage = lazyWithRetry(() => import('./components/personalTransactions/PersonalTransactionsPage'));
+const AccountingPage = lazyWithRetry(() => import('./components/accounting/AccountingPage'));
 
 const SetPasswordModal = lazyWithRetry(() => import('./components/company/SetPasswordModal'));
 
@@ -100,6 +106,7 @@ const PAGE_GROUPS = {
   IMPORT: ['import'],
   PAYROLL: ['payroll'],
   PERSONAL_TRANSACTIONS: ['personalTransactions'],
+  ACCOUNTING: ['accounting'],
 };
 
 const App: React.FC = () => {
@@ -130,9 +137,13 @@ const App: React.FC = () => {
     if (isLocalOnlyMode() || !isLanBackendApi()) return;
     let cancelled = false;
     void (async () => {
-      const ok = await verifyServerReachable(getApiBaseUrl());
+      const configured = getApiBaseUrl();
+      const resolved = await resolveReachableApiBaseUrl(configured);
       if (cancelled) return;
-      setLanServerPhase(ok ? 'ready' : 'need-server');
+      if (resolved && resolved !== configured) {
+        apiClient.setBaseUrl(resolved.replace(/\/api\/?$/i, ''));
+      }
+      setLanServerPhase(resolved ? 'ready' : 'need-server');
     })();
     return () => {
       cancelled = true;
@@ -192,6 +203,8 @@ const App: React.FC = () => {
   // Check for payment success page URL - MUST be before any early returns
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [showPaddleCheckout, setShowPaddleCheckout] = useState(false);
+  const [showBillingCheckout, setShowBillingCheckout] = useState(false);
+  const [legalPageSlug, setLegalPageSlug] = useState<string | null>(null);
 
   // Clear any stuck body styles from previous session (e.g. resize drag that never got mouseup)
   useEffect(() => {
@@ -217,8 +230,28 @@ const App: React.FC = () => {
       searchParams.has('status') ||
       searchParams.has('_ptxn');
 
+    if (pathname === '/billing/checkout' || pathname.endsWith('/billing/checkout')) {
+      setShowBillingCheckout(true);
+      setShowPaddleCheckout(false);
+      setShowPaymentSuccess(false);
+      setLegalPageSlug(null);
+      return;
+    }
+
+    const legalMatch = pathname.match(/\/legal\/([^/]+)\/?$/);
+    if (legalMatch) {
+      setLegalPageSlug(legalMatch[1]);
+      setShowBillingCheckout(false);
+      setShowPaddleCheckout(false);
+      setShowPaymentSuccess(false);
+      return;
+    }
+
+    setLegalPageSlug(null);
+
     if (pathname === '/license/paddle-checkout' || pathname.endsWith('/license/paddle-checkout')) {
       setShowPaddleCheckout(true);
+      setShowBillingCheckout(false);
       setShowPaymentSuccess(false);
       return;
     }
@@ -228,9 +261,11 @@ const App: React.FC = () => {
       (pathname === '/' && hasPaymentParams)) {
       setShowPaymentSuccess(true);
       setShowPaddleCheckout(false);
+      setShowBillingCheckout(false);
     } else {
       setShowPaymentSuccess(false);
       setShowPaddleCheckout(false);
+      setShowBillingCheckout(false);
     }
   }, []);
 
@@ -584,6 +619,7 @@ const App: React.FC = () => {
 
       case 'payroll': return 'Payroll Management';
       case 'personalTransactions': return 'Personal transactions';
+      case 'accounting': return 'Accounting';
 
       default: return getAppDisplayName();
     }
@@ -607,12 +643,12 @@ const App: React.FC = () => {
     const pageId = `page-${groupKey}`;
 
     // Fixed layout for certain complex modules
-    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'PROJECT_SELLING' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL' || groupKey === 'PERSONAL_TRANSACTIONS';
+    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'PROJECT_SELLING' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'ACCOUNTING';
     const overflowClass = isFixedLayout ? 'overflow-hidden' : 'overflow-y-auto';
     const bgClass = getPageBackground(groupKey);
     // Project Selling: no top padding so tab row sits directly under header
     // Rental: same — second-level module nav sits directly under header / banners
-    const noTopPad = groupKey === 'PROJECT_SELLING' || groupKey === 'RENTAL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'PAYROLL' || groupKey === 'INVESTMENT';
+    const noTopPad = groupKey === 'PROJECT_SELLING' || groupKey === 'RENTAL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'PAYROLL' || groupKey === 'INVESTMENT' || groupKey === 'ACCOUNTING';
 
     return (
       <div
@@ -646,6 +682,11 @@ const App: React.FC = () => {
   // Company selection flow (loading/select/create/login) is rendered by CompanyGate
   // outside AppProvider so the Create Company form is not affected by DB load errors.
 
+  // Public legal pages (no authentication required)
+  if (legalPageSlug) {
+    return <LegalDocumentPage slug={legalPageSlug} />;
+  }
+
   // Show loading while checking authentication
   if (authLoading) {
     return <Loading message="Checking authentication..." />;
@@ -675,6 +716,10 @@ const App: React.FC = () => {
   }
 
   // Show Paddle checkout page if URL matches
+  if (showBillingCheckout) {
+    return <BillingCheckoutPage />;
+  }
+
   if (showPaddleCheckout) {
     return <PaddleCheckoutPage />;
   }
@@ -714,6 +759,8 @@ const App: React.FC = () => {
 
   return (
     <OfflineProvider>
+      {isDemoModeActive() && <DemoProductTour />}
+      <OnboardingGate />
       <PrintController />
       {/* Force password change modal for new company admin */}
       {isLocalOnlyMode() && companyCtx?.forcePasswordChange && (
@@ -759,18 +806,19 @@ const App: React.FC = () => {
                 'RENTAL',
                 <RentalManagementPage initialPage={currentPage} />
               )}
-              {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
-              {renderPersistentPage('PROJECT_SELLING', <ProjectManagementPage initialPage={currentPage} />)}
+              {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage="projectManagement" />)}
+              {renderPersistentPage('PROJECT_SELLING', <ProjectManagementPage initialPage="projectSelling" />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
               {renderPersistentPage('PERSONAL_TRANSACTIONS', <PersonalTransactionsPage />)}
+              {renderPersistentPage('ACCOUNTING', <AccountingPage />)}
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>
 
             {/* Loading Overlay - Shows when navigating between pages (excluded for PROJECT, RENTAL, INVESTMENT, and PM_CONFIG groups to avoid duplicates with Suspense) */}
-            {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'PROJECT_SELLING' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && activeGroup !== 'PERSONAL_TRANSACTIONS' && activeGroup !== 'PAYROLL' && (
+            {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'PROJECT_SELLING' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && activeGroup !== 'PERSONAL_TRANSACTIONS' && activeGroup !== 'PAYROLL' && activeGroup !== 'ACCOUNTING' && (
               <div className="absolute inset-0 bg-app-bg/90 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-200 animate-fade-in pointer-events-none" aria-hidden="true">
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative">

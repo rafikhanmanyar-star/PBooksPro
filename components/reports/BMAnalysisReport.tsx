@@ -1,16 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import {
-    useBills,
-    useBuildings,
-    useCategories,
-    useContacts,
-    useInvoices,
-    useProperties,
-    useRentalAgreements,
-    useTransactions,
-} from '../../hooks/useSelectiveState';
-import { TransactionType, InvoiceType, InvoiceStatus, ContactType } from '../../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRentalReportAppState } from '../../hooks/useSelectiveState';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
@@ -26,47 +16,21 @@ import DatePicker from '../ui/DatePicker';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-
-interface BuildingBMData {
-    id: string;
-    buildingName: string;
-    collected: number;
-    receivable: number;
-    expenses: number;
-    net: number;
-}
-
-type BMDetailKind = 'collected' | 'receivable' | 'expense';
-
-interface BMDetailLine {
-    id: string;
-    kind: BMDetailKind;
-    date: string;
-    label: string;
-    amount: number;
-    reference?: string;
-}
-
-interface BMBuildingDetail {
-    buildingId: string;
-    buildingName: string;
-    collected: BMDetailLine[];
-    receivable: BMDetailLine[];
-    expenses: BMDetailLine[];
-}
+import {
+    computeBmAnalysisReport,
+    type BMDetailLine,
+    type BmAnalysisSortKey,
+} from './bmAnalysisReportEngine';
+import { isLocalOnlyMode } from '../../config/apiUrl';
+import { fetchBmAnalysisReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
-type SortKey = 'buildingName' | 'collected' | 'receivable' | 'expenses' | 'net';
+type SortKey = BmAnalysisSortKey;
 
 const BMAnalysisReport: React.FC = () => {
-    const allBuildings = useBuildings();
-    const categories = useCategories();
-    const contacts = useContacts();
-    const properties = useProperties();
-    const transactions = useTransactions();
-    const bills = useBills();
-    const invoices = useInvoices();
-    const rentalAgreements = useRentalAgreements();
+    const rentalState = useRentalReportAppState();
+    const { buildings: allBuildings } = rentalState;
+    const localOnly = isLocalOnlyMode();
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState('2100-12-31');
@@ -109,228 +73,58 @@ const BMAnalysisReport: React.FC = () => {
         }));
     };
 
-    const { reportData, bmDetailsByBuilding } = useMemo(() => {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+    const [serverPayload, setServerPayload] = useState<Awaited<ReturnType<typeof fetchBmAnalysisReport>> | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
-        const buildingData: Record<string, BuildingBMData> = {};
-        const detailsMap: Record<string, BMBuildingDetail> = {};
-
-        // Initialize all buildings
-        allBuildings.forEach(b => {
-            if (selectedBuildingId !== 'all' && b.id !== selectedBuildingId) return;
-            buildingData[b.id] = {
-                id: b.id,
-                buildingName: b.name,
-                collected: 0,
-                receivable: 0,
-                expenses: 0,
-                net: 0
-            };
-            detailsMap[b.id] = {
-                buildingId: b.id,
-                buildingName: b.name,
-                collected: [],
-                receivable: [],
-                expenses: []
-            };
-        });
-
-        // Categories definition - Broad matching for Service Income
-        const serviceIncomeCatIds = new Set(categories
-            .filter(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes('service charge'))
-            .map(c => c.id));
-        
-        // Categories to EXCLUDE from Building Expenses (Owner/Tenant specific costs that shouldn't affect BM fund)
-        const ownerExpenseCategoryNames = [
-            'Owner Payout', 
-            'Security Deposit Refund', 
-            'Broker Fee',
-            'Owner Security Payout'
-        ];
-        
-        const getCategory = (id: string | undefined) => categories.find(c => c.id === id);
-        
-        const isOwnerExpense = (catId: string | undefined) => {
-            const cat = getCategory(catId);
-            if (!cat) return false;
-            // Case insensitive check
-            return ownerExpenseCategoryNames.some(n => n.toLowerCase() === cat.name.toLowerCase());
-        };
-
-        const isTenant = (contactId: string | undefined) => {
-            if (!contactId) return false;
-            const c = contacts.find(con => con.id === contactId);
-            return c?.type === ContactType.TENANT;
-        };
-
-        const isTenantBill = (bill: typeof bills[0]) => {
-            if (!bill.projectAgreementId) return false;
-            return rentalAgreements.some(ra => ra.id === bill.projectAgreementId);
-        };
-
-        // 1. Process Transactions (Collected & Direct Expenses)
-        transactions.forEach(tx => {
-            const date = new Date(tx.date);
-            if (date < start || date > end) return;
-
-            // Income Logic
-            let buildingId = tx.buildingId;
-            if (!buildingId && tx.propertyId) {
-                const prop = properties.find(p => p.id === tx.propertyId);
-                if (prop) buildingId = prop.buildingId;
-            }
-
-            if (buildingId && buildingData[buildingId]) {
-                if (tx.type === TransactionType.INCOME && tx.categoryId && serviceIncomeCatIds.has(tx.categoryId)) {
-                    buildingData[buildingId].collected += tx.amount;
-                    const catName = getCategory(tx.categoryId)?.name;
-                    detailsMap[buildingId].collected.push({
-                        id: `tx-income-${tx.id}`,
-                        kind: 'collected',
-                        date: tx.date,
-                        label: tx.description?.trim() || catName || 'Service charge collection',
-                        amount: tx.amount,
-                        reference: tx.reference
-                    });
-                }
-            }
-
-            // Expense Logic (Direct Transactions without Bills)
-            // Rule: Include if linked to Building AND NOT linked to a Property (Owner) AND NOT linked to a Tenant
-            if (tx.type === TransactionType.EXPENSE && !tx.billId) {
-                if (tx.buildingId && buildingData[tx.buildingId]) {
-                    // Explicit exclusion of Property-linked expenses (Owner Cost Center)
-                    if (tx.propertyId) return;
-                    
-                    // Explicit exclusion of Tenant-linked expenses (Tenant Cost Center)
-                    if (isTenant(tx.contactId)) return;
-
-                    if (!isOwnerExpense(tx.categoryId)) {
-                        buildingData[tx.buildingId].expenses += tx.amount;
-                        const catName = getCategory(tx.categoryId)?.name;
-                        detailsMap[tx.buildingId].expenses.push({
-                            id: `tx-exp-${tx.id}`,
-                            kind: 'expense',
-                            date: tx.date,
-                            label: tx.description?.trim() || catName || 'Building expense',
-                            amount: tx.amount,
-                            reference: tx.reference
-                        });
-                    }
-                }
-            }
-        });
-
-        // 2. Process Bills (Incurred Expenses - Accrual Basis)
-        bills.forEach(bill => {
-            const date = new Date(bill.issueDate);
-            if (date < start || date > end) return;
-
-            // Expense Logic: Include if linked to Building
-            if (bill.buildingId && buildingData[bill.buildingId]) {
-                // Exclude Owner Bills (linked to Property)
-                if (bill.propertyId) return;
-
-                // Exclude Tenant Bills (linked to Rental Agreement)
-                if (isTenantBill(bill)) return;
-
-                // Handle expenseCategoryItems: process each category separately
-                if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
-                    bill.expenseCategoryItems.forEach((item, idx) => {
-                        if (!item.categoryId) return;
-                        // Only add if it's not an owner expense
-                        if (!isOwnerExpense(item.categoryId)) {
-                            const amt = item.netValue || 0;
-                            const bId = bill.buildingId ?? '';
-                            buildingData[bId].expenses += amt;
-                            const catName = getCategory(item.categoryId)?.name || 'Expense';
-                            detailsMap[bId].expenses.push({
-                                id: `bill-${bill.id}-line-${idx}`,
-                                kind: 'expense',
-                                date: bill.issueDate,
-                                label: `${catName}${bill.description ? ` — ${bill.description}` : ''}`,
-                                amount: amt,
-                                reference: bill.billNumber
-                            });
-                        }
-                    });
-                } else {
-                    // Fallback to old categoryId logic
-                    if (!isOwnerExpense(bill.categoryId)) {
-                        buildingData[bill.buildingId].expenses += bill.amount;
-                        const catName = getCategory(bill.categoryId)?.name || 'Expense';
-                        detailsMap[bill.buildingId].expenses.push({
-                            id: `bill-${bill.id}`,
-                            kind: 'expense',
-                            date: bill.issueDate,
-                            label: bill.description?.trim() || catName,
-                            amount: bill.amount,
-                            reference: bill.billNumber
-                        });
-                    }
-                }
-            }
-        });
-
-        // 3. Process Invoices (Receivable)
-        invoices.forEach(inv => {
-            const date = new Date(inv.issueDate);
-            if (date < start || date > end) return;
-
-            if (inv.invoiceType === InvoiceType.RENTAL && inv.status !== InvoiceStatus.PAID && (inv.serviceCharges || 0) > 0) {
-                let buildingId = inv.buildingId;
-                if (!buildingId && inv.propertyId) {
-                    const prop = properties.find(p => p.id === inv.propertyId);
-                    if (prop) buildingId = prop.buildingId;
-                }
-
-                if (buildingId && buildingData[buildingId]) {
-                    const sc = inv.serviceCharges || 0;
-                    buildingData[buildingId].receivable += sc;
-                    const tenantName = contacts.find(c => c.id === inv.contactId)?.name;
-                    detailsMap[buildingId].receivable.push({
-                        id: `inv-${inv.id}-sc`,
-                        kind: 'receivable',
-                        date: inv.issueDate,
-                        label: tenantName ? `Service charges — ${tenantName}` : 'Outstanding service charges',
-                        amount: sc,
-                        reference: inv.invoiceNumber
-                    });
-                }
-            }
-        });
-
-        let result = Object.values(buildingData).map(b => ({
-            ...b,
-            net: b.collected - b.expenses
-        }));
-
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            result = result.filter(b => b.buildingName.toLowerCase().includes(q));
+    useEffect(() => {
+        if (localOnly) {
+            setServerPayload(null);
+            setFetchError(null);
+            return;
         }
+        let cancelled = false;
+        setLoading(true);
+        setFetchError(null);
+        void fetchBmAnalysisReport({
+            startDate,
+            endDate,
+            buildingId: selectedBuildingId,
+            search: searchQuery,
+            sortKey: sortConfig.key,
+            sortDirection: sortConfig.direction,
+        })
+            .then((r) => {
+                if (!cancelled) setServerPayload(r);
+            })
+            .catch((e) => {
+                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [localOnly, startDate, endDate, selectedBuildingId, searchQuery, sortConfig]);
 
-        // Apply Sorting
-        result.sort((a, b) => {
-            let valA: any = a[sortConfig.key];
-            let valB: any = b[sortConfig.key];
+    const localResult = useMemo(
+        () =>
+            computeBmAnalysisReport(rentalState, {
+                startDate,
+                endDate,
+                selectedBuildingId,
+                searchQuery,
+                sortKey: sortConfig.key,
+                sortDirection: sortConfig.direction,
+            }),
+        [rentalState, startDate, endDate, selectedBuildingId, searchQuery, sortConfig]
+    );
 
-            if (typeof valA === 'string') {
-                valA = valA.toLowerCase();
-                valB = valB.toLowerCase();
-            }
-
-            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        return { reportData: result, bmDetailsByBuilding: detailsMap };
-
-    }, [allBuildings, categories, contacts, properties, transactions, bills, invoices, rentalAgreements, startDate, endDate, selectedBuildingId, searchQuery, sortConfig]);
+    const reportData = localOnly ? localResult.reportData : (serverPayload?.reportData ?? localResult.reportData);
+    const bmDetailsByBuilding = localOnly
+        ? localResult.bmDetailsByBuilding
+        : (serverPayload?.bmDetailsByBuilding ?? localResult.bmDetailsByBuilding);
 
     const activeDetail = detailBuildingId ? bmDetailsByBuilding[detailBuildingId] : null;
 
@@ -338,13 +132,16 @@ const BMAnalysisReport: React.FC = () => {
         [...lines].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const totals = useMemo(() => {
+        if (!localOnly && serverPayload?.totals) {
+            return serverPayload.totals;
+        }
         return reportData.reduce((acc, curr) => ({
             collected: acc.collected + curr.collected,
             receivable: acc.receivable + curr.receivable,
             expenses: acc.expenses + curr.expenses,
             net: acc.net + curr.net
         }), { collected: 0, receivable: 0, expenses: 0, net: 0 });
-    }, [reportData]);
+    }, [localOnly, serverPayload, reportData]);
 
     const handleExport = () => {
         const data = reportData.map(r => ({
@@ -444,6 +241,13 @@ const BMAnalysisReport: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {!localOnly && loading && (
+                <p className="text-sm text-app-muted px-1 no-print">Loading report from server…</p>
+            )}
+            {!localOnly && fetchError && (
+                <p className="text-sm text-rose-600 px-1 no-print">Server report failed: {fetchError}. Showing local data.</p>
+            )}
 
             <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">

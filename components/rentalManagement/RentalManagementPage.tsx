@@ -305,7 +305,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         }
     };
 
-    const NavItem = ({ view, label }: { view: RentalView; label: string }) => {
+    const NavItem = ({ view, label, dataTour }: { view: RentalView; label: string; dataTour?: string }) => {
         const on = normalizedView === view;
         const short = rentalNavLabelShort(label);
         const onNavigate = () => startTransition(() => setActiveView(view));
@@ -314,6 +314,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 <button
                     type="button"
                     title={label}
+                    data-tour={dataTour}
                     onClick={onNavigate}
                     className={`w-full flex justify-center px-1 py-1.5 rounded-md text-[10px] font-bold leading-tight transition-colors ${on
                         ? 'bg-primary text-ds-on-primary shadow-sm'
@@ -327,6 +328,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         return (
             <button
                 type="button"
+                data-tour={dataTour}
                 onClick={onNavigate}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${on
                     ? 'bg-primary text-ds-on-primary shadow-sm shadow-primary/20'
@@ -348,10 +350,10 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 )}
                 <SubNavModeToggle collapsed={subNavCollapsed} onToggle={toggleSubNav} title={subNavToggleTitle} compact />
             </div>
-            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Rental module navigation">
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Rental module navigation" data-tour="rental-subnav">
                 <div className="space-y-0.5">
                     <NavItem view="Rental setup" label="Rental setup" />
-                    <NavItem view="Agreements" label="Agreements" />
+                    <NavItem view="Agreements" label="Agreements" dataTour="rental-agreements" />
                     <NavItem view="Invoices" label="Invoices" />
                     <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
@@ -369,6 +371,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 <div className="pt-3 mt-2 border-t border-app-border">
                     <button
                         type="button"
+                        data-tour="rental-reports"
                         onClick={() => setReportsExpanded((e) => !e)}
                         className={`w-full flex items-center ${subNavCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2 rounded-md text-sm font-medium transition-colors ${isReportActive || reportsExpanded
                             ? 'bg-primary/10 text-primary'

@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFullAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, LoanSubtype, Transaction } from '../../types';
 import TransactionForm from '../transactions/TransactionForm';
@@ -49,7 +49,8 @@ interface LoanSummary {
 }
 
 const LoanManagementPage: React.FC = () => {
-  const state = useFullAppState();
+  const state = useFinancialReportAppState();
+    const { accounts, contacts, transactions, whatsAppMode } = state;
     const dispatch = useDispatchOnly();
   const { showAlert } = useNotification();
   const { print: triggerPrint } = usePrintContext();
