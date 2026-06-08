@@ -1,5 +1,5 @@
 /**
- * Upsert user Rafi / Rafi123 for the RK Builders tenant in PostgreSQL (LAN API login).
+ * Upsert user Rafi for the RK Builders tenant in PostgreSQL (LAN API login).
  *
  * Run from repo root (loads .env):
  *   node scripts/seed-rk-builders-rafi.cjs
@@ -7,6 +7,7 @@
  * Env:
  *   DATABASE_URL or PG_URL
  *   PG_TARGET_TENANT_ID  (default: rk-builders-284d6d)
+ *   RK_BUILDERS_RAFI_PASSWORD  (default: Rafi1234 — min 8 chars, letter + number)
  */
 
 'use strict';
@@ -48,7 +49,7 @@ async function main() {
 
   const tenantId = (process.env.PG_TARGET_TENANT_ID || '').trim() || DEFAULT_TENANT_ID;
   const username = 'Rafi';
-  const password = 'Rafi123';
+  const password = (process.env.RK_BUILDERS_RAFI_PASSWORD || '').trim() || 'Rafi1234';
   const name = 'Rafi';
   const role = 'Admin';
   const passwordHash = bcrypt.hashSync(password, 10);
