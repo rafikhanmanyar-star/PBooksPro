@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { normalizeDatabaseUrl } from '../utils/databaseUrl.js';
 
 const { Pool, types } = pg;
 
@@ -12,9 +13,16 @@ let pool: pg.Pool | null = null;
 
 export function getPool(): pg.Pool {
   if (!pool) {
-    const url = process.env.DATABASE_URL;
-    if (!url) {
+    const raw = process.env.DATABASE_URL;
+    if (!raw?.trim()) {
       throw new Error('DATABASE_URL is required for the API server');
+    }
+    const url = normalizeDatabaseUrl(raw);
+    if (url !== raw.trim()) {
+      process.env.DATABASE_URL = url;
+      console.warn(
+        '[db] DATABASE_URL had no PostgreSQL user — using postgres@ (node-pg would otherwise use the OS username).'
+      );
     }
     const max = Math.min(Math.max(parseInt(process.env.PG_POOL_MAX || '20', 10) || 20, 2), 100);
     pool = new Pool({ connectionString: url, max });

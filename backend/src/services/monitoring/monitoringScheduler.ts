@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { getPool } from '../../db/pool.js';
 import { runHealthChecks } from './monitoringHealthService.js';
 import { logger } from '../../utils/logger.js';
@@ -11,8 +12,9 @@ export function startMonitoringScheduler(): void {
   const intervalMs = Number(process.env.MONITORING_HEALTH_INTERVAL_MS ?? String(5 * 60 * 1000));
 
   const tick = async () => {
-    const client = await getPool().connect();
+    let client: PoolClient | null = null;
     try {
+      client = await getPool().connect();
       const checks = await runHealthChecks(client);
       const unhealthy = checks.filter((c) => c.status === 'unhealthy');
       if (unhealthy.length > 0) {
@@ -21,12 +23,14 @@ export function startMonitoringScheduler(): void {
     } catch (err) {
       logger.error('[monitoring] Health scheduler tick failed', { err });
     } finally {
-      client.release();
+      client?.release();
     }
   };
 
-  void tick();
-  timer = setInterval(() => void tick(), intervalMs);
+  void tick().catch((err) => logger.error('[monitoring] Health scheduler tick failed', { err }));
+  timer = setInterval(() => {
+    void tick().catch((err) => logger.error('[monitoring] Health scheduler tick failed', { err }));
+  }, intervalMs);
   logger.info('[monitoring] Health scheduler started', { intervalMs });
 }
 

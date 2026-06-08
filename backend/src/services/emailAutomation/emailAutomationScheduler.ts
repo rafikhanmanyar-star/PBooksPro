@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { getPool } from '../../db/pool.js';
 import { processDueAutomationEmails } from './emailAutomationQueueService.js';
 import { processScheduledCampaigns } from './emailAutomationCampaignService.js';
@@ -12,8 +13,9 @@ export function startEmailAutomationScheduler(): void {
   const intervalMs = Number(process.env.EMAIL_AUTOMATION_INTERVAL_MS ?? String(5 * 60 * 1000));
 
   const tick = async () => {
-    const client = await getPool().connect();
+    let client: PoolClient | null = null;
     try {
+      client = await getPool().connect();
       const campaigns = await processScheduledCampaigns(client);
       const result = await processDueAutomationEmails(client);
       if (result.sent > 0 || result.failed > 0 || campaigns > 0) {
@@ -22,12 +24,14 @@ export function startEmailAutomationScheduler(): void {
     } catch (err) {
       logger.error('[email-automation] Scheduler tick failed', { err });
     } finally {
-      client.release();
+      client?.release();
     }
   };
 
-  void tick();
-  timer = setInterval(() => void tick(), intervalMs);
+  void tick().catch((err) => logger.error('[email-automation] Scheduler tick failed', { err }));
+  timer = setInterval(() => {
+    void tick().catch((err) => logger.error('[email-automation] Scheduler tick failed', { err }));
+  }, intervalMs);
   logger.info('[email-automation] Scheduler started', { intervalMs });
 }
 

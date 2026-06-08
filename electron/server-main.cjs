@@ -141,6 +141,18 @@ function resolvePort(merged) {
   return p;
 }
 
+/** Without user@ in the URL, node-pg uses the Windows username (e.g. "PC") as the PostgreSQL role. */
+function normalizeDatabaseUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  if (/^postgres(ql)?:\/\/[^@/]+@/i.test(trimmed)) return trimmed;
+  if (/^postgres(ql)?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/^postgres(ql)?:\/\//i, (scheme) => `${scheme}postgres:@`);
+  }
+  return trimmed;
+}
+
 function ensureWritableBackendDirs() {
   const userBackend = getUserBackendConfigDir();
   for (const dir of [userBackend, path.join(userBackend, 'backups', 'pg')]) {
@@ -159,6 +171,13 @@ function getMergedEnvForApi() {
   if (!merged.BACKUP_STORAGE_PATH?.trim()) {
     merged.BACKUP_STORAGE_PATH = path.join(getUserBackendConfigDir(), 'backups', 'pg');
   }
+  if (merged.DATABASE_URL?.trim()) {
+    const normalized = normalizeDatabaseUrl(merged.DATABASE_URL);
+    if (normalized !== merged.DATABASE_URL.trim()) {
+      merged.DATABASE_URL = normalized;
+      pushLog('[hint] DATABASE_URL had no PostgreSQL user — using postgres@ (not Windows username).');
+    }
+  }
   if (isStagingApiServer()) {
     merged.PBOOKS_API_SERVER_STAGING = '1';
     if (merged.DISABLE_MFA_ENFORCEMENT !== 'true') merged.DISABLE_MFA_ENFORCEMENT = 'true';
@@ -176,7 +195,7 @@ function getPort() {
 function ensureUserBackendEnv() {
   const dir = getUserBackendConfigDir();
   const envPath = path.join(dir, '.env');
-  if (!isStagingApiServer()) return;
+  const staging = isStagingApiServer();
 
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -192,9 +211,36 @@ function ensureUserBackendEnv() {
     if (fs.existsSync(exampleSrc)) {
       try {
         fs.copyFileSync(exampleSrc, envPath);
-        pushLog('[hint] Created staging config at ' + envPath + ' — set JWT_SECRET, then Start API.');
+        pushLog(
+          '[hint] Created ' +
+            (staging ? 'staging' : 'production') +
+            ' config at ' +
+            envPath +
+            ' — set JWT_SECRET and PostgreSQL password if needed, then Start API.'
+        );
       } catch (_) {}
     }
+    if (!staging) return;
+    return;
+  }
+
+  if (!staging) {
+    try {
+      const parsed = parseEnvFile(envPath);
+      if (parsed.DATABASE_URL) {
+        const normalized = normalizeDatabaseUrl(parsed.DATABASE_URL);
+        if (normalized !== parsed.DATABASE_URL.trim()) {
+          let text = fs.readFileSync(envPath, 'utf8');
+          if (/^DATABASE_URL\s*=/m.test(text)) {
+            text = text.replace(/^DATABASE_URL\s*=.*$/m, `DATABASE_URL=${normalized}`);
+          } else {
+            text = text.trimEnd() + `\nDATABASE_URL=${normalized}\n`;
+          }
+          fs.writeFileSync(envPath, text, 'utf8');
+          pushLog('[hint] Fixed DATABASE_URL in ' + envPath + ' — added postgres@ user.');
+        }
+      }
+    } catch (_) {}
     return;
   }
 
