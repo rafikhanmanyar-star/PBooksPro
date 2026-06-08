@@ -227,7 +227,11 @@
     $('btnDl').style.display = 'none';
     const r = await ui.checkForUpdate();
     if (r.ok && r.upToDate) {
-      $('updateMsg').textContent = 'You are on the latest API server release (' + r.currentVersion + ').';
+      const latest = r.latestVersion && r.latestVersion !== r.currentVersion
+        ? ' (latest on GitHub: ' + r.latestVersion + ')'
+        : '';
+      $('updateMsg').textContent =
+        'You are on the latest API server release (' + r.currentVersion + ')' + latest + '.';
       pendingUpdate = null;
     } else if (r.ok && r.latestVersion) {
       $('updateMsg').textContent =

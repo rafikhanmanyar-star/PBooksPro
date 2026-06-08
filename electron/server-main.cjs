@@ -393,6 +393,9 @@ function startApiServer() {
     broadcast({ type: 'state' });
   });
 
+  pushLog(
+    `[config] MFA enforcement: ${env.DISABLE_MFA_ENFORCEMENT === 'true' ? 'OFF' : 'ON'} | JWT_SECRET: ${env.JWT_SECRET ? 'set' : 'MISSING'}`
+  );
   pushLog('[api] started');
   broadcast({ type: 'state' });
   return { ok: true };
@@ -520,10 +523,41 @@ ipcMain.handle('server:open-env-folder', () => {
   return { ok: true };
 });
 
-async function prepareUpdaterFeed() {
-  if (!autoUpdater || !isStagingApiServer()) return;
-  const { applyStagingPrereleaseFeed } = require('./stagingUpdateFeed.cjs');
-  await applyStagingPrereleaseFeed(autoUpdater, app);
+async function inspectRemoteRelease() {
+  if (isStagingApiServer()) {
+    const { inspectStagingReleases, applyStagingPrereleaseFeed } = require('./stagingUpdateFeed.cjs');
+    const remote = await inspectStagingReleases(app);
+    return {
+      ...remote,
+      applyFeed: async () => {
+        const tag = remote.newer?.tag || remote.latest?.tag;
+        if (!tag) throw new Error('No staging GitHub prerelease found.');
+        return applyStagingPrereleaseFeed(autoUpdater, app, tag);
+      },
+    };
+  }
+  const { inspectProductionReleases, applyProductionReleaseFeed } = require('./productionUpdateFeed.cjs');
+  const remote = await inspectProductionReleases(app);
+  return {
+    ...remote,
+    applyFeed: async () => {
+      const tag = remote.newer?.tag || remote.latest?.tag;
+      if (!tag) throw new Error('No production GitHub release found.');
+      return applyProductionReleaseFeed(autoUpdater, app, tag);
+    },
+  };
+}
+
+async function prepareUpdaterFeed(remote) {
+  if (!autoUpdater) return;
+  if (remote && typeof remote.applyFeed === 'function') {
+    await remote.applyFeed();
+    return;
+  }
+  if (isStagingApiServer()) {
+    const { applyStagingPrereleaseFeed } = require('./stagingUpdateFeed.cjs');
+    await applyStagingPrereleaseFeed(autoUpdater, app);
+  }
 }
 
 ipcMain.handle('server:check-update', async () => {
@@ -535,20 +569,36 @@ ipcMain.handle('server:check-update', async () => {
     };
   }
   try {
-    await prepareUpdaterFeed();
-    const result = await autoUpdater.checkForUpdates();
-    if (!result) {
-      return { ok: true, upToDate: true, currentVersion };
+    const remote = await inspectRemoteRelease();
+    if (!remote.newer) {
+      const latestLabel = remote.latest?.version || currentVersion;
+      return {
+        ok: true,
+        upToDate: true,
+        currentVersion,
+        latestVersion: latestLabel,
+      };
     }
-    if (result.isUpdateAvailable && result.updateInfo) {
+    await prepareUpdaterFeed(remote);
+    const result = await autoUpdater.checkForUpdates();
+    const latestVersion = remote.newer.version || result?.updateInfo?.version;
+    if (result?.isUpdateAvailable && latestVersion) {
       return {
         ok: true,
         upToDate: false,
         currentVersion,
-        latestVersion: result.updateInfo.version,
+        latestVersion,
       };
     }
-    return { ok: true, upToDate: true, currentVersion };
+    if (latestVersion && latestVersion !== currentVersion) {
+      return {
+        ok: true,
+        upToDate: false,
+        currentVersion,
+        latestVersion,
+      };
+    }
+    return { ok: true, upToDate: true, currentVersion, latestVersion: remote.latest?.version || currentVersion };
   } catch (e) {
     const formatted = formatUpdaterError(e);
     if (formatted.isReleasePending) {
@@ -575,7 +625,15 @@ ipcMain.handle('server:download-and-install', async () => {
   // Refresh update metadata right before downloading so `updateInfoAndProvider` is set; otherwise
   // electron-updater can fall back to a full installer GET instead of blockmap + differential download.
   try {
-    await prepareUpdaterFeed();
+    const remote = await inspectRemoteRelease();
+    if (!remote.newer) {
+      return {
+        ok: false,
+        message:
+          'You are already on the latest API server release (' + app.getVersion() + ').',
+      };
+    }
+    await prepareUpdaterFeed(remote);
     const check = await autoUpdater.checkForUpdates();
     if (!check || !check.isUpdateAvailable) {
       return {

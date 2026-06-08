@@ -57,7 +57,12 @@ async function bootstrapExistingDatabase(allFiles: string[]): Promise<void> {
   console.log(`Marked ${allFiles.length} migration(s) as already applied.`);
 }
 
-async function main() {
+export async function runPendingMigrations(options?: { quiet?: boolean }): Promise<number> {
+  const quiet = options?.quiet === true;
+  const log = (msg: string) => {
+    if (!quiet) console.log(msg);
+  };
+
   await ensureMigrationTable();
 
   const files = readdirSync(migrationsDir)
@@ -68,10 +73,11 @@ async function main() {
 
   const applied = await getAppliedFilenames();
   const pool = getPool();
+  let appliedCount = 0;
 
   for (const file of files) {
     if (applied.has(file)) {
-      console.log('Migration skipped (already applied):', file);
+      log(`Migration skipped (already applied): ${file}`);
       continue;
     }
     const sqlPath = join(migrationsDir, file);
@@ -86,7 +92,8 @@ async function main() {
         [file]
       );
       await client.query('COMMIT');
-      console.log('Migration applied:', sqlPath);
+      appliedCount += 1;
+      log(`Migration applied: ${sqlPath}`);
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
@@ -95,10 +102,21 @@ async function main() {
     }
   }
 
-  await pool.end();
+  return appliedCount;
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+async function main() {
+  await runPendingMigrations();
+  await getPool().end();
+}
+
+const isMain =
+  process.argv[1] &&
+  (process.argv[1].endsWith('migrate.ts') || process.argv[1].endsWith('migrate.js'));
+
+if (isMain) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

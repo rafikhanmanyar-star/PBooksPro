@@ -18,6 +18,8 @@ files:
   - electron/server-main.cjs
   - electron/updaterErrorUtils.cjs
   - electron/stagingUpdateFeed.cjs
+  - electron/githubReleaseUtils.cjs
+  - electron/productionUpdateFeed.cjs
   - electron/server-preload.cjs
   - electron/server-ui.html
   - electron/server-ui.js

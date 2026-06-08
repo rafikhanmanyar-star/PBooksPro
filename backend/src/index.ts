@@ -9,6 +9,8 @@ import { getConnectedClientsSnapshot, initRealtime } from './core/realtime.js';
 import { getLanIPv4, startDiscoveryUdpBroadcast } from './discoveryUdp.js';
 import { authRouter } from './routes/authRoutes.js';
 import { mfaRouter } from './routes/mfaRoutes.js';
+import { runPendingMigrations } from './migrate.js';
+import { isMfaEnforcementEnabled } from './services/auth/mfaService.js';
 import { journalRouter } from './routes/journalRoutes.js';
 import { accountingPeriodsRouter } from './routes/accountingPeriodsRoutes.js';
 import { investorJournalRouter } from './routes/investorJournalRoutes.js';
@@ -357,7 +359,20 @@ async function start() {
   initObservabilityProviders();
   if (!process.env.DATABASE_URL) {
     console.warn('Warning: DATABASE_URL not set — API will fail on first DB access');
+  } else {
+    try {
+      const applied = await runPendingMigrations({ quiet: true });
+      if (applied > 0) {
+        console.log(`Applied ${applied} pending database migration(s) on startup.`);
+      }
+    } catch (e) {
+      console.error('Database migration on startup failed:', e);
+      process.exit(1);
+    }
   }
+  console.log(
+    `MFA enforcement for privileged roles: ${isMfaEnforcementEnabled() ? 'ON' : 'OFF (DISABLE_MFA_ENFORCEMENT=true)'}`
+  );
   await seedDevIfEnabled();
   await seedStagingIfEnabled();
   await seedDemoIfEnabled();

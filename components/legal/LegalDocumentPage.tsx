@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { legalApi, type LegalDocumentDetail } from '../../services/api/legalApi';
 import { LegalMarkdown, LEGAL_SLUGS, legalPageUrl } from './LegalMarkdown';
+import { navigateToAppPath } from '../../utils/appNavigation';
 
 type Props = {
   slug?: string;
@@ -45,7 +46,7 @@ const LegalDocumentPage: React.FC<Props> = ({ slug: slugProp }) => {
           <button
             type="button"
             className="text-sm text-indigo-600 hover:underline"
-            onClick={() => (window.location.href = '/')}
+            onClick={() => navigateToAppPath('/')}
           >
             Back to app
           </button>

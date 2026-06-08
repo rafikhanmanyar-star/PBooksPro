@@ -3,10 +3,11 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Shield, KeyRound, ArrowLeft, Loader2, Copy, Check } from 'lucide-react';
+import { Shield, KeyRound, ArrowLeft, Loader2, Copy, Check, RefreshCw } from 'lucide-react';
 import Button from '../ui/Button';
 import { useAuth } from '../../context/AuthContext';
 import { mfaApi } from '../../services/api/mfaApi';
+import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 
 type MfaLoginMode = 'challenge' | 'setup';
 
@@ -36,6 +37,7 @@ export const MfaLoginPanel: React.FC<MfaLoginPanelProps> = ({
   const [setupSecret, setSetupSecret] = useState<string | null>(null);
   const [otpauthUri, setOtpauthUri] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(mode === 'setup');
+  const [setupAttempt, setSetupAttempt] = useState(0);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -45,6 +47,9 @@ export const MfaLoginPanel: React.FC<MfaLoginPanelProps> = ({
     void (async () => {
       setSetupLoading(true);
       setError(null);
+      setSetupSecret(null);
+      setOtpauthUri(null);
+      setCode('');
       try {
         const res = await mfaApi.setup(mfaSetupToken);
         if (!cancelled) {
@@ -53,7 +58,7 @@ export const MfaLoginPanel: React.FC<MfaLoginPanelProps> = ({
         }
       } catch (e: unknown) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Failed to start MFA setup');
+          setError(formatApiErrorMessage(e) || 'Failed to start MFA setup');
         }
       } finally {
         if (!cancelled) setSetupLoading(false);
@@ -62,7 +67,7 @@ export const MfaLoginPanel: React.FC<MfaLoginPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [mode, mfaSetupToken]);
+  }, [mode, mfaSetupToken, setupAttempt]);
 
   const handleVerifyChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,13 +104,7 @@ export const MfaLoginPanel: React.FC<MfaLoginPanelProps> = ({
       });
       setBackupCodes(codes);
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'error' in err
-          ? String((err as { error?: string }).error)
-          : err instanceof Error
-            ? err.message
-            : 'Setup failed';
-      setError(msg);
+      setError(formatApiErrorMessage(err) || 'Setup failed');
     }
   };
 
@@ -172,10 +171,18 @@ export const MfaLoginPanel: React.FC<MfaLoginPanelProps> = ({
           <div className="flex justify-center py-8 text-slate-400">
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
+        ) : !setupSecret ? (
+          <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p>Could not start MFA setup. Go back, sign in again, then retry.</p>
+            <Button type="button" variant="secondary" className="w-full" onClick={() => setSetupAttempt((n) => n + 1)}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry setup
+            </Button>
+          </div>
         ) : (
           <>
-            {otpauthUri && (
-              <div className="flex flex-col items-center gap-3 rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-slate-200 bg-white p-4">
+              {otpauthUri && (
                 <img
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(otpauthUri)}`}
                   alt="Authenticator QR code"
@@ -183,11 +190,12 @@ export const MfaLoginPanel: React.FC<MfaLoginPanelProps> = ({
                   height={180}
                   className="rounded"
                 />
-                {setupSecret && (
-                  <p className="break-all text-center font-mono text-xs text-slate-600">{setupSecret}</p>
-                )}
+              )}
+              <div className="w-full text-center">
+                <p className="text-xs font-medium text-slate-500">Manual entry key</p>
+                <p className="mt-1 break-all font-mono text-xs text-slate-700">{setupSecret}</p>
               </div>
-            )}
+            </div>
             <form onSubmit={handleEnableSetup} className="space-y-3">
               <label className="block text-sm font-medium text-slate-700">
                 Enter the 6-digit code from your app

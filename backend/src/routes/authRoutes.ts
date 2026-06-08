@@ -235,6 +235,14 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
       sendFailure(res, 401, 'AUTH_FAILED', 'Invalid credentials');
       return;
     }
+    // Ensure every organization has a trial subscription (legacy tenants created before billing).
+    const trialClient = await pool.connect();
+    try {
+      await startTrialSubscription(trialClient, user.tenant_id);
+    } finally {
+      trialClient.release();
+    }
+
     let loginEventId: string;
     try {
       loginEventId = await recordLoginEvent(auditClient, {

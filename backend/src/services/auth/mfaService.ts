@@ -79,7 +79,7 @@ export async function confirmMfaEnable(
     throw new Error('MFA setup not started. Call setup first.');
   }
   const plainSecret = decryptMfaSecret(settings.secret);
-  if (!verifyTotp(plainSecret, totpCode)) {
+  if (!verifyTotp(plainSecret, totpCode, { window: 2 })) {
     throw new Error('Invalid authenticator code.');
   }
 
