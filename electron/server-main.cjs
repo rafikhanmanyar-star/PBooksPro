@@ -9,7 +9,6 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils.cjs');
-const { applyStagingPrereleaseFeed } = require('./stagingUpdateFeed.cjs');
 
 let mainWindow = null;
 let tray = null;
@@ -477,6 +476,7 @@ ipcMain.handle('server:open-env-folder', () => {
 
 async function prepareUpdaterFeed() {
   if (!autoUpdater || !isStagingApiServer()) return;
+  const { applyStagingPrereleaseFeed } = require('./stagingUpdateFeed.cjs');
   await applyStagingPrereleaseFeed(autoUpdater, app);
 }
 
