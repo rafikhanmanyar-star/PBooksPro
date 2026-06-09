@@ -15,6 +15,7 @@ import useLocalStorage from '../../hooks/useLocalStorage';
 // Non-report page imports (not lazy since they're operational)
 import ProjectPMPayouts from './ProjectPMPayouts';
 import ProjectContractsPage from './ProjectContractsPage';
+import ProjectExpenseVouchersPage from './ProjectExpenseVouchersPage';
 /** Static import: nested React.lazy + file:// in Electron often causes "Failed to fetch dynamically imported module" for the child chunk. */
 import ProjectReceivedAssetsPage from './ProjectReceivedAssetsPage';
 
@@ -33,6 +34,7 @@ const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetRep
 const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
 const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
 const CustomReportBuilderPage = React.lazy(() => import('../reports/customReportBuilder/CustomReportBuilderPage'));
+const ProjectExpenseVoucherReportsPage = React.lazy(() => import('../reports/ProjectExpenseVoucherReportsPage'));
 const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
 
 interface ProjectManagementPageProps {
@@ -41,14 +43,15 @@ interface ProjectManagementPageProps {
 
 // Define all possible view keys
 type ProjectView =
-    | 'Marketing' | 'Agreements' | 'Contracts' | 'Invoices' | 'Bills' | 'Sales Returns'
+    | 'Marketing' | 'Agreements' | 'Contracts' | 'Invoices' | 'Bills' | 'Expense Vouchers' | 'Sales Returns'
     | 'Assets'
     | 'Broker Payouts' | 'PM Payouts'
     | 'Visual Layout' | 'Tabular View'
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
     | 'PM Cost Report' | 'Contract Report'
-    | 'Budget vs Actual' | 'Marketing Activity' | 'Custom Report Builder';
+    | 'Budget vs Actual' | 'Marketing Activity' | 'Custom Report Builder'
+    | 'PEV Reports';
 
 /** Project selling — operational tabs (persistent mount) */
 const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Assets', 'Sales Returns'];
@@ -65,7 +68,7 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
 ];
 
 /** Project construction */
-const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Contracts', 'Bills'];
+const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'Expense Vouchers'];
 
 const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -77,9 +80,10 @@ const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Owner Ledger',
     'Income by Category',
     'Expense by Category',
+    'PEV Reports',
 ];
 
-const CONSTRUCTION_PERSISTENT_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'PM Payouts'];
+const CONSTRUCTION_PERSISTENT_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'Expense Vouchers', 'PM Payouts'];
 
 function projectNavLabelShort(label: string): string {
     const w = label.trim().split(/\s+/);
@@ -114,10 +118,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     ];
 
     const allowedConstructionViews = [
-        'Contracts', 'Bills', 'PM Payouts',
+        'Contracts', 'Bills', 'Expense Vouchers', 'PM Payouts',
         'Project Summary', 'Budget vs Actual', 'Contract Report',
         'PM Cost Report', 'Material Report', 'Vendor Ledger',
-        'Owner Ledger', 'Income by Category', 'Expense by Category',
+        'Owner Ledger', 'Income by Category', 'Expense by Category', 'PEV Reports',
     ];
 
     useEffect(() => {
@@ -138,7 +142,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 else if (subTab === 'Project Units') setActiveView('Tabular View');
                 else if (subTab === 'PM Cost') setActiveView('PM Cost Report');
                 else setActiveView(subTab as ProjectView);
-            } else if (['Marketing', 'Agreements', 'Contracts', 'Invoices', 'Bills', 'Sales Returns'].includes(mainTab)) {
+            } else if (['Marketing', 'Agreements', 'Contracts', 'Invoices', 'Bills', 'Expense Vouchers', 'Sales Returns'].includes(mainTab)) {
                 setActiveView(mainTab as ProjectView);
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
@@ -165,6 +169,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Assets': return <ProjectReceivedAssetsPage />;
             case 'Contracts': return <ProjectContractsPage />;
             case 'Bills': return <BillsPage projectContext={true} />;
+            case 'Expense Vouchers': return <ProjectExpenseVouchersPage projectContext={true} />;
             case 'Sales Returns': return <SalesReturnsPage />;
             case 'Broker Payouts': return <BrokerPayouts context="Project" />;
             case 'PM Payouts': return <ProjectPMPayouts />;
@@ -183,6 +188,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Budget vs Actual': return <ProjectBudgetReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
             case 'Custom Report Builder': return <CustomReportBuilderPage />;
+            case 'PEV Reports': return <ProjectExpenseVoucherReportsPage />;
             default: return null;
         }
     };
@@ -228,6 +234,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     >
                         {view === 'Contracts' && <ProjectContractsPage />}
                         {view === 'Bills' && <BillsPage projectContext={true} />}
+                        {view === 'Expense Vouchers' && <ProjectExpenseVouchersPage projectContext={true} />}
                         {view === 'PM Payouts' && <ProjectPMPayouts />}
                     </div>
                 ))}
@@ -378,6 +385,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 <div className="space-y-0.5">
                     <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} />
                     <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} dataTour="project-bills" />
+                    <ModuleNavItem view="Expense Vouchers" label="Expense Vouchers" collapsed={subCollapsed} />
                 </div>
 
                 <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">

@@ -32,7 +32,11 @@ export type Permission =
   | 'permissions.read'
   | 'permissions.manage'
   | 'backups.read'
-  | 'backups.manage';
+  | 'backups.manage'
+  | 'pev.read'
+  | 'pev.create'
+  | 'pev.approve'
+  | 'pev.post';
 
 export const ALL_PERMISSIONS: readonly Permission[] = [
   'reports.trial_balance.read',
@@ -51,6 +55,10 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'permissions.manage',
   'backups.read',
   'backups.manage',
+  'pev.read',
+  'pev.create',
+  'pev.approve',
+  'pev.post',
 ] as const;
 
 export const ENTERPRISE_ROLE_LABELS: Record<EnterpriseRole, string> = {
@@ -79,7 +87,14 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'permissions.manage': 'Permissions (manage)',
   'backups.read': 'Backups (read history)',
   'backups.manage': 'Backups (run & retry)',
+  'pev.read': 'Project expense vouchers (read)',
+  'pev.create': 'Create expense voucher',
+  'pev.approve': 'Approve expense voucher',
+  'pev.post': 'Post expense voucher',
 };
+
+const PEV_ALL: Permission[] = ['pev.read', 'pev.create', 'pev.approve', 'pev.post'];
+const PEV_PM: Permission[] = ['pev.read', 'pev.create'];
 
 const REPORTS_READ: Permission[] = [
   'reports.trial_balance.read',
@@ -103,6 +118,7 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'permissions.read',
     'backups.read',
     'backups.manage',
+    ...PEV_ALL,
   ]),
   accountant: new Set([
     ...REPORTS_READ,
@@ -112,14 +128,16 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'audit_logs.read',
     'financial.write',
     'permissions.read',
+    ...PEV_ALL,
   ]),
   project_manager: new Set([
     'reports.profit_loss.read',
     'reports.cash_flow.read',
     'financial.write',
+    ...PEV_PM,
   ]),
   sales_user: new Set(['financial.write']),
-  read_only: new Set([...REPORTS_READ, 'payroll.read', 'audit_logs.read']),
+  read_only: new Set([...REPORTS_READ, 'payroll.read', 'audit_logs.read', 'pev.read']),
 };
 
 /** Maps stored user.role values (legacy + new) to enterprise role slugs. */

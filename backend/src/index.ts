@@ -41,6 +41,7 @@ import { stateRouter } from './routes/stateRoutes.js';
 import { recurringInvoiceTemplatesRouter } from './routes/recurringInvoiceTemplatesRoutes.js';
 import { payrollRouter } from './routes/payrollRoutes.js';
 import { contractorRouter } from './routes/contractorRoutes.js';
+import { projectExpenseVoucherRouter } from './routes/projectExpenseVoucherRoutes.js';
 import { personalFinanceRouter } from './routes/personalFinanceRoutes.js';
 import { tasksRouter } from './routes/tasksRoutes.js';
 import { databaseBackupRouter } from './routes/databaseBackupRoutes.js';
@@ -347,6 +348,8 @@ app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWri
 app.use('/api', authMiddleware, requireActiveSubscription(), requirePayrollAccessForPayrollPaths(), payrollRouter);
 
 app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWriteOnMutations, contractorRouter);
+
+app.use('/api', authMiddleware, requireActiveSubscription(), projectExpenseVoucherRouter);
 
 app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWriteOnMutations, personalFinanceRouter);
 

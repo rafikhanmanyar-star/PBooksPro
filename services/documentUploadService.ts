@@ -32,7 +32,7 @@ function readFileAsBase64(file: File): Promise<string> {
  */
 export async function uploadEntityDocument(
   file: File,
-  entityType: 'contract' | 'bill',
+  entityType: 'contract' | 'bill' | 'project_expense_voucher',
   entityId: string,
   dispatch: (action: { type: 'ADD_DOCUMENT'; payload: Document }) => void,
   currentUserId?: string

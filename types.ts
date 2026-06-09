@@ -538,6 +538,46 @@ export interface Bill {
   version?: number; // Version for optimistic locking (default: 1)
 }
 
+/** Project Expense Voucher workflow status */
+export type PeVStatus = 'draft' | 'submitted' | 'approved' | 'rejected' | 'posted';
+
+/** Expense category for project expense vouchers with GL account mapping */
+export interface ProjectExpenseCategory {
+  id: string;
+  name: string;
+  glAccountId: string;
+  isActive: boolean;
+  description?: string;
+  version?: number;
+}
+
+/** Project expense voucher — site/misc expenses without vendor bill */
+export interface ProjectExpenseVoucher {
+  id: string;
+  voucherNumber: string;
+  voucherDate: string;
+  projectId: string;
+  expenseCategoryId: string;
+  vendorId?: string;
+  paymentSourceAccountId: string;
+  amount: number;
+  description?: string;
+  documentId?: string;
+  status: PeVStatus;
+  journalEntryId?: string;
+  submittedAt?: string;
+  submittedBy?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+  rejectionReason?: string;
+  postedAt?: string;
+  postedBy?: string;
+  createdBy?: string;
+  version?: number;
+}
+
 export interface QuotationItem {
   id: string;
   categoryId: string;
@@ -561,9 +601,9 @@ export interface Quotation {
 export interface Document {
   id: string;
   name: string;
-  type: 'quotation' | 'bill' | 'agreement' | 'contract' | 'id_card' | 'other';
+  type: 'quotation' | 'bill' | 'agreement' | 'contract' | 'id_card' | 'project_expense_voucher' | 'other';
   entityId: string; // ID of the related entity (quotation, bill, etc.)
-  entityType: 'quotation' | 'bill' | 'agreement' | 'contract' | 'other';
+  entityType: 'quotation' | 'bill' | 'agreement' | 'contract' | 'project_expense_voucher' | 'other';
   fileData: string; // Base64 encoded file data or blob URL
   fileName: string;
   fileSize: number;

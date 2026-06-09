@@ -42,7 +42,9 @@ export type RealtimeEntityType =
   | 'plan_amenity'
   | 'installment_plan'
   | 'contractor_advance'
-  | 'contractor_bill';
+  | 'contractor_bill'
+  | 'project_expense_voucher'
+  | 'project_expense_category';
 
 export type RealtimeAction = 'created' | 'updated' | 'deleted';
 

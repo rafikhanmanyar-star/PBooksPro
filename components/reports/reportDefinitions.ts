@@ -34,6 +34,8 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'project-revenue', title: 'Revenue Analysis Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Revenue Analysis' },
     { id: 'project-income-category', title: 'Project Income by Category', group: 'Project', path: 'projectManagement', subPath: 'Reports:Income by Category' },
     { id: 'project-expense-category', title: 'Project Expense by Category', group: 'Project', path: 'projectManagement', subPath: 'Reports:Expense by Category' },
+    { id: 'project-pev-register', title: 'Project Expense Register (PEV)', group: 'Project', path: 'projectManagement', subPath: 'Reports:PEV Reports' },
+    { id: 'project-pev-by-category', title: 'PEV Expense by Category', group: 'Project', path: 'projectManagement', subPath: 'Reports:PEV Reports' },
     { id: 'project-units', title: 'Project Units Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Project Units' },
     { id: 'project-client-ledger', title: 'Owner Ledger (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Owner Ledger' },
     { id: 'project-broker-report', title: 'Broker Report (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Broker Report' },

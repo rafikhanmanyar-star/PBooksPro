@@ -49,6 +49,10 @@ export function usePermissions() {
       canReadPermissions: has('permissions.read'),
       canReadBackups: has('backups.read'),
       canManageBackups: has('backups.manage'),
+      canReadPeV: has('pev.read'),
+      canCreatePeV: has('pev.create'),
+      canApprovePeV: has('pev.approve'),
+      canPostPeV: has('pev.post'),
     };
   }, [role]);
 }
