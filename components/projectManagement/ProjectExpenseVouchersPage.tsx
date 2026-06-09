@@ -378,8 +378,12 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
             <div>
               <label className="text-xs text-app-muted">Date</label>
               <DatePicker
-                value={form.voucherDate || toLocalDateString(new Date())}
-                onChange={(d) => setForm((f) => ({ ...f, voucherDate: d }))}
+                value={
+                  typeof form.voucherDate === 'string' && form.voucherDate
+                    ? form.voucherDate
+                    : toLocalDateString(new Date())
+                }
+                onChange={(d) => setForm((f) => ({ ...f, voucherDate: toLocalDateString(d) }))}
               />
             </div>
             <div>
