@@ -81,4 +81,13 @@ export async function recordUnsubscribe(
        AND ($2::text IS NULL OR tenant_id = $2)`,
     [normalized, tenantId]
   );
+
+  if (category === 'marketing' || category === 'all') {
+    await client.query(
+      `UPDATE marketing_email_queue SET status = 'canceled'
+       WHERE status = 'pending'
+         AND lead_id IN (SELECT id FROM marketing_leads WHERE LOWER(email) = $1)`,
+      [normalized]
+    );
+  }
 }

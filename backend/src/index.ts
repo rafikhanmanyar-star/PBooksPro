@@ -93,7 +93,9 @@ import {
 } from './middleware/introspectionGuard.js';
 import { seedDevIfEnabled, seedStagingIfEnabled, seedDemoIfEnabled } from './seed.js';
 import { demoRouter } from './routes/demoRoutes.js';
+import { demoBookingRouter } from './routes/demoBookingRoutes.js';
 import { marketingRouter } from './routes/marketingRoutes.js';
+import { trialSignupRouter } from './routes/trialSignupRoutes.js';
 import { supportRouter } from './routes/supportRoutes.js';
 import { startMarketingEmailScheduler } from './services/marketing/marketingEmailScheduler.js';
 import { startEmailAutomationScheduler } from './services/emailAutomation/emailAutomationScheduler.js';
@@ -210,7 +212,9 @@ app.use('/api/admin', adminPortalRouter);
 
 app.use('/api', authRouter);
 app.use('/api', demoRouter);
+app.use('/api', demoBookingRouter);
 app.use('/api', marketingRouter);
+app.use('/api', trialSignupRouter);
 app.use('/api', emailAutomationPublicRouter);
 app.use('/api', referralRouter);
 app.use('/api', supportRouter);

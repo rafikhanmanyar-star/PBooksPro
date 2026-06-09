@@ -1,11 +1,16 @@
 /**
- * Nurture sequence definitions — swap template_key for ESP/CRM templates when integrating.
+ * Lead nurture sequence definitions — triggers on marketing_leads.source.
+ * Templates: constants/marketingEmailTemplates.ts + services/email/emailTemplateLibrary.ts
  */
+import type { MarketingEmailTemplateKey } from './marketingEmailTemplates.js';
+
 export type EmailSequenceStep = {
   id: string;
   delayDays: number;
+  /** Additional delay after delayDays (e.g. lead magnet 1h after welcome). */
+  delayMinutes?: number;
   subject: string;
-  templateKey: string;
+  templateKey: MarketingEmailTemplateKey;
   previewText?: string;
 };
 
@@ -19,9 +24,60 @@ export type EmailSequenceDefinition = {
 
 export const EMAIL_SEQUENCES: EmailSequenceDefinition[] = [
   {
+    id: 'demo_request_nurture',
+    name: 'Demo Request Workflow',
+    description: 'Confirmation is sent instantly on booking; this sequence sends reminder + follow-up.',
+    triggerSources: ['demo_booking'],
+    steps: [
+      {
+        id: 'reminder',
+        delayDays: 1,
+        subject: 'Reminder: your PBooks Pro demo',
+        templateKey: 'demo_reminder',
+        previewText: 'Pick a time or prepare for your upcoming session',
+      },
+      {
+        id: 'followup',
+        delayDays: 3,
+        subject: 'Following up on your PBooks Pro demo',
+        templateKey: 'demo_followup',
+        previewText: 'Start your 14-day free trial',
+      },
+    ],
+  },
+  {
+    id: 'newsletter_nurture',
+    name: 'Newsletter Signup Workflow',
+    description: 'Welcome email + lead magnet delivery for footer and blog subscribers',
+    triggerSources: ['newsletter'],
+    steps: [
+      {
+        id: 'welcome',
+        delayDays: 0,
+        subject: 'Welcome to PBooks Pro insights',
+        templateKey: 'newsletter_welcome',
+        previewText: 'Practical property & construction finance tips',
+      },
+      {
+        id: 'lead_magnet',
+        delayDays: 0,
+        delayMinutes: 60,
+        subject: 'Your free property finance guide',
+        templateKey: 'newsletter_lead_magnet',
+        previewText: 'Download your guide',
+      },
+      {
+        id: 'week_2',
+        delayDays: 14,
+        subject: 'Property finance KPIs worth tracking monthly',
+        templateKey: 'newsletter_week2',
+      },
+    ],
+  },
+  {
     id: 'checklist_welcome',
-    name: 'Checklist Lead Magnet Nurture',
-    description: 'Delivered after Property Management & Accounting Checklist download',
+    name: 'Checklist / Exit-Intent Lead Magnet',
+    description: 'Delivered after checklist download or exit-intent popup',
     triggerSources: ['checklist', 'exit_intent'],
     steps: [
       {
@@ -48,26 +104,6 @@ export const EMAIL_SEQUENCES: EmailSequenceDefinition[] = [
         delayDays: 10,
         subject: 'Ready to replace spreadsheets? Start your free trial',
         templateKey: 'lead_checklist_day10',
-      },
-    ],
-  },
-  {
-    id: 'newsletter_nurture',
-    name: 'Newsletter Subscriber Nurture',
-    description: 'Light-touch sequence for footer and blog newsletter signups',
-    triggerSources: ['newsletter'],
-    steps: [
-      {
-        id: 'welcome',
-        delayDays: 0,
-        subject: 'Welcome to PBooksPro insights',
-        templateKey: 'newsletter_welcome',
-      },
-      {
-        id: 'week_2',
-        delayDays: 14,
-        subject: 'Property finance KPIs worth tracking monthly',
-        templateKey: 'newsletter_week2',
       },
     ],
   },

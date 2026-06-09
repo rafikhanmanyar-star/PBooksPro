@@ -7,6 +7,7 @@ import { publicIntrospectionLimiter } from '../middleware/introspectionGuard.js'
 import { createMarketingLead, listLeadsForCrmExport } from '../services/marketing/marketingLeadService.js';
 import { toCrmLeadPayload } from '../services/marketing/crmLeadMapper.js';
 import { getSequenceCatalog } from '../services/marketing/emailSequenceService.js';
+import { getMarketingTemplateCatalog } from '../constants/marketingEmailTemplates.js';
 
 export const marketingRouter = Router();
 
@@ -23,12 +24,21 @@ const leadLimiter = rateLimit({
 });
 
 const leadSchema = z.object({
-  source: z.enum(['checklist', 'newsletter', 'exit_intent']),
+  source: z.enum([
+    'checklist',
+    'newsletter',
+    'exit_intent',
+    'contact_form',
+    'trial_signup',
+    'pricing_cta',
+  ]),
   leadMagnet: z.string().max(200).optional(),
   name: z.string().max(200).optional(),
   email: z.string().email().max(320),
   company: z.string().max(200).optional(),
   country: z.string().max(120).optional(),
+  mobile: z.string().max(40).optional(),
+  campaign: z.string().max(200).optional(),
   utmSource: z.string().max(120).optional(),
   utmMedium: z.string().max(120).optional(),
   utmCampaign: z.string().max(120).optional(),
@@ -54,6 +64,10 @@ function clientIp(req: { ip?: string; headers: Record<string, unknown> }): strin
 
 marketingRouter.get('/marketing/sequences', publicIntrospectionLimiter, (_req, res) => {
   sendSuccess(res, { sequences: getSequenceCatalog() });
+});
+
+marketingRouter.get('/marketing/email-templates', publicIntrospectionLimiter, (_req, res) => {
+  sendSuccess(res, { templates: getMarketingTemplateCatalog() });
 });
 
 marketingRouter.post('/marketing/leads', leadLimiter, async (req, res) => {

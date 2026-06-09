@@ -42,6 +42,8 @@ export function toCrmLeadPayload(row: MarketingLeadRow): CrmLeadPayload {
     status: row.status,
     tags,
     customFields: {
+      mobile: row.mobile,
+      campaign: row.campaign || row.utm_campaign,
       utmSource: row.utm_source,
       utmMedium: row.utm_medium,
       utmCampaign: row.utm_campaign,

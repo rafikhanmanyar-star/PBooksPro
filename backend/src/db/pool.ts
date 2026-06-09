@@ -11,6 +11,17 @@ types.setTypeParser(PG_DATE_OID, (val: string) => val);
 
 let pool: pg.Pool | null = null;
 
+/** Render and other cloud Postgres hosts require TLS on external connections. */
+function resolvePoolSsl(url: string): pg.PoolConfig['ssl'] | undefined {
+  if (process.env.PGSSLMODE === 'require' || /sslmode=require/i.test(url)) {
+    return { rejectUnauthorized: false };
+  }
+  if (/\.render\.com/i.test(url)) {
+    return { rejectUnauthorized: false };
+  }
+  return undefined;
+}
+
 export function getPool(): pg.Pool {
   if (!pool) {
     const raw = process.env.DATABASE_URL;
@@ -25,7 +36,8 @@ export function getPool(): pg.Pool {
       );
     }
     const max = Math.min(Math.max(parseInt(process.env.PG_POOL_MAX || '20', 10) || 20, 2), 100);
-    pool = new Pool({ connectionString: url, max });
+    const ssl = resolvePoolSsl(url);
+    pool = new Pool(ssl ? { connectionString: url, max, ssl } : { connectionString: url, max });
   }
   return pool;
 }

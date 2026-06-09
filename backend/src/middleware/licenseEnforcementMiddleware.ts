@@ -23,6 +23,7 @@ const SKIP_PATH_PREFIXES = [
   '/auth/heartbeat',
   '/auth/login',
   '/auth/register-tenant',
+  '/trial/signup',
   '/webhooks/',
   '/legal/',
   '/database/backup',

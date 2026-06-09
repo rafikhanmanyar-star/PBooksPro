@@ -62,6 +62,7 @@ export async function sendAutomationEmail(input: SendAutomationEmailInput): Prom
     appUrl: buildAppUrl(),
     billingPortalUrl: buildBillingPortalUrl(),
     unsubscribeUrl: input.unsubscribeUrl,
+    trackingToken: input.trackingToken,
     trialEndDate: input.trialEndDate,
     planName: input.planName,
     featureTitle: input.featureTitle,

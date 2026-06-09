@@ -428,13 +428,11 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
       }
     });
 
-    const trialDaysRemaining = 30;
-
     sendSuccess(
       res,
       {
         tenantId,
-        trialDaysRemaining,
+        trialDaysRemaining: 14,
         message: `Organization "${tenantDisplayName}" created. Sign in with your admin username and this organization ID.`,
       },
       201

@@ -107,7 +107,7 @@ export async function cancelPendingTrialEmails(
   await client.query(
     `UPDATE email_automation_queue SET status = 'canceled'
      WHERE tenant_id = $1 AND status = 'pending'
-       AND event_type IN ('trial_started', 'trial_day_3', 'trial_day_7', 'trial_day_14', 'trial_expiring')
+       AND event_type IN ('trial_started', 'trial_day_1', 'trial_day_3', 'trial_day_7', 'trial_day_12', 'trial_day_14', 'trial_expiring')
        AND dedupe_key LIKE $2`,
     [tenantId, `${tenantId}:${subscriptionId}:%`]
   );
@@ -120,9 +120,7 @@ export async function enrollTrialLifecycleEmails(
   trialStart: Date,
   trialEnd: Date
 ): Promise<number> {
-  const { TRIAL_LIFECYCLE_SCHEDULE, TRIAL_EXPIRING_DAYS_BEFORE_END } = await import(
-    '../../constants/emailAutomation.js'
-  );
+  const { TRIAL_LIFECYCLE_SCHEDULE } = await import('../../constants/emailAutomation.js');
 
   let queued = 0;
   for (const step of TRIAL_LIFECYCLE_SCHEDULE) {
@@ -135,18 +133,6 @@ export async function enrollTrialLifecycleEmails(
       metadata: { subscriptionId, trialEnd: trialEnd.toISOString() },
       subjectOverride: step.subject,
       templateKeyOverride: step.templateKey,
-    });
-    if (id) queued += 1;
-  }
-
-  const expiringAt = addDays(trialEnd, -TRIAL_EXPIRING_DAYS_BEFORE_END);
-  if (expiringAt.getTime() > Date.now()) {
-    const id = await enqueueAutomationEmail(client, {
-      tenantId,
-      eventType: 'trial_expiring',
-      scheduledAt: expiringAt,
-      dedupeKey: `${tenantId}:${subscriptionId}:trial_expiring`,
-      metadata: { subscriptionId, trialEnd: trialEnd.toISOString() },
     });
     if (id) queued += 1;
   }
@@ -258,11 +244,21 @@ export async function recordEmailOpen(client: pg.PoolClient, trackingToken: stri
     `UPDATE email_automation_queue SET opened_at = COALESCE(opened_at, NOW()) WHERE tracking_token = $1`,
     [trackingToken]
   );
+  await client.query(
+    `UPDATE marketing_email_queue SET opened_at = COALESCE(opened_at, NOW()) WHERE tracking_token = $1`,
+    [trackingToken]
+  );
 }
 
 export async function recordEmailClick(client: pg.PoolClient, trackingToken: string): Promise<void> {
   await client.query(
     `UPDATE email_automation_queue
+     SET clicked_at = COALESCE(clicked_at, NOW()), opened_at = COALESCE(opened_at, NOW())
+     WHERE tracking_token = $1`,
+    [trackingToken]
+  );
+  await client.query(
+    `UPDATE marketing_email_queue
      SET clicked_at = COALESCE(clicked_at, NOW()), opened_at = COALESCE(opened_at, NOW())
      WHERE tracking_token = $1`,
     [trackingToken]
