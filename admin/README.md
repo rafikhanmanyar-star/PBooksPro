@@ -92,3 +92,8 @@ The admin portal is a static site that can be deployed to:
 
 Make sure to set `VITE_ADMIN_API_URL` environment variable to point to your API server.
 
+**Production (Render):**
+- Admin: `https://admin.pbookspro.com`
+- API: `https://api.pbookspro.com`
+- Build env: `VITE_ADMIN_API_URL=https://api.pbookspro.com/api/admin`
+

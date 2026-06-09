@@ -1,5 +1,5 @@
 // Use environment variable with fallback to production for backwards compatibility
-const ADMIN_API_URL = import.meta.env.VITE_ADMIN_API_URL || 'https://pbookspro-api.onrender.com/api/admin';
+const ADMIN_API_URL = import.meta.env.VITE_ADMIN_API_URL || 'https://api.pbookspro.com/api/admin';
 
 // Debug: Log the API URL being used
 console.log('🔧 Admin API URL:', ADMIN_API_URL);
