@@ -76,7 +76,21 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
       accounts.filter(
         (a) =>
           a.isActive !== false &&
-          (a.type === AccountType.BANK || a.type === AccountType.CASH || a.name !== 'Internal Clearing')
+          (a.type === AccountType.BANK || a.type === AccountType.CASH) &&
+          a.name !== 'Internal Clearing'
+      ),
+    [accounts]
+  );
+
+  /** All active chart lines usable as PEV category debit (expense nominals). */
+  const glAccountsForCategories = useMemo(
+    () =>
+      accounts.filter(
+        (a) =>
+          a.isActive !== false &&
+          a.name !== 'Internal Clearing' &&
+          a.type !== AccountType.BANK &&
+          a.type !== AccountType.CASH
       ),
     [accounts]
   );
@@ -261,7 +275,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
             <ComboBox
               items={projectItems}
               selectedId={filterProjectId}
-              onSelect={(id) => setFilterProjectId(id || 'all')}
+              onSelect={(item) => setFilterProjectId(item?.id || 'all')}
               placeholder="All projects"
             />
           </div>
@@ -401,7 +415,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
               <ComboBox
                 items={projects}
                 selectedId={form.projectId || ''}
-                onSelect={(id) => setForm((f) => ({ ...f, projectId: id || undefined }))}
+                onSelect={(item) => setForm((f) => ({ ...f, projectId: item?.id || undefined }))}
                 placeholder="Select project"
               />
             </div>
@@ -410,7 +424,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
               <ComboBox
                 items={categories.map((c) => ({ id: c.id, name: c.name }))}
                 selectedId={form.expenseCategoryId || ''}
-                onSelect={(id) => setForm((f) => ({ ...f, expenseCategoryId: id || undefined }))}
+                onSelect={(item) => setForm((f) => ({ ...f, expenseCategoryId: item?.id || undefined }))}
                 placeholder="Select category"
               />
             </div>
@@ -419,7 +433,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
               <ComboBox
                 items={paymentAccounts.map((a) => ({ id: a.id, name: a.name }))}
                 selectedId={form.paymentSourceAccountId || ''}
-                onSelect={(id) => setForm((f) => ({ ...f, paymentSourceAccountId: id || undefined }))}
+                onSelect={(item) => setForm((f) => ({ ...f, paymentSourceAccountId: item?.id || undefined }))}
                 placeholder="Cash / bank account"
               />
             </div>
@@ -428,7 +442,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
               <ComboBox
                 items={[{ id: '', name: '— None —' }, ...vendors.map((v) => ({ id: v.id, name: v.name }))]}
                 selectedId={form.vendorId || ''}
-                onSelect={(id) => setForm((f) => ({ ...f, vendorId: id || undefined }))}
+                onSelect={(item) => setForm((f) => ({ ...f, vendorId: item?.id || undefined }))}
                 placeholder="Optional vendor"
               />
             </div>
@@ -493,7 +507,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
           setShowCategories(false);
           loadData();
         }}
-        accounts={paymentAccounts}
+        accounts={glAccountsForCategories}
       />
     </div>
   );

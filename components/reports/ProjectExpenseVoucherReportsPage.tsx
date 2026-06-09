@@ -104,7 +104,7 @@ const ProjectExpenseVoucherReportsPage: React.FC = () => {
           <ComboBox
             items={projectItems}
             selectedId={projectId}
-            onSelect={(id) => setProjectId(id || 'all')}
+            onSelect={(item) => setProjectId(item?.id || 'all')}
             placeholder="All projects"
           />
         </div>

@@ -109,8 +109,9 @@ const ProjectExpenseCategoriesModal: React.FC<ProjectExpenseCategoriesModalProps
             <ComboBox
               items={accounts.map((a) => ({ id: a.id, name: a.name }))}
               selectedId={form.glAccountId || ''}
-              onSelect={(id) => setForm((f) => ({ ...f, glAccountId: id || undefined }))}
+              onSelect={(item) => setForm((f) => ({ ...f, glAccountId: item?.id || undefined }))}
               placeholder="GL expense account"
+              allowAddNew={false}
             />
           </div>
           <label className="flex items-center gap-2 text-sm">

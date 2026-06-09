@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 
 export type ProjectExpenseCategoryRow = {
   id: string;
@@ -50,6 +51,22 @@ function pickCategoryBody(body: Record<string, unknown>) {
   return { name, gl_account_id: glAccountId, is_active: isActive, description };
 }
 
+async function assertGlAccountExists(
+  client: pg.PoolClient,
+  tenantId: string,
+  accountId: string
+): Promise<void> {
+  const r = await client.query<{ id: string }>(
+    `SELECT id FROM accounts
+     WHERE id = $1 AND deleted_at IS NULL
+       AND (tenant_id = $2 OR tenant_id = $3)`,
+    [accountId, tenantId, GLOBAL_SYSTEM_TENANT_ID]
+  );
+  if (!r.rows[0]) {
+    throw new Error(`GL account not found or inactive: ${accountId}`);
+  }
+}
+
 export async function listProjectExpenseCategories(
   client: pg.PoolClient,
   tenantId: string,
@@ -90,6 +107,8 @@ export async function upsertProjectExpenseCategory(
   const id = String(body.id ?? '').trim() || newId();
   const expectedVersion =
     body.version != null && Number.isFinite(Number(body.version)) ? Number(body.version) : undefined;
+
+  await assertGlAccountExists(client, tenantId, picked.gl_account_id);
 
   const existing = await getProjectExpenseCategoryById(client, tenantId, id);
   if (existing && expectedVersion != null && existing.version !== expectedVersion) {
