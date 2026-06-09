@@ -25,8 +25,14 @@ import { logger } from '../utils/logger.js';
 
 async function main() {
   const provision = process.argv.includes('--provision');
-  const result = provision ? await provisionDemoEnvironment() : await resetPublicDemoTenant();
-  logger.info(provision ? 'Demo provision CLI complete' : 'Demo reset CLI complete', result);
+  if (provision) {
+    await provisionDemoEnvironment();
+    logger.info('Demo provision CLI complete');
+    return;
+  }
+
+  const result = await resetPublicDemoTenant();
+  logger.info('Demo reset CLI complete', result);
 }
 
 main().catch((err) => {
