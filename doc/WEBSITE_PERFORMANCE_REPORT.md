@@ -14,7 +14,7 @@ Generated: 2026-06-09
 | Metric | Before (audit) | After (production build) |
 |--------|----------------|----------------------------|
 | Homepage script requests | 22 separate files | 3 bundles + loader |
-| JS transfer (homepage) | ~120–150 KB raw | ~198 KB minified (all bundles) |
+| JS transfer (homepage) | ~120–150 KB raw | ~219 KB minified (all bundles) |
 | CSS | styles.css ~187 KB + FA ~90 KB CDN | ~232 KB minified local |
 | Missing JS (404) | `faq.js`, `video-demo.js` | Implemented |
 | LCP image | JPG preload + src | WebP only, `fetchpriority=high` |
@@ -51,12 +51,13 @@ npm run build
   "bundles": {
     "core": "assets/js/core.8faa59cc88.min.js",
     "home": "assets/js/home.991c066e16.min.js",
-    "marketing": "assets/js/marketing.81479541a4.min.js",
+    "marketing": "assets/js/marketing.c4c6f0b3e0.min.js",
     "lite": "assets/js/lite.342c32a7f8.min.js",
-    "demo": "assets/js/demo.ffb4d38987.min.js",
-    "trial": "assets/js/trial.7eea3b68ef.min.js",
+    "demo": "assets/js/demo.b9e2d41ac1.min.js",
+    "demo-login": "assets/js/demo-login.bed8ed1746.min.js",
+    "trial": "assets/js/trial.a8f64cfba4.min.js",
     "pricing-page": "assets/js/pricing-page.c151324e4f.min.js",
-    "contact": "assets/js/contact.04b4f4b25e.min.js",
+    "contact": "assets/js/contact.84d8f6eb4c.min.js",
     "blog": "assets/js/blog.cdaf0c10c6.min.js",
     "support": "assets/js/support.7cd42d4b70.min.js",
     "analytics-loader": "assets/js/analytics-loader.d4649ac7a3.min.js"
@@ -112,6 +113,7 @@ npm run build
     ],
     "demo-login.html": [
       "core",
+      "demo-login",
       "analytics-loader"
     ],
     "demo-success.html": [
@@ -291,7 +293,7 @@ npm run build
 - `blog/rental-property-accounting-checklist.html` → core, lite, analytics-loader
 - `blog.html` → core, blog, analytics-loader
 - `contact.html` → core, contact, analytics-loader
-- `demo-login.html` → core, analytics-loader
+- `demo-login.html` → core, demo-login, analytics-loader
 - `demo-success.html` → core, analytics-loader
 - `demo.html` → core, demo, analytics-loader
 - `dist/assets/checklists/property-management-accounting-checklist.html` → core, analytics-loader

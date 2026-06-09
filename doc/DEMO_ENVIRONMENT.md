@@ -79,7 +79,8 @@ npm run demo:reset --prefix backend
 
 ## Frontend integration
 
-- **Website:** `website/demo-login.html` → stores `pbooks_demo_auth` → redirects to app
+- **Website:** `website/demo-login.html` → redirects to `app.pbookspro.com/?auto_demo=1`
+- **App bootstrap:** `utils/demoAuthBootstrap.ts` → `POST /demo/enter` on app origin → `pbooks_demo_auth` in sessionStorage
 - **In-app login:** `Try Live Demo` on `ApiLoginScreen` → `enterDemoSession()`
 - **Guided tour:** `components/onboarding/DemoProductTour.tsx` (4 steps)
 - **Analytics:** `services/analytics/trackEvent.ts` + `website/js/analytics.js`
