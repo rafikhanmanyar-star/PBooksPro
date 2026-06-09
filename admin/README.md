@@ -5,6 +5,7 @@ Admin portal for managing tenants and licenses in PBooksPro.
 ## Features
 
 - Tenant management
+- **Lead management** (website demo, trial, contact, newsletter & exit-intent funnels)
 - License generation and management
 - System statistics dashboard
 - Admin authentication
@@ -56,6 +57,15 @@ The admin portal will be available at `http://localhost:5175` (main PBooks Pro c
 - View tenant details
 - Suspend/activate tenants
 - View tenant statistics
+
+### Lead Management
+- View leads captured from the marketing website (demo, trial, contact, newsletter, pricing CTA, exit-intent, checklist)
+- Filter by source, status, campaign, and date range
+- Update lead status (New → Contacted → Qualified → Demo Scheduled → Trial Started → Customer)
+- Export filtered leads to CSV
+- Dashboard summary: total leads, last 7 days, new & trial-started counts
+
+Requires migration `089_lead_management.sql` and `MARKETING_LEADS_ENABLED=true` on the API.
 
 ### License Management
 - Generate license keys

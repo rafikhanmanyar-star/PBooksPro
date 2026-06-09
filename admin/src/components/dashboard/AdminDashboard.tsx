@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Users, Key, AlertCircle, CheckCircle, Clock, Server } from 'lucide-react';
+import { Users, Key, AlertCircle, CheckCircle, Clock, Server, UserPlus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface DashboardStats {
@@ -44,8 +44,15 @@ interface SystemMetrics {
   };
 }
 
+interface LeadStats {
+  total: number;
+  last7Days: number;
+  byStatus: Record<string, number>;
+}
+
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -53,6 +60,7 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     loadStats();
+    loadLeadStats();
     loadSystemMetrics();
 
     // Refresh system metrics every 30 seconds
@@ -81,6 +89,15 @@ const AdminDashboard: React.FC = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLeadStats = async () => {
+    try {
+      const data = await adminApi.getLeadStats();
+      setLeadStats(data);
+    } catch (err: unknown) {
+      console.error('Lead stats load error:', err);
     }
   };
 
@@ -243,6 +260,51 @@ const AdminDashboard: React.FC = () => {
           );
         })}
       </div>
+
+      {/* Marketing leads summary */}
+      {leadStats && (
+        <div className="card" style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <UserPlus size={20} />
+              Marketing Leads
+            </h2>
+            <button
+              onClick={() => navigate('/leads')}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#2563eb',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+              }}
+            >
+              View All Leads
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Total Leads</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#2563eb' }}>{leadStats.total.toLocaleString()}</p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Last 7 Days</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#059669' }}>{leadStats.last7Days.toLocaleString()}</p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>New (uncontacted)</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#f59e0b' }}>{(leadStats.byStatus.new ?? 0).toLocaleString()}</p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Trial Started</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#7c3aed' }}>{(leadStats.byStatus.trial_started ?? 0).toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* System Health Summary */}
       {systemMetrics && (

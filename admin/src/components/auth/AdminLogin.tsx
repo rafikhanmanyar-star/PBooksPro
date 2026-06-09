@@ -119,7 +119,7 @@ const AdminLogin: React.FC = () => {
 
         <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#eff6ff', borderRadius: '0.375rem', fontSize: '0.875rem', color: '#1e40af' }}>
           <strong>Default Credentials:</strong><br />
-          Username: admin<br />
+          Username: Admin<br />
           Password: admin123
         </div>
       </div>

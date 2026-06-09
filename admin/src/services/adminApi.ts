@@ -317,6 +317,63 @@ class AdminApi {
     return response.json();
   }
 
+  // Lead Management
+  async getLeads(filters?: Record<string, string>) {
+    const params = new URLSearchParams(filters);
+    const response = await fetch(`${ADMIN_API_URL}/leads?${params}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to fetch leads');
+    }
+    return response.json();
+  }
+
+  async getLeadStats() {
+    const response = await fetch(`${ADMIN_API_URL}/leads/stats`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to fetch lead stats');
+    }
+    return response.json();
+  }
+
+  async updateLeadStatus(leadId: string, status: string) {
+    const response = await fetch(`${ADMIN_API_URL}/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to update lead status');
+    }
+    return response.json();
+  }
+
+  async exportLeadsCsv(filters?: Record<string, string>) {
+    const params = new URLSearchParams(filters);
+    const response = await fetch(`${ADMIN_API_URL}/leads/export?${params}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to export leads');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pbookspro-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   // System Monitoring
   async getSystemMetrics() {
     const response = await fetch(`${ADMIN_API_URL}/system-metrics`, {
