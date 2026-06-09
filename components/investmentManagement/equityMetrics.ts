@@ -1,12 +1,24 @@
-import { AppState, AccountType, TransactionType } from '../../types';
+import { Account, AppState, AccountType, TransactionType } from '../../types';
 import { getEquityImpactsForBalances } from './equityLedgerClassification';
 
 export const EQUITY_BALANCE_EPS = 1e-2;
 export const roundEquityBalance = (x: number): number => (Math.abs(x) < EQUITY_BALANCE_EPS ? 0 : x);
 
+/** User-created investor equity accounts only — excludes system/permanent equity (Owner Equity, Retained Earnings, etc.). */
+export function isInvestorEquityAccount(account: Account): boolean {
+    if (account.type !== AccountType.EQUITY) return false;
+    if (account.isPermanent) return false;
+    if (account.id.startsWith('sys-acc-')) return false;
+    return true;
+}
+
+export function getInvestorEquityAccounts(state: AppState) {
+    return state.accounts.filter(isInvestorEquityAccount);
+}
+
 /** Same equity impact logic as ProjectEquityManagement (tree balances). */
 export function computeEquityBalances(state: AppState) {
-    const equityAccounts = state.accounts.filter((a) => a.type === AccountType.EQUITY);
+    const equityAccounts = getInvestorEquityAccounts(state);
     const projBal: Record<string, number> = {};
     const invTotalBal: Record<string, number> = {};
     const invProjBal: Record<string, Record<string, number>> = {};
@@ -39,8 +51,4 @@ export function computeEquityBalances(state: AppState) {
     });
 
     return { projBal, invTotalBal, invProjBal, equityAccounts };
-}
-
-export function getInvestorEquityAccounts(state: AppState) {
-    return state.accounts.filter((a) => a.type === AccountType.EQUITY && a.name !== 'Owner Equity');
 }
