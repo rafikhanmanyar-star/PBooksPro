@@ -50,6 +50,7 @@
     "seed:rk-builders-rafi": "node scripts/seed-rk-builders-rafi.cjs",
     "migrate-pbookspro-to-rkbuilders": "node scripts/migrate-pbookspro-to-rkbuilders.cjs",
     "copy-tenant-from-production": "node scripts/copy-tenant-from-production.cjs",
+    "copy-tenant:postgres": "node scripts/copy-tenant-postgres-to-postgres.cjs",
     "export-tenant-to-excel": "node scripts/export-tenant-to-excel.cjs",
     "delete-rkbuilders-rental-data": "node scripts/delete-rkbuilders-rental-agreements-and-invoices.cjs",
     "delete-installment-invoices-missing-unit": "node scripts/delete-sqlite-installment-invoices-missing-unit.cjs",

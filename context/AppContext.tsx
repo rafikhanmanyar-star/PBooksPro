@@ -1980,7 +1980,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
-            disconnectRealtimeSocket();
+            s.off('entity_created', handleEntity);
+            s.off('entity_updated', handleEntity);
+            s.off('entity_deleted', handleEntity);
         };
     }, [isAuthenticated, auth.user?.id, currentTenantId, apiStateLoadFailed]);
 

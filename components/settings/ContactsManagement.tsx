@@ -312,6 +312,15 @@ const ContactsManagement: React.FC = () => {
                     handleResetForm();
                 }
             } catch (error: any) {
+                // 404 = already deleted on server; remove from local state
+                if (error?.status === 404) {
+                    appDispatch({ type: 'DELETE_CONTACT', payload: contact.id });
+                    showToast('Contact deleted successfully', 'success');
+                    if (editingContact?.id === contact.id) {
+                        handleResetForm();
+                    }
+                    return;
+                }
                 console.error('Error deleting contact:', error);
                 showToast(`Error: ${error?.message || 'Failed to delete contact'}`, 'error');
             }

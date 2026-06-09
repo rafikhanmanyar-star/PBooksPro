@@ -14,7 +14,7 @@ Generated: 2026-06-09
 | Metric | Before (audit) | After (production build) |
 |--------|----------------|----------------------------|
 | Homepage script requests | 22 separate files | 3 bundles + loader |
-| JS transfer (homepage) | ~120–150 KB raw | ~219 KB minified (all bundles) |
+| JS transfer (homepage) | ~120–150 KB raw | ~208 KB minified (all bundles) |
 | CSS | styles.css ~187 KB + FA ~90 KB CDN | ~232 KB minified local |
 | Missing JS (404) | `faq.js`, `video-demo.js` | Implemented |
 | LCP image | JPG preload + src | WebP only, `fetchpriority=high` |
@@ -49,14 +49,14 @@ npm run build
 ```json
 {
   "bundles": {
-    "core": "assets/js/core.8faa59cc88.min.js",
-    "home": "assets/js/home.991c066e16.min.js",
+    "core": "assets/js/core.6d8eec0959.min.js",
+    "home": "assets/js/home.d1c3617cc3.min.js",
     "marketing": "assets/js/marketing.c4c6f0b3e0.min.js",
     "lite": "assets/js/lite.342c32a7f8.min.js",
-    "demo": "assets/js/demo.b9e2d41ac1.min.js",
-    "demo-login": "assets/js/demo-login.bed8ed1746.min.js",
-    "trial": "assets/js/trial.a8f64cfba4.min.js",
-    "pricing-page": "assets/js/pricing-page.c151324e4f.min.js",
+    "demo": "assets/js/demo.8beb9d5562.min.js",
+    "demo-login": "assets/js/demo-login.0381f8547d.min.js",
+    "trial": "assets/js/trial.4636054edf.min.js",
+    "pricing-page": "assets/js/pricing-page.bc6d67d4af.min.js",
     "contact": "assets/js/contact.84d8f6eb4c.min.js",
     "blog": "assets/js/blog.cdaf0c10c6.min.js",
     "support": "assets/js/support.7cd42d4b70.min.js",

@@ -434,6 +434,16 @@ const ContactsPage: React.FC = () => {
                 }
                 dispatch({ type: 'DELETE_VENDOR', payload: contactToEdit.id });
             } else {
+                if (!isLocalOnlyMode() && isAuthenticated) {
+                    try {
+                        await getAppStateApiService().deleteContact(contactToEdit.id);
+                    } catch (err: any) {
+                        if (err?.status !== 404) {
+                            showToast(err?.message || err?.error || 'Could not delete contact.', 'error');
+                            return;
+                        }
+                    }
+                }
                 dispatch({ type: 'DELETE_CONTACT', payload: contactToEdit.id });
             }
             handleCloseModal();
