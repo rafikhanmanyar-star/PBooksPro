@@ -8,6 +8,7 @@ import {
 import { backfillBillJournalMirrorsForTenant } from '../billJournalBackfillService.js';
 import { backfillInvoiceJournalMirrorsForTenant } from '../invoiceJournalBackfillService.js';
 import { backfillTransactionJournalMirrorsForTenant } from '../transactionJournalBackfillService.js';
+import { logger } from '../../utils/logger.js';
 
 /** Tables wiped before re-seed (children before parents). */
 const WIPE_TABLES = [
@@ -155,18 +156,48 @@ function rentalMonth(offsetMonths: number, base = new Date()): string {
   return `${d.getFullYear()}-${padMonth(d)}`;
 }
 
+const JOURNAL_IMMUTABILITY_TRIGGERS = [
+  'journal_lines_immutable_del',
+  'journal_lines_immutable_upd',
+  'journal_entries_immutable_del',
+  'journal_entries_immutable_upd',
+] as const;
+
+async function setJournalImmutabilityTriggers(
+  client: pg.PoolClient,
+  enabled: boolean
+): Promise<void> {
+  const verb = enabled ? 'ENABLE' : 'DISABLE';
+  for (const trigger of JOURNAL_IMMUTABILITY_TRIGGERS) {
+    const table = trigger.startsWith('journal_lines') ? 'journal_lines' : 'journal_entries';
+    await client.query(`ALTER TABLE ${table} ${verb} TRIGGER ${trigger}`);
+  }
+}
+
+async function deleteTenantJournalRows(client: pg.PoolClient, tenantId: string): Promise<void> {
+  await client.query(`DELETE FROM journal_reversals WHERE tenant_id = $1`, [tenantId]);
+  await client.query(
+    `DELETE FROM journal_lines
+     WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE tenant_id = $1)`,
+    [tenantId]
+  );
+  await client.query(`DELETE FROM journal_entries WHERE tenant_id = $1`, [tenantId]);
+}
+
+/** Managed Postgres (Render) cannot set session_replication_role — disable immutability triggers instead. */
 async function purgeTenantJournal(client: pg.PoolClient, tenantId: string): Promise<void> {
-  await client.query(`SET session_replication_role = replica`);
   try {
-    await client.query(`DELETE FROM journal_reversals WHERE tenant_id = $1`, [tenantId]);
-    await client.query(
-      `DELETE FROM journal_lines
-       WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE tenant_id = $1)`,
-      [tenantId]
-    );
-    await client.query(`DELETE FROM journal_entries WHERE tenant_id = $1`, [tenantId]);
-  } finally {
-    await client.query(`SET session_replication_role = DEFAULT`);
+    await setJournalImmutabilityTriggers(client, false);
+    try {
+      await deleteTenantJournalRows(client, tenantId);
+    } finally {
+      await setJournalImmutabilityTriggers(client, true);
+    }
+  } catch (err) {
+    logger.warn('Demo journal purge skipped (stale GL rows may remain until next successful reset)', {
+      tenantId,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
