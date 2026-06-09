@@ -9,8 +9,20 @@ const path = require('path');
 const fs = require('fs');
 
 try {
-  // Get the installed Electron version
-  const electronPkg = require('electron/package.json');
+  // API / cloud deploys (Render, etc.) install backend only — no Electron desktop runtime.
+  if (process.env.SKIP_NATIVE_REBUILD === '1' || process.env.RENDER === 'true' || process.env.CI === 'true') {
+    console.log('⏭️  Skipping native rebuild (cloud/CI install — Electron not required)');
+    process.exit(0);
+  }
+
+  let electronPkg;
+  try {
+    electronPkg = require('electron/package.json');
+  } catch {
+    console.log('⏭️  Skipping native rebuild (Electron not installed)');
+    process.exit(0);
+  }
+
   const electronVersion = electronPkg.version;
   
   console.log(`🔨 Rebuilding native modules for Electron ${electronVersion}...`);

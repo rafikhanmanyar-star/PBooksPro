@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import esbuild from './load-esbuild.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
@@ -12,7 +13,6 @@ const out = path.join(root, 'backend', 'dist', 'rentalBillsDashboardEngine.mjs')
 
 fs.mkdirSync(path.dirname(out), { recursive: true });
 
-const esbuild = await import('esbuild');
 esbuild.buildSync({
   entryPoints: [entry],
   bundle: true,
