@@ -1038,6 +1038,24 @@ const ApiLoginScreen: React.FC = () => {
                   <FieldHelper>Lowercase letters, numbers, hyphens. Leave empty to auto-generate.</FieldHelper>
                 </div>
 
+                <LegalAcceptanceCheckbox
+                  key={serverUrl}
+                  context="registration"
+                  serverRootUrl={serverUrl}
+                  checked={legalAccepted}
+                  disabled={isLoading}
+                  onChange={(checked, acceptances) => {
+                    setLegalAccepted(checked);
+                    setLegalAcceptances(acceptances);
+                  }}
+                />
+
+                {!legalAccepted && (
+                  <p className="text-ds-small text-amber-700">
+                    Check the agreement box above to enable Create organization.
+                  </p>
+                )}
+
                 <div className="border-t border-app-border pt-4">
                   <p className="mb-3 text-ds-small font-semibold uppercase tracking-wide text-app-muted">Admin account</p>
 
@@ -1116,21 +1134,9 @@ const ApiLoginScreen: React.FC = () => {
                   </div>
                 </div>
 
-                <LegalAcceptanceCheckbox
-                  key={serverUrl}
-                  context="registration"
-                  serverRootUrl={serverUrl}
-                  checked={legalAccepted}
-                  disabled={isLoading}
-                  onChange={(checked, acceptances) => {
-                    setLegalAccepted(checked);
-                    setLegalAcceptances(acceptances);
-                  }}
-                />
-
                 <Button
                   type="submit"
-                  disabled={isLoading || !legalAccepted}
+                  disabled={isLoading}
                   className="w-full !bg-emerald-600 hover:!bg-emerald-700 focus-visible:!ring-emerald-500"
                   aria-busy={isLoading}
                 >

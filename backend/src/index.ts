@@ -183,6 +183,9 @@ app.get('/health', publicIntrospectionLimiter, (_req, res) => {
 
 app.use('/api', monitoringPublicRouter);
 
+/** Public legal documents — mount early (no auth). */
+app.use('/api', legalRouter);
+
 /** Public: client update check (VersionService uses raw fetch, no JWT). */
 app.get('/api/app-info/version', publicIntrospectionLimiter, (_req, res) => {
   res.json({
@@ -219,9 +222,6 @@ app.use('/api', emailAutomationPublicRouter);
 app.use('/api', referralRouter);
 app.use('/api', supportRouter);
 app.use('/api', mfaRouter);
-
-/** Public legal documents (no auth required for GET). */
-app.use('/api', legalRouter);
 
 /** Auth + stubs: heartbeat, license, presence, WhatsApp unread (dev parity with cloud API). */
 app.use('/api', authMiddleware, requireActiveSubscription(), optionalFeatureRouter);
@@ -376,6 +376,10 @@ async function start() {
   }
   console.log(
     `MFA enforcement for privileged roles: ${isMfaEnforcementEnabled() ? 'ON' : 'OFF (DISABLE_MFA_ENFORCEMENT=true)'}`
+  );
+  const { isEnvFlagEnabled } = await import('./utils/envFlag.js');
+  console.log(
+    `Website funnels: self-signup=${isEnvFlagEnabled('ALLOW_SELF_SIGNUP') ? 'ON' : 'OFF'} | trial=${isEnvFlagEnabled('ALLOW_TRIAL_SIGNUP') ? 'ON' : 'OFF'}`
   );
   await seedDevIfEnabled();
   await seedStagingIfEnabled();

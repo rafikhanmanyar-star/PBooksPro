@@ -25,15 +25,11 @@ const LegalAcceptanceCheckbox: React.FC<Props> = ({
   disabled,
   serverRootUrl,
 }) => {
-  const [docs, setDocs] = useState<LegalDocumentSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [docs, setDocs] = useState<LegalDocumentSummary[]>(() => getFallbackLegalDocuments(context));
   const [loadHint, setLoadHint] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setLoadHint(null);
-    onChange(false, []);
 
     void (async () => {
       try {
@@ -41,21 +37,18 @@ const LegalAcceptanceCheckbox: React.FC<Props> = ({
           apiClient.setBaseUrl(serverRootUrl.trim());
         }
         const res = await legalApi.listDocuments(context);
-        const items = res?.items?.length ? res.items : getFallbackLegalDocuments(context);
         if (cancelled) return;
-        setDocs(items);
-        if (!res?.items?.length && items.length > 0) {
-          setLoadHint('Using standard terms (could not load latest versions from the API).');
+        if (res?.items?.length) {
+          setDocs(res.items);
+          setLoadHint(null);
         }
       } catch {
-        const fallback = getFallbackLegalDocuments(context);
         if (cancelled) return;
+        const fallback = getFallbackLegalDocuments(context);
         setDocs(fallback);
         if (fallback.length > 0) {
           setLoadHint('Using standard terms (API legal endpoint unavailable).');
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
 
@@ -68,10 +61,6 @@ const LegalAcceptanceCheckbox: React.FC<Props> = ({
     onChange(next, next ? legalApi.buildAcceptances(docs) : []);
   };
 
-  if (loading) {
-    return <p className="text-xs text-slate-500">Loading legal documents…</p>;
-  }
-
   if (docs.length === 0) {
     return (
       <p className="text-xs text-amber-700">
@@ -81,25 +70,24 @@ const LegalAcceptanceCheckbox: React.FC<Props> = ({
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 rounded-ds-md border border-app-border bg-slate-50 p-3 dark:bg-slate-900/40">
       {loadHint && <p className="text-xs text-amber-700">{loadHint}</p>}
       <label className="flex cursor-pointer select-none items-start gap-3">
         <input
           type="checkbox"
-          className="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
           checked={checked}
           disabled={disabled}
           onChange={(e) => handleToggle(e.target.checked)}
-          required
         />
-        <span className="text-sm leading-snug text-slate-600">
-          I agree to the{' '}
+        <span className="text-sm leading-snug text-slate-700 dark:text-slate-300">
+          <span className="font-medium text-slate-900 dark:text-slate-100">Required:</span> I agree to the{' '}
           {docs.map((doc, idx) => (
             <React.Fragment key={doc.type}>
               {idx > 0 && (idx === docs.length - 1 ? ' and ' : ', ')}
               <button
                 type="button"
-                className="font-medium text-indigo-600 hover:underline"
+                className="font-medium text-emerald-700 underline-offset-2 hover:underline dark:text-emerald-400"
                 onClick={(e) => {
                   e.preventDefault();
                   openLegalDocument(doc.slug);

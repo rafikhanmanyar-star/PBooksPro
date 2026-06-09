@@ -28,6 +28,7 @@ import {
 } from '../middleware/introspectionGuard.js';
 import { isInternalDemoTenantId } from '../middleware/demoEnvironmentMiddleware.js';
 import { attributeReferralSignup } from '../services/referrals/referralTrackingService.js';
+import { isEnvFlagEnabled } from '../utils/envFlag.js';
 
 export const authRouter = Router();
 
@@ -319,8 +320,16 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
   }
 });
 
+authRouter.get('/auth/public-config', publicIntrospectionLimiter, (_req, res) => {
+  sendSuccess(res, {
+    selfSignupEnabled: isEnvFlagEnabled('ALLOW_SELF_SIGNUP'),
+    trialSignupEnabled:
+      isEnvFlagEnabled('ALLOW_TRIAL_SIGNUP') || isEnvFlagEnabled('ALLOW_SELF_SIGNUP'),
+  });
+});
+
 authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
-  const allow = process.env.ALLOW_SELF_SIGNUP === 'true';
+  const allow = isEnvFlagEnabled('ALLOW_SELF_SIGNUP');
   if (!allow) {
     sendFailure(
       res,
