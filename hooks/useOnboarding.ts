@@ -9,37 +9,28 @@ import {
   saveLocalOnboarding,
   type OnboardingState,
 } from '../services/api/onboardingApi';
-import type { OnboardingStepId } from '../shared/onboarding/onboardingSteps';
+import {
+  getOnboardingFlow,
+  nextOnboardingStep,
+  onboardingProgressPercent,
+  stepOrderForFlow,
+  type OnboardingStepId,
+} from '../shared/onboarding/onboardingSteps';
 import { usePermissions } from './usePermissions';
 
 const SESSION_DISMISS_KEY = 'pbooks_onboarding_dismissed_session';
-
-const ONBOARDING_STEP_ORDER: OnboardingStepId[] = [
-  'welcome',
-  'business_setup',
-  'company_info',
-  'fiscal_year',
-  'chart_of_accounts',
-  'property_setup',
-  'user_setup',
-  'first_transaction',
-  'completion',
-];
 
 function advanceOnboardingStepLocally(
   state: OnboardingState,
   stepId: OnboardingStepId,
   stepData?: Record<string, unknown>
 ): OnboardingState {
+  const flow = getOnboardingFlow(state.stepData);
   const completed = new Set(state.completedSteps);
   completed.add(stepId);
-  const stepIdx = ONBOARDING_STEP_ORDER.indexOf(stepId);
-  const nextStep =
-    stepIdx >= 0 && stepIdx < ONBOARDING_STEP_ORDER.length - 1
-      ? ONBOARDING_STEP_ORDER[stepIdx + 1]
-      : 'completion';
+  const nextStep = nextOnboardingStep(stepId, flow) ?? 'completion';
   const merged = stepData ? { ...state.stepData, [stepId]: stepData } : state.stepData;
-  const actionable = ONBOARDING_STEP_ORDER.filter((id) => id !== 'completion');
+  const actionable = stepOrderForFlow(flow).filter((id) => id !== 'completion');
   const done = actionable.filter((id) => completed.has(id)).length;
   return {
     ...state,
@@ -47,7 +38,8 @@ function advanceOnboardingStepLocally(
     completedSteps: [...completed],
     stepData: merged,
     updatedAt: new Date().toISOString(),
-    progressPercent: Math.round((done / actionable.length) * 100),
+    progressPercent: onboardingProgressPercent([...completed], flow),
+    onboardingFlow: flow,
     status: done >= actionable.length ? 'completed' : state.status,
     completedAt: done >= actionable.length ? new Date().toISOString() : state.completedAt,
   };
@@ -59,17 +51,18 @@ function isOnboardingApiFallbackError(err: unknown): boolean {
   return status === 403 || status === 402;
 }
 
-function defaultState(tenantId: string): OnboardingState {
+function defaultState(tenantId: string, trialFlow = false): OnboardingState {
   return {
     tenantId,
     status: 'in_progress',
     currentStep: 'welcome',
     completedSteps: [],
-    stepData: {},
+    stepData: trialFlow ? { onboarding_flow: 'trial' } : {},
     startedAt: new Date().toISOString(),
     completedAt: null,
     updatedAt: new Date().toISOString(),
     progressPercent: 0,
+    onboardingFlow: trialFlow ? 'trial' : 'standard',
   };
 }
 

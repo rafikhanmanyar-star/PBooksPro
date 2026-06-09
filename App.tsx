@@ -64,6 +64,7 @@ import ApiLoginScreen from './components/auth/ApiLoginScreen';
 import ConnectServerScreen from './components/auth/ConnectServerScreen';
 import DemoProductTour from './components/onboarding/DemoProductTour';
 import OnboardingGate from './components/onboarding/OnboardingGate';
+import TrialUpgradeBanner from './components/billing/TrialUpgradeBanner';
 import { isDemoModeActive } from './config/demoEnvironment';
 
 
@@ -758,6 +759,7 @@ const App: React.FC = () => {
   return (
     <OfflineProvider>
       {isDemoModeActive() && <DemoProductTour />}
+      <TrialUpgradeBanner />
       <OnboardingGate />
       <PrintController />
       {/* Force password change modal for new company admin */}

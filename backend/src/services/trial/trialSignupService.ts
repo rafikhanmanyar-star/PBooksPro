@@ -12,6 +12,7 @@ import { requireLegalAcceptances } from '../legal/legalAcceptanceService.js';
 import { initializeTrialOnboarding } from '../onboarding/onboardingService.js';
 import { validatePassword } from '../../utils/passwordPolicy.js';
 import { getRequiredDocuments } from '../../constants/legalDocuments.js';
+import { isEnvFlagEnabled } from '../../utils/envFlag.js';
 
 export type TrialSignupInput = {
   name: string;
@@ -110,10 +111,7 @@ async function allocateTenantId(client: pg.PoolClient, companyName: string): Pro
 }
 
 export function trialSignupEnabled(): boolean {
-  return (
-    process.env.ALLOW_TRIAL_SIGNUP === 'true' ||
-    process.env.ALLOW_SELF_SIGNUP === 'true'
-  );
+  return isEnvFlagEnabled('ALLOW_TRIAL_SIGNUP') || isEnvFlagEnabled('ALLOW_SELF_SIGNUP');
 }
 
 export async function createTrialSignup(

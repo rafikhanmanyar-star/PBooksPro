@@ -6,11 +6,13 @@ Lifecycle and campaign emails for PBooks Pro tenants: template catalog, PostgreS
 
 | Event | Trigger | Template key |
 |-------|---------|--------------|
-| Trial Started | `trial_started` subscription event | `trial_started` |
-| Trial Day 3 | Scheduled +3 days from trial start | `trial_day_3` |
-| Trial Day 7 | Scheduled +7 days | `trial_day_7` |
-| Trial Day 14 | Scheduled +14 days | `trial_day_14` |
-| Trial Expiring | Scheduled 2 days before `trial_end_date` | `trial_expiring` |
+| Trial Welcome | `trial_started` subscription event (day 0) | `trial_started` |
+| Trial Day 1 Tips | Scheduled +1 day | `trial_day_1` |
+| Trial Day 3 Features | Scheduled +3 days | `trial_day_3` |
+| Trial Day 7 Benefits | Scheduled +7 days | `trial_day_7` |
+| Trial Day 12 Upgrade | Scheduled +12 days | `trial_day_12` |
+| Trial Day 14 Expiry | Scheduled +14 days | `trial_day_14` |
+| Trial Expiring | Legacy (superseded by day 12 for 14-day trials) | `trial_expiring` |
 | Subscription Purchased | `subscription_activated` | `subscription_purchased` |
 | Payment Failed | Paddle `transaction.payment_failed` / `subscription.past_due` | `payment_failed` |
 | Subscription Cancelled | `subscription_canceled` / `subscription.canceled` | `subscription_cancelled` |
@@ -19,7 +21,8 @@ Lifecycle and campaign emails for PBooks Pro tenants: template catalog, PostgreS
 
 ## Components
 
-- **Templates:** `backend/src/constants/emailAutomation.ts` + `emailAutomationTemplates.ts`
+- **Templates:** `backend/src/constants/emailAutomation.ts` + `services/email/emailTemplateLibrary.ts`
+- **Marketing workflows:** See `doc/MARKETING_EMAIL_WORKFLOWS.md` (demo, newsletter, lead magnet)
 - **Queue:** `email_automation_queue` (dedupe keys, `FOR UPDATE SKIP LOCKED`)
 - **Scheduler:** `emailAutomationScheduler.ts` (default 5 min interval)
 - **Hooks:** `subscriptionEventService` → `emailAutomationHooks.ts`

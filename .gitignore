@@ -61,6 +61,7 @@ build/*.pem
 .env.*.local
 .env.development
 .env.production
+.env.production.render
 .env.staging
 
 # Database files

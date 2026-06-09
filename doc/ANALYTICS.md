@@ -1,27 +1,56 @@
-# Marketing analytics architecture
+# Marketing analytics & conversion tracking
 
-## Files
+## Architecture
+
+```
+Website funnels (forms, CTAs, exit intent)
+        ↓
+  PBooksAnalytics.track()  ← analytics.js hub
+        ↓
+┌───────┴───────┬─────────────┬──────────────┐
+│  GTM dataLayer │  GA4 gtag   │ Meta / LI    │
+│  pbooks_*      │  (direct)   │  Pixel       │
+└───────────────┴─────────────┴──────────────┘
+```
 
 | File | Role |
 |------|------|
-| `website/js/analytics-config.js` | Provider IDs, consent version, scroll thresholds |
-| `website/js/analytics.js` | Consent UI, event hub, auto-tracking, provider adapters |
-| `services/analytics/trackEvent.ts` | In-app events (delegates to `PBooksAnalytics` when present) |
+| `website/js/analytics-config.js` | GTM, GA4, Meta, LinkedIn IDs, consent version |
+| `website/js/analytics.js` | Consent, UTM attribution, event hub, auto-tracking |
+| `services/analytics/trackEvent.ts` | In-app events (delegates to `PBooksAnalytics`) |
 
 ## Production setup
 
-Edit `website/js/analytics-config.js`:
+**Recommended:** set IDs at build time (injected into `dist/` HTML):
 
-```javascript
-ga4MeasurementId: 'G-XXXXXXXX',
-clarityProjectId: 'your-clarity-id',
-metaPixelId: 'your-pixel-id',
-linkedInPartnerId: 'your-partner-id',
-consentRequired: true,
-consentVersion: '2026-06-07', // bump when cookie policy changes
+```powershell
+$env:PBBOOKS_GTM_ID="GTM-XXXXXXX"
+$env:PBBOOKS_GA4_ID="G-XXXXXXXXXX"
+$env:PBBOOKS_META_PIXEL_ID="1234567890"
+$env:PBBOOKS_LINKEDIN_PARTNER_ID="1234567"
+$env:PBBOOKS_GA4_VIA_GTM="true"
+npm run build:website
 ```
 
-Include on every marketing page (before `analytics.js`):
+Or edit `website/js/analytics-config.js` directly for local/dev:
+
+```javascript
+gtmContainerId: 'GTM-XXXXXXX',      // Google Tag Manager (recommended)
+ga4MeasurementId: 'G-XXXXXXXX',     // Direct GA4 (or configure inside GTM)
+ga4ViaGtm: false,                   // true = skip direct gtag, use GTM only
+metaPixelId: 'XXXXXXXXXXXX',
+linkedInPartnerId: 'XXXXXXX',
+linkedInConversions: {
+  demo_request: '12345678',
+  trial_signup: '87654321',
+  newsletter_signup: '',
+  contact_form_submit: ''
+},
+consentRequired: true,
+consentVersion: '2026-06-08'
+```
+
+Include on every marketing page **before** funnel scripts:
 
 ```html
 <script src="js/demo-config.js" defer></script>
@@ -29,49 +58,122 @@ Include on every marketing page (before `analytics.js`):
 <script src="js/analytics.js" defer></script>
 ```
 
-Regenerate shells after template changes:
+### GTM container
 
-```bash
-node website/js/blog-shell.js
-node website/js/seo-landing-shell.js
+1. Create container at [tagmanager.google.com](https://tagmanager.google.com)
+2. Set `gtmContainerId` in config
+3. Add **Custom Event** triggers matching `pbooks_<event_name>` (e.g. `pbooks_demo_request`)
+4. Or use one trigger on `pbooks_*` regex and read `event_name` from dataLayer
+5. Optional: add GA4 Configuration tag + Consent Mode tags in GTM
+
+**dataLayer shape** (every conversion):
+
+```javascript
+{
+  event: 'pbooks_demo_request',     // GTM trigger name
+  event_name: 'demo_request',       // canonical name
+  event_category: 'conversion',
+  event_action: 'lead',
+  utm_source: '...',
+  utm_medium: '...',
+  utm_campaign: '...',
+  first_touch_source: '...',
+  page_path: '/pricing.html',
+  ...
+}
 ```
 
-## Event taxonomy
+## Event naming standards
+
+| Rule | Example |
+|------|---------|
+| snake_case | `demo_request` |
+| Stable — never rename without GTM migration | — |
+| Funnel stage in `funnel_stage` | `cta_click`, `form_submit`, `success` |
+| No PII in payloads | No email, phone, or personal names |
+
+### Core conversion events
+
+| Event | When fired | Category |
+|-------|------------|----------|
+| `page_view` | Every page load | navigation |
+| `cta_click` | Hero/footer/primary button clicks | engagement |
+| `pricing_click` | Pricing plan CTA clicks | engagement |
+| `demo_request` | Demo links, demo form, booking success | conversion |
+| `trial_signup` | Trial CTAs, download/trial form, account created | conversion |
+| `newsletter_signup` | Footer/blog newsletter success | conversion |
+| `whatsapp_click` | Floating WhatsApp or wa.me links | conversion |
+| `contact_form_submit` | Contact page form success | conversion |
+| `form_submit` | Any form submit (generic) | engagement |
+
+### Supporting events
 
 | Event | When fired |
 |-------|------------|
-| `page_view` | Every page load |
-| `cta_click` | Primary CTAs, hero buttons, plan buttons |
-| `demo_request` | Demo links / demo form / demo login |
-| `trial_signup` | Download/trial CTAs and trial signup form |
-| `pricing_page_view` | `pricing.html` render |
+| `pricing_page_view` | `pricing.html` load |
+| `scroll_depth` | 25 / 50 / 75 / 90 / 100% scroll |
 | `video_view` | Product tour play |
-| `form_submit` | Any form submit (+ funnel-specific events) |
-| `scroll_depth` | 25 / 50 / 75 / 90 / 100% scroll milestones |
+| `exit_intent_*` | Exit popup funnel |
 
-Custom funnel events (`lead_magnet_submit`, `newsletter_success`, `demo_tour_*`) continue to fire for backward compatibility.
+Legacy funnel events (`lead_magnet_submit`, `demo_booking_success`, etc.) still fire for backward compatibility.
 
-## Privacy
+## UTM & campaign attribution
 
-- Consent banner: **Accept all**, **Reject non-essential**, **Customize**
-- Analytics consent → GA4, Microsoft Clarity
-- Marketing consent → Meta Pixel, LinkedIn Insight Tag
-- GA4 Consent Mode v2 defaults denied until granted
-- No email/phone/name in analytics payloads (sanitized)
-- `PBooksAnalytics.reopenConsent()` — cookie settings (footer link on homepage)
+Captured automatically on landing:
 
-## Listening for events
+| Field | Scope |
+|-------|--------|
+| `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content` | Session (URL params) |
+| `first_touch_*` | First visit with UTM (localStorage) |
+| `session_source`, `session_medium`, `session_campaign` | Current session |
+| `referrer` | document.referrer |
 
-```javascript
-window.addEventListener('pbooks:analytics', (e) => {
-  console.log(e.detail.event, e.detail.properties);
-});
-```
+Attached to **every** `track()` call. Referrer inferred when UTM absent (`google`, `meta`, `linkedin`, `direct`).
 
 ## Provider mapping
 
-- **GA4:** standard + mapped names (`generate_lead`, `sign_up`, `video_start`, …)
-- **Meta:** `PageView`, `Lead`, `ViewContent`, `Contact`
-- **Clarity:** session recordings / heatmaps (script load only)
-- **LinkedIn:** page insights (script load only)
-- **Demo API:** `demo_*` events → `POST /api/demo/analytics`
+| Event | GA4 | Meta standard | Meta custom | LinkedIn |
+|-------|-----|---------------|-------------|----------|
+| `page_view` | page_view | PageView | — | insights |
+| `cta_click` | select_promotion | Contact | PbooksCtaClick | — |
+| `pricing_click` | select_item | ViewContent | PbooksPricingClick | — |
+| `demo_request` | generate_lead | Lead | PbooksDemoRequest | conversion* |
+| `trial_signup` | sign_up | Lead | PbooksTrialSignup | conversion* |
+| `newsletter_signup` | sign_up | Lead | PbooksNewsletterSignup | conversion* |
+| `contact_form_submit` | generate_lead | Lead | PbooksContactForm | conversion* |
+| `whatsapp_click` | generate_lead | Contact | PbooksWhatsAppClick | — |
+
+\* Requires `linkedInConversions.<event>` ID in config.
+
+## Privacy
+
+- Consent banner: Accept all / Reject / Customize
+- Analytics consent → GA4, GTM, Clarity
+- Marketing consent → Meta Pixel, LinkedIn
+- GA4 Consent Mode v2 — denied until granted
+- PII stripped from all outbound payloads
+- `PBooksAnalytics.reopenConsent()` — footer cookie settings link
+
+## Listening & debugging
+
+```javascript
+// Enable debug logs
+PBooksAnalyticsConfig.debug = true;
+
+// Subscribe to all events
+window.addEventListener('pbooks:analytics', (e) => {
+  console.log(e.detail.event, e.detail.properties);
+});
+
+// Read attribution
+PBooksAnalytics.getAttribution();
+```
+
+## Markup conventions
+
+```html
+<a href="demo.html" data-analytics-cta="hero_demo">Book a demo</a>
+<form data-analytics-form="contact" ...>
+```
+
+Auto-tracked selectors: `.pricing-plan-cta`, `.hero-buttons a`, `[data-whatsapp-lead]`, `.wa-lead-float`.

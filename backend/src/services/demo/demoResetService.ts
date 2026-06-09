@@ -30,10 +30,12 @@ async function upsertDemoTenantAndUser(
   password: string,
   userId: string
 ): Promise<void> {
+  const companyName =
+    tenantId === DEMO_PUBLIC_TENANT_ID ? 'Al Noor Properties' : tenantName;
   await client.query(
-    `INSERT INTO tenants (id, name) VALUES ($1, $2)
-     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()`,
-    [tenantId, tenantName]
+    `INSERT INTO tenants (id, name, company_name) VALUES ($1, $2, $3)
+     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, company_name = EXCLUDED.company_name, updated_at = NOW()`,
+    [tenantId, tenantName, companyName]
   );
 
   const passwordHash = await bcrypt.hash(password, 10);

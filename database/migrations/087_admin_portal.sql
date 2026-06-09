@@ -79,7 +79,7 @@ SELECT
   'Admin',
   'Super Admin',
   'admin@pbookspro.com',
-  '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+  '$2a$10$1GTuQYyMFJX0v.3f/9Pe9u2e8zZG1N8GbRcUVEAAKQAnbxVqyi3NG',
   'super_admin',
   TRUE
 WHERE NOT EXISTS (SELECT 1 FROM admin_users LIMIT 1);

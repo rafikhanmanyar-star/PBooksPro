@@ -14,7 +14,19 @@ export const ONBOARDING_STEP_IDS = [
   'completion',
 ] as const;
 
+/** Streamlined 4-step flow for free-trial signups */
+export const TRIAL_ONBOARDING_STEP_IDS = [
+  'welcome',
+  'company_info',
+  'property_setup',
+  'fiscal_year',
+  'user_setup',
+  'completion',
+] as const;
+
 export type OnboardingStepId = (typeof ONBOARDING_STEP_IDS)[number];
+
+export type OnboardingFlow = 'standard' | 'trial';
 
 export type OnboardingStatus = 'in_progress' | 'completed' | 'skipped';
 
@@ -89,20 +101,76 @@ export function isValidOnboardingStep(step: string): step is OnboardingStepId {
   return (ONBOARDING_STEP_IDS as readonly string[]).includes(step);
 }
 
-export function nextOnboardingStep(current: OnboardingStepId): OnboardingStepId | null {
-  const idx = ONBOARDING_STEP_IDS.indexOf(current);
-  if (idx < 0 || idx >= ONBOARDING_STEP_IDS.length - 1) return null;
-  return ONBOARDING_STEP_IDS[idx + 1];
+export function getOnboardingFlow(stepData?: Record<string, unknown>): OnboardingFlow {
+  return stepData?.onboarding_flow === 'trial' ? 'trial' : 'standard';
 }
 
-export function prevOnboardingStep(current: OnboardingStepId): OnboardingStepId | null {
-  const idx = ONBOARDING_STEP_IDS.indexOf(current);
+export function stepOrderForFlow(flow: OnboardingFlow): readonly OnboardingStepId[] {
+  return flow === 'trial' ? TRIAL_ONBOARDING_STEP_IDS : ONBOARDING_STEP_IDS;
+}
+
+export function getStepsForFlow(flow: OnboardingFlow): OnboardingStepMeta[] {
+  const order = stepOrderForFlow(flow).filter((id) => id !== 'completion');
+  return order.map((id) => {
+    const base = ONBOARDING_STEPS.find((s) => s.id === id)!;
+    if (flow !== 'trial') return base;
+    if (id === 'company_info') {
+      return {
+        ...base,
+        title: 'Company Setup',
+        shortTitle: 'Company Setup',
+        description: 'Legal name, address, and branding for invoices and reports.',
+      };
+    }
+    if (id === 'property_setup') {
+      return { ...base, title: 'Property Setup', shortTitle: 'Property Setup' };
+    }
+    if (id === 'fiscal_year') {
+      return {
+        ...base,
+        title: 'Financial Year Setup',
+        shortTitle: 'Financial Year',
+        description: 'Set your reporting year and open your first accounting period.',
+      };
+    }
+    if (id === 'user_setup') {
+      return {
+        ...base,
+        title: 'Invite Team',
+        shortTitle: 'Invite Team',
+        description: 'Add teammates with the right roles.',
+        optional: false,
+      };
+    }
+    return base;
+  });
+}
+
+export function nextOnboardingStep(
+  current: OnboardingStepId,
+  flow: OnboardingFlow = 'standard'
+): OnboardingStepId | null {
+  const order = stepOrderForFlow(flow);
+  const idx = order.indexOf(current);
+  if (idx < 0 || idx >= order.length - 1) return null;
+  return order[idx + 1];
+}
+
+export function prevOnboardingStep(
+  current: OnboardingStepId,
+  flow: OnboardingFlow = 'standard'
+): OnboardingStepId | null {
+  const order = stepOrderForFlow(flow);
+  const idx = order.indexOf(current);
   if (idx <= 0) return null;
-  return ONBOARDING_STEP_IDS[idx - 1];
+  return order[idx - 1];
 }
 
-export function onboardingProgressPercent(completedSteps: string[]): number {
-  const actionable = ONBOARDING_STEP_IDS.filter((id) => id !== 'completion');
+export function onboardingProgressPercent(
+  completedSteps: string[],
+  flow: OnboardingFlow = 'standard'
+): number {
+  const actionable = stepOrderForFlow(flow).filter((id) => id !== 'completion');
   const done = actionable.filter((id) => completedSteps.includes(id)).length;
   return Math.round((done / actionable.length) * 100);
 }

@@ -2,7 +2,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import Button from '../ui/Button';
 import OnboardingProgress from './OnboardingProgress';
 import {
-  ONBOARDING_STEPS,
+  getOnboardingFlow,
+  getStepsForFlow,
   prevOnboardingStep,
   type OnboardingStepId,
 } from '../../shared/onboarding/onboardingSteps';
@@ -47,10 +48,12 @@ const OnboardingWizard: React.FC<Props> = ({
   const [stepError, setStepError] = useState<string | null>(null);
   const [draftData, setDraftData] = useState<Record<string, unknown>>(state.stepData);
 
-  const stepMeta = useMemo(
-    () => ONBOARDING_STEPS.find((s) => s.id === state.currentStep) ?? ONBOARDING_STEPS[0],
-    [state.currentStep]
-  );
+  const flow = useMemo(() => getOnboardingFlow(state.stepData), [state.stepData]);
+
+  const stepMeta = useMemo(() => {
+    const steps = getStepsForFlow(flow);
+    return steps.find((s) => s.id === state.currentStep) ?? steps[0];
+  }, [state.currentStep, flow]);
 
   const mergeStepData = useCallback(
     (stepId: OnboardingStepId, partial: Record<string, unknown>) => {
@@ -103,7 +106,7 @@ const OnboardingWizard: React.FC<Props> = ({
   };
 
   const handleBack = async () => {
-    const prev = prevOnboardingStep(state.currentStep);
+    const prev = prevOnboardingStep(state.currentStep, flow);
     if (!prev) return;
     setStepError(null);
     await onSaveDraft({ currentStep: prev, stepData: draftData });
@@ -167,6 +170,7 @@ const OnboardingWizard: React.FC<Props> = ({
             currentStep={state.currentStep}
             completedSteps={state.completedSteps}
             progressPercent={state.progressPercent}
+            stepData={state.stepData}
           />
         </aside>
 
@@ -177,6 +181,7 @@ const OnboardingWizard: React.FC<Props> = ({
                 currentStep={state.currentStep}
                 completedSteps={state.completedSteps}
                 progressPercent={state.progressPercent}
+                stepData={state.stepData}
                 compact
               />
             </div>
@@ -210,7 +215,7 @@ const OnboardingWizard: React.FC<Props> = ({
           </div>
 
           <footer className="flex flex-wrap items-center gap-3 px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/80">
-            {prevOnboardingStep(state.currentStep) && (
+            {prevOnboardingStep(state.currentStep, flow) && (
               <Button variant="secondary" onClick={() => void handleBack()} disabled={busy}>
                 Back
               </Button>

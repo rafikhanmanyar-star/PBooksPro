@@ -1,6 +1,7 @@
 import React from 'react';
 import {
-  ONBOARDING_STEPS,
+  getOnboardingFlow,
+  getStepsForFlow,
   type OnboardingStepId,
 } from '../../shared/onboarding/onboardingSteps';
 
@@ -8,6 +9,7 @@ type Props = {
   currentStep: OnboardingStepId;
   completedSteps: OnboardingStepId[];
   progressPercent: number;
+  stepData?: Record<string, unknown>;
   compact?: boolean;
 };
 
@@ -15,9 +17,11 @@ const OnboardingProgress: React.FC<Props> = ({
   currentStep,
   completedSteps,
   progressPercent,
+  stepData,
   compact = false,
 }) => {
-  const steps = ONBOARDING_STEPS.filter((s) => s.id !== 'completion');
+  const flow = getOnboardingFlow(stepData);
+  const steps = getStepsForFlow(flow);
 
   if (compact) {
     return (
