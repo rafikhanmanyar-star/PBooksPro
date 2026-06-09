@@ -363,6 +363,16 @@ const ApiLoginScreen: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    const trimmed = serverUrl.trim();
+    if (!trimmed) return;
+    try {
+      apiClient.setBaseUrl(trimmed);
+    } catch {
+      /* invalid URL while typing */
+    }
+  }, [serverUrl]);
+
   /** Defensive: full-screen notification progress can outlive logout and block this screen. */
   useEffect(() => {
     hideProgress();
@@ -537,8 +547,8 @@ const ApiLoginScreen: React.FC = () => {
       setError('Admin name and username (min 3 characters) are required.');
       return;
     }
-    if (!adminPassword || adminPassword.length < 6) {
-      setError('Password must be at least 6 characters.');
+    if (!adminPassword || adminPassword.length < 8) {
+      setError('Password must be at least 8 characters (include a letter and a number).');
       return;
     }
     if (!legalAccepted || legalAcceptances.length === 0) {
@@ -1107,7 +1117,9 @@ const ApiLoginScreen: React.FC = () => {
                 </div>
 
                 <LegalAcceptanceCheckbox
+                  key={serverUrl}
                   context="registration"
+                  serverRootUrl={serverUrl}
                   checked={legalAccepted}
                   disabled={isLoading}
                   onChange={(checked, acceptances) => {
