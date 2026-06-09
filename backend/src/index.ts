@@ -186,6 +186,9 @@ app.use('/api', monitoringPublicRouter);
 /** Public legal documents — mount early (no auth). */
 app.use('/api', legalRouter);
 
+/** MFA login/setup — mount before authMiddleware (uses MFA setup JWT in body, not access token). */
+app.use('/api', mfaRouter);
+
 /** Public: client update check (VersionService uses raw fetch, no JWT). */
 app.get('/api/app-info/version', publicIntrospectionLimiter, (_req, res) => {
   res.json({
@@ -221,7 +224,6 @@ app.use('/api', trialSignupRouter);
 app.use('/api', emailAutomationPublicRouter);
 app.use('/api', referralRouter);
 app.use('/api', supportRouter);
-app.use('/api', mfaRouter);
 
 /** Auth + stubs: heartbeat, license, presence, WhatsApp unread (dev parity with cloud API). */
 app.use('/api', authMiddleware, requireActiveSubscription(), optionalFeatureRouter);

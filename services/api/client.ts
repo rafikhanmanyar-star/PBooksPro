@@ -257,7 +257,14 @@ export class ApiClient {
 
     // Guard: reject data endpoint requests when there is no token.
     // Auth endpoints (login, register, lookup) don't require a token.
-    const isPublicEndpoint = endpoint.includes('/auth/') ||
+    const isPublicEndpoint = endpoint.includes('/auth/login') ||
+                             endpoint.includes('/auth/register') ||
+                             endpoint.includes('/auth/register-tenant') ||
+                             endpoint.includes('/auth/tenants') ||
+                             endpoint.includes('/auth/public-config') ||
+                             endpoint.includes('/auth/mfa/verify') ||
+                             endpoint.includes('/auth/mfa/setup') ||
+                             endpoint.includes('/auth/mfa/enable') ||
                              endpoint.includes('/register-tenant') ||
                              endpoint.includes('/legal/') ||
                              endpoint.includes('/health') ||

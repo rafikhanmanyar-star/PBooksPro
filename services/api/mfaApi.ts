@@ -32,30 +32,23 @@ export type MfaVerifyResponse = {
   usedRecoveryCode?: boolean;
 };
 
-function mfaAuthHeaders(setupOrAccessToken: string): Record<string, string> {
-  return { Authorization: `Bearer ${setupOrAccessToken}` };
-}
-
 export const mfaApi = {
   async getStatus(): Promise<MfaStatus> {
     return apiClient.get<MfaStatus>('/auth/mfa/status');
   },
 
   async setup(accessOrSetupToken?: string): Promise<MfaSetupResponse> {
-    const options = accessOrSetupToken ? { headers: mfaAuthHeaders(accessOrSetupToken) } : undefined;
+    // Body-only for setup JWT — avoids generic authMiddleware treating it as an access token.
     return apiClient.post<MfaSetupResponse>(
       '/auth/mfa/setup',
-      accessOrSetupToken ? { mfaSetupToken: accessOrSetupToken } : {},
-      options
+      accessOrSetupToken ? { mfaSetupToken: accessOrSetupToken } : {}
     );
   },
 
   async enable(code: string, accessOrSetupToken?: string): Promise<MfaEnableResponse> {
-    const options = accessOrSetupToken ? { headers: mfaAuthHeaders(accessOrSetupToken) } : undefined;
     return apiClient.post<MfaEnableResponse>(
       '/auth/mfa/enable',
-      accessOrSetupToken ? { code, mfaSetupToken: accessOrSetupToken } : { code },
-      options
+      accessOrSetupToken ? { code, mfaSetupToken: accessOrSetupToken } : { code }
     );
   },
 
