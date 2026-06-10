@@ -909,41 +909,43 @@ const ApiLoginScreen: React.FC = () => {
                 </Button>
 
                 {!isDemoTenantLogin && (
-                <div className="relative my-3 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-app-border/70" aria-hidden />
-                  <span className="text-ds-small text-app-muted">or</span>
-                  <div className="h-px flex-1 bg-app-border/70" aria-hidden />
-                </div>
+                  <>
+                    <div className="relative my-3 flex items-center gap-3">
+                      <div className="h-px flex-1 bg-app-border/70" aria-hidden />
+                      <span className="text-ds-small text-app-muted">or</span>
+                      <div className="h-px flex-1 bg-app-border/70" aria-hidden />
+                    </div>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isLoading || demoEntering}
-                  className="w-full"
-                  onClick={async () => {
-                    setError(null);
-                    setDemoEntering(true);
-                    try {
-                      await enterDemoSession();
-                    } catch (e) {
-                      setError(formatApiErrorMessage(e));
-                    } finally {
-                      setDemoEntering(false);
-                    }
-                  }}
-                >
-                  {demoEntering ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                      Opening live demo…
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4" aria-hidden />
-                      Try Live Demo
-                    </>
-                  )}
-                </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isLoading || demoEntering}
+                      className="w-full"
+                      onClick={async () => {
+                        setError(null);
+                        setDemoEntering(true);
+                        try {
+                          await enterDemoSession();
+                        } catch (e) {
+                          setError(formatApiErrorMessage(e));
+                        } finally {
+                          setDemoEntering(false);
+                        }
+                      }}
+                    >
+                      {demoEntering ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                          Opening live demo…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" aria-hidden />
+                          Try Live Demo
+                        </>
+                      )}
+                    </Button>
+                  </>
                 )}
 
                 <p className="pt-1 text-center text-ds-body text-app-muted">
