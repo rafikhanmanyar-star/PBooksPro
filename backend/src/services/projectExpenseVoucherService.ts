@@ -3,7 +3,9 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney } from '../financial/validation.js';
 import { appendAuditEvent } from './enterpriseAuditService.js';
-import { getProjectExpenseCategoryById } from './projectExpenseCategoryService.js';
+import { SYS_EXPENSE_SUMMARY } from '../constants/fiscalAccounts.js';
+import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
+import { createCategory } from './categoriesService.js';
 import { syncPeVJournalMirror, reversePeVJournalMirror } from './pevJournalPostingService.js';
 
 export type PeVStatus = 'draft' | 'submitted' | 'approved' | 'rejected' | 'posted';
@@ -174,15 +176,58 @@ async function assertProjectExists(
   if (!r.rows[0]) throw new Error('Project not found.');
 }
 
-async function assertCategoryActive(
+async function assertExpenseCategory(
   client: pg.PoolClient,
   tenantId: string,
   categoryId: string
-): Promise<{ gl_account_id: string }> {
-  const cat = await getProjectExpenseCategoryById(client, tenantId, categoryId);
+): Promise<void> {
+  const r = await client.query<{ id: string; type: string; is_hidden: boolean }>(
+    `SELECT id, type, is_hidden FROM categories
+     WHERE id = $1 AND deleted_at IS NULL
+       AND (tenant_id = $2 OR tenant_id = $3)`,
+    [categoryId, tenantId, GLOBAL_SYSTEM_TENANT_ID]
+  );
+  const cat = r.rows[0];
   if (!cat) throw new Error('Expense category not found.');
-  if (!cat.is_active) throw new Error('Expense category is inactive.');
-  return { gl_account_id: cat.gl_account_id };
+  if (String(cat.type).trim() !== 'Expense') {
+    throw new Error('Selected category must be an expense category.');
+  }
+  if (cat.is_hidden) throw new Error('Expense category is not available.');
+}
+
+async function findExpenseCategoryByName(
+  client: pg.PoolClient,
+  tenantId: string,
+  name: string
+): Promise<string | null> {
+  const r = await client.query<{ id: string }>(
+    `SELECT id FROM categories
+     WHERE deleted_at IS NULL AND type = 'Expense' AND lower(name) = lower($1)
+       AND (tenant_id = $2 OR tenant_id = $3)
+     ORDER BY CASE WHEN tenant_id = $2 THEN 0 ELSE 1 END, name
+     LIMIT 1`,
+    [name.trim(), tenantId, GLOBAL_SYSTEM_TENANT_ID]
+  );
+  return r.rows[0]?.id ?? null;
+}
+
+/** Resolve Settings category id from body; optionally create expense category on the fly. */
+export async function resolveExpenseCategoryId(
+  client: pg.PoolClient,
+  tenantId: string,
+  body: Record<string, unknown>
+): Promise<string> {
+  const id = String(body.expenseCategoryId ?? body.expense_category_id ?? '').trim();
+  if (id) {
+    await assertExpenseCategory(client, tenantId, id);
+    return id;
+  }
+  const name = String(body.categoryName ?? body.category_name ?? '').trim();
+  if (!name) throw new Error('Expense category is required.');
+  const existing = await findExpenseCategoryByName(client, tenantId, name);
+  if (existing) return existing;
+  const created = await createCategory(client, tenantId, { name, type: 'Expense' });
+  return created.id;
 }
 
 export async function listProjectExpenseVouchers(
@@ -256,7 +301,7 @@ async function postJournalForVoucherRow(
   row: ProjectExpenseVoucherRow,
   actorUserId: string | null
 ): Promise<string> {
-  const cat = await assertCategoryActive(client, tenantId, row.expense_category_id);
+  await assertExpenseCategory(client, tenantId, row.expense_category_id);
   const postedRow: ProjectExpenseVoucherRow = {
     ...row,
     status: 'posted',
@@ -267,7 +312,7 @@ async function postJournalForVoucherRow(
     client,
     tenantId,
     postedRow,
-    cat.gl_account_id,
+    SYS_EXPENSE_SUMMARY,
     actorUserId
   );
   if (!journalEntryId) throw new Error('Failed to post journal entry.');
@@ -280,9 +325,10 @@ export async function createProjectExpenseVoucher(
   body: Record<string, unknown>,
   createdBy: string | null
 ): Promise<{ row: ProjectExpenseVoucherRow; journalEntryId: string }> {
-  const picked = pickVoucherBody(body);
+  const expenseCategoryId = await resolveExpenseCategoryId(client, tenantId, body);
+  const picked = pickVoucherBody({ ...body, expenseCategoryId });
   await assertProjectExists(client, tenantId, picked.project_id);
-  await assertCategoryActive(client, tenantId, picked.expense_category_id);
+  await assertExpenseCategory(client, tenantId, picked.expense_category_id);
 
   const id = String(body.id ?? '').trim() || newId();
   const voucherNumber =
@@ -360,9 +406,10 @@ export async function updateProjectExpenseVoucher(
     return { row, conflict: true };
   }
 
-  const picked = pickVoucherBody(body, true);
+  const expenseCategoryId = await resolveExpenseCategoryId(client, tenantId, body);
+  const picked = pickVoucherBody({ ...body, expenseCategoryId }, true);
   await assertProjectExists(client, tenantId, picked.project_id);
-  await assertCategoryActive(client, tenantId, picked.expense_category_id);
+  await assertExpenseCategory(client, tenantId, picked.expense_category_id);
 
   await client.query(
     `UPDATE project_expense_vouchers SET
@@ -521,7 +568,7 @@ export async function postProjectExpenseVoucher(
   const row = await getProjectExpenseVoucherForUpdate(client, tenantId, id);
   if (row.status !== 'approved') throw new Error('Only approved vouchers can be posted.');
 
-  const cat = await assertCategoryActive(client, tenantId, row.expense_category_id);
+  await assertExpenseCategory(client, tenantId, row.expense_category_id);
 
   const postedRow: ProjectExpenseVoucherRow = {
     ...row,
@@ -534,7 +581,7 @@ export async function postProjectExpenseVoucher(
     client,
     tenantId,
     postedRow,
-    cat.gl_account_id,
+    SYS_EXPENSE_SUMMARY,
     actorUserId
   );
   if (!journalEntryId) throw new Error('Failed to post journal entry.');

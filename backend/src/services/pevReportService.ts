@@ -76,7 +76,8 @@ export async function getProjectExpenseRegister(
        v.amount::text, v.status, v.description
      FROM project_expense_vouchers v
      LEFT JOIN projects p ON p.id = v.project_id AND p.tenant_id = v.tenant_id
-     LEFT JOIN project_expense_categories c ON c.id = v.expense_category_id AND c.tenant_id = v.tenant_id
+     LEFT JOIN categories c ON c.id = v.expense_category_id
+       AND (c.tenant_id = v.tenant_id OR c.tenant_id = '__system__')
      LEFT JOIN vendors ven ON ven.id = v.vendor_id AND ven.tenant_id = v.tenant_id
      WHERE ${clauses.join(' AND ')}
      ORDER BY v.voucher_date DESC, v.voucher_number DESC`,
@@ -129,7 +130,8 @@ export async function getPeVExpenseByCategory(
     `SELECT c.id AS key, c.name AS label,
        COUNT(*)::text AS cnt, COALESCE(SUM(v.amount), 0)::text AS total
      FROM project_expense_vouchers v
-     INNER JOIN project_expense_categories c ON c.id = v.expense_category_id AND c.tenant_id = v.tenant_id
+     INNER JOIN categories c ON c.id = v.expense_category_id
+       AND (c.tenant_id = v.tenant_id OR c.tenant_id = '__system__')
      WHERE ${clauses.join(' AND ')}
      GROUP BY c.id, c.name
      ORDER BY SUM(v.amount) DESC`,
