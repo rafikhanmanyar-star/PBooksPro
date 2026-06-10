@@ -93,6 +93,10 @@ export default {
         'ds-danger': 'var(--color-danger)',
         'ds-surface-1': 'var(--surface-primary)',
         'ds-surface-2': 'var(--surface-secondary)',
+        'app-popover': 'var(--popover-bg)',
+        'app-highlight': 'var(--highlight-bg)',
+        'app-text-secondary': 'var(--text-secondary)',
+        'app-text-inverse': 'var(--text-inverse)',
       }
     },
   },

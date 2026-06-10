@@ -73,6 +73,8 @@
     "github:backfill-staging-yml": "dotenv -e .env.staging -- node scripts/upload-staging-channel-yml.cjs",
     "smoke:design-system": "node scripts/smoke-test-design-system.mjs",
     "smoke:design-system:full": "node scripts/smoke-test-design-system.mjs --build",
+    "audit:theme": "node scripts/audit-theme-compliance.mjs",
+    "audit:theme:strict": "node scripts/audit-theme-compliance.mjs --fail-on-warn",
     "verify:financial-engine": "node scripts/verify-financial-engine.mjs",
     "typecheck:strict-financial": "tsc -p tsconfig.strict-financial.json --noEmit",
     "typecheck:c2": "tsc -p tsconfig.strict-all.json --noEmit",
