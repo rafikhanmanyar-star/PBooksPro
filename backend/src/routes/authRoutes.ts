@@ -52,7 +52,12 @@ import {
   registerPendingOrganization,
 } from '../services/organization/organizationApprovalService.js';
 import { isOrganizationApprovalEnabled } from '../constants/organizationStatus.js';
-import { publicCaptchaProvider, publicCaptchaSiteKey, publicCaptchaRequired, verifyRegistrationCaptcha } from '../utils/captchaVerification.js';
+import {
+  publicCaptchaProvider,
+  publicCaptchaRequired,
+  publicCaptchaSiteKey,
+  verifyRegistrationCaptcha,
+} from '../utils/captchaVerification.js';
 
 export const authRouter = Router();
 

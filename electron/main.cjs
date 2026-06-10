@@ -211,13 +211,14 @@ function setupCSP() {
     }
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://www.google.com https://www.gstatic.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https:",
       // LAN / API client: connect to any http(s) host and WebSockets (same as browser app)
       "connect-src 'self' http: https: ws: wss:",
       "font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com",
-      "frame-src 'none'",
+      // Turnstile / reCAPTCHA registration widgets
+      "frame-src https://challenges.cloudflare.com https://www.google.com https://www.recaptcha.net",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'"
