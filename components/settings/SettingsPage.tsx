@@ -38,7 +38,6 @@ import CustomerBillingPortal from '../billing/CustomerBillingPortal';
 import AdminSubscriptionDashboard from '../billing/AdminSubscriptionDashboard';
 import AdminMonitoringDashboard from '../monitoring/AdminMonitoringDashboard';
 import AdminReferralDashboard from '../referrals/AdminReferralDashboard';
-import OrganizationRequestsDashboard from '../admin/OrganizationRequestsDashboard';
 import { useOnboardingOptional } from '../../context/OnboardingContext';
 import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
@@ -256,7 +255,6 @@ const SettingsPage: React.FC = () => {
                   : []),
                 ...(perms.enterpriseRole === 'super_admin' && !isLocalOnlyMode()
                   ? [
-                      { id: 'admin-organization-requests', label: 'Organization Requests', icon: ICONS.briefcase || '🏢' },
                       { id: 'admin-subscriptions', label: 'Subscription Admin', icon: ICONS.briefcase || '📊' },
                       { id: 'admin-monitoring', label: 'Monitoring', icon: ICONS.activity || '📡' },
                       { id: 'admin-referrals', label: 'Referral Admin', icon: ICONS.users || '👥' },
@@ -1319,11 +1317,6 @@ const SettingsPage: React.FC = () => {
                                     Restart from beginning
                                   </Button>
                                 </div>
-                            </div>
-                        )}
-                        {activeCategory === 'admin-organization-requests' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
-                                <OrganizationRequestsDashboard />
                             </div>
                         )}
                         {activeCategory === 'admin-subscriptions' && (

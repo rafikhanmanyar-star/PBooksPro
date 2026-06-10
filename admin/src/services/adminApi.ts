@@ -374,6 +374,97 @@ class AdminApi {
     URL.revokeObjectURL(url);
   }
 
+  // Organization registration approval (platform admin portal)
+  async getOrganizationRequests(filters?: { status?: string; limit?: number; offset?: number }) {
+    const params = new URLSearchParams();
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.limit != null) params.set('limit', String(filters.limit));
+    if (filters?.offset != null) params.set('offset', String(filters.offset));
+    const qs = params.toString();
+    const response = await fetch(`${ADMIN_API_URL}/organization-requests${qs ? `?${qs}` : ''}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to fetch organization requests');
+    }
+    return response.json();
+  }
+
+  async getOrganizationRequestStats() {
+    const response = await fetch(`${ADMIN_API_URL}/organization-requests/stats`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to fetch organization request stats');
+    }
+    return response.json();
+  }
+
+  async getOrganizationRequest(id: string) {
+    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to fetch organization request');
+    }
+    return response.json();
+  }
+
+  async approveOrganizationRequest(id: string) {
+    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/approve`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to approve organization');
+    }
+    return response.json();
+  }
+
+  async rejectOrganizationRequest(id: string, reason: string) {
+    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/reject`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to reject organization');
+    }
+    return response.json();
+  }
+
+  async suspendOrganizationRequest(id: string) {
+    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/suspend`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to suspend organization');
+    }
+    return response.json();
+  }
+
+  async activateOrganizationRequest(id: string) {
+    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/activate`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to activate organization');
+    }
+    return response.json();
+  }
+
   // System Monitoring
   async getSystemMetrics() {
     const response = await fetch(`${ADMIN_API_URL}/system-metrics`, {

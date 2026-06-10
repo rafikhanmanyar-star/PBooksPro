@@ -10,6 +10,7 @@ import marketplaceRoutes from './marketplace.js';
 import createAdminRoutes from './create-admin.js';
 import systemMetricsRoutes from './system-metrics.js';
 import leadsRoutes from './leads.js';
+import organizationRequestsRoutes from './organizationRequests.js';
 
 const router = Router();
 
@@ -31,6 +32,7 @@ router.use('/users', userRoutes);
 router.use('/marketplace', marketplaceRoutes);
 router.use('/system-metrics', systemMetricsRoutes);
 router.use('/leads', leadsRoutes);
+router.use('/organization-requests', organizationRequestsRoutes);
 
 export default router;
 

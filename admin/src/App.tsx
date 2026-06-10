@@ -7,6 +7,7 @@ import TenantManagement from './components/tenants/TenantManagement';
 import UserManagement from './components/users/UserManagement';
 import SystemMonitoring from './components/monitoring/SystemMonitoring';
 import LeadManagement from './components/leads/LeadManagement';
+import OrganizationRequestManagement from './components/organizationRequests/OrganizationRequestManagement';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 
@@ -27,6 +28,7 @@ const AppRoutes: React.FC = () => {
         <Route path="users" element={<UserManagement />} />
         <Route path="monitoring" element={<SystemMonitoring />} />
         <Route path="leads" element={<LeadManagement />} />
+        <Route path="organization-requests" element={<OrganizationRequestManagement />} />
       </Route>
     </Routes>
   );

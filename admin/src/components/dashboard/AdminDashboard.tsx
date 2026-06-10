@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Users, Key, AlertCircle, CheckCircle, Clock, Server, UserPlus } from 'lucide-react';
+import { Users, Key, AlertCircle, CheckCircle, Clock, Server, UserPlus, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface DashboardStats {
@@ -53,6 +53,7 @@ interface LeadStats {
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
+  const [orgRequestStats, setOrgRequestStats] = useState<{ pending: number } | null>(null);
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -61,6 +62,7 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     loadStats();
     loadLeadStats();
+    loadOrgRequestStats();
     loadSystemMetrics();
 
     // Refresh system metrics every 30 seconds
@@ -98,6 +100,15 @@ const AdminDashboard: React.FC = () => {
       setLeadStats(data);
     } catch (err: unknown) {
       console.error('Lead stats load error:', err);
+    }
+  };
+
+  const loadOrgRequestStats = async () => {
+    try {
+      const data = await adminApi.getOrganizationRequestStats();
+      setOrgRequestStats({ pending: data.pending });
+    } catch (err: unknown) {
+      console.error('Organization request stats load error:', err);
     }
   };
 
@@ -152,6 +163,16 @@ const AdminDashboard: React.FC = () => {
       color: '#f59e0b',
       bgColor: '#fef3c7'
     },
+    ...(orgRequestStats
+      ? [{
+          title: 'Pending Org Requests',
+          value: orgRequestStats.pending,
+          icon: Building2,
+          color: '#b45309',
+          bgColor: '#fef3c7',
+          onClick: () => navigate('/organization-requests'),
+        }]
+      : []),
     {
       title: 'Monthly Licenses',
       value: stats.licenses.monthly,
@@ -233,8 +254,17 @@ const AdminDashboard: React.FC = () => {
       }}>
         {statCards.map((card, index) => {
           const Icon = card.icon;
+          const clickable = 'onClick' in card && typeof card.onClick === 'function';
           return (
-            <div key={index} className="card">
+            <div
+              key={index}
+              className="card"
+              onClick={clickable ? card.onClick : undefined}
+              style={clickable ? { cursor: 'pointer' } : undefined}
+              onKeyDown={clickable ? (e) => { if (e.key === 'Enter') card.onClick?.(); } : undefined}
+              role={clickable ? 'button' : undefined}
+              tabIndex={clickable ? 0 : undefined}
+            >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
