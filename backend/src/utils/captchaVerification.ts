@@ -12,9 +12,7 @@ function hasCaptchaSiteKey(): boolean {
 
 function captchaRequired(): boolean {
   if (!isEnvFlagEnabled('ALLOW_SELF_SIGNUP')) return false;
-  const raw = process.env.REGISTRATION_CAPTCHA_REQUIRED?.trim().toLowerCase();
-  // Opt-in only: registration CAPTCHA is off unless explicitly enabled with both keys configured.
-  if (raw !== 'true' && raw !== '1' && raw !== 'yes') return false;
+  if (!isEnvFlagEnabled('REGISTRATION_CAPTCHA_REQUIRED')) return false;
   return hasCaptchaSecret() && hasCaptchaSiteKey();
 }
 
