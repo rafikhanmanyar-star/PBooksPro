@@ -126,6 +126,7 @@ const initApp = async () => {
       { SpellCheckerProvider },
       { OnboardingProvider },
       { ProductTourProvider },
+      { SystemProvider },
     ] = await Promise.all([
       import('./App'),
       import('./context/ThemeContext'),
@@ -147,6 +148,7 @@ const initApp = async () => {
       import('./context/SpellCheckerContext'),
       import('./context/OnboardingContext'),
       import('./context/ProductTourContext'),
+      import('./context/SystemContext'),
     ]);
 
     const { getQueryClient } = await import('./config/queryClient');
@@ -166,6 +168,7 @@ const initApp = async () => {
           <ViewportProvider>
           <CompanyGate>
           <AuthProvider>
+            <SystemProvider>
             <OnboardingProvider>
             <AppProvider>
               <PrintProvider>
@@ -195,6 +198,7 @@ const initApp = async () => {
               </PrintProvider>
             </AppProvider>
             </OnboardingProvider>
+            </SystemProvider>
           </AuthProvider>
           </CompanyGate>
           </ViewportProvider>

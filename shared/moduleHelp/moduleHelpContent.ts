@@ -121,8 +121,8 @@ export const MODULE_HELP: Record<string, ModuleHelpEntry> = {
   },
   'project-expenses': {
     id: 'project-expenses',
-    title: 'Project Expenses',
-    modulePath: 'Construction → Project Expenses',
+    title: 'Petty Cash',
+    modulePath: 'Construction → Petty Cash',
     summary:
       'Record site expenses paid from bank or petty cash. Each entry posts immediately to the project and general ledger.',
     knowledgeArticleId: 'kb-project-expenses',
@@ -131,7 +131,7 @@ export const MODULE_HELP: Record<string, ModuleHelpEntry> = {
       {
         heading: 'What this module does',
         paragraphs: [
-          'Project Expenses is a fast data-entry grid for construction site spending. Every saved row creates a posted expense tied to a project, expense category, and bank or cash account.',
+          'Petty Cash is a fast data-entry grid for construction site spending. Every saved row creates a posted expense tied to a project, expense category, and bank or cash account.',
           'Amounts reduce the selected payment account and appear in project cost reports, PM fee calculations, and the General Ledger.',
         ],
       },
@@ -171,7 +171,7 @@ export const MODULE_HELP: Record<string, ModuleHelpEntry> = {
           'Filter by project when not inside a single-project context',
           'Delete removes the expense and reverses the ledger impact (requires create permission)',
           'Categories with no expense types show a warning — add categories in Settings → Chart of Accounts',
-          'Related reports — Project Expense Reports under Construction → Reports',
+          'Related reports — Petty cash report under Construction → Reports',
         ],
       },
     ],
@@ -217,7 +217,7 @@ export const MODULE_HELP: Record<string, ModuleHelpEntry> = {
           'Contracts — Vendor agreements and contract values',
           'Bills — Vendor invoices with payment tracking',
           'Expense Analytics — Visual breakdown of project spending',
-          'Project Expenses — Fast grid for site expenses from bank/cash',
+          'Petty Cash — Fast grid for site expenses from bank/cash',
           'PM Fee Log — Project management fee accruals and payouts',
           'Reports — P&L, budget vs actual, vendor ledger, expense registers, and more',
         ],

@@ -219,10 +219,10 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
   },
   {
     id: 'kb-project-expenses',
-    title: 'Project Expenses (Site Expenses)',
+    title: 'Petty Cash',
     category: 'Projects',
     excerpt: 'Fast grid entry for construction site expenses paid from bank or petty cash.',
-    body: 'Project Expenses records site spending that posts immediately to the project and general ledger. Each row needs a date, project, expense category (from Settings → Chart of Accounts), amount, and bank or cash account. Optionally link a vendor and note for reporting. Saved entries reduce the payment account balance and feed project cost reports, PM fee calculations, and expense registers under Construction → Reports. Add expense categories in Settings before first use, or type a new category name in the grid to create one inline. Delete reverses the ledger entry when you have create permission.',
+    body: 'Petty Cash records site spending that posts immediately to the project and general ledger. Each row needs a date, project, expense category (from Settings → Chart of Accounts), amount, and bank or cash account. Optionally link a vendor and note for reporting. Saved entries reduce the payment account balance and feed project cost reports, PM fee calculations, and expense registers under Construction → Reports. Add expense categories in Settings before first use, or type a new category name in the grid to create one inline. Delete reverses the ledger entry when you have create permission.',
     tags: ['project expenses', 'site expenses', 'voucher', 'construction', 'petty cash'],
   },
   {

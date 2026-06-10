@@ -6,7 +6,7 @@ const PROJECT_CONSTRUCTION_VIEW_MAP: Record<string, string> = {
   'Expense Analytics': 'project-management',
   'Expense Vouchers': 'project-expenses',
   'PM Payouts': 'project-management',
-  'Project Expense Reports': 'project-expenses',
+  'Petty cash report': 'project-expenses',
 };
 
 const PROJECT_SELLING_VIEW_MAP: Record<string, string> = {

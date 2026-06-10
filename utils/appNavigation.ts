@@ -54,7 +54,19 @@ export type AppSpecialRoute =
   | { kind: 'billing-checkout' }
   | { kind: 'paddle-checkout' }
   | { kind: 'payment-success' }
-  | { kind: 'legal'; slug: string };
+  | { kind: 'legal'; slug: string }
+  | { kind: 'settings'; section: string };
+
+/** Settings deep-link sections (e.g. application-update, about). */
+export const SETTINGS_ROUTE_SECTIONS = new Set([
+  'application-update',
+  'about',
+  'preferences',
+  'data',
+  'backup',
+  'help',
+  'license',
+]);
 
 export function parseAppSpecialRoute(): AppSpecialRoute {
   const pathname = getAppPathname();
@@ -86,5 +98,19 @@ export function parseAppSpecialRoute(): AppSpecialRoute {
     return { kind: 'payment-success' };
   }
 
+  const settingsSectionMatch = pathname.match(/\/settings\/([^/]+)\/?$/);
+  if (settingsSectionMatch) {
+    return { kind: 'settings', section: settingsSectionMatch[1] };
+  }
+
+  if (pathname === '/settings' || pathname.endsWith('/settings')) {
+    return { kind: 'settings', section: 'preferences' };
+  }
+
   return { kind: 'home' };
+}
+
+/** Navigate to the main settings view (clears blocked deep-link paths). */
+export function navigateToSettingsHome(): void {
+  navigateToAppPath('/settings');
 }

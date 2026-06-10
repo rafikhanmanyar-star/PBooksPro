@@ -127,6 +127,8 @@ import { adminMonitoringRouter } from './routes/adminMonitoringRoutes.js';
 import { startMonitoringScheduler } from './services/monitoring/monitoringScheduler.js';
 import { initObservabilityProviders } from './services/monitoring/observabilityProvider.js';
 import { adminPortalRouter } from './routes/adminPortalRoutes.js';
+import { systemRouter } from './routes/systemRoutes.js';
+import { appUpdateRouter } from './routes/appUpdateRoutes.js';
 
 function getMonorepoPackageVersion(): string {
   try {
@@ -232,6 +234,12 @@ app.use('/api', trialSignupRouter);
 app.use('/api', emailAutomationPublicRouter);
 app.use('/api', referralRouter);
 app.use('/api', supportRouter);
+
+/** Deployment edition and feature flags (authenticated). */
+app.use('/api', authMiddleware, requireActiveSubscription(), systemRouter);
+
+/** Desktop-only application update endpoints (403 on cloud edition). */
+app.use('/api', authMiddleware, requireActiveSubscription(), appUpdateRouter);
 
 /** Auth + stubs: heartbeat, license, presence, WhatsApp unread (dev parity with cloud API). */
 app.use('/api', authMiddleware, requireActiveSubscription(), optionalFeatureRouter);
