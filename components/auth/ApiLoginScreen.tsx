@@ -25,7 +25,7 @@ import { useAuth } from '../../context/AuthContext';
 import LegalAcceptanceCheckbox from '../legal/LegalAcceptanceCheckbox';
 import MfaLoginPanel from './MfaLoginPanel';
 import type { LegalAcceptanceInput } from '../../services/api/legalApi';
-import { getApiRootUrl, getAppDisplayName, isStagingEnvironment, getDefaultApiRootUrl } from '../../config/apiUrl';
+import { getApiRootUrl, getAppDisplayName, isStagingEnvironment, getDefaultApiRootUrl, isCloudHostedApi } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
 import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import RegistrationCaptcha from '../ui/RegistrationCaptcha';
@@ -343,6 +343,9 @@ const ApiLoginScreen: React.FC = () => {
     provider: 'turnstile' | 'recaptcha';
     siteKey: string;
   } | null>(null);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [captchaLoadFailed, setCaptchaLoadFailed] = useState(false);
+  const [organizationApprovalRequired, setOrganizationApprovalRequired] = useState(true);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [legalAcceptances, setLegalAcceptances] = useState<LegalAcceptanceInput[]>([]);
@@ -409,8 +412,12 @@ const ApiLoginScreen: React.FC = () => {
       void apiClient
         .get<{
           captcha?: { provider: 'turnstile' | 'recaptcha'; siteKey: string | null } | null;
+          captchaRequired?: boolean;
+          organizationApprovalRequired?: boolean;
         }>('/auth/public-config')
         .then((cfg) => {
+          setOrganizationApprovalRequired(cfg.organizationApprovalRequired !== false);
+          setCaptchaRequired(!!cfg.captchaRequired);
           if (cfg.captcha?.siteKey) {
             setCaptchaConfig({
               provider: cfg.captcha.provider,
@@ -420,7 +427,10 @@ const ApiLoginScreen: React.FC = () => {
             setCaptchaConfig(null);
           }
         })
-        .catch(() => setCaptchaConfig(null));
+        .catch(() => {
+          setCaptchaConfig(null);
+          setCaptchaRequired(false);
+        });
     } catch {
       setCaptchaConfig(null);
     }
@@ -588,7 +598,7 @@ const ApiLoginScreen: React.FC = () => {
       setError('You must accept the Terms of Service and Privacy Policy.');
       return;
     }
-    if (captchaConfig && !captchaToken) {
+    if (captchaRequired && captchaConfig && !captchaToken) {
       setError('Please complete the CAPTCHA verification.');
       return;
     }
@@ -628,8 +638,36 @@ const ApiLoginScreen: React.FC = () => {
 
   const displayError = error || authError;
 
+  const cloudSignup = isCloudHostedApi() || /pbookspro\.com/i.test(rootUrl());
+  const captchaMisconfigured = captchaRequired && !captchaConfig;
+  const captchaBlocksSubmit = captchaRequired && !!captchaConfig && !captchaToken && !captchaLoadFailed;
+  const canSubmitRegistration =
+    !isLoading &&
+    legalAccepted &&
+    legalAcceptances.length > 0 &&
+    !captchaBlocksSubmit &&
+    !captchaMisconfigured &&
+    !(captchaRequired && captchaLoadFailed);
+  const registrationBlockers: string[] = [];
+  if (!legalAccepted || legalAcceptances.length === 0) {
+    registrationBlockers.push('Accept the Terms of Service and Privacy Policy');
+  }
+  if (captchaMisconfigured) {
+    registrationBlockers.push('Registration security check is misconfigured — contact support');
+  }
+  if (captchaBlocksSubmit) {
+    registrationBlockers.push('Complete the CAPTCHA verification');
+  }
+  if (captchaRequired && captchaLoadFailed) {
+    registrationBlockers.push('CAPTCHA failed to load — refresh the page or contact support');
+  }
+
   const goToRegister = () => {
     setError(null);
+    setLegalAccepted(false);
+    setLegalAcceptances([]);
+    setCaptchaToken(null);
+    setCaptchaLoadFailed(false);
     setView('register');
   };
 
@@ -969,27 +1007,41 @@ const ApiLoginScreen: React.FC = () => {
               <AuthCardHeader
                 icon={Building2}
                 title="Create organization"
-                subtitle="Register a new tenant on your API server"
+                subtitle={
+                  cloudSignup && organizationApprovalRequired
+                    ? 'Submit your organization for approval. You can sign in after a platform administrator approves your request.'
+                    : cloudSignup
+                      ? 'Register your organization on PBooks Pro cloud'
+                      : 'Register a new tenant on your API server'
+                }
               />
 
               <form onSubmit={handleRegisterSubmit} className="space-y-4" autoComplete="off" noValidate>
                 {displayError && <AuthErrorBanner message={displayError} />}
 
-                <div>
-                  <FieldLabel htmlFor="reg-server">API server (host and port)</FieldLabel>
-                  <IconField icon={Server}>
-                    <input
-                      id="reg-server"
-                      type="url"
-                      value={serverUrl}
-                      onChange={e => setServerUrl(e.target.value)}
-                      placeholder={isStagingEnvironment() ? 'http://127.0.0.1:3001' : 'http://127.0.0.1:3000'}
-                      className={FIELD_INPUT}
-                      disabled={isLoading}
-                      autoComplete="off"
-                    />
-                  </IconField>
-                </div>
+                {!cloudSignup && (
+                  <div>
+                    <FieldLabel htmlFor="reg-server">API server (host and port)</FieldLabel>
+                    <IconField icon={Server}>
+                      <input
+                        id="reg-server"
+                        type="url"
+                        value={serverUrl}
+                        onChange={e => setServerUrl(e.target.value)}
+                        placeholder={isStagingEnvironment() ? 'http://127.0.0.1:3001' : 'http://127.0.0.1:3000'}
+                        className={FIELD_INPUT}
+                        disabled={isLoading}
+                        autoComplete="off"
+                      />
+                    </IconField>
+                  </div>
+                )}
+
+                {cloudSignup && organizationApprovalRequired && (
+                  <div className="rounded-ds-md border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-ds-small text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                    Your registration will be reviewed in the admin portal. You will receive an email when your organization is approved.
+                  </div>
+                )}
 
                 <div>
                   <FieldLabel htmlFor="reg-company" required>
@@ -1078,30 +1130,6 @@ const ApiLoginScreen: React.FC = () => {
                   <FieldHelper>Lowercase letters, numbers, hyphens. Leave empty to auto-generate.</FieldHelper>
                 </div>
 
-                <LegalAcceptanceCheckbox
-                  key={serverUrl}
-                  context="registration"
-                  serverRootUrl={serverUrl}
-                  checked={legalAccepted}
-                  disabled={isLoading}
-                  onChange={(checked, acceptances) => {
-                    setLegalAccepted(checked);
-                    setLegalAcceptances(acceptances);
-                  }}
-                />
-
-                {!legalAccepted && (
-                  <p className="text-ds-small text-amber-700">
-                    Check the agreement box above to enable Create organization.
-                  </p>
-                )}
-
-                <RegistrationCaptcha
-                  config={captchaConfig}
-                  onToken={setCaptchaToken}
-                  disabled={isLoading}
-                />
-
                 <div className="border-t border-app-border pt-4">
                   <p className="mb-3 text-ds-small font-semibold uppercase tracking-wide text-app-muted">Admin account</p>
 
@@ -1180,17 +1208,52 @@ const ApiLoginScreen: React.FC = () => {
                   </div>
                 </div>
 
+                <LegalAcceptanceCheckbox
+                  key={serverUrl}
+                  context="registration"
+                  serverRootUrl={serverUrl}
+                  checked={legalAccepted}
+                  disabled={isLoading}
+                  onChange={(checked, acceptances) => {
+                    setLegalAccepted(checked);
+                    setLegalAcceptances(acceptances);
+                  }}
+                />
+
+                {captchaRequired && (
+                  <RegistrationCaptcha
+                    config={captchaConfig}
+                    onToken={setCaptchaToken}
+                    onLoadError={setCaptchaLoadFailed}
+                    disabled={isLoading}
+                  />
+                )}
+
+                {registrationBlockers.length > 0 && (
+                  <div className="rounded-ds-md border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-ds-small text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                    <p className="font-semibold">Complete the following to submit:</p>
+                    <ul className="mt-1 list-inside list-disc space-y-0.5">
+                      {registrationBlockers.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <Button
                   type="submit"
-                  disabled={isLoading}
-                  className="w-full !bg-emerald-600 hover:!bg-emerald-700 focus-visible:!ring-emerald-500"
+                  disabled={!canSubmitRegistration}
+                  className="w-full !bg-emerald-600 hover:!bg-emerald-700 focus-visible:!ring-emerald-500 disabled:!opacity-40"
                   aria-busy={isLoading}
+                  title={registrationBlockers.join('; ')}
                 >
                   {isLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                       Creating organization…
                     </>
+                  ) : cloudSignup && organizationApprovalRequired ? (
+                    'Submit for approval'
                   ) : (
                     'Create organization'
                   )}

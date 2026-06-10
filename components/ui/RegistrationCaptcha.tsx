@@ -8,6 +8,7 @@ type CaptchaConfig = {
 type Props = {
   config: CaptchaConfig | null;
   onToken: (token: string | null) => void;
+  onLoadError?: (failed: boolean) => void;
   disabled?: boolean;
 };
 
@@ -43,13 +44,14 @@ function loadScript(src: string, id: string): Promise<void> {
   });
 }
 
-const RegistrationCaptcha: React.FC<Props> = ({ config, onToken, disabled }) => {
+const RegistrationCaptcha: React.FC<Props> = ({ config, onToken, onLoadError, disabled }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     onToken(null);
+    onLoadError?.(false);
     if (!config || disabled) return;
 
     let cancelled = false;
@@ -76,21 +78,24 @@ const RegistrationCaptcha: React.FC<Props> = ({ config, onToken, disabled }) => 
           });
         }
         setLoadError(null);
+        onLoadError?.(false);
       } catch {
         if (!cancelled) {
           setLoadError('CAPTCHA could not be loaded. Refresh and try again.');
+          onLoadError?.(true);
         }
       }
     })();
 
     return () => {
       cancelled = true;
+      onLoadError?.(false);
       if (config?.provider === 'turnstile' && widgetIdRef.current != null && window.turnstile) {
         window.turnstile.remove(String(widgetIdRef.current));
       }
       widgetIdRef.current = null;
     };
-  }, [config, disabled, onToken]);
+  }, [config, disabled, onToken, onLoadError]);
 
   if (!config) return null;
 

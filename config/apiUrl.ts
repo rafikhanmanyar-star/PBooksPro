@@ -145,6 +145,11 @@ export function isLanBackendApi(): boolean {
   return !isRemoteApiUrl(getApiBaseUrl());
 }
 
+/** True when the client talks to a hosted cloud API (not LAN / self-hosted). */
+export function isCloudHostedApi(): boolean {
+  return isRemoteApiUrl(getApiBaseUrl());
+}
+
 /** Strip `/api` suffix to get server root (e.g. `http://192.168.1.10:3000`). */
 export function getApiRootUrl(): string {
   return getApiBaseUrl().replace(/\/api\/?$/i, '');

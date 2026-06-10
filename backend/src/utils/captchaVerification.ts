@@ -66,3 +66,8 @@ export function publicCaptchaProvider(): 'turnstile' | 'recaptcha' | null {
   if (process.env.RECAPTCHA_SITE_KEY?.trim()) return 'recaptcha';
   return null;
 }
+
+/** Exposed to clients so UI only blocks submit when the server will enforce CAPTCHA. */
+export function publicCaptchaRequired(): boolean {
+  return captchaRequired();
+}
