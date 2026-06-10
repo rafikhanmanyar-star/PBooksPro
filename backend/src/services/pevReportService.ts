@@ -8,8 +8,8 @@ export type PeVRegisterRow = {
   projectName: string;
   categoryName: string;
   vendorName: string | null;
+  bankAccountName: string;
   amount: number;
-  status: string;
   description: string | null;
 };
 
@@ -47,6 +47,8 @@ export async function getProjectExpenseRegister(
   if (filters?.status) {
     clauses.push(`v.status = $${idx++}`);
     params.push(filters.status);
+  } else {
+    clauses.push(`v.status = 'posted'`);
   }
   if (filters?.fromDate) {
     clauses.push(`v.voucher_date >= $${idx++}::date`);
@@ -65,20 +67,23 @@ export async function getProjectExpenseRegister(
     project_name: string;
     category_name: string;
     vendor_name: string | null;
+    bank_account_name: string;
     amount: string;
-    status: string;
     description: string | null;
   }>(
     `SELECT v.id, v.voucher_number, v.voucher_date, v.project_id,
        COALESCE(p.name, v.project_id) AS project_name,
        COALESCE(c.name, v.expense_category_id) AS category_name,
        ven.name AS vendor_name,
-       v.amount::text, v.status, v.description
+       COALESCE(pay.name, v.payment_source_account_id) AS bank_account_name,
+       v.amount::text, v.description
      FROM project_expense_vouchers v
      LEFT JOIN projects p ON p.id = v.project_id AND p.tenant_id = v.tenant_id
      LEFT JOIN categories c ON c.id = v.expense_category_id
        AND (c.tenant_id = v.tenant_id OR c.tenant_id = '__system__')
      LEFT JOIN vendors ven ON ven.id = v.vendor_id AND ven.tenant_id = v.tenant_id
+     LEFT JOIN accounts pay ON pay.id = v.payment_source_account_id
+       AND (pay.tenant_id = v.tenant_id OR pay.tenant_id = '__system__')
      WHERE ${clauses.join(' AND ')}
      ORDER BY v.voucher_date DESC, v.voucher_number DESC`,
     params
@@ -95,8 +100,8 @@ export async function getProjectExpenseRegister(
     projectName: row.project_name,
     categoryName: row.category_name,
     vendorName: row.vendor_name,
+    bankAccountName: row.bank_account_name,
     amount: Number(row.amount),
-    status: row.status,
     description: row.description,
   }));
 }
@@ -127,13 +132,14 @@ export async function getPeVExpenseByCategory(
   }
 
   const r = await client.query<{ key: string; label: string; cnt: string; total: string }>(
-    `SELECT c.id AS key, c.name AS label,
+    `SELECT COALESCE(c.id, v.expense_category_id) AS key,
+       COALESCE(c.name, v.expense_category_id, 'Uncategorized') AS label,
        COUNT(*)::text AS cnt, COALESCE(SUM(v.amount), 0)::text AS total
      FROM project_expense_vouchers v
-     INNER JOIN categories c ON c.id = v.expense_category_id
+     LEFT JOIN categories c ON c.id = v.expense_category_id
        AND (c.tenant_id = v.tenant_id OR c.tenant_id = '__system__')
      WHERE ${clauses.join(' AND ')}
-     GROUP BY c.id, c.name
+     GROUP BY COALESCE(c.id, v.expense_category_id), COALESCE(c.name, v.expense_category_id, 'Uncategorized')
      ORDER BY SUM(v.amount) DESC`,
     params
   );
