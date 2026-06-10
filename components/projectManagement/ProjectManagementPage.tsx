@@ -70,7 +70,7 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
 ];
 
 /** Project construction */
-const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'Expense Analytics', 'Expense Vouchers'];
+const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Expense Analytics', 'Contracts', 'Bills', 'Expense Vouchers'];
 
 const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -388,10 +388,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             </div>
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project construction navigation" data-tour="project-subnav">
                 <div className="space-y-0.5">
+                    <ModuleNavItem view="Expense Analytics" label="Expense Analytics" collapsed={subCollapsed} />
                     <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} />
                     <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} dataTour="project-bills" />
-                    <ModuleNavItem view="Expense Analytics" label="Expense Analytics" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Expense Vouchers" label="Project Expenses" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Expense Vouchers" label="Pity Cash" collapsed={subCollapsed} />
                 </div>
 
                 <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">

@@ -74,10 +74,16 @@ async function applyStagingPrereleaseFeed(autoUpdater, app, tag) {
   if (!feedTag) return null;
 
   autoUpdater.allowPrerelease = true;
-  autoUpdater.setFeedURL({
+  const feedOptions = {
     provider: 'generic',
     url: `https://github.com/${slug.owner}/${slug.repo}/releases/download/${feedTag}/`,
-  });
+  };
+  // Staging API Server uses channel api-server-staging → api-server-staging.yml (not latest.yml).
+  const channel = autoUpdater.channel;
+  if (channel && channel !== 'latest') {
+    feedOptions.channel = channel;
+  }
+  autoUpdater.setFeedURL(feedOptions);
   return feedTag;
 }
 

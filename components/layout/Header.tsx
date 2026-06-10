@@ -17,6 +17,9 @@ import { useTheme } from '../../context/ThemeContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { isAdminRole } from '../../hooks/useRecordLock';
 import { scheduleIdleWork, cancelScheduledIdle } from '../../utils/interactionScheduling';
+import { BookOpen } from 'lucide-react';
+import { getModuleHelp } from '../../shared/moduleHelp/moduleHelpContent';
+import { resolveModuleHelpContext } from '../../shared/moduleHelp/resolveModuleHelpContext';
 interface HeaderProps {
   title: string;
   isNavigating?: boolean;
@@ -34,6 +37,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const units = useStateSelector(s => s.units);
   const whatsAppMode = useStateSelector(s => s.whatsAppMode);
   const currentPage = useStateSelector(s => s.currentPage);
+  const initialTabs = useStateSelector(s => s.initialTabs);
   const { isAuthenticated, user } = useAuth();
   const { canReadUsers } = usePermissions();
   const isPersonalFinanceAdmin = isAdminRole(user?.role || currentUser?.role);
@@ -41,6 +45,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [helpContextKey, setHelpContextKey] = useState('general');
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
@@ -634,6 +639,21 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     }
   }, [dismissNotification, openChat, contacts, whatsAppMode, findContactByPhone]);
 
+  const resolvedHelpEntry = useMemo(
+    () => getModuleHelp(resolveModuleHelpContext(currentPage, initialTabs)),
+    [currentPage, initialTabs]
+  );
+  const helpTooltip =
+    resolvedHelpEntry.id !== 'general'
+      ? `Help: ${resolvedHelpEntry.title}`
+      : 'Help & module guide';
+
+  const openHelpModal = useCallback(() => {
+    const contextKey = resolveModuleHelpContext(currentPage, initialTabs);
+    setHelpContextKey(contextKey);
+    setIsHelpModalOpen(true);
+  }, [currentPage, initialTabs]);
+
   const handleBreadcrumbHome = useCallback(() => {
     startNavTransition(() => {
       dispatch({ type: 'SET_PAGE', payload: 'dashboard' });
@@ -896,12 +916,17 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
             )}
 
             <button
-              onClick={() => setIsHelpModalOpen(true)}
-              className="p-2 rounded-full text-app-muted hover:bg-black/5 dark:hover:bg-white/10 hover:text-indigo-600 transition-colors min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
-              title="Help & Support"
-              aria-label="Help & Support"
+              onClick={openHelpModal}
+              className={`p-2 rounded-full transition-colors min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center ${
+                isHelpModalOpen
+                  ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-200 dark:ring-indigo-800'
+                  : 'text-app-muted hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400'
+              }`}
+              title={helpTooltip}
+              aria-label={helpTooltip}
+              aria-expanded={isHelpModalOpen}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              <BookOpen className="w-5 h-5" strokeWidth={2} aria-hidden />
             </button>
 
             <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block"></div>
@@ -928,7 +953,13 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         )}
       </header>
 
-      {isHelpModalOpen && <HelpModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} currentPage={currentPage} />}
+      {isHelpModalOpen && (
+        <HelpModal
+          isOpen={isHelpModalOpen}
+          onClose={() => setIsHelpModalOpen(false)}
+          helpContextKey={helpContextKey}
+        />
+      )}
     </>
   );
 };

@@ -186,6 +186,14 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
     tags: ['ledger', 'transactions', 'journal', 'filter'],
   },
   {
+    id: 'kb-dashboard',
+    title: 'Dashboard & KPIs',
+    category: 'Getting Started',
+    excerpt: 'Customize KPI cards, quick actions, and drill into financial metrics.',
+    body: 'The Dashboard surfaces Total Balance, receivables, payables, and other KPIs. Open the KPI panel from the chart icon to add category-based metrics and launch reports. Quick action buttons create transactions, invoices, and bills without leaving the home screen.',
+    tags: ['dashboard', 'kpi', 'metrics', 'overview'],
+  },
+  {
     id: 'kb-rental-agreements',
     title: 'Rental Agreements & Invoicing',
     category: 'Rental',
@@ -208,6 +216,14 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
     excerpt: 'Vendor bills, bulk payments, and job cost tracking.',
     body: 'Record bills against projects and categories from Project Management → Bills. Link bills to contracts for vendor analysis. Bulk payment processes multiple bills in one transaction.',
     tags: ['bills', 'vendor', 'construction'],
+  },
+  {
+    id: 'kb-project-expenses',
+    title: 'Project Expenses (Site Expenses)',
+    category: 'Projects',
+    excerpt: 'Fast grid entry for construction site expenses paid from bank or petty cash.',
+    body: 'Project Expenses records site spending that posts immediately to the project and general ledger. Each row needs a date, project, expense category (from Settings → Chart of Accounts), amount, and bank or cash account. Optionally link a vendor and note for reporting. Saved entries reduce the payment account balance and feed project cost reports, PM fee calculations, and expense registers under Construction → Reports. Add expense categories in Settings before first use, or type a new category name in the grid to create one inline. Delete reverses the ledger entry when you have create permission.',
+    tags: ['project expenses', 'site expenses', 'voucher', 'construction', 'petty cash'],
   },
   {
     id: 'kb-reports',

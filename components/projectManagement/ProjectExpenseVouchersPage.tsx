@@ -207,7 +207,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-app-text">Project Expenses</h2>
+          <h2 className="text-xl font-semibold text-app-text">Pity Cash</h2>
           <p className="text-sm text-app-muted mt-1">
             Record site expenses paid from bank or petty cash. Saves immediately to the project and general ledger.
           </p>

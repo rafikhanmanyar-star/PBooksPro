@@ -111,6 +111,7 @@ async function withGithubRetries(fn, attempts = 3) {
 
 module.exports = {
   parseVersion,
+  isValidVersion,
   compareVersions,
   isNewerVersion,
   parseGithubRepo,

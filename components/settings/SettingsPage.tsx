@@ -17,6 +17,7 @@ import PrintTemplateForm from './PrintTemplateForm';
 import WhatsAppConfigForm from './WhatsAppConfigForm';
 import WhatsAppMenuForm from './WhatsAppMenuForm';
 import CustomerSuccessCenter from '../customerSuccess/CustomerSuccessCenter';
+import { consumeHelpDeepLink, type HelpDeepLink } from '../../shared/moduleHelp/moduleHelpContent';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
 import { Project, ContactType, TransactionType, AccountType, ProjectAgreementStatus, AgreementSettings, InvoiceSettings, ProfitLossSubType } from '../../types';
@@ -125,12 +126,18 @@ const SettingsPage: React.FC = () => {
     }, []);
 
     const [activeCategory, setActiveCategory] = useState('preferences');
+    const [helpDeepLink, setHelpDeepLink] = useState<HelpDeepLink | null>(null);
 
     useEffect(() => {
         const pending = sessionStorage.getItem('openSettingsCategory');
         if (pending) {
             sessionStorage.removeItem('openSettingsCategory');
             setActiveCategory(pending);
+        }
+        const articleLink = consumeHelpDeepLink();
+        if (articleLink) {
+            setHelpDeepLink(articleLink);
+            setActiveCategory('help');
         }
     }, []);
 
@@ -1332,7 +1339,11 @@ const SettingsPage: React.FC = () => {
                         {activeCategory === 'data' && renderDataManagement()}
                         {activeCategory === 'help' && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-4 sm:p-6">
-                                <CustomerSuccessCenter onOpenSettingsTab={setActiveCategory} />
+                                <CustomerSuccessCenter
+                                    onOpenSettingsTab={setActiveCategory}
+                                    initialSection={helpDeepLink?.section}
+                                    initialArticleId={helpDeepLink?.articleId ?? null}
+                                />
                             </div>
                         )}
                         {activeCategory === 'contacts' && (
