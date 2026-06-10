@@ -114,6 +114,11 @@ import { sendFailure, sendSuccess } from './utils/apiResponse.js';
 import { applyTrustProxyAndSecurity } from './middleware/trustProxyAndSecurity.js';
 import { requestLoggingMiddleware } from './middleware/requestLogging.js';
 import type { RequestWithId } from './middleware/requestLogging.js';
+import {
+  idempotencyBodyMiddleware,
+  idempotencyMiddleware,
+} from './middleware/idempotencyMiddleware.js';
+import { performanceTimingMiddleware } from './middleware/performanceTimingMiddleware.js';
 import { assertProductionEnv } from './utils/productionEnvCheck.js';
 import { handleRouteError } from './utils/apiResponse.js';
 import { startBackupScheduler } from './services/backupSchedulerService.js';
@@ -160,6 +165,9 @@ app.use('/api/webhooks/paddle', express.raw({ type: 'application/json' }), paddl
 
 app.use(express.json({ limit: '2mb' }));
 app.use(requestLoggingMiddleware);
+app.use(performanceTimingMiddleware);
+app.use(idempotencyBodyMiddleware);
+app.use(idempotencyMiddleware);
 
 function discoverServerIp(req: express.Request): string {
   const raw = req.socket.localAddress;

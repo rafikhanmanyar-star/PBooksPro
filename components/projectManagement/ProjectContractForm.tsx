@@ -547,6 +547,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                 categoryType={entityFormModal.categoryType}
                 onClose={entityFormModal.closeForm}
                 onSubmit={entityFormModal.handleSubmit}
+                isSubmitting={entityFormModal.isSubmitting}
             />
         </>
     );

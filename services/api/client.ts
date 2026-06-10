@@ -9,6 +9,8 @@ import { getApiBaseUrl, isLanBackendApi, isStagingEnvironment, PBOOKS_API_BASE_S
 import { logger } from '../logger';
 import { notifyApiConflictIfUserFacing } from '../dbErrorNotification';
 import { stringifyApiJsonBody } from '../../utils/apiJsonSerialize';
+import { withMutationRequestId } from './mutationRequestId';
+import { notifyDuplicateRecordIfApplicable } from '../dbErrorNotification';
 
 /** Throttle "server unreachable" UI so a burst of failed requests does not flash repeatedly. */
 let lastServerUnreachableDispatch = 0;
@@ -595,6 +597,7 @@ export class ApiClient {
         }
         if (!shouldSkipConflictModal) {
           notifyApiConflictIfUserFacing(error, endpoint, fetchOpts.method || 'GET');
+          notifyDuplicateRecordIfApplicable(error);
         }
         throw error;
       }
@@ -706,9 +709,13 @@ export class ApiClient {
    * POST request
    */
   async post<T>(endpoint: string, data?: any, options?: { headers?: Record<string, string> }): Promise<T> {
+    const body =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? withMutationRequestId(data as Record<string, unknown>)
+        : data;
     return this.request<T>(endpoint, {
       method: 'POST',
-      body: data ? stringifyApiJsonBody(data) : undefined,
+      body: body ? stringifyApiJsonBody(body) : undefined,
       headers: options?.headers,
     });
   }
@@ -721,9 +728,13 @@ export class ApiClient {
     data?: any,
     requestOptions?: { skipConflictNotification?: boolean; headers?: Record<string, string> }
   ): Promise<T> {
+    const body =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? withMutationRequestId(data as Record<string, unknown>)
+        : data;
     return this.request<T>(endpoint, {
       method: 'PUT',
-      body: data ? stringifyApiJsonBody(data) : undefined,
+      body: body ? stringifyApiJsonBody(body) : undefined,
       headers: requestOptions?.headers,
       skipConflictNotification: requestOptions?.skipConflictNotification,
     });
@@ -740,9 +751,13 @@ export class ApiClient {
    * PATCH request
    */
   async patch<T>(endpoint: string, data?: any): Promise<T> {
+    const body =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? withMutationRequestId(data as Record<string, unknown>)
+        : data;
     return this.request<T>(endpoint, {
       method: 'PATCH',
-      body: data ? stringifyApiJsonBody(data) : undefined,
+      body: body ? stringifyApiJsonBody(body) : undefined,
     });
   }
 

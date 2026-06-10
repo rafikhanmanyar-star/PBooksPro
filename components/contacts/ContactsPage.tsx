@@ -20,6 +20,8 @@ import useLocalStorage from '../../hooks/useLocalStorage';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import { useDevRenderCount } from '../../hooks/useDevRenderCount';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
+import { useOptimisticEntity } from '../../hooks/useOptimisticEntity';
 
 type SortKey = 'name' | 'type' | 'companyName' | 'contactNo' | 'address' | 'balance';
 
@@ -161,7 +163,8 @@ const ContactsPage: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
     const [ledgerModal, setLedgerModal] = useState<{ isOpen: boolean; contact: Contact | null }>({ isOpen: false, contact: null });
-    const isSubmittingRef = useRef(false);
+    const { isSubmitting, guardSubmit } = useSubmitGuard();
+    const { addOptimistic, markSaved, markFailed } = useOptimisticEntity<Contact>();
 
     const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Vendors', 'Friends & Family'];
 
@@ -355,63 +358,72 @@ const ContactsPage: React.FC = () => {
     );
 
     const handleSaveContact = async (contactData: Omit<Contact, 'id'>) => {
-        // Prevent multiple submissions
-        if (isSubmittingRef.current) {
-            return;
-        }
-        isSubmittingRef.current = true;
-
-        try {
-            if (contactToEdit) {
-                if (contactToEdit.type === ContactType.VENDOR) {
-                    let payload = { ...contactToEdit, ...contactData } as Vendor;
-                    if (!isLocalOnlyMode() && isAuthenticated) {
-                        try {
+        await guardSubmit(
+            async () => {
+                if (contactToEdit) {
+                    if (contactToEdit.type === ContactType.VENDOR) {
+                        let payload = { ...contactToEdit, ...contactData } as Vendor;
+                        if (!isLocalOnlyMode() && isAuthenticated) {
                             const merged = await getAppStateApiService().updateVendor(payload.id, {
                                 ...payload,
                                 version: (contactToEdit as Vendor).version,
                             });
                             payload = { ...payload, ...merged };
-                        } catch (err: any) {
-                            showToast(err?.message || err?.error || 'Could not update vendor.', 'error');
-                            return;
                         }
-                    }
-                    dispatch({ type: 'UPDATE_VENDOR', payload });
-                } else {
-                    dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
-                }
-            } else {
-                if (activeTab === 'Vendors' || (contactData as any).type === ContactType.VENDOR) {
-                    const vendorId = `vendor_${Date.now()}`;
-                    let payload = { ...contactData, id: vendorId, type: ContactType.VENDOR } as Vendor;
-                    if (!isLocalOnlyMode() && isAuthenticated) {
-                        try {
-                            const merged = await getAppStateApiService().saveVendor({
-                                ...payload,
-                                userId: currentUser?.id,
+                        dispatch({ type: 'UPDATE_VENDOR', payload });
+                    } else {
+                        if (!isLocalOnlyMode() && isAuthenticated) {
+                            await getAppStateApiService().saveContact({
+                                ...contactToEdit,
+                                ...contactData,
                             });
-                            payload = { ...payload, ...merged };
-                        } catch (err: any) {
-                            showToast(err?.message || err?.error || 'Could not save vendor.', 'error');
-                            return;
                         }
+                        dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
                     }
-                    dispatch({ type: 'ADD_VENDOR', payload });
                 } else {
-                    // Generate a unique ID that includes timestamp and random component
-                    const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                    dispatch({ type: 'ADD_CONTACT', payload: { ...contactData, id: contactId } });
+                    if (activeTab === 'Vendors' || (contactData as any).type === ContactType.VENDOR) {
+                        const vendorId = `vendor_${Date.now()}`;
+                        let payload = { ...contactData, id: vendorId, type: ContactType.VENDOR } as Vendor;
+                        addOptimistic(payload as unknown as Contact);
+                        if (!isLocalOnlyMode() && isAuthenticated) {
+                            try {
+                                const merged = await getAppStateApiService().saveVendor({
+                                    ...payload,
+                                    userId: currentUser?.id,
+                                });
+                                payload = { ...payload, ...merged };
+                                markSaved(vendorId);
+                            } catch (err) {
+                                markFailed(vendorId);
+                                throw err;
+                            }
+                        } else {
+                            markSaved(vendorId);
+                        }
+                        dispatch({ type: 'ADD_VENDOR', payload });
+                    } else {
+                        const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                        const optimistic = { ...contactData, id: contactId } as Contact;
+                        addOptimistic(optimistic);
+                        if (!isLocalOnlyMode() && isAuthenticated) {
+                            try {
+                                await getAppStateApiService().saveContact(optimistic);
+                                markSaved(contactId);
+                            } catch (err) {
+                                markFailed(contactId);
+                                throw err;
+                            }
+                        } else {
+                            markSaved(contactId);
+                        }
+                        dispatch({ type: 'ADD_CONTACT', payload: optimistic });
+                    }
                 }
-            }
-            setIsModalOpen(false);
-            setContactToEdit(null);
-        } finally {
-            // Reset after a short delay to allow the action to process
-            setTimeout(() => {
-                isSubmittingRef.current = false;
-            }, 1000);
-        }
+                setIsModalOpen(false);
+                setContactToEdit(null);
+            },
+            { showSuccessToast: true, showErrorToast: true }
+        );
     };
 
     const handleDeleteContact = async () => {
@@ -452,21 +464,18 @@ const ContactsPage: React.FC = () => {
 
     const openAddModal = () => {
         setContactToEdit(null);
-        isSubmittingRef.current = false; // Reset submission guard
         setIsModalOpen(true);
     };
 
     const openEditModal = (contact: Contact, e: React.MouseEvent) => {
         e.stopPropagation();
         setContactToEdit(contact);
-        isSubmittingRef.current = false; // Reset submission guard
         setIsModalOpen(true);
     };
 
     const handleCloseModal = () => {
         setIsModalOpen(false);
         setContactToEdit(null);
-        isSubmittingRef.current = false; // Reset submission guard
     };
 
     const openLedger = (contact: Contact) => {
@@ -730,7 +739,12 @@ const ContactsPage: React.FC = () => {
                 </div>
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={contactToEdit ? `Edit Contact` : `New Contact`}>
+            <Modal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                preventCloseWhile={isSubmitting}
+                title={contactToEdit ? `Edit Contact` : `New Contact`}
+            >
                 <ContactForm
                     onSubmit={handleSaveContact}
                     onCancel={handleCloseModal}

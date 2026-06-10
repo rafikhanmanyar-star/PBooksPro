@@ -15,6 +15,8 @@ interface ModalProps {
   hideHeader?: boolean; // Optional to hide the default header
   /** Optional backdrop class for solid overlay (e.g. confirm dialogs) to avoid transparency */
   backdropClassName?: string;
+  /** When true, blocks ESC, backdrop click, and close button (e.g. while saving). */
+  preventCloseWhile?: boolean;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -28,7 +30,8 @@ const Modal: React.FC<ModalProps> = ({
   maxContentHeight,
   className,
   hideHeader = false,
-  backdropClassName
+  backdropClassName,
+  preventCloseWhile = false,
 }) => {
   const [mounted, setMounted] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -43,7 +46,7 @@ const Modal: React.FC<ModalProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !preventCloseWhile) {
         onClose();
       }
     };
@@ -73,7 +76,7 @@ const Modal: React.FC<ModalProps> = ({
       setMouseDownTarget(null);
       setMouseDownPosition(null);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, preventCloseWhile]);
 
   if (!isOpen || !mounted) return null;
 
@@ -156,6 +159,7 @@ const Modal: React.FC<ModalProps> = ({
     // 2. Mouse down was also on the backdrop (not inside modal content)
     // 3. It wasn't a drag operation (user didn't move mouse significantly)
     if (
+      !preventCloseWhile &&
       e.target === e.currentTarget &&
       mouseDownTarget === e.currentTarget &&
       !isDragging
@@ -189,8 +193,13 @@ const Modal: React.FC<ModalProps> = ({
           <div className="flex justify-between items-center p-3 sm:p-4 border-b border-app-border flex-shrink-0 bg-app-modal">
             <h2 id="modal-title" className="text-base sm:text-lg font-bold text-app-text truncate pr-2 sm:pr-4">{title}</h2>
             <button
-              onClick={onClose}
-              className="text-app-muted hover:text-app-text p-2 rounded-full hover:bg-app-table-hover transition-colors focus:outline-none focus:ring-2 focus:ring-app-border min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+              onClick={() => !preventCloseWhile && onClose()}
+              disabled={preventCloseWhile}
+              className={`text-app-muted p-2 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-app-border min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 ${
+                preventCloseWhile
+                  ? 'opacity-40 cursor-not-allowed'
+                  : 'hover:text-app-text hover:bg-app-table-hover'
+              }`}
               aria-label="Close modal"
             >
               <span className="text-2xl leading-none">&times;</span>

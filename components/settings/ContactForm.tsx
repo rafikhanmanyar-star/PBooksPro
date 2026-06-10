@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Contact, ContactType, Vendor } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Textarea from '../ui/Textarea';
 import { useNotification } from '../../context/NotificationContext';
 import { ICONS } from '../../constants';
@@ -37,6 +38,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
   hideCancelButton = false
 }) => {
   const { showAlert } = useNotification();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const entityToEdit = vendorToEdit || contactToEdit;
   const [name, setName] = useState(entityToEdit?.name || initialName || '');
   const [description, setDescription] = useState(entityToEdit?.description || '');
@@ -81,6 +83,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     const trimmedName = name.trim();
     if (!trimmedName) {
       await showAlert('Contact name is required.');
@@ -96,14 +100,19 @@ const ContactForm: React.FC<ContactFormProps> = ({
       return;
     }
 
-    if (isVendorForm) {
-      await Promise.resolve(
-        onSubmit({ name: trimmedName, description, companyName, contactNo, address, isActive } as any)
-      );
-    } else {
-      await Promise.resolve(
-        onSubmit({ name: trimmedName, type, description, companyName, contactNo, address, isActive } as any)
-      );
+    setIsSubmitting(true);
+    try {
+      if (isVendorForm) {
+        await Promise.resolve(
+          onSubmit({ name: trimmedName, description, companyName, contactNo, address, isActive } as any)
+        );
+      } else {
+        await Promise.resolve(
+          onSubmit({ name: trimmedName, type, description, companyName, contactNo, address, isActive } as any)
+        );
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -329,13 +338,18 @@ const ContactForm: React.FC<ContactFormProps> = ({
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
           {!hideCancelButton &&
-            <Button type="button" variant="secondary" onClick={onCancel} className="flex-1 sm:flex-none justify-center w-full sm:w-auto">
+            <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting} className="flex-1 sm:flex-none justify-center w-full sm:w-auto">
               Cancel
             </Button>
           }
-          <Button type="submit" className="flex-1 sm:flex-none justify-center w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0">
+          <LoadingButton
+            type="submit"
+            loading={isSubmitting}
+            loadingText={isEditing ? 'Saving...' : 'Creating...'}
+            className="flex-1 sm:flex-none justify-center w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0"
+          >
             {isEditing ? 'Save Changes' : (isVendorForm ? 'Create Vendor' : 'Create Contact')}
-          </Button>
+          </LoadingButton>
         </div>
       </div>
     </form>
