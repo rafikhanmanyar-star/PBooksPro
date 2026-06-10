@@ -19,7 +19,7 @@ import PaymentSuccessPage from './components/license/PaymentSuccessPage';
 import PaddleCheckoutPage from './components/license/PaddleCheckoutPage';
 import BillingCheckoutPage from './components/billing/BillingCheckoutPage';
 import LegalDocumentPage from './components/legal/LegalDocumentPage';
-import { parseAppSpecialRoute } from './utils/appNavigation';
+import { parseAppSpecialRoute, SETTINGS_ROUTE_SECTIONS } from './utils/appNavigation';
 import { useAuth } from './context/AuthContext';
 import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode, getAppDisplayName } from './config/apiUrl';
 import { apiClient } from './services/api/client';
@@ -277,6 +277,37 @@ const App: React.FC = () => {
       window.removeEventListener('popstate', applyRoute);
     };
   }, []);
+
+  useEffect(() => {
+    const applySettingsRoute = () => {
+      const route = parseAppSpecialRoute();
+      if (route.kind !== 'settings' || !isAuthenticated) return;
+
+      const section = SETTINGS_ROUTE_SECTIONS.has(route.section)
+        ? route.section
+        : 'preferences';
+
+      try {
+        sessionStorage.setItem('openSettingsCategory', section);
+      } catch {
+        /* ignore */
+      }
+      window.dispatchEvent(
+        new CustomEvent('open-settings-tab', { detail: { categoryId: section } })
+      );
+      if (currentPageRef.current !== 'settings') {
+        dispatch({ type: 'SET_PAGE', payload: 'settings' });
+      }
+    };
+
+    applySettingsRoute();
+    window.addEventListener('hashchange', applySettingsRoute);
+    window.addEventListener('popstate', applySettingsRoute);
+    return () => {
+      window.removeEventListener('hashchange', applySettingsRoute);
+      window.removeEventListener('popstate', applySettingsRoute);
+    };
+  }, [isAuthenticated, dispatch]);
 
   // Delay showing loading overlay for quick navigations, but ensure minimum display time
   useEffect(() => {
@@ -769,7 +800,6 @@ const App: React.FC = () => {
   return (
     <OfflineProvider>
       {isDemoModeActive() && <DemoProductTour />}
-      <TrialUpgradeBanner />
       <OnboardingGate />
       <PrintController />
       {/* Force password change modal for new company admin */}
@@ -796,6 +826,7 @@ const App: React.FC = () => {
           className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden transition-all duration-300 ease-in-out main-content-offset"
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
+          <TrialUpgradeBanner />
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
 
           <StabilityBanner />

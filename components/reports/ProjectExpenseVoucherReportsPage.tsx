@@ -91,7 +91,7 @@ const ProjectExpenseVoucherReportsPage: React.FC = () => {
   if (!canReadPeV) {
     return (
       <Card className="p-6">
-        <p className="text-app-muted">You do not have permission to view project expense reports.</p>
+        <p className="text-app-muted">You do not have permission to view the petty cash report.</p>
       </Card>
     );
   }
@@ -99,9 +99,9 @@ const ProjectExpenseVoucherReportsPage: React.FC = () => {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Project Expense Reports</h2>
+        <h2 className="text-xl font-semibold">Petty cash report</h2>
         <p className="text-sm text-app-muted mt-1">
-          Posted site expenses from Project Expenses (Settings chart-of-accounts categories, bank/cash payments).
+          Posted petty cash site expenses from Petty Cash (Settings chart-of-accounts categories, bank/cash payments).
         </p>
       </div>
 

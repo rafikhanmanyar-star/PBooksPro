@@ -54,6 +54,7 @@ export const SETTINGS_SECTIONS: SettingsSearchItem[] = [
   { id: 'settings-permissions', categoryId: 'permissions', label: 'Permissions', subtitle: 'Settings · Access control', keywords: ['role', 'rbac', 'access'] },
   { id: 'settings-backup', categoryId: 'backup', label: 'Backup Center', subtitle: 'Settings · General', keywords: ['backup', 'restore'] },
   { id: 'settings-data', categoryId: 'data', label: 'Data Management', subtitle: 'Settings · General', keywords: ['clear', 'delete', 'reset'] },
+  { id: 'settings-about', categoryId: 'about', label: 'About', subtitle: 'Settings · System information', keywords: ['edition', 'version', 'deployment', 'cloud', 'desktop'] },
   { id: 'settings-license', categoryId: 'license', label: 'License & Subscription', subtitle: 'Settings · General', keywords: ['billing', 'subscription'] },
   { id: 'settings-setup-wizard', categoryId: 'setup-wizard', label: 'Setup Wizard', subtitle: 'Settings · General', keywords: ['onboarding', 'getting started'] },
   { id: 'settings-help', categoryId: 'help', label: 'Customer Success', subtitle: 'Settings · Help', keywords: ['help', 'support', 'guide'] },

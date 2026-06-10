@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Rocket,
   PlayCircle,
@@ -47,6 +47,8 @@ const SECTION_ICONS: Record<string, React.ReactNode> = {
 
 type Props = {
   onOpenSettingsTab?: (tabId: string) => void;
+  initialSection?: SuccessSectionId;
+  initialArticleId?: string | null;
 };
 
 function levelColor(level: string): string {
@@ -55,13 +57,30 @@ function levelColor(level: string): string {
   return 'bg-sky-100 text-sky-800';
 }
 
-const CustomerSuccessCenter: React.FC<Props> = ({ onOpenSettingsTab }) => {
+const CustomerSuccessCenter: React.FC<Props> = ({ onOpenSettingsTab, initialSection, initialArticleId }) => {
   const { user, tenant } = useAuth();
   const company = useCompanyOptional();
-  const [activeSection, setActiveSection] = useState<SuccessSectionId>('getting-started');
+  const [activeSection, setActiveSection] = useState<SuccessSectionId>(initialSection ?? 'getting-started');
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedArticleId, setExpandedArticleId] = useState<string | null>(null);
+  const [expandedArticleId, setExpandedArticleId] = useState<string | null>(initialArticleId ?? null);
   const [kbCategory, setKbCategory] = useState<string>('All');
+
+  useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection);
+    }
+  }, [initialSection]);
+
+  useEffect(() => {
+    if (!initialArticleId) return;
+    setActiveSection('knowledge-base');
+    setExpandedArticleId(initialArticleId);
+    const scrollToArticle = () => {
+      document.getElementById(initialArticleId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const timer = window.setTimeout(scrollToArticle, 150);
+    return () => window.clearTimeout(timer);
+  }, [initialArticleId]);
 
   const searchIndex = useMemo(() => buildSearchIndex(), []);
 

@@ -99,6 +99,26 @@ function checkoutBranch(name) {
   run(`git checkout ${name}`);
 }
 
+/** Switch branches without losing uncommitted work (stash → checkout → pop). */
+function checkoutBranchPreservingChanges(name) {
+  const branch = currentBranch();
+  if (branch === name) return;
+
+  const hadChanges = hasUncommittedChanges();
+  if (hadChanges) {
+    console.log(`[release] Stashing local changes before switching to "${name}"…`);
+    run('git stash push -u -m "release:auto-stash before branch switch"');
+  }
+
+  console.log(`[release] Switching from "${branch}" to "${name}"…`);
+  run(`git checkout ${name}`);
+
+  if (hadChanges) {
+    console.log('[release] Restoring stashed local changes…');
+    run('git stash pop');
+  }
+}
+
 module.exports = {
   root,
   run,
@@ -112,4 +132,5 @@ module.exports = {
   commitPendingChanges,
   requireEnvFile,
   checkoutBranch,
+  checkoutBranchPreservingChanges,
 };

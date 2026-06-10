@@ -192,7 +192,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold text-app-text">Project Expenses</h2>
+        <h2 className="text-xl font-semibold text-app-text">Petty Cash</h2>
         <p className="text-sm text-app-muted mt-1">
           Record site expenses paid from bank or petty cash. Categories come from Settings → Chart of Accounts.
           Saves immediately to the project and deducts the selected bank/cash account.

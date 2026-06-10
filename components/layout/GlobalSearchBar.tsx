@@ -229,36 +229,31 @@ const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   return (
     <div ref={containerRef} className={`relative w-full ${className}`}>
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-          <span className="h-4 w-4">{ICONS.search}</span>
-        </div>
         <Input
           id="global-search-input"
+          icon={
+            <span className="text-app-muted h-4 w-4 flex items-center justify-center [&>svg]:h-4 [&>svg]:w-4">
+              {ICONS.search}
+            </span>
+          }
           placeholder="Search pages, reports, contacts, accounts..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onFocus={() => setIsFocused(true)}
-          className={`pl-9 bg-app-card border-app-border rounded-xl text-sm ${searchQuery ? 'pr-9' : 'pr-16'}`}
+          className={`block w-full border rounded-xl text-sm bg-app-card border-app-border placeholder:text-app-muted/80 text-app-text focus:outline-none focus:ring-2 focus:ring-ds-primary/35 focus:border-ds-primary py-2 ${searchQuery ? 'pr-9' : ''}`}
           autoComplete="off"
           aria-label="Search the app"
           aria-expanded={showDropdown}
           aria-controls="global-search-results"
         />
-        {!searchQuery && (
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-            <kbd className="hidden lg:inline-flex h-5 items-center gap-1 rounded border border-app-border bg-app-card px-1.5 font-mono text-[10px] font-medium text-app-muted">
-              <span className="text-xs">⌘</span>K
-            </kbd>
-          </div>
-        )}
         {searchQuery && (
           <button
             onClick={handleClear}
-            className="absolute inset-y-0 right-0 flex items-center pr-3 text-app-muted hover:text-app-text transition-colors"
+            className="absolute inset-y-0 right-0 flex items-center pr-3 text-app-muted hover:text-app-text transition-colors z-10"
             type="button"
             aria-label="Clear search"
           >
-            <span className="h-4 w-4">{ICONS.x}</span>
+            <span className="h-4 w-4 flex items-center justify-center [&>svg]:h-4 [&>svg]:w-4">{ICONS.x}</span>
           </button>
         )}
       </div>

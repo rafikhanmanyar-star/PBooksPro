@@ -17,12 +17,16 @@ import PrintTemplateForm from './PrintTemplateForm';
 import WhatsAppConfigForm from './WhatsAppConfigForm';
 import WhatsAppMenuForm from './WhatsAppMenuForm';
 import CustomerSuccessCenter from '../customerSuccess/CustomerSuccessCenter';
+import { consumeHelpDeepLink, type HelpDeepLink } from '../../shared/moduleHelp/moduleHelpContent';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
 import { Project, ContactType, TransactionType, AccountType, ProjectAgreementStatus, AgreementSettings, InvoiceSettings, ProfitLossSubType } from '../../types';
 import SettingsLedgerModal from './SettingsLedgerModal';
 import DatabaseAnalyzer from './DatabaseAnalyzer';
 import UpdateCheck from './UpdateCheck';
+import AboutSection from './AboutSection';
+import { useFeatures } from '../../hooks/useFeatures';
+import { navigateToSettingsHome } from '../../utils/appNavigation';
 import { CompanyManagementSection } from '../company/CompanyManagementSection';
 import DbHealthPanel from '../diagnostics/DbHealthPanel';
 import ManualJournalEntrySection from './ManualJournalEntrySection';
@@ -114,6 +118,7 @@ const SettingsPage: React.FC = () => {
     const companyCtx = useCompanyOptional();
     const spellCtx = useSpellCheckerOptional();
     const { theme, setTheme } = useTheme();
+    const { features, isLoading: featuresLoading } = useFeatures();
 
     // Detect Mobile
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -125,12 +130,18 @@ const SettingsPage: React.FC = () => {
     }, []);
 
     const [activeCategory, setActiveCategory] = useState('preferences');
+    const [helpDeepLink, setHelpDeepLink] = useState<HelpDeepLink | null>(null);
 
     useEffect(() => {
         const pending = sessionStorage.getItem('openSettingsCategory');
         if (pending) {
             sessionStorage.removeItem('openSettingsCategory');
             setActiveCategory(pending);
+        }
+        const articleLink = consumeHelpDeepLink();
+        if (articleLink) {
+            setHelpDeepLink(articleLink);
+            setActiveCategory('help');
         }
     }, []);
 
@@ -155,6 +166,14 @@ const SettingsPage: React.FC = () => {
         window.addEventListener('open-backup-restore-section', handleOpenBackup);
         return () => window.removeEventListener('open-backup-restore-section', handleOpenBackup);
     }, []);
+
+    useEffect(() => {
+        if (featuresLoading) return;
+        if (activeCategory === 'application-update' && !features.applicationUpdates) {
+            setActiveCategory('preferences');
+            navigateToSettingsHome();
+        }
+    }, [activeCategory, features.applicationUpdates, featuresLoading]);
 
     // Close dropdown and reset filter when navigating away from accounts view
     useEffect(() => {
@@ -258,6 +277,7 @@ const SettingsPage: React.FC = () => {
                   : []),
                 { id: 'backup', label: 'Backup Center', icon: ICONS.download },
                 { id: 'data', label: 'Data Management', icon: ICONS.trash },
+                { id: 'about', label: 'About', icon: ICONS.info },
                 { id: 'help', label: 'Customer Success', icon: ICONS.fileText },
             ]
         },
@@ -1029,9 +1049,11 @@ const SettingsPage: React.FC = () => {
 
     const renderDataManagement = () => (
         <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                <UpdateCheck />
-            </div>
+            {features.applicationUpdates && (
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                    <UpdateCheck />
+                </div>
+            )}
 
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                     <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -1330,9 +1352,19 @@ const SettingsPage: React.FC = () => {
                             </div>
                         )}
                         {activeCategory === 'data' && renderDataManagement()}
+                        {activeCategory === 'application-update' && features.applicationUpdates && (
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                <UpdateCheck />
+                            </div>
+                        )}
+                        {activeCategory === 'about' && <AboutSection />}
                         {activeCategory === 'help' && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-4 sm:p-6">
-                                <CustomerSuccessCenter onOpenSettingsTab={setActiveCategory} />
+                                <CustomerSuccessCenter
+                                    onOpenSettingsTab={setActiveCategory}
+                                    initialSection={helpDeepLink?.section}
+                                    initialArticleId={helpDeepLink?.articleId ?? null}
+                                />
                             </div>
                         )}
                         {activeCategory === 'contacts' && (

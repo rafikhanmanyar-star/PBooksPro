@@ -53,7 +53,7 @@ type ProjectView =
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
     | 'PM Cost Report' | 'Contract Report'
     | 'Budget vs Actual' | 'Marketing Activity' | 'Custom Report Builder'
-    | 'Project Expense Reports';
+    | 'Petty cash report';
 
 /** Project selling — operational tabs (persistent mount) */
 const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Collections Analytics', 'Assets', 'Sales Returns'];
@@ -70,7 +70,7 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
 ];
 
 /** Project construction */
-const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'Expense Analytics', 'Expense Vouchers'];
+const CONSTRUCTION_OPERATIONAL_VIEWS: ProjectView[] = ['Expense Analytics', 'Contracts', 'Bills', 'Expense Vouchers'];
 
 const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -82,7 +82,7 @@ const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Owner Ledger',
     'Income by Category',
     'Expense by Category',
-    'Project Expense Reports',
+    'Petty cash report',
 ];
 
 const CONSTRUCTION_PERSISTENT_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'Expense Vouchers', 'PM Payouts'];
@@ -123,7 +123,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Contracts', 'Bills', 'Expense Analytics', 'Expense Vouchers', 'PM Payouts',
         'Project Summary', 'Budget vs Actual', 'Contract Report',
         'PM Cost Report', 'Material Report', 'Vendor Ledger',
-        'Owner Ledger', 'Income by Category', 'Expense by Category', 'Project Expense Reports',
+        'Owner Ledger', 'Income by Category', 'Expense by Category', 'Petty cash report',
     ];
 
     useEffect(() => {
@@ -192,7 +192,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Budget vs Actual': return <ProjectBudgetReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
             case 'Custom Report Builder': return <CustomReportBuilderPage />;
-            case 'Project Expense Reports': return <ProjectExpenseVoucherReportsPage />;
+            case 'Petty cash report': return <ProjectExpenseVoucherReportsPage />;
             default: return null;
         }
     };
@@ -388,10 +388,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             </div>
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project construction navigation" data-tour="project-subnav">
                 <div className="space-y-0.5">
+                    <ModuleNavItem view="Expense Analytics" label="Expense Analytics" collapsed={subCollapsed} />
                     <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} />
                     <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} dataTour="project-bills" />
-                    <ModuleNavItem view="Expense Analytics" label="Expense Analytics" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Expense Vouchers" label="Project Expenses" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Expense Vouchers" label="Petty Cash" collapsed={subCollapsed} />
                 </div>
 
                 <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
@@ -439,7 +439,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     ];
 
     const allConstructionMobileOptions: { value: ProjectView; label: string; group: string }[] = [
-        ...CONSTRUCTION_OPERATIONAL_VIEWS.map((v) => ({ value: v, label: v, group: 'Operations' })),
+        ...CONSTRUCTION_OPERATIONAL_VIEWS.map((v) => ({ value: v, label: v === 'Expense Vouchers' ? 'Petty Cash' : v, group: 'Operations' })),
         { value: 'PM Payouts', label: 'PM Fee Log', group: 'Payouts' },
         ...CONSTRUCTION_OTHER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports' })),
     ];

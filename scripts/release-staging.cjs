@@ -1,6 +1,7 @@
 /**
- * Release staging: commit + push to origin/staging, bump version, build installers,
- * publish GitHub prerelease, push tag.
+ * Release staging:
+ *   1. Commit + push source to origin/staging
+ *   2. Bump version, build installers, publish GitHub prerelease, push tag
  *
  * Usage: npm run release:staging
  */
@@ -10,7 +11,7 @@ const {
   isGitRepo,
   commitPendingChanges,
   requireEnvFile,
-  checkoutBranch,
+  checkoutBranchPreservingChanges,
 } = require('./git-release-utils.cjs');
 
 console.log('');
@@ -28,7 +29,9 @@ requireEnvFile('.env.staging');
 
 run('git fetch origin');
 
-checkoutBranch('staging');
+console.log('[release:staging] Step 1/2 — Commit and push source to origin/staging…');
+
+checkoutBranchPreservingChanges('staging');
 
 if (!tryRun('git pull --ff-only origin staging')) {
   console.error(
@@ -44,7 +47,7 @@ if (commitPendingChanges('Pre-release staging commit')) {
 console.log('[release:staging] Pushing source to origin/staging…');
 run('git push origin staging');
 
-console.log('[release:staging] Building, bumping version, publishing GitHub prerelease (staging channel)…');
+console.log('[release:staging] Step 2/2 — Build, bump version, publish GitHub prerelease (staging channel)…');
 run('npm run deploy:staging');
 
 console.log('');
