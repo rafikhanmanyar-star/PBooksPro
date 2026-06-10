@@ -5,17 +5,15 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
   enableSpellCheck?: boolean;
 }
 
-const Textarea: React.FC<TextareaProps> = ({ label, id, name, enableSpellCheck = true, ...props }) => {
-  // Mobile: py-3 and text-base to prevent zoom and increase touch area
-  // Desktop: py-2 and text-sm for compactness
-  const finalClassName = `block w-full px-3 py-3 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-base sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors`;
+const fieldClass =
+  'block w-full px-ds-md py-3 sm:py-2 border rounded-ds-md shadow-ds-card placeholder:text-app-muted/80 bg-app-input text-app-text border-app-input-border focus:outline-none text-base sm:text-ds-body disabled:opacity-60 disabled:cursor-not-allowed focus:ring-2 focus:ring-ds-primary/35 focus:border-ds-primary transition-colors';
 
-  // Generate an id if not provided (for accessibility)
+const Textarea: React.FC<TextareaProps> = ({ label, id, name, enableSpellCheck = true, className, ...props }) => {
   const textareaId = id || `textarea-${name || label.toLowerCase().replace(/\s+/g, '-')}`;
 
   return (
     <div>
-      <label htmlFor={textareaId} className="block text-sm font-medium text-gray-700 mb-1">
+      <label htmlFor={textareaId} className="block text-ds-body font-medium text-app-text mb-ds-sm">
         {label}
       </label>
       <textarea
@@ -23,9 +21,9 @@ const Textarea: React.FC<TextareaProps> = ({ label, id, name, enableSpellCheck =
         id={textareaId}
         name={name || textareaId}
         rows={3}
-        className={finalClassName}
-        autoComplete={props.autoComplete || "off"}
-        autoCorrect={enableSpellCheck ? "on" : "off"}
+        className={className ? `${fieldClass} ${className}` : fieldClass}
+        autoComplete={props.autoComplete || 'off'}
+        autoCorrect={enableSpellCheck ? 'on' : 'off'}
         spellCheck={enableSpellCheck}
       />
     </div>

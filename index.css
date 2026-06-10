@@ -479,11 +479,14 @@ h5, h6 { font-size: var(--text-small-size); font-weight: var(--font-weight-semib
 }
 
 /* ─── Dark mode: map common Tailwind utility patterns (ERP-wide) ─── */
-[data-theme="dark"] .bg-white {
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .bg-white\/90,
+[data-theme="dark"] .bg-white\/80 {
   background-color: var(--modal-bg) !important;
 }
 
-[data-theme="dark"] .bg-slate-50 {
+[data-theme="dark"] .bg-slate-50,
+[data-theme="dark"] .bg-slate-50\/90 {
   background-color: var(--card-bg) !important;
 }
 
@@ -491,8 +494,26 @@ h5, h6 { font-size: var(--text-small-size); font-weight: var(--font-weight-semib
   background-color: var(--card-bg) !important;
 }
 
-[data-theme="dark"] .bg-slate-100 {
+[data-theme="dark"] .bg-slate-100,
+[data-theme="dark"] .bg-gray-100 {
   background-color: var(--table-header-bg) !important;
+}
+
+[data-theme="dark"] .bg-slate-200,
+[data-theme="dark"] .bg-slate-200\/90,
+[data-theme="dark"] .bg-slate-200\/95,
+[data-theme="dark"] .bg-gray-200 {
+  background-color: var(--layer-surface-elevated) !important;
+}
+
+[data-theme="dark"] .bg-green-50,
+[data-theme="dark"] .hover\:bg-green-50:hover {
+  background-color: var(--highlight-bg) !important;
+}
+
+[data-theme="dark"] .bg-green-100,
+[data-theme="dark"] .hover\:bg-green-100:hover {
+  background-color: var(--highlight-bg-strong) !important;
 }
 
 [data-theme="dark"] .border-slate-100,
@@ -501,10 +522,17 @@ h5, h6 { font-size: var(--text-small-size); font-weight: var(--font-weight-semib
 }
 
 [data-theme="dark"] .border-slate-200,
+[data-theme="dark"] .border-slate-200\/80,
 [data-theme="dark"] .border-gray-200,
 [data-theme="dark"] .border-slate-300,
+[data-theme="dark"] .border-slate-300\/30,
+[data-theme="dark"] .border-slate-300\/50,
 [data-theme="dark"] .border-gray-300 {
   border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] .text-black {
+  color: var(--text-primary) !important;
 }
 
 [data-theme="dark"] .text-slate-900,
@@ -533,16 +561,52 @@ h5, h6 { font-size: var(--text-small-size); font-weight: var(--font-weight-semib
 }
 
 [data-theme="dark"] .text-slate-400,
-[data-theme="dark"] .text-gray-400 {
+[data-theme="dark"] .text-gray-400,
+[data-theme="dark"] .placeholder-gray-400::placeholder {
   color: var(--text-placeholder) !important;
 }
 
-[data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+[data-theme="dark"] .hover\:bg-gray-50:hover,
+[data-theme="dark"] .hover\:bg-slate-50:hover {
+  background-color: var(--table-row-hover) !important;
+}
+
+[data-theme="dark"] .hover\:bg-gray-100:hover,
+[data-theme="dark"] .hover\:bg-slate-100:hover {
+  background-color: var(--table-row-hover) !important;
+}
+
+[data-theme="dark"] .hover\:bg-gray-200:hover,
+[data-theme="dark"] .hover\:bg-slate-200:hover {
+  background-color: var(--layer-surface-elevated) !important;
+}
+
+[data-theme="dark"] .hover\:text-slate-800:hover,
+[data-theme="dark"] .hover\:text-slate-900:hover,
+[data-theme="dark"] .hover\:text-gray-800:hover {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .disabled\:bg-gray-100:disabled {
+  background-color: var(--input-bg) !important;
+  opacity: 0.6;
+}
+
+[data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+[data-theme="dark"] .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
   border-color: var(--border-color);
 }
 
-[data-theme="dark"] .ring-slate-200 {
+[data-theme="dark"] .ring-slate-200,
+[data-theme="dark"] .ring-gray-200,
+[data-theme="dark"] .ring-green-200 {
   --tw-ring-color: var(--border-color);
+}
+
+[data-theme="dark"] .shadow-sm,
+[data-theme="dark"] .shadow-xl,
+[data-theme="dark"] .shadow-2xl {
+  --tw-shadow-color: rgb(0 0 0 / 0.35);
 }
 
 @layer base {

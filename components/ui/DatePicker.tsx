@@ -190,13 +190,13 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
         setIsOpen(false);
     };
 
-    const inputClassName = `block w-full border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors ${
-        compact ? 'py-1 px-2 text-xs' : 'px-3 py-3 sm:py-2 text-base sm:text-sm'
+    const inputClassName = `block w-full border rounded-ds-md shadow-ds-card placeholder:text-app-muted/80 bg-app-input text-app-text border-app-input-border focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed focus:ring-2 focus:ring-ds-primary/35 focus:border-ds-primary transition-colors ${
+        compact ? 'py-1 px-2 text-ds-small' : 'px-ds-md py-3 sm:py-2 text-base sm:text-ds-body'
     } ${className || ''}`;
 
     return (
         <div className="relative" ref={wrapperRef}>
-            {label && <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>}
+            {label && <label htmlFor={inputId} className="block text-ds-body font-medium text-app-text mb-ds-sm">{label}</label>}
             <div className="relative">
                 <input
                     ref={inputRef}
@@ -228,7 +228,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
                     autoComplete="off"
                 />
                 <div
-                    className={`absolute top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer ${compact ? 'right-2' : 'right-3'}`}
+                    className={`absolute top-1/2 -translate-y-1/2 text-app-muted cursor-pointer ${compact ? 'right-2' : 'right-3'}`}
                     onClick={() => !disabled && setIsOpen(!isOpen)}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
@@ -238,7 +238,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
             {isOpen && !disabled && createPortal(
                 <div
                     ref={calendarRef}
-                    className="fixed z-[9999] w-72 bg-white rounded-lg shadow-xl border border-gray-200 p-4 animate-fade-in-fast"
+                    className="fixed z-[9999] w-72 bg-app-modal rounded-ds-lg shadow-ds-modal border border-app-border p-4 animate-fade-in-fast text-app-text"
                     style={{
                         top: position.top,
                         left: position.left,
@@ -255,18 +255,18 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
                     <div className="fixed inset-0 bg-black/20 z-[-1] sm:hidden" onClick={() => setIsOpen(false)}></div>
 
                     <div className="flex justify-between items-center mb-4 relative z-10">
-                        <button type="button" onClick={() => changeMonth(-1)} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-600 transition-colors">
+                        <button type="button" onClick={() => changeMonth(-1)} className="p-1.5 rounded-full hover:bg-app-table-hover text-app-muted transition-colors">
                             <div className="w-5 h-5">{ICONS.chevronLeft}</div>
                         </button>
-                        <h3 className="text-base font-semibold text-gray-800">
+                        <h3 className="text-base font-semibold text-app-text">
                             {isValidDate(currentMonth) ? currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' }) : 'Invalid Date'}
                         </h3>
-                        <button type="button" onClick={() => changeMonth(1)} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-600 transition-colors">
+                        <button type="button" onClick={() => changeMonth(1)} className="p-1.5 rounded-full hover:bg-app-table-hover text-app-muted transition-colors">
                             <div className="w-5 h-5">{ICONS.chevronRight}</div>
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-gray-500 mb-2 relative z-10">
+                    <div className="grid grid-cols-7 gap-1 text-center text-ds-small font-semibold text-app-muted mb-2 relative z-10">
                         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => <div key={i}>{day}</div>)}
                     </div>
 
@@ -286,9 +286,9 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
                                 date.getFullYear() === today.getFullYear();
 
                             let classes = 'w-9 h-9 flex items-center justify-center rounded-full cursor-pointer transition-colors text-sm ';
-                            if (isSelected) classes += 'bg-green-600 text-white font-bold';
-                            else if (isToday) classes += 'bg-gray-200 text-gray-800';
-                            else classes += 'hover:bg-gray-100 text-gray-700';
+                            if (isSelected) classes += 'bg-ds-primary text-ds-on-primary font-bold';
+                            else if (isToday) classes += 'bg-app-table-hover text-app-text';
+                            else classes += 'hover:bg-app-table-hover text-app-text';
 
                             return (
                                 <button

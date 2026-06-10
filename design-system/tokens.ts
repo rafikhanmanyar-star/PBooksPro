@@ -3,6 +3,35 @@
  * Authoritative values live in styles/design-tokens.css as CSS variables.
  */
 
+/** Semantic theme tokens — use in components, charts, and inline styles */
+export const themeTokens = {
+  background: 'var(--bg-primary)',
+  backgroundSecondary: 'var(--surface-secondary)',
+  cardBackground: 'var(--card-bg)',
+  modalBackground: 'var(--modal-bg)',
+  popoverBackground: 'var(--popover-bg)',
+  textPrimary: 'var(--text-primary)',
+  textSecondary: 'var(--text-secondary)',
+  textMuted: 'var(--text-muted)',
+  textInverse: 'var(--text-inverse)',
+  border: 'var(--border-color)',
+  borderHover: 'var(--border-hover)',
+  borderFocus: 'var(--border-focus)',
+  primary: 'var(--color-primary)',
+  primaryHover: 'var(--color-primary-hover)',
+  success: 'var(--color-success)',
+  warning: 'var(--color-warning)',
+  danger: 'var(--color-danger)',
+  tableHeader: 'var(--table-header-bg)',
+  tableRow: 'var(--table-row-bg)',
+  tableRowHover: 'var(--table-row-hover)',
+  tableBorder: 'var(--table-border)',
+  inputBackground: 'var(--input-bg)',
+  inputBorder: 'var(--input-border)',
+  inputText: 'var(--input-text)',
+  inputPlaceholder: 'var(--text-placeholder)',
+} as const;
+
 export const cssVar = {
   color: {
     primary: 'var(--color-primary)',
