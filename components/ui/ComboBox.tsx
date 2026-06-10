@@ -422,7 +422,8 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
     }
   };
 
-  const focusClasses = 'focus:ring-2 focus:ring-green-500/50 focus:border-green-500';
+  const fieldClass =
+    'block w-full border rounded-ds-md shadow-ds-card placeholder:text-app-muted/80 bg-app-input text-app-text border-app-input-border focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed focus:ring-2 focus:ring-ds-primary/35 focus:border-ds-primary transition-colors';
 
   const inputElement = (
     <input
@@ -430,7 +431,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
       id={inputId}
       name={name || inputId}
       type="text"
-      className={`block w-full border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed border-gray-300 ${focusClasses} ${compact ? 'py-1 px-2 text-xs' : 'px-3 py-3 sm:py-2 text-base sm:text-sm'
+      className={`${fieldClass} ${compact ? 'py-1 px-2 text-ds-small' : 'px-ds-md py-3 sm:py-2 text-base sm:text-ds-body'
         } ${!label && !compact ? 'h-8' : ''}`}
       value={query}
       onMouseDown={handleInputMouseDown}
@@ -458,7 +459,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
       {label && (
         horizontal ? (
           <div className="flex items-center gap-2">
-            <label htmlFor={inputId} className="block text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 w-24">
+            <label htmlFor={inputId} className="block text-ds-small font-bold text-app-muted uppercase tracking-wider shrink-0 w-24">
               {label}
             </label>
             <div className="flex-1">
@@ -467,7 +468,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
           </div>
         ) : (
           <>
-            <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+            <label htmlFor={inputId} className="block text-ds-body font-medium text-app-text mb-ds-sm">{label}</label>
             {inputElement}
           </>
         )
@@ -476,7 +477,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
       {isOpen && !disabled && mounted && dropdownPosition && createPortal(
         <ul
           ref={dropdownRef}
-          className="fixed z-[10000] bg-white border border-gray-300 rounded-md shadow-xl max-h-60 overflow-auto"
+          className="fixed z-[10000] bg-app-modal border border-app-border rounded-ds-md shadow-ds-modal max-h-60 overflow-auto text-app-text"
           style={{
             top: `${dropdownPosition.top}px`,
             left: `${dropdownPosition.left}px`,
@@ -488,7 +489,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
             <li
               key={item.id}
               ref={(el) => { listItemRefs.current[index] = el; }}
-              className={`px-3 py-2 cursor-pointer transition-colors ${highlightedIndex === index ? 'bg-green-50 ring-inset ring-1 ring-green-200' : 'hover:bg-gray-50'}`}
+              className={`px-3 py-2 cursor-pointer transition-colors ${highlightedIndex === index ? 'bg-app-table-selected ring-inset ring-1 ring-app-border' : 'hover:bg-app-table-hover'}`}
               onClick={() => handleSelect(item)}
               onMouseEnter={() => setHighlightedIndex(index)}
             >
@@ -498,7 +499,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
           {shouldShowAddOption && (
             <li
               ref={(el) => { listItemRefs.current[filteredItems.length] = el; }}
-              className={`px-3 py-2 cursor-pointer flex items-center gap-2 text-green-600 font-medium border-t border-gray-200 transition-colors ${highlightedIndex === filteredItems.length ? 'bg-green-100 ring-inset ring-1 ring-green-300' : 'hover:bg-green-50'}`}
+              className={`px-3 py-2 cursor-pointer flex items-center gap-2 text-ds-success font-medium border-t border-app-border transition-colors ${highlightedIndex === filteredItems.length ? 'bg-app-table-selected ring-inset ring-1 ring-app-border' : 'hover:bg-app-table-hover'}`}
               onMouseDown={(e) => {
                 e.preventDefault(); // Prevent input blur
                 handleAddNew();

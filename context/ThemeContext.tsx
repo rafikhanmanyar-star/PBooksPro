@@ -62,6 +62,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [theme, setTheme]);
 
   useEffect(() => {
+    applyThemeToDocument(theme);
+  }, [theme]);
+
+  useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== THEME_STORAGE_KEY || !e.newValue) return;
       if (e.newValue === 'light' || e.newValue === 'dark') {
