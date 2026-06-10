@@ -26,6 +26,10 @@ const TABS: { id: ReportTab; label: string }[] = [
   { id: 'trend', label: 'Expense Trend' },
 ];
 
+function sumAmount(rows: { amount: number }[]): number {
+  return rows.reduce((n, r) => n + r.amount, 0);
+}
+
 const ProjectExpenseVoucherReportsPage: React.FC = () => {
   const state = useProjectReportAppState();
   const { canReadPeV } = usePermissions();
@@ -78,17 +82,28 @@ const ProjectExpenseVoucherReportsPage: React.FC = () => {
     load();
   }, [load]);
 
+  const totalAmount = useMemo(() => {
+    if (tab === 'register') return sumAmount(register);
+    if (tab === 'trend') return sumAmount(trend);
+    return sumAmount(aggregates);
+  }, [tab, register, trend, aggregates]);
+
   if (!canReadPeV) {
     return (
       <Card className="p-6">
-        <p className="text-app-muted">You do not have permission to view PEV reports.</p>
+        <p className="text-app-muted">You do not have permission to view project expense reports.</p>
       </Card>
     );
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Project Expense Voucher Reports</h2>
+      <div>
+        <h2 className="text-xl font-semibold">Project Expense Reports</h2>
+        <p className="text-sm text-app-muted mt-1">
+          Posted site expenses from Project Expenses (Settings chart-of-accounts categories, bank/cash payments).
+        </p>
+      </div>
 
       <ReportToolbar
         dateRange={dateRange}
@@ -106,6 +121,7 @@ const ProjectExpenseVoucherReportsPage: React.FC = () => {
             selectedId={projectId}
             onSelect={(item) => setProjectId(item?.id || 'all')}
             placeholder="All projects"
+            allowAddNew={false}
           />
         </div>
         {TABS.map((t) => (
@@ -122,45 +138,69 @@ const ProjectExpenseVoucherReportsPage: React.FC = () => {
         ))}
       </div>
 
+      {!loading && (register.length > 0 || aggregates.length > 0 || trend.length > 0) && (
+        <p className="text-sm text-app-muted">
+          Total in period:{' '}
+          <span className="font-semibold text-app-text tabular-nums">
+            {CURRENCY} {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </p>
+      )}
+
       <Card className="p-4">
         {loading ? (
           <p className="text-center text-app-muted py-8">Loading…</p>
         ) : tab === 'register' ? (
           register.length === 0 ? (
-            <p className="text-center text-app-muted py-8">No vouchers in range.</p>
+            <p className="text-center text-app-muted py-8">No project expenses in this date range.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-app-muted">
-                  <th className="py-2">Voucher #</th>
-                  <th className="py-2">Date</th>
-                  <th className="py-2">Project</th>
-                  <th className="py-2">Category</th>
-                  <th className="py-2">Vendor</th>
-                  <th className="py-2 text-right">Amount</th>
-                  <th className="py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {register.map((r) => (
-                  <tr key={r.id} className="border-b border-app-border/50">
-                    <td className="py-2">{r.voucherNumber}</td>
-                    <td className="py-2">{r.voucherDate}</td>
-                    <td className="py-2">{r.projectName}</td>
-                    <td className="py-2">{r.categoryName}</td>
-                    <td className="py-2">{r.vendorName ?? '—'}</td>
-                    <td className="py-2 text-right">
-                      {CURRENCY} {r.amount.toLocaleString()}
-                    </td>
-                    <td className="py-2 capitalize">{r.status}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[900px]">
+                <thead>
+                  <tr className="border-b text-left text-app-muted text-xs uppercase tracking-wide">
+                    <th className="py-2 pr-2">Ref</th>
+                    <th className="py-2 pr-2">Date</th>
+                    <th className="py-2 pr-2">Project</th>
+                    <th className="py-2 pr-2">Category</th>
+                    <th className="py-2 pr-2">Vendor</th>
+                    <th className="py-2 pr-2">Bank / Cash</th>
+                    <th className="py-2 pr-2 text-right">Amount</th>
+                    <th className="py-2">Note</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {register.map((r) => (
+                    <tr key={r.id} className="border-b border-app-border/50">
+                      <td className="py-2 pr-2 whitespace-nowrap text-app-muted">{r.voucherNumber}</td>
+                      <td className="py-2 pr-2 whitespace-nowrap">{r.voucherDate}</td>
+                      <td className="py-2 pr-2">{r.projectName}</td>
+                      <td className="py-2 pr-2">{r.categoryName}</td>
+                      <td className="py-2 pr-2">{r.vendorName ?? '—'}</td>
+                      <td className="py-2 pr-2">{r.bankAccountName}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">
+                        {CURRENCY} {r.amount.toLocaleString()}
+                      </td>
+                      <td className="py-2 text-app-muted">{r.description || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t font-medium">
+                    <td colSpan={6} className="py-2 pr-2 text-right">
+                      Total ({register.length})
+                    </td>
+                    <td className="py-2 pr-2 text-right tabular-nums">
+                      {CURRENCY} {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           )
         ) : tab === 'trend' ? (
           trend.length === 0 ? (
-            <p className="text-center text-app-muted py-8">No posted expenses in range.</p>
+            <p className="text-center text-app-muted py-8">No project expenses in this date range.</p>
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={trend}>
@@ -173,11 +213,11 @@ const ProjectExpenseVoucherReportsPage: React.FC = () => {
             </ResponsiveContainer>
           )
         ) : aggregates.length === 0 ? (
-          <p className="text-center text-app-muted py-8">No data in range.</p>
+          <p className="text-center text-app-muted py-8">No project expenses in this date range.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-app-muted">
+              <tr className="border-b text-left text-app-muted text-xs uppercase tracking-wide">
                 <th className="py-2">Name</th>
                 <th className="py-2 text-right">Count</th>
                 <th className="py-2 text-right">Amount</th>
@@ -187,13 +227,24 @@ const ProjectExpenseVoucherReportsPage: React.FC = () => {
               {aggregates.map((a) => (
                 <tr key={a.key} className="border-b border-app-border/50">
                   <td className="py-2">{a.label}</td>
-                  <td className="py-2 text-right">{a.count}</td>
-                  <td className="py-2 text-right">
+                  <td className="py-2 text-right tabular-nums">{a.count}</td>
+                  <td className="py-2 text-right tabular-nums">
                     {CURRENCY} {a.amount.toLocaleString()}
                   </td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t font-medium">
+                <td className="py-2">Total</td>
+                <td className="py-2 text-right tabular-nums">
+                  {aggregates.reduce((n, a) => n + a.count, 0)}
+                </td>
+                <td className="py-2 text-right tabular-nums">
+                  {CURRENCY} {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         )}
       </Card>

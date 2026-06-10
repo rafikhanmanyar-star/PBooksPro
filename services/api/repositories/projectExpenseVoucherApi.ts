@@ -101,8 +101,8 @@ export type PeVRegisterRow = {
   projectName: string;
   categoryName: string;
   vendorName: string | null;
+  bankAccountName: string;
   amount: number;
-  status: string;
   description: string | null;
 };
 

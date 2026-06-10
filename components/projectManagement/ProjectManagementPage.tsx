@@ -53,7 +53,7 @@ type ProjectView =
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
     | 'PM Cost Report' | 'Contract Report'
     | 'Budget vs Actual' | 'Marketing Activity' | 'Custom Report Builder'
-    | 'PEV Reports';
+    | 'Project Expense Reports';
 
 /** Project selling — operational tabs (persistent mount) */
 const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Collections Analytics', 'Assets', 'Sales Returns'];
@@ -82,7 +82,7 @@ const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Owner Ledger',
     'Income by Category',
     'Expense by Category',
-    'PEV Reports',
+    'Project Expense Reports',
 ];
 
 const CONSTRUCTION_PERSISTENT_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'Expense Vouchers', 'PM Payouts'];
@@ -123,7 +123,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Contracts', 'Bills', 'Expense Analytics', 'Expense Vouchers', 'PM Payouts',
         'Project Summary', 'Budget vs Actual', 'Contract Report',
         'PM Cost Report', 'Material Report', 'Vendor Ledger',
-        'Owner Ledger', 'Income by Category', 'Expense by Category', 'PEV Reports',
+        'Owner Ledger', 'Income by Category', 'Expense by Category', 'Project Expense Reports',
     ];
 
     useEffect(() => {
@@ -192,7 +192,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Budget vs Actual': return <ProjectBudgetReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
             case 'Custom Report Builder': return <CustomReportBuilderPage />;
-            case 'PEV Reports': return <ProjectExpenseVoucherReportsPage />;
+            case 'Project Expense Reports': return <ProjectExpenseVoucherReportsPage />;
             default: return null;
         }
     };

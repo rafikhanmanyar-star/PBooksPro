@@ -1,13 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ProjectExpenseCategoryApiRepository,
-  ProjectExpenseVoucherApiRepository,
-} from '../../services/api/repositories/projectExpenseVoucherApi';
-import type { ProjectExpenseCategory, ProjectExpenseVoucher } from '../../types';
-import { AccountType } from '../../types';
+import { ProjectExpenseVoucherApiRepository } from '../../services/api/repositories/projectExpenseVoucherApi';
+import type { ProjectExpenseVoucher } from '../../types';
+import { AccountType, TransactionType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
@@ -16,10 +12,9 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { formatApiErrorMessage } from '../../services/api/client';
-import ProjectExpenseCategoriesModal from './ProjectExpenseCategoriesModal';
+import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 
 const pevApi = new ProjectExpenseVoucherApiRepository();
-const peCatApi = new ProjectExpenseCategoryApiRepository();
 
 type InlineForm = {
   voucherDate: string;
@@ -47,18 +42,17 @@ interface ProjectExpenseVouchersPageProps {
 
 const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({ projectContext }) => {
   const state = useFinancialReportAppState();
-  const { projects, vendors, accounts, defaultProjectId } = state;
+  const { projects, vendors, accounts, categories, defaultProjectId } = state;
   const { showToast, showAlert } = useNotification();
   const { canReadPeV, canCreatePeV } = usePermissions();
+  const entityFormModal = useEntityFormModal();
 
   const [vouchers, setVouchers] = useState<ProjectExpenseVoucher[]>([]);
-  const [categories, setCategories] = useState<ProjectExpenseCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [filterProjectId, setFilterProjectId] = useState<string>(
     projectContext && defaultProjectId ? defaultProjectId : 'all'
   );
-  const [showCategories, setShowCategories] = useState(false);
   const [inline, setInline] = useState<InlineForm>(() =>
     emptyInline(projectContext ? defaultProjectId || undefined : undefined)
   );
@@ -74,21 +68,17 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
     [accounts]
   );
 
-  const glAccountsForCategories = useMemo(
+  const expenseCategories = useMemo(
     () =>
-      accounts.filter(
-        (a) =>
-          a.isActive !== false &&
-          a.name !== 'Internal Clearing' &&
-          a.type !== AccountType.BANK &&
-          a.type !== AccountType.CASH
-      ),
-    [accounts]
+      categories
+        .filter((c) => c.type === TransactionType.EXPENSE && !c.isHidden)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [categories]
   );
 
   const categoryItems = useMemo(
-    () => categories.map((c) => ({ id: c.id, name: c.name })),
-    [categories]
+    () => expenseCategories.map((c) => ({ id: c.id, name: c.name })),
+    [expenseCategories]
   );
 
   const vendorItems = useMemo(
@@ -105,14 +95,10 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
     if (!canReadPeV) return;
     setLoading(true);
     try {
-      const [vList, cList] = await Promise.all([
-        pevApi.findAll({
-          projectId: filterProjectId !== 'all' ? filterProjectId : undefined,
-        }),
-        peCatApi.findAll(true),
-      ]);
+      const vList = await pevApi.findAll({
+        projectId: filterProjectId !== 'all' ? filterProjectId : undefined,
+      });
       setVouchers(vList);
-      setCategories(cList);
     } catch (e) {
       showAlert(formatApiErrorMessage(e), 'Error');
     } finally {
@@ -201,22 +187,16 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
   }
 
   const cellInput =
-    'w-full min-w-0 border border-app-border rounded-md px-2 py-1.5 text-sm bg-app-card focus:outline-none focus:ring-1 focus:ring-primary/40';
+    'w-full min-w-0 border border-gray-300 rounded-lg px-2 py-1 text-xs bg-app-card shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500';
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold text-app-text">Pity Cash</h2>
-          <p className="text-sm text-app-muted mt-1">
-            Record site expenses paid from bank or petty cash. Saves immediately to the project and general ledger.
-          </p>
-        </div>
-        {canCreatePeV && (
-          <Button variant="secondary" onClick={() => setShowCategories(true)}>
-            Expense Categories
-          </Button>
-        )}
+      <div>
+        <h2 className="text-xl font-semibold text-app-text">Project Expenses</h2>
+        <p className="text-sm text-app-muted mt-1">
+          Record site expenses paid from bank or petty cash. Categories come from Settings → Chart of Accounts.
+          Saves immediately to the project and deducts the selected bank/cash account.
+        </p>
       </div>
 
       <Card className="p-4">
@@ -250,13 +230,14 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
             <tbody>
               {canCreatePeV && (
                 <tr className="border-b border-app-border bg-app-hover/30">
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <DatePicker
+                      compact
                       value={inline.voucherDate}
                       onChange={(d) => setInline((f) => ({ ...f, voucherDate: toLocalDateString(d) }))}
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <ComboBox
                       items={projects}
                       selectedId={inline.projectId}
@@ -266,7 +247,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       compact
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <ComboBox
                       items={vendorItems}
                       selectedId={inline.vendorId}
@@ -276,17 +257,27 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       compact
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <ComboBox
                       items={categoryItems}
                       selectedId={inline.expenseCategoryId}
                       onSelect={(item) => setInline((f) => ({ ...f, expenseCategoryId: item?.id || '' }))}
-                      placeholder="Category"
-                      allowAddNew={false}
+                      placeholder="Expense category"
+                      entityType="category"
+                      allowAddNew={canCreatePeV}
                       compact
+                      onAddNew={(_entityType, name) => {
+                        entityFormModal.openForm(
+                          'category',
+                          name,
+                          undefined,
+                          TransactionType.EXPENSE,
+                          (newId) => setInline((f) => ({ ...f, expenseCategoryId: newId }))
+                        );
+                      }}
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <input
                       type="number"
                       min={0}
@@ -297,7 +288,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       onChange={(e) => setInline((f) => ({ ...f, amount: e.target.value }))}
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <ComboBox
                       items={bankAccounts.map((a) => ({ id: a.id, name: a.name }))}
                       selectedId={inline.paymentSourceAccountId}
@@ -309,7 +300,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       compact
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <input
                       type="text"
                       className={cellInput}
@@ -318,7 +309,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       onChange={(e) => setInline((f) => ({ ...f, description: e.target.value }))}
                     />
                   </td>
-                  <td className="py-2 align-top">
+                  <td className="py-2 align-middle">
                     <Button size="sm" onClick={saveInline} disabled={saving}>
                       {saving ? '…' : 'Save'}
                     </Button>
@@ -364,21 +355,22 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
           </table>
         </div>
 
-        {categories.length === 0 && canCreatePeV && (
+        {expenseCategories.length === 0 && canCreatePeV && (
           <p className="text-sm text-amber-700 dark:text-amber-400 mt-4">
-            No expense categories yet. Open <strong>Expense Categories</strong> and map each category to a GL account
-            from your chart of accounts.
+            No expense categories yet. Type a name in the Category field to add one, or create categories in{' '}
+            <strong>Settings → Chart of Accounts</strong>.
           </p>
         )}
       </Card>
 
-      <ProjectExpenseCategoriesModal
-        isOpen={showCategories}
-        onClose={() => {
-          setShowCategories(false);
-          loadData();
-        }}
-        accounts={glAccountsForCategories}
+      <EntityFormModal
+        isOpen={entityFormModal.isFormOpen}
+        formType={entityFormModal.formType}
+        initialName={entityFormModal.initialName}
+        contactType={entityFormModal.contactType}
+        categoryType={entityFormModal.categoryType}
+        onClose={entityFormModal.closeForm}
+        onSubmit={entityFormModal.handleSubmit}
       />
     </div>
   );

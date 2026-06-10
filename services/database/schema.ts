@@ -1456,7 +1456,7 @@ CREATE TABLE IF NOT EXISTS project_expense_vouchers (
     deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (expense_category_id) REFERENCES project_expense_categories(id) ON DELETE RESTRICT,
+    FOREIGN KEY (expense_category_id) REFERENCES categories(id) ON DELETE RESTRICT,
     FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
     FOREIGN KEY (payment_source_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
     FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
