@@ -348,10 +348,10 @@ projectExpenseVoucherRouter.post('/project-expense-vouchers', requirePeVCreate, 
     return;
   }
   try {
-    const row = await withTransaction((client) =>
+    const result = await withTransaction((client) =>
       createProjectExpenseVoucher(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
     );
-    const api = rowToPeVApi(row);
+    const api = rowToPeVApi(result.row);
     emitEntityEvent(tenantId, 'created', 'project_expense_voucher', { data: api, sourceUserId: req.userId });
     sendSuccess(res, api, 201);
   } catch (e) {
