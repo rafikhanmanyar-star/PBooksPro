@@ -118,7 +118,11 @@ function pickVoucherBody(body: Record<string, unknown>, forUpdate = false) {
   const documentId =
     documentRaw != null && String(documentRaw).trim() !== '' ? String(documentRaw).trim() : null;
 
-  const voucherDate = parseDate('voucherDate', body.voucherDate ?? body.voucher_date);
+  const dateRaw = body.voucherDate ?? body.voucher_date;
+  const voucherDate =
+    dateRaw != null && String(dateRaw).trim() !== ''
+      ? parseDate('voucherDate', dateRaw)
+      : formatPgDateToYyyyMmDd(new Date());
 
   const voucherNumber =
     body.voucherNumber != null || body.voucher_number != null
@@ -246,12 +250,36 @@ export async function getProjectExpenseVoucherById(
   return r.rows[0] ?? null;
 }
 
+async function postJournalForVoucherRow(
+  client: pg.PoolClient,
+  tenantId: string,
+  row: ProjectExpenseVoucherRow,
+  actorUserId: string | null
+): Promise<string> {
+  const cat = await assertCategoryActive(client, tenantId, row.expense_category_id);
+  const postedRow: ProjectExpenseVoucherRow = {
+    ...row,
+    status: 'posted',
+    posted_by: actorUserId,
+    posted_at: new Date(),
+  };
+  const { journalEntryId } = await syncPeVJournalMirror(
+    client,
+    tenantId,
+    postedRow,
+    cat.gl_account_id,
+    actorUserId
+  );
+  if (!journalEntryId) throw new Error('Failed to post journal entry.');
+  return journalEntryId;
+}
+
 export async function createProjectExpenseVoucher(
   client: pg.PoolClient,
   tenantId: string,
   body: Record<string, unknown>,
   createdBy: string | null
-): Promise<ProjectExpenseVoucherRow> {
+): Promise<{ row: ProjectExpenseVoucherRow; journalEntryId: string }> {
   const picked = pickVoucherBody(body);
   await assertProjectExists(client, tenantId, picked.project_id);
   await assertCategoryActive(client, tenantId, picked.expense_category_id);
@@ -264,8 +292,8 @@ export async function createProjectExpenseVoucher(
     `INSERT INTO project_expense_vouchers (
        id, tenant_id, voucher_number, voucher_date, project_id, expense_category_id,
        vendor_id, payment_source_account_id, amount, description, document_id,
-       status, created_by, version, created_at, updated_at
-     ) VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, $9, $10, $11, 'draft', $12, 1, NOW(), NOW())`,
+       status, posted_at, posted_by, created_by, version, created_at, updated_at
+     ) VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, $9, $10, $11, 'posted', NOW(), $12, $12, 1, NOW(), NOW())`,
     [
       id,
       tenantId,
@@ -282,8 +310,19 @@ export async function createProjectExpenseVoucher(
     ]
   );
 
-  const row = await getProjectExpenseVoucherById(client, tenantId, id);
+  let row = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!row) throw new Error('Failed to create voucher.');
+
+  const journalEntryId = await postJournalForVoucherRow(client, tenantId, row, createdBy);
+
+  await client.query(
+    `UPDATE project_expense_vouchers SET journal_entry_id = $1, updated_at = NOW()
+     WHERE tenant_id = $2 AND id = $3`,
+    [journalEntryId, tenantId, id]
+  );
+
+  row = (await getProjectExpenseVoucherById(client, tenantId, id))!;
+  if (!row) throw new Error('Failed to load voucher after posting.');
 
   await appendAuditEvent(client, {
     tenantId,
@@ -292,11 +331,11 @@ export async function createProjectExpenseVoucher(
     action: 'create',
     entityType: 'project_expense_voucher',
     entityId: id,
-    summary: `PEV ${voucherNumber} created`,
-    newValue: { voucherNumber, amount: picked.amount, projectId: picked.project_id },
+    summary: `PEV ${voucherNumber} recorded`,
+    newValue: { voucherNumber, amount: picked.amount, projectId: picked.project_id, journalEntryId },
   });
 
-  return row;
+  return { row, journalEntryId };
 }
 
 export async function updateProjectExpenseVoucher(
@@ -315,10 +354,6 @@ export async function updateProjectExpenseVoucher(
   const row = existing.rows[0];
   if (!row) return { row: null };
 
-  if (row.status !== 'draft' && row.status !== 'rejected') {
-    throw new Error('Only draft or rejected vouchers can be edited.');
-  }
-
   const expectedVersion =
     body.version != null && Number.isFinite(Number(body.version)) ? Number(body.version) : undefined;
   if (expectedVersion != null && row.version !== expectedVersion) {
@@ -334,10 +369,10 @@ export async function updateProjectExpenseVoucher(
        voucher_date = $1::date, project_id = $2, expense_category_id = $3,
        vendor_id = $4, payment_source_account_id = $5, amount = $6,
        description = $7, document_id = $8,
-       status = CASE WHEN status = 'rejected' THEN 'draft' ELSE status END,
-       rejected_at = NULL, rejected_by = NULL, rejection_reason = NULL,
+       status = 'posted', posted_at = COALESCE(posted_at, NOW()),
+       posted_by = COALESCE(posted_by, $9),
        version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $9 AND id = $10 AND deleted_at IS NULL`,
+     WHERE tenant_id = $10 AND id = $11 AND deleted_at IS NULL`,
     [
       picked.voucher_date,
       picked.project_id,
@@ -347,12 +382,23 @@ export async function updateProjectExpenseVoucher(
       picked.amount,
       picked.description,
       picked.document_id,
+      actorUserId,
       tenantId,
       id,
     ]
   );
 
-  const updated = await getProjectExpenseVoucherById(client, tenantId, id);
+  let updated = await getProjectExpenseVoucherById(client, tenantId, id);
+  if (!updated) return { row: null };
+
+  const journalEntryId = await postJournalForVoucherRow(client, tenantId, updated, actorUserId);
+  await client.query(
+    `UPDATE project_expense_vouchers SET journal_entry_id = $1, updated_at = NOW()
+     WHERE tenant_id = $2 AND id = $3`,
+    [journalEntryId, tenantId, id]
+  );
+  updated = await getProjectExpenseVoucherById(client, tenantId, id);
+
   if (updated) {
     await appendAuditEvent(client, {
       tenantId,
@@ -362,6 +408,7 @@ export async function updateProjectExpenseVoucher(
       entityType: 'project_expense_voucher',
       entityId: id,
       summary: `PEV ${updated.voucher_number} updated`,
+      newValue: { journalEntryId },
     });
   }
   return { row: updated };
@@ -528,8 +575,8 @@ export async function softDeleteProjectExpenseVoucher(
   if (expectedVersion != null && row.version !== expectedVersion) {
     return { ok: false, conflict: true };
   }
-  if (row.status === 'posted') {
-    throw new Error('Posted vouchers cannot be deleted. Reverse the journal entry first.');
+  if (row.status === 'posted' || row.journal_entry_id) {
+    await reversePeVJournalMirror(client, tenantId, id, actorUserId);
   }
 
   await client.query(

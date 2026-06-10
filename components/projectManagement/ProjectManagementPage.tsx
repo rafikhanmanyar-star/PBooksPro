@@ -391,7 +391,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} />
                     <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} dataTour="project-bills" />
                     <ModuleNavItem view="Expense Analytics" label="Expense Analytics" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Expense Vouchers" label="Expense Vouchers" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Expense Vouchers" label="Project Expenses" collapsed={subCollapsed} />
                 </div>
 
                 <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
