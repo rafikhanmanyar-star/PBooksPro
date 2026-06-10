@@ -18,6 +18,8 @@ const WIPE_TABLES = [
   'transaction_log',
   'transactions',
   'invoices',
+  'project_agreement_units',
+  'project_agreements',
   'bills',
   'budgets',
   'contracts',
@@ -67,6 +69,11 @@ export type DemoSeedIds = {
   inv001: string;
   inv002: string;
   inv003: string;
+  invProj001: string;
+  invProj002: string;
+  invProj003: string;
+  buyerImran: string;
+  paHorizon: string;
   con001: string;
   con002: string;
   con003: string;
@@ -118,6 +125,11 @@ function idsForTenant(tenantId: string): DemoSeedIds {
     inv001: `${p}-inv-001`,
     inv002: `${p}-inv-002`,
     inv003: `${p}-inv-003`,
+    invProj001: `${p}-inv-proj-001`,
+    invProj002: `${p}-inv-proj-002`,
+    invProj003: `${p}-inv-proj-003`,
+    buyerImran: `${p}-buyer-imran`,
+    paHorizon: `${p}-pa-horizon`,
     con001: `${p}-con-001`,
     con002: `${p}-con-002`,
     con003: `${p}-con-003`,
@@ -276,6 +288,7 @@ export async function seedDemoBusinessData(
     [ids.tenantAhmed, 'Ahmed Raza', 'Tenant'],
     [ids.tenantFatima, 'Fatima Noor', 'Tenant'],
     [ids.tenantHassan, 'Hassan Qureshi', 'Tenant'],
+    [ids.buyerImran, 'Imran Shah', 'Client'],
   ];
 
   for (const [id, name, type] of contacts) {
@@ -450,22 +463,22 @@ export async function seedDemoBusinessData(
 
   await client.query(
     `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, property_id, agreement_id, rental_month, building_id, version, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, 75000, 75000, 'paid', $5, $6, 'rental', $7, $8, $9, $10, 1, NOW(), NOW())
-     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, updated_at = NOW()`,
+     VALUES ($1, $2, $3, $4, 75000, 75000, 'Paid', $5, $6, 'Rental', $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
     [ids.inv001, tenantId, 'INV-RENT-001', ids.tenantAhmed, issueDate, dueDate, ids.prop101, ids.agr101, `${y}-${m}`, ids.bldSkyline]
   );
 
   await client.query(
     `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, property_id, agreement_id, rental_month, building_id, version, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, 95000, 45000, 'partial', $5, $6, 'rental', $7, $8, $9, $10, 1, NOW(), NOW())
-     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, updated_at = NOW()`,
+     VALUES ($1, $2, $3, $4, 95000, 45000, 'Partially Paid', $5, $6, 'Rental', $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
     [ids.inv002, tenantId, 'INV-RENT-002', ids.tenantFatima, issueDate, dueDate, ids.prop201, ids.agr102, `${y}-${m}`, ids.bldHarbor]
   );
 
   await client.query(
     `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, property_id, agreement_id, rental_month, building_id, version, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, 72000, 0, 'overdue', $5, $6, 'rental', $7, $8, $9, $10, 1, NOW(), NOW())
-     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, updated_at = NOW()`,
+     VALUES ($1, $2, $3, $4, 72000, 0, 'Unpaid', $5, $6, 'Rental', $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
     [
       ids.inv003,
       tenantId,
@@ -477,6 +490,87 @@ export async function seedDemoBusinessData(
       ids.agr103,
       rentalMonth(1),
       ids.bldSkyline,
+    ]
+  );
+
+  await client.query(
+    `INSERT INTO project_agreements (id, tenant_id, agreement_number, client_id, project_id, unit_ids, selling_price, issue_date, description, status, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 8500000, $7, $8, 'Active', 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET selling_price = EXCLUDED.selling_price, status = EXCLUDED.status, updated_at = NOW(), deleted_at = NULL`,
+    [
+      ids.paHorizon,
+      tenantId,
+      'PA-2024-001',
+      ids.buyerImran,
+      ids.projHorizon,
+      JSON.stringify([ids.unitH1]),
+      `${y}-02-15`,
+      'Unit A-101 — Horizon Heights Phase II',
+    ]
+  );
+
+  await client.query(
+    `INSERT INTO project_agreement_units (agreement_id, unit_id)
+     VALUES ($1, $2)
+     ON CONFLICT DO NOTHING`,
+    [ids.paHorizon, ids.unitH1]
+  );
+
+  const projInv1Date = `${y}-02-15`;
+  const projInv2Date = `${y}-04-15`;
+  const projInv3Date = `${y}-06-15`;
+
+  await client.query(
+    `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, description, project_id, unit_id, agreement_id, category_id, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 2500000, 2500000, 'Paid', $5, $5, 'Installment', $6, $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
+    [
+      ids.invProj001,
+      tenantId,
+      'P-INV-001',
+      ids.buyerImran,
+      projInv1Date,
+      'Booking installment 1/5 — Unit A-101',
+      ids.projHorizon,
+      ids.unitH1,
+      ids.paHorizon,
+      SYS_UNIT_SELL,
+    ]
+  );
+
+  await client.query(
+    `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, description, project_id, unit_id, agreement_id, category_id, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 1700000, 1000000, 'Partially Paid', $5, $5, 'Installment', $6, $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
+    [
+      ids.invProj002,
+      tenantId,
+      'P-INV-002',
+      ids.buyerImran,
+      projInv2Date,
+      'Installment 2/5 — Unit A-101',
+      ids.projHorizon,
+      ids.unitH1,
+      ids.paHorizon,
+      SYS_UNIT_SELL,
+    ]
+  );
+
+  await client.query(
+    `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, description, project_id, unit_id, agreement_id, category_id, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 1700000, 0, 'Unpaid', $5, $5, 'Installment', $6, $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
+    [
+      ids.invProj003,
+      tenantId,
+      'P-INV-003',
+      ids.buyerImran,
+      projInv3Date,
+      'Installment 3/5 — Unit A-101',
+      ids.projHorizon,
+      ids.unitH1,
+      ids.paHorizon,
+      SYS_UNIT_SELL,
     ]
   );
 
@@ -556,10 +650,11 @@ export async function seedDemoBusinessData(
   const txRows: TxRow[] = [
     [`${ids.inv001}-pay`, 'Income', 75000, issueDate, 'Rent received — Unit 101', SYS_RENT, ids.prop101, ids.tenantAhmed, ids.inv001, null, ids.bldSkyline, null],
     [`${ids.inv002}-pay`, 'Income', 45000, issueDate, 'Partial rent — Unit 201', SYS_RENT, ids.prop201, ids.tenantFatima, ids.inv002, null, ids.bldHarbor, null],
+    [`${ids.invProj001}-pay`, 'Income', 2500000, projInv1Date, 'Booking installment — Unit A-101', SYS_UNIT_SELL, null, ids.buyerImran, ids.invProj001, ids.projHorizon, null, null],
+    [`${ids.invProj002}-pay`, 'Income', 1000000, projInv2Date, 'Partial installment — Unit A-101', SYS_UNIT_SELL, null, ids.buyerImran, ids.invProj002, ids.projHorizon, null, null],
     [`${prefix}-tx-exp-1`, 'Expense', 185000, issueDate, 'Steel procurement — Horizon project', ids.catMaterials, null, null, null, ids.projHorizon, null, ids.vendorSteel],
     [`${prefix}-tx-exp-2`, 'Expense', 92000, issueDate, 'Cement delivery — Horizon project', ids.catCement, null, null, null, ids.projHorizon, null, ids.vendorCement],
     [`${prefix}-tx-exp-3`, 'Expense', 34000, issueDate, 'Electrical fittings — Riverside', ids.catElectrical, null, null, null, ids.projRiverside, null, ids.vendorElectric],
-    [`${prefix}-tx-inc-1`, 'Income', 2500000, `${y}-${m}-15`, 'Unit A-101 booking installment', SYS_UNIT_SELL, null, null, null, ids.projHorizon, null, null],
     [`${prefix}-tx-own-pay`, 'Expense', 68000, issueDate, 'Owner payout — Ali Khan (Unit 101)', SYS_PM_COST, ids.prop101, ids.ownerAli, null, null, ids.bldSkyline, null],
     [`${prefix}-tx-brok`, 'Expense', 45000, monthStart(3), 'Broker commission — Harbor lease', SYS_BROK_FEE, ids.prop201, null, null, null, ids.bldHarbor, null],
     [`${prefix}-tx-maint`, 'Expense', 25000, monthStart(1), 'Elevator maintenance — Skyline Tower', SYS_BLD_MAINT, null, null, null, null, ids.bldSkyline, null],

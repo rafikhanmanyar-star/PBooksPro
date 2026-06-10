@@ -124,7 +124,6 @@ import { handleRouteError } from './utils/apiResponse.js';
 import { startBackupScheduler } from './services/backupSchedulerService.js';
 import { startBillingScheduler } from './services/billing/billingSchedulerService.js';
 import { adminSubscriptionRouter } from './routes/adminSubscriptionRoutes.js';
-import { adminOrganizationRequestsRouter } from './routes/adminOrganizationRequestsRoutes.js';
 import { adminReferralRouter } from './routes/adminReferralRoutes.js';
 import { referralRouter } from './routes/referralRoutes.js';
 import { onboardingRouter } from './routes/onboardingRoutes.js';
@@ -354,7 +353,6 @@ app.use('/api', authMiddleware, requireActiveSubscription(), tenantBackupRouter)
 app.use('/api', authMiddleware, requireActiveSubscription(), disasterRecoveryRouter);
 
 const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', 'super_admin');
-app.use('/api', authMiddleware, requireSuperAdminForAdminPaths, adminOrganizationRequestsRouter);
 app.use('/api', authMiddleware, requireSuperAdminForAdminPaths, adminSubscriptionRouter);
 app.use('/api', authMiddleware, requireSuperAdminForAdminPaths, adminReferralRouter);
 app.use('/api', authMiddleware, requireSuperAdminForAdminPaths, adminEmailAutomationRouter);
