@@ -163,3 +163,12 @@ export const requireLedgerRole: RequestHandler = requirePermission('financial.wr
 
 /** Create/update/delete organization users (Settings → Users) */
 export const requireOrgUserAdmin: RequestHandler = requirePermission('users.manage');
+
+/** Personal transactions module — Admin / Super Admin only. */
+export const requireAdminRole: RequestHandler = (req: AuthedRequest, res, next) => {
+  if (!isAdminRole(req.role)) {
+    sendFailure(res, 403, 'FORBIDDEN', 'Administrator access required');
+    return;
+  }
+  next();
+};

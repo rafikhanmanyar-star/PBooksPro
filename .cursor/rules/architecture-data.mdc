@@ -1,0 +1,61 @@
+---
+description: Data layer architecture — PostgreSQL migrations, SQLite schema, shared engines
+globs: "{database/migrations/**,services/database/**,shared/**,services/financialEngine/**,components/reports/*Engine.ts}"
+alwaysApply: false
+---
+
+# Data Layer Architecture
+
+## PostgreSQL (API / LAN mode)
+
+- Migrations: `database/migrations/NNN_snake_case.sql` (lexicographic order)
+- Runner: `backend/src/migrate.ts` — tracks `schema_migrations`, runs on API startup
+- Pool: `backend/src/db/pool.ts` — `getPool()`, `withTransaction()`
+- All tenant tables: `tenant_id` column + index on `(tenant_id, …)`
+
+Migration rules:
+- Idempotent where possible (`IF NOT EXISTS`, `IF EXISTS`)
+- Never drop columns/tables without explicit plan and backup
+- Document staging vs production differences in migration or `doc/`
+
+## SQLite (local-only / Electron)
+
+- Schema source: `services/database/schema.ts`
+- Extracted: `electron/schema.sql` via `npm run electron:extract-schema`
+- Runtime: `electron/sqliteBridge.cjs` (better-sqlite3, WAL, multi-company via `companyManager.cjs`)
+- Browser fallback: sql.js + OPFS in `services/database/databaseService.ts`
+
+When adding SQLite tables/columns, update `schema.ts` and re-extract — keep aligned with PostgreSQL migrations.
+
+## Shared / Synced Code (source of truth → backend copy)
+
+| Edit here | Auto-generated in backend | Regenerate |
+|-----------|---------------------------|------------|
+| `shared/rbac/permissions.ts` | `backend/src/auth/permissions.ts` | `npm run build:backend` |
+| `services/financialEngine/*.ts` | `backend/src/financial/*.ts` | `scripts/ensure-shared-financial-cores.mjs` |
+| `shared/payrollLedgerCore.ts` | `backend/src/services/payrollLedgerCore.ts` | same script |
+
+**Never edit AUTO-GENERATED backend files directly.**
+
+## Report Engines
+
+Calculation logic lives on the frontend, bundled to backend:
+
+```
+components/reports/balanceSheetEngine.ts  →  backend/dist/balanceSheetEngine.mjs
+```
+
+Build runs `scripts/ensure-*-engine.mjs` before `tsc`. New report:
+1. Engine in `components/reports/`
+2. Ensure script in `scripts/`
+3. `*ReportService.ts` in `backend/src/services/`
+4. Route under `/api/reports/` with RBAC permission
+
+Custom/dynamic reports: extend `backend/src/modules/reporting/` (metadata, SQL compiler, validators).
+
+## Multi-Tenant Data Rules
+
+- Every business table has `tenant_id`
+- Services always receive `tenantId` as explicit parameter from `req.tenantId`
+- Realtime: `emitEntityEvent(tenantId, …)` scopes Socket.IO events per org
+- Demo tenants: see `constants/demoEnvironment.ts` for read-only / master-tenant rules

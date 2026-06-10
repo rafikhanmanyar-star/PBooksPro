@@ -6,6 +6,7 @@ import {
     filterProfitabilityRows,
     getProjectProfitabilityDetails,
     getProjectProfitabilitySummary,
+    portfolioCollectionTrend,
     portfolioMonthlyTrend,
 } from '../services/projectProfitability.service';
 import type { ProjectProfitabilityDetails, PortfolioProfitabilitySummary } from '../types/profitability.types';
@@ -42,6 +43,15 @@ export function usePortfolioMonthlyTrendQuery(state: AppState, endDate: string) 
     return useQuery({
         queryKey: ['project-profitability-monthly', endDate, fp],
         queryFn: () => portfolioMonthlyTrend(state, endDate, 12),
+        staleTime: 60_000,
+    });
+}
+
+export function usePortfolioCollectionTrendQuery(state: AppState, endDate: string) {
+    const fp = getPersistableStateFingerprint(state);
+    return useQuery({
+        queryKey: ['project-profitability-collection', endDate, fp],
+        queryFn: () => portfolioCollectionTrend(state, endDate, 12),
         staleTime: 60_000,
     });
 }

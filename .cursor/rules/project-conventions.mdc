@@ -15,10 +15,10 @@ alwaysApply: true
 - Path alias `@/*` is available in tsconfig; use when refactoring deep paths
 
 ## Multi-Tenant
-- All tenant-scoped data must use `tenant_id` or org context
-- Server routes use `tenantMiddleware` → `req.tenantId`, `req.userId` available
-- Use `runWithTenantContext` when executing tenant-scoped DB operations
+- All tenant-scoped data must use `tenant_id`; pass `tenantId` explicitly to services
+- `authMiddleware` sets `req.tenantId`, `req.userId` on authenticated routes
+- See `architecture-overview.mdc` for full layer and placement rules
 
 ## Environments
-- Staging and production are separate; migrations in `server/migrations/`
-- Feature flags: check `doc/` for dual-environment setup plans
+- Staging (`staging` branch, port 3001) and production (`main`, port 3000) are separate
+- Migrations in `database/migrations/`; see `commands.mdc` for release workflow

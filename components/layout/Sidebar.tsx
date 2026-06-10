@@ -19,6 +19,7 @@ import { getInMemoryUnreadCount, subscribeInMemoryChat } from '../../services/ch
 import Modal from '../ui/Modal';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useViewport } from '../../context/ViewportContext';
+import { isAdminRole } from '../../hooks/useRecordLock';
 
 interface SidebarProps {
     currentPage: Page;
@@ -190,7 +191,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     const roleLc = effectiveRole.toLowerCase();
     const isAccountsOnly = roleLc === 'accounts';
-    const isAdmin = roleLc === 'admin' || roleLc === 'super_admin';
+    const isAdmin = isAdminRole(effectiveRole);
 
     /** Show count below the user card: LAN/API when server count loaded; local-only = single session. */
     const showLoggedInUsersRow =

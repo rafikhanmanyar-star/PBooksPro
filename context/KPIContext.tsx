@@ -1,23 +1,11 @@
 
-import React, { createContext, useState, useContext, ReactNode, useCallback, useMemo } from 'react';
-import useLocalStorage from '../hooks/useLocalStorage';
+import React, { createContext, useState, useContext, ReactNode, useCallback, useMemo, useEffect } from 'react';
 import { ALL_KPIS } from '../components/dashboard/kpiDefinitions.ts';
 import { reportDefinitions, ReportDefinition } from '../components/reports/reportDefinitions';
 import { KpiDefinition, TransactionType, AccountType } from '../types';
 import { useAccounts, useCategories } from '../hooks/useSelectiveState';
 import { ICONS } from '../constants';
-
-const DEFAULT_VISIBLE_KPIS = [
-    'totalBalance', 
-    'netIncome',
-    'projectFunds',
-    'bmFunds',
-    'accountsReceivable', 
-    'accountsPayable', 
-    'outstandingLoan',
-    'occupiedUnits'
-];
-const DEFAULT_FAVORITE_REPORTS = ['rental-owner-payouts', 'project-summary'];
+import { useDashboardPreferencesStore } from '../stores/dashboardPreferencesStore';
 
 interface KPIContextType {
   isPanelOpen: boolean;
@@ -46,8 +34,33 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [activePanelTab, setActivePanelTab] = useState<'kpis' | 'reports' | 'shortcuts'>('kpis');
   const [activeDrilldownKpi, setActiveDrilldownKpi] = useState<KpiDefinition | null>(null);
 
-  const [visibleKpiIds, setVisibleKpiIds] = useLocalStorage<string[]>('kpiPanelVisibleIds_v5', DEFAULT_VISIBLE_KPIS);
-  const [favoriteReportIds, setFavoriteReportIds] = useLocalStorage<string[]>('kpiPanelFavoriteReports_v1', DEFAULT_FAVORITE_REPORTS);
+  const visibleKpiIds = useDashboardPreferencesStore((s) => s.visibleKpiPanelIds);
+  const setVisibleKpiPanelIds = useDashboardPreferencesStore((s) => s.setVisibleKpiPanelIds);
+  const favoriteReportIds = useDashboardPreferencesStore((s) => s.favoriteReportIds);
+  const setFavoriteReportIdsStore = useDashboardPreferencesStore((s) => s.setFavoriteReportIds);
+  const migrateKpiPanelFromLegacy = useDashboardPreferencesStore((s) => s.migrateKpiPanelFromLegacy);
+
+  useEffect(() => {
+    migrateKpiPanelFromLegacy();
+  }, [migrateKpiPanelFromLegacy]);
+
+  const setVisibleKpiIds = useCallback<React.Dispatch<React.SetStateAction<string[]>>>(
+    (action) => {
+      setVisibleKpiPanelIds((prev) =>
+        typeof action === 'function' ? action(prev) : action
+      );
+    },
+    [setVisibleKpiPanelIds]
+  );
+
+  const setFavoriteReportIds = useCallback<React.Dispatch<React.SetStateAction<string[]>>>(
+    (action) => {
+      setFavoriteReportIdsStore((prev) =>
+        typeof action === 'function' ? action(prev) : action
+      );
+    },
+    [setFavoriteReportIdsStore]
+  );
 
   const accounts = useAccounts();
   const categories = useCategories();
@@ -69,20 +82,18 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const allKpis = useMemo(() => {
     const dynamicKpis: KpiDefinition[] = [];
     
-    // Account Balances - Only BANK accounts (as per request for Total Balance group)
     const bankAccounts = accounts.filter(acc => acc.type === AccountType.BANK);
 
     for (const account of bankAccounts) {
         dynamicKpis.push({
             id: `account-balance-${account.id}`,
             title: account.name,
-            group: 'Bank Accounts', // Renamed from 'Account Balances' for clarity
+            group: 'Bank Accounts',
             icon: ICONS.wallet,
             getData: (appState) => appState.accounts.find(a => a.id === account.id)?.balance || 0,
         });
     }
 
-    // Category KPIs (Income & Expense) - Including Discounts logic
     for (const category of categories) {
         const isIncome = category.type === TransactionType.INCOME;
         
@@ -100,7 +111,6 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     .filter(tx => tx.categoryId === category.id)
                     .reduce((sum, tx) => sum + tx.amount, 0);
                 
-                // Inject discounts if this is a discount category
                 if (isDiscountCategory) {
                     appState.projectAgreements.forEach(pa => {
                         let discountAmt = 0;
@@ -118,8 +128,6 @@ export const KPIProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     return [...ALL_KPIS, ...dynamicKpis];
-    // getData closures receive appState at call time — only accounts/categories are needed
-    // to build the KPI *definitions*; transactions/projectAgreements are read inside getData.
   }, [accounts, categories]);
 
   const contextValue = useMemo(() => ({

@@ -37,3 +37,48 @@ jobs:
         env:
           VITE_LOCAL_ONLY: "false"
           VITE_ELECTRON_BUILD: "true"
+
+  dashboard-analytics-perf:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pbooks_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build:backend
+
+      - name: Migrate CI database
+        run: npm run migrate --prefix backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/pbooks_ci
+
+      - name: Dashboard analytics cold-path benchmarks
+        run: npm run test:perf:dashboard
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/pbooks_ci
+          RUN_INTEGRATION_TESTS: "1"
+          DASHBOARD_PERF_COLD_MS_MAX: "2000"
+          DASHBOARD_PERF_CACHED_MS_MAX: "500"

@@ -66,6 +66,7 @@ import DemoProductTour from './components/onboarding/DemoProductTour';
 import OnboardingGate from './components/onboarding/OnboardingGate';
 import TrialUpgradeBanner from './components/billing/TrialUpgradeBanner';
 import { isDemoModeActive } from './config/demoEnvironment';
+import { isAdminRole } from './hooks/useRecordLock';
 
 
 // Lazy Load Components
@@ -113,6 +114,7 @@ const PAGE_GROUPS = {
 
 const App: React.FC = () => {
   const currentPage = useStateSelector(s => s.currentPage);
+  const currentUserRole = useStateSelector(s => s.currentUser?.role);
   const dispatch = useDispatchOnly();
   const isInitialDataLoading = useInitialDataLoading();
   const { isOpen: isCustomKeyboardOpen, closeKeyboard } = useKeyboard();
@@ -134,6 +136,14 @@ const App: React.FC = () => {
     isLocalOnlyMode() || !isLanBackendApi() ? 'ready' : 'checking'
   );
   const [lanServerLost, setLanServerLost] = useState(false);
+
+  useEffect(() => {
+    if (currentPage !== 'personalTransactions') return;
+    const effectiveRole = user?.role || currentUserRole || companyCtx?.authenticatedUser?.role;
+    if (!isAdminRole(effectiveRole)) {
+      dispatch({ type: 'SET_PAGE', payload: 'dashboard' });
+    }
+  }, [currentPage, user?.role, currentUserRole, companyCtx?.authenticatedUser?.role, dispatch]);
 
   useEffect(() => {
     if (isLocalOnlyMode() || !isLanBackendApi()) return;

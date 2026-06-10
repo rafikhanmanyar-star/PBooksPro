@@ -1,0 +1,53 @@
+---
+description: PBooks Pro system architecture — layers, runtime modes, and where new code belongs
+alwaysApply: true
+---
+
+# Architecture Overview
+
+PBooks Pro is a monorepo: React/Vite frontend at repo root, Express/PostgreSQL backend in `backend/`, Electron shell in `electron/`, shared logic in `shared/`.
+
+## Layer Stack
+
+```
+Electron (electron/) → React app (root) → apiClient / SQLite IPC → Express API (backend/src/) → PostgreSQL
+```
+
+## Runtime Modes
+
+| Mode | Trigger | Data path |
+|------|---------|-----------|
+| Offline SQLite | `VITE_LOCAL_ONLY=true` | Electron → `sqliteBridge` → `services/database/` |
+| LAN/API client | `VITE_LOCAL_ONLY=false` | `apiClient` → Express :3000 (prod) / :3001 (staging) → PostgreSQL |
+| API server only | `backend/dist/index.js` | PostgreSQL + migrations on startup |
+
+Never mix ports: staging = **3001**, production = **3000** (enforced in `services/api/client.ts`).
+
+## Where to Put New Code
+
+| Concern | Location |
+|---------|----------|
+| REST endpoints | `backend/src/routes/` → `backend/src/services/` |
+| DB schema (API) | `database/migrations/NNN_name.sql` |
+| DB schema (SQLite) | `services/database/schema.ts` → `npm run electron:extract-schema` |
+| API client | `services/api/repositories/` or `services/api/*Api.ts` |
+| UI pages | `components/<domain>/` |
+| Navigation | `Page` union in `types.ts`, `PAGE_GROUPS` + lazy import in `App.tsx`, Sidebar |
+| Shared RBAC / financial cores | `shared/` or `services/financialEngine/` (synced to backend) |
+| Report engines | `components/reports/*Engine.ts` (bundled to `backend/dist/*.mjs`) |
+| Custom report builder | `backend/src/modules/reporting/` |
+| Self-contained modules | `modules/<feature>/` (hooks + UI colocated) |
+
+## Reference Features (copy these patterns)
+
+- **Dashboard metrics:** `dashboardMetricsRoutes` → `services/dashboard/` → `dashboardMetricsApi.ts` → `hooks/queries/` → `components/analytics/`
+- **Project expense vouchers:** RBAC per endpoint, service state machine, `withTransaction`, `emitEntityEvent`
+- **Custom reports:** `modules/reporting/` (metadata → SQL compiler → repository → service)
+
+## Anti-Patterns
+
+- SQL in route handlers — services own all DB access
+- Missing `tenant_id` in queries — data leakage across orgs
+- Editing AUTO-GENERATED backend files — edit source in `shared/` or `services/financialEngine/` and run `npm run build:backend`
+- Broad `useAppContext()` in new code — use `useStateSelector` or domain hooks (`context/domains/`)
+- Committing `backend/dist/`, `.env*`, or backup files

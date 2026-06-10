@@ -117,5 +117,19 @@ export interface PortfolioProfitabilitySummary {
     lossProjects: number;
     /** Sum of investor capital (net contributed) across projects */
     totalInvestorCapital: number;
+    /** Project selling summary (portfolio) */
+    totalProjectValue: number;
+    totalUnits: number;
+    soldUnits: number;
+    availableUnits: number;
+    totalReceivable: number;
+    totalCollections: number;
     rows: ProjectProfitabilityRow[];
+}
+
+export interface CollectionTrendPoint {
+    monthKey: string;
+    label: string;
+    collected: number;
+    invoiced: number;
 }

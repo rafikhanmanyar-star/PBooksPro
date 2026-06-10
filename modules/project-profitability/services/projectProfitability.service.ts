@@ -14,6 +14,7 @@ import {
 import { computeProjectProfitLossTotals } from '../../../components/reports/projectProfitLossComputation';
 import { accumulateInvestorMapForProject } from '../../../components/reports/investorEquityAccumulation';
 import type {
+    CollectionTrendPoint,
     ExpenseBreakdownBucket,
     InvestorLedgerBreakdown,
     InventoryAnalytics,
@@ -438,6 +439,12 @@ export function derivePortfolioSummaryFromRows(rows: ProjectProfitabilityRow[], 
     const adjustedProfit = totalRevenue + totalUnsoldInventoryValue - totalExpense;
     const totalInvestorCapital = rows.reduce((s, r) => s + Math.max(0, r.investorCapital), 0);
     const roiPctAggregate = totalInvestorCapital > 0.01 ? (netProfit / totalInvestorCapital) * 100 : null;
+    const totalUnits = rows.reduce((s, r) => s + r.unitsTotal, 0);
+    const soldUnits = rows.reduce((s, r) => s + r.unitsSold, 0);
+    const availableUnits = rows.reduce((s, r) => s + r.unitsRemaining, 0);
+    const totalReceivable = rows.reduce((s, r) => s + r.receivable, 0);
+    const totalCollections = rows.reduce((s, r) => s + r.cashReceived, 0);
+    const totalProjectValue = totalRevenue + totalUnsoldInventoryValue;
     return {
         asOfDate: endYmd,
         totalRevenue,
@@ -450,6 +457,12 @@ export function derivePortfolioSummaryFromRows(rows: ProjectProfitabilityRow[], 
         profitableProjects: profitable,
         lossProjects: loss,
         totalInvestorCapital,
+        totalProjectValue,
+        totalUnits,
+        soldUnits,
+        availableUnits,
+        totalReceivable,
+        totalCollections,
         rows,
     };
 }
@@ -534,6 +547,32 @@ export function filterProfitabilityRows(
         }
         return true;
     });
+}
+
+/** Monthly invoiced vs collected for project-selling portfolio. */
+export function portfolioCollectionTrend(state: AppState, endYmd: string, maxMonths = 12): CollectionTrendPoint[] {
+    const end = new Date(endYmd);
+    const out: CollectionTrendPoint[] = [];
+    for (let i = 0; i < maxMonths; i++) {
+        const d = new Date(end.getFullYear(), end.getMonth() - i, 1);
+        const start = new Date(d.getFullYear(), d.getMonth(), 1);
+        const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        const s = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
+        const e = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+        let invoiced = 0;
+        let collected = 0;
+        for (const inv of state.invoices) {
+            if (!inv.issueDate || inv.issueDate < s || inv.issueDate > e) continue;
+            if (inv.projectId) {
+                invoiced += Number(inv.amount) || 0;
+                collected += Number(inv.paidAmount) || 0;
+            }
+        }
+        const monthKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+        const label = start.toLocaleString(undefined, { month: 'short', year: 'numeric' });
+        out.push({ monthKey, label, collected, invoiced });
+    }
+    return out.reverse();
 }
 
 export function portfolioMonthlyTrend(state: AppState, endYmd: string, maxMonths = 12): MonthlyProfitPoint[] {

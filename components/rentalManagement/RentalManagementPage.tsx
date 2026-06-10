@@ -27,6 +27,9 @@ const BrokerFeeReport = lazy(() => import('../reports/BrokerFeeReport'));
 const InvoicePaymentAnalysisReport = lazy(() => import('../reports/InvoicePaymentAnalysisReport'));
 const OwnerIncomeSummaryReport = lazy(() => import('../reports/OwnerIncomeSummaryReport'));
 const RentalReceivableReport = lazy(() => import('../reports/RentalReceivableReport'));
+const RentalAnalyticsPage = lazy(() => import('../../modules/rental-analytics/RentalAnalyticsPage'));
+const CollectionsAnalyticsPage = lazy(() => import('../../modules/collections-analytics/CollectionsAnalyticsPage'));
+const ExpenseAnalyticsPage = lazy(() => import('../../modules/expense-analytics/ExpenseAnalyticsPage'));
 
 const RENTAL_LAZY_FALLBACK = (
     <div className="flex items-center justify-center h-full min-h-[200px] text-app-muted text-sm">
@@ -41,7 +44,8 @@ interface RentalManagementPageProps {
 // Define all possible view keys
 type RentalView =
     | 'Rental setup'
-    | 'Agreements' | 'Invoices' | 'Monthly Service Charges' | 'Bills' | 'Payouts'
+    | 'Analytics'
+    | 'Agreements' | 'Invoices' | 'Collections Analytics' | 'Monthly Service Charges' | 'Bills' | 'Expense Analytics' | 'Payouts'
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
     | 'Owner Rental Income' | 'Owner Rental Income Summary'
@@ -203,10 +207,13 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
 
     const OPERATIONAL_VIEWS: RentalView[] = [
         'Rental setup',
+        'Analytics',
         'Agreements',
         'Invoices',
+        'Collections Analytics',
         'Monthly Service Charges',
         'Bills',
+        'Expense Analytics',
         'Payouts',
     ];
     const isOperationalView = OPERATIONAL_VIEWS.includes(normalizedView);
@@ -240,6 +247,11 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     const renderOperationalContent = () => (
         <div className="relative h-full w-full min-h-0">
             {normalizedView === 'Rental setup' && <RentalSettingsPage embeddedInRentalModule />}
+            {normalizedView === 'Analytics' && <RentalAnalyticsPage />}
+            {normalizedView === 'Collections Analytics' && <CollectionsAnalyticsPage />}
+            {normalizedView === 'Expense Analytics' && (
+                <ExpenseAnalyticsPage defaultScope="rental" showScopeFilter={false} />
+            )}
             {PERSISTED_OPERATIONAL_VIEWS.map((view) => {
                 const keepMounted = persistedOperationalMounted[view] || normalizedView === view;
                 if (!keepMounted) return null;
@@ -353,10 +365,13 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Rental module navigation" data-tour="rental-subnav">
                 <div className="space-y-0.5">
                     <NavItem view="Rental setup" label="Rental setup" />
+                    <NavItem view="Analytics" label="Analytics" dataTour="rental-analytics" />
                     <NavItem view="Agreements" label="Agreements" dataTour="rental-agreements" />
                     <NavItem view="Invoices" label="Invoices" />
+                    <NavItem view="Collections Analytics" label="Collections" dataTour="rental-collections-analytics" />
                     <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
+                    <NavItem view="Expense Analytics" label="Expense Analytics" dataTour="rental-expense-analytics" />
                     <NavItem view="Payouts" label="Payouts" />
                 </div>
 

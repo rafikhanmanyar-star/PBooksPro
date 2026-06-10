@@ -12,7 +12,11 @@ export type ProductTourId =
   | 'reports'
   | 'demo_overview';
 
-export type TourPrepareAction = 'openKpiPanel' | 'openKpiReports' | 'openAccountingTrialBalance';
+export type TourPrepareAction =
+  | 'openKpiPanel'
+  | 'openKpiReports'
+  | 'openAccountingTrialBalance'
+  | 'openAccountingOverviewReport';
 
 export type ProductTourStep = {
   id: string;
@@ -216,10 +220,11 @@ export const PRODUCT_TOURS: Record<ProductTourId, ProductTourDefinition> = {
       },
       {
         id: 'dashboard-reports',
-        title: 'Dashboard reports',
-        body: 'Overview report tabs on the dashboard provide building funds, bank positions, and transfer statistics.',
-        selector: '[data-tour="dashboard-report-tabs"]',
-        page: 'dashboard',
+        title: 'Portfolio reports',
+        body: 'Overview, bank accounts, and account consistency reports live under Accounting in the sidebar.',
+        selector: '[data-tour="accounting-overview-report"]',
+        page: 'accounting',
+        prepare: 'openAccountingOverviewReport',
       },
     ],
   },

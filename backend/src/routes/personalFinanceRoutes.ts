@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
+import { requireAdminRole } from '../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../db/pool.js';
 import {
   createPersonalCategory,
@@ -22,6 +23,8 @@ import {
 import { emitEntityEvent } from '../core/realtime.js';
 
 export const personalFinanceRouter = Router();
+
+personalFinanceRouter.use(requireAdminRole);
 
 // --- Personal categories ---
 

@@ -14,8 +14,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import type { ProjectProfitabilityRow } from '../types/profitability.types';
-import type { MonthlyProfitPoint } from '../types/profitability.types';
+import type { CollectionTrendPoint, MonthlyProfitPoint, ProjectProfitabilityRow } from '../types/profitability.types';
 import { formatCompactMoney } from '../utils/financialFormat';
 
 const CHART_COLORS = {
@@ -177,6 +176,71 @@ export const RoiComparisonChart: React.FC<{ rows: ProjectProfitabilityRow[] }> =
                     <Tooltip content={<ChartTooltip dark={dark} />} formatter={(v: number) => [`${v.toFixed(1)}%`, 'ROI']} />
                     <Bar dataKey="roi" name="ROI %" fill={CHART_COLORS.profit} radius={[4, 4, 0, 0]} maxBarSize={40} />
                 </BarChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
+
+export const CollectionTrendChart: React.FC<{ points: CollectionTrendPoint[] }> = ({ points }) => {
+    const dark = useDarkChart();
+    if (!points.length) return <EmptyChart label="No collection activity in this period." />;
+    return (
+        <div className="h-64 w-full min-h-[256px]">
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={dark ? '#334155' : '#e2e8f0'} vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} />
+                    <YAxis tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={72} />
+                    <Tooltip content={<ChartTooltip dark={dark} />} />
+                    <Legend />
+                    <Bar dataKey="invoiced" name="Invoiced" fill={CHART_COLORS.muted} radius={[4, 4, 0, 0]} maxBarSize={32} />
+                    <Bar dataKey="collected" name="Collected" fill={CHART_COLORS.revenue} radius={[4, 4, 0, 0]} maxBarSize={32} />
+                </BarChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
+
+export const UnitStatusDonutChart: React.FC<{ rows: ProjectProfitabilityRow[] }> = ({ rows }) => {
+    const dark = useDarkChart();
+    const sold = rows.reduce((s, r) => s + r.unitsSold, 0);
+    const available = rows.reduce((s, r) => s + r.unitsRemaining, 0);
+    const data = [
+        { name: 'Sold', value: sold },
+        { name: 'Available', value: available },
+    ].filter((d) => d.value > 0);
+    if (!data.length) return <EmptyChart label="No unit inventory in view." />;
+    return (
+        <div className="h-64 w-full min-h-[256px] flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                    <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={56} outerRadius={88} paddingAngle={2}>
+                        {data.map((_, i) => (
+                            <Cell key={i} fill={CHART_COLORS.donut[i % CHART_COLORS.donut.length]} />
+                        ))}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip dark={dark} />} />
+                    <Legend verticalAlign="bottom" height={28} />
+                </PieChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
+
+export const SalesTrendChart: React.FC<{ points: MonthlyProfitPoint[] }> = ({ points }) => {
+    const dark = useDarkChart();
+    if (!points.length) return <EmptyChart label="No sales trend for this period." />;
+    return (
+        <div className="h-64 w-full min-h-[256px]">
+            <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={dark ? '#334155' : '#e2e8f0'} />
+                    <XAxis dataKey="label" tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} />
+                    <YAxis tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={72} />
+                    <Tooltip content={<ChartTooltip dark={dark} />} />
+                    <Legend />
+                    <Line type="monotone" dataKey="revenue" name="Sales (revenue)" stroke={CHART_COLORS.revenue} strokeWidth={2} dot={false} />
+                </LineChart>
             </ResponsiveContainer>
         </div>
     );

@@ -15,6 +15,7 @@ const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: 
 import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
 import { useTheme } from '../../context/ThemeContext';
 import { usePermissions } from '../../hooks/usePermissions';
+import { isAdminRole } from '../../hooks/useRecordLock';
 import { scheduleIdleWork, cancelScheduledIdle } from '../../utils/interactionScheduling';
 interface HeaderProps {
   title: string;
@@ -33,8 +34,9 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const units = useStateSelector(s => s.units);
   const whatsAppMode = useStateSelector(s => s.whatsAppMode);
   const currentPage = useStateSelector(s => s.currentPage);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { canReadUsers } = usePermissions();
+  const isPersonalFinanceAdmin = isAdminRole(user?.role || currentUser?.role);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -426,7 +428,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, [isNotificationsOpen, isWhatsappDropdownOpen]);
 
   useEffect(() => {
-    if (!isAuthenticated || !currentUser?.id) {
+    if (!isAuthenticated || !currentUser?.id || !isPersonalFinanceAdmin) {
       setTaskBellRows([]);
       return;
     }
@@ -460,7 +462,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       window.clearInterval(interval);
       window.removeEventListener('pb:tasks-changed', onTasksChanged);
     };
-  }, [isAuthenticated, currentUser?.id]);
+  }, [isAuthenticated, currentUser?.id, isPersonalFinanceAdmin]);
 
   useEffect(() => {
     if (isLocalOnlyMode()) {

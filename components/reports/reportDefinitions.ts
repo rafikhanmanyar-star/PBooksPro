@@ -51,6 +51,9 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'accounting-reconciliation', title: 'Financial Reconciliation', group: 'Accounting', path: 'accounting', subPath: 'Reports:Reconciliation' },
     { id: 'accounting-cash-flows', title: 'Cash Flow Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Cash Flows' },
     { id: 'accounting-investor-distribution', title: 'Investor Distribution Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Investor Distribution' },
+    { id: 'accounting-overview', title: 'Overview Reports', group: 'Accounting', path: 'accounting', subPath: 'Reports:Overview Reports' },
+    { id: 'accounting-bank-accounts', title: 'Bank Accounts Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Bank Accounts' },
+    { id: 'accounting-consistency', title: 'Account Consistency Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Account Consistency' },
 
     // General Reports
     { id: 'transfer-statistics', title: 'Transfer Statistics Report', group: 'General', path: 'dashboard', subPath: '' },

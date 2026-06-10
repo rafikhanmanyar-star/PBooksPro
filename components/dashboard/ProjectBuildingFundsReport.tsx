@@ -5,6 +5,8 @@ import { TransactionType, AccountType, ContactType, LoanSubtype } from '../../ty
 import Card from '../ui/Card';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatRoundedNumber } from '../../utils/numberUtils';
+import { useAuth } from '../../context/AuthContext';
+import { isAdminRole } from '../../hooks/useRecordLock';
 
 interface FundReportRow {
     id: string;
@@ -29,6 +31,8 @@ interface ProjectBuildingFundsReportProps {
 
 const ProjectBuildingFundsReport: React.FC<ProjectBuildingFundsReportProps> = ({ hideZeroNetBalance = false }) => {
     const state = useFinancialReportAppState();
+    const { user } = useAuth();
+    const isPersonalFinanceAdmin = isAdminRole(user?.role || state.currentUser?.role);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'netBalance', direction: 'desc' });
 
     const handleSort = (key: SortKey) => {
@@ -273,29 +277,31 @@ const ProjectBuildingFundsReport: React.FC<ProjectBuildingFundsReportProps> = ({
             return 0;
         });
 
-        // Personal amounts: expenses are stored negative in DB (cashbook); show as positive expense and net = income - expense (same as Personal Transactions tab summary).
-        let personalIncome = 0;
-        let personalExpense = 0;
-        for (const p of state.personalTransactions || []) {
-            if (p.deletedAt) continue;
-            if (p.type === 'Income') personalIncome += Math.abs(Number(p.amount) || 0);
-            else if (p.type === 'Expense') personalExpense += Math.abs(Number(p.amount) || 0);
-        }
-        personalIncome = roundNumber(personalIncome);
-        personalExpense = roundNumber(personalExpense);
+        // Personal amounts: admin-only module — hide from other roles in dashboard summary.
+        if (isPersonalFinanceAdmin) {
+            let personalIncome = 0;
+            let personalExpense = 0;
+            for (const p of state.personalTransactions || []) {
+                if (p.deletedAt) continue;
+                if (p.type === 'Income') personalIncome += Math.abs(Number(p.amount) || 0);
+                else if (p.type === 'Expense') personalExpense += Math.abs(Number(p.amount) || 0);
+            }
+            personalIncome = roundNumber(personalIncome);
+            personalExpense = roundNumber(personalExpense);
 
-        if (Math.abs(personalIncome) > EPSILON || Math.abs(personalExpense) > EPSILON) {
-            sortedCore.push({
-                id: 'personal-summary',
-                name: 'Personal transactions',
-                type: 'Personal',
-                income: personalIncome,
-                expense: personalExpense,
-                investment: 0,
-                equityOut: 0,
-                loanNetBalance: 0,
-                netBalance: roundNumber(personalIncome - personalExpense),
-            });
+            if (Math.abs(personalIncome) > EPSILON || Math.abs(personalExpense) > EPSILON) {
+                sortedCore.push({
+                    id: 'personal-summary',
+                    name: 'Personal transactions',
+                    type: 'Personal',
+                    income: personalIncome,
+                    expense: personalExpense,
+                    investment: 0,
+                    equityOut: 0,
+                    loanNetBalance: 0,
+                    netBalance: roundNumber(personalIncome - personalExpense),
+                });
+            }
         }
 
         if (hideZeroNetBalance) {
@@ -306,7 +312,7 @@ const ProjectBuildingFundsReport: React.FC<ProjectBuildingFundsReportProps> = ({
 
         return sortedCore;
 
-    }, [state.projects, state.buildings, state.transactions, state.categories, state.accounts, state.properties, state.bills, state.invoices, state.personalTransactions, sortConfig, hideZeroNetBalance]);
+    }, [state.projects, state.buildings, state.transactions, state.categories, state.accounts, state.properties, state.bills, state.invoices, state.personalTransactions, state.currentUser?.role, sortConfig, hideZeroNetBalance, isPersonalFinanceAdmin]);
 
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className={`ml-1 text-[10px] ${sortConfig.key === column ? 'text-primary' : 'text-app-muted'}`}>
@@ -399,6 +405,7 @@ const ProjectBuildingFundsReport: React.FC<ProjectBuildingFundsReportProps> = ({
                 </div>
             </div>
 
+            {isPersonalFinanceAdmin && personalRow && (
             <div className="mb-6">
                 <h4 className="text-sm font-semibold text-app-muted mb-2">Personal transactions</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
@@ -416,6 +423,7 @@ const ProjectBuildingFundsReport: React.FC<ProjectBuildingFundsReportProps> = ({
                     </div>
                 </div>
             </div>
+            )}
             
             <div className="overflow-x-auto rounded-xl border border-app-border">
                 <table className="min-w-full divide-y divide-app-border text-sm">

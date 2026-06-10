@@ -1389,3 +1389,84 @@ CREATE TABLE IF NOT EXISTS vendor_bill_advance_clearings (
 CREATE INDEX IF NOT EXISTS idx_vbac_tenant_bill ON vendor_bill_advance_clearings(tenant_id, bill_id);
 
 CREATE INDEX IF NOT EXISTS idx_vbac_tenant_advance ON vendor_bill_advance_clearings(tenant_id, contractor_advance_id);
+
+-- =============================================================================
+-- PROJECT EXPENSE VOUCHERS (parity with PostgreSQL 093_project_expense_vouchers.sql)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS project_expense_categories (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    gl_account_id TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    description TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (gl_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+    CHECK (TRIM(name) <> '')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_cat_tenant_name_alive
+    ON project_expense_categories(tenant_id, lower(name))
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pe_cat_tenant_active
+    ON project_expense_categories(tenant_id, is_active) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS project_expense_vouchers (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    voucher_number TEXT NOT NULL,
+    voucher_date TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    expense_category_id TEXT NOT NULL,
+    vendor_id TEXT,
+    payment_source_account_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    description TEXT,
+    document_id TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    journal_entry_id TEXT,
+    submitted_at TEXT,
+    submitted_by TEXT,
+    approved_at TEXT,
+    approved_by TEXT,
+    rejected_at TEXT,
+    rejected_by TEXT,
+    rejection_reason TEXT,
+    posted_at TEXT,
+    posted_by TEXT,
+    created_by TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (expense_category_id) REFERENCES project_expense_categories(id) ON DELETE RESTRICT,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
+    FOREIGN KEY (payment_source_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE RESTRICT,
+    CHECK (amount > 0),
+    CHECK (status IN ('draft', 'submitted', 'approved', 'rejected', 'posted'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pev_tenant_number_alive
+    ON project_expense_vouchers(tenant_id, voucher_number)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pev_tenant_project
+    ON project_expense_vouchers(tenant_id, project_id) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pev_tenant_status
+    ON project_expense_vouchers(tenant_id, status) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pev_tenant_category
+    ON project_expense_vouchers(tenant_id, expense_category_id) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pev_tenant_vendor
+    ON project_expense_vouchers(tenant_id, vendor_id) WHERE deleted_at IS NULL AND vendor_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pev_tenant_date
+    ON project_expense_vouchers(tenant_id, voucher_date) WHERE deleted_at IS NULL;
