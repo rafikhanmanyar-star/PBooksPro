@@ -166,6 +166,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (isLocalOnlyMode()) return LOCAL_ONLY_MODULES.includes(moduleKey);
         const mods = cloudLicense?.modules;
         if (!mods?.length) return false;
+        if (mods.includes('all')) return true;
         return mods.includes(moduleKey);
     }, [isAuthenticated, cloudLicense?.modules]);
 

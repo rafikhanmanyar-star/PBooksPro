@@ -14,6 +14,7 @@ import {
   validateTenantLicense,
   type EnforcedResource,
 } from '../services/billing/licenseEnforcementService.js';
+import { DemoMutationLimitError } from '../services/demo/demoLicenseService.js';
 
 const SKIP_PATH_PREFIXES = [
   '/payments/',
@@ -48,6 +49,10 @@ function shouldSkipGlobalEnforcement(path: string, method: string): boolean {
 function handleEnforcementError(res: Response, err: unknown): void {
   if (err instanceof LicenseEnforcementError) {
     sendFailure(res, err.statusCode, err.code, err.message);
+    return;
+  }
+  if (err instanceof DemoMutationLimitError) {
+    sendFailure(res, 403, err.code, err.message);
     return;
   }
   sendFailure(res, 402, 'SUBSCRIPTION_REQUIRED', 'Subscription validation failed.');

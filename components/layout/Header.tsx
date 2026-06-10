@@ -38,7 +38,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const whatsAppMode = useStateSelector(s => s.whatsAppMode);
   const currentPage = useStateSelector(s => s.currentPage);
   const initialTabs = useStateSelector(s => s.initialTabs);
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, tenant, startCompanySwitch } = useAuth();
   const { canReadUsers } = usePermissions();
   const isPersonalFinanceAdmin = isAdminRole(user?.role || currentUser?.role);
 
@@ -730,6 +730,18 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2 sm:gap-4 justify-end flex-1">
+
+            {isAuthenticated && !isLocalOnlyMode() && tenant && (
+              <button
+                type="button"
+                onClick={() => void startCompanySwitch()}
+                className="hidden sm:flex items-center gap-1.5 max-w-[200px] truncate rounded-lg border border-app-border bg-app-card px-3 py-1.5 text-sm font-medium text-app-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                title="Switch organization"
+              >
+                <span className="truncate">{tenant.companyName || tenant.name}</span>
+                <span className="text-app-muted" aria-hidden>▼</span>
+              </button>
+            )}
 
             {/* Connection Status & Sync Status */}
             <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-app-card border border-app-border">

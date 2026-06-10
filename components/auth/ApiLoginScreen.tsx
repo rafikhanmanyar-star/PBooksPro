@@ -3,7 +3,7 @@
  * Optional self-service organization registration via POST /api/auth/register-tenant.
  */
 
-import React, { useState, useEffect, useRef, useId } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Lock,
   AlertCircle,
@@ -14,7 +14,6 @@ import {
   User,
   Hash,
   Loader2,
-  ChevronDown,
   BarChart3,
   Shield,
   Layers,
@@ -29,10 +28,18 @@ import type { LegalAcceptanceInput } from '../../services/api/legalApi';
 import { getApiRootUrl, getAppDisplayName, isStagingEnvironment, getDefaultApiRootUrl } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
 import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
+import RegistrationCaptcha from '../ui/RegistrationCaptcha';
 import { requestElectronWebContentsFocus } from '../../utils/electronFocusRecovery';
 import { useNotification } from '../../context/NotificationContext';
 import { DEMO_PUBLIC_TENANT_ID } from '../../config/demoEnvironment';
+import {
+  isAutoDemoUrl,
+  isWebsiteDemoEntry,
+  markWebsiteDemoEntry,
+} from '../../utils/demoAuthBootstrap';
 import Button from '../ui/Button';
+
+const DEMO_TENANT_LABEL = 'Al Noor Properties';
 
 const DEFAULT_TENANT =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEFAULT_TENANT_ID) ||
@@ -40,7 +47,7 @@ const DEFAULT_TENANT =
 
 /** Same keys as AuthContext login — survive logout so the next visit can prefill org and username. */
 const LAST_TENANT_STORAGE_KEY = 'last_tenant_id';
-const LAST_USERNAME_STORAGE_KEY = 'last_identifier';
+const LAST_EMAIL_STORAGE_KEY = 'last_identifier';
 
 function readStoredLastTenant(): string {
   if (typeof window === 'undefined') return DEFAULT_TENANT;
@@ -53,10 +60,10 @@ function readStoredLastTenant(): string {
   return DEFAULT_TENANT;
 }
 
-function readStoredLastUsername(): string {
+function readStoredLastEmail(): string {
   if (typeof window === 'undefined') return '';
   try {
-    const u = localStorage.getItem(LAST_USERNAME_STORAGE_KEY);
+    const u = localStorage.getItem(LAST_EMAIL_STORAGE_KEY);
     if (u?.trim()) return u.trim();
   } catch {
     /* ignore */
@@ -73,10 +80,10 @@ function persistLastTenant(id: string) {
   }
 }
 
-function persistLastUsername(name: string) {
-  if (typeof window === 'undefined' || !name.trim()) return;
+function persistLastEmail(email: string) {
+  if (typeof window === 'undefined' || !email.trim()) return;
   try {
-    localStorage.setItem(LAST_USERNAME_STORAGE_KEY, name.trim());
+    localStorage.setItem(LAST_EMAIL_STORAGE_KEY, email.trim());
   } catch {
     /* ignore */
   }
@@ -84,32 +91,26 @@ function persistLastUsername(name: string) {
 
 const API_SAVED_LOGIN_KEY = 'pbookspro_api_saved_login';
 
-function readSavedApiPassword(tenantId: string, username: string): string {
+function readSavedApiPassword(email: string): string {
   if (typeof window === 'undefined') return '';
   try {
     const raw = localStorage.getItem(API_SAVED_LOGIN_KEY);
     if (!raw) return '';
-    const o = JSON.parse(raw) as { tenantId?: string; username?: string; password?: string };
-    const tid = (tenantId || 'default').trim();
-    if ((o.tenantId || '').trim() !== tid) return '';
-    if (
-      (o.username || '').trim().toLowerCase() !== (username || '').trim().toLowerCase()
-    ) {
-      return '';
-    }
+    const o = JSON.parse(raw) as { email?: string; username?: string; password?: string };
+    const stored = (o.email || o.username || '').trim().toLowerCase();
+    if (stored !== (email || '').trim().toLowerCase()) return '';
     return typeof o.password === 'string' ? o.password : '';
   } catch {
     return '';
   }
 }
 
-function persistSavedApiLogin(tenantId: string, username: string, password: string) {
+function persistSavedApiLogin(email: string, password: string) {
   try {
     localStorage.setItem(
       API_SAVED_LOGIN_KEY,
       JSON.stringify({
-        tenantId: tenantId.trim() || DEFAULT_TENANT,
-        username: username.trim(),
+        email: email.trim(),
         password,
       })
     );
@@ -132,8 +133,6 @@ const INPUT_BASE =
   'block w-full rounded-ds-md border border-app-input-border bg-app-input text-app-text shadow-ds-card placeholder:text-app-muted/70 transition-all duration-ds focus:outline-none focus:ring-2 focus:ring-ds-primary/35 focus:border-ds-primary disabled:opacity-60 disabled:cursor-not-allowed';
 
 const FIELD_INPUT = `${INPUT_BASE} pl-10 pr-3 py-2.5 sm:py-2 text-base sm:text-ds-body min-h-[44px] sm:min-h-0`;
-
-const SELECT_INPUT = `${INPUT_BASE} appearance-none pl-10 pr-10 py-2.5 sm:py-2 text-base sm:text-ds-body min-h-[44px] sm:min-h-0 cursor-pointer`;
 
 const ERP_FEATURES = [
   { icon: BarChart3, label: 'Financial reporting & analytics' },
@@ -318,13 +317,10 @@ const ApiLoginScreen: React.FC = () => {
   const [demoEntering, setDemoEntering] = useState(false);
   const { hideProgress } = useNotification();
   const [serverUrl, setServerUrl] = useState('');
-  const [tenantId, setTenantId] = useState(() => readStoredLastTenant());
-  const [username, setUsername] = useState(() => readStoredLastUsername());
-  const [password, setPassword] = useState(() =>
-    readSavedApiPassword(readStoredLastTenant(), readStoredLastUsername())
-  );
+  const [email, setEmail] = useState(() => readStoredLastEmail());
+  const [password, setPassword] = useState(() => readSavedApiPassword(readStoredLastEmail()));
   const [savePassword, setSavePassword] = useState(() => {
-    const p = readSavedApiPassword(readStoredLastTenant(), readStoredLastUsername());
+    const p = readSavedApiPassword(readStoredLastEmail());
     return p.length > 0;
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -341,31 +337,57 @@ const ApiLoginScreen: React.FC = () => {
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [requestedTenantId, setRequestedTenantId] = useState('');
   const [registeredTenantId, setRegisteredTenantId] = useState<string | null>(null);
-  const [tenantDirectory, setTenantDirectory] = useState<{ id: string; name: string }[]>([]);
-  const [tenantListLoading, setTenantListLoading] = useState(false);
-  const [tenantListHint, setTenantListHint] = useState<string | null>(null);
+  const [registeredReference, setRegisteredReference] = useState<string | null>(null);
+  const [registrationPendingApproval, setRegistrationPendingApproval] = useState(false);
+  const [captchaConfig, setCaptchaConfig] = useState<{
+    provider: 'turnstile' | 'recaptcha';
+    siteKey: string;
+  } | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [legalAcceptances, setLegalAcceptances] = useState<LegalAcceptanceInput[]>([]);
   const [mfaPhase, setMfaPhase] = useState<'challenge' | 'setup' | null>(null);
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaSetupToken, setMfaSetupToken] = useState<string | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
-  const tenantHintId = useId();
-  const isDemoTenantLogin = tenantId.trim() === DEMO_PUBLIC_TENANT_ID;
+  const demoAutoEnterAttempted = useRef(false);
+  const websiteDemoEntry = isWebsiteDemoEntry();
+  const isDemoTenantLogin = websiteDemoEntry;
 
   useEffect(() => {
-    if (view !== 'login') return;
-    if (tenantId.trim() === DEMO_PUBLIC_TENANT_ID) return;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('auto_demo') === '1') {
-        setTenantId(DEMO_PUBLIC_TENANT_ID);
-        persistLastTenant(DEMO_PUBLIC_TENANT_ID);
-      }
-    } catch {
-      /* ignore */
+    if (isAutoDemoUrl()) {
+      markWebsiteDemoEntry();
     }
-  }, [view, tenantId]);
+  }, []);
+
+  useEffect(() => {
+    if (view !== 'login' || !websiteDemoEntry || demoAutoEnterAttempted.current) return;
+    demoAutoEnterAttempted.current = true;
+    let cancelled = false;
+    void (async () => {
+      setError(null);
+      setDemoEntering(true);
+      try {
+        const apiRoot = (serverUrl.trim() || getDefaultApiRootUrl()).replace(/\/+$/, '');
+        apiClient.setBaseUrl(apiRoot);
+        await enterDemoSession();
+        if (!cancelled) {
+          persistLastTenant(DEMO_PUBLIC_TENANT_ID);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(formatApiErrorMessage(e));
+        }
+      } finally {
+        if (!cancelled) {
+          setDemoEntering(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [view, websiteDemoEntry, enterDemoSession, serverUrl]);
 
   useEffect(() => {
     const root = getApiRootUrl();
@@ -378,6 +400,31 @@ const ApiLoginScreen: React.FC = () => {
       apiClient.setBaseUrl(fallback);
     }
   }, []);
+
+  useEffect(() => {
+    const trimmed = serverUrl.trim();
+    if (!trimmed) return;
+    try {
+      apiClient.setBaseUrl(trimmed);
+      void apiClient
+        .get<{
+          captcha?: { provider: 'turnstile' | 'recaptcha'; siteKey: string | null } | null;
+        }>('/auth/public-config')
+        .then((cfg) => {
+          if (cfg.captcha?.siteKey) {
+            setCaptchaConfig({
+              provider: cfg.captcha.provider,
+              siteKey: cfg.captcha.siteKey,
+            });
+          } else {
+            setCaptchaConfig(null);
+          }
+        })
+        .catch(() => setCaptchaConfig(null));
+    } catch {
+      setCaptchaConfig(null);
+    }
+  }, [serverUrl]);
 
   useEffect(() => {
     const trimmed = serverUrl.trim();
@@ -430,7 +477,7 @@ const ApiLoginScreen: React.FC = () => {
    */
   useEffect(() => {
     if (view !== 'login' || isDemoTenantLogin) return;
-    const prefilled = readStoredLastUsername().trim();
+    const prefilled = readStoredLastEmail().trim();
     if (!prefilled || password) return;
     const id = window.setTimeout(() => {
       const form = document.getElementById('api-login-form');
@@ -448,62 +495,12 @@ const ApiLoginScreen: React.FC = () => {
 
   const rootUrl = () => (serverUrl.trim() || getDefaultApiRootUrl()).replace(/\/+$/, '');
 
-  /** Load organizations from GET /api/auth/tenants when API URL or login view changes. */
-  useEffect(() => {
-    if (view !== 'login') return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        setTenantListLoading(true);
-        setTenantListHint(null);
-        try {
-          apiClient.setBaseUrl(rootUrl());
-          const rows = await apiClient.get<Array<{ id: string; name: string }>>('/auth/tenants');
-          if (!cancelled) {
-            setTenantDirectory(Array.isArray(rows) ? rows : []);
-          }
-        } catch {
-          if (!cancelled) {
-            setTenantDirectory([]);
-            setTenantListHint(
-              'Could not load organizations. Check the API URL and that the server is running, or type your organization ID below.'
-            );
-          }
-        } finally {
-          if (!cancelled) setTenantListLoading(false);
-        }
-      })();
-    }, 400);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [view, serverUrl]);
-
-  /** Prefill org ID from server directory when saved/default ID is wrong (common on staging). */
-  useEffect(() => {
-    if (view !== 'login' || tenantListLoading || tenantDirectory.length === 0) return;
-    const ids = tenantDirectory.map((t) => t.id);
-    if (ids.includes(tenantId.trim())) return;
-    if (tenantDirectory.length === 1) {
-      const only = tenantDirectory[0]!.id;
-      setTenantId(only);
-      persistLastTenant(only);
-      return;
-    }
-    if (tenantId.trim() === 'default' && ids.includes('test-company')) {
-      setTenantId('test-company');
-      persistLastTenant('test-company');
-    }
-  }, [view, tenantListLoading, tenantDirectory, tenantId]);
-
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const tid = tenantId.trim() || DEFAULT_TENANT;
-    const user = username.trim();
-    if (!isDemoTenantLogin && !user) {
-      setError('Username is required.');
+    const emailVal = email.trim();
+    if (!isDemoTenantLogin && !emailVal) {
+      setError('Email address is required.');
       return;
     }
     if (!isDemoTenantLogin && !password) {
@@ -514,10 +511,10 @@ const ApiLoginScreen: React.FC = () => {
       apiClient.setBaseUrl(rootUrl());
       if (isDemoTenantLogin) {
         await enterDemoSession();
-        persistLastTenant(tid);
+        persistLastTenant(DEMO_PUBLIC_TENANT_ID);
         return;
       }
-      const result = await login(user, password, tid);
+      const result = await login(emailVal, password);
       if (result.status === 'mfa_required') {
         setError(null);
         setMfaPhase('challenge');
@@ -532,11 +529,13 @@ const ApiLoginScreen: React.FC = () => {
         setMfaToken(null);
         return;
       }
+      if (result.status === 'company_selection_required') {
+        return;
+      }
       if (result.status === 'authenticated') {
-        persistLastTenant(tid);
-        persistLastUsername(user);
+        persistLastEmail(emailVal);
         if (savePassword) {
-          persistSavedApiLogin(tid, user, password);
+          persistSavedApiLogin(emailVal, password);
         } else {
           clearSavedApiLogin();
         }
@@ -544,10 +543,23 @@ const ApiLoginScreen: React.FC = () => {
       }
       setError('Sign-in did not complete. Please try again.');
     } catch (err: unknown) {
-      const apiErr = err as { code?: string; error?: string; message?: string };
+      const apiErr = err as {
+        code?: string;
+        error?: string;
+        message?: string;
+        title?: string;
+        rejectionReason?: string;
+      };
       let msg = formatApiErrorMessage(err);
       if (apiErr.code === 'AUTH_FAILED' || msg === 'Invalid credentials') {
-        msg = `Invalid credentials for organization "${tid}". Choose the correct organization (staging: test-company) or check username and password.`;
+        msg = 'Invalid email or password. Please try again.';
+      } else if (apiErr.code === 'ORG_PENDING_APPROVAL') {
+        msg = 'Account Pending Approval\n\nYour organization has not yet been approved. Please contact support if approval is delayed.';
+      } else if (apiErr.code === 'ORG_REGISTRATION_REJECTED') {
+        const reason = apiErr.rejectionReason ? `\n\nReason: ${apiErr.rejectionReason}` : '';
+        msg = `Organization Registration Rejected\n\nPlease contact support for additional information.${reason}`;
+      } else if (apiErr.code === 'ORG_SUSPENDED') {
+        msg = 'Organization Suspended\n\nPlease contact billing or support.';
       }
       setError(msg);
     }
@@ -576,6 +588,10 @@ const ApiLoginScreen: React.FC = () => {
       setError('You must accept the Terms of Service and Privacy Policy.');
       return;
     }
+    if (captchaConfig && !captchaToken) {
+      setError('Please complete the CAPTCHA verification.');
+      return;
+    }
     try {
       apiClient.setBaseUrl(rootUrl());
       const result = await registerTenant({
@@ -588,13 +604,15 @@ const ApiLoginScreen: React.FC = () => {
         adminPassword,
         requestedTenantId: requestedTenantId.trim() || undefined,
         legalAcceptances,
+        captchaToken: captchaToken ?? undefined,
       });
       setRegisteredTenantId(result.tenantId);
-      setTenantId(result.tenantId);
+      setRegisteredReference(result.registrationReference ?? null);
+      setRegistrationPendingApproval(!!result.pendingApproval);
       persistLastTenant(result.tenantId);
-      const adminUser = adminUsername.trim();
-      setUsername(adminUser);
-      persistLastUsername(adminUser);
+      const registeredEmail = orgEmail.trim();
+      setEmail(registeredEmail);
+      persistLastEmail(registeredEmail);
       setPassword('');
       setView('registerSuccess');
     } catch (err: unknown) {
@@ -624,10 +642,9 @@ const ApiLoginScreen: React.FC = () => {
   };
 
   const finishMfaLogin = () => {
-    const tid = tenantId.trim() || DEFAULT_TENANT;
-    const user = username.trim();
+    const emailVal = email.trim();
     if (savePassword) {
-      persistSavedApiLogin(tid, user, password);
+      persistSavedApiLogin(emailVal, password);
     } else {
       clearSavedApiLogin();
     }
@@ -666,19 +683,50 @@ const ApiLoginScreen: React.FC = () => {
             <AuthCard>
               <AuthCardHeader
                 icon={CheckCircle2}
-                title="Organization created"
-                subtitle="Your tenant is ready — sign in with the credentials below."
+                title={
+                  registrationPendingApproval
+                    ? 'Organization Registration Submitted'
+                    : 'Organization created'
+                }
+                subtitle={
+                  registrationPendingApproval
+                    ? 'Your request has been received.'
+                    : 'Your tenant is ready — sign in with the credentials below.'
+                }
               />
               <div className="space-y-5">
-                <div className="rounded-ds-md border border-emerald-200/80 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-100">
-                  <p className="font-semibold">Your organization ID</p>
-                  <p className="mt-1 break-all font-mono text-base">{registeredTenantId}</p>
-                  <p className="mt-2 text-emerald-800 dark:text-emerald-200">
-                    Sign in using this ID, your admin username, and password. The API server URL is unchanged.
-                  </p>
+                <div
+                  className={`rounded-ds-md border p-4 text-sm ${
+                    registrationPendingApproval
+                      ? 'border-amber-200/80 bg-amber-50 text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100'
+                      : 'border-emerald-200/80 bg-emerald-50 text-emerald-900 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-100'
+                  }`}
+                >
+                  {registrationPendingApproval ? (
+                    <>
+                      <p>Your organization is currently awaiting approval.</p>
+                      <p className="mt-2">
+                        You will receive an email once your account has been reviewed.
+                      </p>
+                      {registeredReference && (
+                        <>
+                          <p className="mt-4 font-semibold">Reference ID</p>
+                          <p className="mt-1 font-mono text-base">{registeredReference}</p>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold">Your organization ID</p>
+                      <p className="mt-1 break-all font-mono text-base">{registeredTenantId}</p>
+                      <p className="mt-2">
+                        Sign in with your email and password. The API server URL is unchanged.
+                      </p>
+                    </>
+                  )}
                 </div>
                 <Button type="button" onClick={continueAfterRegister} className="w-full !bg-emerald-600 hover:!bg-emerald-700">
-                  Continue to sign in
+                  {registrationPendingApproval ? 'Back to sign in' : 'Continue to sign in'}
                 </Button>
               </div>
             </AuthCard>
@@ -690,7 +738,7 @@ const ApiLoginScreen: React.FC = () => {
                 mode={mfaPhase}
                 mfaToken={mfaToken ?? undefined}
                 mfaSetupToken={mfaSetupToken ?? undefined}
-                usernameForStorage={username.trim()}
+                usernameForStorage={email.trim()}
                 onBack={() => {
                   setMfaPhase(null);
                   setMfaToken(null);
@@ -705,8 +753,12 @@ const ApiLoginScreen: React.FC = () => {
             <AuthCard>
               <AuthCardHeader
                 icon={headerIcon}
-                title="Welcome back"
-                subtitle="Sign in to your organization (API mode)"
+                title={websiteDemoEntry ? 'Live demo' : 'Welcome back'}
+                subtitle={
+                  websiteDemoEntry
+                    ? 'Opening the Al Noor Properties sandbox — no login required.'
+                    : 'Sign in with your email and password'
+                }
               />
 
               <form
@@ -718,117 +770,66 @@ const ApiLoginScreen: React.FC = () => {
               >
                 {displayError && <AuthErrorBanner message={displayError} />}
 
-                <div>
-                  <FieldLabel htmlFor="api-server">API server (host and port)</FieldLabel>
-                  <IconField icon={Server}>
-                    <input
-                      id="api-server"
-                      type="url"
-                      value={serverUrl}
-                      onChange={e => setServerUrl(e.target.value)}
-                      placeholder={isStagingEnvironment() ? 'http://127.0.0.1:3001' : 'http://192.168.1.10:3000'}
-                      className={FIELD_INPUT}
-                      disabled={isLoading}
-                      autoComplete="off"
-                    />
-                  </IconField>
-                  <FieldHelper>
-                    {isStagingEnvironment()
-                      ? 'Staging API server — use port 3001 (PBooks Pro Staging API Server). Saved on this device.'
-                      : 'Production API server — use port 3000. Saved on this device.'}
-                  </FieldHelper>
-                </div>
-
-                <div>
-                  <FieldLabel htmlFor="api-tenant-pick">Choose organization</FieldLabel>
-                  <IconField
-                    icon={Building2}
-                    trailing={
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3" aria-hidden>
-                        {tenantListLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-app-muted" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-app-muted" />
-                        )}
-                      </div>
-                    }
-                  >
-                    <select
-                      id="api-tenant-pick"
-                      value={tenantDirectory.some(t => t.id === tenantId) ? tenantId : ''}
-                      onChange={e => {
-                        const v = e.target.value;
-                        if (v) {
-                          setTenantId(v);
-                          persistLastTenant(v);
-                        }
-                      }}
-                      disabled={isLoading || tenantListLoading}
-                      className={SELECT_INPUT}
-                      aria-busy={tenantListLoading}
-                      aria-describedby={tenantListHint ? tenantHintId : undefined}
-                    >
-                      <option value="">
-                        {tenantListLoading ? 'Loading organizations from server…' : '— Select from list —'}
-                      </option>
-                      {tenantDirectory.map(t => (
-                        <option key={t.id} value={t.id}>
-                          {t.name} · {t.id}
-                        </option>
-                      ))}
-                    </select>
-                  </IconField>
-                  {tenantListHint && (
-                    <FieldHelper id={tenantHintId} variant="warning">
-                      {tenantListHint}
-                    </FieldHelper>
-                  )}
-                  {!tenantListLoading && tenantDirectory.length > 0 && (
+                {!websiteDemoEntry && (
+                  <div>
+                    <FieldLabel htmlFor="api-server">API server (host and port)</FieldLabel>
+                    <IconField icon={Server}>
+                      <input
+                        id="api-server"
+                        type="url"
+                        value={serverUrl}
+                        onChange={e => setServerUrl(e.target.value)}
+                        placeholder={isStagingEnvironment() ? 'http://127.0.0.1:3001' : 'http://192.168.1.10:3000'}
+                        className={FIELD_INPUT}
+                        disabled={isLoading}
+                        autoComplete="off"
+                      />
+                    </IconField>
                     <FieldHelper>
-                      {tenantDirectory.length} organization{tenantDirectory.length === 1 ? '' : 's'} on this server.
+                      {isStagingEnvironment()
+                        ? 'Staging API server — use port 3001 (PBooks Pro Staging API Server). Saved on this device.'
+                        : 'Production API server — use port 3000. Saved on this device.'}
                     </FieldHelper>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div>
-                  <FieldLabel htmlFor="api-tenant">Organization / tenant ID</FieldLabel>
-                  <IconField icon={Hash}>
-                    <input
-                      id="api-tenant"
-                      type="text"
-                      value={tenantId}
-                      onChange={e => setTenantId(e.target.value)}
-                      onBlur={() => persistLastTenant(tenantId)}
-                      className={`${FIELD_INPUT} font-mono text-ds-small`}
-                      disabled={isLoading}
-                      placeholder={DEFAULT_TENANT}
-                      autoComplete="organization"
-                    />
-                  </IconField>
-                  <FieldHelper>
-                    Pick one above or type the ID (needed if your org is not listed or the server could not be reached).
-                  </FieldHelper>
-                </div>
+                {websiteDemoEntry ? (
+                  <div className="rounded-ds-md border border-emerald-200/80 bg-emerald-50/80 px-3 py-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+                    <p className="text-ds-small font-semibold text-emerald-900 dark:text-emerald-100">
+                      {DEMO_TENANT_LABEL}
+                    </p>
+                    <p className="mt-1 text-ds-small text-emerald-800/90 dark:text-emerald-200/90">
+                      Live demo environment — no password required. Sample data resets daily.
+                    </p>
+                    {demoEntering && (
+                      <p className="mt-2 flex items-center gap-2 text-ds-small text-emerald-900 dark:text-emerald-100">
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        Opening live demo…
+                      </p>
+                    )}
+                  </div>
+                ) : null}
 
                 {!isDemoTenantLogin && (
                   <div>
-                    <FieldLabel htmlFor="api-username" required>
-                      Username
+                    <FieldLabel htmlFor="api-email" required>
+                      Email address
                     </FieldLabel>
                     <IconField icon={User}>
                       <input
-                        id="api-username"
-                        type="text"
-                        value={username}
-                        onChange={e => setUsername(e.target.value)}
-                        onBlur={() => persistLastUsername(username)}
+                        id="api-email"
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        onBlur={() => persistLastEmail(email)}
                         className={FIELD_INPUT}
-                        autoFocus={!username.trim()}
+                        autoFocus={!email.trim()}
                         disabled={isLoading}
-                        autoComplete="username"
+                        autoComplete="email"
                         aria-required
                       />
                     </IconField>
+                    <FieldHelper>Use the email on your account, or your username if no email is set.</FieldHelper>
                   </div>
                 )}
 
@@ -884,22 +885,23 @@ const ApiLoginScreen: React.FC = () => {
                     <span className="min-w-0 text-ds-body text-app-text">
                       Save password on this device
                       <span className="mt-0.5 block text-ds-small font-normal text-app-muted">
-                        Stored locally with your last organization and username. Uncheck and sign in to remove it.
+                        Stored locally with your email. Uncheck and sign in to remove it.
                       </span>
                     </span>
                   </label>
                 )}
 
+                {(!websiteDemoEntry || displayError) && (
                 <Button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || demoEntering}
                   className="mt-2 w-full !bg-emerald-600 hover:!bg-emerald-700 focus-visible:!ring-emerald-500"
-                  aria-busy={isLoading}
+                  aria-busy={isLoading || demoEntering}
                 >
-                  {isLoading ? (
+                  {isLoading || demoEntering ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                      Signing in…
+                      {websiteDemoEntry || isDemoTenantLogin ? 'Opening live demo…' : 'Signing in…'}
                     </>
                   ) : isDemoTenantLogin ? (
                     'Enter live demo'
@@ -907,8 +909,9 @@ const ApiLoginScreen: React.FC = () => {
                     'Sign in'
                   )}
                 </Button>
+                )}
 
-                {!isDemoTenantLogin && (
+                {!isDemoTenantLogin && !websiteDemoEntry && (
                   <>
                     <div className="relative my-3 flex items-center gap-3">
                       <div className="h-px flex-1 bg-app-border/70" aria-hidden />
@@ -1092,6 +1095,12 @@ const ApiLoginScreen: React.FC = () => {
                     Check the agreement box above to enable Create organization.
                   </p>
                 )}
+
+                <RegistrationCaptcha
+                  config={captchaConfig}
+                  onToken={setCaptchaToken}
+                  disabled={isLoading}
+                />
 
                 <div className="border-t border-app-border pt-4">
                   <p className="mb-3 text-ds-small font-semibold uppercase tracking-wide text-app-muted">Admin account</p>

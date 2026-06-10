@@ -251,10 +251,12 @@ export async function seedDemoBusinessData(
 ): Promise<void> {
   await bootstrapTenantChart(client, tenantId, { legacyIds: false });
 
-  try {
-    await startTrialSubscription(client, tenantId);
-  } catch {
-    /* trial plan optional in dev */
+  if (tenantId !== DEMO_PUBLIC_TENANT_ID) {
+    try {
+      await startTrialSubscription(client, tenantId);
+    } catch {
+      /* trial plan optional in dev */
+    }
   }
 
   const ids = idsForTenant(tenantId);

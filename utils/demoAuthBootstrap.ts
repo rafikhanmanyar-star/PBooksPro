@@ -1,6 +1,7 @@
 import { getDefaultApiBaseUrl } from '../config/apiUrl';
 
 export const DEMO_AUTH_STORAGE_KEY = 'pbooks_demo_auth';
+export const WEBSITE_DEMO_ENTRY_KEY = 'pbooks_website_demo_entry';
 
 export type DemoAuthPayload = {
   token: string;
@@ -23,6 +24,34 @@ export type DemoAuthPayload = {
 export function isAutoDemoUrl(): boolean {
   if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('auto_demo') === '1';
+}
+
+/** Set when the visitor arrived from the marketing site live-demo funnel. */
+export function markWebsiteDemoEntry(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(WEBSITE_DEMO_ENTRY_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isWebsiteDemoEntry(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return isAutoDemoUrl() || sessionStorage.getItem(WEBSITE_DEMO_ENTRY_KEY) === '1';
+  } catch {
+    return isAutoDemoUrl();
+  }
+}
+
+export function clearWebsiteDemoEntry(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(WEBSITE_DEMO_ENTRY_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function readStoredDemoAuth(): DemoAuthPayload | null {
@@ -105,6 +134,7 @@ export async function bootstrapDemoAuthFromUrl(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   if (!isAutoDemoUrl()) return false;
 
+  markWebsiteDemoEntry();
   const payload = await fetchDemoSessionFromApi();
   if (!payload) return false;
 

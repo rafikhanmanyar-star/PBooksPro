@@ -10,6 +10,7 @@ import { appendAuditEvent } from '../services/enterpriseAuditService.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import { requireResourceQuota } from '../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../core/realtime.js';
+import { ensureUserTenantMembership } from '../services/auth/userTenantService.js';
 
 export const usersRouter = Router();
 
@@ -131,6 +132,7 @@ usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuo
          RETURNING id, username, name, role, email, is_active`,
         [id, tenantId, username.trim(), name.trim(), role, passwordHash, emailVal]
       );
+      await ensureUserTenantMembership(client, id, tenantId, role);
       const row = rowToApi(r.rows[0]);
       await appendAuditEvent(client, {
         tenantId,

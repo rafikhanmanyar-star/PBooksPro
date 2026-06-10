@@ -61,12 +61,14 @@ import { PrintController } from './components/print/PrintController';
 import SchemaBlockedScreen from './components/diagnostics/SchemaBlockedScreen';
 import StabilityBanner from './components/stability/StabilityBanner';
 import ApiLoginScreen from './components/auth/ApiLoginScreen';
+import CompanySelectionScreen from './components/auth/CompanySelectionScreen';
 import ConnectServerScreen from './components/auth/ConnectServerScreen';
 import DemoProductTour from './components/onboarding/DemoProductTour';
 import OnboardingGate from './components/onboarding/OnboardingGate';
 import TrialUpgradeBanner from './components/billing/TrialUpgradeBanner';
+import DemoExploreBanner from './components/billing/DemoExploreBanner';
 import { isDemoModeActive } from './config/demoEnvironment';
-import { isAutoDemoUrl, readStoredDemoAuth } from './utils/demoAuthBootstrap';
+import { isAutoDemoUrl, isWebsiteDemoEntry, readStoredDemoAuth } from './utils/demoAuthBootstrap';
 import { isAdminRole } from './hooks/useRecordLock';
 
 
@@ -122,7 +124,15 @@ const App: React.FC = () => {
   const { isPanelOpen } = useKpis();
   const { isExpired } = useLicense(); // License Check
   const progress = useProgress();
-  const { isAuthenticated, isInitializing: authInitializing, user, tenant } = useAuth(); // Cloud authentication
+  const {
+    isAuthenticated,
+    isInitializing: authInitializing,
+    user,
+    tenant,
+    pendingCompanySelection,
+    companySwitchRequest,
+    cancelCompanySelection,
+  } = useAuth();
   const companyCtx = useCompanyOptional();
 
   // Ref tracks currentPage without causing callback identity changes on navigation
@@ -732,7 +742,7 @@ const App: React.FC = () => {
   if (authInitializing) {
     const demoEntryPending =
       !isLocalOnlyMode() &&
-      (isAutoDemoUrl() || readStoredDemoAuth() !== null);
+      (isWebsiteDemoEntry() || readStoredDemoAuth() !== null);
     return (
       <Loading
         message={demoEntryPending ? 'Opening live demo…' : 'Checking authentication...'}
@@ -756,6 +766,28 @@ const App: React.FC = () => {
         />
       );
     }
+  }
+
+  if (!isLocalOnlyMode() && pendingCompanySelection) {
+    return (
+      <CompanySelectionScreen
+        mode="login"
+        companies={pendingCompanySelection.companies}
+        preferredCompanyId={pendingCompanySelection.preferredCompanyId}
+        selectionToken={pendingCompanySelection.selectionToken}
+        onBack={cancelCompanySelection}
+      />
+    );
+  }
+
+  if (!isLocalOnlyMode() && companySwitchRequest) {
+    return (
+      <CompanySelectionScreen
+        mode="switch"
+        companies={companySwitchRequest.companies}
+        onBack={cancelCompanySelection}
+      />
+    );
   }
 
   // LAN / API mode: require server login (CompanyGate only applies in local-only mode)
@@ -834,6 +866,7 @@ const App: React.FC = () => {
           className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden transition-all duration-300 ease-in-out main-content-offset"
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
+          <DemoExploreBanner />
           <TrialUpgradeBanner />
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
 

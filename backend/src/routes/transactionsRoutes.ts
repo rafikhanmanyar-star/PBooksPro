@@ -4,6 +4,7 @@ import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../db/pool.js';
 import {
   getTransactionById,
+  getTransactionByIdIncludingDeleted,
   listTransactions,
   rowToTransactionApi,
   softDeleteTransaction,
@@ -11,6 +12,7 @@ import {
   upsertTransaction,
   type ListTransactionFilters,
 } from '../services/transactionsService.js';
+import { assertDemoCanCreateTransaction, DemoMutationLimitError } from '../services/demo/demoLicenseService.js';
 import { getBillById, rowToBillApi } from '../services/billsService.js';
 import { getInvoiceById, rowToInvoiceApi } from '../services/invoicesService.js';
 import { emitEntityEvent } from '../core/realtime.js';
@@ -129,9 +131,17 @@ transactionsRouter.post('/transactions', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const result = await withTransaction((client) =>
-      upsertTransaction(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
-    );
+    const body = req.body as Record<string, unknown>;
+    const result = await withTransaction(async (client) => {
+      const id =
+        typeof body.id === 'string' && body.id.trim() ? body.id.trim() : null;
+      const isNew =
+        !id || !(await getTransactionByIdIncludingDeleted(client, tenantId, id));
+      if (isNew) {
+        await assertDemoCanCreateTransaction(client, tenantId);
+      }
+      return upsertTransaction(client, tenantId, body, req.userId ?? null);
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
       return;
@@ -149,6 +159,10 @@ transactionsRouter.post('/transactions', async (req: AuthedRequest, res) => {
     );
     sendSuccess(res, apiRow, result.wasInsert ? 201 : 200);
   } catch (e) {
+    if (e instanceof DemoMutationLimitError) {
+      sendFailure(res, 403, e.code, e.message);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
       sendFailure(res, 409, 'DUPLICATE', msg);

@@ -8,6 +8,18 @@ export type JwtPayload = {
 
 export type MfaTokenPurpose = 'mfa_challenge' | 'mfa_setup';
 
+export type TenantSelectionAccount = {
+  userId: string;
+  tenantId: string;
+};
+
+export type TenantSelectionPayload = {
+  sub: string;
+  purpose: 'tenant_selection';
+  accounts: TenantSelectionAccount[];
+  loginEventId?: string;
+};
+
 export type MfaTokenPayload = JwtPayload & {
   purpose: MfaTokenPurpose;
   loginEventId?: string;
@@ -56,6 +68,43 @@ export function signMfaToken(
     getJwtSecret(),
     { expiresIn: '60m' }
   );
+}
+
+export function signTenantSelectionToken(
+  accounts: TenantSelectionAccount[],
+  loginEventId?: string
+): string {
+  const sessionId = `ts_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return jwt.sign(
+    { sub: sessionId, purpose: 'tenant_selection', accounts, loginEventId },
+    getJwtSecret(),
+    { expiresIn: '15m' }
+  );
+}
+
+export function verifyTenantSelectionToken(token: string): TenantSelectionPayload {
+  const decoded = jwt.verify(token, getJwtSecret()) as jwt.JwtPayload & {
+    purpose?: string;
+    accounts?: TenantSelectionAccount[];
+    loginEventId?: string;
+  };
+  if (decoded.purpose !== 'tenant_selection' || !decoded.sub || !Array.isArray(decoded.accounts)) {
+    throw new Error('Invalid tenant selection token');
+  }
+  if (decoded.accounts.length === 0) {
+    throw new Error('Invalid tenant selection token');
+  }
+  for (const account of decoded.accounts) {
+    if (!account?.userId || !account?.tenantId) {
+      throw new Error('Invalid tenant selection token');
+    }
+  }
+  return {
+    sub: decoded.sub,
+    purpose: 'tenant_selection',
+    accounts: decoded.accounts,
+    loginEventId: decoded.loginEventId,
+  };
 }
 
 export function verifyMfaToken(token: string, expectedPurpose: MfaTokenPurpose): MfaTokenPayload {

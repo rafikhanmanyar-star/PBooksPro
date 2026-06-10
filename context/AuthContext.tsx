@@ -12,7 +12,12 @@ import {
   markDemoSessionActive,
   DEMO_PUBLIC_TENANT_ID,
 } from '../config/demoEnvironment';
-import { isAutoDemoUrl, resolveDemoAuthHandoff } from '../utils/demoAuthBootstrap';
+import {
+  clearWebsiteDemoEntry,
+  isAutoDemoUrl,
+  isWebsiteDemoEntry,
+  resolveDemoAuthHandoff,
+} from '../utils/demoAuthBootstrap';
 import { trackEvent } from '../services/analytics/trackEvent';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
@@ -46,6 +51,22 @@ export interface Tenant {
   companyName: string;
 }
 
+export type CompanySummary = {
+  id: string;
+  name: string;
+};
+
+export type PendingCompanySelection = {
+  companies: CompanySummary[];
+  selectionToken: string;
+  preferredCompanyId?: string | null;
+  emailForStorage?: string;
+};
+
+export type CompanySwitchRequest = {
+  companies: CompanySummary[];
+};
+
 const LOCAL_USER: User = {
   id: 'local-user',
   username: 'admin',
@@ -69,10 +90,17 @@ export interface AuthState {
   /** One-time startup auth check (App shell may show a full-page loader). */
   isInitializing: boolean;
   error: string | null;
+  /** After credential check when user has multiple organizations. */
+  pendingCompanySelection: PendingCompanySelection | null;
+  /** In-app organization switch (authenticated). */
+  companySwitchRequest: CompanySwitchRequest | null;
 }
 
 interface AuthContextType extends AuthState {
-  login: (username: string, password: string, tenantId: string) => Promise<LoginResult>;
+  login: (email: string, password: string, tenantId?: string) => Promise<LoginResult>;
+  selectCompany: (companyId: string, selectionToken?: string, isSwitch?: boolean) => Promise<LoginResult>;
+  startCompanySwitch: () => Promise<void>;
+  cancelCompanySelection: () => void;
   verifyMfaLogin: (input: {
     mfaToken: string;
     totpCode?: string;
@@ -87,7 +115,13 @@ interface AuthContextType extends AuthState {
   lookupTenants: (organizationEmail: string) => Promise<Array<{ id: string; name: string; company_name: string; email: string }>>;
   smartLogin: (username: string, password: string, tenantId: string) => Promise<void>;
   unifiedLogin: (organizationEmail: string, username: string, password: string) => Promise<void>;
-  registerTenant: (data: TenantRegistrationData) => Promise<{ tenantId: string; trialDaysRemaining: number }>;
+  registerTenant: (data: TenantRegistrationData) => Promise<{
+    tenantId: string;
+    trialDaysRemaining: number;
+    registrationReference?: string;
+    pendingApproval?: boolean;
+    status?: string;
+  }>;
   enterDemoSession: () => Promise<void>;
   logout: () => void;
   checkLicenseStatus: () => Promise<{
@@ -117,10 +151,18 @@ export interface TenantRegistrationData {
   /** Invitation token from email link (?invite=). */
   inviteToken?: string;
   legalAcceptances: Array<{ documentType: string; documentVersion: string }>;
+  country?: string;
+  captchaToken?: string;
 }
 
 export type LoginResult =
   | { status: 'authenticated' }
+  | {
+      status: 'company_selection_required';
+      companies: CompanySummary[];
+      selectionToken: string;
+      preferredCompanyId?: string | null;
+    }
   | {
       status: 'mfa_required';
       mfaToken: string;
@@ -154,6 +196,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading: false,
     isInitializing: true,
     error: null,
+    pendingCompanySelection: null,
+    companySwitchRequest: null,
   });
 
   // Multi-company integration: derive user from CompanyContext in local-only mode
@@ -229,6 +273,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         isInitializing: false,
         error: null,
+        pendingCompanySelection: null,
+        companySwitchRequest: null,
       });
       syncDisplayTimezoneFromUser(null);
       if (typeof window !== 'undefined') {
@@ -255,6 +301,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading: false,
       isInitializing: false,
       error: null,
+      pendingCompanySelection: null,
+      companySwitchRequest: null,
     });
     syncDisplayTimezoneFromUser(null);
 
@@ -478,7 +526,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Website live demo: enter directly — never show the organization login picker.
-        if (isAutoDemoUrl() || (typeof window !== 'undefined' && sessionStorage.getItem('pbooks_demo_auth'))) {
+        if (
+          isWebsiteDemoEntry() ||
+          isAutoDemoUrl() ||
+          (typeof window !== 'undefined' && sessionStorage.getItem('pbooks_demo_auth'))
+        ) {
           const demoPayload = await resolveDemoAuthHandoff();
           if (demoPayload && isMounted) {
             const { token, loginEventId, user, tenant } = demoPayload;
@@ -494,6 +546,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             sessionStorage.removeItem('pbooks_api_sync_tenant_id');
             syncDisplayTimezoneFromUser(user);
             markDemoSessionActive();
+            clearWebsiteDemoEntry();
             trackEvent('demo_session_started', { source: 'bootstrap' });
             setState({
               isAuthenticated: true,
@@ -921,6 +974,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       tenant,
       isLoading: false,
       error: null,
+      pendingCompanySelection: null,
+      companySwitchRequest: null,
     }));
     syncDisplayTimezoneFromUser(user);
     if (typeof window !== 'undefined') {
@@ -937,29 +992,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
   }, [checkLicenseStatus]);
 
-  /**
-   * Login with username, password, and tenant ID (legacy - kept for backward compatibility)
-   */
-  const login = useCallback(async (username: string, password: string, tenantId: string): Promise<LoginResult> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await apiClient.post<{
+  const parseAuthLoginResponse = useCallback(
+    (
+      response: {
+        requiresCompanySelection?: boolean;
+        selectionToken?: string;
+        companies?: CompanySummary[];
+        preferredCompanyId?: string | null;
         token?: string;
         mfaRequired?: boolean;
         mfaToken?: string;
         mfaSetupRequired?: boolean;
         mfaSetupToken?: string;
         loginEventId?: string;
-        user: User;
-        tenant: Tenant;
-      }>('/auth/login', {
-        username,
-        password,
-        tenantId,
-      });
+        user?: User;
+        tenant?: Tenant;
+        company?: Tenant;
+      },
+      emailForStorage: string
+    ): LoginResult => {
+      if (response.requiresCompanySelection && response.selectionToken && response.companies?.length) {
+        apiClient.clearAuth();
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: null,
+          pendingCompanySelection: {
+            companies: response.companies!,
+            selectionToken: response.selectionToken!,
+            preferredCompanyId: response.preferredCompanyId,
+            emailForStorage,
+          },
+        }));
+        return {
+          status: 'company_selection_required',
+          companies: response.companies,
+          selectionToken: response.selectionToken,
+          preferredCompanyId: response.preferredCompanyId,
+        };
+      }
 
-      if (response.mfaRequired && response.mfaToken) {
+      if (response.mfaRequired && response.mfaToken && response.user && response.tenant) {
         apiClient.clearAuth();
         setState(prev => ({ ...prev, isLoading: false, error: null }));
         return {
@@ -971,7 +1044,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      if (response.mfaSetupRequired && response.mfaSetupToken) {
+      if (response.mfaSetupRequired && response.mfaSetupToken && response.user && response.tenant) {
         apiClient.clearAuth();
         setState(prev => ({ ...prev, isLoading: false, error: null }));
         return {
@@ -983,8 +1056,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      if (!response.token) {
-        throw new Error('Login failed: no token returned');
+      if (!response.token || !response.user || !response.tenant) {
+        throw new Error('Login failed: no session returned');
       }
 
       applyAuthSession({
@@ -992,13 +1065,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginEventId: response.loginEventId,
         user: response.user,
         tenant: response.tenant,
-        usernameForStorage: username,
+        usernameForStorage: emailForStorage,
       });
-      if (tenantId === DEMO_PUBLIC_TENANT_ID) {
+      return { status: 'authenticated' };
+    },
+    [applyAuthSession]
+  );
+
+  /**
+   * Sign in with email and password (no organization picker before auth).
+   */
+  const login = useCallback(async (email: string, password: string, tenantId?: string): Promise<LoginResult> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null, pendingCompanySelection: null }));
+
+    try {
+      const body: { email: string; password: string; tenantId?: string; username?: string } = {
+        email: email.trim(),
+        password,
+      };
+      if (tenantId?.trim()) {
+        body.tenantId = tenantId.trim();
+        body.username = email.trim();
+      }
+
+      const response = await apiClient.post<{
+        requiresCompanySelection?: boolean;
+        selectionToken?: string;
+        companies?: CompanySummary[];
+        preferredCompanyId?: string | null;
+        token?: string;
+        mfaRequired?: boolean;
+        mfaToken?: string;
+        mfaSetupRequired?: boolean;
+        mfaSetupToken?: string;
+        loginEventId?: string;
+        user?: User;
+        tenant?: Tenant;
+        company?: Tenant;
+      }>('/auth/login', body);
+
+      const result = parseAuthLoginResponse(response, email.trim());
+      if (result.status === 'authenticated' && tenantId?.trim() === DEMO_PUBLIC_TENANT_ID) {
         markDemoSessionActive();
         trackEvent('demo_session_started', { source: 'login', tenantId: DEMO_PUBLIC_TENANT_ID });
       }
-      return { status: 'authenticated' };
+      return result;
     } catch (error: any) {
       const errorMessage = error.error || error.message || 'Login failed';
       setState(prev => ({
@@ -1008,10 +1119,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tenant: null,
         isLoading: false,
         error: errorMessage,
+        pendingCompanySelection: null,
       }));
       throw error;
     }
-  }, [applyAuthSession]);
+  }, [applyAuthSession, parseAuthLoginResponse]);
+
+  const selectCompany = useCallback(async (
+    companyId: string,
+    selectionToken?: string,
+    isSwitch = false
+  ): Promise<LoginResult> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await apiClient.post<{
+        token?: string;
+        mfaRequired?: boolean;
+        mfaToken?: string;
+        mfaSetupRequired?: boolean;
+        mfaSetupToken?: string;
+        loginEventId?: string;
+        user?: User;
+        tenant?: Tenant;
+      }>('/auth/select-company', {
+        companyId,
+        ...(selectionToken ? { selectionToken } : {}),
+      });
+
+      const emailForStorage =
+        state.pendingCompanySelection?.emailForStorage ||
+        localStorage.getItem('last_identifier') ||
+        response.user?.username ||
+        '';
+
+      const result = parseAuthLoginResponse(response, emailForStorage);
+      if (result.status === 'authenticated' && isSwitch && typeof window !== 'undefined') {
+        window.location.reload();
+      }
+      return result;
+    } catch (error: any) {
+      const errorMessage = error.error || error.message || 'Could not open organization';
+      setState(prev => ({ ...prev, isLoading: false, error: errorMessage }));
+      throw error;
+    }
+  }, [parseAuthLoginResponse, state.pendingCompanySelection?.emailForStorage]);
+
+  const startCompanySwitch = useCallback(async () => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const companies = await apiClient.get<CompanySummary[]>('/auth/my-companies');
+      const list = Array.isArray(companies) ? companies : [];
+      if (list.length <= 1) {
+        setState(prev => ({ ...prev, isLoading: false }));
+        return;
+      }
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        companySwitchRequest: { companies: list },
+      }));
+    } catch (error: any) {
+      const errorMessage = error.error || error.message || 'Could not load organizations';
+      setState(prev => ({ ...prev, isLoading: false, error: errorMessage }));
+      throw error;
+    }
+  }, []);
+
+  const cancelCompanySelection = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      pendingCompanySelection: null,
+      companySwitchRequest: null,
+      isLoading: false,
+      error: null,
+    }));
+  }, []);
 
   const verifyMfaLogin = useCallback(async (input: {
     mfaToken: string;
@@ -1090,6 +1273,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         usernameForStorage: response.user.username,
       });
       markDemoSessionActive();
+      clearWebsiteDemoEntry();
       trackEvent('demo_session_started', { source: 'in_app', tenantId: DEMO_PUBLIC_TENANT_ID });
     } catch (error: unknown) {
       const err = error as { error?: string; message?: string };
@@ -1118,6 +1302,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tenantId: string;
         message: string;
         trialDaysRemaining: number;
+        registrationReference?: string;
+        pendingApproval?: boolean;
+        status?: string;
       }>('/auth/register-tenant', data);
 
       setState(prev => ({ ...prev, isLoading: false }));
@@ -1125,6 +1312,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return {
         tenantId: response.tenantId,
         trialDaysRemaining: response.trialDaysRemaining,
+        registrationReference: response.registrationReference,
+        pendingApproval: response.pendingApproval,
+        status: response.status,
       };
     } catch (error: any) {
       logger.errorCategory('auth', 'registerTenant error:', error);
@@ -1162,6 +1352,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const contextValue = useMemo(() => ({
     ...state,
     login,
+    selectCompany,
+    startCompanySwitch,
+    cancelCompanySelection,
     verifyMfaLogin,
     completeMfaSetupLogin,
     lookupTenants,
@@ -1171,8 +1364,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     enterDemoSession,
     logout,
     checkLicenseStatus,
-  }), [state.isAuthenticated, state.user, state.tenant, state.isLoading, state.isInitializing, state.error,
-       login, verifyMfaLogin, completeMfaSetupLogin, lookupTenants, smartLogin, unifiedLogin, registerTenant, enterDemoSession, logout, checkLicenseStatus]);
+  }), [
+    state,
+    login,
+    selectCompany,
+    startCompanySwitch,
+    cancelCompanySelection,
+    verifyMfaLogin,
+    completeMfaSetupLogin,
+    lookupTenants,
+    smartLogin,
+    unifiedLogin,
+    registerTenant,
+    enterDemoSession,
+    logout,
+    checkLicenseStatus,
+  ]);
 
   return (
     <AuthContext.Provider value={contextValue}>
@@ -1197,13 +1404,18 @@ export const useAuth = (): AuthContextType => {
       isLoading: false,
       isInitializing: false,
       error: null,
+      pendingCompanySelection: null,
+      companySwitchRequest: null,
       login: async () => { throw new Error('AuthProvider not mounted'); },
+      selectCompany: async () => { throw new Error('AuthProvider not mounted'); },
+      startCompanySwitch: async () => { },
+      cancelCompanySelection: () => { },
       verifyMfaLogin: async () => { throw new Error('AuthProvider not mounted'); },
       completeMfaSetupLogin: async () => { throw new Error('AuthProvider not mounted'); },
       lookupTenants: async () => [],
       smartLogin: async () => { },
       unifiedLogin: async () => { },
-      registerTenant: async () => ({ tenantId: '', trialDaysRemaining: 0 }),
+      registerTenant: async () => ({ tenantId: '', trialDaysRemaining: 0, pendingApproval: false }),
       enterDemoSession: async () => { },
       logout: () => { },
       checkLicenseStatus: async () => ({ isValid: false }),
