@@ -530,13 +530,14 @@ authRouter.post('/auth/select-company', loginLimiter, optionalAuthMiddleware, as
 });
 
 authRouter.get('/auth/public-config', publicIntrospectionLimiter, (_req, res) => {
-  const captchaProvider = publicCaptchaProvider();
+  const captchaRequired = publicCaptchaRequired();
+  const captchaProvider = captchaRequired ? publicCaptchaProvider() : null;
   sendSuccess(res, {
     selfSignupEnabled: isEnvFlagEnabled('ALLOW_SELF_SIGNUP'),
     trialSignupEnabled:
       isEnvFlagEnabled('ALLOW_TRIAL_SIGNUP') || isEnvFlagEnabled('ALLOW_SELF_SIGNUP'),
     organizationApprovalRequired: isOrganizationApprovalEnabled(),
-    captchaRequired: publicCaptchaRequired(),
+    captchaRequired,
     captcha: captchaProvider
       ? { provider: captchaProvider, siteKey: publicCaptchaSiteKey() }
       : null,

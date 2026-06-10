@@ -640,7 +640,7 @@ const ApiLoginScreen: React.FC = () => {
 
   const cloudSignup =
     isCloudHostedApi() || isCloudApiUrl(rootUrl()) || isCloudApiUrl(getDefaultApiRootUrl());
-  const showRegistrationCaptcha = cloudSignup || captchaRequired || !!captchaConfig;
+  const showRegistrationCaptcha = captchaRequired;
   const captchaMisconfigured = captchaRequired && !captchaConfig;
   const captchaBlocksSubmit = captchaRequired && !!captchaConfig && !captchaToken && !captchaLoadFailed;
   const canSubmitRegistration =
