@@ -17,6 +17,7 @@ const SetPasswordModal: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     if (password.length < 4) {
       setError('Password must be at least 4 characters.');
       return;

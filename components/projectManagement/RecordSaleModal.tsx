@@ -4,6 +4,7 @@ import { ProjectReceivedAsset, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import DatePicker from '../ui/DatePicker';
 import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
@@ -30,6 +31,7 @@ const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asse
     const [saleDate, setSaleDate] = useState(toLocalDateString(new Date()));
     const [saleAmount, setSaleAmount] = useState('');
     const [accountId, setAccountId] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const isEdit = mode === 'edit' && !!(asset.soldDate && asset.saleAmount != null);
 
@@ -66,6 +68,7 @@ const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asse
     );
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         const amount = parseFloat(saleAmount);
         if (isNaN(amount) || amount <= 0) {
             await showAlert('Please enter a valid sale amount.');
@@ -79,6 +82,9 @@ const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asse
             await showAlert('System categories for asset sale (Sales of fixed asset, Cost of Asset Sold) are not set up.');
             return;
         }
+
+        setIsSubmitting(true);
+        try {
 
         const updated: ProjectReceivedAsset = {
             ...asset,
@@ -154,10 +160,13 @@ const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asse
         }
         onSuccess?.();
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? 'Edit sale' : 'Record sale'} size="md">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={isEdit ? 'Edit sale' : 'Record sale'} size="md">
             <div className="space-y-4">
                 <p className="text-sm text-slate-600">
                     {asset.description} — Recorded value: {CURRENCY} {asset.recordedValue.toLocaleString()}
@@ -180,8 +189,10 @@ const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asse
                     placeholder="Select account"
                 />
                 <div className="flex justify-end gap-2 pt-2">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSubmit}>{isEdit ? 'Update sale' : 'Record sale'}</Button>
+                    <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Saving...">
+                        {isEdit ? 'Update sale' : 'Record sale'}
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

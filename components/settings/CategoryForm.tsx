@@ -5,6 +5,7 @@ import { Category, TransactionType, ProfitLossSubType } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
 interface CategoryFormProps {
@@ -31,6 +32,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
     /** System categories: only P&L classification may be changed (stored in pl_category_mapping). */
     const savedPlSub = categoryToEdit?.plSubType || '';
     const plSubDirty = plSubType !== savedPlSub;
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         if (categoryToEdit && type !== categoryToEdit.type) {
@@ -50,24 +52,30 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
         );
     }, [categories, type, categoryToEdit]);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isPermanent && categoryToEdit) {
-            if (!plSubDirty) return;
-            onSubmit({
-                name: categoryToEdit.name,
-                type: categoryToEdit.type,
-                description: categoryToEdit.description,
-                parentCategoryId: categoryToEdit.parentCategoryId,
-                plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null } as Omit<Category, 'id'>);
-            return;
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            if (isPermanent && categoryToEdit) {
+                if (!plSubDirty) return;
+                await Promise.resolve(onSubmit({
+                    name: categoryToEdit.name,
+                    type: categoryToEdit.type,
+                    description: categoryToEdit.description,
+                    parentCategoryId: categoryToEdit.parentCategoryId,
+                    plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null } as Omit<Category, 'id'>));
+                return;
+            }
+            await Promise.resolve(onSubmit({
+                name,
+                type,
+                description,
+                parentCategoryId: parentCategoryId || undefined,
+                plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null } as Omit<Category, 'id'>));
+        } finally {
+            setIsSubmitting(false);
         }
-        onSubmit({
-            name,
-            type,
-            description,
-            parentCategoryId: parentCategoryId || undefined,
-            plSubType: plSubType.trim() ? (plSubType as ProfitLossSubType) : null } as Omit<Category, 'id'>);
     };
     
     return (
@@ -134,8 +142,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
                     )}
                 </div>
                 <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                    <Button type="submit" disabled={!!isPermanent && !plSubDirty}>{categoryToEdit ? 'Update' : 'Save'} Category</Button>
+                    <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving..." disabled={!!isPermanent && !plSubDirty}>
+                        {categoryToEdit ? 'Update' : 'Save'} Category
+                    </LoadingButton>
                 </div>
             </div>
         </form>

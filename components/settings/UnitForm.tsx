@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Unit, Project, Contact, ContactType, UnitOccupancyStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import Modal from '../ui/Modal';
 import ContactForm from './ContactForm';
@@ -34,6 +35,7 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
     const [area, setArea] = useState(unitToEdit?.area?.toString() || '');
     const [floor, setFloor] = useState(unitToEdit?.floor || '');
     const [nameError, setNameError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
     // Local modal state for adding new contacts
     const [showContactModal, setShowContactModal] = useState(false);
@@ -63,6 +65,7 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         if (nameError) {
             await showAlert("Please fix the errors before submitting.");
             return;
@@ -71,15 +74,20 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
             await showAlert("Project is required.");
             return;
         }
-        onSubmit({ 
-            name, 
-            projectId, 
-            contactId: contactId || undefined, 
-            salePrice: salePrice ? parseFloat(salePrice) : undefined,
-            type: type || undefined,
-            area: area ? parseFloat(area) : undefined,
-            floor: floor || undefined
-        });
+        setIsSubmitting(true);
+        try {
+            await Promise.resolve(onSubmit({
+                name,
+                projectId,
+                contactId: contactId || undefined,
+                salePrice: salePrice ? parseFloat(salePrice) : undefined,
+                type: type || undefined,
+                area: area ? parseFloat(area) : undefined,
+                floor: floor || undefined,
+            }));
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -145,8 +153,10 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                         )}
                     </div>
                     <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto">
-                        <Button type="button" variant="secondary" onClick={onCancel} className="w-full sm:w-auto">Cancel</Button>
-                        <Button type="submit" className="w-full sm:w-auto">{unitToEdit ? 'Update' : 'Save'} Unit</Button>
+                        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">Cancel</Button>
+                        <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving..." className="w-full sm:w-auto">
+                            {unitToEdit ? 'Update' : 'Save'} Unit
+                        </LoadingButton>
                     </div>
                 </div>
             </form>

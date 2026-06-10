@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Building } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Textarea from '../ui/Textarea';
 import { useNotification } from '../../context/NotificationContext';
 
@@ -22,6 +23,7 @@ const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelet
     const [description, setDescription] = useState(buildingToEdit?.description || '');
     const [color, setColor] = useState(buildingToEdit?.color || '#10b981'); // Default emerald-500
     const [nameError, setNameError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Check for duplicate building names
     useEffect(() => {
@@ -39,11 +41,17 @@ const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelet
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         if (nameError) {
             await showAlert("Please fix the errors before submitting.");
             return;
         }
-        onSubmit({ name, description, color });
+        setIsSubmitting(true);
+        try {
+            await Promise.resolve(onSubmit({ name, description, color }));
+        } finally {
+            setIsSubmitting(false);
+        }
     };
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
@@ -74,8 +82,10 @@ const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelet
                     )}
                 </div>
                 <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto">
-                    <Button type="button" variant="secondary" onClick={onCancel} className="w-full sm:w-auto">Cancel</Button>
-                    <Button type="submit" className="w-full sm:w-auto">{buildingToEdit ? 'Update' : 'Save'} Building</Button>
+                    <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">Cancel</Button>
+                    <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving..." className="w-full sm:w-auto">
+                        {buildingToEdit ? 'Update' : 'Save'} Building
+                    </LoadingButton>
                 </div>
             </div>
         </form>

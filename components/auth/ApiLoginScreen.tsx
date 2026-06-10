@@ -31,6 +31,7 @@ import { apiClient } from '../../services/api/client';
 import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import { requestElectronWebContentsFocus } from '../../utils/electronFocusRecovery';
 import { useNotification } from '../../context/NotificationContext';
+import { DEMO_PUBLIC_TENANT_ID } from '../../config/demoEnvironment';
 import Button from '../ui/Button';
 
 const DEFAULT_TENANT =
@@ -350,6 +351,21 @@ const ApiLoginScreen: React.FC = () => {
   const [mfaSetupToken, setMfaSetupToken] = useState<string | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const tenantHintId = useId();
+  const isDemoTenantLogin = tenantId.trim() === DEMO_PUBLIC_TENANT_ID;
+
+  useEffect(() => {
+    if (view !== 'login') return;
+    if (tenantId.trim() === DEMO_PUBLIC_TENANT_ID) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('auto_demo') === '1') {
+        setTenantId(DEMO_PUBLIC_TENANT_ID);
+        persistLastTenant(DEMO_PUBLIC_TENANT_ID);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [view, tenantId]);
 
   useEffect(() => {
     const root = getApiRootUrl();
@@ -413,7 +429,7 @@ const ApiLoginScreen: React.FC = () => {
    * If the user already focused another field in this form (e.g. API URL or username), do not steal focus.
    */
   useEffect(() => {
-    if (view !== 'login') return;
+    if (view !== 'login' || isDemoTenantLogin) return;
     const prefilled = readStoredLastUsername().trim();
     if (!prefilled || password) return;
     const id = window.setTimeout(() => {
@@ -428,7 +444,7 @@ const ApiLoginScreen: React.FC = () => {
       passwordInputRef.current?.focus({ preventScroll: true });
     }, 150);
     return () => clearTimeout(id);
-  }, [view, password]);
+  }, [view, password, isDemoTenantLogin]);
 
   const rootUrl = () => (serverUrl.trim() || getDefaultApiRootUrl()).replace(/\/+$/, '');
 
@@ -486,16 +502,21 @@ const ApiLoginScreen: React.FC = () => {
     setError(null);
     const tid = tenantId.trim() || DEFAULT_TENANT;
     const user = username.trim();
-    if (!user) {
+    if (!isDemoTenantLogin && !user) {
       setError('Username is required.');
       return;
     }
-    if (!password) {
+    if (!isDemoTenantLogin && !password) {
       setError('Password is required.');
       return;
     }
     try {
       apiClient.setBaseUrl(rootUrl());
+      if (isDemoTenantLogin) {
+        await enterDemoSession();
+        persistLastTenant(tid);
+        return;
+      }
       const result = await login(user, password, tid);
       if (result.status === 'mfa_required') {
         setError(null);
@@ -789,75 +810,85 @@ const ApiLoginScreen: React.FC = () => {
                   </FieldHelper>
                 </div>
 
-                <div>
-                  <FieldLabel htmlFor="api-username" required>
-                    Username
-                  </FieldLabel>
-                  <IconField icon={User}>
-                    <input
-                      id="api-username"
-                      type="text"
-                      value={username}
-                      onChange={e => setUsername(e.target.value)}
-                      onBlur={() => persistLastUsername(username)}
-                      className={FIELD_INPUT}
-                      autoFocus={!username.trim()}
-                      disabled={isLoading}
-                      autoComplete="username"
-                      aria-required
-                    />
-                  </IconField>
-                </div>
-
-                <div>
-                  <FieldLabel htmlFor="api-password" required>
-                    Password
-                  </FieldLabel>
-                  <IconField
-                    icon={Lock}
-                    trailing={
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 flex items-center rounded-r-ds-md px-3 text-app-muted transition-colors hover:bg-black/[0.04] hover:text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ds-primary/40 dark:hover:bg-white/10"
-                        onClick={() => setShowPassword(v => !v)}
-                        tabIndex={-1}
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                        aria-pressed={showPassword}
+                {!isDemoTenantLogin && (
+                  <div>
+                    <FieldLabel htmlFor="api-username" required>
+                      Username
+                    </FieldLabel>
+                    <IconField icon={User}>
+                      <input
+                        id="api-username"
+                        type="text"
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        onBlur={() => persistLastUsername(username)}
+                        className={FIELD_INPUT}
+                        autoFocus={!username.trim()}
                         disabled={isLoading}
-                      >
-                        {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
-                      </button>
-                    }
-                  >
-                    <input
-                      ref={passwordInputRef}
-                      id="api-password"
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      className={`${FIELD_INPUT} pr-11`}
-                      disabled={isLoading}
-                      autoComplete="current-password"
-                      aria-required
-                    />
-                  </IconField>
-                </div>
+                        autoComplete="username"
+                        aria-required
+                      />
+                    </IconField>
+                  </div>
+                )}
 
-                <label className="flex cursor-pointer items-start gap-3 rounded-ds-md border border-transparent px-1 py-1 transition-colors hover:border-app-border/60">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-app-input-border text-emerald-600 focus:ring-2 focus:ring-ds-primary/35 disabled:opacity-60"
-                    checked={savePassword}
-                    onChange={e => setSavePassword(e.target.checked)}
-                    disabled={isLoading}
-                  />
-                  <span className="min-w-0 text-ds-body text-app-text">
-                    Save password on this device
-                    <span className="mt-0.5 block text-ds-small font-normal text-app-muted">
-                      Stored locally with your last organization and username. Uncheck and sign in to remove it.
+                {isDemoTenantLogin ? (
+                  <p className="rounded-ds-md border border-emerald-200/80 bg-emerald-50/80 px-3 py-2.5 text-ds-small text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100">
+                    No password required. Click Sign in to explore the live demo — sample data resets daily.
+                  </p>
+                ) : (
+                  <div>
+                    <FieldLabel htmlFor="api-password" required>
+                      Password
+                    </FieldLabel>
+                    <IconField
+                      icon={Lock}
+                      trailing={
+                        <button
+                          type="button"
+                          className="absolute inset-y-0 right-0 flex items-center rounded-r-ds-md px-3 text-app-muted transition-colors hover:bg-black/[0.04] hover:text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ds-primary/40 dark:hover:bg-white/10"
+                          onClick={() => setShowPassword(v => !v)}
+                          tabIndex={-1}
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          aria-pressed={showPassword}
+                          disabled={isLoading}
+                        >
+                          {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                        </button>
+                      }
+                    >
+                      <input
+                        ref={passwordInputRef}
+                        id="api-password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        className={`${FIELD_INPUT} pr-11`}
+                        disabled={isLoading}
+                        autoComplete="current-password"
+                        aria-required
+                      />
+                    </IconField>
+                  </div>
+                )}
+
+                {!isDemoTenantLogin && (
+                  <label className="flex cursor-pointer items-start gap-3 rounded-ds-md border border-transparent px-1 py-1 transition-colors hover:border-app-border/60">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-app-input-border text-emerald-600 focus:ring-2 focus:ring-ds-primary/35 disabled:opacity-60"
+                      checked={savePassword}
+                      onChange={e => setSavePassword(e.target.checked)}
+                      disabled={isLoading}
+                    />
+                    <span className="min-w-0 text-ds-body text-app-text">
+                      Save password on this device
+                      <span className="mt-0.5 block text-ds-small font-normal text-app-muted">
+                        Stored locally with your last organization and username. Uncheck and sign in to remove it.
+                      </span>
                     </span>
-                  </span>
-                </label>
+                  </label>
+                )}
 
                 <Button
                   type="submit"
@@ -870,46 +901,52 @@ const ApiLoginScreen: React.FC = () => {
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                       Signing in…
                     </>
+                  ) : isDemoTenantLogin ? (
+                    'Enter live demo'
                   ) : (
                     'Sign in'
                   )}
                 </Button>
 
-                <div className="relative my-3 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-app-border/70" aria-hidden />
-                  <span className="text-ds-small text-app-muted">or</span>
-                  <div className="h-px flex-1 bg-app-border/70" aria-hidden />
-                </div>
+                {!isDemoTenantLogin && (
+                  <>
+                    <div className="relative my-3 flex items-center gap-3">
+                      <div className="h-px flex-1 bg-app-border/70" aria-hidden />
+                      <span className="text-ds-small text-app-muted">or</span>
+                      <div className="h-px flex-1 bg-app-border/70" aria-hidden />
+                    </div>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isLoading || demoEntering}
-                  className="w-full"
-                  onClick={async () => {
-                    setError(null);
-                    setDemoEntering(true);
-                    try {
-                      await enterDemoSession();
-                    } catch (e) {
-                      setError(formatApiErrorMessage(e));
-                    } finally {
-                      setDemoEntering(false);
-                    }
-                  }}
-                >
-                  {demoEntering ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                      Opening live demo…
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4" aria-hidden />
-                      Try Live Demo
-                    </>
-                  )}
-                </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isLoading || demoEntering}
+                      className="w-full"
+                      onClick={async () => {
+                        setError(null);
+                        setDemoEntering(true);
+                        try {
+                          await enterDemoSession();
+                        } catch (e) {
+                          setError(formatApiErrorMessage(e));
+                        } finally {
+                          setDemoEntering(false);
+                        }
+                      }}
+                    >
+                      {demoEntering ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                          Opening live demo…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" aria-hidden />
+                          Try Live Demo
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
 
                 <p className="pt-1 text-center text-ds-body text-app-muted">
                   <button

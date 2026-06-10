@@ -13,6 +13,7 @@ import RecordLockBanner from '../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Modal from '../ui/Modal';
 import { CURRENCY, ICONS } from '../../constants';
 import ContactForm from '../settings/ContactForm';
@@ -78,6 +79,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [isDirty, setIsDirty] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   /** When saving, also create a recurring template (rental invoices only; hidden if one already exists). */
   const [addToRecurring, setAddToRecurring] = useState(false);
   const entityFormModal = useEntityFormModal();
@@ -1169,6 +1171,10 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       return;
     }
 
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+
     /* Recurring template creation disabled */
 
     const finalDocumentPath = documentPath;
@@ -1332,6 +1338,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
     if (!skipClose) {
       onClose();
+    }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1648,13 +1657,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
             {/* Action Buttons */}
             <div className="space-y-2">
-              <Button
+              <LoadingButton
                 type="submit"
+                loading={isSubmitting}
+                loadingText="Saving..."
                 disabled={!!numberError || isAgreementCancelled || (Boolean(itemToEdit) && recordLock.viewOnly)}
                 className="w-full text-sm py-2.5 bg-blue-600 hover:bg-blue-700"
               >
                 {itemToEdit ? 'Update Invoice' : 'Save Invoice'}
-              </Button>
+              </LoadingButton>
               <Button
                 type="button"
                 variant="secondary"
@@ -2736,14 +2747,16 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               )}
             </div>
             <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
-              <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
-              <Button
+              <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
+              <LoadingButton
                 type="submit"
+                loading={isSubmitting}
+                loadingText="Saving..."
                 disabled={!!numberError || isAgreementCancelled || (Boolean(itemToEdit) && recordLock.viewOnly)}
                 className="w-full sm:w-auto text-sm py-2"
               >
                 {itemToEdit ? 'Update' : 'Save'}
-              </Button>
+              </LoadingButton>
             </div>
           </div>
         )}

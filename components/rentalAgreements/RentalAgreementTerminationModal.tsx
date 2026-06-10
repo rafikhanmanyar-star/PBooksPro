@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RentalAgreement, RentalAgreementStatus, InvoiceStatus, Invoice } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import DatePicker from '../ui/DatePicker';
@@ -27,6 +28,7 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
     const [endDate, setEndDate] = useState(toLocalDateString(new Date()));
     const [status, setStatus] = useState<RentalAgreementStatus>(RentalAgreementStatus.TERMINATED);
     const [notes, setNotes] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const allInvoicesForAgreement = useMemo(() => {
         if (!agreement) return [];
@@ -63,7 +65,10 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!agreement) return;
+        if (isSubmitting || !agreement) return;
+
+        setIsSubmitting(true);
+        try {
 
         let desc = agreement.description || '';
         desc += ` | ${status} on ${endDate}`;
@@ -86,6 +91,9 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
             : '';
         showToast(`Agreement marked as ${status}.${unpaidMsg}`);
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     if (!agreement) return null;
@@ -94,7 +102,7 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
     const propertyName = properties.find(p => p.id === agreement.propertyId)?.name || 'Unknown';
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`End Agreement #${agreement.agreementNumber}`} size="lg">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={`End Agreement #${agreement.agreementNumber}`} size="lg">
             <form onSubmit={handleSubmit} className="space-y-4 p-1 max-h-[80vh] overflow-y-auto">
                 {openNonSecurityInvoices.length > 0 && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -178,10 +186,10 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
                 <Input label="Notes (Optional)" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Reason for termination, deductions..." />
 
                 <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="secondary" onClick={onClose} className="!text-xs !py-1.5 !px-3">Cancel</Button>
-                    <Button type="submit" variant="danger" className="!text-xs !py-1.5 !px-4">
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting} className="!text-xs !py-1.5 !px-3">Cancel</Button>
+                    <LoadingButton type="submit" variant="danger" loading={isSubmitting} loadingText="Processing..." className="!text-xs !py-1.5 !px-4">
                         {`Confirm ${status}`}
-                    </Button>
+                    </LoadingButton>
                 </div>
             </form>
         </Modal>

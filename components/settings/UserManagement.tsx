@@ -7,6 +7,7 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import { UserRole } from '../../types';
 import { ASSIGNABLE_ROLES, ENTERPRISE_ROLE_LABELS, resolveEnterpriseRole } from '../../shared/rbac/permissions';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import { ICONS } from '../../constants';
@@ -48,6 +49,7 @@ const UserManagement: React.FC = () => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [role, setRole] = useState<UserRole>('Accounts');
 
     const useCompanyBridge = isLocalOnlyMode() && !!companyCtx;
@@ -161,6 +163,7 @@ const UserManagement: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
 
         if (!username || !name) {
             await showAlert("Username and Name are required.");
@@ -172,6 +175,7 @@ const UserManagement: React.FC = () => {
             return;
         }
 
+        setIsSubmitting(true);
         try {
             if (useCompanyBridge) {
                 if (userToEdit) {
@@ -241,6 +245,8 @@ const UserManagement: React.FC = () => {
         } catch (error: any) {
             console.error('Error saving user:', error);
             await showAlert(error.message || error.error || 'Failed to save user');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -353,7 +359,7 @@ const UserManagement: React.FC = () => {
                 )}
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={userToEdit ? 'Edit User' : 'New User'}>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} preventCloseWhile={isSubmitting} title={userToEdit ? 'Edit User' : 'New User'}>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <Input
                         label="Full Name"
@@ -419,8 +425,8 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4 border-t">
-                        <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                        <Button type="submit">Save User</Button>
+                        <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>Cancel</Button>
+                        <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving...">Save User</LoadingButton>
                     </div>
                 </form>
             </Modal>

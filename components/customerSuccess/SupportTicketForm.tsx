@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import { supportApi, type SupportTicketType } from '../../services/api/supportApi';
 import { useNotification } from '../../context/NotificationContext';
@@ -33,6 +34,7 @@ const SupportTicketForm: React.FC<Props> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!name.trim() || !email.trim() || !subject.trim() || !message.trim()) {
       showToast('Please fill in all required fields.', 'warning');
       return;
@@ -94,9 +96,9 @@ const SupportTicketForm: React.FC<Props> = ({
           placeholder="Describe your request in detail…"
         />
       </div>
-      <Button type="submit" disabled={submitting}>
-        {submitting ? 'Submitting…' : 'Submit'}
-      </Button>
+      <LoadingButton type="submit" loading={submitting} loadingText="Submitting…">
+        Submit
+      </LoadingButton>
     </form>
   );
 };

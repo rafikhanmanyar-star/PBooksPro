@@ -4,6 +4,7 @@ import { Invoice, ProjectReceivedAsset, ProjectReceivedAssetType, InvoiceStatus,
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
@@ -36,6 +37,7 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
     const [assetType, setAssetType] = useState<ProjectReceivedAssetType>('Other');
     const [value, setValue] = useState('');
     const [receivedDate, setReceivedDate] = useState(toLocalDateString(new Date()));
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const balanceDue = useMemo(() => Math.max(0, invoice.amount - (invoice.paidAmount || 0)), [invoice.amount, invoice.paidAmount]);
 
@@ -53,6 +55,7 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
     );
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         const numValue = parseFloat(value);
         if (!description.trim()) {
             await showAlert('Please enter a description for the asset.');
@@ -70,6 +73,9 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
             await showAlert('System account or category for received assets is not set up. Please contact support.');
             return;
         }
+
+        setIsSubmitting(true);
+        try {
 
         const assetId = `asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
         const asset: ProjectReceivedAsset = {
@@ -108,6 +114,9 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
         showToast(`Recorded asset (${CURRENCY} ${numValue.toLocaleString()}) and applied to Invoice #${invoice.invoiceNumber}`, 'success');
         onSuccess?.();
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const formContent = (
@@ -145,8 +154,10 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
             />
             <DatePicker label="Date received" value={receivedDate} onChange={d => setReceivedDate(toLocalDateString(d))} />
             <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                <Button type="button" onClick={handleSubmit}>Record asset & apply to invoice</Button>
+                <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Saving...">
+                    Record asset & apply to invoice
+                </LoadingButton>
             </div>
         </div>
     );
@@ -155,7 +166,7 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
         return formContent;
     }
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Receive payment (Asset)">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title="Receive payment (Asset)">
             {formContent}
         </Modal>
     );

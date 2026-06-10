@@ -14,6 +14,7 @@ import { Transaction, TransactionType, Category, RentalAgreementStatus } from '.
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
 import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
@@ -43,6 +44,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
     const [month, setMonth] = useState(currentMonthYyyyMm()); // YYYY-MM
     const [propertyId, setPropertyId] = useState('');
     const [amount, setAmount] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Helper to check rental status
     const getPropertyStatus = (propId: string): 'Rented' | 'Vacant' => {
@@ -87,6 +89,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
     }, [isOpen, initialPropertyId, properties]);
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         if (!month) {
             await showAlert('Please select a valid month.');
             return;
@@ -153,6 +156,9 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
         const ownerId =
             resolveOwnerForPropertyOnDate({ properties }, property.id, dateStr) ?? property.ownerId ?? undefined;
 
+        setIsSubmitting(true);
+        try {
+
         const newTxs: Transaction[] = [];
 
         newTxs.push({
@@ -195,10 +201,13 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
             }
         }, 150);
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Manual Service Charges Deduction">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title="Manual Service Charges Deduction">
             <div className="space-y-4">
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm text-blue-800">
                     This will deduct the service charge from the Owner's balance and add it to the Building Service Fund, regardless of whether the property is rented or vacant.
@@ -245,8 +254,8 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({
                 />
 
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSubmit}>Apply Charges</Button>
+                    <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Applying...">Apply Charges</LoadingButton>
                 </div>
             </div>
         </Modal>

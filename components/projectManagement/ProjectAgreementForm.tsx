@@ -143,9 +143,10 @@ interface ProjectAgreementFormProps {
     onClose: () => void;
     agreementToEdit?: ProjectAgreement | null;
     onCancelRequest?: (agreement: ProjectAgreement) => void;
+    onSubmittingChange?: (submitting: boolean) => void;
 }
 
-const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, agreementToEdit, onCancelRequest }) => {
+const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, agreementToEdit, onCancelRequest, onSubmittingChange }) => {
     const state = useProjectReportAppState();
     const dispatch = useDispatchOnly();
     const { showConfirm, showToast, showAlert, showProgress, hideProgress } = useNotification();
@@ -240,6 +241,9 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
     const [description, setDescription] = useState(agreementToEdit?.description || '');
     const [isSaving, setIsSaving] = useState(false);
+    useEffect(() => {
+        onSubmittingChange?.(isSaving);
+    }, [isSaving, onSubmittingChange]);
     const [agreementNumberError, setAgreementNumberError] = useState('');
     const [status, setStatus] = useState<ProjectAgreementStatus>(agreementToEdit?.status || ProjectAgreementStatus.ACTIVE);
     const [installmentPlan, setInstallmentPlan] = useState<{ durationYears: number; downPaymentPercentage: number; frequency: InstallmentFrequency; optionalInstallment?: boolean; optionalInstallmentName?: string } | undefined>(agreementToEdit?.installmentPlan);

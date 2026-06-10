@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Contact, ContactType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import { useNotification } from '../../context/NotificationContext';
@@ -44,6 +45,7 @@ const ContactsManagement: React.FC = () => {
     const [company, setCompany] = useState('');
     const [address, setAddress] = useState('');
     const [notes, setNotes] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Grid state
     const [gridSearchQuery, setGridSearchQuery] = useState('');
@@ -166,6 +168,7 @@ const ContactsManagement: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
 
         if (!name.trim()) {
             showToast('Full Name is required', 'error');
@@ -190,6 +193,7 @@ const ContactsManagement: React.FC = () => {
                 : emailLine;
         }
 
+        setIsSubmitting(true);
         try {
             // Local-only: save to local DB via AppContext (no API)
             if (isLocalOnlyMode()) {
@@ -232,6 +236,8 @@ const ContactsManagement: React.FC = () => {
             } else {
                 showToast(`Error: ${errorMessage}`, 'error');
             }
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -521,8 +527,10 @@ const ContactsManagement: React.FC = () => {
                                     Cancel
                                 </Button>
                             )}
-                            <Button
+                            <LoadingButton
                                 type="submit"
+                                loading={isSubmitting}
+                                loadingText="Saving..."
                                 className={`flex-1 text-sm py-2 ${activeTypeConfig.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
                                     activeTypeConfig.color === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' :
                                         activeTypeConfig.color === 'orange' ? 'bg-orange-600 hover:bg-orange-700' :
@@ -531,7 +539,7 @@ const ContactsManagement: React.FC = () => {
                                     } text-white`}
                             >
                                 {editingContact ? 'Update' : `Add ${activeTypeConfig.label}`}
-                            </Button>
+                            </LoadingButton>
                         </div>
                     </form>
                 </div >

@@ -16,6 +16,7 @@ import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Select from '../ui/Select';
 import { CURRENCY } from '../../constants';
 import { resolveSystemCategoryId } from '../../services/systemEntityIds';
@@ -58,6 +59,7 @@ const ReceiveFromOwnerModal: React.FC<{
     const [date, setDate] = useState('');
     const [accountId, setAccountId] = useState('');
     const [reference, setReference] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const propertyById = useMemo(
         () => new Map(properties.map((p) => [p.id, p])),
@@ -167,6 +169,7 @@ const ReceiveFromOwnerModal: React.FC<{
     }, [properties, ownerId]);
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         const numAmount = parseFloat(amount);
         if (isNaN(numAmount) || numAmount <= 0) {
             await showAlert('Please enter a valid positive amount.');
@@ -213,13 +216,18 @@ const ReceiveFromOwnerModal: React.FC<{
             isSystem: false,
         };
 
-        dispatch({ type: 'ADD_TRANSACTION', payload: receiveTx });
-        showToast(`Payment of ${CURRENCY} ${numAmount.toLocaleString()} received from ${ownerName}.`, 'success');
-        onClose();
+        setIsSubmitting(true);
+        try {
+            dispatch({ type: 'ADD_TRANSACTION', payload: receiveTx });
+            showToast(`Payment of ${CURRENCY} ${numAmount.toLocaleString()} received from ${ownerName}.`, 'success');
+            onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Receive payment from owner">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title="Receive payment from owner">
             <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm text-blue-800">
                     <p className="font-medium">Service charges, owner &amp; building bills</p>
@@ -357,10 +365,12 @@ const ReceiveFromOwnerModal: React.FC<{
                 />
 
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                    <Button variant="secondary" onClick={onClose}>
+                    <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
                         Cancel
                     </Button>
-                    <Button onClick={() => void handleSubmit()}>Receive payment</Button>
+                    <LoadingButton onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Saving...">
+                        Receive payment
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

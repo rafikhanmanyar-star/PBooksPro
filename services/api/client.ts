@@ -412,7 +412,7 @@ export class ApiClient {
             (() => {
               const c = pickApiErrorFields(data).code;
               return (
-                c === 'VERSION_CONFLICT' || c === 'CONFLICT' || c === 'LOCK_HELD' || c === 'LOCK_LOST'
+                c === 'VERSION_CONFLICT' || c === 'CONFLICT' || c === 'LOCK_HELD' || c === 'LOCK_LOST' || c === 'DUPLICATE_RECORD' || c === 'DUPLICATE_KEY'
               );
             })()
           ) {

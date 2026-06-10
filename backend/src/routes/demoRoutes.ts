@@ -11,6 +11,10 @@ import {
   isDemoEnvironmentEnabled,
   isDemoPublicLoginEnabled,
 } from '../constants/demoEnvironment.js';
+import {
+  getDemoPublicTenantInfo,
+  resolveDemoPublicLoginUser,
+} from '../services/demo/demoAuthService.js';
 import { resetPublicDemoTenant } from '../services/demo/demoResetService.js';
 import { recordLoginEvent, auditContextFromRequest } from '../services/enterpriseAuditService.js';
 import { publicIntrospectionLimiter } from '../middleware/introspectionGuard.js';
@@ -60,25 +64,13 @@ demoRouter.post('/demo/enter', enterLimiter, async (req, res) => {
 
   try {
     const pool = getPool();
-    const r = await pool.query<{
-      id: string;
-      username: string;
-      name: string;
-      role: string;
-      tenant_id: string;
-    }>(
-      `SELECT id, username, name, role, tenant_id FROM users
-       WHERE tenant_id = $1 AND LOWER(username) = LOWER($2) AND is_active = TRUE
-       LIMIT 1`,
-      [DEMO_PUBLIC_TENANT_ID, DEMO_DEFAULT_USERNAME]
-    );
-
-    const user = r.rows[0];
+    const user = await resolveDemoPublicLoginUser(pool);
     if (!user) {
       sendFailure(res, 503, 'DEMO_NOT_PROVISIONED', 'Demo environment is being prepared. Please try again shortly.');
       return;
     }
 
+    const tenant = await getDemoPublicTenantInfo();
     const token = signAccessToken(user.id, user.tenant_id, user.role);
 
     const auditClient = await pool.connect();
@@ -108,9 +100,9 @@ demoRouter.post('/demo/enter', enterLimiter, async (req, res) => {
         tenantId: user.tenant_id,
       },
       tenant: {
-        id: DEMO_PUBLIC_TENANT_ID,
-        name: DEMO_PUBLIC_TENANT_NAME,
-        companyName: DEMO_PUBLIC_TENANT_NAME,
+        id: tenant.id,
+        name: tenant.name,
+        companyName: tenant.companyName,
       },
     });
   } catch (e) {

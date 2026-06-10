@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Account, AccountType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Textarea from '../ui/Textarea';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
@@ -39,6 +40,7 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
     const [nonBankInitial, setNonBankInitial] = useState(() =>
         accountToEdit && !isBankLikeType(accountToEdit.type) ? String(accountToEdit.balance) : '0'
     );
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const isPermanent = accountToEdit?.isPermanent;
     const bankLike = isBankLikeType(type);
@@ -78,24 +80,30 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
         return Number.isFinite(n) ? n : 0;
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         if (isReservedName) return;
         if (isPermanent && !canEditOpeningAsSystem) return;
-        if (bankLike) {
-            onSubmit({
-                name,
-                description,
-                type,
-                parentAccountId: parentAccountId || undefined,
-                openingBalance: parseNum(openingAmount) });
-        } else {
-            onSubmit({
-                name,
-                description,
-                type,
-                parentAccountId: parentAccountId || undefined,
-                initialBalance: parseNum(nonBankInitial) });
+        setIsSubmitting(true);
+        try {
+            if (bankLike) {
+                await Promise.resolve(onSubmit({
+                    name,
+                    description,
+                    type,
+                    parentAccountId: parentAccountId || undefined,
+                    openingBalance: parseNum(openingAmount) }));
+            } else {
+                await Promise.resolve(onSubmit({
+                    name,
+                    description,
+                    type,
+                    parentAccountId: parentAccountId || undefined,
+                    initialBalance: parseNum(nonBankInitial) }));
+            }
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -188,13 +196,15 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel, onDelete,
                     )}
                 </div>
                 <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                    <Button
+                    <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton
                         type="submit"
+                        loading={isSubmitting}
+                        loadingText="Saving..."
                         disabled={isReservedName || (isPermanent && !canEditOpeningAsSystem)}
                     >
                         {accountToEdit ? 'Update' : 'Save'} Account
-                    </Button>
+                    </LoadingButton>
                 </div>
             </div>
         </form>

@@ -6,6 +6,7 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import { ProjectAgreementsApiRepository } from '../../services/api/repositories/projectAgreementsApi';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import { CURRENCY } from '../../constants';
 
@@ -19,6 +20,7 @@ const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onC
     const state = useProjectReportAppState();
     const dispatch = useDispatchOnly();
     const [penaltyPercentage, setPenaltyPercentage] = useState('0');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const agreementInvoices = useMemo(() => {
         if (!agreement) return [];
@@ -58,6 +60,9 @@ const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onC
     if (!agreement) return null;
 
     const handleConfirm = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
         const payload = {
             agreementId: agreement.id,
             penaltyPercentage: parseFloat(penaltyPercentage) || 0,
@@ -89,10 +94,13 @@ const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onC
             }
         }
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Terminate Agreement #${agreement.agreementNumber}`}>
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={`Terminate Agreement #${agreement.agreementNumber}`}>
             <div className="space-y-6">
                 <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
                     <div className="flex justify-between text-sm text-slate-600">
@@ -152,10 +160,10 @@ const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onC
                 </div>
                 
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button variant="danger" onClick={handleConfirm}>
+                    <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton variant="danger" onClick={() => void handleConfirm()} loading={isSubmitting} loadingText="Processing...">
                         Terminate Agreement
-                    </Button>
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Warehouse } from '../../types';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import { useNotification } from '../../context/NotificationContext';
@@ -27,6 +28,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormReq
     const [gridSearchQuery, setGridSearchQuery] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleOpenForm = useCallback(() => {
         setName('');
@@ -96,6 +98,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormReq
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         
         if (!name.trim()) {
             showToast('Warehouse Name is required', 'error');
@@ -118,6 +121,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormReq
             address: address.trim() || undefined
         };
 
+        setIsSubmitting(true);
         try {
             if (editingWarehouse) {
                 // Update existing warehouse
@@ -147,6 +151,8 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormReq
         } catch (error: any) {
             console.error('Error saving warehouse:', error);
             showToast(error?.response?.data?.error || 'Failed to save warehouse', 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -235,12 +241,14 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ onOpenFormReq
                                     Cancel
                                 </Button>
                             )}
-                            <Button
+                            <LoadingButton
                                 type="submit"
+                                loading={isSubmitting}
+                                loadingText="Saving..."
                                 className="flex-1 text-sm py-2 bg-indigo-600 hover:bg-indigo-700 text-white"
                             >
                                 {editingWarehouse ? 'Update Warehouse' : 'Add Warehouse'}
-                            </Button>
+                            </LoadingButton>
                         </div>
                     </form>
                 </div>

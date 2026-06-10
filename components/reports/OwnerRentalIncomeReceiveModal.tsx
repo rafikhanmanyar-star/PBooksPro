@@ -9,6 +9,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { AccountType, Contact, Property, Transaction, TransactionType, Bill, AppState } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import ComboBox from '../ui/ComboBox';
@@ -141,6 +142,7 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
     const [accountId, setAccountId] = useState('');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [amounts, setAmounts] = useState<Record<string, string>>({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const rentalIncomeCategory = useMemo(
         () => categories.find((c) => c.name === 'Rental Income'),
@@ -318,6 +320,7 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
     }, [selectedIds, amounts]);
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         if (!rentalIncomeCategory) {
             await showAlert("Missing 'Rental Income' category.");
             return;
@@ -349,6 +352,9 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
             await showAlert('Select at least one line and enter a positive amount.');
             return;
         }
+
+        setIsSubmitting(true);
+        try {
 
         const ts = Date.now();
         const newTxs: Transaction[] = [];
@@ -393,12 +399,15 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
         const grandTotal = ops.reduce((sum, o) => sum + o.amount, 0);
         showToast(`Recorded ${newTxs.length} receipt(s) totaling ${CURRENCY} ${formatCurrency(grandTotal)}.`, 'success');
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const owedDisplay = Math.max(0, -reportClosingBalance);
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Receive amount from owner">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title="Receive amount from owner">
             <div className="space-y-4">
                 <div className="p-4 bg-app-toolbar/40 rounded-lg border border-app-border space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
@@ -502,12 +511,12 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
                 )}
 
                 <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="secondary" onClick={onClose}>
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
                         Cancel
                     </Button>
-                    <Button type="button" onClick={() => void handleSubmit()} disabled={lines.length === 0}>
+                    <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Saving..." disabled={lines.length === 0}>
                         Save receipt(s)
-                    </Button>
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

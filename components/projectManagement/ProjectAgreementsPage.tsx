@@ -129,6 +129,7 @@ const ProjectAgreementsPage: React.FC = () => {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [agreementToEdit, setAgreementToEdit] = useState<ProjectAgreement | null>(null);
     const [cancelAgreement, setCancelAgreement] = useState<ProjectAgreement | null>(null);
+    const [agreementFormSubmitting, setAgreementFormSubmitting] = useState(false);
 
     // Persistent State
     const [dateRange, setDateRange] = useLocalStorage<DateRangeOption>('projectAgreements_dateRange', 'all');
@@ -740,6 +741,7 @@ const ProjectAgreementsPage: React.FC = () => {
             <Modal 
                 isOpen={isCreateModalOpen} 
                 onClose={() => setIsCreateModalOpen(false)} 
+                preventCloseWhile={agreementFormSubmitting}
                 title={agreementToEdit ? `Edit Agreement ${agreementToEdit.agreementNumber}` : "New Project Agreement"} 
                 size="full"
                 disableScroll
@@ -750,6 +752,7 @@ const ProjectAgreementsPage: React.FC = () => {
                     <ProjectAgreementForm
                         onClose={() => setIsCreateModalOpen(false)}
                         agreementToEdit={agreementToEdit}
+                        onSubmittingChange={setAgreementFormSubmitting}
                         onCancelRequest={(agreement) => {
                             setIsCreateModalOpen(false);
                             setCancelAgreement(agreement);

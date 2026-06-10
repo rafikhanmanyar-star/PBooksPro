@@ -45,6 +45,7 @@ const AddVendorSection: React.FC<{
     const { isAuthenticated } = useAuth();
     const { showToast } = useNotification();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isVendorFormSubmitting, setIsVendorFormSubmitting] = useState(false);
 
     useEffect(() => {
         if (triggerAddVendor) {
@@ -132,12 +133,18 @@ const AddVendorSection: React.FC<{
                 </div>
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Add New Vendor/Supplier">
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                preventCloseWhile={isVendorFormSubmitting}
+                title="Add New Vendor/Supplier"
+            >
                 <ContactForm
                     onSubmit={handleSubmit}
                     onCancel={() => setIsModalOpen(false)}
                     isVendorForm={true}
                     existingVendors={appVendors}
+                    onSubmittingChange={setIsVendorFormSubmitting}
                 />
             </Modal>
         </>

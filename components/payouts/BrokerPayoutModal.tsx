@@ -23,6 +23,7 @@ import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import Textarea from '../ui/Textarea';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import { CURRENCY, ICONS } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
@@ -102,6 +103,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
     const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
     const [paymentParticulars, setPaymentParticulars] = useState('');
     const [accountId, setAccountId] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [showWhatsAppConfirm, setShowWhatsAppConfirm] = useState(false);
     const [lastPaidAmount, setLastPaidAmount] = useState(0);
     
@@ -270,7 +272,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
     const totalToPay = items.filter(i => i.isSelected).reduce((sum, i) => sum + i.paymentAmount, 0);
 
     const handleSubmit = async () => {
-        if (!broker) return;
+        if (isSubmitting || !broker) return;
         if (totalToPay <= 0) {
             await showAlert("Please select at least one commission to pay.");
             return;
@@ -287,6 +289,9 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
         
         const selectedItems = items.filter(i => i.isSelected && i.paymentAmount > 0);
         const particularsNote = paymentParticulars.trim();
+
+        setIsSubmitting(true);
+        try {
 
         const newTransactions: Transaction[] = [];
         const pushRentalPayout = (opts: {
@@ -416,6 +421,9 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
 
         setLastPaidAmount(totalToPay);
         setShowWhatsAppConfirm(true);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleSendWhatsAppConfirmation = () => {
@@ -481,7 +489,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Pay Commissions: ${broker.name}`} size="xl">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={`Pay Commissions: ${broker.name}`} size="xl">
             <div className="space-y-4">
                 <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-grow">
@@ -582,7 +590,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
 
                 <div className="flex justify-end gap-2 pt-2">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={handleSubmit} disabled={totalToPay <= 0}>Confirm Payment</Button>
+                    <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Processing..." disabled={totalToPay <= 0}>Confirm Payment</LoadingButton>
                 </div>
             </div>
         </Modal>

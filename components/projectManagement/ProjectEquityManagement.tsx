@@ -2,6 +2,7 @@ import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelect
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { AccountType, TransactionType, Transaction, EquityLedgerSubtype } from '../../types';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
@@ -908,6 +909,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
     };
 
     const handleSubmit = async () => {
+        if (isRecordingInvestment) return;
         if (!formInvestorId || !formProjectId || !formBankAccountId || !formAmount) {
             showAlert("Please fill in all fields.");
             return;
@@ -923,6 +925,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         const entryDate = parseFlexibleDateToYyyyMmDd(formDate);
 
         if (isLocalOnlyMode()) {
+            setIsRecordingInvestment(true);
+            try {
             const fromId = formInvestorId;
             const toId = formBankAccountId;
             const tx: Transaction = {
@@ -940,6 +944,9 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             dispatch({ type: 'ADD_TRANSACTION', payload: tx });
             showToast("Transaction recorded successfully.", "success");
             setIsActionModalOpen(false);
+            } finally {
+                setIsRecordingInvestment(false);
+            }
             return;
         }
 
@@ -1908,7 +1915,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             )}
             </div>
 
-            <Modal isOpen={isActionModalOpen} onClose={() => setIsActionModalOpen(false)} title="Record New Investment">
+            <Modal isOpen={isActionModalOpen} onClose={() => setIsActionModalOpen(false)} preventCloseWhile={isRecordingInvestment} title="Record New Investment">
                 <div className="space-y-4">
                     <ComboBox label="Investor" items={investorAccounts} selectedId={formInvestorId} onSelect={(i) => setFormInvestorId(i?.id || '')} required />
                     <ComboBox label="Project" items={state.projects} selectedId={formProjectId} onSelect={(i) => setFormProjectId(i?.id || '')} required allowAddNew={false} />
@@ -1921,9 +1928,9 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                         <Button variant="secondary" onClick={() => setIsActionModalOpen(false)} disabled={isRecordingInvestment}>
                             Cancel
                         </Button>
-                        <Button onClick={() => void handleSubmit()} disabled={isRecordingInvestment}>
-                            {isRecordingInvestment ? 'Posting…' : 'Confirm'}
-                        </Button>
+                        <LoadingButton onClick={() => void handleSubmit()} loading={isRecordingInvestment} loadingText="Posting…">
+                            Confirm
+                        </LoadingButton>
                     </div>
                 </div>
             </Modal>

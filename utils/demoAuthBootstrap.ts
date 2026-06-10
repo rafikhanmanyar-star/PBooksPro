@@ -1,23 +1,54 @@
 import { getDefaultApiBaseUrl } from '../config/apiUrl';
 
-const DEMO_AUTH_STORAGE_KEY = 'pbooks_demo_auth';
+export const DEMO_AUTH_STORAGE_KEY = 'pbooks_demo_auth';
 
-/**
- * Website demo-login runs on pbookspro.com; the app runs on app.pbookspro.com.
- * sessionStorage does not cross origins — hand off via ?auto_demo=1 and enter here.
- */
-export async function bootstrapDemoAuthFromUrl(): Promise<boolean> {
+export type DemoAuthPayload = {
+  token: string;
+  loginEventId?: string;
+  user: {
+    id: string;
+    username: string;
+    name: string;
+    role: string;
+    tenantId: string;
+    displayTimezone?: string | null;
+  };
+  tenant: {
+    id: string;
+    name: string;
+    companyName: string;
+  };
+};
+
+export function isAutoDemoUrl(): boolean {
   if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('auto_demo') === '1';
+}
 
+export function readStoredDemoAuth(): DemoAuthPayload | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(DEMO_AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as DemoAuthPayload;
+  } catch {
+    sessionStorage.removeItem(DEMO_AUTH_STORAGE_KEY);
+    return null;
+  }
+}
+
+export function clearAutoDemoQueryParam(): void {
+  if (typeof window === 'undefined') return;
   const params = new URLSearchParams(window.location.search);
-  if (params.get('auto_demo') !== '1') return false;
-
+  if (!params.has('auto_demo')) return;
   params.delete('auto_demo');
   const remaining = params.toString();
   const nextUrl =
     window.location.pathname + (remaining ? `?${remaining}` : '') + window.location.hash;
   window.history.replaceState({}, '', nextUrl);
+}
 
+export async function fetchDemoSessionFromApi(): Promise<DemoAuthPayload | null> {
   try {
     const res = await fetch(`${getDefaultApiBaseUrl()}/demo/enter`, {
       method: 'POST',
@@ -26,30 +57,58 @@ export async function bootstrapDemoAuthFromUrl(): Promise<boolean> {
     });
     const json = (await res.json()) as {
       success?: boolean;
-      data?: {
-        token?: string;
-        loginEventId?: string;
-        user?: { id: string; username: string; name: string; role: string; tenantId: string };
-        tenant?: { id: string; name: string; companyName: string };
-      };
+      data?: DemoAuthPayload;
     };
     const data = json.data;
     if (!res.ok || !data?.token || !data.user || !data.tenant) {
-      return false;
+      return null;
     }
-
-    sessionStorage.setItem(
-      DEMO_AUTH_STORAGE_KEY,
-      JSON.stringify({
-        token: data.token,
-        loginEventId: data.loginEventId,
-        user: data.user,
-        tenant: data.tenant,
-      })
-    );
-    sessionStorage.setItem('pbooks_demo_mode', '1');
-    return true;
+    return data;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function storeDemoAuthPayload(payload: DemoAuthPayload): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(DEMO_AUTH_STORAGE_KEY, JSON.stringify(payload));
+  sessionStorage.setItem('pbooks_demo_mode', '1');
+}
+
+/**
+ * Resolve demo session from sessionStorage (set by index bootstrap) or ?auto_demo=1.
+ * Returns payload and removes it from sessionStorage when consumed.
+ */
+export async function resolveDemoAuthHandoff(): Promise<DemoAuthPayload | null> {
+  const stored = readStoredDemoAuth();
+  if (stored) {
+    sessionStorage.removeItem(DEMO_AUTH_STORAGE_KEY);
+    clearAutoDemoQueryParam();
+    return stored;
+  }
+
+  if (!isAutoDemoUrl()) return null;
+
+  const payload = await fetchDemoSessionFromApi();
+  clearAutoDemoQueryParam();
+  if (payload) {
+    sessionStorage.setItem('pbooks_demo_mode', '1');
+  }
+  return payload;
+}
+
+/**
+ * Website demo-login runs on pbookspro.com; the app runs on app.pbookspro.com.
+ * sessionStorage does not cross origins — hand off via ?auto_demo=1 and enter here.
+ */
+export async function bootstrapDemoAuthFromUrl(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (!isAutoDemoUrl()) return false;
+
+  const payload = await fetchDemoSessionFromApi();
+  if (!payload) return false;
+
+  storeDemoAuthPayload(payload);
+  clearAutoDemoQueryParam();
+  return true;
 }

@@ -66,6 +66,7 @@ import DemoProductTour from './components/onboarding/DemoProductTour';
 import OnboardingGate from './components/onboarding/OnboardingGate';
 import TrialUpgradeBanner from './components/billing/TrialUpgradeBanner';
 import { isDemoModeActive } from './config/demoEnvironment';
+import { isAutoDemoUrl, readStoredDemoAuth } from './utils/demoAuthBootstrap';
 import { isAdminRole } from './hooks/useRecordLock';
 
 
@@ -729,7 +730,14 @@ const App: React.FC = () => {
 
   // Startup only — do not use login isLoading here or ApiLoginScreen unmounts during sign-in/MFA.
   if (authInitializing) {
-    return <Loading message="Checking authentication..." />;
+    const demoEntryPending =
+      !isLocalOnlyMode() &&
+      (isAutoDemoUrl() || readStoredDemoAuth() !== null);
+    return (
+      <Loading
+        message={demoEntryPending ? 'Opening live demo…' : 'Checking authentication...'}
+      />
+    );
   }
 
   // LAN / API: ensure backend is reachable (discover) before sign-in; reconnect flow when connection drops

@@ -5,6 +5,7 @@ import { Project, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
@@ -26,6 +27,7 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
     const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set(project.pmConfig?.excludedCategoryIds || []));
     const [vendorId, setVendorId] = useState<string>(project.pmConfig?.vendorId || '');
     const [searchQuery, setSearchQuery] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Check if there are existing PM allocations or payments for this project
     const hasExistingData = useMemo(() => {
@@ -102,6 +104,7 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
     };
 
     const handleSubmit = async (e?: React.MouseEvent) => {
+        if (isSubmitting) return;
         // Prevent any default form submission
         if (e) {
             e.preventDefault();
@@ -148,6 +151,9 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
             }
         }
 
+        setIsSubmitting(true);
+        try {
+
         // Only save if user confirmed or no warning was needed (vendorId is required)
         const updatedProject: Project = {
             ...project,
@@ -159,6 +165,9 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
             }
         };
         onSave(updatedProject);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const filteredCategories = expenseCategories.filter(c => 
@@ -173,7 +182,7 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
     }, [vendorId, state.vendors]);
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`PM Configuration: ${project.name}`}>
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={`PM Configuration: ${project.name}`}>
             <div className="space-y-6">
                 <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm bg-app-card border border-app-border rounded-lg px-4 py-3">
                     <span>
@@ -274,8 +283,8 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
                 </div>
 
                 <div className="flex justify-end gap-2 border-t pt-4">
-                    <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
-                    <Button onClick={handleSubmit} type="button">Save Configuration</Button>
+                    <Button variant="secondary" onClick={onClose} type="button" disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton onClick={() => void handleSubmit()} type="button" loading={isSubmitting} loadingText="Saving...">Save Configuration</LoadingButton>
                 </div>
             </div>
         </Modal>

@@ -5,6 +5,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { AppAction, RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType, type AppState } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import Modal from '../ui/Modal';
@@ -56,6 +57,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
     const isEditMode = !!agreementToEdit;
     const [currentStep, setCurrentStep] = useState<Step>(0);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // --- Agreement Number ---
     const getNextAgreementNumber = () => {
@@ -313,6 +315,9 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
     // --- Create agreement + optional invoice generation (wizard: only from step 3 "Broker & Review") ---
     const handleCreateAgreementAndMaybeInvoices = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
         if (!contactId || !propertyId || !startDate || !endDate || !monthlyRent) {
             await showAlert("Please fill in all required fields.");
             return;
@@ -448,11 +453,15 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             showToast("Agreement created.");
         }
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     // --- Submit: edit mode or wizard step 3 only ---
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         // New agreement wizard: create + invoice modal only from step 3 (Broker & Review). Never from step 1 or 2.
         if (!isEditMode) {
             if (currentStep !== 2) return;
@@ -493,6 +502,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             status: agreementStatus,
         };
 
+        setIsSubmitting(true);
+        try {
         if (agreementToEdit) {
             const hasInvoices = invoices.some(inv => inv.agreementId === agreementToEdit.id);
             if (hasInvoices && agreementToEdit.status !== RentalAgreementStatus.RENEWED) {
@@ -542,6 +553,9 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             showToast("Agreement updated.");
         }
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleDelete = async () => {
@@ -745,15 +759,15 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                         )}
                     </div>
                     <div className="flex gap-2">
-                        <Button type="button" variant="secondary" onClick={onClose} className="!text-xs !py-1.5 !px-3">Cancel</Button>
+                        <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting} className="!text-xs !py-1.5 !px-3">Cancel</Button>
                         {currentStep < 2 ? (
-                            <Button type="button" onClick={() => { if (canGoNext(currentStep)) setCurrentStep((currentStep + 1) as Step); }} disabled={!canGoNext(currentStep)} className="!text-xs !py-1.5 !px-4">
+                            <Button type="button" onClick={() => { if (canGoNext(currentStep)) setCurrentStep((currentStep + 1) as Step); }} disabled={!canGoNext(currentStep) || isSubmitting} className="!text-xs !py-1.5 !px-4">
                                 Next
                             </Button>
                         ) : (
-                            <Button type="button" onClick={handleCreateAgreementAndMaybeInvoices} className="!text-xs !py-1.5 !px-4">
+                            <LoadingButton type="button" onClick={() => void handleCreateAgreementAndMaybeInvoices()} loading={isSubmitting} loadingText="Creating..." className="!text-xs !py-1.5 !px-4">
                                 Generate
-                            </Button>
+                            </LoadingButton>
                         )}
                     </div>
                 </div>
@@ -905,8 +919,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     )}
                 </div>
                 <div className="flex flex-wrap gap-2 justify-end">
-                    <Button type="button" variant="secondary" onClick={onClose} className="!text-xs !py-1.5 !px-3">Cancel</Button>
-                    <Button type="submit" className="!text-xs !py-1.5 !px-4">Update</Button>
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting} className="!text-xs !py-1.5 !px-3">Cancel</Button>
+                    <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving..." className="!text-xs !py-1.5 !px-4">Update</LoadingButton>
                 </div>
             </div>
         </form>

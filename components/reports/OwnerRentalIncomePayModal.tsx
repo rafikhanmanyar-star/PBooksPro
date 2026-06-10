@@ -10,6 +10,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { AccountType, Contact, Property, Transaction, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import ComboBox from '../ui/ComboBox';
@@ -50,6 +51,7 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
     const [reference, setReference] = useState('');
     const [notes, setNotes] = useState('');
     const [error, setError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const userSelectableAccounts = useMemo(
         () => accounts.filter((a) => a.type === AccountType.BANK && a.name !== 'Internal Clearing'),
@@ -92,7 +94,7 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
     }));
 
     const handleSubmit = async () => {
-        if (!owner || error) return;
+        if (isSubmitting || !owner || error) return;
         const payoutAccount = accounts.find((a) => a.id === accountId);
         if (!payoutAccount) {
             await showAlert('Please select a valid account to pay from.');
@@ -123,6 +125,9 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
             if (bName) description += ` [${bName}]`;
         }
 
+        setIsSubmitting(true);
+        try {
+
         const tx: Transaction = {
             id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
             type: TransactionType.EXPENSE,
@@ -140,12 +145,15 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
         dispatch({ type: 'ADD_TRANSACTION', payload: tx });
         showToast('Rental income payment recorded. Ledger and accounts are updated.', 'success');
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     if (!owner) return null;
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Pay owner (rental income)">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title="Pay owner (rental income)">
             <div className="space-y-4">
                 <div className="p-4 bg-app-toolbar/40 rounded-lg border border-app-border space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
@@ -235,12 +243,12 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
                 {error && <p className="text-sm text-danger">{error}</p>}
 
                 <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="secondary" onClick={onClose}>
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
                         Cancel
                     </Button>
-                    <Button type="button" onClick={handleSubmit} disabled={!!error}>
+                    <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Saving..." disabled={!!error}>
                         Save payment
-                    </Button>
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

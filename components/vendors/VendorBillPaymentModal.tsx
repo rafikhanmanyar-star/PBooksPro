@@ -5,6 +5,7 @@ import { Vendor, Transaction, TransactionType, InvoiceStatus, AccountType, Bill 
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
@@ -66,6 +67,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     const [applyPrepaidFifo, setApplyPrepaidFifo] = useState(true);
     /** One bill only: type any split of prepaid vs bank; total can be less than full due (partial payment). */
     const [manualSettlementSplit, setManualSettlementSplit] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [manualAdvanceAmounts, setManualAdvanceAmounts] = useState<Record<string, string>>({});
 
     const restrictSet = useMemo(
@@ -397,6 +399,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     };
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         if (!accountId) {
             await showAlert('Please select a payment account.');
             return;
@@ -409,6 +412,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
             return;
         }
 
+        setIsSubmitting(true);
+        try {
         const selectedBillsSorted = [...selectedSorted];
 
         /* --- Advance + journal settlement (API mode) ------------------------------------ */
@@ -740,6 +745,9 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         } else {
             await showAlert('Could not generate valid transactions. Please check amounts.');
         }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     useEffect(() => {
@@ -803,7 +811,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
           : 'Confirm payment';
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} size="xl">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={modalTitle} size="xl">
             <div className="flex flex-col h-full max-h-[80vh]">
                 <div className="p-4 bg-slate-50 border-b border-slate-200">
                     <div className="flex justify-between items-center mb-2">
@@ -1194,10 +1202,15 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                 </div>
 
                 <div className="p-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-lg">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button onClick={() => void handleSubmit()} disabled={pendingBills.length === 0}>
+                    <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton
+                        onClick={() => void handleSubmit()}
+                        loading={isSubmitting}
+                        loadingText="Processing..."
+                        disabled={pendingBills.length === 0}
+                    >
                         {primaryActionLabel}
-                    </Button>
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

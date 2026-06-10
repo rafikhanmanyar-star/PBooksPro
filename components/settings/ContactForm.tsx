@@ -21,6 +21,8 @@ interface ContactFormProps {
   existingVendors?: Vendor[];
   initialName?: string;
   hideCancelButton?: boolean;
+  /** Notifies parent when internal submit lock changes (for modal preventCloseWhile). */
+  onSubmittingChange?: (submitting: boolean) => void;
 }
 
 const ContactForm: React.FC<ContactFormProps> = ({
@@ -35,11 +37,16 @@ const ContactForm: React.FC<ContactFormProps> = ({
   existingContacts = [],
   existingVendors = [],
   initialName,
-  hideCancelButton = false
+  hideCancelButton = false,
+  onSubmittingChange,
 }) => {
   const { showAlert } = useNotification();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const entityToEdit = vendorToEdit || contactToEdit;
+
+  useEffect(() => {
+    onSubmittingChange?.(isSubmitting);
+  }, [isSubmitting, onSubmittingChange]);
   const [name, setName] = useState(entityToEdit?.name || initialName || '');
   const [description, setDescription] = useState(entityToEdit?.description || '');
   const [isActive, setIsActive] = useState(entityToEdit?.isActive !== false); // Default to true

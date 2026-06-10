@@ -27,14 +27,19 @@ import {
   tenantDirectoryLimiter,
 } from '../middleware/introspectionGuard.js';
 import { isInternalDemoTenantId } from '../middleware/demoEnvironmentMiddleware.js';
+import {
+  isDemoPublicLoginEnabled,
+  isDemoPublicTenant,
+} from '../constants/demoEnvironment.js';
+import { resolveDemoPublicLoginUser } from '../services/demo/demoAuthService.js';
 import { attributeReferralSignup } from '../services/referrals/referralTrackingService.js';
 import { isEnvFlagEnabled } from '../utils/envFlag.js';
 
 export const authRouter = Router();
 
 const loginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
+  username: z.string().optional().default(''),
+  password: z.string().optional().default(''),
   tenantId: z.string().optional(),
 });
 
@@ -171,11 +176,17 @@ authRouter.post('/auth/logout', optionalAuthMiddleware, async (req, res) => {
 authRouter.post('/auth/login', loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    sendFailure(res, 400, 'VALIDATION_ERROR', 'username and password required');
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'Invalid login request');
     return;
   }
   const { username, password, tenantId: bodyTenant } = parsed.data;
   const tenantId = bodyTenant || 'default';
+  const isDemoPasswordless = isDemoPublicTenant(tenantId) && isDemoPublicLoginEnabled();
+
+  if (!isDemoPasswordless && (!username.trim() || !password)) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'username and password required');
+    return;
+  }
 
   if (isInternalDemoTenantId(tenantId)) {
     sendFailure(res, 403, 'DEMO_MASTER_PROTECTED', 'This organization is not available for login.');
@@ -184,9 +195,9 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
 
   try {
     const pool = getPool();
-    const r = await pool.query<{
+    let user: {
       id: string;
-      password_hash: string;
+      password_hash?: string;
       name: string;
       role: string;
       tenant_id: string;
@@ -194,15 +205,45 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
       tenant_name: string;
       display_timezone: string | null;
       email: string | null;
-    }>(
-      `SELECT u.id, u.password_hash, u.name, u.role, u.tenant_id, u.username, u.email, t.name AS tenant_name,
-              u.display_timezone
-       FROM users u
-       JOIN tenants t ON t.id = u.tenant_id
-       WHERE u.tenant_id = $1 AND LOWER(u.username) = LOWER($2) AND u.is_active = TRUE`,
-      [tenantId, username]
-    );
-    if (r.rows.length === 0) {
+    } | undefined;
+
+    if (isDemoPasswordless) {
+      const demoUser = await resolveDemoPublicLoginUser(pool, username);
+      if (!demoUser) {
+        sendFailure(res, 503, 'DEMO_NOT_PROVISIONED', 'Demo environment is being prepared. Please try again shortly.');
+        return;
+      }
+      const tenantRow = await pool.query<{ tenant_name: string }>(
+        `SELECT name AS tenant_name FROM tenants WHERE id = $1`,
+        [tenantId]
+      );
+      user = {
+        ...demoUser,
+        tenant_name: tenantRow.rows[0]?.tenant_name ?? demoUser.tenant_id,
+      };
+    } else {
+      const r = await pool.query<{
+        id: string;
+        password_hash: string;
+        name: string;
+        role: string;
+        tenant_id: string;
+        username: string;
+        tenant_name: string;
+        display_timezone: string | null;
+        email: string | null;
+      }>(
+        `SELECT u.id, u.password_hash, u.name, u.role, u.tenant_id, u.username, u.email, t.name AS tenant_name,
+                u.display_timezone
+         FROM users u
+         JOIN tenants t ON t.id = u.tenant_id
+         WHERE u.tenant_id = $1 AND LOWER(u.username) = LOWER($2) AND u.is_active = TRUE`,
+        [tenantId, username]
+      );
+      user = r.rows[0];
+    }
+
+    if (!user) {
       const failClient = await pool.connect();
       try {
         await recordLoginEvent(failClient, {
@@ -217,8 +258,9 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
       sendFailure(res, 401, 'AUTH_FAILED', 'Invalid credentials');
       return;
     }
-    const user = r.rows[0];
-    const ok = await bcrypt.compare(password, user.password_hash);
+    const ok = isDemoPasswordless
+      ? true
+      : await bcrypt.compare(password, user.password_hash!);
     const ctx = auditContextFromRequest(req);
     const auditClient = await pool.connect();
     if (!ok) {
@@ -281,7 +323,7 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
       companyName: user.tenant_name,
     };
 
-    if (isMfaEnforcementEnabled() && userRoleRequiresMfa(user.role)) {
+    if (!isDemoPasswordless && isMfaEnforcementEnabled() && userRoleRequiresMfa(user.role)) {
       const mfaClient = await pool.connect();
       try {
         const mfaStatus = await getMfaStatus(mfaClient, user.id, user.role);

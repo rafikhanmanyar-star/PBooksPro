@@ -5,6 +5,7 @@ import { Invoice, TransactionType, Transaction, AccountType, InvoiceType } from 
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import { CURRENCY } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
@@ -40,6 +41,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
     const [description, setDescription] = useState('');
     const [editAmount, setEditAmount] = useState('');
     const [error, setError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const isEditMode = !!(transactionToEdit && transactionToEdit.id);
 
@@ -131,7 +133,9 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
     }, [isEditMode, editAmount, rentPaidAmount, securityDepositPaidAmount, rentRemaining, securityDepositRemaining]);
 
     const handleSubmit = async () => {
-        if (error) return;
+        if (isSubmitting || error) return;
+        setIsSubmitting(true);
+        try {
 
         // Edit mode: update single transaction
         if (isEditMode && transactionToEdit) {
@@ -339,6 +343,9 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         }
 
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     if (!effectiveInvoice && !transactionToEdit) return null;
@@ -350,7 +357,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             : 'Edit Payment';
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={modalTitle}>
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={modalTitle}>
             <div className="space-y-4">
 
                 {isEditMode ? (
@@ -393,7 +400,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                             </div>
                             <div className="flex gap-2">
                                 <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                                <Button type="button" onClick={handleSubmit} disabled={!!error}>Save Changes</Button>
+                                <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Saving..." disabled={!!error}>Save Changes</LoadingButton>
                             </div>
                         </div>
                     </>
@@ -453,7 +460,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
 
                         <div className="flex justify-end gap-2 pt-4">
                             <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                            <Button type="button" onClick={handleSubmit} disabled={!!error}>Record Payment</Button>
+                            <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Saving..." disabled={!!error}>Record Payment</LoadingButton>
                         </div>
                     </>
                 )}
