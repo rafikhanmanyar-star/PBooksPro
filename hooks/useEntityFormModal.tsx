@@ -1,6 +1,7 @@
 
 import { useBuildings, useContacts, useDispatchOnly, useProperties } from '../hooks/useSelectiveState';
 import React, { useState, useCallback } from 'react';
+import { useSubmitGuard } from './useSubmitGuard';
 import { ContactType, TransactionType, AccountType } from '../types';
 import Modal from '../components/ui/Modal';
 import ContactForm from '../components/settings/ContactForm';
@@ -21,7 +22,8 @@ interface UseEntityFormModalReturn {
   initialName: string;
   contactType?: ContactType;
   categoryType?: TransactionType;
-  handleSubmit: (data: any) => void;
+  handleSubmit: (data: any) => void | Promise<void>;
+  isSubmitting: boolean;
   onCreatedCallback?: (id: string) => void;
 }
 
@@ -58,7 +60,10 @@ export const useEntityFormModal = (): UseEntityFormModalReturn => {
     setOnCreatedCallback(undefined);
   }, []);
 
-  const handleSubmit = useCallback((data: any) => {
+  const { isSubmitting, guardSubmit } = useSubmitGuard();
+
+  const handleSubmit = useCallback(async (data: any) => {
+    await guardSubmit(async () => {
     let payload: any;
     const newId = Date.now().toString();
 
@@ -112,7 +117,8 @@ export const useEntityFormModal = (): UseEntityFormModalReturn => {
     }
 
     closeForm();
-  }, [formType, dispatch, closeForm, onCreatedCallback]);
+    }, { showSuccessToast: true });
+  }, [formType, dispatch, closeForm, onCreatedCallback, guardSubmit]);
 
   return {
     openForm,
@@ -123,6 +129,7 @@ export const useEntityFormModal = (): UseEntityFormModalReturn => {
     contactType,
     categoryType,
     handleSubmit,
+    isSubmitting,
     onCreatedCallback };
 };
 
@@ -134,8 +141,9 @@ export const EntityFormModal: React.FC<{
   contactType?: ContactType;
   categoryType?: TransactionType;
   onClose: () => void;
-  onSubmit: (data: any) => void;
-}> = ({ isOpen, formType, initialName, contactType, categoryType, onClose, onSubmit }) => {
+  onSubmit: (data: any) => void | Promise<void>;
+  isSubmitting?: boolean;
+}> = ({ isOpen, formType, initialName, contactType, categoryType, onClose, onSubmit, isSubmitting = false }) => {
   const contacts = useContacts();
   const buildings = useBuildings();
   const properties = useProperties();
@@ -156,7 +164,7 @@ export const EntityFormModal: React.FC<{
   if (!formType) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={getFormTitle()}>
+    <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={getFormTitle()}>
       {formType === 'contact' && (
         <ContactForm
           onSubmit={onSubmit}

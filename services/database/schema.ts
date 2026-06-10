@@ -811,6 +811,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_building ON transactions(building_id
 CREATE INDEX IF NOT EXISTS idx_transactions_property ON transactions(property_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_unit ON transactions(unit_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_tenant ON transactions(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_tenant_reference_unique ON transactions(tenant_id, reference) WHERE deleted_at IS NULL AND reference IS NOT NULL AND trim(reference) <> '';
 CREATE INDEX IF NOT EXISTS idx_transactions_owner ON transactions(owner_id);
 
 -- Invoices
@@ -840,6 +841,7 @@ CREATE INDEX IF NOT EXISTS idx_bills_tenant ON bills(tenant_id);
 -- Contacts
 CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);
 CREATE INDEX IF NOT EXISTS idx_contacts_tenant ON contacts(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_tenant_name_type_unique ON contacts(tenant_id, lower(trim(name)), type) WHERE deleted_at IS NULL;
 
 -- Soft-delete filter indexes
 CREATE INDEX IF NOT EXISTS idx_accounts_deleted ON accounts(deleted_at);
@@ -891,9 +893,11 @@ CREATE INDEX IF NOT EXISTS idx_units_tenant ON units(tenant_id);
 
 -- Projects
 CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_tenant_name_unique ON projects(tenant_id, lower(trim(name))) WHERE deleted_at IS NULL;
 
 -- Vendors
 CREATE INDEX IF NOT EXISTS idx_vendors_tenant ON vendors(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_tenant_name_unique ON vendors(tenant_id, lower(trim(name))) WHERE deleted_at IS NULL;
 
 -- Categories
 CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories(tenant_id);

@@ -53,6 +53,41 @@ export function notifyDatabaseError(error: unknown, options?: { title?: string; 
  * Show a modal when a user-initiated API write returns 409 (conflict / lock / version).
  * Skips bulk /state/ sync so background sync does not spam dialogs.
  */
+const DUPLICATE_CODES = new Set(['DUPLICATE_RECORD', 'DUPLICATE_KEY']);
+
+/** Returns true when a user-facing duplicate alert was shown. */
+export function notifyDuplicateRecordIfApplicable(error: unknown): boolean {
+  if (typeof window === 'undefined') return false;
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: string }).code ?? '')
+      : '';
+  const status =
+    error && typeof error === 'object' && 'status' in error
+      ? Number((error as { status?: number }).status)
+      : undefined;
+
+  let isDuplicate = DUPLICATE_CODES.has(code);
+
+  if (!isDuplicate) {
+    const msg = formatDatabaseErrorMessage(error).toLowerCase();
+    if (!msg.includes('duplicate') && !msg.includes('unique constraint') && !msg.includes('already exists')) {
+      return false;
+    }
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(PBOOKS_DB_ERROR_EVENT, {
+      detail: {
+        title: 'Duplicate record',
+        message:
+          'Duplicate record detected.\nThe record was not created.',
+      } satisfies DbErrorNotificationDetail,
+    })
+  );
+  return true;
+}
+
 export function notifyApiConflictIfUserFacing(
   err: { status?: number; code?: string; message?: string; error?: string },
   endpoint: string,

@@ -104,6 +104,7 @@ const SmartComboBox: React.FC<SmartComboBoxProps> = ({
         categoryType={entityFormModal.categoryType}
         onClose={entityFormModal.closeForm}
         onSubmit={entityFormModal.handleSubmit}
+        isSubmitting={entityFormModal.isSubmitting}
       />
     </>
   );

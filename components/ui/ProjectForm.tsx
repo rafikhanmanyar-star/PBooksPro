@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Project, ProjectStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Textarea from '../ui/Textarea';
 import { useNotification } from '../../context/NotificationContext';
 import { suggestProjectClosed } from '../../services/accounting/accountingLedgerCore';
@@ -27,6 +28,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
     const [color, setColor] = useState(projectToEdit?.color || '#4f46e5'); // Default indigo-600
     const [status, setStatus] = useState<ProjectStatus>(projectToEdit?.status || 'Active');
     const [nameError, setNameError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const booksClearForClose = useMemo(() => {
         if (!projectToEdit?.id) return false;
@@ -53,17 +55,24 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         if (nameError) {
             await showAlert("Please fix the errors before submitting.");
             return;
         }
-        onSubmit({
-            name,
-            description,
-            color,
-            location: location.trim() || undefined,
-            projectType: projectType.trim() || undefined,
-            status });
+        setIsSubmitting(true);
+        try {
+            await Promise.resolve(onSubmit({
+                name,
+                description,
+                color,
+                location: location.trim() || undefined,
+                projectType: projectType.trim() || undefined,
+                status,
+            }));
+        } finally {
+            setIsSubmitting(false);
+        }
     };
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -143,8 +152,10 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
                     )}
                 </div>
                 <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                    <Button type="submit">{projectToEdit ? 'Update' : 'Save'} Project</Button>
+                    <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving...">
+                        {projectToEdit ? 'Update' : 'Save'} Project
+                    </LoadingButton>
                 </div>
             </div>
         </form>

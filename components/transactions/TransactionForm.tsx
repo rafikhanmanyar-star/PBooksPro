@@ -4,6 +4,7 @@ import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState
 import { Transaction, TransactionType, LoanSubtype, EquityLedgerSubtype, ContactType, Account, InvoiceStatus, AccountType, ContractStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
@@ -35,6 +36,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
     const { showAlert, showConfirm } = useNotification();
     const { openChat } = useWhatsApp();
     const entityFormModal = useEntityFormModal();
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [type, setType] = useState<TransactionType>(transactionToEdit?.type || transactionTypeForNew || TransactionType.EXPENSE);
     const [subtype, setSubtype] = useState<LoanSubtype | EquityLedgerSubtype | ''>(transactionToEdit?.subtype || '');
@@ -263,6 +265,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
         const numAmount = parseFloat(amount);
         if (isNaN(numAmount) || numAmount <= 0) {
             await showAlert('Please enter a valid positive amount.');
@@ -508,6 +513,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
             }
         }
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleDelete = (e: React.MouseEvent) => {
@@ -890,7 +898,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                         <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
-                        <Button type="submit" className="w-full sm:w-auto">{transactionToEdit && transactionToEdit.id ? 'Update' : 'Save'}</Button>
+                        <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving..." className="w-full sm:w-auto">
+                            {transactionToEdit && transactionToEdit.id ? 'Update' : 'Save'}
+                        </LoadingButton>
                     </div>
                 </div>
             </form>
@@ -902,6 +912,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                 categoryType={entityFormModal.categoryType}
                 onClose={entityFormModal.closeForm}
                 onSubmit={entityFormModal.handleSubmit}
+                isSubmitting={entityFormModal.isSubmitting}
             />
         </>
     );

@@ -39,7 +39,7 @@ function mapErrorToHttp(e: unknown): {
 } {
   const pgError = e as { code?: string; message?: string; constraint?: string };
   if (pgError?.code === '23505') {
-    return { status: 409, code: 'DUPLICATE_KEY', message: 'This record already exists.' };
+    return { status: 409, code: 'DUPLICATE_RECORD', message: 'This record already exists.' };
   }
   if (pgError?.code === '23503') {
     return {
@@ -71,7 +71,7 @@ function mapErrorToHttp(e: unknown): {
   if (e instanceof Error) {
     const msg = e.message.toLowerCase();
     if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
-      return { status: 409, code: 'DUPLICATE_KEY', message: 'This record already exists.' };
+      return { status: 409, code: 'DUPLICATE_RECORD', message: 'This record already exists.' };
     }
     if (msg.includes('timeout') || msg.includes('timed out')) {
       return {

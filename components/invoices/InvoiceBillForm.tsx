@@ -2767,6 +2767,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         categoryType={entityFormModal.categoryType}
         onClose={entityFormModal.closeForm}
         onSubmit={entityFormModal.handleSubmit}
+        isSubmitting={entityFormModal.isSubmitting}
       />
     </>
   );

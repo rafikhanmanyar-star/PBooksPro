@@ -371,6 +371,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
         categoryType={entityFormModal.categoryType}
         onClose={entityFormModal.closeForm}
         onSubmit={entityFormModal.handleSubmit}
+        isSubmitting={entityFormModal.isSubmitting}
       />
     </div>
   );
