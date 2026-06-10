@@ -44,10 +44,10 @@ const TrialUpgradeBanner: React.FC = () => {
   return (
     <div
       role="status"
-      className="flex items-center gap-3 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm shadow-md z-[10030]"
+      className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm shadow-md shrink-0"
     >
       <Sparkles className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-      <p className="flex-1 min-w-0">
+      <p className="text-center">
         <span className="font-semibold">Free trial</span>
         {' — '}
         {days > 0 ? (

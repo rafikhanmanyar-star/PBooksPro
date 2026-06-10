@@ -769,7 +769,6 @@ const App: React.FC = () => {
   return (
     <OfflineProvider>
       {isDemoModeActive() && <DemoProductTour />}
-      <TrialUpgradeBanner />
       <OnboardingGate />
       <PrintController />
       {/* Force password change modal for new company admin */}
@@ -796,6 +795,7 @@ const App: React.FC = () => {
           className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden transition-all duration-300 ease-in-out main-content-offset"
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
+          <TrialUpgradeBanner />
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
 
           <StabilityBanner />
