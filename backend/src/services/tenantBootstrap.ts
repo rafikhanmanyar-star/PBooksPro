@@ -75,6 +75,12 @@ export async function bootstrapTenantChart(
   _tenantId: string,
   _options: { legacyIds: boolean }
 ): Promise<void> {
+  await client.query(
+    `INSERT INTO tenants (id, name) VALUES ($1, 'Shared system chart')
+     ON CONFLICT (id) DO NOTHING`,
+    [GLOBAL_SYSTEM_TENANT_ID]
+  );
+
   for (const a of SYSTEM_ACCOUNT_DEFS) {
     await client.query(
       `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, version)

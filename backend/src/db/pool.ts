@@ -65,3 +65,29 @@ export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<
     client.release();
   }
 }
+
+function savepointLabel(label: string): string {
+  const safe = label.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 48);
+  return `sp_${safe || 'block'}`;
+}
+
+/**
+ * Run `fn` inside a SAVEPOINT so a failure rolls back only this block.
+ * Required when catching errors inside an open transaction (PostgreSQL 25P02 otherwise).
+ */
+export async function withSavepoint<T>(
+  client: pg.PoolClient,
+  label: string,
+  fn: (client: pg.PoolClient) => Promise<T>
+): Promise<T> {
+  const sp = savepointLabel(label);
+  await client.query(`SAVEPOINT ${sp}`);
+  try {
+    const result = await fn(client);
+    await client.query(`RELEASE SAVEPOINT ${sp}`);
+    return result;
+  } catch (e) {
+    await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+    throw e;
+  }
+}

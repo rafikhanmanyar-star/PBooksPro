@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { withSavepoint } from '../../db/pool.js';
 import { bootstrapTenantChart } from '../tenantBootstrap.js';
 import { startTrialSubscription } from '../billing/subscriptionService.js';
 import {
@@ -198,18 +199,38 @@ async function deleteTenantJournalRows(client: pg.PoolClient, tenantId: string):
 
 /** Managed Postgres (Render) cannot set session_replication_role — disable immutability triggers instead. */
 async function purgeTenantJournal(client: pg.PoolClient, tenantId: string): Promise<void> {
-  try {
-    await setJournalImmutabilityTriggers(client, false);
-    try {
-      await deleteTenantJournalRows(client, tenantId);
-    } finally {
-      await setJournalImmutabilityTriggers(client, true);
-    }
-  } catch (err) {
-    logger.warn('Demo journal purge skipped (stale GL rows may remain until next successful reset)', {
-      tenantId,
-      err: err instanceof Error ? err.message : String(err),
+  const purgeWithReplicaRole = () =>
+    withSavepoint(client, 'demo_journal_purge_replica', async (c) => {
+      await c.query(`SET session_replication_role = replica`);
+      try {
+        await deleteTenantJournalRows(c, tenantId);
+      } finally {
+        await c.query(`SET session_replication_role = DEFAULT`);
+      }
     });
+
+  const purgeWithTriggersDisabled = () =>
+    withSavepoint(client, 'demo_journal_purge_triggers', async (c) => {
+      await setJournalImmutabilityTriggers(c, false);
+      try {
+        await deleteTenantJournalRows(c, tenantId);
+      } finally {
+        await setJournalImmutabilityTriggers(c, true);
+      }
+    });
+
+  try {
+    await purgeWithReplicaRole();
+  } catch (replicaErr) {
+    try {
+      await purgeWithTriggersDisabled();
+    } catch (triggerErr) {
+      logger.warn('Demo journal purge skipped (stale GL rows may remain until next successful reset)', {
+        tenantId,
+        replicaErr: replicaErr instanceof Error ? replicaErr.message : String(replicaErr),
+        triggerErr: triggerErr instanceof Error ? triggerErr.message : String(triggerErr),
+      });
+    }
   }
 }
 
@@ -225,7 +246,9 @@ export async function wipeTenantBusinessData(
 
   for (const table of tablesAfterJournal) {
     try {
-      await client.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+      await withSavepoint(client, `wipe_${table}`, async (c) => {
+        await c.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+      });
     } catch {
       /* table may not exist on older schemas */
     }
@@ -233,19 +256,22 @@ export async function wipeTenantBusinessData(
 
   const idPrefix = tenantId === DEMO_MASTER_TENANT_ID ? 'dm' : 'demo';
   try {
-    await client.query(`DELETE FROM accounts WHERE tenant_id = $1 AND id LIKE $2`, [
-      tenantId,
-      `${idPrefix}-acc-%`,
-    ]);
+    await withSavepoint(client, 'wipe_demo_accounts', async (c) => {
+      await c.query(`DELETE FROM accounts WHERE tenant_id = $1 AND id LIKE $2`, [
+        tenantId,
+        `${idPrefix}-acc-%`,
+      ]);
+    });
   } catch {
     /* optional */
   }
 
   try {
-    await client.query(
-      `DELETE FROM categories WHERE tenant_id = $1 AND is_permanent = FALSE`,
-      [tenantId]
-    );
+    await withSavepoint(client, 'wipe_demo_categories', async (c) => {
+      await c.query(`DELETE FROM categories WHERE tenant_id = $1 AND is_permanent = FALSE`, [
+        tenantId,
+      ]);
+    });
   } catch {
     /* optional */
   }
