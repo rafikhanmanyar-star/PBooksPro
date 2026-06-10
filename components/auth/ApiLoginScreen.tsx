@@ -25,7 +25,7 @@ import { useAuth } from '../../context/AuthContext';
 import LegalAcceptanceCheckbox from '../legal/LegalAcceptanceCheckbox';
 import MfaLoginPanel from './MfaLoginPanel';
 import type { LegalAcceptanceInput } from '../../services/api/legalApi';
-import { getApiRootUrl, getAppDisplayName, isStagingEnvironment, getDefaultApiRootUrl, isCloudHostedApi } from '../../config/apiUrl';
+import { getApiRootUrl, getAppDisplayName, isStagingEnvironment, getDefaultApiRootUrl, isCloudHostedApi, isCloudApiUrl } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
 import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import RegistrationCaptcha from '../ui/RegistrationCaptcha';
@@ -638,7 +638,9 @@ const ApiLoginScreen: React.FC = () => {
 
   const displayError = error || authError;
 
-  const cloudSignup = isCloudHostedApi() || /pbookspro\.com/i.test(rootUrl());
+  const cloudSignup =
+    isCloudHostedApi() || isCloudApiUrl(rootUrl()) || isCloudApiUrl(getDefaultApiRootUrl());
+  const showRegistrationCaptcha = cloudSignup || captchaRequired || !!captchaConfig;
   const captchaMisconfigured = captchaRequired && !captchaConfig;
   const captchaBlocksSubmit = captchaRequired && !!captchaConfig && !captchaToken && !captchaLoadFailed;
   const canSubmitRegistration =
@@ -710,7 +712,7 @@ const ApiLoginScreen: React.FC = () => {
       <LoginBrandPanel />
 
       <main className="flex flex-1 flex-col items-center justify-center px-4 py-8 sm:px-6 lg:px-10 xl:px-14">
-        <div className="w-full max-w-lg">
+        <div className={`w-full ${view === 'register' ? 'max-w-4xl' : 'max-w-lg'}`}>
           <MobileBrandHeader view={view} />
 
           {view !== 'registerSuccess' && (
@@ -1003,7 +1005,7 @@ const ApiLoginScreen: React.FC = () => {
           )}
 
           {view === 'register' && (
-            <AuthCard className="max-h-[min(90vh,780px)] overflow-y-auto">
+            <AuthCard className="overflow-x-hidden">
               <AuthCardHeader
                 icon={Building2}
                 title="Create organization"
@@ -1016,11 +1018,20 @@ const ApiLoginScreen: React.FC = () => {
                 }
               />
 
-              <form onSubmit={handleRegisterSubmit} className="space-y-4" autoComplete="off" noValidate>
-                {displayError && <AuthErrorBanner message={displayError} />}
+              <form
+                onSubmit={handleRegisterSubmit}
+                className="grid grid-cols-1 gap-x-4 gap-y-4 md:grid-cols-2"
+                autoComplete="off"
+                noValidate
+              >
+                {displayError && (
+                  <div className="md:col-span-2">
+                    <AuthErrorBanner message={displayError} />
+                  </div>
+                )}
 
                 {!cloudSignup && (
-                  <div>
+                  <div className="md:col-span-2">
                     <FieldLabel htmlFor="reg-server">API server (host and port)</FieldLabel>
                     <IconField icon={Server}>
                       <input
@@ -1038,12 +1049,27 @@ const ApiLoginScreen: React.FC = () => {
                 )}
 
                 {cloudSignup && organizationApprovalRequired && (
-                  <div className="rounded-ds-md border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-ds-small text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                  <div className="md:col-span-2 rounded-ds-md border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-ds-small text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                     Your registration will be reviewed in the admin portal. You will receive an email when your organization is approved.
                   </div>
                 )}
 
-                <div>
+                {showRegistrationCaptcha && (
+                  <div className="md:col-span-2">
+                    <RegistrationCaptcha
+                      config={captchaConfig}
+                      onToken={setCaptchaToken}
+                      onLoadError={setCaptchaLoadFailed}
+                      disabled={isLoading}
+                    />
+                  </div>
+                )}
+
+                <div className="md:col-span-2 border-b border-app-border pb-1">
+                  <p className="text-ds-small font-semibold uppercase tracking-wide text-app-muted">Organization</p>
+                </div>
+
+                <div className="min-w-0">
                   <FieldLabel htmlFor="reg-company" required>
                     Company name
                   </FieldLabel>
@@ -1060,7 +1086,7 @@ const ApiLoginScreen: React.FC = () => {
                   </IconField>
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <FieldLabel htmlFor="reg-email" required>
                     Email
                   </FieldLabel>
@@ -1078,40 +1104,39 @@ const ApiLoginScreen: React.FC = () => {
                   </IconField>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <FieldLabel htmlFor="reg-phone">
-                      Phone <span className="font-normal text-app-muted">(optional)</span>
-                    </FieldLabel>
-                    <IconField icon={User}>
-                      <input
-                        id="reg-phone"
-                        type="text"
-                        value={phone}
-                        onChange={e => setPhone(e.target.value)}
-                        className={FIELD_INPUT}
-                        disabled={isLoading}
-                      />
-                    </IconField>
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="reg-address">
-                      Address <span className="font-normal text-app-muted">(optional)</span>
-                    </FieldLabel>
-                    <IconField icon={Building2}>
-                      <input
-                        id="reg-address"
-                        type="text"
-                        value={address}
-                        onChange={e => setAddress(e.target.value)}
-                        className={FIELD_INPUT}
-                        disabled={isLoading}
-                      />
-                    </IconField>
-                  </div>
+                <div className="min-w-0">
+                  <FieldLabel htmlFor="reg-phone">
+                    Phone <span className="font-normal text-app-muted">(optional)</span>
+                  </FieldLabel>
+                  <IconField icon={User}>
+                    <input
+                      id="reg-phone"
+                      type="text"
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      className={FIELD_INPUT}
+                      disabled={isLoading}
+                    />
+                  </IconField>
                 </div>
 
-                <div>
+                <div className="min-w-0">
+                  <FieldLabel htmlFor="reg-address">
+                    Address <span className="font-normal text-app-muted">(optional)</span>
+                  </FieldLabel>
+                  <IconField icon={Building2}>
+                    <input
+                      id="reg-address"
+                      type="text"
+                      value={address}
+                      onChange={e => setAddress(e.target.value)}
+                      className={FIELD_INPUT}
+                      disabled={isLoading}
+                    />
+                  </IconField>
+                </div>
+
+                <div className="min-w-0 md:col-span-2">
                   <FieldLabel htmlFor="reg-tenant-id">
                     Preferred organization ID <span className="font-normal text-app-muted">(optional)</span>
                   </FieldLabel>
@@ -1130,107 +1155,98 @@ const ApiLoginScreen: React.FC = () => {
                   <FieldHelper>Lowercase letters, numbers, hyphens. Leave empty to auto-generate.</FieldHelper>
                 </div>
 
-                <div className="border-t border-app-border pt-4">
-                  <p className="mb-3 text-ds-small font-semibold uppercase tracking-wide text-app-muted">Admin account</p>
-
-                  <div className="space-y-4">
-                    <div>
-                      <FieldLabel htmlFor="reg-admin-name" required>
-                        Full name
-                      </FieldLabel>
-                      <IconField icon={User}>
-                        <input
-                          id="reg-admin-name"
-                          type="text"
-                          value={adminName}
-                          onChange={e => setAdminName(e.target.value)}
-                          className={FIELD_INPUT}
-                          disabled={isLoading}
-                          required
-                        />
-                      </IconField>
-                    </div>
-
-                    <div>
-                      <FieldLabel htmlFor="reg-admin-user" required>
-                        Username
-                      </FieldLabel>
-                      <IconField icon={User}>
-                        <input
-                          id="reg-admin-user"
-                          type="text"
-                          value={adminUsername}
-                          onChange={e => setAdminUsername(e.target.value)}
-                          className={FIELD_INPUT}
-                          disabled={isLoading}
-                          required
-                          autoComplete="username"
-                        />
-                      </IconField>
-                    </div>
-
-                    <div>
-                      <FieldLabel htmlFor="reg-admin-pass" required>
-                        Password
-                      </FieldLabel>
-                      <IconField
-                        icon={Lock}
-                        trailing={
-                          <button
-                            type="button"
-                            className="absolute inset-y-0 right-0 flex items-center rounded-r-ds-md px-3 text-app-muted transition-colors hover:bg-black/[0.04] hover:text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ds-primary/40 dark:hover:bg-white/10"
-                            onClick={() => setShowAdminPassword(v => !v)}
-                            tabIndex={-1}
-                            aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
-                            aria-pressed={showAdminPassword}
-                            disabled={isLoading}
-                          >
-                            {showAdminPassword ? (
-                              <EyeOff className="h-[18px] w-[18px]" />
-                            ) : (
-                              <Eye className="h-[18px] w-[18px]" />
-                            )}
-                          </button>
-                        }
-                      >
-                        <input
-                          id="reg-admin-pass"
-                          type={showAdminPassword ? 'text' : 'password'}
-                          value={adminPassword}
-                          onChange={e => setAdminPassword(e.target.value)}
-                          className={`${FIELD_INPUT} pr-11`}
-                          disabled={isLoading}
-                          autoComplete="new-password"
-                          required
-                        />
-                      </IconField>
-                    </div>
-                  </div>
+                <div className="md:col-span-2 border-b border-app-border pb-1 pt-1">
+                  <p className="text-ds-small font-semibold uppercase tracking-wide text-app-muted">Admin account</p>
                 </div>
 
-                <LegalAcceptanceCheckbox
-                  key={serverUrl}
-                  context="registration"
-                  serverRootUrl={serverUrl}
-                  checked={legalAccepted}
-                  disabled={isLoading}
-                  onChange={(checked, acceptances) => {
-                    setLegalAccepted(checked);
-                    setLegalAcceptances(acceptances);
-                  }}
-                />
+                <div className="min-w-0">
+                  <FieldLabel htmlFor="reg-admin-name" required>
+                    Full name
+                  </FieldLabel>
+                  <IconField icon={User}>
+                    <input
+                      id="reg-admin-name"
+                      type="text"
+                      value={adminName}
+                      onChange={e => setAdminName(e.target.value)}
+                      className={FIELD_INPUT}
+                      disabled={isLoading}
+                      required
+                    />
+                  </IconField>
+                </div>
 
-                {captchaRequired && (
-                  <RegistrationCaptcha
-                    config={captchaConfig}
-                    onToken={setCaptchaToken}
-                    onLoadError={setCaptchaLoadFailed}
+                <div className="min-w-0">
+                  <FieldLabel htmlFor="reg-admin-user" required>
+                    Username
+                  </FieldLabel>
+                  <IconField icon={User}>
+                    <input
+                      id="reg-admin-user"
+                      type="text"
+                      value={adminUsername}
+                      onChange={e => setAdminUsername(e.target.value)}
+                      className={FIELD_INPUT}
+                      disabled={isLoading}
+                      required
+                      autoComplete="username"
+                    />
+                  </IconField>
+                </div>
+
+                <div className="min-w-0 md:col-span-2">
+                  <FieldLabel htmlFor="reg-admin-pass" required>
+                    Password
+                  </FieldLabel>
+                  <IconField
+                    icon={Lock}
+                    trailing={
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 flex items-center rounded-r-ds-md px-3 text-app-muted transition-colors hover:bg-black/[0.04] hover:text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ds-primary/40 dark:hover:bg-white/10"
+                        onClick={() => setShowAdminPassword(v => !v)}
+                        tabIndex={-1}
+                        aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showAdminPassword}
+                        disabled={isLoading}
+                      >
+                        {showAdminPassword ? (
+                          <EyeOff className="h-[18px] w-[18px]" />
+                        ) : (
+                          <Eye className="h-[18px] w-[18px]" />
+                        )}
+                      </button>
+                    }
+                  >
+                    <input
+                      id="reg-admin-pass"
+                      type={showAdminPassword ? 'text' : 'password'}
+                      value={adminPassword}
+                      onChange={e => setAdminPassword(e.target.value)}
+                      className={`${FIELD_INPUT} pr-11`}
+                      disabled={isLoading}
+                      autoComplete="new-password"
+                      required
+                    />
+                  </IconField>
+                </div>
+
+                <div className="min-w-0 md:col-span-2">
+                  <LegalAcceptanceCheckbox
+                    key={serverUrl}
+                    context="registration"
+                    serverRootUrl={serverUrl}
+                    checked={legalAccepted}
                     disabled={isLoading}
+                    onChange={(checked, acceptances) => {
+                      setLegalAccepted(checked);
+                      setLegalAcceptances(acceptances);
+                    }}
                   />
-                )}
+                </div>
 
                 {registrationBlockers.length > 0 && (
-                  <div className="rounded-ds-md border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-ds-small text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                  <div className="md:col-span-2 rounded-ds-md border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-ds-small text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                     <p className="font-semibold">Complete the following to submit:</p>
                     <ul className="mt-1 list-inside list-disc space-y-0.5">
                       {registrationBlockers.map((item) => (
@@ -1240,26 +1256,28 @@ const ApiLoginScreen: React.FC = () => {
                   </div>
                 )}
 
-                <Button
-                  type="submit"
-                  disabled={!canSubmitRegistration}
-                  className="w-full !bg-emerald-600 hover:!bg-emerald-700 focus-visible:!ring-emerald-500 disabled:!opacity-40"
-                  aria-busy={isLoading}
-                  title={registrationBlockers.join('; ')}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                      Creating organization…
-                    </>
-                  ) : cloudSignup && organizationApprovalRequired ? (
-                    'Submit for approval'
-                  ) : (
-                    'Create organization'
-                  )}
-                </Button>
+                <div className="md:col-span-2">
+                  <Button
+                    type="submit"
+                    disabled={!canSubmitRegistration}
+                    className="w-full !bg-emerald-600 hover:!bg-emerald-700 focus-visible:!ring-emerald-500 disabled:!opacity-40"
+                    aria-busy={isLoading}
+                    title={registrationBlockers.join('; ')}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        Creating organization…
+                      </>
+                    ) : cloudSignup && organizationApprovalRequired ? (
+                      'Submit for approval'
+                    ) : (
+                      'Create organization'
+                    )}
+                  </Button>
+                </div>
 
-                <p className="text-center">
+                <p className="md:col-span-2 text-center">
                   <button
                     type="button"
                     onClick={goToLogin}

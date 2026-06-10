@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 
 type CaptchaConfig = {
@@ -30,6 +30,8 @@ declare global {
 }
 
 const LOAD_TIMEOUT_MS = 15_000;
+const TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+const RECAPTCHA_SCRIPT = 'https://www.google.com/recaptcha/api.js?render=explicit';
 
 function loadScript(src: string, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -110,9 +112,15 @@ function waitForGrecaptcha(timeoutMs: number): Promise<NonNullable<Window['greca
 const RegistrationCaptcha: React.FC<Props> = ({ config, onToken, onLoadError, disabled }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | number | null>(null);
+  const onTokenRef = useRef(onToken);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [renderAttempt, setRenderAttempt] = useState(0);
+  const instanceId = useId().replace(/:/g, '');
+
+  useEffect(() => {
+    onTokenRef.current = onToken;
+  }, [onToken]);
 
   const reportFailure = useCallback(
     (message: string) => {
@@ -137,38 +145,43 @@ const RegistrationCaptcha: React.FC<Props> = ({ config, onToken, onLoadError, di
     }
 
     let cancelled = false;
+    const successCallbackName = `pbooksTurnstileOk_${instanceId}`;
+    const expiredCallbackName = `pbooksTurnstileExp_${instanceId}`;
+    const errorCallbackName = `pbooksTurnstileErr_${instanceId}`;
+
+    const win = window as Window & Record<string, unknown>;
+    win[successCallbackName] = (token: string) => onTokenRef.current(token);
+    win[expiredCallbackName] = () => onTokenRef.current(null);
+    win[errorCallbackName] = () => onTokenRef.current(null);
 
     void (async () => {
       setLoading(true);
       try {
         if (config.provider === 'turnstile') {
-          await loadScript(
-            'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
-            'cf-turnstile'
-          );
+          await loadScript(TURNSTILE_SCRIPT, 'cf-turnstile');
           const turnstile = await waitForTurnstile(LOAD_TIMEOUT_MS);
           if (cancelled || !containerRef.current) return;
 
-          containerRef.current.innerHTML = '';
+          containerRef.current.replaceChildren();
           widgetIdRef.current = turnstile.render(containerRef.current, {
             sitekey: config.siteKey,
             theme: 'auto',
             appearance: 'always',
-            callback: (token: string) => onToken(token),
-            'expired-callback': () => onToken(null),
-            'error-callback': () => onToken(null),
+            callback: (token: string) => onTokenRef.current(token),
+            'expired-callback': () => onTokenRef.current(null),
+            'error-callback': () => onTokenRef.current(null),
           });
         } else {
-          await loadScript('https://www.google.com/recaptcha/api.js?render=explicit', 'google-recaptcha');
+          await loadScript(RECAPTCHA_SCRIPT, 'google-recaptcha');
           const grecaptcha = await waitForGrecaptcha(LOAD_TIMEOUT_MS);
           if (cancelled || !containerRef.current) return;
 
-          containerRef.current.innerHTML = '';
+          containerRef.current.replaceChildren();
           widgetIdRef.current = grecaptcha.render(containerRef.current, {
             sitekey: config.siteKey,
             theme: 'dark',
-            callback: (token: string) => onToken(token),
-            'expired-callback': () => onToken(null),
+            callback: (token: string) => onTokenRef.current(token),
+            'expired-callback': () => onTokenRef.current(null),
           });
         }
 
@@ -191,6 +204,9 @@ const RegistrationCaptcha: React.FC<Props> = ({ config, onToken, onLoadError, di
 
     return () => {
       cancelled = true;
+      delete win[successCallbackName];
+      delete win[expiredCallbackName];
+      delete win[errorCallbackName];
       if (config?.provider === 'turnstile' && widgetIdRef.current != null && window.turnstile) {
         try {
           window.turnstile.remove(String(widgetIdRef.current));
@@ -200,7 +216,7 @@ const RegistrationCaptcha: React.FC<Props> = ({ config, onToken, onLoadError, di
       }
       widgetIdRef.current = null;
     };
-  }, [config, disabled, onToken, clearFailure, reportFailure, renderAttempt]);
+  }, [config, disabled, clearFailure, reportFailure, renderAttempt, instanceId]);
 
   const handleRetry = () => {
     setLoadError(null);
@@ -219,14 +235,14 @@ const RegistrationCaptcha: React.FC<Props> = ({ config, onToken, onLoadError, di
   return (
     <div className="space-y-2">
       <p className="text-ds-small font-medium text-app-text">Security verification</p>
-      <div className="rounded-ds-md border border-app-border bg-app-toolbar px-3 py-3">
+      <div className="relative rounded-ds-md border border-app-border bg-app-toolbar px-3 py-3">
         {loading && (
-          <div className="flex min-h-[65px] items-center gap-2 text-ds-small text-app-muted">
+          <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-ds-md bg-app-toolbar/90 text-ds-small text-app-muted">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
             Loading verification…
           </div>
         )}
-        <div ref={containerRef} className={loading ? 'hidden min-h-[65px]' : 'min-h-[65px]'} />
+        <div ref={containerRef} className="flex min-h-[70px] min-w-[300px] items-center justify-start" />
       </div>
       {loadError && (
         <div className="space-y-2">

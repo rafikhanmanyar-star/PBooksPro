@@ -136,8 +136,17 @@ function isRemoteApiUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false;
   return (
     url.includes('onrender.com') ||
+    url.includes('pbookspro.com') ||
     (url.startsWith('https://') && !url.includes('localhost') && !url.includes('127.0.0.1'))
   );
+}
+
+/** True when a server root/base URL targets hosted PBooks cloud (not LAN / self-hosted). */
+export function isCloudApiUrl(url: string): boolean {
+  const normalized = url.trim();
+  if (!normalized) return false;
+  const withApi = normalized.endsWith('/api') ? normalized : `${normalized.replace(/\/+$/, '')}/api`;
+  return isRemoteApiUrl(withApi);
 }
 
 /** True when the resolved API base targets a LAN/self-hosted server (discover + reconnect apply). Hosted cloud URLs skip this. */

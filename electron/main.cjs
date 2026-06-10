@@ -212,7 +212,7 @@ function setupCSP() {
     const csp = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://www.google.com https://www.gstatic.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://challenges.cloudflare.com",
       "img-src 'self' data: blob: https:",
       // LAN / API client: connect to any http(s) host and WebSockets (same as browser app)
       "connect-src 'self' http: https: ws: wss:",
