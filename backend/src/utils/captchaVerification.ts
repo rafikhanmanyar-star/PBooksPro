@@ -2,11 +2,20 @@ import { isEnvFlagEnabled } from './envFlag.js';
 
 export type CaptchaVerifyResult = { ok: true } | { ok: false; message: string };
 
+function hasCaptchaSecret(): boolean {
+  return !!(process.env.TURNSTILE_SECRET_KEY?.trim() || process.env.RECAPTCHA_SECRET_KEY?.trim());
+}
+
+function hasCaptchaSiteKey(): boolean {
+  return !!(process.env.TURNSTILE_SITE_KEY?.trim() || process.env.RECAPTCHA_SITE_KEY?.trim());
+}
+
 function captchaRequired(): boolean {
   if (!isEnvFlagEnabled('ALLOW_SELF_SIGNUP')) return false;
   const raw = process.env.REGISTRATION_CAPTCHA_REQUIRED?.trim().toLowerCase();
   if (raw === 'false' || raw === '0' || raw === 'no') return false;
-  return !!(process.env.TURNSTILE_SECRET_KEY?.trim() || process.env.RECAPTCHA_SECRET_KEY?.trim());
+  // Require both keys so clients never block submit when the widget cannot render.
+  return hasCaptchaSecret() && hasCaptchaSiteKey();
 }
 
 async function verifyTurnstile(token: string, remoteIp?: string): Promise<CaptchaVerifyResult> {
@@ -65,4 +74,9 @@ export function publicCaptchaProvider(): 'turnstile' | 'recaptcha' | null {
   if (process.env.TURNSTILE_SITE_KEY?.trim()) return 'turnstile';
   if (process.env.RECAPTCHA_SITE_KEY?.trim()) return 'recaptcha';
   return null;
+}
+
+/** Exposed to clients so UI only blocks submit when the server will enforce CAPTCHA. */
+export function publicCaptchaRequired(): boolean {
+  return captchaRequired();
 }

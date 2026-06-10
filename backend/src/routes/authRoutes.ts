@@ -52,7 +52,12 @@ import {
   registerPendingOrganization,
 } from '../services/organization/organizationApprovalService.js';
 import { isOrganizationApprovalEnabled } from '../constants/organizationStatus.js';
-import { publicCaptchaProvider, publicCaptchaSiteKey, verifyRegistrationCaptcha } from '../utils/captchaVerification.js';
+import {
+  publicCaptchaProvider,
+  publicCaptchaRequired,
+  publicCaptchaSiteKey,
+  verifyRegistrationCaptcha,
+} from '../utils/captchaVerification.js';
 
 export const authRouter = Router();
 
@@ -531,6 +536,7 @@ authRouter.get('/auth/public-config', publicIntrospectionLimiter, (_req, res) =>
     trialSignupEnabled:
       isEnvFlagEnabled('ALLOW_TRIAL_SIGNUP') || isEnvFlagEnabled('ALLOW_SELF_SIGNUP'),
     organizationApprovalRequired: isOrganizationApprovalEnabled(),
+    captchaRequired: publicCaptchaRequired(),
     captcha: captchaProvider
       ? { provider: captchaProvider, siteKey: publicCaptchaSiteKey() }
       : null,
