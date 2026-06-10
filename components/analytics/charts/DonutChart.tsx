@@ -35,8 +35,8 @@ export const DonutChart: React.FC<DonutChartProps> = ({
   }
 
   return (
-    <div className="w-full min-w-0" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%" debounce={32}>
+    <div className="w-full min-w-0">
+      <ResponsiveContainer width="100%" height={height} minWidth={0} debounce={32}>
         <PieChart>
           <Pie
             data={filtered}
@@ -47,6 +47,7 @@ export const DonutChart: React.FC<DonutChartProps> = ({
             innerRadius={innerRadius}
             outerRadius="80%"
             paddingAngle={2}
+            isAnimationActive={false}
           >
             {filtered.map((entry, i) => (
               <Cell key={entry.name} fill={entry.color ?? CHART_COLORS.donut[i % CHART_COLORS.donut.length]} />

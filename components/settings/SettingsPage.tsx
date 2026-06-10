@@ -126,6 +126,23 @@ const SettingsPage: React.FC = () => {
 
     const [activeCategory, setActiveCategory] = useState('preferences');
 
+    useEffect(() => {
+        const pending = sessionStorage.getItem('openSettingsCategory');
+        if (pending) {
+            sessionStorage.removeItem('openSettingsCategory');
+            setActiveCategory(pending);
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleOpenTab = (event: Event) => {
+            const categoryId = (event as CustomEvent<{ categoryId?: string }>).detail?.categoryId;
+            if (categoryId) setActiveCategory(categoryId);
+        };
+        window.addEventListener('open-settings-tab', handleOpenTab);
+        return () => window.removeEventListener('open-settings-tab', handleOpenTab);
+    }, []);
+
     // Custom Event Listeners
     useEffect(() => {
         const handleOpenData = () => setActiveCategory('data');

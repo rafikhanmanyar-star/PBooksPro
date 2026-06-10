@@ -51,8 +51,8 @@ export const AreaTrendChart: React.FC<AreaTrendChartProps> = ({
   }
 
   return (
-    <div className="w-full min-w-0" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%" debounce={32}>
+    <div className="w-full min-w-0">
+      <ResponsiveContainer width="100%" height={height} minWidth={0} debounce={32}>
         <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
             {gradients.map((g) => (
@@ -90,6 +90,7 @@ export const AreaTrendChart: React.FC<AreaTrendChartProps> = ({
               stroke={s.color ?? CHART_COLORS.donut[i % CHART_COLORS.donut.length]}
               fill={`url(#${gradients[i].id})`}
               strokeWidth={2}
+              isAnimationActive={false}
             />
           ))}
         </AreaChart>

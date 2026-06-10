@@ -274,7 +274,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, currentPage }) =
             <div className="space-y-4 text-sm text-gray-700">
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">General Help</h3>
-                <p>Use the search icon in the header to find specific items on this page.</p>
+                <p>Use the header search bar (or press Ctrl+K) to find pages, reports, contacts, accounts, assets, settings, and records across the app.</p>
                 <p>Navigate between pages using the sidebar (desktop) or footer (mobile).</p>
                 <p>For detailed help about specific features, visit the Settings page and click on Help section.</p>
               </div>

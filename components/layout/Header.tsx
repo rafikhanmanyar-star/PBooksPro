@@ -1,7 +1,7 @@
 import React, { useState, memo, useEffect, useCallback, useMemo, useRef, useTransition } from 'react';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
-import SearchModal from './SearchModal';
+import GlobalSearchBar from './GlobalSearchBar';
 import HelpModal from './HelpModal';
 import { WhatsAppChatService, WhatsAppMessage, UnreadConversation, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -39,7 +39,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const isPersonalFinanceAdmin = isAdminRole(user?.role || currentUser?.role);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
-  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -646,6 +646,23 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     });
   }, [notifications, dismissNotification, startNavTransition]);
 
+  useEffect(() => {
+    const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        if (window.innerWidth < 768) {
+          setIsMobileSearchOpen(true);
+        }
+        window.setTimeout(() => {
+          const input = document.getElementById('global-search-input') as HTMLInputElement | null;
+          input?.focus();
+        }, 50);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalSearchShortcut);
+    return () => window.removeEventListener('keydown', handleGlobalSearchShortcut);
+  }, []);
+
   return (
     <>
       <header className="sticky top-0 z-30 bg-app-header border-b border-app-border shadow-ds-header transition-all duration-ds">
@@ -686,21 +703,9 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
             </div>
           </div>
 
-          {/* Center: Command Bar (Fake Input) */}
+          {/* Center: Global search */}
           <div className="hidden md:flex flex-1 max-w-xl justify-center">
-            <button
-              onClick={() => setIsSearchModalOpen(true)}
-              className="w-full max-w-md flex items-center gap-3 px-4 py-2.5 bg-app-card border border-app-border text-app-muted rounded-xl hover:bg-app-header hover:border-app-border hover:shadow-sm transition-all group touch-manipulation"
-              aria-label="Search"
-            >
-              <svg className="text-app-muted group-hover:text-indigo-500 transition-colors" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-              <span className="flex-1 text-left text-sm font-medium">Search transactions, contacts...</span>
-              <div className="flex items-center gap-1">
-                <kbd className="hidden lg:inline-flex h-5 items-center gap-1 rounded border border-app-border bg-app-card px-1.5 font-mono text-[10px] font-medium text-app-muted">
-                  <span className="text-xs">⌘</span>K
-                </kbd>
-              </div>
-            </button>
+            <GlobalSearchBar className="max-w-md" />
           </div>
 
           {/* Right: Actions */}
@@ -904,9 +909,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
             <div className="flex items-center gap-2">
               {/* Mobile Search Trigger */}
               <button
-                onClick={() => setIsSearchModalOpen(true)}
+                onClick={() => setIsMobileSearchOpen((prev) => !prev)}
                 className="p-2 md:hidden text-app-muted min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
                 aria-label="Search"
+                aria-expanded={isMobileSearchOpen}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               </button>
@@ -914,9 +920,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           </div>
 
         </div>
+
+        {isMobileSearchOpen && (
+          <div className="md:hidden px-4 pb-3 border-t border-app-border bg-app-header">
+            <GlobalSearchBar autoFocus onClose={() => setIsMobileSearchOpen(false)} />
+          </div>
+        )}
       </header>
 
-      {isSearchModalOpen && <SearchModal isOpen={isSearchModalOpen} onClose={() => setIsSearchModalOpen(false)} currentPage={currentPage} />}
       {isHelpModalOpen && <HelpModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} currentPage={currentPage} />}
     </>
   );
