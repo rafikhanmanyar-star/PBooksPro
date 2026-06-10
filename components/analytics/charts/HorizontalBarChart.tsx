@@ -44,8 +44,8 @@ export const HorizontalBarChart: React.FC<HorizontalBarChartProps> = ({
   const chartData = data.map((d) => ({ name: d.label, value: d.value }));
 
   return (
-    <div className="w-full min-w-0" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%" debounce={32}>
+    <div className="w-full min-w-0">
+      <ResponsiveContainer width="100%" height={height} minWidth={0} debounce={32}>
         <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={theme.grid} />
           <XAxis
@@ -72,7 +72,7 @@ export const HorizontalBarChart: React.FC<HorizontalBarChartProps> = ({
             }}
             formatter={(value: number) => [formatValue(value), 'Amount']}
           />
-          <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={28}>
+          <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={28} isAnimationActive={false}>
             {chartData.map((_, i) => (
               <Cell key={i} fill={CHART_COLORS.aging[i % CHART_COLORS.aging.length]} />
             ))}

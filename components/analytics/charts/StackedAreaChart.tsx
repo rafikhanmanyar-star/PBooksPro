@@ -38,8 +38,8 @@ export const StackedAreaChart: React.FC<StackedAreaChartProps> = ({
   }
 
   return (
-    <div className="w-full min-w-0" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%" debounce={32}>
+    <div className="w-full min-w-0">
+      <ResponsiveContainer width="100%" height={height} minWidth={0} debounce={32}>
         <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.grid} />
           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: theme.tick, fontSize: 11 }} />
@@ -74,6 +74,7 @@ export const StackedAreaChart: React.FC<StackedAreaChartProps> = ({
                 fill={color}
                 fillOpacity={0.35}
                 strokeWidth={2}
+                isAnimationActive={false}
               />
             );
           })}
