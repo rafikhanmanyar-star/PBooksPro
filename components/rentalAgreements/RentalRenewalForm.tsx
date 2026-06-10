@@ -54,8 +54,8 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
   );
 
   const formStyle = useMemo(
-    () => getFormBackgroundColorStyle(undefined, buildingId, formColorState),
-    [buildingId, formColorState]
+    () => getFormBackgroundColorStyle(undefined, buildingId, state),
+    [buildingId, state]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -84,7 +84,7 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
     }
     setSaving(true);
     try {
-      await executeRentalRenewal(engineState, dispatch, renewFrom, {
+      await executeRentalRenewal(state, dispatch, renewFrom, {
         startDate: toLocalDateString(new Date(startDate)),
         endDate: toLocalDateString(new Date(endDate)),
         monthlyRent: rent,
