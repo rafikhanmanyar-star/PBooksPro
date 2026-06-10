@@ -1055,13 +1055,15 @@ const SettingsPage: React.FC = () => {
                 </div>
             )}
 
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            {features.offlineMode && (
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                     <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                         <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><div className="w-5 h-5">{ICONS.trendingUp}</div></div>
                         Database Health
                     </h4>
                     <DatabaseAnalyzer />
                 </div>
+            )}
 
             {perms.canReadAuditLogs && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">

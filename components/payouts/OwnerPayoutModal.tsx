@@ -20,6 +20,7 @@ import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import { CURRENCY, ICONS } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
@@ -110,6 +111,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const [amount, setAmount] = useState('0');
     const [date, setDate] = useState(toLocalDateString(new Date()));
     const [accountId, setAccountId] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [buildingId, setBuildingId] = useState('');
     const [reference, setReference] = useState('');
     const [notes, setNotes] = useState('');
@@ -562,13 +564,16 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const securityTotal = securityAllocations.owner + securityAllocations.tenant + invoiceAdjustTotal + billAdjustTotal;
 
     const handleSubmit = async () => {
-        if (error || !owner) return;
+        if (isSubmitting || error || !owner) return;
 
         const payoutAccount = accounts.find(a => a.id === accountId);
         if (!payoutAccount) {
             await showAlert(`Error: Please select a valid account to pay from.`);
             return;
         }
+
+        setIsSubmitting(true);
+        try {
 
         // --- Security mode: create separate transactions per allocation ---
         if (isSecurityMode && !isEditMode) {
@@ -843,6 +848,9 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         setLastReference(reference);
         setWhatsAppPayee(owner);
         setShowWhatsAppConfirm(true);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleSendWhatsAppConfirmation = () => {
@@ -921,7 +929,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} size={showPropertyTable ? 'xl' : undefined}>
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={modalTitle} size={showPropertyTable ? 'xl' : undefined}>
             <div className="space-y-4">
                 {/* Pay From Account + Payment Date — same row as broker modal */}
                 <div className="flex flex-col md:flex-row gap-4">
@@ -1372,10 +1380,16 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 {error && <p className="text-sm text-danger">{error}</p>}
 
                 <div className="flex justify-end gap-2 pt-4">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={handleSubmit} disabled={!!error || (isSecurityMode && !isEditMode ? securityTotal <= 0 : showPropertyTable ? totalToPay <= 0 : false)}>
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton
+                        type="button"
+                        onClick={() => void handleSubmit()}
+                        loading={isSubmitting}
+                        loadingText="Processing..."
+                        disabled={!!error || (isSecurityMode && !isEditMode ? securityTotal <= 0 : showPropertyTable ? totalToPay <= 0 : false)}
+                    >
                         {isEditMode ? 'Update Payment' : 'Confirm Payment'}
-                    </Button>
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

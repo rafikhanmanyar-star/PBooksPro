@@ -11,6 +11,7 @@ import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import { CURRENCY } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
@@ -36,6 +37,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
     const [projectId, setProjectId] = useState(state.defaultProjectId || '');
     const [description, setDescription] = useState('');
     const [categoryId, setCategoryId] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
     const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.name !== 'Accounts Receivable' && a.name !== 'Accounts Payable' && a.name !== 'Internal Clearing'), [state.accounts]);
     const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
@@ -75,7 +77,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
     }, [isOpen, userSelectableAccounts, state.accounts, state.categories, balanceDue, refundRevenueCategory]);
 
     const handleSubmit = async () => {
-        if (!client) return;
+        if (isSubmitting || !client) return;
         const numAmount = parseFloat(amount);
         if (!amount || numAmount <= 0) {
             await showAlert('Please enter a valid amount.');
@@ -94,6 +96,9 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
             await showAlert('Please select a category.');
             return;
         }
+
+        setIsSubmitting(true);
+        try {
 
         // Find the sales return for this client to track refund payment
         // Since we no longer use bills, we find sales returns by client and unpaid refund amount
@@ -227,6 +232,9 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
         setTimeout(() => {
             onClose();
         }, 150);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
     
     if (!client) return null;
@@ -237,7 +245,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
     }));
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Pay / Refund ${client.name}`}>
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={`Pay / Refund ${client.name}`}>
             <div className="space-y-4">
                 {balanceDue !== undefined && (
                     <div className="p-3 bg-slate-100 rounded text-center mb-2">
@@ -299,8 +307,8 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
                 />
 
                 <div className="flex justify-end gap-2 pt-4">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={handleSubmit}>Confirm Payment</Button>
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Processing...">Confirm Payment</LoadingButton>
                 </div>
             </div>
         </Modal>

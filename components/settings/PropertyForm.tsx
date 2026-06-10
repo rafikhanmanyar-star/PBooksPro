@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Property, Contact, ContactType, Building, InvoiceType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
 import Modal from '../ui/Modal';
@@ -40,6 +41,7 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
     const [description, setDescription] = useState(propertyToEdit?.description || '');
     const [monthlyServiceCharge, setMonthlyServiceCharge] = useState(propertyToEdit?.monthlyServiceCharge?.toString() || '');
     const [nameError, setNameError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [addModalType, setAddModalType] = useState<string | null>(null);
     const [newItemName, setNewItemName] = useState('');
@@ -84,19 +86,25 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
     
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         if (nameError) {
             await showAlert("Please fix the errors before submitting.");
             return;
         }
         if (!ownerId) { await showAlert("Owner is required."); return; }
         if (!buildingId) { await showAlert("Building is required."); return; }
-        onSubmit({ 
-            name, 
-            ownerId, 
-            buildingId, 
-            description, 
-            monthlyServiceCharge: parseFloat(monthlyServiceCharge) || 0 
-        });
+        setIsSubmitting(true);
+        try {
+            await Promise.resolve(onSubmit({
+                name,
+                ownerId,
+                buildingId,
+                description,
+                monthlyServiceCharge: parseFloat(monthlyServiceCharge) || 0,
+            }));
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleCreateNew = (type: 'OWNER' | 'BUILDING', name: string) => {
@@ -192,8 +200,10 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
                         )}
                     </div>
                     <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto">
-                        <Button type="button" variant="secondary" onClick={onCancel} className="w-full sm:w-auto">Cancel</Button>
-                        <Button type="submit" className="w-full sm:w-auto">{propertyToEdit ? 'Update' : 'Save'} Property</Button>
+                        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">Cancel</Button>
+                        <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving..." className="w-full sm:w-auto">
+                            {propertyToEdit ? 'Update' : 'Save'} Property
+                        </LoadingButton>
                     </div>
                 </div>
             </form>

@@ -4,6 +4,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { Quotation, QuotationItem, Contact, TransactionType, Document } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { ICONS } from '../../constants';
@@ -29,6 +30,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
     const [items, setItems] = useState<QuotationItem[]>([]);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [documentId, setDocumentId] = useState<string | undefined>(quotationToEdit?.documentId);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const expenseCategories = useMemo(() => 
         categories.filter(c => c.type === TransactionType.EXPENSE),
@@ -83,6 +85,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
     };
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         if (!name.trim()) {
             showAlert('Please enter vendor name');
             return;
@@ -113,6 +116,9 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
                 return;
             }
         }
+
+        setIsSubmitting(true);
+        try {
 
         const quotationId = quotationToEdit?.id || Date.now().toString();
         let finalDocumentId = documentId;
@@ -163,6 +169,9 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
         }
 
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -331,16 +340,19 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
                     type="button"
                     variant="secondary"
                     onClick={onClose}
+                    disabled={isSubmitting}
                 >
                     Cancel
                 </Button>
-                <Button
+                <LoadingButton
                     type="button"
-                    onClick={handleSubmit}
+                    onClick={() => void handleSubmit()}
+                    loading={isSubmitting}
+                    loadingText="Saving..."
                     className="bg-indigo-600 hover:bg-indigo-700 text-white"
                 >
                     {quotationToEdit ? 'Update Quotation' : 'Save Quotation'}
-                </Button>
+                </LoadingButton>
             </div>
         </div>
     );

@@ -12,6 +12,7 @@ import {
   markDemoSessionActive,
   DEMO_PUBLIC_TENANT_ID,
 } from '../config/demoEnvironment';
+import { isAutoDemoUrl, resolveDemoAuthHandoff } from '../utils/demoAuthBootstrap';
 import { trackEvent } from '../services/analytics/trackEvent';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
@@ -476,6 +477,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
+        // Website live demo: enter directly — never show the organization login picker.
+        if (isAutoDemoUrl() || (typeof window !== 'undefined' && sessionStorage.getItem('pbooks_demo_auth'))) {
+          const demoPayload = await resolveDemoAuthHandoff();
+          if (demoPayload && isMounted) {
+            const { token, loginEventId, user, tenant } = demoPayload;
+            localStorage.setItem('last_tenant_id', tenant.id);
+            localStorage.setItem('last_identifier', user.username);
+            localStorage.setItem('user_id', user.id);
+            if (loginEventId) {
+              sessionStorage.setItem('pbooks_login_event_id', loginEventId);
+            }
+            apiClient.setAuth(token, tenant.id);
+            setSessionDataSource('postgres_api');
+            sessionStorage.removeItem('pbooks_api_last_sync_at');
+            sessionStorage.removeItem('pbooks_api_sync_tenant_id');
+            syncDisplayTimezoneFromUser(user);
+            markDemoSessionActive();
+            trackEvent('demo_session_started', { source: 'bootstrap' });
+            setState({
+              isAuthenticated: true,
+              user,
+              tenant,
+              isLoading: false,
+              isInitializing: false,
+              error: null,
+            });
+            window.dispatchEvent(new CustomEvent('auth:login-success'));
+            return;
+          }
+          if (isMounted) {
+            setState({
+              isAuthenticated: false,
+              user: null,
+              tenant: null,
+              isLoading: false,
+              isInitializing: false,
+              error: 'Live demo is unavailable right now. Please try again shortly.',
+            });
+            return;
+          }
+        }
+
         const token = apiClient.getToken();
         const tenantId = apiClient.getTenantId();
 
@@ -894,36 +937,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
   }, [checkLicenseStatus]);
 
-  useEffect(() => {
-    if (isLocalOnlyMode() || state.isAuthenticated) return;
-    const demoBootstrap = typeof window !== 'undefined'
-      ? sessionStorage.getItem('pbooks_demo_auth')
-      : null;
-    if (!demoBootstrap) return;
-
-    try {
-      const payload = JSON.parse(demoBootstrap) as {
-        token: string;
-        loginEventId?: string;
-        user: User;
-        tenant: Tenant;
-      };
-      sessionStorage.removeItem('pbooks_demo_auth');
-      applyAuthSession({
-        token: payload.token,
-        loginEventId: payload.loginEventId,
-        user: payload.user,
-        tenant: payload.tenant,
-        usernameForStorage: payload.user.username,
-      });
-      markDemoSessionActive();
-      trackEvent('demo_session_started', { source: 'bootstrap' });
-    } catch (e) {
-      logger.warnCategory('auth', 'Invalid demo bootstrap payload', e);
-      sessionStorage.removeItem('pbooks_demo_auth');
-    }
-  }, [state.isAuthenticated, applyAuthSession]);
-
   /**
    * Login with username, password, and tenant ID (legacy - kept for backward compatibility)
    */
@@ -981,6 +994,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tenant: response.tenant,
         usernameForStorage: username,
       });
+      if (tenantId === DEMO_PUBLIC_TENANT_ID) {
+        markDemoSessionActive();
+        trackEvent('demo_session_started', { source: 'login', tenantId: DEMO_PUBLIC_TENANT_ID });
+      }
       return { status: 'authenticated' };
     } catch (error: any) {
       const errorMessage = error.error || error.message || 'Login failed';

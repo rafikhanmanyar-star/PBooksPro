@@ -63,6 +63,7 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setError(null);
     const t = title.trim();
     if (!t) {
@@ -105,7 +106,8 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1 rounded-lg"
+            disabled={saving}
+            className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1 rounded-lg disabled:opacity-50"
             aria-label="Close"
           >
             ✕
@@ -203,7 +205,8 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
+              disabled={saving}
+              className="px-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
             >
               Cancel
             </button>

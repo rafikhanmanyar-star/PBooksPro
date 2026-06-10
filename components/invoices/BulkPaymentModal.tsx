@@ -5,6 +5,7 @@ import { Invoice, Transaction, TransactionType, AccountType, InvoiceType, Projec
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
@@ -43,6 +44,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
     const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
     const [accountId, setAccountId] = useState('');
     const [reference, setReference] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [bulkPaymentMode, setBulkPaymentMode] = useState<'cash' | 'asset'>('cash');
     const [assetDescription, setAssetDescription] = useState('');
     const [assetType, setAssetType] = useState<ProjectReceivedAssetType>('Other');
@@ -155,6 +157,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
     };
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         if (totalPaymentAmount <= 0) {
             await showAlert("Total payment amount must be greater than zero.");
             return;
@@ -167,6 +170,9 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                  return;
             }
         }
+
+        setIsSubmitting(true);
+        try {
 
         if (isProjectContext && bulkPaymentMode === 'asset') {
             if (!assetDescription.trim()) {
@@ -336,10 +342,13 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
         } else {
             onClose();
         }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Receive Bulk Payment`} size="xl">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={`Receive Bulk Payment`} size="xl">
             <div className="space-y-4">
                 {isProjectContext && (
                     <div>
@@ -468,8 +477,10 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={handleSubmit} disabled={totalPaymentAmount <= 0}>Confirm Payment</Button>
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Processing..." disabled={totalPaymentAmount <= 0}>
+                        Confirm Payment
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

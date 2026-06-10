@@ -7,6 +7,7 @@ import { Project, Building, Property, Unit, UnitOccupancyStatus, ContactType, Tr
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
@@ -45,6 +46,7 @@ const AssetsManagement: React.FC = () => {
     const [selectedType, setSelectedType] = useState<AssetType>('project');
     const [selectedAssetTypeFilter, setSelectedAssetTypeFilter] = useState<AssetType | null>(null);
     const [editingEntity, setEditingEntity] = useState<AssetEntity | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
     // Common fields
     const [name, setName] = useState('');
@@ -227,6 +229,7 @@ const AssetsManagement: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         
         if (!name.trim()) {
             showToast('Name is required', 'error');
@@ -286,6 +289,9 @@ const AssetsManagement: React.FC = () => {
             showToast(`A ${selectedType} with this name already exists.`, 'error');
             return;
         }
+
+        setIsSubmitting(true);
+        try {
 
         // Create entity data based on type
         if (selectedType === 'project') {
@@ -504,6 +510,9 @@ const AssetsManagement: React.FC = () => {
         }
 
         handleResetForm(true);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleResetForm = (closeForm = false) => {
@@ -1095,8 +1104,10 @@ const AssetsManagement: React.FC = () => {
                                     Cancel
                                 </Button>
                             )}
-                            <Button
+                            <LoadingButton
                                 type="submit"
+                                loading={isSubmitting}
+                                loadingText="Saving..."
                                 className={`flex-1 text-sm py-2 ${
                                     activeTypeConfig.color === 'indigo' ? 'bg-indigo-600 hover:bg-indigo-700' :
                                     activeTypeConfig.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
@@ -1105,7 +1116,7 @@ const AssetsManagement: React.FC = () => {
                                 } text-white`}
                             >
                                 {editingEntity ? 'Update' : `Add ${activeTypeConfig.label}`}
-                            </Button>
+                            </LoadingButton>
                         </div>
                     </div>
                 </form>

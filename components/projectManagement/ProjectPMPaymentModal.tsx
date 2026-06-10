@@ -6,6 +6,7 @@ import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import Select from '../ui/Select';
 import { useNotification } from '../../context/NotificationContext';
@@ -58,6 +59,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
     const [paymentMode, setPaymentMode] = useState<'CASH' | 'EQUITY'>('CASH');
     const [date, setDate] = useState(toLocalDateString(new Date()));
     const [description, setDescription] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
     // Cash Mode State
     const [sourceAccountId, setSourceAccountId] = useState('');
@@ -143,6 +145,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
     };
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         if (selectedAllocations.size === 0) {
             await showAlert("Please select at least one allocation to pay.");
             return;
@@ -152,6 +155,9 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
             await showAlert("Selected allocations have no outstanding balance.");
             return;
         }
+
+        setIsSubmitting(true);
+        try {
 
         // Find or create Project Management Cost category
         let pmCostCategory = state.categories.find(c => c.name === 'Project Management Cost');
@@ -464,10 +470,13 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
         onClose();
         // Reset selections
         setSelectedAllocations(new Set());
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`PM Fee Payout: ${project.name}`} size="lg">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={`PM Fee Payout: ${project.name}`} size="lg">
             <div className="space-y-6">
                 <div className="bg-app-toolbar/60 p-4 rounded-lg border border-app-border">
                     <span className="text-sm text-app-muted block">Total Outstanding Balance</span>
@@ -615,13 +624,15 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4 border-t">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button 
-                        onClick={handleSubmit}
+                    <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton
+                        onClick={() => void handleSubmit()}
+                        loading={isSubmitting}
+                        loadingText="Processing..."
                         disabled={selectedAllocations.size === 0 || totalSelectedAmount <= 0}
                     >
                         Confirm Payout
-                    </Button>
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>

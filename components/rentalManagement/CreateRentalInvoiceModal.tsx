@@ -16,6 +16,7 @@ import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappServ
 import { WhatsAppChatService } from '../../services/whatsappChatService';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import DatePicker from '../ui/DatePicker';
 import Modal from '../ui/Modal';
 import { CURRENCY } from '../../constants';
@@ -188,6 +189,7 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   }
 
   const handleSave = async () => {
+    if (isSubmitting) return;
     if (!selectedAgreement) {
       await showAlert('Please select an agreement.');
       return;
@@ -356,7 +358,7 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Create Invoice" size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} preventCloseWhile={isSubmitting} title="Create Invoice" size="lg">
       <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-2">
         {/* Agreement selector */}
         <div>
@@ -546,9 +548,9 @@ const CreateRentalInvoiceModal: React.FC<CreateRentalInvoiceModalProps> = ({
         <Button variant="secondary" onClick={handleClose} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={isSubmitting}>
-          {isSubmitting ? 'Creating...' : 'Create Invoice'}
-        </Button>
+        <LoadingButton onClick={() => void handleSave()} loading={isSubmitting} loadingText="Creating...">
+          Create Invoice
+        </LoadingButton>
       </div>
     </Modal>
   );

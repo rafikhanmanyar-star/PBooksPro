@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Contract, ContractExpenseCategoryItem, ContactType, ContractStatus, TransactionType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import Select from '../ui/Select';
@@ -72,6 +73,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
     const [documentFile, setDocumentFile] = useState<File | null>(null);
     const [documentPath, setDocumentPath] = useState(contractToEdit?.documentPath || '');
     const [documentId, setDocumentId] = useState(contractToEdit?.documentId || '');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Expense Category Items - new tracking system
     const [expenseCategoryItems, setExpenseCategoryItems] = useState<ContractExpenseCategoryItem[]>(
@@ -174,6 +176,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
         if (!name || !projectId || !vendorId) {
             await showAlert("Please fill in all required fields.");
             return;
@@ -184,6 +187,8 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
             return;
         }
 
+        setIsSubmitting(true);
+        try {
         const contractId = contractToEdit?.id || Date.now().toString();
         let finalDocumentId = documentId || undefined;
         if (documentFile) {
@@ -227,6 +232,9 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
             showToast("Contract created successfully.");
         }
         onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleDelete = async () => {
@@ -534,8 +542,10 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                         )}
                     </div>
                     <div className="flex gap-2">
-                        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                        <Button type="submit">{contractToEdit ? 'Update' : 'Create Contract'}</Button>
+                        <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                        <LoadingButton type="submit" loading={isSubmitting} loadingText="Saving...">
+                            {contractToEdit ? 'Update' : 'Create Contract'}
+                        </LoadingButton>
                     </div>
                 </div>
             </form>

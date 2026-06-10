@@ -60,6 +60,7 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     const rent = parseFloat(monthlyRent) || 0;
     if (rent <= 0) {
       await showAlert('Enter the new monthly rent for the renewed term.');

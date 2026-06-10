@@ -5,6 +5,7 @@ import { Bill, Transaction, TransactionType, AccountType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
@@ -37,6 +38,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
     const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
     const [accountId, setAccountId] = useState('');
     const [reference, setReference] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Filter for Bank Accounts Only (exclude Internal Clearing)
     const userSelectableAccounts = useMemo(() => accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [accounts]);
@@ -81,6 +83,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
     };
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         if (!accountId) {
             await showAlert("Please select a payment account.");
             return;
@@ -100,6 +103,9 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                 return;
             }
         }
+
+        setIsSubmitting(true);
+        try {
 
         // Generate a batch ID to group these transactions
         const batchId = `batch-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -265,10 +271,13 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             const errorMessage = error.message || 'An unexpected error occurred while processing payments.';
             await showAlert(`Payment failed: ${errorMessage}`);
         }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Pay Bills (Bulk)`} size="xl">
+        <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={`Pay Bills (Bulk)`} size="xl">
             <div className="space-y-4">
                 <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-grow">
@@ -336,8 +345,10 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={handleSubmit} disabled={totalPaymentAmount <= 0}>Confirm Payment</Button>
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+                    <LoadingButton type="button" onClick={() => void handleSubmit()} loading={isSubmitting} loadingText="Processing..." disabled={totalPaymentAmount <= 0}>
+                        Confirm Payment
+                    </LoadingButton>
                 </div>
             </div>
         </Modal>
