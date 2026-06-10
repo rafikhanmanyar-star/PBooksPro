@@ -7,7 +7,7 @@ import { setupElectronFocusRecovery } from './utils/electronFocusRecovery';
 import { initStabilityLayer } from './services/stability/stabilityLayer';
 import { ensureLegacyOfflineApiSessionMarked } from './config/apiUrl';
 import { bootstrapTrialAuthFromUrl } from './utils/trialAuthBootstrap';
-import { bootstrapDemoAuthFromUrl } from './utils/demoAuthBootstrap';
+import { bootstrapDemoAuthFromUrl, isAutoDemoUrl, markWebsiteDemoEntry } from './utils/demoAuthBootstrap';
 
 // Get root element
 const rootElement = document.getElementById('root');
@@ -100,6 +100,9 @@ const initApp = async () => {
   try {
     console.log('[index] Starting application load...');
     await bootstrapTrialAuthFromUrl();
+    if (isAutoDemoUrl()) {
+      markWebsiteDemoEntry();
+    }
     await bootstrapDemoAuthFromUrl();
 
     // Import all providers (AppContext before App — App imports KPIContext → AppContext)

@@ -16,6 +16,7 @@ import {
   resetDemoTenantFromTemplate,
 } from './demoSeedService.js';
 import { validatePassword } from '../../utils/passwordPolicy.js';
+import { syncPublicDemoTrialSubscription } from './demoLicenseService.js';
 
 export type DemoResetResult = {
   tenantId: string;
@@ -83,6 +84,7 @@ export async function provisionDemoEnvironment(pool?: pg.Pool): Promise<void> {
     }
 
     await resetDemoTenantFromTemplate(client, DEMO_PUBLIC_TENANT_ID);
+    await syncPublicDemoTrialSubscription(client);
   });
 
   logger.info('Demo environment provisioned', {

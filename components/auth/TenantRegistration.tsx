@@ -121,8 +121,15 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
         referralCode: referralParams.code || undefined,
         inviteToken: referralParams.invite || undefined,
       });
-      // Show success message
-      alert(`✅ Registration successful!\n\nTenant ID: ${result.tenantId}\nFree Trial: ${result.trialDaysRemaining} days remaining\n\nYou can now login with your credentials.`);
+      if (result.pendingApproval) {
+        alert(
+          `Organization Registration Submitted\n\nYour request has been received and is awaiting approval.\n\nReference ID: ${result.registrationReference ?? result.tenantId}\n\nYou will receive an email once your account has been reviewed.`
+        );
+      } else {
+        alert(
+          `Registration successful!\n\nTenant ID: ${result.tenantId}\nFree Trial: ${result.trialDaysRemaining} days remaining\n\nYou can now login with your credentials.`
+        );
+      }
       if (onSuccess) {
         onSuccess();
       }

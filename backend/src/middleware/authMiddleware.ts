@@ -8,6 +8,10 @@ import {
   isDemoMasterTenant,
   isDemoPublicTenant,
 } from '../constants/demoEnvironment.js';
+import {
+  isOrganizationStatus,
+  isOrganizationApprovalEnabled,
+} from '../constants/organizationStatus.js';
 
 export type AuthedRequest = Request & {
   userId?: string;
@@ -61,10 +65,15 @@ export async function authMiddleware(
       tenant_id: string;
       role: string;
       is_active: boolean;
+      organization_status: string;
+      rejection_reason: string | null;
     }>(
-      `SELECT id, tenant_id, role, is_active
-       FROM users
-       WHERE id = $1 AND tenant_id = $2`,
+      `SELECT u.id, u.tenant_id, ut.role, u.is_active,
+              COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+       FROM users u
+       JOIN user_tenants ut ON ut.user_id = u.id AND ut.tenant_id = u.tenant_id
+       JOIN tenants t ON t.id = u.tenant_id
+       WHERE u.id = $1 AND u.tenant_id = $2`,
       [payload.sub, payload.tenantId]
     );
     if (r.rows.length === 0 || !r.rows[0].is_active) {
@@ -95,6 +104,30 @@ export async function authMiddleware(
     if (isDemoEnvironmentEnabled() && isDemoMasterTenant(req.tenantId)) {
       sendFailure(res, 403, 'DEMO_MASTER_PROTECTED', 'This organization is not available for interactive access.');
       return;
+    }
+
+    const roleNorm = normalizeRole(user.role);
+    if (
+      isOrganizationApprovalEnabled() &&
+      !isDemoPublicTenant(req.tenantId!) &&
+      roleNorm !== 'super_admin'
+    ) {
+      const orgStatus = isOrganizationStatus(user.organization_status)
+        ? user.organization_status
+        : 'ACTIVE';
+      if (orgStatus !== 'ACTIVE') {
+        const code =
+          orgStatus === 'PENDING'
+            ? 'ORG_PENDING_APPROVAL'
+            : orgStatus === 'REJECTED'
+              ? 'ORG_REGISTRATION_REJECTED'
+              : 'ORG_SUSPENDED';
+        sendFailure(res, 403, code, 'Organization access is not available.', {
+          organizationStatus: orgStatus,
+          rejectionReason: user.rejection_reason ?? undefined,
+        });
+        return;
+      }
     }
     if (isDemoPublicTenant(req.tenantId)) {
       res.setHeader('X-PBooks-Demo-Session', 'true');
@@ -139,9 +172,10 @@ export async function optionalAuthMiddleware(
       role: string;
       is_active: boolean;
     }>(
-      `SELECT id, tenant_id, role, is_active
-       FROM users
-       WHERE id = $1 AND tenant_id = $2`,
+      `SELECT u.id, u.tenant_id, ut.role, u.is_active
+       FROM users u
+       JOIN user_tenants ut ON ut.user_id = u.id AND ut.tenant_id = u.tenant_id
+       WHERE u.id = $1 AND u.tenant_id = $2`,
       [payload.sub, payload.tenantId]
     );
     if (r.rows.length > 0 && r.rows[0].is_active) {

@@ -13,6 +13,7 @@ import { initializeTrialOnboarding } from '../onboarding/onboardingService.js';
 import { validatePassword } from '../../utils/passwordPolicy.js';
 import { getRequiredDocuments } from '../../constants/legalDocuments.js';
 import { isEnvFlagEnabled } from '../../utils/envFlag.js';
+import { ensureUserTenantMembership } from '../auth/userTenantService.js';
 
 export type TrialSignupInput = {
   name: string;
@@ -162,10 +163,12 @@ export async function createTrialSignup(
     );
 
     await client.query(
-      `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)`,
+      `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active, last_tenant_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $2)`,
       [userId, tenantId, username, name, 'Admin', passwordHash, email]
     );
+
+    await ensureUserTenantMembership(client, userId, tenantId, 'Admin');
 
     await bootstrapTenantChart(client, tenantId, { legacyIds: false });
     const subscription = await startTrialSubscription(client, tenantId);

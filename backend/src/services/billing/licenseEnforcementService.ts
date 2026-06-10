@@ -19,6 +19,16 @@ import {
   gracePeriodEndsAt,
   isWithinPastDueGrace,
 } from './subscriptionLifecycleService.js';
+import {
+  isDemoPublicTenant,
+  isDemoEnvironmentEnabled,
+} from '../../constants/demoEnvironment.js';
+import {
+  applyPublicDemoLicenseProfile,
+  assertDemoCanCreateProject,
+  countTenantTransactions,
+  syncPublicDemoTrialSubscription,
+} from '../demo/demoLicenseService.js';
 
 export type EnforcedResource =
   | 'users'
@@ -244,23 +254,8 @@ export async function validateTenantLicense(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<LicenseEnforcementPayload> {
-  if (process.env.DEMO_ENVIRONMENT_ENABLED === 'true' && tenantId === 'pbooks-demo') {
-    const farFuture = new Date();
-    farFuture.setFullYear(farFuture.getFullYear() + 10);
-    return {
-      allowed: true,
-      isValid: true,
-      daysRemaining: 3650,
-      licenseType: 'demo',
-      licenseStatus: 'active',
-      isExpired: false,
-      expiryDate: farFuture.toISOString(),
-      tenantActive: true,
-      paymentValid: true,
-      modules: ['all'],
-      warnings: [],
-      blockReasons: [],
-    };
+  if (isDemoEnvironmentEnabled() && isDemoPublicTenant(tenantId)) {
+    await syncPublicDemoTrialSubscription(client);
   }
 
   const tenantActive = await isTenantActive(client, tenantId);
@@ -312,7 +307,7 @@ export async function validateTenantLicense(
   const warnings = buildWarnings(sub, daysRemaining, usageStatus, tenantActive, paymentValid, expired);
   const inGracePeriod = sub.status === 'past_due' && isWithinPastDueGrace(sub.past_due_at);
 
-  return {
+  const payload: LicenseEnforcementPayload = {
     allowed,
     isValid,
     daysRemaining,
@@ -352,6 +347,14 @@ export async function validateTenantLicense(
         }
       : undefined,
   };
+
+  if (isDemoEnvironmentEnabled() && isDemoPublicTenant(tenantId)) {
+    const usage = usageStatus?.current ?? (await computeCurrentUsage(client, tenantId));
+    const txCount = await countTenantTransactions(client, tenantId);
+    return applyPublicDemoLicenseProfile(payload, usage, txCount);
+  }
+
+  return payload;
 }
 
 export async function requireActiveSubscription(
@@ -380,6 +383,14 @@ export async function assertCanCreateResource(
   tenantId: string,
   resource: EnforcedResource
 ): Promise<void> {
+  if (isDemoEnvironmentEnabled() && isDemoPublicTenant(tenantId)) {
+    await requireActiveSubscription(client, tenantId);
+    if (resource === 'projects') {
+      await assertDemoCanCreateProject(client, tenantId);
+    }
+    return;
+  }
+
   const status = await requireActiveSubscription(client, tenantId);
   const usage = status.usage;
   if (!usage) return;

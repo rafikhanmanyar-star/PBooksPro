@@ -18,6 +18,13 @@ import {
 import { resetPublicDemoTenant } from '../services/demo/demoResetService.js';
 import { recordLoginEvent, auditContextFromRequest } from '../services/enterpriseAuditService.js';
 import { publicIntrospectionLimiter } from '../middleware/introspectionGuard.js';
+import {
+  assertPublicDemoLoginAllowed,
+  DemoLoginBlockedError,
+  isPublicDemoTrialExpired,
+  syncPublicDemoTrialSubscription,
+} from '../services/demo/demoLicenseService.js';
+import { getDemoTrialDays } from '../constants/demoEnvironment.js';
 
 export const demoRouter = Router();
 
@@ -40,16 +47,31 @@ const analyticsSchema = z.object({
 });
 
 /** Public demo metadata for marketing site / demo-login page. */
-demoRouter.get('/demo/info', publicIntrospectionLimiter, (_req, res) => {
-  sendSuccess(res, {
-    enabled: isDemoPublicLoginEnabled(),
-    tenantId: DEMO_PUBLIC_TENANT_ID,
-    tenantName: DEMO_PUBLIC_TENANT_NAME,
-    username: DEMO_DEFAULT_USERNAME,
-    tourEnabled: true,
-    readOnly: process.env.DEMO_READ_ONLY === 'true',
-    resetsDaily: process.env.DEMO_AUTO_RESET === 'true',
-  });
+demoRouter.get('/demo/info', publicIntrospectionLimiter, async (_req, res) => {
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    let trialExpired = false;
+    try {
+      await syncPublicDemoTrialSubscription(client);
+      trialExpired = await isPublicDemoTrialExpired(client);
+    } finally {
+      client.release();
+    }
+    sendSuccess(res, {
+      enabled: isDemoPublicLoginEnabled() && !trialExpired,
+      tenantId: DEMO_PUBLIC_TENANT_ID,
+      tenantName: DEMO_PUBLIC_TENANT_NAME,
+      username: DEMO_DEFAULT_USERNAME,
+      trialDays: getDemoTrialDays(),
+      trialExpired,
+      tourEnabled: true,
+      readOnly: process.env.DEMO_READ_ONLY === 'true',
+      resetsDaily: process.env.DEMO_AUTO_RESET === 'true',
+    });
+  } catch (e) {
+    handleRouteError(res, e, { route: 'GET /demo/info' });
+  }
 });
 
 /**
@@ -64,6 +86,19 @@ demoRouter.post('/demo/enter', enterLimiter, async (req, res) => {
 
   try {
     const pool = getPool();
+    const licenseClient = await pool.connect();
+    try {
+      await assertPublicDemoLoginAllowed(licenseClient);
+    } catch (e) {
+      if (e instanceof DemoLoginBlockedError) {
+        sendFailure(res, 403, e.code, e.message);
+        return;
+      }
+      throw e;
+    } finally {
+      licenseClient.release();
+    }
+
     const user = await resolveDemoPublicLoginUser(pool);
     if (!user) {
       sendFailure(res, 503, 'DEMO_NOT_PROVISIONED', 'Demo environment is being prepared. Please try again shortly.');
