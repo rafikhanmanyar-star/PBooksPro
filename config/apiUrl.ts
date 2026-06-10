@@ -154,7 +154,7 @@ export function isLanBackendApi(): boolean {
   return !isRemoteApiUrl(getApiBaseUrl());
 }
 
-/** True when the resolved API base targets hosted PBooks cloud (not LAN/self-hosted). */
+/** True when the client talks to a hosted cloud API (not LAN / self-hosted). */
 export function isCloudHostedApi(): boolean {
   return isRemoteApiUrl(getApiBaseUrl());
 }
