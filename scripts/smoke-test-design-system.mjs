@@ -16,6 +16,7 @@ const root = path.join(__dirname, '..');
 const requiredFiles = [
   'styles/design-tokens.css',
   'design-system/tokens.ts',
+  'hooks/useThemeColors.ts',
   'context/ThemeContext.tsx',
   'components/ui/Button.tsx',
   'components/ui/Input.tsx',
@@ -89,6 +90,13 @@ function checkInputError() {
   if (!i.includes('ds-input-error')) fail('Input.tsx should apply ds-input-error when needed');
 }
 
+function checkThemeTokens() {
+  const t = fs.readFileSync(path.join(root, 'design-system/tokens.ts'), 'utf8');
+  if (!t.includes('themeTokens')) fail('design-system/tokens.ts must export themeTokens');
+  const h = fs.readFileSync(path.join(root, 'hooks/useThemeColors.ts'), 'utf8');
+  if (!h.includes('useThemeColors')) fail('hooks/useThemeColors.ts must export useThemeColors');
+}
+
 function printManualChecklist() {
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -117,6 +125,7 @@ try {
   checkHeaderToggle();
   checkButtonUsesTokens();
   checkInputError();
+  checkThemeTokens();
 } catch (e) {
   fail(e.message || String(e));
 }
