@@ -14,9 +14,10 @@ interface DatePickerProps {
     required?: boolean;
     placeholder?: string;
     className?: string;
+    compact?: boolean;
 }
 
-const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, name, disabled, required, placeholder, className }) => {
+const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, name, disabled, required, placeholder, className, compact = false }) => {
     // Generate an id if not provided (for accessibility)
     const inputId = id || (label ? `datepicker-${name || label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
     const [isOpen, setIsOpen] = useState(false);
@@ -189,7 +190,9 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
         setIsOpen(false);
     };
 
-    const inputClassName = `block w-full px-3 py-3 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-base sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors ${className || ''}`;
+    const inputClassName = `block w-full border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors ${
+        compact ? 'py-1 px-2 text-xs' : 'px-3 py-3 sm:py-2 text-base sm:text-sm'
+    } ${className || ''}`;
 
     return (
         <div className="relative" ref={wrapperRef}>
@@ -225,7 +228,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
                     autoComplete="off"
                 />
                 <div
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer"
+                    className={`absolute top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer ${compact ? 'right-2' : 'right-3'}`}
                     onClick={() => !disabled && setIsOpen(!isOpen)}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>

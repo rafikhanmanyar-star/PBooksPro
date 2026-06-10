@@ -187,7 +187,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
   }
 
   const cellInput =
-    'w-full min-w-0 border border-app-border rounded-md px-2 py-1.5 text-sm bg-app-card focus:outline-none focus:ring-1 focus:ring-primary/40';
+    'w-full min-w-0 border border-gray-300 rounded-lg px-2 py-1 text-xs bg-app-card shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500';
 
   return (
     <div className="space-y-4">
@@ -230,13 +230,14 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
             <tbody>
               {canCreatePeV && (
                 <tr className="border-b border-app-border bg-app-hover/30">
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <DatePicker
+                      compact
                       value={inline.voucherDate}
                       onChange={(d) => setInline((f) => ({ ...f, voucherDate: toLocalDateString(d) }))}
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <ComboBox
                       items={projects}
                       selectedId={inline.projectId}
@@ -246,7 +247,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       compact
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <ComboBox
                       items={vendorItems}
                       selectedId={inline.vendorId}
@@ -256,7 +257,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       compact
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <ComboBox
                       items={categoryItems}
                       selectedId={inline.expenseCategoryId}
@@ -276,7 +277,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       }}
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <input
                       type="number"
                       min={0}
@@ -287,7 +288,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       onChange={(e) => setInline((f) => ({ ...f, amount: e.target.value }))}
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <ComboBox
                       items={bankAccounts.map((a) => ({ id: a.id, name: a.name }))}
                       selectedId={inline.paymentSourceAccountId}
@@ -299,7 +300,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       compact
                     />
                   </td>
-                  <td className="py-2 pr-2 align-top">
+                  <td className="py-2 pr-2 align-middle">
                     <input
                       type="text"
                       className={cellInput}
@@ -308,7 +309,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                       onChange={(e) => setInline((f) => ({ ...f, description: e.target.value }))}
                     />
                   </td>
-                  <td className="py-2 align-top">
+                  <td className="py-2 align-middle">
                     <Button size="sm" onClick={saveInline} disabled={saving}>
                       {saving ? '…' : 'Save'}
                     </Button>
